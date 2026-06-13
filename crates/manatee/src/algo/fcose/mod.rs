@@ -2427,11 +2427,11 @@ impl SimGraph {
 
             // Match `cose-base` tick order: update compound bounds (with padding) before forces.
             let bounds = self.update_bounds();
-            if Self::should_trace_iteration(total_iterations) {
-                if let Some(stages) = debug_stages.as_deref_mut() {
-                    let tag = format!("tick-{total_iterations}.start");
-                    self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
-                }
+            if Self::should_trace_iteration(total_iterations)
+                && let Some(stages) = debug_stages.as_deref_mut()
+            {
+                let tag = format!("tick-{total_iterations}.start");
+                self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
             }
 
             // Spring forces (per-edge ideal lengths).
@@ -2664,18 +2664,18 @@ impl SimGraph {
                     );
                 }
             }
-            if Self::should_trace_iteration(total_iterations) {
-                if let Some(stages) = debug_stages.as_deref_mut() {
-                    let tag = Self::update_displacements_trace_tag(total_iterations);
-                    self.push_debug_stage_with_displacements(
-                        stages,
-                        run_idx,
-                        &tag,
-                        Some(total_iterations),
-                        None,
-                        Some(&disps),
-                    );
-                }
+            if Self::should_trace_iteration(total_iterations)
+                && let Some(stages) = debug_stages.as_deref_mut()
+            {
+                let tag = Self::update_displacements_trace_tag(total_iterations);
+                self.push_debug_stage_with_displacements(
+                    stages,
+                    run_idx,
+                    &tag,
+                    Some(total_iterations),
+                    None,
+                    Some(&disps),
+                );
             }
 
             // Move nodes (with constraints applied to displacements).
@@ -2777,18 +2777,18 @@ impl SimGraph {
                     );
                 }
             }
-            if Self::should_trace_iteration(total_iterations) {
-                if let Some(stages) = debug_stages.as_deref_mut() {
-                    let tag = format!("tick-{total_iterations}.after-displacements");
-                    self.push_debug_stage_with_displacements(
-                        stages,
-                        run_idx,
-                        &tag,
-                        Some(total_iterations),
-                        None,
-                        Some(&disps),
-                    );
-                }
+            if Self::should_trace_iteration(total_iterations)
+                && let Some(stages) = debug_stages.as_deref_mut()
+            {
+                let tag = format!("tick-{total_iterations}.after-displacements");
+                self.push_debug_stage_with_displacements(
+                    stages,
+                    run_idx,
+                    &tag,
+                    Some(total_iterations),
+                    None,
+                    Some(&disps),
+                );
             }
 
             for (idx, n) in self.nodes.iter_mut().enumerate() {
@@ -2816,11 +2816,11 @@ impl SimGraph {
             if debug_positions && total_iterations == 1 {
                 dump_positions("iter1", &self.nodes);
             }
-            if Self::should_trace_iteration(total_iterations) {
-                if let Some(stages) = debug_stages.as_deref_mut() {
-                    let tag = format!("tick-{total_iterations}.after-move");
-                    self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
-                }
+            if Self::should_trace_iteration(total_iterations)
+                && let Some(stages) = debug_stages.as_deref_mut()
+            {
+                let tag = format!("tick-{total_iterations}.after-move");
+                self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
             }
         }
         if let (Some(t), Some(s)) = (timings, iterations_start) {
@@ -2830,7 +2830,7 @@ impl SimGraph {
         // Ensure compound rectangles reflect the final leaf positions before callers compute
         // component bbox/centering (e.g. `aux.relocateComponent(...)` parity).
         let _ = self.update_bounds();
-        if let Some(stages) = debug_stages.as_deref_mut() {
+        if let Some(stages) = debug_stages {
             self.push_debug_stage(
                 stages,
                 run_idx,
@@ -3278,14 +3278,17 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
                 });
                 in_comp_constraints.push(*r);
             }
-        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
-            if top < n_total && bottom < n_total && in_comp[top] && in_comp[bottom] {
-                dag_v[top].push(Edge {
-                    id: bottom,
-                    gap: r.gap,
-                });
-                in_comp_constraints.push(*r);
-            }
+        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom)
+            && top < n_total
+            && bottom < n_total
+            && in_comp[top]
+            && in_comp[bottom]
+        {
+            dag_v[top].push(Edge {
+                id: bottom,
+                gap: r.gap,
+            });
+            in_comp_constraints.push(*r);
         }
     }
     apply_reflection_for_relative_placement(x, y, &in_comp_constraints);

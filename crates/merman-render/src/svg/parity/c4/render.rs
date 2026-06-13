@@ -434,7 +434,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             &mut out,
             r#"<text fill="{}" font-family="{}" font-size="{}" font-style="italic" lengthAdjust="spacing" textLength="{}" x="{}" y="{}">{}</text>"#,
             escape_attr(&font_color),
-            escape_attr(&type_family),
+            escape_attr(type_family),
             fmt(type_size.max(1.0)),
             fmt(type_text_length),
             fmt(s.x + s.width / 2.0 - type_text_length / 2.0),
@@ -470,7 +470,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 x: s.x,
                 y: s.y + s.label.y,
                 width: s.width,
-                font_family: &label_family,
+                font_family: label_family,
                 font_size: label_size,
                 font_weight: label_weight,
                 attrs: &[("fill", &font_color)],
@@ -493,54 +493,54 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         x: s.x,
                         y: s.y + techn.y,
                         width: s.width,
-                        font_family: &body_family,
+                        font_family: body_family,
                         font_size: body_size,
-                        font_weight: &body_weight,
+                        font_weight: body_weight,
                         attrs: &[("fill", &font_color), ("font-style", "italic")],
                     },
                 );
             }
-        } else if let Some(ty) = &s.ty {
-            if !ty.text.trim().is_empty() {
-                c4_write_text_by_tspan(
-                    &mut out,
-                    C4TspanText {
-                        content: &ty.text,
-                        x: s.x,
-                        y: s.y + ty.y,
-                        width: s.width,
-                        font_family: &body_family,
-                        font_size: body_size,
-                        font_weight: &body_weight,
-                        attrs: &[("fill", &font_color), ("font-style", "italic")],
-                    },
-                );
-            }
+        } else if let Some(ty) = &s.ty
+            && !ty.text.trim().is_empty()
+        {
+            c4_write_text_by_tspan(
+                &mut out,
+                C4TspanText {
+                    content: &ty.text,
+                    x: s.x,
+                    y: s.y + ty.y,
+                    width: s.width,
+                    font_family: body_family,
+                    font_size: body_size,
+                    font_weight: body_weight,
+                    attrs: &[("fill", &font_color), ("font-style", "italic")],
+                },
+            );
         }
 
-        if let Some(descr) = &s.descr {
-            if !descr.text.trim().is_empty() {
-                let descr_font = c4_cfg.shape_font("person");
-                let descr_family = descr_font
-                    .font_family
-                    .as_deref()
-                    .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-                let descr_weight = descr_font.font_weight.as_deref().unwrap_or("normal");
-                let descr_size = descr_font.font_size;
-                c4_write_text_by_tspan(
-                    &mut out,
-                    C4TspanText {
-                        content: &descr.text,
-                        x: s.x,
-                        y: s.y + descr.y,
-                        width: s.width,
-                        font_family: &descr_family,
-                        font_size: descr_size,
-                        font_weight: &descr_weight,
-                        attrs: &[("fill", &font_color)],
-                    },
-                );
-            }
+        if let Some(descr) = &s.descr
+            && !descr.text.trim().is_empty()
+        {
+            let descr_font = c4_cfg.shape_font("person");
+            let descr_family = descr_font
+                .font_family
+                .as_deref()
+                .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+            let descr_weight = descr_font.font_weight.as_deref().unwrap_or("normal");
+            let descr_size = descr_font.font_size;
+            c4_write_text_by_tspan(
+                &mut out,
+                C4TspanText {
+                    content: &descr.text,
+                    x: s.x,
+                    y: s.y + descr.y,
+                    width: s.width,
+                    font_family: descr_family,
+                    font_size: descr_size,
+                    font_weight: descr_weight,
+                    attrs: &[("fill", &font_color)],
+                },
+            );
         }
 
         out.push_str("</g>");
@@ -598,49 +598,49 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 x: b.x,
                 y: b.y + b.label.y,
                 width: b.width,
-                font_family: &boundary_family,
+                font_family: boundary_family,
                 font_size: boundary_size,
                 font_weight: boundary_weight,
                 attrs: &[("fill", "#444444")],
             },
         );
-        if let Some(ty) = &b.ty {
-            if !ty.text.trim().is_empty() {
-                let boundary_type_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
-                let boundary_type_size = boundary_font.font_size;
-                c4_write_text_by_tspan(
-                    &mut out,
-                    C4TspanText {
-                        content: &ty.text,
-                        x: b.x,
-                        y: b.y + ty.y,
-                        width: b.width,
-                        font_family: &boundary_family,
-                        font_size: boundary_type_size,
-                        font_weight: &boundary_type_weight,
-                        attrs: &[("fill", "#444444")],
-                    },
-                );
-            }
+        if let Some(ty) = &b.ty
+            && !ty.text.trim().is_empty()
+        {
+            let boundary_type_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
+            let boundary_type_size = boundary_font.font_size;
+            c4_write_text_by_tspan(
+                &mut out,
+                C4TspanText {
+                    content: &ty.text,
+                    x: b.x,
+                    y: b.y + ty.y,
+                    width: b.width,
+                    font_family: boundary_family,
+                    font_size: boundary_type_size,
+                    font_weight: boundary_type_weight,
+                    attrs: &[("fill", "#444444")],
+                },
+            );
         }
-        if let Some(descr) = &b.descr {
-            if !descr.text.trim().is_empty() {
-                let descr_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
-                let descr_size = (boundary_font.font_size - 2.0).max(1.0);
-                c4_write_text_by_tspan(
-                    &mut out,
-                    C4TspanText {
-                        content: &descr.text,
-                        x: b.x,
-                        y: b.y + descr.y,
-                        width: b.width,
-                        font_family: &boundary_family,
-                        font_size: descr_size,
-                        font_weight: &descr_weight,
-                        attrs: &[("fill", "#444444")],
-                    },
-                );
-            }
+        if let Some(descr) = &b.descr
+            && !descr.text.trim().is_empty()
+        {
+            let descr_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
+            let descr_size = (boundary_font.font_size - 2.0).max(1.0);
+            c4_write_text_by_tspan(
+                &mut out,
+                C4TspanText {
+                    content: &descr.text,
+                    x: b.x,
+                    y: b.y + descr.y,
+                    width: b.width,
+                    font_family: boundary_family,
+                    font_size: descr_size,
+                    font_weight: descr_weight,
+                    attrs: &[("fill", "#444444")],
+                },
+            );
         }
 
         out.push_str("</g>");
@@ -759,30 +759,30 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 x: midx,
                 y: midy,
                 width: rel.label.width,
-                font_family: &message_family,
+                font_family: message_family,
                 font_size: message_size,
-                font_weight: &message_weight,
+                font_weight: message_weight,
                 attrs: &[("fill", &text_color)],
             },
         );
 
-        if let Some(techn) = &rel.techn {
-            if !techn.text.trim().is_empty() {
-                let techn_text = format!("[{}]", techn.text);
-                c4_write_text_by_tspan(
-                    &mut out,
-                    C4TspanText {
-                        content: &techn_text,
-                        x: midx,
-                        y: midy + message_size + 5.0,
-                        width: rel.label.width.max(techn.width),
-                        font_family: &message_family,
-                        font_size: message_size,
-                        font_weight: &message_weight,
-                        attrs: &[("fill", &text_color), ("font-style", "italic")],
-                    },
-                );
-            }
+        if let Some(techn) = &rel.techn
+            && !techn.text.trim().is_empty()
+        {
+            let techn_text = format!("[{}]", techn.text);
+            c4_write_text_by_tspan(
+                &mut out,
+                C4TspanText {
+                    content: &techn_text,
+                    x: midx,
+                    y: midy + message_size + 5.0,
+                    width: rel.label.width.max(techn.width),
+                    font_family: message_family,
+                    font_size: message_size,
+                    font_weight: message_weight,
+                    attrs: &[("fill", &text_color), ("font-style", "italic")],
+                },
+            );
         }
     }
     out.push_str("</g>");

@@ -75,10 +75,10 @@ pub(crate) fn collect_mmd_fixtures(root: &Path, scan: MmdFixtureScan<'_>) -> Vec
             if scan.skip_parser_only && is_parser_only_fixture(&path) {
                 continue;
             }
-            if let Some(filter) = scan.filter {
-                if !file_name_contains(&path, filter) {
-                    continue;
-                }
+            if let Some(filter) = scan.filter
+                && !file_name_contains(&path, filter)
+            {
+                continue;
             }
             out.push(path);
         }

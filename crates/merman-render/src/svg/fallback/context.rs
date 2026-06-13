@@ -64,10 +64,10 @@ fn parse_translate(transform: &str) -> Translate {
             cur.clear();
         }
     }
-    if !cur.is_empty() {
-        if let Ok(v) = cur.parse::<f64>() {
-            nums.push(v);
-        }
+    if !cur.is_empty()
+        && let Ok(v) = cur.parse::<f64>()
+    {
+        nums.push(v);
     }
 
     Translate {

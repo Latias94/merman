@@ -57,8 +57,7 @@ impl FlowchartBuildState {
                         }
                         self.upsert_node(n);
                     }
-                    self.vertex_calls
-                        .extend(deferred_shape_data_vertex_calls.into_iter());
+                    self.vertex_calls.extend(deferred_shape_data_vertex_calls);
                     for e in edges.iter().cloned() {
                         self.push_edge(e);
                     }

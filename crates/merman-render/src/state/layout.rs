@@ -182,10 +182,11 @@ fn node_label_metrics(
                     }
                 }
                 "font-size" => {
-                    if let Some(px) = parse_css_px_f64(val) {
-                        if px.is_finite() && px > 0.0 {
-                            font_size_px = Some(px);
-                        }
+                    if let Some(px) = parse_css_px_f64(val)
+                        && px.is_finite()
+                        && px > 0.0
+                    {
+                        font_size_px = Some(px);
                     }
                 }
                 "font-family" => {
@@ -526,17 +527,19 @@ fn prepare_graph_one_level(
             continue;
         }
 
-        if cluster_ids.iter().any(|c| c == &v) && *external.get(&v).unwrap_or(&false) {
-            if let Some(a) = anchor.get(&v) {
-                from_cluster = Some(v.clone());
-                v = a.clone();
-            }
+        if cluster_ids.iter().any(|c| c == &v)
+            && *external.get(&v).unwrap_or(&false)
+            && let Some(a) = anchor.get(&v)
+        {
+            from_cluster = Some(v.clone());
+            v = a.clone();
         }
-        if cluster_ids.iter().any(|c| c == &w) && *external.get(&w).unwrap_or(&false) {
-            if let Some(a) = anchor.get(&w) {
-                to_cluster = Some(w.clone());
-                w = a.clone();
-            }
+        if cluster_ids.iter().any(|c| c == &w)
+            && *external.get(&w).unwrap_or(&false)
+            && let Some(a) = anchor.get(&w)
+        {
+            to_cluster = Some(w.clone());
+            w = a.clone();
         }
 
         let Some(old_label) = graph.edge_by_key(&key).cloned() else {
@@ -583,8 +586,8 @@ fn prepare_graph_one_level(
         depth
     }
     candidate_roots.sort_by(|a, b| {
-        cluster_depth(&graph, a)
-            .cmp(&cluster_depth(&graph, b))
+        cluster_depth(graph, a)
+            .cmp(&cluster_depth(graph, b))
             .then(a.cmp(b))
     });
 
@@ -716,10 +719,10 @@ fn extract_cluster_graph(
         let data = graph.node(&node).cloned().unwrap_or_default();
         sub.set_node(node.clone(), data);
 
-        if let Some(parent) = graph.parent(&node) {
-            if parent != cluster_id {
-                sub.set_parent(node.clone(), parent.to_string());
-            }
+        if let Some(parent) = graph.parent(&node)
+            && parent != cluster_id
+        {
+            sub.set_parent(node.clone(), parent.to_string());
         }
         if current_cluster_id != cluster_id && node != current_cluster_id {
             sub.set_parent(node.clone(), current_cluster_id);

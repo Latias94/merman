@@ -339,11 +339,11 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "mmd") {
-                if let Ok(text) = fs::read_to_string(&path) {
-                    let canon = canonical_fixture_text(&text);
-                    map.insert(canon, path);
-                }
+            if path.extension().is_some_and(|e| e == "mmd")
+                && let Ok(text) = fs::read_to_string(&path)
+            {
+                let canon = canonical_fixture_text(&text);
+                map.insert(canon, path);
             }
         }
         map
@@ -541,10 +541,10 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             if body.trim().is_empty() {
                 continue;
             }
-            if let Some(min) = min_lines {
-                if body.lines().count() < min {
-                    continue;
-                }
+            if let Some(min) = min_lines
+                && body.lines().count() < min
+            {
+                continue;
             }
 
             let mut cfg = merman::MermaidConfig::default();
@@ -576,18 +576,18 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 continue;
             }
 
-            if with_baselines && b.info.is_empty() {
-                if let Some(directives) = blank_info_directives_for(&diagram_dir) {
-                    if !has_any_directive(&body, directives) {
-                        skipped.push(format!(
+            if with_baselines
+                && b.info.is_empty()
+                && let Some(directives) = blank_info_directives_for(&diagram_dir)
+                && !has_any_directive(&body, directives)
+            {
+                skipped.push(format!(
                             "skip (blank info missing directive): {} (detected={detected}, idx={}, heading={})",
                             b.source_md.display(),
                             b.idx_in_file,
                             b.heading.clone().unwrap_or_default()
                         ));
-                        continue;
-                    }
-                }
+                continue;
             }
 
             let fixtures_dir = crate::cmd::fixtures_root().join(&diagram_dir);
@@ -660,22 +660,20 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                     return Some("flowchart math (deferred)");
                 }
             }
-            "gantt" => {
+            "gantt"
                 // Gantt + YAML frontmatter config is still drifting vs upstream (notably axis ticks).
                 // Import later once the renderer is aligned for these cases.
                 if fixture_text.starts_with("---\n")
                     && fixture_text.contains("\n---\n")
                     && fixture_text.contains("\ngantt:")
-                {
+                => {
                     return Some("gantt frontmatter config (deferred)");
                 }
-            }
-            "sequence" => {
+            "sequence"
                 // Math rendering depends on browser KaTeX + font metrics.
-                if fixture_text.contains("$$") {
+                if fixture_text.contains("$$") => {
                     return Some("sequence math (deferred)");
                 }
-            }
             _ => {}
         }
         None
@@ -779,10 +777,10 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             existing.insert(c.body.clone(), out_path);
             created.push(f);
             imported += 1;
-            if let Some(max) = limit {
-                if imported >= max {
-                    break;
-                }
+            if let Some(max) = limit
+                && imported >= max
+            {
+                break;
             }
             continue;
         }
@@ -913,10 +911,10 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         existing.insert(c.body.clone(), out_path);
         created.push(f);
         imported += 1;
-        if let Some(max) = limit {
-            if imported >= max {
-                break;
-            }
+        if let Some(max) = limit
+            && imported >= max
+        {
+            break;
         }
     }
 

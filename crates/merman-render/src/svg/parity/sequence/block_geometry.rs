@@ -102,18 +102,18 @@ pub(super) fn frame_x_from_message_ids<'a>(
     if geom_max_x.is_finite() {
         x2 = x2.max(geom_max_x);
     }
-    if let Some(actor_id) = self_only_actor.filter(|id| !id.is_empty()) {
-        if let Some(n) = actor_nodes_by_id.get(actor_id).copied() {
-            let left = n.x - n.width / 2.0;
-            let right = n.x + n.width / 2.0;
-            let min_x1 = left - 5.0;
-            let min_x2 = right + 15.0;
-            // Only widen when the computed geometry is suspiciously narrow; avoid shifting
-            // frames that already match upstream due to message label geometry.
-            if (x2 - x1) < (min_x2 - min_x1) - 1.0 {
-                x1 = x1.min(min_x1);
-                x2 = x2.max(min_x2);
-            }
+    if let Some(actor_id) = self_only_actor.filter(|id| !id.is_empty())
+        && let Some(n) = actor_nodes_by_id.get(actor_id).copied()
+    {
+        let left = n.x - n.width / 2.0;
+        let right = n.x + n.width / 2.0;
+        let min_x1 = left - 5.0;
+        let min_x2 = right + 15.0;
+        // Only widen when the computed geometry is suspiciously narrow; avoid shifting
+        // frames that already match upstream due to message label geometry.
+        if (x2 - x1) < (min_x2 - min_x1) - 1.0 {
+            x1 = x1.min(min_x1);
+            x2 = x2.max(min_x2);
         }
     }
     Some((x1, x2, min_left))

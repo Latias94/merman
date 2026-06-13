@@ -303,10 +303,10 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {
         let mut cur = ctx.parent.get(id).copied();
-        if cur.is_none() {
-            if let Some(base) = self_loop_label_base_node_id(id) {
-                cur = ctx.parent.get(base).copied();
-            }
+        if cur.is_none()
+            && let Some(base) = self_loop_label_base_node_id(id)
+        {
+            cur = ctx.parent.get(base).copied();
         }
         while let Some(p) = cur {
             if ctx.subgraphs_by_id.contains_key(p) && !ctx.recursive_clusters.contains(p) {

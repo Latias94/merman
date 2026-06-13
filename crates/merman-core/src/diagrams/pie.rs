@@ -120,12 +120,12 @@ fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
             rest = "";
             continue;
         }
-        if rest.starts_with("accTitle") {
-            if let Some(v) = parse_key_value(rest, "accTitle") {
-                acc_title = Some(v);
-                rest = "";
-                continue;
-            }
+        if rest.starts_with("accTitle")
+            && let Some(v) = parse_key_value(rest, "accTitle")
+        {
+            acc_title = Some(v);
+            rest = "";
+            continue;
         }
         if rest.starts_with("accDescr") {
             if let Some(v) = parse_acc_descr_inline(rest) {

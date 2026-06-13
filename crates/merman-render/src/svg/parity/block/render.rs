@@ -252,9 +252,9 @@ pub(crate) fn render_block_diagram_svg_model(
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
         let cluster_bkg =
-            css_rgba_fade(&cluster_bkg, 0.5).unwrap_or_else(|| cluster_bkg.to_string());
+            css_rgba_fade(cluster_bkg, 0.5).unwrap_or_else(|| cluster_bkg.to_string());
         let cluster_border =
-            css_rgba_fade(&cluster_border, 0.2).unwrap_or_else(|| cluster_border.to_string());
+            css_rgba_fade(cluster_border, 0.2).unwrap_or_else(|| cluster_border.to_string());
 
         let mut out = String::new();
         let _ = write!(

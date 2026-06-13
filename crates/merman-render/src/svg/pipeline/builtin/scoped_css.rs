@@ -65,17 +65,17 @@ fn inject_style(svg: &mut String, css: &str) {
         css
     );
 
-    if let Some(start) = svg.find("<svg") {
-        if let Some(end) = find_tag_end(svg, start) {
-            if let Some(style_close_start) = svg.rfind("</style") {
-                if let Some(style_close_end) = find_tag_end(svg, style_close_start) {
-                    svg.insert_str(style_close_end + 1, &style);
-                    return;
-                }
-            }
-            svg.insert_str(end + 1, &style);
+    if let Some(start) = svg.find("<svg")
+        && let Some(end) = find_tag_end(svg, start)
+    {
+        if let Some(style_close_start) = svg.rfind("</style")
+            && let Some(style_close_end) = find_tag_end(svg, style_close_start)
+        {
+            svg.insert_str(style_close_end + 1, &style);
             return;
         }
+        svg.insert_str(end + 1, &style);
+        return;
     }
 
     svg.push_str(&style);
@@ -121,7 +121,7 @@ fn scope_css_block(css: &str, scope: &str) -> String {
         if selector.trim_start().starts_with('@') {
             push_scoped_at_rule(&mut out, selector, &css[open + 1..close], scope);
         } else {
-            out.push_str(&scope_selector(selector, &scope));
+            out.push_str(&scope_selector(selector, scope));
             out.push(' ');
             out.push_str(&css[open..=close]);
         }

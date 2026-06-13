@@ -412,10 +412,10 @@ impl TreeState {
             if child_tix < self.cut_to_parent.len() {
                 self.cut_to_parent[child_tix] = cut;
             }
-            if let Some(child_gix) = self.g_ix_by_t_ix.get(child_tix).copied().flatten() {
-                if child_gix < self.cut_to_parent_by_g_ix.len() {
-                    self.cut_to_parent_by_g_ix[child_gix] = cut;
-                }
+            if let Some(child_gix) = self.g_ix_by_t_ix.get(child_tix).copied().flatten()
+                && child_gix < self.cut_to_parent_by_g_ix.len()
+            {
+                self.cut_to_parent_by_g_ix[child_gix] = cut;
             }
         }
 
@@ -566,10 +566,10 @@ pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     }
 
     for v in g.node_ids() {
-        if let Some(rank) = simplified.node(&v).and_then(|n| n.rank) {
-            if let Some(lbl) = g.node_mut(&v) {
-                lbl.rank = Some(rank);
-            }
+        if let Some(rank) = simplified.node(&v).and_then(|n| n.rank)
+            && let Some(lbl) = g.node_mut(&v)
+        {
+            lbl.rank = Some(rank);
         }
     }
 }

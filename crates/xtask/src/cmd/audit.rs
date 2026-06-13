@@ -374,10 +374,10 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         if !(name.contains("_parser_only_") || name.contains("_parser_only_spec")) {
             continue;
         }
-        if let Some(ref f) = filter {
-            if !p.to_string_lossy().contains(f) {
-                continue;
-            }
+        if let Some(ref f) = filter
+            && !p.to_string_lossy().contains(f)
+        {
+            continue;
         }
         parser_only_by_diagram.entry(top).or_default().push(p);
     }
@@ -400,10 +400,10 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
             let Some(expected_group) = top_level_dir_under(&deferred_root, &p) else {
                 continue;
             };
-            if let Some(ref f) = filter {
-                if !p.to_string_lossy().contains(f) {
-                    continue;
-                }
+            if let Some(ref f) = filter
+                && !p.to_string_lossy().contains(f)
+            {
+                continue;
             }
 
             // Do NOT `trim_end()` here: some upstream grammars treat trailing whitespace-only

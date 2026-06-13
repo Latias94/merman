@@ -1077,7 +1077,7 @@ pub fn layout_gantt_diagram_typed(
         has_tasks && (!m.excludes.is_empty() || !m.includes.is_empty()) && span_days <= 365 * 5;
 
     // Sort by start time for rendering.
-    m.tasks.sort_by(|a, b| a.start_ms.cmp(&b.start_ms));
+    m.tasks.sort_by_key(|a| a.start_ms);
 
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();

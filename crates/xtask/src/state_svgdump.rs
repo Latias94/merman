@@ -414,8 +414,7 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
         fmt(lo0.x),
         fmt(lo0.y)
     );
-    let mut scope_no = 1usize;
-    for (id, _) in all_scope_ids {
+    for (scope_no, (id, _)) in (1usize..).zip(all_scope_ids) {
         let up = find_scope_by_nested_root_id(&upstream_scopes, &id).map(|s| s.translate);
         let lo = find_scope_by_nested_root_id(&local_scopes, &id).map(|s| s.translate);
         let up = up.unwrap_or(Point { x: 0.0, y: 0.0 });
@@ -430,7 +429,6 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
             fmt(lo.x),
             fmt(lo.y)
         );
-        scope_no += 1;
     }
     let _ = writeln!(&mut report);
 

@@ -372,10 +372,10 @@ impl BlockDb {
                 if block.block_type != "na" {
                     existing.block_type = block.block_type.clone();
                 }
-                if let Some(lbl) = &block.label {
-                    if lbl != &block.id {
-                        existing.label = Some(lbl.clone());
-                    }
+                if let Some(lbl) = &block.label
+                    && lbl != &block.id
+                {
+                    existing.label = Some(lbl.clone());
                 }
                 self.insert_block(block.id.clone(), existing);
             }
@@ -397,10 +397,8 @@ impl BlockDb {
                 continue;
             }
 
-            if !existed {
-                if let Some(frame) = stack.last_mut() {
-                    frame.child_ids.push(block.id.clone());
-                }
+            if !existed && let Some(frame) = stack.last_mut() {
+                frame.child_ids.push(block.id.clone());
             }
 
             if !parsed_children.is_empty() {
@@ -824,7 +822,7 @@ fn node_delims_at_start(input: &str) -> Option<NodeDelims> {
 
 enum DocumentFrameKind {
     Root,
-    IdBlock(Block),
+    IdBlock(Box<Block>),
     AnonymousBlock,
 }
 
@@ -843,7 +841,7 @@ impl DocumentFrame {
 
     fn id_block(header: Block) -> Self {
         Self {
-            kind: DocumentFrameKind::IdBlock(header),
+            kind: DocumentFrameKind::IdBlock(Box::new(header)),
             children: Vec::new(),
         }
     }
@@ -864,7 +862,8 @@ impl DocumentFrame {
                 b.children = self.children;
                 b
             }
-            DocumentFrameKind::IdBlock(mut header) => {
+            DocumentFrameKind::IdBlock(header) => {
+                let mut header = *header;
                 header.block_type = "composite".to_string();
                 header.children = self.children;
                 header
@@ -931,7 +930,7 @@ impl<'a> Parser<'a> {
 
     fn generate_id(&mut self) -> String {
         self.gen_counter += 1;
-        let rand = crate::runtime::generated_id_hex(12, self.gen_counter as u64, 0x626C_6F63_6B);
+        let rand = crate::runtime::generated_id_hex(12, self.gen_counter as u64, 0x0062_6C6F_636B);
         format!("id-{rand}-{}", self.gen_counter)
     }
 

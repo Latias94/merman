@@ -120,15 +120,15 @@ impl<'a> ParsePipeline<'a> {
         sanitize(&mut model, &meta.effective_config);
         let sanitize = sanitize_start.map(runtime::timing_elapsed);
 
-        timing.log_success(
+        timing.log_success(ParseTimingSuccess {
             total_start,
-            &meta,
-            model_kind(&model),
+            meta: &meta,
+            model_kind: model_kind(&model),
             preprocess,
             parse,
             sanitize,
-            self.text.len(),
-        );
+            input_bytes: self.text.len(),
+        });
 
         Ok(Some(finish(meta, model)))
     }
@@ -288,17 +288,8 @@ impl ParseTiming {
         }
     }
 
-    fn log_success(
-        self,
-        total_start: Option<runtime::TimingInstant>,
-        meta: &ParseMetadata,
-        model_kind: Option<&str>,
-        preprocess: Option<runtime::TimingDuration>,
-        parse: Option<runtime::TimingDuration>,
-        sanitize: Option<runtime::TimingDuration>,
-        input_bytes: usize,
-    ) {
-        let Some(start) = total_start else {
+    fn log_success(self, success: ParseTimingSuccess<'_>) {
+        let Some(start) = success.total_start else {
             return;
         };
 
@@ -307,28 +298,38 @@ impl ParseTiming {
             Self::Json => {
                 eprintln!(
                     "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                    meta.diagram_type,
+                    success.meta.diagram_type,
                     runtime::timing_elapsed(start),
-                    preprocess.unwrap_or_default(),
-                    parse.unwrap_or_default(),
-                    sanitize.unwrap_or_default(),
-                    input_bytes,
+                    success.preprocess.unwrap_or_default(),
+                    success.parse.unwrap_or_default(),
+                    success.sanitize.unwrap_or_default(),
+                    success.input_bytes,
                 );
             }
             Self::Render => {
                 eprintln!(
                     "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                    meta.diagram_type,
-                    model_kind.unwrap_or("unknown"),
+                    success.meta.diagram_type,
+                    success.model_kind.unwrap_or("unknown"),
                     runtime::timing_elapsed(start),
-                    preprocess.unwrap_or_default(),
-                    parse.unwrap_or_default(),
-                    sanitize.unwrap_or_default(),
-                    input_bytes,
+                    success.preprocess.unwrap_or_default(),
+                    success.parse.unwrap_or_default(),
+                    success.sanitize.unwrap_or_default(),
+                    success.input_bytes,
                 );
             }
         }
     }
+}
+
+struct ParseTimingSuccess<'a> {
+    total_start: Option<runtime::TimingInstant>,
+    meta: &'a ParseMetadata,
+    model_kind: Option<&'static str>,
+    preprocess: Option<runtime::TimingDuration>,
+    parse: Option<runtime::TimingDuration>,
+    sanitize: Option<runtime::TimingDuration>,
+    input_bytes: usize,
 }
 
 fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Option<String> {

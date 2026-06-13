@@ -1,18 +1,13 @@
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiColorMode {
+    #[default]
     Plain,
     Auto,
     Ansi16,
     Ansi256,
     TrueColor,
     Html,
-}
-
-impl Default for AsciiColorMode {
-    fn default() -> Self {
-        Self::Plain
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

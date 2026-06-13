@@ -24,21 +24,21 @@ impl Graph {
         }
 
         for n in &self.nodes {
-            if let Some(p) = n.parent.as_deref() {
-                if !compound_exists.contains(p) {
-                    return Err(Error::MissingEndpoint {
-                        edge_id: format!("node-parent:{}/{}", n.id, p),
-                    });
-                }
+            if let Some(p) = n.parent.as_deref()
+                && !compound_exists.contains(p)
+            {
+                return Err(Error::MissingEndpoint {
+                    edge_id: format!("node-parent:{}/{}", n.id, p),
+                });
             }
         }
         for c in &self.compounds {
-            if let Some(p) = c.parent.as_deref() {
-                if !compound_exists.contains(p) {
-                    return Err(Error::MissingEndpoint {
-                        edge_id: format!("compound-parent:{}/{}", c.id, p),
-                    });
-                }
+            if let Some(p) = c.parent.as_deref()
+                && !compound_exists.contains(p)
+            {
+                return Err(Error::MissingEndpoint {
+                    edge_id: format!("compound-parent:{}/{}", c.id, p),
+                });
             }
         }
         for e in &self.edges {

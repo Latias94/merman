@@ -189,7 +189,7 @@ impl Options {
 
         #[cfg(feature = "host-random")]
         {
-            return random::<f64>();
+            random::<f64>()
         }
 
         #[cfg(not(feature = "host-random"))]

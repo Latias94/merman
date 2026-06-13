@@ -73,6 +73,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom_skipped_bounds: u32,
 }
 
+#[derive(Default)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg::parity::flowchart) json: String,
     pub(in crate::svg::parity::flowchart) style_escaped: String,
@@ -82,21 +83,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg::parity::flowchart) tmp_points_b: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_c: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_rev: Vec<crate::model::LayoutPoint>,
-}
-
-impl Default for FlowchartEdgeDataPointsScratch {
-    fn default() -> Self {
-        Self {
-            json: String::new(),
-            style_escaped: String::new(),
-            ryu: ryu_js::Buffer::new(),
-            local_points: Vec::new(),
-            tmp_points_a: Vec::new(),
-            tmp_points_b: Vec::new(),
-            tmp_points_c: Vec::new(),
-            tmp_points_rev: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

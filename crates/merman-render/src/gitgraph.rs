@@ -649,21 +649,20 @@ pub fn layout_gitgraph_diagram_typed(
             if !commit.parents.is_empty() {
                 if let Some(closest_parent) =
                     find_closest_parent(&commit.parents, &direction, &commit_pos)
+                    && let Some(parent_position) = commit_pos.get(closest_parent)
                 {
-                    if let Some(parent_position) = commit_pos.get(closest_parent) {
-                        if mirror_parallel_bt_axis {
-                            cur_pos = parent_position.y + COMMIT_STEP + LAYOUT_OFFSET;
-                        } else if direction == "TB" {
-                            cur_pos = parent_position.y + COMMIT_STEP;
-                        } else if direction == "BT" {
-                            let current_position = commit_pos
-                                .get(commit.id.as_str())
-                                .copied()
-                                .unwrap_or(CommitPosition { x: 0.0, y: 0.0 });
-                            cur_pos = current_position.y - COMMIT_STEP;
-                        } else {
-                            cur_pos = parent_position.x + COMMIT_STEP;
-                        }
+                    if mirror_parallel_bt_axis {
+                        cur_pos = parent_position.y + COMMIT_STEP + LAYOUT_OFFSET;
+                    } else if direction == "TB" {
+                        cur_pos = parent_position.y + COMMIT_STEP;
+                    } else if direction == "BT" {
+                        let current_position = commit_pos
+                            .get(commit.id.as_str())
+                            .copied()
+                            .unwrap_or(CommitPosition { x: 0.0, y: 0.0 });
+                        cur_pos = current_position.y - COMMIT_STEP;
+                    } else {
+                        cur_pos = parent_position.x + COMMIT_STEP;
                     }
                 }
             } else {

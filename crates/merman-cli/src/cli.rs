@@ -22,6 +22,7 @@ pub(crate) struct Cli {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Command {
     /// Detect the Mermaid diagram type.
     Detect(DetectArgs),

@@ -158,10 +158,10 @@ fn normalize_field_value(s: &str) -> String {
 
 fn parse_float_json(s: &str) -> Value {
     let t = s.trim();
-    if !t.contains(['.', 'e', 'E']) {
-        if let Ok(i) = t.parse::<i64>() {
-            return Value::Number(i.into());
-        }
+    if !t.contains(['.', 'e', 'E'])
+        && let Ok(i) = t.parse::<i64>()
+    {
+        return Value::Number(i.into());
     }
 
     let v = t.parse::<f64>().unwrap_or(f64::NAN);

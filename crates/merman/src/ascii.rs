@@ -177,6 +177,23 @@ fn apply_mermaid_ascii_directives<'a>(
     }
 }
 
+fn parse_padding_directive(line: &str) -> Option<(PaddingAxis, usize)> {
+    let (key, value) = line.split_once('=')?;
+    let axis = if key.trim().eq_ignore_ascii_case("paddingX") {
+        PaddingAxis::X
+    } else if key.trim().eq_ignore_ascii_case("paddingY") {
+        PaddingAxis::Y
+    } else {
+        return None;
+    };
+    let value = value.trim().parse().ok()?;
+    Some((axis, value))
+}
+
+fn is_diagram_header(line: &str) -> bool {
+    line.starts_with("graph ") || line.starts_with("flowchart ")
+}
+
 #[cfg(test)]
 mod headless_ascii_renderer_tests {
     use super::*;
@@ -219,21 +236,4 @@ Missing ref: id2,after missing,1d
             Some(1_771_113_600_000)
         );
     }
-}
-
-fn parse_padding_directive(line: &str) -> Option<(PaddingAxis, usize)> {
-    let (key, value) = line.split_once('=')?;
-    let axis = if key.trim().eq_ignore_ascii_case("paddingX") {
-        PaddingAxis::X
-    } else if key.trim().eq_ignore_ascii_case("paddingY") {
-        PaddingAxis::Y
-    } else {
-        return None;
-    };
-    let value = value.trim().parse().ok()?;
-    Some((axis, value))
-}
-
-fn is_diagram_header(line: &str) -> bool {
-    line.starts_with("graph ") || line.starts_with("flowchart ")
 }

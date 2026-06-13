@@ -61,10 +61,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
 
     while let Some(frame) = stack.pop() {
         let mut frame = Some(frame);
-        if !frame.as_ref().is_some_and(|frame| frame.initialized) {
-            if let Some(frame) = frame.as_mut() {
-                initialize_flowchart_root_frame(out, ctx, session, frame);
-            }
+        if !frame.as_ref().is_some_and(|frame| frame.initialized)
+            && let Some(frame) = frame.as_mut()
+        {
+            initialize_flowchart_root_frame(out, ctx, session, frame);
         }
 
         let mut pushed_nested = false;
@@ -204,10 +204,10 @@ fn initialize_flowchart_root_frame<'a>(
         if ctx.recursive_clusters.contains(id) {
             continue;
         }
-        if flowchart_effective_parent(ctx, id) == frame.cluster_id {
-            if let Some(cluster) = ctx.layout_clusters_by_id.get(*id) {
-                clusters_to_draw.push(cluster);
-            }
+        if flowchart_effective_parent(ctx, id) == frame.cluster_id
+            && let Some(cluster) = ctx.layout_clusters_by_id.get(*id)
+        {
+            clusters_to_draw.push(cluster);
         }
     }
     if clusters_to_draw.is_empty() {

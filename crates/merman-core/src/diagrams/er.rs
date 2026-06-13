@@ -165,12 +165,11 @@ impl ErDb {
             return;
         };
 
-        if existing.alias.is_empty() {
-            if let Some(a) = alias {
-                if !a.is_empty() {
-                    existing.alias = a.to_string();
-                }
-            }
+        if existing.alias.is_empty()
+            && let Some(a) = alias
+            && !a.is_empty()
+        {
+            existing.alias = a.to_string();
         }
     }
 

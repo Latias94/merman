@@ -24,11 +24,7 @@ fn parse_palette_list(raw: &str) -> Vec<String> {
 
 fn is_valid_hex(color: &str) -> bool {
     let bytes = color.as_bytes();
-    bytes.len() == 7
-        && bytes[0] == b'#'
-        && bytes[1..]
-            .iter()
-            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F'))
+    bytes.len() == 7 && bytes[0] == b'#' && bytes[1..].iter().all(|b: &u8| b.is_ascii_hexdigit())
 }
 
 fn is_dark_background(bg_hex: &str) -> bool {

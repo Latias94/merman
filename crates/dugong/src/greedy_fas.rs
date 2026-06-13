@@ -129,12 +129,12 @@ where
                 return;
             }
 
-            if let Some(preds) = collect_predecessors {
-                if let Some(ins) = self.in_edges.get(v) {
-                    for (u, _) in ins {
-                        if self.alive.contains(u) {
-                            preds.push((u.clone(), v.to_string()));
-                        }
+            if let Some(preds) = collect_predecessors
+                && let Some(ins) = self.in_edges.get(v)
+            {
+                for (u, _) in ins {
+                    if self.alive.contains(u) {
+                        preds.push((u.clone(), v.to_string()));
                     }
                 }
             }
@@ -263,10 +263,10 @@ fn assign_bucket(
     zero_idx: i64,
     bucket_of: &mut HashMap<String, usize>,
 ) {
-    if let Some(prev) = bucket_of.get(v).copied() {
-        if let Some(pos) = buckets[prev].iter().position(|x| x == v) {
-            buckets[prev].remove(pos);
-        }
+    if let Some(prev) = bucket_of.get(v).copied()
+        && let Some(pos) = buckets[prev].iter().position(|x| x == v)
+    {
+        buckets[prev].remove(pos);
     }
 
     let in_v = in_w.get(v).copied().unwrap_or(0);

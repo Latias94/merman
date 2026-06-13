@@ -751,7 +751,7 @@ pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) 
         r#"#{} .doneText0,#{} .doneText1,#{} .doneText2,#{} .doneText3{{fill:{}!important;}}"#,
         id, id, id, id, task_text_dark_color
     );
-    push_outside_done_text_rules(&mut out, &id, "doneText", &task_text_outside_color);
+    push_outside_done_text_rules(&mut out, &id, "doneText", task_text_outside_color);
     let _ = write!(
         &mut out,
         r#"#{} .crit0,#{} .crit1,#{} .crit2,#{} .crit3{{stroke:{};fill:{};stroke-width:2;}}"#,
@@ -777,7 +777,7 @@ pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) 
         r#"#{} .doneCritText0,#{} .doneCritText1,#{} .doneCritText2,#{} .doneCritText3{{fill:{}!important;}}"#,
         id, id, id, id, task_text_dark_color
     );
-    push_outside_done_text_rules(&mut out, &id, "doneCritText", &task_text_outside_color);
+    push_outside_done_text_rules(&mut out, &id, "doneCritText", task_text_outside_color);
     let _ = write!(
         &mut out,
         r#"#{} .vert{{stroke:{};}}#{} .vertText{{font-size:15px;text-anchor:middle;fill:{}!important;}}"#,

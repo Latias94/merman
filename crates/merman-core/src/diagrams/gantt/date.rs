@@ -85,13 +85,13 @@ fn tokenize_dayjs_format(fmt: &str) -> Vec<DayjsFormatItem> {
     let bytes = fmt.as_bytes();
     let mut i = 0usize;
     while i < bytes.len() {
-        if bytes[i] == b'[' {
-            if let Some(end_rel) = fmt[i + 1..].find(']') {
-                let inside = &fmt[i + 1..i + 1 + end_rel];
-                push_lit(&mut out, inside);
-                i = i + 1 + end_rel + 1;
-                continue;
-            }
+        if bytes[i] == b'['
+            && let Some(end_rel) = fmt[i + 1..].find(']')
+        {
+            let inside = &fmt[i + 1..i + 1 + end_rel];
+            push_lit(&mut out, inside);
+            i = i + 1 + end_rel + 1;
+            continue;
         }
 
         let Some(rest) = fmt.get(i..) else {
@@ -573,14 +573,14 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
     };
 
     let mut hour = parts.hour24.unwrap_or(0);
-    if parts.hour24.is_none() {
-        if let Some(h12) = parts.hour12 {
-            let mut h = h12 % 12;
-            if parts.ampm_is_pm.unwrap_or(false) {
-                h += 12;
-            }
-            hour = h;
+    if parts.hour24.is_none()
+        && let Some(h12) = parts.hour12
+    {
+        let mut h = h12 % 12;
+        if parts.ampm_is_pm.unwrap_or(false) {
+            h += 12;
         }
+        hour = h;
     }
 
     let minute = parts.minute.unwrap_or(0);
@@ -940,9 +940,7 @@ pub(super) fn relative_ref_ids<'a>(s: &'a str, keyword: &str) -> Option<&'a str>
             return Some(&refs[..id_len]);
         }
 
-        let Some((previous_start, _)) = rest[..start].char_indices().next_back() else {
-            return None;
-        };
+        let (previous_start, _) = rest[..start].char_indices().next_back()?;
         if previous_start == 0 {
             return None;
         }
@@ -991,12 +989,12 @@ pub(super) fn get_start_date(
     // it uses `new Date(Number(str))` rather than strict dayjs parsing. This treats the numeric
     // payload as *milliseconds* for both `x` and `X`.
     let fmt = date_format.trim();
-    if (fmt == "x" || fmt == "X") && is_ascii_digits(s) {
-        if let Ok(ms) = s.parse::<i64>() {
-            if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) {
-                return Ok(Some(dt.with_timezone(&crate::time::utc_fixed_offset())));
-            }
-        }
+    if (fmt == "x" || fmt == "X")
+        && is_ascii_digits(s)
+        && let Ok(ms) = s.parse::<i64>()
+        && let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)
+    {
+        return Ok(Some(dt.with_timezone(&crate::time::utc_fixed_offset())));
     }
 
     if let Some(dt) = parse_dayjs_like_strict(date_format, s) {
@@ -1134,10 +1132,10 @@ pub(super) fn get_end_date(
     }
 
     let (value, unit) = parse_duration(s);
-    if value.is_finite() {
-        if let Some(new_dt) = add_duration(prev_time, value, &unit) {
-            return Ok(Some(new_dt));
-        }
+    if value.is_finite()
+        && let Some(new_dt) = add_duration(prev_time, value, &unit)
+    {
+        return Ok(Some(new_dt));
     }
 
     Ok(Some(prev_time))

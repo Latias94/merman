@@ -101,7 +101,12 @@ pub(super) fn wrap_svg_words_to_lines(
                 content: candidate.clone(),
                 word_type: word.word_type,
             };
-            if check_fit(measurer, style, max_width_px, &[candidate_word.clone()]) {
+            if check_fit(
+                measurer,
+                style,
+                max_width_px,
+                std::slice::from_ref(&candidate_word),
+            ) {
                 used = candidate;
                 continue;
             }

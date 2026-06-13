@@ -150,7 +150,7 @@ pub(in crate::svg::parity) fn flowchart_css(
         format!("rgba({r}, {g}, {b}, 0.5)")
     }
 
-    let label_bkg = flowchart_label_bkg_from_edge_label_background(&edge_label_background);
+    let label_bkg = flowchart_label_bkg_from_edge_label_background(edge_label_background);
 
     let mut out = String::new();
     let _ = write!(

@@ -124,12 +124,11 @@ fn layout_tree(ctx: &mut LayoutCtx<'_>, root: &TreeViewNode) {
                 }
             }
             LayoutFrame::Exit { node, node_index } => {
-                if let Some(last_child) = node.children.last() {
-                    if let Some(last_child_idx) =
+                if let Some(last_child) = node.children.last()
+                    && let Some(last_child_idx) =
                         node_indices.get(&std::ptr::from_ref(last_child)).copied()
-                    {
-                        push_vertical_line(ctx, node_index, last_child_idx);
-                    }
+                {
+                    push_vertical_line(ctx, node_index, last_child_idx);
                 }
             }
         }

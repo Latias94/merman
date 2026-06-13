@@ -47,12 +47,11 @@ fn fontawesome_icon_at(input: &str, start: usize) -> Option<(&str, &str, usize)>
     let after_fa = rest.strip_prefix("fa")?;
 
     let mut prefix_end = start + 2;
-    if let Some(ch) = after_fa.chars().next() {
-        if matches!(ch, 'b' | 'k' | 'l' | 'r' | 's')
-            && after_fa[ch.len_utf8()..].starts_with(":fa-")
-        {
-            prefix_end += ch.len_utf8();
-        }
+    if let Some(ch) = after_fa.chars().next()
+        && matches!(ch, 'b' | 'k' | 'l' | 'r' | 's')
+        && after_fa[ch.len_utf8()..].starts_with(":fa-")
+    {
+        prefix_end += ch.len_utf8();
     }
 
     let after_prefix = input.get(prefix_end..)?;

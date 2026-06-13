@@ -110,16 +110,16 @@ pub(super) fn render_sequence_diagram_debug_svg(
                     out.push_str(r#"" />"#);
                 }
             }
-            if options.include_edge_id_labels {
-                if let Some(lbl) = &e.label {
-                    let _ = write!(
-                        &mut out,
-                        r#"<text class="edge-label" x="{}" y="{}">{}</text>"#,
-                        fmt(lbl.x),
-                        fmt(lbl.y),
-                        escape_xml_display(&e.id)
-                    );
-                }
+            if options.include_edge_id_labels
+                && let Some(lbl) = &e.label
+            {
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="edge-label" x="{}" y="{}">{}</text>"#,
+                    fmt(lbl.x),
+                    fmt(lbl.y),
+                    escape_xml_display(&e.id)
+                );
             }
         }
         out.push_str("</g>\n");

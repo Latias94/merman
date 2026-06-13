@@ -42,11 +42,14 @@ impl StateThemeDefaults {
 }
 
 fn state_shadow_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
-    let flood_color = PresentationTheme::new(effective_config)
+    let flood_color = if PresentationTheme::new(effective_config)
         .common()
         .is_dark_theme()
-        .then_some("#FFFFFF")
-        .unwrap_or("#000000");
+    {
+        "#FFFFFF"
+    } else {
+        "#000000"
+    };
     let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
@@ -100,7 +103,7 @@ pub(super) fn state_markers(
         let _ = write!(
             out,
             r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"/></marker></defs>"#,
-            escape_xml(&transition_color)
+            escape_xml(transition_color)
         );
         state_shadow_defs(out, diagram_id.as_str(), effective_config);
         state_gradient_defs(out, diagram_id.as_str(), effective_config);
@@ -666,106 +669,6 @@ fn state_escape_amp_preserving_entities(raw: &str) -> String {
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn state_css_honors_mermaid_11_15_theme_options() {
-        let cfg = json!({
-            "themeVariables": {
-                "fontFamily": "Inter, Arial",
-                "textColor": "#101010",
-                "errorBkgColor": "#111111",
-                "errorTextColor": "#121212",
-                "transitionColor": "#202020",
-                "lineColor": "#303030",
-                "nodeBorder": "#404040",
-                "stateLabelColor": "#505050",
-                "mainBkg": "#606060",
-                "background": "#707070",
-                "altBackground": "#808080",
-                "strokeWidth": 4,
-                "noteBorderColor": "#909090",
-                "noteBkgColor": "#a0a0a0",
-                "noteTextColor": "#b0b0b0",
-                "labelBackgroundColor": "#c0c0c0",
-                "edgeLabelBackground": "#d0d0d0",
-                "transitionLabelColor": "#e0e0e0",
-                "specialStateColor": "#f0f0f0",
-                "innerEndBackground": "#010101",
-                "compositeBackground": "#020202",
-                "stateBkg": "#030303",
-                "stateBorder": "#040404",
-                "compositeTitleBackground": "#050505"
-            }
-        });
-
-        let css = state_css("st", &StateSvgModel::default(), &cfg);
-
-        assert!(css.contains(r#"#st{font-family:Inter,Arial;font-size:16px;fill:#101010;}"#));
-        assert!(css.contains(
-            r#"#st .error-icon{fill:#111111;}#st .error-text{fill:#121212;stroke:#121212;}"#
-        ));
-        assert!(css.contains(
-            r#"#st .marker{fill:#303030;stroke:#303030;}#st .marker.cross{stroke:#303030;}"#
-        ));
-        assert!(css.contains(r#"#st defs [id$="-barbEnd"]{fill:#202020;stroke:#202020;}"#));
-        assert!(css.contains(r#"#st g.stateGroup rect{fill:#606060;stroke:#404040;}"#));
-        assert!(css.contains(r#"#st .transition{stroke:#202020;stroke-width:4;fill:none;}"#));
-        assert!(css.contains(r#"#st .state-note{stroke:#909090;fill:#a0a0a0;}"#));
-        assert!(css.contains(r#"#st .edgeLabel .label rect{fill:#c0c0c0;opacity:0.5;}"#));
-        assert!(css.contains(r#"#st .edgeLabel{background-color:#d0d0d0;text-align:center;}"#));
-        assert!(css.contains(r#"#st .edgeLabel .label text{fill:#e0e0e0;}"#));
-        assert!(
-            css.contains(r#"#st .stateLabel text{fill:#505050;font-size:10px;font-weight:bold;}"#)
-        );
-        assert!(css.contains(r#"#st .node circle.state-start{fill:#f0f0f0;stroke:#f0f0f0;}"#));
-        assert!(css.contains(
-            r#"#st .node circle.state-end{fill:#010101;stroke:#707070;stroke-width:1.5;}"#
-        ));
-        assert!(css.contains(r#"#st .node rect{fill:#030303;stroke:#040404;stroke-width:4px;}"#));
-        assert!(css.contains(
-            r#"#st .statediagram-cluster rect{fill:#050505;stroke:#040404;stroke-width:4px;}"#
-        ));
-        assert!(css.contains(r#"#st .statediagram-note text{fill:#b0b0b0;}"#));
-        assert!(css.contains(
-            r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
-        ));
-        assert!(
-            !css.contains("dependencyStart"),
-            "local State SVG does not emit dependency markers, so CSS should not advertise them"
-        );
-    }
-
-    #[test]
-    fn state_css_emits_neo_cluster_theme_rules() {
-        let cfg = json!({
-            "look": "neo",
-            "themeVariables": {
-                "mainBkg": "#606060",
-                "stateBorder": "#040404",
-                "strokeWidth": 4,
-                "useGradient": true,
-                "gradientStart": "#112233",
-                "gradientStop": "#445566",
-                "dropShadow": "url(#drop-shadow)",
-                "radius": 3
-            }
-        });
-
-        let css = state_css("st", &StateSvgModel::default(), &cfg);
-
-        assert!(css.contains(
-            r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#st-gradient);stroke-width:4;}"##
-        ));
-        assert!(css.contains(
-            r##"#st [data-look="neo"].statediagram-cluster rect.outer{rx:3px;ry:3px;filter:url(#st-drop-shadow);}"##
-        ));
-    }
-}
-
 fn state_normalize_br_tags(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = String::with_capacity(raw.len());
@@ -783,11 +686,11 @@ fn state_normalize_br_tags(raw: &str) -> String {
             continue;
         }
         let next = bytes.get(i + 3).copied();
-        if let Some(n) = next {
-            if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
-                i += 1;
-                continue;
-            }
+        if let Some(n) = next
+            && !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n')
+        {
+            i += 1;
+            continue;
         }
         if i > cur {
             out.push_str(&raw[cur..i]);
@@ -890,4 +793,104 @@ pub(super) fn state_svg_text_label(
     }
     out.push_str("</text>");
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn state_css_honors_mermaid_11_15_theme_options() {
+        let cfg = json!({
+            "themeVariables": {
+                "fontFamily": "Inter, Arial",
+                "textColor": "#101010",
+                "errorBkgColor": "#111111",
+                "errorTextColor": "#121212",
+                "transitionColor": "#202020",
+                "lineColor": "#303030",
+                "nodeBorder": "#404040",
+                "stateLabelColor": "#505050",
+                "mainBkg": "#606060",
+                "background": "#707070",
+                "altBackground": "#808080",
+                "strokeWidth": 4,
+                "noteBorderColor": "#909090",
+                "noteBkgColor": "#a0a0a0",
+                "noteTextColor": "#b0b0b0",
+                "labelBackgroundColor": "#c0c0c0",
+                "edgeLabelBackground": "#d0d0d0",
+                "transitionLabelColor": "#e0e0e0",
+                "specialStateColor": "#f0f0f0",
+                "innerEndBackground": "#010101",
+                "compositeBackground": "#020202",
+                "stateBkg": "#030303",
+                "stateBorder": "#040404",
+                "compositeTitleBackground": "#050505"
+            }
+        });
+
+        let css = state_css("st", &StateSvgModel::default(), &cfg);
+
+        assert!(css.contains(r#"#st{font-family:Inter,Arial;font-size:16px;fill:#101010;}"#));
+        assert!(css.contains(
+            r#"#st .error-icon{fill:#111111;}#st .error-text{fill:#121212;stroke:#121212;}"#
+        ));
+        assert!(css.contains(
+            r#"#st .marker{fill:#303030;stroke:#303030;}#st .marker.cross{stroke:#303030;}"#
+        ));
+        assert!(css.contains(r#"#st defs [id$="-barbEnd"]{fill:#202020;stroke:#202020;}"#));
+        assert!(css.contains(r#"#st g.stateGroup rect{fill:#606060;stroke:#404040;}"#));
+        assert!(css.contains(r#"#st .transition{stroke:#202020;stroke-width:4;fill:none;}"#));
+        assert!(css.contains(r#"#st .state-note{stroke:#909090;fill:#a0a0a0;}"#));
+        assert!(css.contains(r#"#st .edgeLabel .label rect{fill:#c0c0c0;opacity:0.5;}"#));
+        assert!(css.contains(r#"#st .edgeLabel{background-color:#d0d0d0;text-align:center;}"#));
+        assert!(css.contains(r#"#st .edgeLabel .label text{fill:#e0e0e0;}"#));
+        assert!(
+            css.contains(r#"#st .stateLabel text{fill:#505050;font-size:10px;font-weight:bold;}"#)
+        );
+        assert!(css.contains(r#"#st .node circle.state-start{fill:#f0f0f0;stroke:#f0f0f0;}"#));
+        assert!(css.contains(
+            r#"#st .node circle.state-end{fill:#010101;stroke:#707070;stroke-width:1.5;}"#
+        ));
+        assert!(css.contains(r#"#st .node rect{fill:#030303;stroke:#040404;stroke-width:4px;}"#));
+        assert!(css.contains(
+            r#"#st .statediagram-cluster rect{fill:#050505;stroke:#040404;stroke-width:4px;}"#
+        ));
+        assert!(css.contains(r#"#st .statediagram-note text{fill:#b0b0b0;}"#));
+        assert!(css.contains(
+            r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
+        ));
+        assert!(
+            !css.contains("dependencyStart"),
+            "local State SVG does not emit dependency markers, so CSS should not advertise them"
+        );
+    }
+
+    #[test]
+    fn state_css_emits_neo_cluster_theme_rules() {
+        let cfg = json!({
+            "look": "neo",
+            "themeVariables": {
+                "mainBkg": "#606060",
+                "stateBorder": "#040404",
+                "strokeWidth": 4,
+                "useGradient": true,
+                "gradientStart": "#112233",
+                "gradientStop": "#445566",
+                "dropShadow": "url(#drop-shadow)",
+                "radius": 3
+            }
+        });
+
+        let css = state_css("st", &StateSvgModel::default(), &cfg);
+
+        assert!(css.contains(
+            r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#st-gradient);stroke-width:4;}"##
+        ));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].statediagram-cluster rect.outer{rx:3px;ry:3px;filter:url(#st-drop-shadow);}"##
+        ));
+    }
 }

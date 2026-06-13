@@ -433,10 +433,10 @@ impl NodeKatexMathRenderer {
             .unwrap_or("\"trebuchet ms\",verdana,arial,sans-serif");
         let _ = write!(&mut out, "font-size: {}px;", style.font_size);
         let _ = write!(&mut out, "font-family: {};", font_family);
-        if let Some(font_weight) = style.font_weight.as_deref() {
-            if !font_weight.trim().is_empty() {
-                let _ = write!(&mut out, "font-weight: {};", font_weight.trim());
-            }
+        if let Some(font_weight) = style.font_weight.as_deref()
+            && !font_weight.trim().is_empty()
+        {
+            let _ = write!(&mut out, "font-weight: {};", font_weight.trim());
         }
         out
     }
@@ -557,12 +557,12 @@ impl NodeKatexMathRenderer {
             })
         });
 
-        if let Some(probed_value) = probed.clone() {
-            if let Ok(mut render_cache) = self.render_cache.lock() {
-                render_cache
-                    .entry(render)
-                    .or_insert_with(|| Some(probed_value.html.clone()));
-            }
+        if let Some(probed_value) = probed.clone()
+            && let Ok(mut render_cache) = self.render_cache.lock()
+        {
+            render_cache
+                .entry(render)
+                .or_insert_with(|| Some(probed_value.html.clone()));
         }
         if let Ok(mut cache) = self.probe_cache.lock() {
             cache.insert(key, probed.clone());
@@ -605,12 +605,12 @@ impl NodeKatexMathRenderer {
             })
         });
 
-        if let Some(probed_value) = probed.clone() {
-            if let Ok(mut render_cache) = self.render_cache.lock() {
-                render_cache
-                    .entry(key.clone())
-                    .or_insert_with(|| Some(probed_value.html.clone()));
-            }
+        if let Some(probed_value) = probed.clone()
+            && let Ok(mut render_cache) = self.render_cache.lock()
+        {
+            render_cache
+                .entry(key.clone())
+                .or_insert_with(|| Some(probed_value.html.clone()));
         }
         if let Ok(mut cache) = self.sequence_probe_cache.lock() {
             cache.insert(key, probed.clone());

@@ -85,17 +85,17 @@ fn normalized_boundary_for_node(
 
     if node_id.contains("---") && (y - y.round()).abs() <= 1e-6 {
         let scale = 40960.0;
-        if let Some(frac) = frac_scaled(y, scale) {
-            if should_promote(frac) || frac.abs() <= 1e-12 {
-                let scaled = y * scale;
-                let base = scaled.floor();
-                let tick = if frac.abs() <= 1e-12 {
-                    (base + 1.0) / scale
-                } else {
-                    scaled.ceil() / scale
-                };
-                y = tick + eps;
-            }
+        if let Some(frac) = frac_scaled(y, scale)
+            && (should_promote(frac) || frac.abs() <= 1e-12)
+        {
+            let scaled = y * scale;
+            let base = scaled.floor();
+            let tick = if frac.abs() <= 1e-12 {
+                (base + 1.0) / scale
+            } else {
+                scaled.ceil() / scale
+            };
+            y = tick + eps;
         }
     } else if let Some(rounded) = is_close_to_rounded(y, 1) {
         let f32_candidate = (rounded as f32) as f64;
@@ -298,77 +298,71 @@ pub(in crate::svg::parity::flowchart) fn normalize_cyclic_special_data_points(
         //
         // Prefer the f32-rounded pattern first: if we apply the 1/81920 rule eagerly we
         // can "lock in" a value that should have been promoted to the coarser 1/40960 grid.
-        if y_out.to_bits() == p.y.to_bits() {
-            if let Some(rounded) = is_close_to_rounded_2_digits_loose(p.y) {
-                let as_int = (rounded * 100.0).round() as i64;
-                if as_int % 10 == 5 {
-                    let rounded_f32 = (rounded as f32) as f64;
-                    let cents = as_int.rem_euclid(100);
+        if y_out.to_bits() == p.y.to_bits()
+            && let Some(rounded) = is_close_to_rounded_2_digits_loose(p.y)
+        {
+            let as_int = (rounded * 100.0).round() as i64;
+            if as_int % 10 == 5 {
+                let rounded_f32 = (rounded as f32) as f64;
+                let cents = as_int.rem_euclid(100);
 
-                    // Some cyclic-special points are already on the tiny `2*step` offset
-                    // lattice (e.g. `102.55000000074506`): keep those exact values.
-                    let keep = rounded + 2.0 * step;
-                    if (p.y - keep).abs() <= 1e-12 {
-                        y_out = keep;
-                    } else if cents == 55 {
-                        // Observed upstream pattern: `..55` values frequently land on a small
-                        // fixed-point lattice relative to the 2-decimal rounded baseline.
-                        // Example:
-                        // - local:    `x + 1/163840`
-                        // - upstream: `x + 3/163840`
-                        let tick = 1.0 / 163840.0;
-                        let base_1 = rounded + tick;
-                        let base_3 = rounded + 3.0 * tick;
-                        if (p.y - base_1).abs() <= 1e-9 {
-                            y_out = base_3;
-                        } else {
-                            let candidate = ceil_grid(p.y, 163840.0);
-                            if candidate.is_finite()
-                                && candidate >= p.y
-                                && (candidate - p.y) <= 5e-5
-                            {
-                                y_out = candidate;
-                            }
+                // Some cyclic-special points are already on the tiny `2*step` offset
+                // lattice (e.g. `102.55000000074506`): keep those exact values.
+                let keep = rounded + 2.0 * step;
+                if (p.y - keep).abs() <= 1e-12 {
+                    y_out = keep;
+                } else if cents == 55 {
+                    // Observed upstream pattern: `..55` values frequently land on a small
+                    // fixed-point lattice relative to the 2-decimal rounded baseline.
+                    // Example:
+                    // - local:    `x + 1/163840`
+                    // - upstream: `x + 3/163840`
+                    let tick = 1.0 / 163840.0;
+                    let base_1 = rounded + tick;
+                    let base_3 = rounded + 3.0 * tick;
+                    if (p.y - base_1).abs() <= 1e-9 {
+                        y_out = base_3;
+                    } else {
+                        let candidate = ceil_grid(p.y, 163840.0);
+                        if candidate.is_finite() && candidate >= p.y && (candidate - p.y) <= 5e-5 {
+                            y_out = candidate;
                         }
-                    } else if rounded_f32 < p.y {
-                        // When f32 rounds down (common for `.15`), Mermaid promotes to
-                        // the next 1/81920 tick and subtracts `2*step`.
-                        let candidate = ceil_grid(p.y, 81920.0) - 2.0 * step;
+                    }
+                } else if rounded_f32 < p.y {
+                    // When f32 rounds down (common for `.15`), Mermaid promotes to
+                    // the next 1/81920 tick and subtracts `2*step`.
+                    let candidate = ceil_grid(p.y, 81920.0) - 2.0 * step;
+                    if candidate.is_finite() && candidate >= p.y && (candidate - p.y) <= 5e-5 {
+                        y_out = candidate;
+                    }
+                } else {
+                    // When f32 rounds up, Mermaid usually keeps the f32 value. One
+                    // special case shows up for helper-node center values: the f32
+                    // value is ~exactly one 1/81920 tick above the source, and
+                    // Mermaid instead promotes to the next 1/40960 tick and adds
+                    // `2*step` (e.g. `909.95 -> 909.9500244148076`).
+                    let tick_81920 = 1.0 / 81920.0;
+                    let diff = rounded_f32 - p.y;
+                    if (diff - tick_81920).abs() <= 1e-8 {
+                        let candidate = ceil_grid(p.y, 40960.0) + 2.0 * step;
                         if candidate.is_finite() && candidate >= p.y && (candidate - p.y) <= 5e-5 {
                             y_out = candidate;
                         }
                     } else {
-                        // When f32 rounds up, Mermaid usually keeps the f32 value. One
-                        // special case shows up for helper-node center values: the f32
-                        // value is ~exactly one 1/81920 tick above the source, and
-                        // Mermaid instead promotes to the next 1/40960 tick and adds
-                        // `2*step` (e.g. `909.95 -> 909.9500244148076`).
-                        let tick_81920 = 1.0 / 81920.0;
-                        let diff = rounded_f32 - p.y;
-                        if (diff - tick_81920).abs() <= 1e-8 {
-                            let candidate = ceil_grid(p.y, 40960.0) + 2.0 * step;
-                            if candidate.is_finite()
-                                && candidate >= p.y
-                                && (candidate - p.y) <= 5e-5
-                            {
-                                y_out = candidate;
-                            }
-                        } else {
-                            y_out = rounded_f32;
-                        }
+                        y_out = rounded_f32;
                     }
                 }
             }
         }
         // 3-decimal `...375`: promote at 1/163840 and add `step`.
-        if y_out.to_bits() == p.y.to_bits() {
-            if let Some(rounded) = is_close_to_rounded(p.y, 3) {
-                let as_int = (rounded * 1000.0).round() as i64;
-                if as_int.rem_euclid(1000) == 375 {
-                    let candidate = ceil_grid(p.y, 163840.0) + step;
-                    if candidate.is_finite() && candidate >= p.y && (candidate - p.y) <= 5e-5 {
-                        y_out = candidate;
-                    }
+        if y_out.to_bits() == p.y.to_bits()
+            && let Some(rounded) = is_close_to_rounded(p.y, 3)
+        {
+            let as_int = (rounded * 1000.0).round() as i64;
+            if as_int.rem_euclid(1000) == 375 {
+                let candidate = ceil_grid(p.y, 163840.0) + step;
+                if candidate.is_finite() && candidate >= p.y && (candidate - p.y) <= 5e-5 {
+                    y_out = candidate;
                 }
             }
         }

@@ -194,15 +194,11 @@ fn write_central_connection_circles(
 
     if sequence_number_visible {
         match msg.central_connection {
-            LINETYPE_CENTRAL_CONNECTION => {
-                if is_reverse {
-                    to_center += circle_offset(is_left_to_right, true);
-                }
+            LINETYPE_CENTRAL_CONNECTION if is_reverse => {
+                to_center += circle_offset(is_left_to_right, true);
             }
-            LINETYPE_CENTRAL_CONNECTION_REVERSE => {
-                if !is_reverse {
-                    from_center += circle_offset(is_left_to_right, false);
-                }
+            LINETYPE_CENTRAL_CONNECTION_REVERSE if !is_reverse => {
+                from_center += circle_offset(is_left_to_right, false);
             }
             LINETYPE_CENTRAL_CONNECTION_DUAL => {
                 if is_reverse {

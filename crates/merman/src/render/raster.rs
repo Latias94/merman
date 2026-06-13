@@ -344,10 +344,10 @@ fn svg_to_pixmap(svg: &str, options: &RasterOptions) -> Result<tiny_skia::Pixmap
     let mut pixmap =
         tiny_skia::Pixmap::new(plan.width_px, plan.height_px).ok_or(RasterError::PixmapAlloc)?;
 
-    if let Some(bg) = options.background.as_deref() {
-        if let Some(color) = parse_tiny_skia_color(bg) {
-            pixmap.fill(color);
-        }
+    if let Some(bg) = options.background.as_deref()
+        && let Some(color) = parse_tiny_skia_color(bg)
+    {
+        pixmap.fill(color);
     }
 
     let scale = plan.effective_scale as f32;
@@ -520,7 +520,11 @@ fn fit_scale_for_base_size(width: f64, height: f64, fit: Option<RasterFitBox>) -
     if let Some(target_height) = fit.height {
         scale = scale.min(f64::from(target_height) / height);
     }
-    scale.min(1.0).max(0.0)
+    if scale.is_nan() {
+        1.0
+    } else {
+        scale.clamp(0.0, 1.0)
+    }
 }
 
 fn size_limit_scale(width: f64, height: f64, limit: RasterSizeLimit) -> f64 {
@@ -537,7 +541,11 @@ fn size_limit_scale(width: f64, height: f64, limit: RasterSizeLimit) -> f64 {
             scale *= ((max_pixels as f64) / pixels).sqrt();
         }
     }
-    scale.min(1.0).max(0.0)
+    if scale.is_nan() {
+        1.0
+    } else {
+        scale.clamp(0.0, 1.0)
+    }
 }
 
 fn raster_limited_dims(
@@ -571,14 +579,13 @@ fn raster_dim_px(value: f64, max: Option<u32>) -> Result<u32> {
 fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, svg: &str) {
     opt.fontdb_mut().load_system_fonts();
 
-    if parse_svg_viewbox(svg).is_none() {
-        if let Some(max_width) = parse_svg_max_width_px(svg) {
-            if max_width.is_finite() && max_width > 0.0 {
-                if let Some(size) = usvg::Size::from_wh(max_width, opt.default_size.height()) {
-                    opt.default_size = size;
-                }
-            }
-        }
+    if parse_svg_viewbox(svg).is_none()
+        && let Some(max_width) = parse_svg_max_width_px(svg)
+        && max_width.is_finite()
+        && max_width > 0.0
+        && let Some(size) = usvg::Size::from_wh(max_width, opt.default_size.height())
+    {
+        opt.default_size = size;
     }
 
     configure_fontdb_generic_families(opt.fontdb_mut());
@@ -626,20 +633,20 @@ fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
         .or_else(|| first_font_family(fontdb, |_| true));
     let mono = first_font_family(fontdb, |face| face.monospaced).or_else(|| sans.clone());
 
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif).is_none() {
-        if let Some(family) = sans.as_ref() {
-            fontdb.set_sans_serif_family(family.clone());
-        }
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif).is_none()
+        && let Some(family) = sans.as_ref()
+    {
+        fontdb.set_sans_serif_family(family.clone());
     }
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::Serif).is_none() {
-        if let Some(family) = sans.as_ref() {
-            fontdb.set_serif_family(family.clone());
-        }
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::Serif).is_none()
+        && let Some(family) = sans.as_ref()
+    {
+        fontdb.set_serif_family(family.clone());
     }
-    if query_normal_font_family(fontdb, usvg::fontdb::Family::Monospace).is_none() {
-        if let Some(family) = mono.as_ref() {
-            fontdb.set_monospace_family(family.clone());
-        }
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::Monospace).is_none()
+        && let Some(family) = mono.as_ref()
+    {
+        fontdb.set_monospace_family(family.clone());
     }
 }
 

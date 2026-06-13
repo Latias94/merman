@@ -17,12 +17,10 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
         return Some("upstream Mermaid 11.15 rejects `(end)` as a participant id");
     }
 
-    if diagram == "flowchart" {
-        if stem == "upstream_flow_text_ellipse_vertex_parser_only_spec" {
-            return Some(
-                "upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture",
-            );
-        }
+    if diagram == "flowchart" && stem == "upstream_flow_text_ellipse_vertex_parser_only_spec" {
+        return Some(
+            "upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture",
+        );
     }
 
     None

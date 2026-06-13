@@ -30,16 +30,16 @@ fn path_numbers(path: &str) -> Vec<f64> {
         let is_number_char = ch.is_ascii_digit() || matches!(ch, '-' | '+' | '.' | 'e' | 'E');
         if is_number_char {
             start.get_or_insert(idx);
-        } else if let Some(s) = start.take() {
-            if let Ok(v) = path[s..idx].parse() {
-                out.push(v);
-            }
-        }
-    }
-    if let Some(s) = start {
-        if let Ok(v) = path[s..].parse() {
+        } else if let Some(s) = start.take()
+            && let Ok(v) = path[s..idx].parse()
+        {
             out.push(v);
         }
+    }
+    if let Some(s) = start
+        && let Ok(v) = path[s..].parse()
+    {
+        out.push(v);
     }
     out
 }

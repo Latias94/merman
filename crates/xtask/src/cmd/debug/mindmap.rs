@@ -99,11 +99,11 @@ pub(crate) fn debug_mindmap_svg_positions(args: Vec<String>) -> Result<(), Xtask
         let mut x = 0.0;
         let mut y = 0.0;
         for n in node.ancestors().filter(|n| n.is_element()).skip(1) {
-            if let Some(transform) = n.attribute("transform") {
-                if let Some(t) = parse_translate(transform) {
-                    x += t.x;
-                    y += t.y;
-                }
+            if let Some(transform) = n.attribute("transform")
+                && let Some(t) = parse_translate(transform)
+            {
+                x += t.x;
+                y += t.y;
             }
         }
         Translate { x, y }

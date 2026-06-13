@@ -318,7 +318,7 @@ pub(crate) fn gen_c4_text_overrides(args: Vec<String>) -> Result<(), XtaskError>
             &strings,
         )?;
         let by_text = widths_by_style.entry(style).or_default();
-        for (text, width) in strings.into_iter().zip(widths.into_iter()) {
+        for (text, width) in strings.into_iter().zip(widths) {
             by_text.insert(text, width);
         }
     }

@@ -169,15 +169,13 @@ fn state_edge_boundary_for_cluster(
     if !ctx.layout_clusters_by_id.contains_key(resolved) {
         // Mermaid's state diagram edges sometimes annotate cluster endpoints as `state-<id>-<n>`
         // while the cluster itself is keyed by `<id>`.
-        if let Some(rest) = resolved.strip_prefix("state-") {
-            if let Some((base, suffix)) = rest.rsplit_once('-') {
-                if !base.is_empty()
-                    && !suffix.is_empty()
-                    && suffix.bytes().all(|b| b.is_ascii_digit())
-                {
-                    resolved = base;
-                }
-            }
+        if let Some(rest) = resolved.strip_prefix("state-")
+            && let Some((base, suffix)) = rest.rsplit_once('-')
+            && !base.is_empty()
+            && !suffix.is_empty()
+            && suffix.bytes().all(|b| b.is_ascii_digit())
+        {
+            resolved = base;
         }
     }
 
@@ -287,19 +285,19 @@ fn state_edge_prepare_points(
 
     // Match Mermaid `dagre-wrapper/edges.js insertEdge`: cut the path at cluster boundaries when the
     // edge connects to a cluster.
-    if let Some(tc) = le.to_cluster.as_deref() {
-        if let Some(boundary) = state_edge_boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-            points_for_curve = state_edge_cut_path_at_intersect(&points_for_curve, &boundary);
-        }
+    if let Some(tc) = le.to_cluster.as_deref()
+        && let Some(boundary) = state_edge_boundary_for_cluster(ctx, tc, origin_x, origin_y)
+    {
+        points_for_curve = state_edge_cut_path_at_intersect(&points_for_curve, &boundary);
     }
-    if let Some(fc) = le.from_cluster.as_deref() {
-        if let Some(boundary) = state_edge_boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-            let mut rev = points_for_curve;
-            rev.reverse();
-            rev = state_edge_cut_path_at_intersect(&rev, &boundary);
-            rev.reverse();
-            points_for_curve = rev;
-        }
+    if let Some(fc) = le.from_cluster.as_deref()
+        && let Some(boundary) = state_edge_boundary_for_cluster(ctx, fc, origin_x, origin_y)
+    {
+        let mut rev = points_for_curve;
+        rev.reverse();
+        rev = state_edge_cut_path_at_intersect(&rev, &boundary);
+        rev.reverse();
+        points_for_curve = rev;
     }
 
     if is_cyclic_special {
@@ -613,21 +611,21 @@ pub(super) fn render_state_edge_label(
 
         // Mermaid ties the visible self-loop label to the `*-mid` segment.
         if !label_text.is_empty() {
-            if let Some(le) = ctx.layout_edges_by_id.get(idm.as_str()).copied() {
-                if let Some(lbl) = le.label.as_ref() {
-                    write_visible_edge_label(
-                        out,
-                        &idm,
-                        label_text,
-                        crate::model::LayoutPoint {
-                            x: lbl.x - origin_x,
-                            y: lbl.y - origin_y,
-                        },
-                        lbl.width,
-                        lbl.height,
-                        ctx.html_labels,
-                    );
-                }
+            if let Some(le) = ctx.layout_edges_by_id.get(idm.as_str()).copied()
+                && let Some(lbl) = le.label.as_ref()
+            {
+                write_visible_edge_label(
+                    out,
+                    &idm,
+                    label_text,
+                    crate::model::LayoutPoint {
+                        x: lbl.x - origin_x,
+                        y: lbl.y - origin_y,
+                    },
+                    lbl.width,
+                    lbl.height,
+                    ctx.html_labels,
+                );
             }
         } else {
             write_empty_edge_label(out, &idm, ctx.html_labels, empty_edge_label_style.as_str());
@@ -722,11 +720,9 @@ pub(super) fn render_state_edge_label(
         }
     }
 
-    if points_has_changed {
-        if let Some(pos) = mermaid_calc_label_position(&points_for_curve) {
-            cx = pos.x;
-            cy = pos.y;
-        }
+    if points_has_changed && let Some(pos) = mermaid_calc_label_position(&points_for_curve) {
+        cx = pos.x;
+        cy = pos.y;
     }
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);

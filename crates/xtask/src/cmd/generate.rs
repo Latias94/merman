@@ -1077,14 +1077,13 @@ where
         if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
-        if let Some(f) = filter {
-            if !path
+        if let Some(f) = filter
+            && !path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| n.contains(f))
-            {
-                continue;
-            }
+        {
+            continue;
         }
         mmd_files.push(path);
     }
@@ -1587,10 +1586,10 @@ fn remove_json_path(root: &mut JsonValue, path: &[String]) {
         cur = next;
     }
 
-    if let Some(obj) = cur.as_object_mut() {
-        if let Some(leaf) = path.last() {
-            obj.remove(leaf);
-        }
+    if let Some(obj) = cur.as_object_mut()
+        && let Some(leaf) = path.last()
+    {
+        obj.remove(leaf);
     }
 }
 

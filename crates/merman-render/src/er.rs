@@ -595,16 +595,16 @@ fn clip_edge_endpoints(points: &mut [LayoutPoint], from: Rect, to: Rect) {
     if points.len() < 2 {
         return;
     }
-    if from.contains_point(points[0].x, points[0].y) {
-        if let Some(p) = intersect_segment_with_rect(&points[0], &points[1], from) {
-            points[0] = p;
-        }
+    if from.contains_point(points[0].x, points[0].y)
+        && let Some(p) = intersect_segment_with_rect(&points[0], &points[1], from)
+    {
+        points[0] = p;
     }
     let last = points.len() - 1;
-    if to.contains_point(points[last].x, points[last].y) {
-        if let Some(p) = intersect_segment_with_rect(&points[last], &points[last - 1], to) {
-            points[last] = p;
-        }
+    if to.contains_point(points[last].x, points[last].y)
+        && let Some(p) = intersect_segment_with_rect(&points[last], &points[last - 1], to)
+    {
+        points[last] = p;
     }
 }
 
@@ -876,13 +876,14 @@ pub fn layout_er_diagram_typed(
             (None, None, None)
         };
 
-        if !is_er_self_loop_dummy_node_id(&key.v) && !is_er_self_loop_dummy_node_id(&key.w) {
-            if let (Some(from_rect), Some(to_rect)) = (
+        if !is_er_self_loop_dummy_node_id(&key.v)
+            && !is_er_self_loop_dummy_node_id(&key.w)
+            && let (Some(from_rect), Some(to_rect)) = (
                 node_rect_by_id.get(&key.v).copied(),
                 node_rect_by_id.get(&key.w).copied(),
-            ) {
-                clip_edge_endpoints(&mut points, from_rect, to_rect);
-            }
+            )
+        {
+            clip_edge_endpoints(&mut points, from_rect, to_rect);
         }
 
         let (start_marker, end_marker) =

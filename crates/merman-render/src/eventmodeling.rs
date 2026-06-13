@@ -437,11 +437,11 @@ fn frame_text(
     if let Some(data) = frame.data_inline_value.as_deref() {
         text.push('\n');
         text.push_str(data);
-    } else if let Some(reference) = frame.data_reference.as_deref() {
-        if let Some(entity) = data_entities.get(reference) {
-            text.push('\n');
-            text.push_str(&entity.data_block_value);
-        }
+    } else if let Some(reference) = frame.data_reference.as_deref()
+        && let Some(entity) = data_entities.get(reference)
+    {
+        text.push('\n');
+        text.push_str(&entity.data_block_value);
     }
     text
 }

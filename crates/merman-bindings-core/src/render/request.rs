@@ -71,17 +71,12 @@ pub(super) fn pipeline_for_options(
     Ok(build_renderer(options)?.1.into_pipeline())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum PipelineKind {
+    #[default]
     Parity,
     Readable,
     ResvgSafe,
-}
-
-impl Default for PipelineKind {
-    fn default() -> Self {
-        Self::Parity
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

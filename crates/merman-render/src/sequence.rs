@@ -216,10 +216,10 @@ pub(crate) fn sequence_render_title<'a>(
     model_title: Option<&'a str>,
     diagram_title: Option<&'a str>,
 ) -> Option<&'a str> {
-    if model_title.is_none_or(|t| t.trim().is_empty()) {
-        if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
-            return Some(title);
-        }
+    if model_title.is_none_or(|t| t.trim().is_empty())
+        && let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty())
+    {
+        return Some(title);
     }
     model_title
 }

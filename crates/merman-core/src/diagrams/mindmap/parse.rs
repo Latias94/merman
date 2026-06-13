@@ -187,13 +187,13 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
         let mut final_config =
             crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
-        if meta.config.as_value().get("layout").is_none() {
-            if let Some(obj) = final_config.as_object_mut() {
-                obj.insert(
-                    "layout".to_string(),
-                    Value::String("cose-bilkent".to_string()),
-                );
-            }
+        if meta.config.as_value().get("layout").is_none()
+            && let Some(obj) = final_config.as_object_mut()
+        {
+            obj.insert(
+                "layout".to_string(),
+                Value::String("cose-bilkent".to_string()),
+            );
         }
 
         let mut out = Map::with_capacity(3);
@@ -210,13 +210,13 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
     let mut final_config =
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
-    if meta.config.as_value().get("layout").is_none() {
-        if let Some(obj) = final_config.as_object_mut() {
-            obj.insert(
-                "layout".to_string(),
-                Value::String("cose-bilkent".to_string()),
-            );
-        }
+    if meta.config.as_value().get("layout").is_none()
+        && let Some(obj) = final_config.as_object_mut()
+    {
+        obj.insert(
+            "layout".to_string(),
+            Value::String("cose-bilkent".to_string()),
+        );
     }
 
     let mut shapes = Map::new();

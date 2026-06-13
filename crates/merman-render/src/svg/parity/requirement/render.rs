@@ -1013,8 +1013,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
         let _ = write!(
             &mut out,
-            r#"<g class="{class}" style="{style}">"#,
-            class = "basic label-container outer-path",
+            r#"<g class="basic label-container outer-path" style="{style}">"#,
             style = escape_xml(&node_styles)
         );
         let _ = write!(

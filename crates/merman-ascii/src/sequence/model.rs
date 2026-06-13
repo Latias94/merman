@@ -522,13 +522,12 @@ fn sequence_actor_lifecycles(
     for lifecycle in &lifecycles {
         if let (Some(created_at), Some(destroyed_at)) =
             (lifecycle.created_at, lifecycle.destroyed_at)
+            && destroyed_at <= created_at
         {
-            if destroyed_at <= created_at {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "sequence",
-                    feature: "actor lifecycle order",
-                });
-            }
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "actor lifecycle order",
+            });
         }
     }
 

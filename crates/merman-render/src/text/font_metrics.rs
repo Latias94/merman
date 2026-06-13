@@ -187,10 +187,10 @@ impl VendoredFontMetricsTextMeasurer {
             '}' => Some('{'),
             _ => None,
         };
-        if let Some(other) = paired {
-            if let Some(other_em) = find_entry_em(entries, other) {
-                return other_em;
-            }
+        if let Some(other) = paired
+            && let Some(other_em) = find_entry_em(entries, other)
+        {
+            return other_em;
         }
         if ch.is_ascii() {
             return default_em;
@@ -605,14 +605,13 @@ impl VendoredFontMetricsTextMeasurer {
         font_size: f64,
     ) -> f64 {
         let t = text.trim_end();
-        if !t.is_empty() {
-            if let Some((left_em, right_em)) =
+        if !t.is_empty()
+            && let Some((left_em, right_em)) =
                 overrides::lookup_sequence_svg_override_em(table.font_key, t)
-            {
-                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-                return (left + right).max(0.0);
-            }
+        {
+            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+            return (left + right).max(0.0);
         }
 
         let (l, r) = Self::line_svg_bbox_extents_px_single_run(table, text, font_size);
@@ -899,10 +898,10 @@ impl VendoredFontMetricsTextMeasurer {
                 }
                 em += flowchart_default_bold_delta_em(ch_norm);
             }
-            if let (Some(a), Some(b)) = (prevprev, prev) {
-                if !(a.is_whitespace() || b.is_whitespace() || ch_norm.is_whitespace()) {
-                    em += Self::same_glyph_trigram_em(profile, a, b, ch_norm);
-                }
+            if let (Some(a), Some(b)) = (prevprev, prev)
+                && !(a.is_whitespace() || b.is_whitespace() || ch_norm.is_whitespace())
+            {
+                em += Self::same_glyph_trigram_em(profile, a, b, ch_norm);
             }
             prevprev = prev;
             prev = Some(ch_norm);
@@ -1329,10 +1328,8 @@ fn vendored_measure_wrapped_impl(
                 width = width.min(w);
             }
         }
-        if needs_wrap {
-            if let Some(w) = html_min_content_width {
-                width = width.max(w);
-            }
+        if needs_wrap && let Some(w) = html_min_content_width {
+            width = width.max(w);
         }
         // Empirically, upstream HTML label widths (via `getBoundingClientRect()`) land on a 1/64px
         // lattice. Quantize to that grid to keep our layout math stable.
@@ -1470,14 +1467,13 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
 
         let font_size = style.font_size.max(1.0);
         let t = text.trim_end();
-        if !t.is_empty() {
-            if let Some((left_em, right_em)) =
+        if !t.is_empty()
+            && let Some((left_em, right_em)) =
                 overrides::lookup_sequence_svg_override_em(table.font_key, t)
-            {
-                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-                return (left + right).max(0.0);
-            }
+        {
+            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+            return (left + right).max(0.0);
         }
 
         let mut width: f64 = 0.0;

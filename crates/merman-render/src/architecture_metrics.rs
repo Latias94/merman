@@ -262,6 +262,7 @@ pub(crate) fn architecture_node_bbox_extras_to_manatee(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn architecture_estimate_service_bounds<TLine>(
     x: f64,
     y: f64,

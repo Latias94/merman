@@ -427,17 +427,17 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     .collect();
                 points = dedup_consecutive_points(&points);
 
-                if let Some(tc) = le.to_cluster.as_deref() {
-                    if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-                        points = cut_path_at_intersect(&points, &boundary);
-                    }
+                if let Some(tc) = le.to_cluster.as_deref()
+                    && let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y)
+                {
+                    points = cut_path_at_intersect(&points, &boundary);
                 }
-                if let Some(fc) = le.from_cluster.as_deref() {
-                    if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-                        points.reverse();
-                        points = cut_path_at_intersect(&points, &boundary);
-                        points.reverse();
-                    }
+                if let Some(fc) = le.from_cluster.as_deref()
+                    && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
+                {
+                    points.reverse();
+                    points = cut_path_at_intersect(&points, &boundary);
+                    points.reverse();
                 }
 
                 if let Some(pos) = calc_label_position(&points) {

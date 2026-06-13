@@ -1276,23 +1276,22 @@ impl SimGraph {
 
             // Gravitation (only for disconnected graphs).
             let gravitation_start = timing_enabled.then(web_time::Instant::now);
-            if !nodes_with_gravity.is_empty() {
-                if let Some((owner_center_x, owner_center_y, estimated_size)) =
+            if !nodes_with_gravity.is_empty()
+                && let Some((owner_center_x, owner_center_y, estimated_size)) =
                     self.gravitation_context(gravity_range_factor)
-                {
-                    for &idx in &nodes_with_gravity {
-                        let n = &mut self.nodes[idx];
-                        if !n.active {
-                            continue;
-                        }
-                        let distance_x = n.center_x() - owner_center_x;
-                        let distance_y = n.center_y() - owner_center_y;
-                        let abs_distance_x = distance_x.abs() + n.width / 2.0;
-                        let abs_distance_y = distance_y.abs() + n.height / 2.0;
-                        if abs_distance_x > estimated_size || abs_distance_y > estimated_size {
-                            n.gravitation_fx = -gravity_constant * distance_x;
-                            n.gravitation_fy = -gravity_constant * distance_y;
-                        }
+            {
+                for &idx in &nodes_with_gravity {
+                    let n = &mut self.nodes[idx];
+                    if !n.active {
+                        continue;
+                    }
+                    let distance_x = n.center_x() - owner_center_x;
+                    let distance_y = n.center_y() - owner_center_y;
+                    let abs_distance_x = distance_x.abs() + n.width / 2.0;
+                    let abs_distance_y = distance_y.abs() + n.height / 2.0;
+                    if abs_distance_x > estimated_size || abs_distance_y > estimated_size {
+                        n.gravitation_fx = -gravity_constant * distance_x;
+                        n.gravitation_fy = -gravity_constant * distance_y;
                     }
                 }
             }

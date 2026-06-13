@@ -84,7 +84,7 @@ fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
         panic!("expected eventmodeling layout");
     };
 
-    assert_close(layout.total_width, 1157.666_666_666_666_7, 1.0);
+    assert_close(layout.total_width, 1_157.666_666_666_666_7, 1.0);
     assert_close(layout.boxes[0].width, 134.0, 2.0);
     assert_close(layout.boxes[2].width, 307.333_333_333_333_3, 1.0);
     assert_close(layout.boxes[2].height, 116.0, 1.0);

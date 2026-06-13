@@ -116,11 +116,11 @@ impl<'a> Parser<'a> {
 
         loop {
             self.skip_ws_and_commas();
-            if let Some(end) = terminator {
-                if self.peek_char() == Some(end) {
-                    self.next_char();
-                    return Ok(out);
-                }
+            if let Some(end) = terminator
+                && self.peek_char() == Some(end)
+            {
+                self.next_char();
+                return Ok(out);
             }
             if self.is_eof() {
                 return if terminator.is_some() {
@@ -369,12 +369,10 @@ fn parse_bare_scalar(raw: &str) -> Value {
         .as_bytes()
         .first()
         .is_some_and(|b| b.is_ascii_digit() || *b == b'-')
+        && let Ok(Value::Number(n)) = serde_json::from_str::<Value>(raw)
+        && number_is_finite(&n)
     {
-        if let Ok(Value::Number(n)) = serde_json::from_str::<Value>(raw) {
-            if number_is_finite(&n) {
-                return Value::Number(n);
-            }
-        }
+        return Value::Number(n);
     }
 
     Value::String(raw.to_string())

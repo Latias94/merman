@@ -320,18 +320,18 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             });
         }
 
-        if lbl.width > 0.0 || lbl.height > 0.0 {
-            if let Some(mid) = lbl.points.get(count / 2).copied() {
-                let mut ex = mid.x;
-                let ey = mid.y;
-                match lbl.labelpos {
-                    LabelPos::C => {}
-                    LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
-                    LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
-                }
-                lbl.x = Some(ex);
-                lbl.y = Some(ey);
+        if (lbl.width > 0.0 || lbl.height > 0.0)
+            && let Some(mid) = lbl.points.get(count / 2).copied()
+        {
+            let mut ex = mid.x;
+            let ey = mid.y;
+            match lbl.labelpos {
+                LabelPos::C => {}
+                LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
+                LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
             }
+            lbl.x = Some(ex);
+            lbl.y = Some(ey);
         }
 
         let _ = (sw, tw);
@@ -341,10 +341,10 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         RankDir::TB => {}
         RankDir::BT => {
             for id in &node_ids {
-                if let Some(n) = g.node_mut(id) {
-                    if let Some(y) = n.y {
-                        n.y = Some(total_height - y);
-                    }
+                if let Some(n) = g.node_mut(id)
+                    && let Some(y) = n.y
+                {
+                    n.y = Some(total_height - y);
                 }
             }
             for e in &edge_keys {

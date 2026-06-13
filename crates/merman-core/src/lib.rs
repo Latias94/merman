@@ -145,7 +145,7 @@ impl Engine {
     pub(crate) fn parse_timing_enabled() -> bool {
         #[cfg(feature = "host-timing")]
         {
-            return Self::parse_timing_enabled_from_env();
+            Self::parse_timing_enabled_from_env()
         }
 
         #[cfg(not(feature = "host-timing"))]

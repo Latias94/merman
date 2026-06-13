@@ -149,15 +149,15 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
     let mut row: i64 = 1;
 
     for mut block in blocks {
-        if let (Some(start), Some(end)) = (block.start, block.end) {
-            if end < start {
-                return Err(Error::DiagramParse {
-                    diagram_type: "packet".to_string(),
-                    message: format!(
-                        "Packet block {start} - {end} is invalid. End must be greater than start."
-                    ),
-                });
-            }
+        if let (Some(start), Some(end)) = (block.start, block.end)
+            && end < start
+        {
+            return Err(Error::DiagramParse {
+                diagram_type: "packet".to_string(),
+                message: format!(
+                    "Packet block {start} - {end} is invalid. End must be greater than start."
+                ),
+            });
         }
 
         let start = block.start.unwrap_or(last_bit + 1);

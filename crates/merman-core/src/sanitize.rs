@@ -734,13 +734,13 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
             }
         }
 
-        if lc_tag == "a" {
-            if let Some(target) = el.get_attribute("data-temp-href-target") {
-                let _ = el.set_attribute("target", &target);
-                el.remove_attribute("data-temp-href-target");
-                if target == "_blank" {
-                    let _ = el.set_attribute("rel", "noopener");
-                }
+        if lc_tag == "a"
+            && let Some(target) = el.get_attribute("data-temp-href-target")
+        {
+            let _ = el.set_attribute("target", &target);
+            el.remove_attribute("data-temp-href-target");
+            if target == "_blank" {
+                let _ = el.set_attribute("rel", "noopener");
             }
         }
 

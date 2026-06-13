@@ -433,13 +433,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 let line_idx = deltas_px_by_line.len().saturating_sub(1);
                 let font_size = style.font_size.max(1.0);
                 let is_strong = strong_depth > 0;
-                if let Some(prev) = *prev_char {
-                    if *prev_is_strong && is_strong {
-                        deltas_px_by_line[line_idx] +=
-                            flowchart_default_bold_kern_delta_em(prev, decoded)
-                                * font_size
-                                * BOLD_DELTA_SCALE;
-                    }
+                if let Some(prev) = *prev_char
+                    && *prev_is_strong
+                    && is_strong
+                {
+                    deltas_px_by_line[line_idx] +=
+                        flowchart_default_bold_kern_delta_em(prev, decoded)
+                            * font_size
+                            * BOLD_DELTA_SCALE;
                 }
                 if is_strong {
                     deltas_px_by_line[line_idx] +=
@@ -684,27 +685,27 @@ pub fn measure_html_with_flowchart_bold_deltas(
         }
         WrapMode::HtmlLike => round_to_1_64_px(max_line_width),
     };
-    if wrap_mode == WrapMode::HtmlLike {
-        if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
-            let raw_w = measurer
-                .measure_wrapped_raw(plain.trim(), style, None, wrap_mode)
-                .width;
-            let needs_wrap = raw_w > w;
-            if needs_wrap {
-                // When wrapping is active, the DOM-driven width behavior is governed by the
-                // wrapped layout, not the unwrapped per-line extents. Reuse the wrapped baseline
-                // width (without bold deltas) so we don't over-inflate `foreignObject width="..."`
-                // from unwrapped lines.
-                //
-                // The underlying measurer is still responsible for modeling any min-content
-                // expansion beyond `max-width`.
-                width = icon_start_wrap
-                    .map(|(icon_width, _)| icon_width)
-                    .unwrap_or(base.width)
-                    .max(w);
-            } else {
-                width = width.min(w);
-            }
+    if wrap_mode == WrapMode::HtmlLike
+        && let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0)
+    {
+        let raw_w = measurer
+            .measure_wrapped_raw(plain.trim(), style, None, wrap_mode)
+            .width;
+        let needs_wrap = raw_w > w;
+        if needs_wrap {
+            // When wrapping is active, the DOM-driven width behavior is governed by the
+            // wrapped layout, not the unwrapped per-line extents. Reuse the wrapped baseline
+            // width (without bold deltas) so we don't over-inflate `foreignObject width="..."`
+            // from unwrapped lines.
+            //
+            // The underlying measurer is still responsible for modeling any min-content
+            // expansion beyond `max-width`.
+            width = icon_start_wrap
+                .map(|(icon_width, _)| icon_width)
+                .unwrap_or(base.width)
+                .max(w);
+        } else {
+            width = width.min(w);
         }
     }
 
@@ -795,12 +796,13 @@ fn markdown_word_line_plain_text_and_delta_px(
                 return;
             }
             let font_size = style.font_size.max(1.0);
-            if let Some(prev) = prev_char {
-                if prev_is_strong && is_strong && bold_override_em.is_none() {
-                    delta_px += flowchart_default_bold_kern_delta_em(prev, ch)
-                        * font_size
-                        * bold_delta_scale;
-                }
+            if let Some(prev) = prev_char
+                && prev_is_strong
+                && is_strong
+                && bold_override_em.is_none()
+            {
+                delta_px +=
+                    flowchart_default_bold_kern_delta_em(prev, ch) * font_size * bold_delta_scale;
             }
             if is_strong && bold_override_em.is_none() {
                 let mut delta_em = flowchart_default_bold_delta_em(ch);
@@ -1243,34 +1245,34 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
         WrapMode::HtmlLike => round_to_1_64_px(max_line_width),
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => round_to_1_64_px(max_line_width),
     };
-    if wrap_mode == WrapMode::HtmlLike {
-        if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
-            let raw_plain = raw_parsed
-                .iter()
-                .map(|words| {
-                    markdown_word_line_plain_text_and_delta_px(
-                        words,
-                        style,
-                        wrap_mode,
-                        bold_delta_scale,
-                    )
-                    .0
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            let raw_w = measurer
-                .measure_wrapped_raw(raw_plain.trim(), style, None, wrap_mode)
-                .width;
-            let needs_wrap = raw_w > w;
-            if needs_wrap {
-                if manually_wrap_words {
-                    width = width.max(w);
-                } else {
-                    width = base.width.max(w);
-                }
+    if wrap_mode == WrapMode::HtmlLike
+        && let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0)
+    {
+        let raw_plain = raw_parsed
+            .iter()
+            .map(|words| {
+                markdown_word_line_plain_text_and_delta_px(
+                    words,
+                    style,
+                    wrap_mode,
+                    bold_delta_scale,
+                )
+                .0
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let raw_w = measurer
+            .measure_wrapped_raw(raw_plain.trim(), style, None, wrap_mode)
+            .width;
+        let needs_wrap = raw_w > w;
+        if needs_wrap {
+            if manually_wrap_words {
+                width = width.max(w);
             } else {
-                width = width.min(w);
+                width = base.width.max(w);
             }
+        } else {
+            width = width.min(w);
         }
     }
 

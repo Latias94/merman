@@ -28,8 +28,7 @@ pub(super) fn class_order_ids_for_namespace_subgraphs<'a>(
 
     for ns_id in namespace_keys {
         for id in &ordered_ids {
-            let parent =
-                class_render_parent_for_id(*id, class_nodes_by_id, note_by_id, iface_by_id);
+            let parent = class_render_parent_for_id(id, class_nodes_by_id, note_by_id, iface_by_id);
             if parent == Some(*ns_id) && used.insert(*id) {
                 inner.push(*id);
             }
@@ -218,6 +217,7 @@ pub(super) fn class_namespace_root_offset(c: &LayoutCluster) -> (f64, f64) {
     (c.x - w / 2.0 - 8.0, c.y - h / 2.0)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_class_namespace_clusters_in_root(
     out: &mut String,
     content_bounds: &mut Option<Bounds>,
@@ -299,6 +299,7 @@ fn namespace_subgraph_render_profile(model: &ClassSvgModel) -> bool {
         && (model.namespaces.len() > 1 || model.direction == "LR")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_class_node_render_order<'a>(
     layout: &'a ClassDiagramV2Layout,
     model: &'a ClassSvgModel,
@@ -353,8 +354,7 @@ pub(super) fn build_class_node_render_order<'a>(
         let mut inner: Vec<&str> = Vec::new();
         let mut outer: Vec<&str> = Vec::new();
         for id in &ordered_ids {
-            let parent =
-                class_render_parent_for_id(*id, class_nodes_by_id, note_by_id, iface_by_id);
+            let parent = class_render_parent_for_id(id, class_nodes_by_id, note_by_id, iface_by_id);
             if single_namespace_id.is_some_and(|ns| parent == Some(ns)) {
                 inner.push(*id);
             } else {

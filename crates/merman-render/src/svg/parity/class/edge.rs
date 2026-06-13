@@ -97,13 +97,13 @@ pub(super) fn class_line_with_marker_offset_points_into(
                 offset_x = height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
                 offset_y = height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
             }
-        } else if idx == input.len() - 1 {
-            if let Some(height) = end_marker_height {
-                let (angle, delta_x, delta_y) =
-                    calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
-                offset_x = height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
-                offset_y = height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
-            }
+        } else if idx == input.len() - 1
+            && let Some(height) = end_marker_height
+        {
+            let (angle, delta_x, delta_y) =
+                calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
+            offset_x = height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
+            offset_y = height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
         }
 
         if let Some(height) = end_marker_height {
@@ -367,20 +367,20 @@ pub(super) fn render_class_edge_groups(
             escape_attr_display(&edge_points_b64_buf),
             escape_attr_display(ctx.look),
         );
-        if !e.id.starts_with("edgeNote") {
-            if let Some(rel) = ctx.relations_by_id.get(e.id.as_str()) {
-                if let Some(name) = class_marker_name(rel.relation.type1, true) {
-                    out.push_str(r#" marker-start="url(#"#);
-                    out.push_str(ctx.marker_url_prefix);
-                    out.push_str(name);
-                    out.push_str(r#")""#);
-                }
-                if let Some(name) = class_marker_name(rel.relation.type2, false) {
-                    out.push_str(r#" marker-end="url(#"#);
-                    out.push_str(ctx.marker_url_prefix);
-                    out.push_str(name);
-                    out.push_str(r#")""#);
-                }
+        if !e.id.starts_with("edgeNote")
+            && let Some(rel) = ctx.relations_by_id.get(e.id.as_str())
+        {
+            if let Some(name) = class_marker_name(rel.relation.type1, true) {
+                out.push_str(r#" marker-start="url(#"#);
+                out.push_str(ctx.marker_url_prefix);
+                out.push_str(name);
+                out.push_str(r#")""#);
+            }
+            if let Some(name) = class_marker_name(rel.relation.type2, false) {
+                out.push_str(r#" marker-end="url(#"#);
+                out.push_str(ctx.marker_url_prefix);
+                out.push_str(name);
+                out.push_str(r#")""#);
             }
         }
         let _ = write!(out, r#" style="{}""#, class_edge_path_style(e.id.as_str()));
@@ -414,16 +414,16 @@ pub(super) fn render_class_edge_groups(
                     y: lbl.y + ctx.content_ty,
                 })
         });
-        if !label_text.trim().is_empty() {
-            if let (Some(lbl), Some(center)) = (e.label.as_ref(), label_center.as_ref()) {
-                include_xywh(
-                    content_bounds,
-                    center.x - lbl.width / 2.0 + ctx.bounds_dx,
-                    center.y - lbl.height / 2.0 + ctx.bounds_dy,
-                    lbl.width.max(0.0),
-                    lbl.height.max(0.0),
-                );
-            }
+        if !label_text.trim().is_empty()
+            && let (Some(lbl), Some(center)) = (e.label.as_ref(), label_center.as_ref())
+        {
+            include_xywh(
+                content_bounds,
+                center.x - lbl.width / 2.0 + ctx.bounds_dx,
+                center.y - lbl.height / 2.0 + ctx.bounds_dy,
+                lbl.width.max(0.0),
+                lbl.height.max(0.0),
+            );
         }
         render_class_edge_label_group(
             out,
@@ -528,12 +528,11 @@ pub(super) fn class_edge_label_center(
         x: label.x + content_tx,
         y: label.y + content_ty,
     };
-    if let Some(mid) = raw_points.get(raw_points.len() / 2) {
-        if !class_is_label_coordinate_in_path(mid, d_attr) {
-            if let Some(pos) = class_calc_label_position(raw_points) {
-                center = pos;
-            }
-        }
+    if let Some(mid) = raw_points.get(raw_points.len() / 2)
+        && !class_is_label_coordinate_in_path(mid, d_attr)
+        && let Some(pos) = class_calc_label_position(raw_points)
+    {
+        center = pos;
     }
     center
 }

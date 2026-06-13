@@ -786,10 +786,10 @@ impl Iterator for Lexer<'_> {
             return self.next();
         }
 
-        if self.mode() == Mode::StateId {
-            if let Some(tok) = self.lex_state_mode_token() {
-                return Some(tok);
-            }
+        if self.mode() == Mode::StateId
+            && let Some(tok) = self.lex_state_mode_token()
+        {
+            return Some(tok);
         }
 
         if let Some(sd) = self.lex_sd_header() {
@@ -804,16 +804,16 @@ impl Iterator for Lexer<'_> {
             return Some(acc);
         }
 
-        if !matches!(self.mode(), Mode::State | Mode::StateId) {
-            if let Some(tok) = self.lex_stmt_line() {
-                return Some(tok);
-            }
+        if !matches!(self.mode(), Mode::State | Mode::StateId)
+            && let Some(tok) = self.lex_stmt_line()
+        {
+            return Some(tok);
         }
 
-        if self.mode() == Mode::State {
-            if let Some(tok) = self.lex_state_mode_token() {
-                return Some(tok);
-            }
+        if self.mode() == Mode::State
+            && let Some(tok) = self.lex_state_mode_token()
+        {
+            return Some(tok);
         }
 
         let start = self.pos;

@@ -401,16 +401,16 @@ impl GitGraphDb {
             });
         }
 
-        if let Some(custom_id) = merge_db.id.as_ref() {
-            if self.commits.contains_key(custom_id) {
-                return Err(Error::DiagramParse {
-                    diagram_type: "gitGraph".to_string(),
-                    message: format!(
-                        "Incorrect usage of \"merge\". Commit with id:{} already exists, use different custom id",
-                        custom_id
-                    ),
-                });
-            }
+        if let Some(custom_id) = merge_db.id.as_ref()
+            && self.commits.contains_key(custom_id)
+        {
+            return Err(Error::DiagramParse {
+                diagram_type: "gitGraph".to_string(),
+                message: format!(
+                    "Incorrect usage of \"merge\". Commit with id:{} already exists, use different custom id",
+                    custom_id
+                ),
+            });
         }
 
         let verified_branch = other_head_id.clone();

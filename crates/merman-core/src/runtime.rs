@@ -23,7 +23,7 @@ pub(crate) struct TimingInstant;
 pub(crate) fn timing_start(enabled: bool) -> Option<TimingInstant> {
     #[cfg(feature = "host-timing")]
     {
-        return enabled.then(timing_now);
+        enabled.then(timing_now)
     }
 
     #[cfg(not(feature = "host-timing"))]
@@ -137,7 +137,7 @@ pub(crate) fn generated_id_hex(len: usize, counter: u64, domain_salt: u64) -> St
     {
         let _ = (counter, domain_salt);
         let hex = uuid::Uuid::new_v4().simple().to_string();
-        return hex.chars().take(len).collect();
+        hex.chars().take(len).collect()
     }
 
     #[cfg(not(feature = "host-random"))]

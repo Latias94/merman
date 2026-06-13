@@ -351,10 +351,11 @@ fn extract_cluster_graph(
     }
 
     for key in graph.edge_keys() {
-        if moved_set.contains(&key.v) && moved_set.contains(&key.w) {
-            if let Some(label) = graph.edge_by_key(&key).cloned() {
-                sub.set_edge_named(key.v.clone(), key.w.clone(), key.name.clone(), Some(label));
-            }
+        if moved_set.contains(&key.v)
+            && moved_set.contains(&key.w)
+            && let Some(label) = graph.edge_by_key(&key).cloned()
+        {
+            sub.set_edge_named(key.v.clone(), key.w.clone(), key.name.clone(), Some(label));
         }
     }
 
@@ -1266,12 +1267,11 @@ fn class_box_dimensions(
         title_metrics.width =
             crate::text::round_to_1_64_px((title_metrics.width - (1.0 / 64.0)).max(0.0));
     }
-    if use_html_labels {
-        if let Some(width) =
+    if use_html_labels
+        && let Some(width) =
             class_html_known_rendered_width_override_px(title_text.as_str(), text_style, true)
-        {
-            title_metrics.width = width;
-        }
+    {
+        title_metrics.width = width;
     }
     if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) && !title_has_markdown {
         let bold_title_style = TextStyle {
@@ -1330,12 +1330,11 @@ fn class_box_dimensions(
                 metrics.width =
                     crate::text::round_to_1_64_px((metrics.width - (1.0 / 64.0)).max(0.0));
             }
-            if use_html_labels {
-                if let Some(width) =
+            if use_html_labels
+                && let Some(width) =
                     class_html_known_rendered_width_override_px(t.as_str(), text_style, false)
-                {
-                    metrics.width = width;
-                }
+            {
+                metrics.width = width;
             }
             if let Some(out) = members_metrics_out.as_mut() {
                 out.push(metrics);
@@ -1380,12 +1379,11 @@ fn class_box_dimensions(
                 metrics.width =
                     crate::text::round_to_1_64_px((metrics.width - (1.0 / 64.0)).max(0.0));
             }
-            if use_html_labels {
-                if let Some(width) =
+            if use_html_labels
+                && let Some(width) =
                     class_html_known_rendered_width_override_px(t.as_str(), text_style, false)
-                {
-                    metrics.width = width;
-                }
+            {
+                metrics.width = width;
             }
             if let Some(out) = methods_metrics_out.as_mut() {
                 out.push(metrics);
@@ -1747,12 +1745,11 @@ fn note_dimensions(
     } else {
         measurer.measure_wrapped(&label, text_style, None, wrap_mode)
     };
-    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
-        if let Some(width) =
+    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+        && let Some(width) =
             class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
-        {
-            m.width = width;
-        }
+    {
+        m.width = width;
     }
     (m.width + p, m.height + p, m)
 }
@@ -1886,8 +1883,7 @@ fn layout_class_diagram_v2_typed_inner(
         ..Default::default()
     });
 
-    let mut classes_namespace_facades: Vec<&ClassNode> = Vec::new();
-    classes_namespace_facades.reserve(model.classes.len());
+    let mut classes_namespace_facades: Vec<&ClassNode> = Vec::with_capacity(model.classes.len());
     let mut inserted_classes: HashSet<String> = HashSet::with_capacity(model.classes.len());
     let mut inserted_notes: HashSet<String> = HashSet::with_capacity(model.notes.len());
 
@@ -1977,10 +1973,9 @@ fn layout_class_diagram_v2_typed_inner(
             .and_then(|ns| ns.parent.as_deref())
             .map(str::trim)
             .filter(|parent| !parent.is_empty())
+            && model.namespaces.contains_key(parent)
         {
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(id.to_string(), parent.to_string());
-            }
+            g.set_parent(id.to_string(), parent.to_string());
         }
     }
 
@@ -2001,10 +1996,9 @@ fn layout_class_diagram_v2_typed_inner(
             .as_ref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
+            && model.namespaces.contains_key(parent)
         {
-            if model.namespaces.contains_key(parent) {
-                g.set_parent(c.id.clone(), parent.to_string());
-            }
+            g.set_parent(c.id.clone(), parent.to_string());
         }
     }
 
@@ -2023,17 +2017,15 @@ fn layout_class_diagram_v2_typed_inner(
                 ..Default::default()
             },
         );
-        if let Some(cls) = model.classes.get(iface.class_id.as_str()) {
-            if let Some(parent) = cls
+        if let Some(cls) = model.classes.get(iface.class_id.as_str())
+            && let Some(parent) = cls
                 .parent
                 .as_ref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
-            {
-                if model.namespaces.contains_key(parent) {
-                    g.set_parent(iface.id.clone(), parent.to_string());
-                }
-            }
+            && model.namespaces.contains_key(parent)
+        {
+            g.set_parent(iface.id.clone(), parent.to_string());
         }
     }
 
@@ -2045,10 +2037,9 @@ fn layout_class_diagram_v2_typed_inner(
                 .as_ref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
+                && model.namespaces.contains_key(parent)
             {
-                if model.namespaces.contains_key(parent) {
-                    g.set_parent(n.id.clone(), parent.to_string());
-                }
+                g.set_parent(n.id.clone(), parent.to_string());
             }
         }
     }
@@ -2087,10 +2078,9 @@ fn layout_class_diagram_v2_typed_inner(
                 .as_ref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
+                && model.namespaces.contains_key(parent)
             {
-                if model.namespaces.contains_key(parent) {
-                    g.set_parent(c.id.clone(), parent.to_string());
-                }
+                g.set_parent(c.id.clone(), parent.to_string());
             }
         }
 
@@ -2232,53 +2222,49 @@ fn layout_class_diagram_v2_typed_inner(
             (None, None, edge.points.clone())
         };
 
-        if let Some((w, h)) = meta.start_left {
-            if let Some((x, y)) =
+        if let Some((w, h)) = meta.start_left
+            && let Some((x, y)) =
                 calc_terminal_label_position(meta.start_marker, TerminalPos::StartLeft, &points)
-            {
-                edge.start_label_left = Some(LayoutLabel {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                });
-            }
+        {
+            edge.start_label_left = Some(LayoutLabel {
+                x,
+                y,
+                width: w,
+                height: h,
+            });
         }
-        if let Some((w, h)) = meta.start_right {
-            if let Some((x, y)) =
+        if let Some((w, h)) = meta.start_right
+            && let Some((x, y)) =
                 calc_terminal_label_position(meta.start_marker, TerminalPos::StartRight, &points)
-            {
-                edge.start_label_right = Some(LayoutLabel {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                });
-            }
+        {
+            edge.start_label_right = Some(LayoutLabel {
+                x,
+                y,
+                width: w,
+                height: h,
+            });
         }
-        if let Some((w, h)) = meta.end_left {
-            if let Some((x, y)) =
+        if let Some((w, h)) = meta.end_left
+            && let Some((x, y)) =
                 calc_terminal_label_position(meta.end_marker, TerminalPos::EndLeft, &points)
-            {
-                edge.end_label_left = Some(LayoutLabel {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                });
-            }
+        {
+            edge.end_label_left = Some(LayoutLabel {
+                x,
+                y,
+                width: w,
+                height: h,
+            });
         }
-        if let Some((w, h)) = meta.end_right {
-            if let Some((x, y)) =
+        if let Some((w, h)) = meta.end_right
+            && let Some((x, y)) =
                 calc_terminal_label_position(meta.end_marker, TerminalPos::EndRight, &points)
-            {
-                edge.end_label_right = Some(LayoutLabel {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                });
-            }
+        {
+            edge.end_label_right = Some(LayoutLabel {
+                x,
+                y,
+                width: w,
+                height: h,
+            });
         }
     }
 
@@ -2366,14 +2352,14 @@ fn layout_class_diagram_v2_typed_inner(
     });
 
     let mut bounds = compute_bounds(&nodes, &edges, &clusters);
-    if should_mirror_note_heavy_tb_layout(model, &nodes) {
-        if let Some(axis_x) = bounds.as_ref().map(|b| (b.min_x + b.max_x) / 2.0) {
-            // Dagre can converge to mirrored, equal-crossing solutions on note-heavy TB class
-            // graphs. Mermaid consistently picks the left-leaning variant for these fixtures, so
-            // canonically reflect the layout only for the narrow note-heavy case.
-            mirror_class_layout_x(&mut nodes, &mut edges, &mut clusters, axis_x);
-            bounds = compute_bounds(&nodes, &edges, &clusters);
-        }
+    if should_mirror_note_heavy_tb_layout(model, &nodes)
+        && let Some(axis_x) = bounds.as_ref().map(|b| (b.min_x + b.max_x) / 2.0)
+    {
+        // Dagre can converge to mirrored, equal-crossing solutions on note-heavy TB class
+        // graphs. Mermaid consistently picks the left-leaning variant for these fixtures, so
+        // canonically reflect the layout only for the narrow note-heavy case.
+        mirror_class_layout_x(&mut nodes, &mut edges, &mut clusters, axis_x);
+        bounds = compute_bounds(&nodes, &edges, &clusters);
     }
 
     Ok(ClassDiagramV2Layout {

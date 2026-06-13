@@ -966,7 +966,7 @@ fn string_array_field(obj: &Map<String, Value>, key: &str) -> Result<Vec<String>
         .collect()
 }
 
-fn block_children_values<'a>(value: &'a Value) -> Result<&'a [Value]> {
+fn block_children_values(value: &Value) -> Result<&[Value]> {
     let obj = value
         .as_object()
         .ok_or_else(|| invalid_block_model("block node must be an object"))?;

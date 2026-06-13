@@ -144,7 +144,14 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
         "hsl(240, 60%, 86.2745098039%)",
     );
     let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .map(|value| value.max(1.0).min(64.0) as usize)
+        .map(|value| {
+            let value = if value.is_nan() {
+                1.0
+            } else {
+                value.clamp(1.0, 64.0)
+            };
+            value as usize
+        })
         .unwrap_or(12);
     let stroke_width = crate::config::config_css_number_or_string(
         effective_config,

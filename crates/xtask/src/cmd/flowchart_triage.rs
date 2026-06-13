@@ -988,18 +988,16 @@ fn foreignobject_text(fo: roxmltree::Node<'_, '_>) -> String {
         if n.is_element() {
             match n.tag_name().name() {
                 "br" => raw.push('\n'),
-                "p" => {
-                    if !raw.is_empty() && !raw.ends_with('\n') {
-                        raw.push('\n');
-                    }
+                "p" if !raw.is_empty() && !raw.ends_with('\n') => {
+                    raw.push('\n');
                 }
                 _ => {}
             }
         }
-        if n.is_text() {
-            if let Some(t) = n.text() {
-                raw.push_str(t);
-            }
+        if n.is_text()
+            && let Some(t) = n.text()
+        {
+            raw.push_str(t);
         }
     }
     raw.split('\n')

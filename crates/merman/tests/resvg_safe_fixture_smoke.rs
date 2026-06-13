@@ -135,10 +135,10 @@ fn all_supported_fixture_paths() -> Vec<PathBuf> {
     let name_filter = audit_name_filter();
 
     for family in SUPPORTED_FIXTURE_DIRS {
-        if let Some(filter) = &family_filter {
-            if !filter.contains(*family) {
-                continue;
-            }
+        if let Some(filter) = &family_filter
+            && !filter.contains(*family)
+        {
+            continue;
         }
 
         let dir = fixtures_root.join(family);

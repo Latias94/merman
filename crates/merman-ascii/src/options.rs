@@ -2,29 +2,19 @@ use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiCharset {
+    #[default]
     Unicode,
     Ascii,
 }
 
-impl Default for AsciiCharset {
-    fn default() -> Self {
-        Self::Unicode
-    }
-}
-
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiDirection {
+    #[default]
     LeftRight,
     TopDown,
-}
-
-impl Default for AsciiDirection {
-    fn default() -> Self {
-        Self::LeftRight
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -276,12 +276,11 @@ fn flowchart_label_html_impl(
         }
     }
 
-    if let Some(r) = math_renderer {
-        if label.contains("$$") {
-            if let Some(html) = r.render_html_label(label, config) {
-                return xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html, config));
-            }
-        }
+    if let Some(r) = math_renderer
+        && label.contains("$$")
+        && let Some(html) = r.render_html_label(label, config)
+    {
+        return xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html, config));
     }
 
     fn mermaid_markdown_to_html_minimal(
@@ -395,18 +394,18 @@ fn flowchart_label_html_impl(
                 continue;
             }
 
-            if ch == '<' {
-                if let Some(end_rel) = chars[i..].iter().position(|c| *c == '>') {
-                    let end = i + end_rel;
-                    flush_text(&mut tokens, &mut text_buf);
-                    let mut tag = String::new();
-                    for c in &chars[i..=end] {
-                        tag.push(*c);
-                    }
-                    tokens.push(tag);
-                    i = end + 1;
-                    continue;
+            if ch == '<'
+                && let Some(end_rel) = chars[i..].iter().position(|c| *c == '>')
+            {
+                let end = i + end_rel;
+                flush_text(&mut tokens, &mut text_buf);
+                let mut tag = String::new();
+                for c in &chars[i..=end] {
+                    tag.push(*c);
                 }
+                tokens.push(tag);
+                i = end + 1;
+                continue;
             }
 
             if ch == '*' || ch == '_' {
@@ -432,13 +431,12 @@ fn flowchart_label_html_impl(
                     && stack
                         .last()
                         .is_some_and(|d| d.ty == want && d.ch == ch && d.run_len == run_len)
+                    && let Some(opener) = stack.pop()
                 {
-                    if let Some(opener) = stack.pop() {
-                        tokens[opener.token_index] = open_tag(want).to_string();
-                        tokens.push(close_tag(want).to_string());
-                        i += run_len;
-                        continue;
-                    }
+                    tokens[opener.token_index] = open_tag(want).to_string();
+                    tokens.push(close_tag(want).to_string());
+                    i += run_len;
+                    continue;
                 }
                 if can_open {
                     let token_index = tokens.len();

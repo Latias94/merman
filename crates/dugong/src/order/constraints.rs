@@ -27,11 +27,11 @@ pub fn add_subgraph_constraints<N, E, G, CN, CE, CG>(
                 root_prev.replace(c)
             };
 
-            if let Some(prev_child) = prev_child {
-                if prev_child != c {
-                    cg.set_edge(prev_child, c);
-                    break;
-                }
+            if let Some(prev_child) = prev_child
+                && prev_child != c
+            {
+                cg.set_edge(prev_child, c);
+                break;
             }
 
             child = parent;
@@ -69,11 +69,11 @@ pub fn add_subgraph_constraints_ix<N, E, G, CN, CE, CG>(
                 root_prev.replace(c)
             };
 
-            if let Some(prev_child) = prev_child {
-                if prev_child != c {
-                    cg.set_edge(prev_child, c);
-                    break;
-                }
+            if let Some(prev_child) = prev_child
+                && prev_child != c
+            {
+                cg.set_edge(prev_child, c);
+                break;
             }
 
             child = parent;

@@ -249,21 +249,21 @@ pub(super) fn flowchart_compute_edge_path_geom(
             .tmp_points_c
             .extend_from_slice(points_after_intersect);
     }
-    if let Some(fc) = le.from_cluster.as_deref() {
-        if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-            scratch.tmp_points_rev.clear();
-            scratch
-                .tmp_points_rev
-                .extend_from_slice(&scratch.tmp_points_c);
-            scratch.tmp_points_rev.reverse();
+    if let Some(fc) = le.from_cluster.as_deref()
+        && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
+    {
+        scratch.tmp_points_rev.clear();
+        scratch
+            .tmp_points_rev
+            .extend_from_slice(&scratch.tmp_points_c);
+        scratch.tmp_points_rev.reverse();
 
-            cut_path_at_intersect_into(
-                &scratch.tmp_points_rev,
-                &boundary,
-                &mut scratch.tmp_points_c,
-            );
-            scratch.tmp_points_c.reverse();
-        }
+        cut_path_at_intersect_into(
+            &scratch.tmp_points_rev,
+            &boundary,
+            &mut scratch.tmp_points_c,
+        );
+        scratch.tmp_points_c.reverse();
     }
     let points_for_render: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_c;
 

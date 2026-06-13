@@ -53,13 +53,13 @@ pub(in crate::svg::parity::flowchart) fn line_with_offset_points(
                 ox = h * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
                 oy = h * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
             }
-        } else if i == input.len() - 1 {
-            if let Some(h) = end_marker_height {
-                let (angle, delta_x, delta_y) =
-                    calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
-                ox = h * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
-                oy = h * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
-            }
+        } else if i == input.len() - 1
+            && let Some(h) = end_marker_height
+        {
+            let (angle, delta_x, delta_y) =
+                calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
+            ox = h * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
+            oy = h * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
         }
 
         if let Some(h) = end_marker_height {

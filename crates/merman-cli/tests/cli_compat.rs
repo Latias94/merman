@@ -90,7 +90,7 @@ fn cli_prints_help_successfully() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
 
     for arg in ["--help", "-h"] {
-        let output = Command::new(&exe).arg(arg).output().expect("run cli");
+        let output = Command::new(exe).arg(arg).output().expect("run cli");
 
         assert!(output.status.success(), "stderr: {:?}", output.stderr);
         let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
@@ -130,7 +130,7 @@ fn cli_rejects_non_positive_numeric_options() {
         ("--raster-max-height", "0", "expected a positive integer"),
         ("--raster-max-pixels", "0", "expected a positive integer"),
     ] {
-        let output = Command::new(&exe)
+        let output = Command::new(exe)
             .args(["-i", "-", "-o", "-", flag, value])
             .output()
             .expect("run cli");
@@ -179,7 +179,7 @@ fn cli_rejects_invalid_fixed_time_options() {
             "expected a timezone offset in minutes between -1439 and 1439",
         ),
     ] {
-        let output = Command::new(&exe)
+        let output = Command::new(exe)
             .args(["parse", flag, value, "-"])
             .output()
             .expect("run cli");
@@ -499,12 +499,12 @@ fn top_level_pdf_fit_controls_page_size() {
     fs::write(&input, "flowchart LR\nA-->B\n").expect("write input");
 
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    Command::new(&exe)
+    Command::new(exe)
         .current_dir(tmp.path())
         .args(["-i", "input.mmd", "-o", "default.pdf", "-q"])
         .assert()
         .success();
-    Command::new(&exe)
+    Command::new(exe)
         .current_dir(tmp.path())
         .args(["-i", "input.mmd", "-o", "fit.pdf", "--pdfFit", "-q"])
         .assert()

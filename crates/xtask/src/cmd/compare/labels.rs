@@ -255,18 +255,16 @@ fn foreignobject_text(fo: roxmltree::Node<'_, '_>) -> String {
         if n.is_element() {
             match n.tag_name().name() {
                 "br" => raw.push('\n'),
-                "p" => {
-                    if !raw.is_empty() && !raw.ends_with('\n') {
-                        raw.push('\n');
-                    }
+                "p" if !raw.is_empty() && !raw.ends_with('\n') => {
+                    raw.push('\n');
                 }
                 _ => {}
             }
         }
-        if n.is_text() {
-            if let Some(t) = n.text() {
-                raw.push_str(t);
-            }
+        if n.is_text()
+            && let Some(t) = n.text()
+        {
+            raw.push_str(t);
         }
     }
 
@@ -328,15 +326,15 @@ fn svg_text_content(text: roxmltree::Node<'_, '_>) -> String {
 fn svg_text_markup_summary(text: roxmltree::Node<'_, '_>) -> String {
     let mut parts = vec![format!("svgText:{}lines", svg_text_line_count(text).max(1))];
     for node in text.descendants().filter(|n| n.has_tag_name("tspan")) {
-        if let Some(weight) = node.attribute("font-weight") {
-            if weight != "normal" {
-                parts.push(format!("weight:{weight}"));
-            }
+        if let Some(weight) = node.attribute("font-weight")
+            && weight != "normal"
+        {
+            parts.push(format!("weight:{weight}"));
         }
-        if let Some(style) = node.attribute("font-style") {
-            if style != "normal" {
-                parts.push(format!("style:{style}"));
-            }
+        if let Some(style) = node.attribute("font-style")
+            && style != "normal"
+        {
+            parts.push(format!("style:{style}"));
         }
     }
     parts.sort();
@@ -436,10 +434,10 @@ fn attr_f64(node: roxmltree::Node<'_, '_>, name: &str) -> Option<f64> {
 fn collect_text(node: roxmltree::Node<'_, '_>) -> String {
     let mut raw = String::new();
     for n in node.descendants() {
-        if n.is_text() {
-            if let Some(text) = n.text() {
-                raw.push_str(text);
-            }
+        if n.is_text()
+            && let Some(text) = n.text()
+        {
+            raw.push_str(text);
         }
     }
     raw

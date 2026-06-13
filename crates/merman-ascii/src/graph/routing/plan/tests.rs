@@ -156,7 +156,7 @@ fn route_canvas_extent_uses_local_direction_only_for_internal_subgraph_edges() {
         route_canvas_extent(
             &graph,
             &layouts,
-            &[internal_edge.clone()],
+            std::slice::from_ref(&internal_edge),
             GraphDirection::TopDown
         ),
         (0, 0)

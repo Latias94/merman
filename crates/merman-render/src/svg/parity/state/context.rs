@@ -59,10 +59,11 @@ fn state_endpoint_context_impl<'a>(
     id: &str,
     respect_nested_roots: bool,
 ) -> Option<&'a str> {
-    if let Some(n) = ctx.nodes_by_id.get(id).copied() {
-        if n.is_group && n.shape != "noteGroup" {
-            return state_insertion_context_impl(ctx, id, respect_nested_roots);
-        }
+    if let Some(n) = ctx.nodes_by_id.get(id).copied()
+        && n.is_group
+        && n.shape != "noteGroup"
+    {
+        return state_insertion_context_impl(ctx, id, respect_nested_roots);
     }
     state_leaf_context_impl(ctx, id, respect_nested_roots)
 }

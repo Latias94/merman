@@ -32,6 +32,7 @@ fn actor_man_participant_data_attrs(ctx: &ActorManGlyphContext<'_>) -> String {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_actor_man_top_glyph(
     out: &mut String,
     actor_type: &str,
@@ -130,6 +131,7 @@ pub(super) fn write_actor_man_top_glyph(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn write_actor_man_bottom_glyph(
     out: &mut String,
     actor_type: &str,

@@ -43,6 +43,17 @@ struct Message {
     central_connection: i32,
 }
 
+#[derive(Debug, Default)]
+struct SignalInput {
+    from: Option<String>,
+    to: Option<String>,
+    message: Option<ParsedText>,
+    message_type: i32,
+    activate: bool,
+    placement: Option<i32>,
+    central_connection: i32,
+}
+
 #[derive(Debug, Clone)]
 struct Note {
     actor: Value,
@@ -121,35 +132,32 @@ impl SequenceDb {
         let mut actor_type = actor_type.to_string();
         if let Some(config) = config.as_deref() {
             let meta = parse_participant_meta(config)?;
-            if let Some(obj) = meta.as_object() {
-                if let Some(t) = obj
+            if let Some(obj) = meta.as_object()
+                && let Some(t) = obj
                     .get("type")
                     .and_then(crate::inline_config::value_to_string)
-                {
-                    actor_type = t;
-                }
+            {
+                actor_type = t;
             }
         }
 
-        if let Some(current_box) = self.current_box {
-            if let Some(existing) = self.actors.get(id) {
-                if let Some(old_box) = existing.box_index {
-                    if old_box != current_box {
-                        let old_name = self.boxes[old_box]
-                            .name
-                            .clone()
-                            .unwrap_or_else(|| "undefined".to_string());
-                        let new_name = self.boxes[current_box]
-                            .name
-                            .clone()
-                            .unwrap_or_else(|| "undefined".to_string());
-                        return Err(format!(
-                            "A same participant should only be defined in one Box: {} can't be in '{}' and in '{}' at the same time.",
-                            existing.name, old_name, new_name
-                        ));
-                    }
-                }
-            }
+        if let Some(current_box) = self.current_box
+            && let Some(existing) = self.actors.get(id)
+            && let Some(old_box) = existing.box_index
+            && old_box != current_box
+        {
+            let old_name = self.boxes[old_box]
+                .name
+                .clone()
+                .unwrap_or_else(|| "undefined".to_string());
+            let new_name = self.boxes[current_box]
+                .name
+                .clone()
+                .unwrap_or_else(|| "undefined".to_string());
+            return Err(format!(
+                "A same participant should only be defined in one Box: {} can't be in '{}' and in '{}' at the same time.",
+                existing.name, old_name, new_name
+            ));
         }
 
         let description = description
@@ -236,17 +244,8 @@ impl SequenceDb {
         }
     }
 
-    fn add_signal(
-        &mut self,
-        from: Option<String>,
-        to: Option<String>,
-        message: Option<ParsedText>,
-        message_type: i32,
-        activate: bool,
-        placement: Option<i32>,
-        central_connection: i32,
-    ) {
-        let msg_text = message.unwrap_or(ParsedText {
+    fn add_signal(&mut self, signal: SignalInput) {
+        let msg_text = signal.message.unwrap_or(ParsedText {
             text: String::new(),
             wrap: None,
         });
@@ -254,14 +253,14 @@ impl SequenceDb {
 
         self.messages.push(Message {
             id: self.messages.len().to_string(),
-            from,
-            to,
+            from: signal.from,
+            to: signal.to,
             message: SequenceMessagePayload::Text(msg_text.text),
             wrap,
-            message_type,
-            activate,
-            placement,
-            central_connection,
+            message_type: signal.message_type,
+            activate: signal.activate,
+            placement: signal.placement,
+            central_connection: signal.central_connection,
         });
     }
 
@@ -390,7 +389,11 @@ impl SequenceDb {
 
             Action::ControlSignal { signal_type, text } => {
                 let msg = text.as_deref().map(|t| self.parse_message(t));
-                self.add_signal(None, None, msg, signal_type, false, None, 0);
+                self.add_signal(SignalInput {
+                    message: msg,
+                    message_type: signal_type,
+                    ..Default::default()
+                });
                 Ok(())
             }
 
@@ -445,28 +448,24 @@ impl SequenceDb {
                 }
 
                 let msg = self.parse_message(&text);
-                self.add_signal(
-                    Some(from),
-                    Some(to),
-                    Some(msg),
-                    signal_type,
+                self.add_signal(SignalInput {
+                    from: Some(from),
+                    to: Some(to),
+                    message: Some(msg),
+                    message_type: signal_type,
                     activate,
-                    None,
                     central_connection,
-                );
+                    ..Default::default()
+                });
                 Ok(())
             }
 
             Action::ActiveStart { actor } => {
-                self.add_signal(
-                    Some(actor),
-                    None,
-                    None,
-                    LINETYPE_ACTIVE_START,
-                    false,
-                    None,
-                    0,
-                );
+                self.add_signal(SignalInput {
+                    from: Some(actor),
+                    message_type: LINETYPE_ACTIVE_START,
+                    ..Default::default()
+                });
                 Ok(())
             }
             Action::ActiveEnd { actor } => {
@@ -475,31 +474,27 @@ impl SequenceDb {
                         "Trying to inactivate an inactive participant ({actor})"
                     ));
                 }
-                self.add_signal(Some(actor), None, None, LINETYPE_ACTIVE_END, false, None, 0);
+                self.add_signal(SignalInput {
+                    from: Some(actor),
+                    message_type: LINETYPE_ACTIVE_END,
+                    ..Default::default()
+                });
                 Ok(())
             }
             Action::CentralConnection { actor } => {
-                self.add_signal(
-                    Some(actor),
-                    None,
-                    None,
-                    LINETYPE_CENTRAL_CONNECTION,
-                    false,
-                    None,
-                    0,
-                );
+                self.add_signal(SignalInput {
+                    from: Some(actor),
+                    message_type: LINETYPE_CENTRAL_CONNECTION,
+                    ..Default::default()
+                });
                 Ok(())
             }
             Action::CentralConnectionReverse { actor } => {
-                self.add_signal(
-                    Some(actor),
-                    None,
-                    None,
-                    LINETYPE_CENTRAL_CONNECTION_REVERSE,
-                    false,
-                    None,
-                    0,
-                );
+                self.add_signal(SignalInput {
+                    from: Some(actor),
+                    message_type: LINETYPE_CENTRAL_CONNECTION_REVERSE,
+                    ..Default::default()
+                });
                 Ok(())
             }
 
@@ -893,41 +888,32 @@ pub(super) fn fast_parse_sequence_signals_only_db(
 
         let activate = matches!(sig.activation, Activation::Plus);
         let msg = db.parse_message(sig.text);
-        db.add_signal(
-            Some(sig.from.to_string()),
-            Some(sig.to.to_string()),
-            Some(msg),
-            sig.ty,
+        db.add_signal(SignalInput {
+            from: Some(sig.from.to_string()),
+            to: Some(sig.to.to_string()),
+            message: Some(msg),
+            message_type: sig.ty,
             activate,
-            None,
-            0,
-        );
+            ..Default::default()
+        });
 
         match sig.activation {
             Activation::Plus => {
-                db.add_signal(
-                    Some(sig.to.to_string()),
-                    None,
-                    None,
-                    LINETYPE_ACTIVE_START,
-                    false,
-                    None,
-                    0,
-                );
+                db.add_signal(SignalInput {
+                    from: Some(sig.to.to_string()),
+                    message_type: LINETYPE_ACTIVE_START,
+                    ..Default::default()
+                });
             }
             Activation::Minus => {
                 if db.activation_count(sig.from) < 1 {
                     return None;
                 }
-                db.add_signal(
-                    Some(sig.from.to_string()),
-                    None,
-                    None,
-                    LINETYPE_ACTIVE_END,
-                    false,
-                    None,
-                    0,
-                );
+                db.add_signal(SignalInput {
+                    from: Some(sig.from.to_string()),
+                    message_type: LINETYPE_ACTIVE_END,
+                    ..Default::default()
+                });
             }
             Activation::None => {}
         }
@@ -950,12 +936,12 @@ fn unescape_entities(input: &str) -> String {
 fn split_color_and_title(input: &str) -> (&str, &str) {
     let lower = input.to_ascii_lowercase();
     for prefix in ["rgba", "rgb", "hsla", "hsl"] {
-        if lower.starts_with(prefix) {
-            if let Some(end) = input.find(')') {
-                let color = &input[..=end];
-                let rest = &input[end + 1..];
-                return (color.trim(), rest);
-            }
+        if lower.starts_with(prefix)
+            && let Some(end) = input.find(')')
+        {
+            let color = &input[..=end];
+            let rest = &input[end + 1..];
+            return (color.trim(), rest);
         }
     }
 

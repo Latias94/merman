@@ -65,16 +65,16 @@ pub(super) fn render_flowchart_v2_debug_svg(
                 push_points_attr(&mut out, &e.points);
                 out.push_str(r#"" />"#);
             }
-            if options.include_edge_id_labels {
-                if let Some(lbl) = &e.label {
-                    let _ = write!(
-                        &mut out,
-                        r#"<text class="edge-label" x="{}" y="{}">{}</text>"#,
-                        fmt_display(lbl.x),
-                        fmt_display(lbl.y),
-                        escape_xml(&e.id)
-                    );
-                }
+            if options.include_edge_id_labels
+                && let Some(lbl) = &e.label
+            {
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="edge-label" x="{}" y="{}">{}</text>"#,
+                    fmt_display(lbl.x),
+                    fmt_display(lbl.y),
+                    escape_xml(&e.id)
+                );
             }
         }
         out.push_str("</g>\n");

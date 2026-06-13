@@ -508,11 +508,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "mmd") {
-                if let Ok(text) = fs::read_to_string(&path) {
-                    let canon = canonical_fixture_text(&text);
-                    map.insert(canon, path);
-                }
+            if path.extension().is_some_and(|e| e == "mmd")
+                && let Ok(text) = fs::read_to_string(&path)
+            {
+                let canon = canonical_fixture_text(&text);
+                map.insert(canon, path);
             }
         }
         map
@@ -1887,10 +1887,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     search_from = abs + needle.len();
                     continue;
                 }
-                if let Some(it) = it_positions.get(next_it_idx) {
-                    if it.pos < abs {
-                        test_name = Some(it.name.clone());
-                    }
+                if let Some(it) = it_positions.get(next_it_idx)
+                    && it.pos < abs
+                {
+                    test_name = Some(it.name.clone());
                 }
 
                 // Find the opening paren and extract the first template literal after it.
@@ -2452,10 +2452,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             if body.trim().is_empty() {
                 continue;
             }
-            if let Some(min) = min_lines {
-                if body.lines().count() < min {
-                    continue;
-                }
+            if let Some(min) = min_lines
+                && body.lines().count() < min
+            {
+                continue;
             }
 
             if let Some(f) = filter.as_deref() {
@@ -2613,15 +2613,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         fixture_text: &str,
     ) -> Option<&'static str> {
         match diagram_dir {
-            "flowchart" => {
-                if fixture_text.contains("$$") {
-                    return Some("flowchart math (deferred)");
-                }
+            "flowchart" if fixture_text.contains("$$") => {
+                return Some("flowchart math (deferred)");
             }
-            "sequence" => {
-                if fixture_text.contains("$$") {
-                    return Some("sequence math (deferred)");
-                }
+            "sequence" if fixture_text.contains("$$") => {
+                return Some("sequence math (deferred)");
             }
             _ => {}
         }
@@ -2713,14 +2709,13 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     }
                 }
             }
-            "sequence" => {
+            "sequence"
                 // Our pinned upstream baseline renderer (tools/mermaid-cli) currently fails to
                 // render these "half-arrow" operators, so keep the fixture for traceability under
                 // `_deferred` without baselines.
-                if looks_like_sequence_half_arrows(fixture_text) {
+                if looks_like_sequence_half_arrows(fixture_text) => {
                     return Some("sequence half-arrows (deferred; no upstream baselines yet)");
                 }
-            }
             _ => {}
         }
         None
@@ -2818,15 +2813,14 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     return Some("flowchart icon labels (deferred)");
                 }
             }
-            "sequence" => {
+            "sequence"
                 // Mermaid's sequence diagram v2 supports "central connections" where the arrow
                 // contains circles on the actor lifelines, e.g. `Alice ()->>() Bob`.
                 // merman does not implement this rendering yet, so keep the upstream SVG for
                 // traceability but move the fixture under `_deferred` to keep `verify` green.
-                if fixture_text.contains(" ()-") || fixture_text.contains("()-") {
+                if (fixture_text.contains(" ()-") || fixture_text.contains("()-")) => {
                     return Some("sequence central connections (deferred)");
                 }
-            }
             _ => {}
         }
         None
@@ -2915,10 +2909,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             existing.insert(c.body.clone(), f.path.clone());
             created.push(f);
             imported_kept += 1;
-            if let Some(max) = limit {
-                if imported_kept >= max {
-                    break;
-                }
+            if let Some(max) = limit
+                && imported_kept >= max
+            {
+                break;
             }
             continue;
         }
@@ -3169,10 +3163,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         created.push(f);
 
         imported_kept += 1;
-        if let Some(max) = limit {
-            if imported_kept >= max {
-                break;
-            }
+        if let Some(max) = limit
+            && imported_kept >= max
+        {
+            break;
         }
     }
 

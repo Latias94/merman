@@ -609,7 +609,7 @@ fn leading_indent_len(line: &str) -> usize {
 }
 
 fn skip_ws(input: &str) -> &str {
-    input.trim_start_matches(|ch| matches!(ch, ' ' | '\t'))
+    input.trim_start_matches([' ', '\t'])
 }
 
 fn strip_keyword_ci<'a>(input: &'a str, keyword: &str) -> Option<&'a str> {
@@ -662,10 +662,11 @@ fn strip_inline_comment_aware(line: &str) -> &str {
             '"' => in_quote = !in_quote,
             '[' if !in_quote => bracket_depth += 1,
             ']' if !in_quote => bracket_depth = bracket_depth.saturating_sub(1),
-            '%' if !in_quote && bracket_depth == 0 => {
-                if iter.peek().is_some_and(|(_, next)| *next == '%') {
-                    return &line[..idx];
-                }
+            '%' if !in_quote
+                && bracket_depth == 0
+                && iter.peek().is_some_and(|(_, next)| *next == '%') =>
+            {
+                return &line[..idx];
             }
             _ => {}
         }

@@ -142,10 +142,8 @@ fn adjust_color_to_hsl_string(
 ) -> Option<String> {
     let base = if let Some(rgb) = parse_hex_rgb01(color) {
         rgb01_to_hsl(rgb)
-    } else if let Some(hsl) = parse_hsl(color) {
-        hsl
     } else {
-        return None;
+        parse_hsl(color)?
     };
     Some(fmt_hsl(adjust_hsl(base, h_delta, s_delta, l_delta)))
 }

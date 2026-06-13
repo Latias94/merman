@@ -393,21 +393,21 @@ fn bucket_class_namespace_edges<'a>(
             .get(edge.to.as_str())
             .copied()
             .flatten();
-        if from_root.is_none() || to_root.is_none() {
-            if let Some(rel) = edge_ctx.relations_by_id.get(edge.id.as_str()).copied() {
-                from_root = from_root.or_else(|| {
-                    plan.root_by_node_id
-                        .get(rel.id1.as_str())
-                        .copied()
-                        .flatten()
-                });
-                to_root = to_root.or_else(|| {
-                    plan.root_by_node_id
-                        .get(rel.id2.as_str())
-                        .copied()
-                        .flatten()
-                });
-            }
+        if (from_root.is_none() || to_root.is_none())
+            && let Some(rel) = edge_ctx.relations_by_id.get(edge.id.as_str()).copied()
+        {
+            from_root = from_root.or_else(|| {
+                plan.root_by_node_id
+                    .get(rel.id1.as_str())
+                    .copied()
+                    .flatten()
+            });
+            to_root = to_root.or_else(|| {
+                plan.root_by_node_id
+                    .get(rel.id2.as_str())
+                    .copied()
+                    .flatten()
+            });
         }
 
         match (from_root, to_root) {
@@ -424,6 +424,7 @@ fn bucket_class_namespace_edges<'a>(
     (outer_edges, edges_by_root)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_class_split_edges_for_namespace(
     out: &mut String,
     content_bounds: &mut Option<Bounds>,

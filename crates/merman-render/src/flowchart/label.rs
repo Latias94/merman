@@ -271,27 +271,27 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     if bytes[i] == b'<' {
                         let rest = &html[i..];
                         let rest_lower = rest.to_ascii_lowercase();
-                        if rest_lower.starts_with("<img") {
-                            if let Some(rel_end) = rest.find('>') {
-                                if !text_buf.trim().is_empty() {
-                                    blocks.push(Block::Text(std::mem::take(&mut text_buf)));
-                                } else {
-                                    text_buf.clear();
-                                }
-                                let tag = &rest[..=rel_end];
-                                blocks.push(Block::Img {
-                                    has_src: has_img_src(tag),
-                                });
-                                i += rel_end + 1;
-                                continue;
+                        if rest_lower.starts_with("<img")
+                            && let Some(rel_end) = rest.find('>')
+                        {
+                            if !text_buf.trim().is_empty() {
+                                blocks.push(Block::Text(std::mem::take(&mut text_buf)));
+                            } else {
+                                text_buf.clear();
                             }
+                            let tag = &rest[..=rel_end];
+                            blocks.push(Block::Img {
+                                has_src: has_img_src(tag),
+                            });
+                            i += rel_end + 1;
+                            continue;
                         }
-                        if rest_lower.starts_with("<br") {
-                            if let Some(rel_end) = rest.find('>') {
-                                text_buf.push('\n');
-                                i += rel_end + 1;
-                                continue;
-                            }
+                        if rest_lower.starts_with("<br")
+                            && let Some(rel_end) = rest.find('>')
+                        {
+                            text_buf.push('\n');
+                            i += rel_end + 1;
+                            continue;
                         }
                         if let Some(rel_end) = rest.find('>') {
                             i += rel_end + 1;

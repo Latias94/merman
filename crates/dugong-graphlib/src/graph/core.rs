@@ -10,6 +10,8 @@ use super::options::GraphOptions;
 
 type HashMap<K, V> = hashbrown::HashMap<K, V, FxBuildHasher>;
 type HashSet<T> = hashbrown::HashSet<T, FxBuildHasher>;
+type DefaultNodeLabel<N> = Box<dyn Fn(&str) -> N + Send + Sync>;
+type DefaultEdgeLabel<E> = Box<dyn Fn(&str, &str, Option<&str>) -> E + Send + Sync>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphError {
@@ -37,8 +39,8 @@ where
     options: GraphOptions,
 
     graph_label: G,
-    default_node_label: Box<dyn Fn(&str) -> N + Send + Sync>,
-    default_edge_label: Box<dyn Fn(&str, &str, Option<&str>) -> E + Send + Sync>,
+    default_node_label: DefaultNodeLabel<N>,
+    default_edge_label: DefaultEdgeLabel<E>,
 
     nodes: Vec<Option<NodeEntry<N>>>,
     node_len: usize,
@@ -207,10 +209,10 @@ where
                 if let Some(slot) = self.parent_ix.get_mut(new_child) {
                     *slot = Some(new_parent);
                 }
-                if let Some(ch) = self.children_ix.get_mut(new_parent) {
-                    if !ch.contains(&new_child) {
-                        ch.push(new_child);
-                    }
+                if let Some(ch) = self.children_ix.get_mut(new_parent)
+                    && !ch.contains(&new_child)
+                {
+                    ch.push(new_child);
                 }
             }
         }
@@ -852,10 +854,10 @@ where
         self.ensure_node(w.clone());
 
         if let Some(&idx) = self.edge_index.get(&key) {
-            if let Some(label) = label {
-                if let Some(edge) = self.edges.get_mut(idx).and_then(|e| e.as_mut()) {
-                    edge.label = label;
-                }
+            if let Some(label) = label
+                && let Some(edge) = self.edges.get_mut(idx).and_then(|e| e.as_mut())
+            {
+                edge.label = label;
             }
             return self;
         }
@@ -985,11 +987,11 @@ where
         };
 
         self.invalidate_adj();
-        if let Some(slot) = self.nodes.get_mut(idx) {
-            if slot.is_some() {
-                *slot = None;
-                self.node_len = self.node_len.saturating_sub(1);
-            }
+        if let Some(slot) = self.nodes.get_mut(idx)
+            && slot.is_some()
+        {
+            *slot = None;
+            self.node_len = self.node_len.saturating_sub(1);
         }
 
         // Remove incident edges.
@@ -1007,19 +1009,19 @@ where
 
         if self.options.compound {
             // Remove parent link.
-            if let Some(prev_parent_ix) = self.parent_ix.get_mut(idx).and_then(|p| p.take()) {
-                if let Some(ch) = self.children_ix.get_mut(prev_parent_ix) {
-                    ch.retain(|&c| c != idx);
-                }
+            if let Some(prev_parent_ix) = self.parent_ix.get_mut(idx).and_then(|p| p.take())
+                && let Some(ch) = self.children_ix.get_mut(prev_parent_ix)
+            {
+                ch.retain(|&c| c != idx);
             }
 
             // Remove children links.
             if let Some(ch) = self.children_ix.get_mut(idx) {
                 for &child_ix in ch.iter() {
-                    if let Some(slot) = self.parent_ix.get_mut(child_ix) {
-                        if *slot == Some(idx) {
-                            *slot = None;
-                        }
+                    if let Some(slot) = self.parent_ix.get_mut(child_ix)
+                        && *slot == Some(idx)
+                    {
+                        *slot = None;
                     }
                 }
                 ch.clear();
@@ -1513,19 +1515,19 @@ where
             return self;
         }
 
-        if let Some(prev_parent_ix) = prev {
-            if let Some(ch) = self.children_ix.get_mut(prev_parent_ix) {
-                ch.retain(|&c| c != child_ix);
-            }
+        if let Some(prev_parent_ix) = prev
+            && let Some(ch) = self.children_ix.get_mut(prev_parent_ix)
+        {
+            ch.retain(|&c| c != child_ix);
         }
 
         if let Some(slot) = self.parent_ix.get_mut(child_ix) {
             *slot = Some(parent_ix);
         }
-        if let Some(ch) = self.children_ix.get_mut(parent_ix) {
-            if !ch.contains(&child_ix) {
-                ch.push(child_ix);
-            }
+        if let Some(ch) = self.children_ix.get_mut(parent_ix)
+            && !ch.contains(&child_ix)
+        {
+            ch.push(child_ix);
         }
         self
     }

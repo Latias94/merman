@@ -364,18 +364,16 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             if n.is_element() {
                 match n.tag_name().name() {
                     "br" => raw.push('\n'),
-                    "p" => {
-                        if !raw.is_empty() && !raw.ends_with('\n') {
-                            raw.push('\n');
-                        }
+                    "p" if !raw.is_empty() && !raw.ends_with('\n') => {
+                        raw.push('\n');
                     }
                     _ => {}
                 }
             }
-            if n.is_text() {
-                if let Some(t) = n.text() {
-                    raw.push_str(t);
-                }
+            if n.is_text()
+                && let Some(t) = n.text()
+            {
+                raw.push_str(t);
             }
         }
 
@@ -802,7 +800,7 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                 font_size_px,
                 &strings,
             )?;
-            for (&i, w) in idxs.iter().zip(widths_px.into_iter()) {
+            for (&i, w) in idxs.iter().zip(widths_px) {
                 svg_samples[i].width_px = w;
             }
         }
@@ -1095,7 +1093,7 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             for (idx, ch) in unknown_chars.iter().enumerate() {
                 entries.push((*ch, sol[idx]));
             }
-            entries.sort_by(|a, b| (a.0 as u32).cmp(&(b.0 as u32)));
+            entries.sort_by_key(|a| a.0 as u32);
 
             let avg_em = if entries.is_empty() {
                 0.6
@@ -1550,7 +1548,7 @@ const strings = input.strings;
                 &char_strings,
             )?;
             let mut measured: BTreeMap<char, f64> = BTreeMap::new();
-            for (ch, w_px) in chars.iter().copied().zip(widths_px.into_iter()) {
+            for (ch, w_px) in chars.iter().copied().zip(widths_px) {
                 let em = w_px / base_font_size_px.max(1.0);
                 if em.is_finite() && em >= 0.0 {
                     measured.insert(ch, em);
@@ -1559,7 +1557,7 @@ const strings = input.strings;
 
             let char_em: BTreeMap<char, f64> = measured.clone();
             let mut entries = measured.into_iter().collect::<Vec<_>>();
-            entries.sort_by(|a, b| (a.0 as u32).cmp(&(b.0 as u32)));
+            entries.sort_by_key(|a| a.0 as u32);
 
             let mut for_default = entries
                 .iter()
@@ -1588,7 +1586,7 @@ const strings = input.strings;
                     base_font_size_px,
                     &pair_strings,
                 )?;
-                for ((a, b), w_px) in pairs.into_iter().zip(widths_px.into_iter()) {
+                for ((a, b), w_px) in pairs.into_iter().zip(widths_px) {
                     let a_em = char_em.get(&a).copied().unwrap_or(default_em);
                     let b_em = char_em.get(&b).copied().unwrap_or(default_em);
                     let pair_em = w_px / base_font_size_px.max(1.0);
@@ -1644,7 +1642,7 @@ const strings = input.strings;
                         &trigram_strings,
                     )?;
                     let space_em = char_em.get(&' ').copied().unwrap_or(default_em);
-                    for ((a, b), w_px) in trigrams.into_iter().zip(widths_px.into_iter()) {
+                    for ((a, b), w_px) in trigrams.into_iter().zip(widths_px) {
                         let a_em = char_em.get(&a).copied().unwrap_or(default_em);
                         let b_em = char_em.get(&b).copied().unwrap_or(default_em);
                         let trigram_em = w_px / base_font_size_px.max(1.0);
@@ -1709,7 +1707,7 @@ const strings = input.strings;
                         kern_map.insert((*a, *b), *adj);
                     }
 
-                    for ((a, b, c), w_px) in trigrams_keys.into_iter().zip(widths_px.into_iter()) {
+                    for ((a, b, c), w_px) in trigrams_keys.into_iter().zip(widths_px) {
                         let a_em = char_em.get(&a).copied().unwrap_or(default_em);
                         let b_em = char_em.get(&b).copied().unwrap_or(default_em);
                         let c_em = char_em.get(&c).copied().unwrap_or(default_em);
@@ -1864,10 +1862,10 @@ const strings = input.strings;
             if let Some(p) = prev {
                 em += lookup_kern_em(kern_pairs, p, ch);
             }
-            if ch == ' ' {
-                if let (Some(a), Some(&b)) = (prev, it.peek()) {
-                    em += lookup_space_trigram_em(space_trigrams, a, b);
-                }
+            if ch == ' '
+                && let (Some(a), Some(&b)) = (prev, it.peek())
+            {
+                em += lookup_space_trigram_em(space_trigrams, a, b);
             }
             prev = Some(ch);
         }
@@ -1952,7 +1950,7 @@ const strings = input.strings;
             let mut right_all: Vec<f64> = Vec::new();
             let mut left_by_char: BTreeMap<char, f64> = BTreeMap::new();
             let mut right_by_char: BTreeMap<char, f64> = BTreeMap::new();
-            for (ch, m) in chars.iter().copied().zip(metrics.into_iter()) {
+            for (ch, m) in chars.iter().copied().zip(metrics) {
                 let adv_px = m.adv_px;
                 let bbox_x = m.bbox_x;
                 let bbox_w = m.bbox_w;
@@ -2032,7 +2030,7 @@ const strings = input.strings;
                 )?;
                 let denom = font_size_px.max(1.0);
 
-                for (text, m) in strings.into_iter().zip(metrics.into_iter()) {
+                for (text, m) in strings.into_iter().zip(metrics) {
                     let bbox_x = m.bbox_x;
                     let bbox_w = m.bbox_w;
                     if !(bbox_x.is_finite() && bbox_w.is_finite()) {

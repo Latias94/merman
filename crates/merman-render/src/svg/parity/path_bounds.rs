@@ -396,10 +396,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                 last_quad_ctrl = None;
                 prev_cmd = ucmd;
 
-                loop {
-                    let Some((mut nx, mut ny)) = try_parse_pair(d, bytes, &mut i) else {
-                        break;
-                    };
+                while let Some((mut nx, mut ny)) = try_parse_pair(d, bytes, &mut i) {
                     if is_rel {
                         nx += cx;
                         ny += cy;
@@ -434,10 +431,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                 last_quad_ctrl = None;
                 prev_cmd = ucmd;
 
-                loop {
-                    let Some((mut nx, mut ny)) = try_parse_pair(d, bytes, &mut i) else {
-                        break;
-                    };
+                while let Some((mut nx, mut ny)) = try_parse_pair(d, bytes, &mut i) {
                     if is_rel {
                         nx += cx;
                         ny += cy;
@@ -459,10 +453,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                 last_quad_ctrl = None;
                 prev_cmd = ucmd;
 
-                loop {
-                    let Some(mut nx) = try_parse_number(d, bytes, &mut i) else {
-                        break;
-                    };
+                while let Some(mut nx) = try_parse_number(d, bytes, &mut i) {
                     if is_rel {
                         nx += cx;
                     }
@@ -482,10 +473,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                 last_quad_ctrl = None;
                 prev_cmd = ucmd;
 
-                loop {
-                    let Some(mut ny) = try_parse_number(d, bytes, &mut i) else {
-                        break;
-                    };
+                while let Some(mut ny) = try_parse_number(d, bytes, &mut i) {
                     if is_rel {
                         ny += cy;
                     }

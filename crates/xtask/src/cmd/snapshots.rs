@@ -121,10 +121,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
 
             fn walk(re: &Regex, v: &mut JsonValue) {
                 match v {
-                    JsonValue::String(s) => {
-                        if re.is_match(s) {
-                            *s = re.replace_all(s, "$1-<dynamic>").to_string();
-                        }
+                    JsonValue::String(s) if re.is_match(s) => {
+                        *s = re.replace_all(s, "$1-<dynamic>").to_string();
                     }
                     JsonValue::Array(arr) => {
                         for item in arr {
@@ -150,10 +148,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
 
             fn walk(re: &Regex, v: &mut JsonValue) {
                 match v {
-                    JsonValue::String(s) => {
-                        if re.is_match(s) {
-                            *s = re.replace_all(s, "id-<id>-$1").to_string();
-                        }
+                    JsonValue::String(s) if re.is_match(s) => {
+                        *s = re.replace_all(s, "id-<id>-$1").to_string();
                     }
                     JsonValue::Array(arr) => {
                         for item in arr {
@@ -282,11 +278,11 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             };
 
             let out_path = mmd_path.with_extension("layout.golden.json");
-            if let Some(parent) = out_path.parent() {
-                if let Err(err) = fs::create_dir_all(parent) {
-                    failures.push(format!("failed to create dir {}: {err}", parent.display()));
-                    continue;
-                }
+            if let Some(parent) = out_path.parent()
+                && let Err(err) = fs::create_dir_all(parent)
+            {
+                failures.push(format!("failed to create dir {}: {err}", parent.display()));
+                continue;
             }
             if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
                 failures.push(format!("failed to write {}: {err}", out_path.display()));
@@ -355,15 +351,15 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn strip_reference_suffix(s: &str) -> &str {
         // Normalize "path:line" and "path#Lline" forms to just "path" for existence checks.
-        if let Some((left, right)) = s.rsplit_once(':') {
-            if right.chars().all(|c| c.is_ascii_digit()) {
-                return left;
-            }
+        if let Some((left, right)) = s.rsplit_once(':')
+            && right.chars().all(|c| c.is_ascii_digit())
+        {
+            return left;
         }
-        if let Some((left, right)) = s.rsplit_once("#L") {
-            if right.chars().all(|c| c.is_ascii_digit()) {
-                return left;
-            }
+        if let Some((left, right)) = s.rsplit_once("#L")
+            && right.chars().all(|c| c.is_ascii_digit())
+        {
+            return left;
         }
         s
     }
@@ -706,10 +702,8 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn walk_replace(re: &Regex, replacement: &str, v: &mut JsonValue) {
         match v {
-            JsonValue::String(s) => {
-                if re.is_match(s) {
-                    *s = re.replace_all(s, replacement).to_string();
-                }
+            JsonValue::String(s) if re.is_match(s) => {
+                *s = re.replace_all(s, replacement).to_string();
             }
             JsonValue::Array(arr) => {
                 for item in arr {
@@ -776,25 +770,25 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
                     .and_then(JsonValue::as_str)
                     .unwrap_or("")
                     .trim();
-                if !matches!(date_format, "x" | "X") {
-                    if let Some(tasks) = obj.get_mut("tasks").and_then(JsonValue::as_array_mut) {
-                        for task in tasks {
-                            let JsonValue::Object(task_obj) = task else {
+                if !matches!(date_format, "x" | "X")
+                    && let Some(tasks) = obj.get_mut("tasks").and_then(JsonValue::as_array_mut)
+                {
+                    for task in tasks {
+                        let JsonValue::Object(task_obj) = task else {
+                            continue;
+                        };
+                        for key in ["startTime", "endTime", "renderEndTime"] {
+                            let Some(v) = task_obj.get_mut(key) else {
                                 continue;
                             };
-                            for key in ["startTime", "endTime", "renderEndTime"] {
-                                let Some(v) = task_obj.get_mut(key) else {
-                                    continue;
-                                };
-                                let Some(ms) = v
-                                    .as_i64()
-                                    .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
-                                else {
-                                    continue;
-                                };
-                                if let Some(s) = ms_to_local_iso(ms) {
-                                    *v = JsonValue::String(s);
-                                }
+                            let Some(ms) = v
+                                .as_i64()
+                                .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
+                            else {
+                                continue;
+                            };
+                            if let Some(s) = ms_to_local_iso(ms) {
+                                *v = JsonValue::String(s);
                             }
                         }
                     }
@@ -827,11 +821,11 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         };
 
         let out_path = mmd_path.with_extension("golden.json");
-        if let Some(parent) = out_path.parent() {
-            if let Err(err) = fs::create_dir_all(parent) {
-                failures.push(format!("failed to create dir {}: {err}", parent.display()));
-                continue;
-            }
+        if let Some(parent) = out_path.parent()
+            && let Err(err) = fs::create_dir_all(parent)
+        {
+            failures.push(format!("failed to create dir {}: {err}", parent.display()));
+            continue;
         }
         if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
             failures.push(format!("failed to write {}: {err}", out_path.display()));

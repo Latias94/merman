@@ -208,10 +208,10 @@ pub(crate) fn render_treemap_diagram_svg(
         // jsdom serialization tends to normalize hex colors to `rgb(r, g, b)` when the style
         // attribute has been mutated (e.g. via `.style(...)` in upstream Mermaid).
         let c = color.trim();
-        if c.starts_with('#') {
-            if let Some((r, g, b)) = parse_css_rgb(c) {
-                return format!("rgb({r}, {g}, {b})");
-            }
+        if c.starts_with('#')
+            && let Some((r, g, b)) = parse_css_rgb(c)
+        {
+            return format!("rgb({r}, {g}, {b})");
         }
         c.to_string()
     }

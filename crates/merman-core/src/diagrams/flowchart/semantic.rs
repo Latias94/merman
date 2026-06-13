@@ -77,10 +77,10 @@ impl<'a> FlowchartSemanticContext<'a> {
                                 }
                             }
                             ClickAction::Callback => {
-                                if self.security_level_loose {
-                                    if let Some(&idx) = self.node_index.get(id) {
-                                        self.nodes[idx].have_callback = true;
-                                    }
+                                if self.security_level_loose
+                                    && let Some(&idx) = self.node_index.get(id)
+                                {
+                                    self.nodes[idx].have_callback = true;
                                 }
                             }
                         }

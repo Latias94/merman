@@ -353,14 +353,13 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             if !has_extension(&p, "svg") {
                 continue;
             }
-            if let Some(ref f) = filter {
-                if !p
+            if let Some(ref f) = filter
+                && !p
                     .file_name()
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.contains(f))
-                {
-                    continue;
-                }
+            {
+                continue;
             }
             upstream_svgs.push(p);
         }
@@ -450,12 +449,11 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             if matches!(diagram.as_str(), "flowchart" | "sequence") {
                 svg_opts.math_renderer = node_math_renderer.clone();
             }
-            if diagram == "gantt" {
-                if let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
-                {
-                    svg_opts.now_ms_override =
-                        gantt_derive_now_ms_from_upstream_today(&upstream_svg, layout);
-                }
+            if diagram == "gantt"
+                && let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
+            {
+                svg_opts.now_ms_override =
+                    gantt_derive_now_ms_from_upstream_today(&upstream_svg, layout);
             }
             let local_svg = match merman_render::svg::render_layouted_svg(
                 &layouted,

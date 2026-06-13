@@ -129,10 +129,10 @@ impl<'a> PresentationTheme<'a> {
         set(&mut theme.quadrant3_text_fill, "quadrant3TextFill");
         set(&mut theme.quadrant4_text_fill, "quadrant4TextFill");
 
-        if let Some(v) = self.raw.optional_color("quadrantPointFill") {
-            if !is_invalid_css_token(&v) {
-                theme.quadrant_point_fill = v;
-            }
+        if let Some(v) = self.raw.optional_color("quadrantPointFill")
+            && !is_invalid_css_token(&v)
+        {
+            theme.quadrant_point_fill = v;
         }
         set(&mut theme.quadrant_point_text_fill, "quadrantPointTextFill");
         set(
@@ -492,7 +492,14 @@ impl<'a> PresentationTheme<'a> {
         let theme_color_limit = self
             .raw
             .optional_f64("THEME_COLOR_LIMIT")
-            .map(|value| value.max(1.0).min(64.0) as usize)
+            .map(|value| {
+                let value = if value.is_nan() {
+                    1.0
+                } else {
+                    value.clamp(1.0, 64.0)
+                };
+                value as usize
+            })
             .unwrap_or(12);
         let label_text_color = self.raw.color("labelTextColor", "black");
         let label_text_is_calculated = label_text_color.trim() == "calculated";

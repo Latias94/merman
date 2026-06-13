@@ -281,12 +281,10 @@ fn split_axis_text(s: &str) -> Option<(String, Option<String>)> {
             i += 1;
             continue;
         }
-        if !in_quotes {
-            if let Some((start, end)) = is_axis_delim_at(s, i) {
-                let left = s[..start].trim().to_string();
-                let right = s[end..].trim().to_string();
-                return Some((left, if right.is_empty() { None } else { Some(right) }));
-            }
+        if !in_quotes && let Some((start, end)) = is_axis_delim_at(s, i) {
+            let left = s[..start].trim().to_string();
+            let right = s[end..].trim().to_string();
+            return Some((left, if right.is_empty() { None } else { Some(right) }));
         }
         i += ch.len_utf8();
     }
@@ -326,13 +324,14 @@ fn parse_unit_interval_token(raw: &str) -> Result<f64> {
     if s == "0" {
         return Ok(0.0);
     }
-    if let Some(rest) = s.strip_prefix("0.") {
-        if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
-            return s.parse::<f64>().map_err(|e| Error::DiagramParse {
-                diagram_type: "quadrantChart".to_string(),
-                message: e.to_string(),
-            });
-        }
+    if let Some(rest) = s.strip_prefix("0.")
+        && !rest.is_empty()
+        && rest.chars().all(|c| c.is_ascii_digit())
+    {
+        return s.parse::<f64>().map_err(|e| Error::DiagramParse {
+            diagram_type: "quadrantChart".to_string(),
+            message: e.to_string(),
+        });
     }
     Err(Error::DiagramParse {
         diagram_type: "quadrantChart".to_string(),

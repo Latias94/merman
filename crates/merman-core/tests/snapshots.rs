@@ -151,10 +151,8 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
 
         fn walk(re: &Regex, v: &mut Value) {
             match v {
-                Value::String(s) => {
-                    if re.is_match(s) {
-                        *s = re.replace_all(s, "$1-<dynamic>").to_string();
-                    }
+                Value::String(s) if re.is_match(s) => {
+                    *s = re.replace_all(s, "$1-<dynamic>").to_string();
                 }
                 Value::Array(arr) => {
                     for item in arr {
@@ -180,10 +178,8 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
 
         fn walk(re: &Regex, v: &mut Value) {
             match v {
-                Value::String(s) => {
-                    if re.is_match(s) {
-                        *s = re.replace_all(s, "id-<id>-$1").to_string();
-                    }
+                Value::String(s) if re.is_match(s) => {
+                    *s = re.replace_all(s, "id-<id>-$1").to_string();
                 }
                 Value::Array(arr) => {
                     for item in arr {

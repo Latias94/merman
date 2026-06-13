@@ -1412,6 +1412,7 @@ fn render_architecture_delta_batch_markdown(summaries: &[ArchitectureDeltaRunSum
     md
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_architecture_probe_join_markdown(
     report: &mut String,
     probe_json_path: &Path,
@@ -2168,6 +2169,7 @@ fn render_architecture_probe_join_markdown(
     let _ = writeln!(report);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_architecture_render_path_join_markdown(
     report: &mut String,
     render_probe_json_path: &Path,
@@ -2299,27 +2301,27 @@ fn render_architecture_render_path_join_markdown(
                 model_bounds_to_debug_rect(&compound.bounds),
             );
         }
-        if stage.tag == "relocateComponent.before-shift" {
-            if let Some(relocate) = stage.relocate.as_ref() {
-                local_relocates.insert(
-                    stage.run_index,
-                    (
-                        stage.bbox.as_ref().map(model_bounds_to_debug_rect),
-                        DebugPt {
-                            x: relocate.original_center.x,
-                            y: relocate.original_center.y,
-                        },
-                        DebugPt {
-                            x: relocate.rect_center.x,
-                            y: relocate.rect_center.y,
-                        },
-                        DebugPt {
-                            x: relocate.delta.x,
-                            y: relocate.delta.y,
-                        },
-                    ),
-                );
-            }
+        if stage.tag == "relocateComponent.before-shift"
+            && let Some(relocate) = stage.relocate.as_ref()
+        {
+            local_relocates.insert(
+                stage.run_index,
+                (
+                    stage.bbox.as_ref().map(model_bounds_to_debug_rect),
+                    DebugPt {
+                        x: relocate.original_center.x,
+                        y: relocate.original_center.y,
+                    },
+                    DebugPt {
+                        x: relocate.rect_center.x,
+                        y: relocate.rect_center.y,
+                    },
+                    DebugPt {
+                        x: relocate.delta.x,
+                        y: relocate.delta.y,
+                    },
+                ),
+            );
         }
     }
 
@@ -3401,13 +3403,12 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             if tag == "g"
                 && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-service"))
-            {
-                if let (Some(id), Some((x, y))) = (
+                && let (Some(id), Some((x, y))) = (
                     id.and_then(|id| normalize_arch_svg_id_with_marker(id, "service-")),
                     n.attribute("transform").and_then(parse_translate),
-                ) {
-                    services.insert(id, DebugPt { x, y });
-                }
+                )
+            {
+                services.insert(id, DebugPt { x, y });
             }
 
             if tag == "g"
@@ -3580,7 +3581,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         let (lo_vb, lo_mw, lo_services, lo_junctions, lo_groups) =
             extract_arch_positions(&local_svg)?;
         let probe_json: Option<(PathBuf, serde_json::Value)> = if let Some(probe_dir) = &probe_dir {
-            let probe_path = architecture_fcose_probe_json_path(&probe_dir, &stem);
+            let probe_path = architecture_fcose_probe_json_path(probe_dir, &stem);
             let probe_text =
                 fs::read_to_string(&probe_path).map_err(|source| XtaskError::ReadFile {
                     path: probe_path.display().to_string(),
@@ -3593,7 +3594,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         };
         let render_probe_json: Option<(PathBuf, serde_json::Value)> =
             if let Some(render_probe_dir) = &render_probe_dir {
-                let probe_path = architecture_render_path_probe_json_path(&render_probe_dir, &stem);
+                let probe_path = architecture_render_path_probe_json_path(render_probe_dir, &stem);
                 let probe_text =
                     fs::read_to_string(&probe_path).map_err(|source| XtaskError::ReadFile {
                         path: probe_path.display().to_string(),
@@ -4193,13 +4194,12 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             if tag == "g"
                 && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-service"))
-            {
-                if let (Some(id), Some((x, y))) = (
+                && let (Some(id), Some((x, y))) = (
                     id.and_then(|id| normalize_arch_svg_id_with_marker(id, "service-")),
                     n.attribute("transform").and_then(parse_translate),
-                ) {
-                    services.insert(id, Pt { x, y });
-                }
+                )
+            {
+                services.insert(id, Pt { x, y });
             }
 
             if tag == "g"
@@ -4309,7 +4309,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             let dw = lo_rect.w - up_rect.w;
             let dh = lo_rect.h - up_rect.h;
             let score = dx.abs().max(dy.abs()).max(dw.abs()).max(dh.abs());
-            if best.map_or(true, |(_, _, _, _, best_score)| score > best_score) {
+            if best.is_none_or(|(_, _, _, _, best_score)| score > best_score) {
                 best = Some((dx, dy, dw, dh, score));
             }
         }

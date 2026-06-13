@@ -280,11 +280,11 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "mmd") {
-                if let Ok(text) = fs::read_to_string(&path) {
-                    let canon = canonical_fixture_text(&text);
-                    map.insert(canon, path);
-                }
+            if path.extension().is_some_and(|e| e == "mmd")
+                && let Ok(text) = fs::read_to_string(&path)
+            {
+                let canon = canonical_fixture_text(&text);
+                map.insert(canon, path);
             }
         }
         map
@@ -539,14 +539,14 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         let mut out: Vec<String> = Vec::new();
         let mut i = 0usize;
         while i < bytes.len() {
-            if bytes[i] == b'`' {
-                if let Some((content, end)) = scan_template_literal(text, i) {
-                    if let Some(content) = content {
-                        out.push(content);
-                    }
-                    i = end;
-                    continue;
+            if bytes[i] == b'`'
+                && let Some((content, end)) = scan_template_literal(text, i)
+            {
+                if let Some(content) = content {
+                    out.push(content);
                 }
+                i = end;
+                continue;
             }
             i += 1;
         }
@@ -722,19 +722,19 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                             continue;
                         }
                     }
-                    if b == b'\'' {
-                        if let Some((content, end)) = scan_string_literal(text, i, b'\'') {
-                            out.push(content);
-                            i = end;
-                            continue;
-                        }
+                    if b == b'\''
+                        && let Some((content, end)) = scan_string_literal(text, i, b'\'')
+                    {
+                        out.push(content);
+                        i = end;
+                        continue;
                     }
-                    if b == b'"' {
-                        if let Some((content, end)) = scan_string_literal(text, i, b'"') {
-                            out.push(content);
-                            i = end;
-                            continue;
-                        }
+                    if b == b'"'
+                        && let Some((content, end)) = scan_string_literal(text, i, b'"')
+                    {
+                        out.push(content);
+                        i = end;
+                        continue;
                     }
                     i += 1;
                 }
@@ -784,11 +784,11 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
     for spec_path in spec_files {
         let hay = spec_path.to_string_lossy();
-        if let Some(f) = filter.as_deref() {
-            if !hay.contains(f) {
-                // Still allow matching by diagram heading later; template strings have no heading here.
-                continue;
-            }
+        if let Some(f) = filter.as_deref()
+            && !hay.contains(f)
+        {
+            // Still allow matching by diagram heading later; template strings have no heading here.
+            continue;
         }
 
         let text = match fs::read_to_string(&spec_path) {
@@ -819,10 +819,10 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             if body.trim().is_empty() {
                 continue;
             }
-            if let Some(min) = min_lines {
-                if body.lines().count() < min {
-                    continue;
-                }
+            if let Some(min) = min_lines
+                && body.lines().count() < min
+            {
+                continue;
             }
 
             let mut cfg = merman::MermaidConfig::default();
@@ -941,10 +941,10 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         });
 
         imported += 1;
-        if let Some(max) = limit {
-            if imported >= max {
-                break;
-            }
+        if let Some(max) = limit
+            && imported >= max
+        {
+            break;
         }
     }
 

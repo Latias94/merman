@@ -158,9 +158,7 @@ fn tree_view_input_to_render_model(
         children: Vec::new(),
     }];
     let mut stack = vec![0usize];
-    let mut next_id = 1i64;
-
-    for flat in parsed.nodes {
+    for (next_id, flat) in (1i64..).zip(parsed.nodes) {
         while stack
             .last()
             .and_then(|&idx| arena.get(idx))
@@ -177,7 +175,6 @@ fn tree_view_input_to_render_model(
             name: flat.name,
             children: Vec::new(),
         });
-        next_id += 1;
         arena[parent].children.push(idx);
         stack.push(idx);
         if stack.len().saturating_sub(1) > MAX_DIAGRAM_NESTING_DEPTH {
@@ -354,10 +351,11 @@ fn strip_inline_comment_aware(line: &str) -> &str {
         match ch {
             '\'' if !in_double => in_single = !in_single,
             '"' if !in_single => in_double = !in_double,
-            '%' if !in_single && !in_double => {
-                if iter.peek().is_some_and(|(_, next)| *next == '%') {
-                    return &line[..idx];
-                }
+            '%' if !in_single
+                && !in_double
+                && iter.peek().is_some_and(|(_, next)| *next == '%') =>
+            {
+                return &line[..idx];
             }
             _ => {}
         }

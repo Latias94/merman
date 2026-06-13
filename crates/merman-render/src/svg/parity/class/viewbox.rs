@@ -62,10 +62,12 @@ pub(super) fn class_viewbox_attrs<'a>(ctx: ClassViewBoxContext<'a>) -> ClassView
         && !ctx.has_acc_descr
     {
         let mut matches_singleton = false;
-        if let Some((_id, cls)) = ctx.model.classes.iter().next() {
-            if cls.annotations.is_empty() && cls.members.is_empty() && cls.methods.is_empty() {
-                matches_singleton = true;
-            }
+        if let Some((_id, cls)) = ctx.model.classes.iter().next()
+            && cls.annotations.is_empty()
+            && cls.members.is_empty()
+            && cls.methods.is_empty()
+        {
+            matches_singleton = true;
         }
         if matches_singleton && (vb_w - 86.203125).abs() <= 1e-9 && (vb_h - 100.0).abs() <= 1e-9 {
             vb_w -= 0.015625;

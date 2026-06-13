@@ -704,23 +704,23 @@ fn layout_inside_boundary(
             frame.current_bounds.set_data(x, x, y0, y0);
         }
 
-        if let Some(shape_indices) = ctx.shape_children.get(&boundary.alias) {
-            if !shape_indices.is_empty() {
-                layout_c4_shape_array(&mut frame.current_bounds, shape_indices, ctx, state);
-            }
+        if let Some(shape_indices) = ctx.shape_children.get(&boundary.alias)
+            && !shape_indices.is_empty()
+        {
+            layout_c4_shape_array(&mut frame.current_bounds, shape_indices, ctx, state);
         }
 
-        if let Some(next_boundaries) = ctx.boundary_children.get(&boundary.alias) {
-            if !next_boundaries.is_empty() {
-                frame.pending = Some(pending);
-                let child_parent_bounds = frame.current_bounds.clone();
-                stack.push(C4BoundaryFrame::new(
-                    next_boundaries.clone(),
-                    child_parent_bounds,
-                    ctx,
-                ));
-                continue;
-            }
+        if let Some(next_boundaries) = ctx.boundary_children.get(&boundary.alias)
+            && !next_boundaries.is_empty()
+        {
+            frame.pending = Some(pending);
+            let child_parent_bounds = frame.current_bounds.clone();
+            stack.push(C4BoundaryFrame::new(
+                next_boundaries.clone(),
+                child_parent_bounds,
+                ctx,
+            ));
+            continue;
         }
 
         finish_c4_boundary_layout(

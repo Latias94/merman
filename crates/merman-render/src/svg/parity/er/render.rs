@@ -759,7 +759,8 @@ pub(crate) fn render_er_diagram_svg_model(
         let rest = edge_id.strip_prefix("er-rel-").unwrap_or("");
         let idx_prefix = idx.to_string();
         let suffix = rest.strip_prefix(&idx_prefix).unwrap_or("");
-        let base = if rel.entity_a == rel.entity_b {
+
+        if rel.entity_a == rel.entity_b {
             match suffix {
                 "-cyclic-0" => format!("{}-cyclic-special-1", rel.entity_a),
                 "" => format!("{}-cyclic-special-mid", rel.entity_a),
@@ -768,8 +769,7 @@ pub(crate) fn render_er_diagram_svg_model(
             }
         } else {
             format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
-        };
-        base
+        }
     }
 
     if is_elk_layout {
@@ -834,7 +834,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 escape_xml(&line_classes),
                 escape_xml(&edge_dom_id),
                 escape_xml(&data_points),
-                escape_xml(&data_look)
+                escape_xml(data_look)
             );
             if let Some(m) = &e.start_marker {
                 let marker = er_unified_marker_id(diagram_id, diagram_type, m);
@@ -907,11 +907,11 @@ pub(crate) fn render_er_diagram_svg_model(
                         );
                     }
                     let d = curve_basis_path_d(&curve_points);
-                    if !is_label_coordinate_in_path(mid, &d) {
-                        if let Some((x, y)) = calc_label_position(&shifted) {
-                            cx = x;
-                            cy = y;
-                        }
+                    if !is_label_coordinate_in_path(mid, &d)
+                        && let Some((x, y)) = calc_label_position(&shifted)
+                    {
+                        cx = x;
+                        cy = y;
                     }
                 }
             }
@@ -1074,7 +1074,7 @@ pub(crate) fn render_er_diagram_svg_model(
             escape_xml(diagram_id),
             escape_xml(&entity.id),
             escape_xml(&group_class),
-            escape_xml(&data_look),
+            escape_xml(data_look),
             fmt(cx),
             fmt(cy)
         );
@@ -1666,6 +1666,7 @@ pub(crate) fn render_er_diagram_svg_model(
         // Mermaid `erBox.ts` draws the header separator twice:
         // - once as the explicit "Name line"
         // - once via the later `yOffsets` pass (which always contains `0`)
+        #[allow(clippy::too_many_arguments)]
         fn write_divider_group(
             out: &mut String,
             hand_drawn_seed: u64,

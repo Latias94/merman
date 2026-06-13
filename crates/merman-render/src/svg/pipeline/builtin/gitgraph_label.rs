@@ -109,19 +109,19 @@ fn collect_branch_label_centers(svg: &str) -> HashMap<usize, VecDeque<f64>> {
             break;
         };
         let tag = &svg[start..=end];
-        if let Some(index) = branch_label_index_from_rect_tag(tag) {
-            if let (Some(y), Some(height)) = (
+        if let Some(index) = branch_label_index_from_rect_tag(tag)
+            && let (Some(y), Some(height)) = (
                 extract_attr(tag, "y").and_then(parse_f64),
                 extract_attr(tag, "height").and_then(parse_f64),
-            ) {
-                let translate_y = extract_attr(tag, "transform")
-                    .and_then(parse_translate_y)
-                    .unwrap_or(0.0);
-                centers
-                    .entry(index)
-                    .or_insert_with(VecDeque::new)
-                    .push_back(translate_y + y + height / 2.0);
-            }
+            )
+        {
+            let translate_y = extract_attr(tag, "transform")
+                .and_then(parse_translate_y)
+                .unwrap_or(0.0);
+            centers
+                .entry(index)
+                .or_insert_with(VecDeque::new)
+                .push_back(translate_y + y + height / 2.0);
         }
         cursor = end + 1;
     }

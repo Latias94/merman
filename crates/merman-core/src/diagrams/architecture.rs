@@ -319,39 +319,33 @@ impl ArchitectureDb {
             });
         }
 
-        if edge.lhs_group == Some(true) {
-            if let (Some(lhs), Some(rhs)) =
+        if edge.lhs_group == Some(true)
+            && let (Some(lhs), Some(rhs)) =
                 (self.nodes.get(&edge.lhs_id), self.nodes.get(&edge.rhs_id))
-            {
-                if let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group) {
-                    if lhs_parent == rhs_parent {
-                        return Err(Error::DiagramParse {
-                            diagram_type: "architecture".to_string(),
-                            message: format!(
-                                "The left-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
-                                edge.lhs_id
-                            ),
-                        });
-                    }
-                }
-            }
+            && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
+            && lhs_parent == rhs_parent
+        {
+            return Err(Error::DiagramParse {
+                diagram_type: "architecture".to_string(),
+                message: format!(
+                    "The left-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
+                    edge.lhs_id
+                ),
+            });
         }
-        if edge.rhs_group == Some(true) {
-            if let (Some(lhs), Some(rhs)) =
+        if edge.rhs_group == Some(true)
+            && let (Some(lhs), Some(rhs)) =
                 (self.nodes.get(&edge.lhs_id), self.nodes.get(&edge.rhs_id))
-            {
-                if let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group) {
-                    if lhs_parent == rhs_parent {
-                        return Err(Error::DiagramParse {
-                            diagram_type: "architecture".to_string(),
-                            message: format!(
-                                "The right-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
-                                edge.rhs_id
-                            ),
-                        });
-                    }
-                }
-            }
+            && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
+            && lhs_parent == rhs_parent
+        {
+            return Err(Error::DiagramParse {
+                diagram_type: "architecture".to_string(),
+                message: format!(
+                    "The right-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
+                    edge.rhs_id
+                ),
+            });
         }
 
         let edge_idx = self.edges.len();
@@ -829,11 +823,11 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     rest = &rest[lhs_dir.len_utf8()..];
 
     rest = rest.trim_start();
-    if let Some(ch) = rest.chars().next() {
-        if ch == '<' || ch == '>' {
-            lhs_into = Some(true);
-            rest = &rest[ch.len_utf8()..];
-        }
+    if let Some(ch) = rest.chars().next()
+        && (ch == '<' || ch == '>')
+    {
+        lhs_into = Some(true);
+        rest = &rest[ch.len_utf8()..];
     }
 
     rest = rest.trim_start();
@@ -857,11 +851,11 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     }
 
     rest = rest.trim_start();
-    if let Some(ch) = rest.chars().next() {
-        if ch == '<' || ch == '>' {
-            rhs_into = Some(true);
-            rest = &rest[ch.len_utf8()..];
-        }
+    if let Some(ch) = rest.chars().next()
+        && (ch == '<' || ch == '>')
+    {
+        rhs_into = Some(true);
+        rest = &rest[ch.len_utf8()..];
     }
 
     rest = rest.trim_start();
@@ -996,10 +990,10 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
-    if meta.config.as_value().get("layout").is_none() {
-        if let Some(obj) = config.as_object_mut() {
-            obj.insert("layout".to_string(), Value::String("dagre".to_string()));
-        }
+    if meta.config.as_value().get("layout").is_none()
+        && let Some(obj) = config.as_object_mut()
+    {
+        obj.insert("layout".to_string(), Value::String("dagre".to_string()));
     }
 
     let groups = db.groups_json();

@@ -734,7 +734,7 @@ fn file_url_to_path(value: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     {
         let trimmed = decoded.strip_prefix('/').unwrap_or(&decoded);
-        return Some(PathBuf::from(trimmed));
+        Some(PathBuf::from(trimmed))
     }
     #[cfg(not(windows))]
     {

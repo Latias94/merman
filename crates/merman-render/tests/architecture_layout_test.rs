@@ -85,9 +85,11 @@ fn deep_group_chain_diagram(depth: usize) -> String {
         "architecture-beta".to_string(),
     ];
     for i in 0..depth {
-        let parent = (i > 0)
-            .then(|| format!(" in g{}", i - 1))
-            .unwrap_or_default();
+        let parent = if i > 0 {
+            format!(" in g{}", i - 1)
+        } else {
+            Default::default()
+        };
         lines.push(format!("  group g{i}(cloud)[G{i}]{parent}"));
     }
     lines.push(format!("  service leaf(server)[Leaf] in g{}", depth - 1));

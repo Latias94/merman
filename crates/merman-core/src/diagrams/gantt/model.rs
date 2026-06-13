@@ -343,10 +343,10 @@ impl GanttDb {
         match start_spec {
             StartTimeRaw::PrevTaskEnd => {
                 let prev_id = self.raw_tasks[pos].prev_task_id.clone();
-                if let Some(prev_id) = prev_id {
-                    if let Some(prev_task) = self.find_task_by_id(&prev_id) {
-                        self.raw_tasks[pos].start_time = prev_task.end_time;
-                    }
+                if let Some(prev_id) = prev_id
+                    && let Some(prev_task) = self.find_task_by_id(&prev_id)
+                {
+                    self.raw_tasks[pos].start_time = prev_task.end_time;
                 }
             }
             StartTimeRaw::GetStartDate { start_data } => {

@@ -319,15 +319,14 @@ impl StateDb {
         // Mermaid `@11.12.2` self-loops are special-cased during rendering/layout (fixed
         // `*-cyclic-special-*` ids). Multiple self-loop statements on the same node effectively
         // overwrite; keep the latest label/title.
-        if id1 == id2 {
-            if let Some(existing) = self
+        if id1 == id2
+            && let Some(existing) = self
                 .relations
                 .iter_mut()
                 .find(|r| r.id1 == id1 && r.id2 == id2)
-            {
-                existing.relation_title = relation_title;
-                return;
-            }
+        {
+            existing.relation_title = relation_title;
+            return;
         }
 
         self.relations.push(RelationEdge {
@@ -672,10 +671,10 @@ fn drop_doc_nonrecursive(doc: Vec<Stmt>) {
     let mut stack = vec![doc];
     while let Some(mut current_doc) = stack.pop() {
         while let Some(mut stmt) = current_doc.pop() {
-            if let Stmt::State(state) = &mut stmt {
-                if let Some(child_doc) = state.doc.take() {
-                    stack.push(child_doc);
-                }
+            if let Stmt::State(state) = &mut stmt
+                && let Some(child_doc) = state.doc.take()
+            {
+                stack.push(child_doc);
             }
         }
     }
@@ -720,11 +719,11 @@ fn upsert_node(nodes: &mut Vec<Value>, index: &mut HashMap<String, usize>, node:
     };
     match index.entry(id.to_string()) {
         Entry::Occupied(o) => {
-            if let Some(dst) = nodes.get_mut(*o.get()) {
-                if let (Some(dst_obj), Some(src_obj)) = (dst.as_object_mut(), node.as_object()) {
-                    for (k, v) in src_obj {
-                        dst_obj.insert(k.clone(), v.clone());
-                    }
+            if let Some(dst) = nodes.get_mut(*o.get())
+                && let (Some(dst_obj), Some(src_obj)) = (dst.as_object_mut(), node.as_object())
+            {
+                for (k, v) in src_obj {
+                    dst_obj.insert(k.clone(), v.clone());
                 }
             }
         }
@@ -919,20 +918,15 @@ fn build_layout_data_typed(
                     entry.shape = SHAPE_STATE_WITH_DESC.to_string();
                     arr.push(Value::String(descr.to_string()));
                 }
-                Value::String(s) => {
-                    if !s.is_empty() {
-                        entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                        if *s == base_label {
-                            entry.label = Value::Array(vec![Value::String(descr.to_string())]);
-                        } else {
-                            entry.label = Value::Array(vec![
-                                Value::String(s.clone()),
-                                Value::String(descr.to_string()),
-                            ]);
-                        }
+                Value::String(s) if !s.is_empty() => {
+                    entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                    if *s == base_label {
+                        entry.label = Value::Array(vec![Value::String(descr.to_string())]);
                     } else {
-                        entry.shape = SHAPE_STATE.to_string();
-                        entry.label = Value::String(descr.to_string());
+                        entry.label = Value::Array(vec![
+                            Value::String(s.clone()),
+                            Value::String(descr.to_string()),
+                        ]);
                     }
                 }
                 _ => {
@@ -945,46 +939,45 @@ fn build_layout_data_typed(
         }
 
         // If there's only 1 description entry, just use a regular state shape.
-        if entry.shape == SHAPE_STATE_WITH_DESC {
-            if let Some(arr) = entry.label.as_array() {
-                if arr.len() == 1 {
-                    entry.shape = if entry.node_type.as_deref() == Some("group") {
-                        SHAPE_GROUP.to_string()
-                    } else {
-                        SHAPE_STATE.to_string()
-                    };
-                }
-            }
+        if entry.shape == SHAPE_STATE_WITH_DESC
+            && let Some(arr) = entry.label.as_array()
+            && arr.len() == 1
+        {
+            entry.shape = if entry.node_type.as_deref() == Some("group") {
+                SHAPE_GROUP.to_string()
+            } else {
+                SHAPE_STATE.to_string()
+            };
         }
 
         // Group handling (composite states)
-        if entry.node_type.is_none() {
-            if let Some(doc) = parsed_item.doc.as_ref() {
-                entry.node_type = Some("group".to_string());
-                entry.is_group = true;
-                let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
-                entry.dir = Some(dir);
-                entry.shape = if parsed_item.ty == "divider" {
-                    SHAPE_DIVIDER.to_string()
-                } else {
-                    SHAPE_GROUP.to_string()
-                };
+        if entry.node_type.is_none()
+            && let Some(doc) = parsed_item.doc.as_ref()
+        {
+            entry.node_type = Some("group".to_string());
+            entry.is_group = true;
+            let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
+            entry.dir = Some(dir);
+            entry.shape = if parsed_item.ty == "divider" {
+                SHAPE_DIVIDER.to_string()
+            } else {
+                SHAPE_GROUP.to_string()
+            };
 
-                let mut css = entry.css_classes.clone();
+            let mut css = entry.css_classes.clone();
+            css.push(' ');
+            css.push_str(CSS_DIAGRAM_CLUSTER);
+            if alt_flag {
                 css.push(' ');
-                css.push_str(CSS_DIAGRAM_CLUSTER);
-                if alt_flag {
-                    css.push(' ');
-                    css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
-                }
-                entry.css_classes = css;
+                css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
             }
+            entry.css_classes = css;
         }
 
-        if let Some(p) = parent {
-            if p.id != "root" {
-                entry.parent_id = Some(p.id.clone());
-            }
+        if let Some(p) = parent
+            && p.id != "root"
+        {
+            entry.parent_id = Some(p.id.clone());
         }
 
         let dom_id = state_dom_id(&item_id, *ctx.graph_item_count, None);
@@ -1300,10 +1293,10 @@ fn build_layout_data(
         //   ["Some long name", "The description"]
         // which later converts to (label, description[]) via `StateDB.extract()`.
         let mut descrs: Vec<&str> = Vec::new();
-        if let Some(d) = parsed_item.description.as_deref() {
-            if !d.trim().is_empty() {
-                descrs.push(d);
-            }
+        if let Some(d) = parsed_item.description.as_deref()
+            && !d.trim().is_empty()
+        {
+            descrs.push(d);
         }
         for d in &parsed_item.descriptions {
             if !d.trim().is_empty() {
@@ -1319,20 +1312,15 @@ fn build_layout_data(
                         entry.shape = SHAPE_STATE_WITH_DESC.to_string();
                         arr.push(Value::String(descr.to_string()));
                     }
-                    Value::String(s) => {
-                        if !s.is_empty() {
-                            entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                            if *s == base_label {
-                                entry.label = Value::Array(vec![Value::String(descr.to_string())]);
-                            } else {
-                                entry.label = Value::Array(vec![
-                                    Value::String(s.clone()),
-                                    Value::String(descr.to_string()),
-                                ]);
-                            }
+                    Value::String(s) if !s.is_empty() => {
+                        entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                        if *s == base_label {
+                            entry.label = Value::Array(vec![Value::String(descr.to_string())]);
                         } else {
-                            entry.shape = SHAPE_STATE.to_string();
-                            entry.label = Value::String(descr.to_string());
+                            entry.label = Value::Array(vec![
+                                Value::String(s.clone()),
+                                Value::String(descr.to_string()),
+                            ]);
                         }
                     }
                     _ => {
@@ -1345,47 +1333,46 @@ fn build_layout_data(
             entry.label = sanitize_text_or_array(&entry.label, config);
 
             // If there's only 1 description entry, just use a regular state shape.
-            if entry.shape == SHAPE_STATE_WITH_DESC {
-                if let Some(arr) = entry.label.as_array() {
-                    if arr.len() == 1 {
-                        entry.shape = if entry.node_type.as_deref() == Some("group") {
-                            SHAPE_GROUP.to_string()
-                        } else {
-                            SHAPE_STATE.to_string()
-                        };
-                    }
-                }
+            if entry.shape == SHAPE_STATE_WITH_DESC
+                && let Some(arr) = entry.label.as_array()
+                && arr.len() == 1
+            {
+                entry.shape = if entry.node_type.as_deref() == Some("group") {
+                    SHAPE_GROUP.to_string()
+                } else {
+                    SHAPE_STATE.to_string()
+                };
             }
         }
 
         // Group handling (composite states)
-        if entry.node_type.is_none() {
-            if let Some(doc) = parsed_item.doc.as_ref() {
-                entry.node_type = Some("group".to_string());
-                entry.is_group = true;
-                let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
-                entry.dir = Some(dir);
-                entry.shape = if parsed_item.ty == "divider" {
-                    SHAPE_DIVIDER.to_string()
-                } else {
-                    SHAPE_GROUP.to_string()
-                };
+        if entry.node_type.is_none()
+            && let Some(doc) = parsed_item.doc.as_ref()
+        {
+            entry.node_type = Some("group".to_string());
+            entry.is_group = true;
+            let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
+            entry.dir = Some(dir);
+            entry.shape = if parsed_item.ty == "divider" {
+                SHAPE_DIVIDER.to_string()
+            } else {
+                SHAPE_GROUP.to_string()
+            };
 
-                let mut css = entry.css_classes.clone();
+            let mut css = entry.css_classes.clone();
+            css.push(' ');
+            css.push_str(CSS_DIAGRAM_CLUSTER);
+            if alt_flag {
                 css.push(' ');
-                css.push_str(CSS_DIAGRAM_CLUSTER);
-                if alt_flag {
-                    css.push(' ');
-                    css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
-                }
-                entry.css_classes = css;
+                css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
             }
+            entry.css_classes = css;
         }
 
-        if let Some(p) = parent {
-            if p.id != "root" {
-                entry.parent_id = Some(p.id.clone());
-            }
+        if let Some(p) = parent
+            && p.id != "root"
+        {
+            entry.parent_id = Some(p.id.clone());
         }
 
         let mut node_data = json!({
@@ -1661,11 +1648,11 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
             completed.insert(current as *const Stmt, stmt_to_json_shallow(current, doc));
         } else {
             stack.push((current, true));
-            if let Stmt::State(s) = current {
-                if let Some(doc) = s.doc.as_ref() {
-                    for child in doc.iter().rev() {
-                        stack.push((child, false));
-                    }
+            if let Stmt::State(s) = current
+                && let Some(doc) = s.doc.as_ref()
+            {
+                for child in doc.iter().rev() {
+                    stack.push((child, false));
                 }
             }
         }

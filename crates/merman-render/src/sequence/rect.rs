@@ -110,10 +110,10 @@ pub(super) fn sequence_rect_stack_x_bounds(
                     min_x,
                     max_x,
                 }) = stack.pop()
+                    && min_x.is_finite()
+                    && max_x.is_finite()
                 {
-                    if min_x.is_finite() && max_x.is_finite() {
-                        rect_bounds.insert(start_id, (min_x, max_x));
-                    }
+                    rect_bounds.insert(start_id, (min_x, max_x));
                 }
             }
             _ => {

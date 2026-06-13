@@ -50,10 +50,10 @@ pub(super) fn extract_css_text_fill_for_class(svg: &str, class_name: &str) -> Op
             if property.is_some() {
                 return property;
             }
-        } else if selector_rule_applies_inherited_color_to_class(selector, class_name) {
-            if let Some(color) = extract_style_property(declarations, "color") {
-                return Some(color);
-            }
+        } else if selector_rule_applies_inherited_color_to_class(selector, class_name)
+            && let Some(color) = extract_style_property(declarations, "color")
+        {
+            return Some(color);
         }
 
         search = close + 1;
@@ -111,10 +111,10 @@ pub(super) fn extract_css_style_property_for_class(
         let selector = svg[selector_start..open].trim();
         let declarations = &svg[open + 1..close];
 
-        if selector_rule_applies_inherited_color_to_class(selector, class_name) {
-            if let Some(value) = extract_style_property(declarations, property) {
-                return Some(value);
-            }
+        if selector_rule_applies_inherited_color_to_class(selector, class_name)
+            && let Some(value) = extract_style_property(declarations, property)
+        {
+            return Some(value);
         }
 
         search = close + 1;

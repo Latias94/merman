@@ -206,11 +206,11 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "mmd") {
-                if let Ok(text) = fs::read_to_string(&path) {
-                    let canon = canonical_fixture_text(&text);
-                    map.insert(canon, path);
-                }
+            if path.extension().is_some_and(|e| e == "mmd")
+                && let Ok(text) = fs::read_to_string(&path)
+            {
+                let canon = canonical_fixture_text(&text);
+                map.insert(canon, path);
             }
         }
         map
@@ -246,18 +246,15 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                     return Some("flowchart math (deferred)");
                 }
             }
-            "gantt" => {
+            "gantt"
                 if fixture_text.starts_with("---\n")
                     && fixture_text.contains("\n---\n")
-                    && fixture_text.contains("\ngantt:")
-                {
-                    return Some("gantt frontmatter config (deferred)");
-                }
+                    && fixture_text.contains("\ngantt:") =>
+            {
+                return Some("gantt frontmatter config (deferred)");
             }
-            "sequence" => {
-                if fixture_text.contains("$$") {
-                    return Some("sequence math (deferred)");
-                }
+            "sequence" if fixture_text.contains("$$") => {
+                return Some("sequence math (deferred)");
             }
             _ => {}
         }
@@ -487,10 +484,10 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             existing.insert(c.body.clone(), out_path);
             created.push(f);
             imported += 1;
-            if let Some(max) = limit {
-                if imported >= max {
-                    break;
-                }
+            if let Some(max) = limit
+                && imported >= max
+            {
+                break;
             }
             continue;
         }
@@ -611,10 +608,10 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         existing.insert(c.body.clone(), out_path);
         created.push(f);
         imported += 1;
-        if let Some(max) = limit {
-            if imported >= max {
-                break;
-            }
+        if let Some(max) = limit
+            && imported >= max
+        {
+            break;
         }
     }
 

@@ -1067,7 +1067,7 @@ pub fn render_mindmap_diagram_svg(
 ) -> Result<String> {
     #[cfg(feature = "cytoscape-layout")]
     {
-        return mindmap::render_mindmap_diagram_svg(layout, semantic, _effective_config, options);
+        mindmap::render_mindmap_diagram_svg(layout, semantic, _effective_config, options)
     }
     #[cfg(not(feature = "cytoscape-layout"))]
     {
@@ -1086,12 +1086,7 @@ pub fn render_mindmap_diagram_svg_with_config(
 ) -> Result<String> {
     #[cfg(feature = "cytoscape-layout")]
     {
-        return mindmap::render_mindmap_diagram_svg_with_config(
-            layout,
-            semantic,
-            effective_config,
-            options,
-        );
+        mindmap::render_mindmap_diagram_svg_with_config(layout, semantic, effective_config, options)
     }
     #[cfg(not(feature = "cytoscape-layout"))]
     {
@@ -1110,12 +1105,7 @@ pub fn render_architecture_diagram_svg(
 ) -> Result<String> {
     #[cfg(feature = "cytoscape-layout")]
     {
-        return architecture::render_architecture_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            options,
-        );
+        architecture::render_architecture_diagram_svg(layout, semantic, effective_config, options)
     }
     #[cfg(not(feature = "cytoscape-layout"))]
     {

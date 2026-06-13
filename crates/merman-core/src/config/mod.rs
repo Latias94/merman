@@ -190,12 +190,11 @@ pub(crate) fn mirror_legacy_font_family_into_theme_variables_value(value: &mut V
     if !theme_variables.is_object() {
         replace_value_nonrecursive(theme_variables, Value::Object(Map::new()));
     }
-    if let Some(theme_variables) = theme_variables.as_object_mut() {
-        if let Some(old) =
+    if let Some(theme_variables) = theme_variables.as_object_mut()
+        && let Some(old) =
             theme_variables.insert("fontFamily".to_string(), Value::String(font_family))
-        {
-            drop_value_nonrecursive(old);
-        }
+    {
+        drop_value_nonrecursive(old);
     }
 }
 

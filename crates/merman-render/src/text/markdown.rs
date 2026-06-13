@@ -190,29 +190,29 @@ pub(crate) fn mermaid_markdown_to_lines(
             continue;
         }
 
-        if ch == '<' {
-            if let Some(end) = chars[i..].iter().position(|c| *c == '>') {
-                let end = i + end;
-                let html: String = chars[i..=end].iter().collect();
-                flush_word(&mut out, &mut line_idx, &mut word, word_ty);
-                if html.eq_ignore_ascii_case("<br>")
-                    || html.eq_ignore_ascii_case("<br/>")
-                    || html.eq_ignore_ascii_case("<br />")
-                    || html.eq_ignore_ascii_case("</br>")
-                    || html.eq_ignore_ascii_case("</br/>")
-                    || html.eq_ignore_ascii_case("</br />")
-                    || html.eq_ignore_ascii_case("</br >")
-                {
-                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-                    line_idx += 1;
-                    out.push(Vec::new());
-                } else {
-                    line_mut(&mut out, line_idx).push((html, MermaidMarkdownWordType::Normal));
-                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
-                }
-                i = end + 1;
-                continue;
+        if ch == '<'
+            && let Some(end) = chars[i..].iter().position(|c| *c == '>')
+        {
+            let end = i + end;
+            let html: String = chars[i..=end].iter().collect();
+            flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+            if html.eq_ignore_ascii_case("<br>")
+                || html.eq_ignore_ascii_case("<br/>")
+                || html.eq_ignore_ascii_case("<br />")
+                || html.eq_ignore_ascii_case("</br>")
+                || html.eq_ignore_ascii_case("</br/>")
+                || html.eq_ignore_ascii_case("</br />")
+                || html.eq_ignore_ascii_case("</br >")
+            {
+                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                line_idx += 1;
+                out.push(Vec::new());
+            } else {
+                line_mut(&mut out, line_idx).push((html, MermaidMarkdownWordType::Normal));
+                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
             }
+            i = end + 1;
+            continue;
         }
 
         if ch == '`' {

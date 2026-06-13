@@ -44,7 +44,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     failures.finish()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct CompareAllOptions {
     check_dom: bool,
     dom_mode: Option<String>,
@@ -139,22 +139,6 @@ impl CompareAllOptions {
             flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
-        }
-    }
-}
-
-impl Default for CompareAllOptions {
-    fn default() -> Self {
-        Self {
-            check_dom: false,
-            dom_mode: None,
-            dom_decimals: None,
-            filter: None,
-            flowchart_text_measurer: None,
-            report_root: false,
-            root_report_limit: None,
-            only_diagrams: Vec::new(),
-            skip_diagrams: Vec::new(),
         }
     }
 }
@@ -295,7 +279,7 @@ impl CompareAllFailures {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 struct CompareAllInvocationOptions<'a> {
     check_dom: bool,
     dom_mode: Option<&'a str>,
@@ -304,20 +288,6 @@ struct CompareAllInvocationOptions<'a> {
     flowchart_text_measurer: Option<&'a str>,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
-}
-
-impl<'a> Default for CompareAllInvocationOptions<'a> {
-    fn default() -> Self {
-        Self {
-            check_dom: false,
-            dom_mode: None,
-            dom_decimals: None,
-            filter: None,
-            flowchart_text_measurer: None,
-            report_root: false,
-            root_report_limit: None,
-        }
-    }
 }
 
 impl CompareAllInvocationOptions<'_> {
@@ -367,11 +337,11 @@ impl CompareAllInvocationOptions<'_> {
     }
 
     fn push_diagram_args(&self, diagram: &str, args: &mut Vec<String>) {
-        if diagram == "flowchart" {
-            if let Some(tm) = self.flowchart_text_measurer {
-                args.push("--text-measurer".to_string());
-                args.push(tm.to_string());
-            }
+        if diagram == "flowchart"
+            && let Some(tm) = self.flowchart_text_measurer
+        {
+            args.push("--text-measurer".to_string());
+            args.push(tm.to_string());
         }
     }
 

@@ -13,12 +13,12 @@ impl BindingEngine {
         #[cfg(any(feature = "render", feature = "ascii"))]
         {
             let options = common::parse_options(options_json)?;
-            return Ok(Self {
+            Ok(Self {
                 #[cfg(feature = "render")]
                 render: crate::render::CachedRenderEngine::new(&options)?,
                 #[cfg(feature = "ascii")]
                 ascii: crate::ascii::CachedAsciiEngine::new(&options)?,
-            });
+            })
         }
 
         #[cfg(not(any(feature = "render", feature = "ascii")))]

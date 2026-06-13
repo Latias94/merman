@@ -245,13 +245,14 @@ impl DeterministicTextMeasurer {
         // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
         // layout width is effectively clamped to the max width. Mirror this to avoid explosive
         // headless widths when `htmlLabels=true`.
-        if clamp_html_width && wrap_mode == WrapMode::HtmlLike {
-            if let Some(w) = max_width {
-                if needs_wrap {
-                    width = w;
-                } else {
-                    width = width.min(w);
-                }
+        if clamp_html_width
+            && wrap_mode == WrapMode::HtmlLike
+            && let Some(w) = max_width
+        {
+            if needs_wrap {
+                width = w;
+            } else {
+                width = width.min(w);
             }
         }
         let height = lines.len() as f64 * font_size * line_height_factor;

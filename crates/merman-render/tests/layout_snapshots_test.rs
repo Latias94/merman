@@ -50,10 +50,8 @@ fn normalize_dynamic_fields(diagram_type: &str, v: &mut JsonValue) {
 
         fn walk(re: &Regex, v: &mut JsonValue) {
             match v {
-                JsonValue::String(s) => {
-                    if re.is_match(s) {
-                        *s = re.replace_all(s, "$1-<dynamic>").to_string();
-                    }
+                JsonValue::String(s) if re.is_match(s) => {
+                    *s = re.replace_all(s, "$1-<dynamic>").to_string();
                 }
                 JsonValue::Array(arr) => {
                     for item in arr {
@@ -79,10 +77,8 @@ fn normalize_dynamic_fields(diagram_type: &str, v: &mut JsonValue) {
 
         fn walk(re: &Regex, v: &mut JsonValue) {
             match v {
-                JsonValue::String(s) => {
-                    if re.is_match(s) {
-                        *s = re.replace_all(s, "id-<id>-$1").to_string();
-                    }
+                JsonValue::String(s) if re.is_match(s) => {
+                    *s = re.replace_all(s, "id-<id>-$1").to_string();
                 }
                 JsonValue::Array(arr) => {
                     for item in arr {

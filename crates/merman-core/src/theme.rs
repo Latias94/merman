@@ -485,84 +485,84 @@ fn apply_extended_theme_visible_derivations(
         if explicit.contains_key("primaryColor")
             && matches!(theme, "neo" | "redux" | "redux-color")
             && !explicit.contains_key("secondaryColor")
+            && let Some(secondary) = adjust_color_hsl_string(&primary, -120.0, 0.0, 0.0)
         {
-            if let Some(secondary) = adjust_color_hsl_string(&primary, -120.0, 0.0, 0.0) {
-                tv.insert("secondaryColor".to_string(), Value::String(secondary));
-            }
+            tv.insert("secondaryColor".to_string(), Value::String(secondary));
         }
     }
 
     if let Some(background) = get_truthy_string(tv, "background") {
-        if explicit.contains_key("background") && !explicit.contains_key("lineColor") {
-            if let Some(line_color) = invert_color_hex_string(&background) {
-                tv.insert("lineColor".to_string(), Value::String(line_color));
-            }
+        if explicit.contains_key("background")
+            && !explicit.contains_key("lineColor")
+            && let Some(line_color) = invert_color_hex_string(&background)
+        {
+            tv.insert("lineColor".to_string(), Value::String(line_color));
         }
-        if explicit.contains_key("background") && !explicit.contains_key("arrowheadColor") {
-            if let Some(arrowhead_color) = invert_color_hex_string(&background) {
-                tv.insert("arrowheadColor".to_string(), Value::String(arrowhead_color));
-            }
-        }
-    }
-
-    if let Some(line_color) = get_truthy_string(tv, "lineColor") {
-        if explicit.contains_key("lineColor") || explicit.contains_key("background") {
-            for key in [
-                "defaultLinkColor",
-                "archEdgeColor",
-                "archEdgeArrowColor",
-                "relationColor",
-                "transitionColor",
-                "specialStateColor",
-            ] {
-                set_derived_string_unless_explicit(tv, explicit, key, line_color.clone());
-            }
+        if explicit.contains_key("background")
+            && !explicit.contains_key("arrowheadColor")
+            && let Some(arrowhead_color) = invert_color_hex_string(&background)
+        {
+            tv.insert("arrowheadColor".to_string(), Value::String(arrowhead_color));
         }
     }
 
-    if let Some(secondary) = get_truthy_string(tv, "secondaryColor") {
-        if explicit.contains_key("secondaryColor") || explicit.contains_key("primaryColor") {
-            let dark_mode = tv
-                .get("darkMode")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let label_background = if dark_mode {
-                darken_color_hsl_string(&secondary, 30.0).unwrap_or_else(|| secondary.clone())
-            } else {
-                secondary.clone()
-            };
-            for key in [
-                "edgeLabelBackground",
-                "activationBkgColor",
-                "commitLabelBackground",
-                "relationLabelBackground",
-            ] {
-                set_derived_string_unless_explicit(tv, explicit, key, label_background.clone());
-            }
+    if let Some(line_color) = get_truthy_string(tv, "lineColor")
+        && (explicit.contains_key("lineColor") || explicit.contains_key("background"))
+    {
+        for key in [
+            "defaultLinkColor",
+            "archEdgeColor",
+            "archEdgeArrowColor",
+            "relationColor",
+            "transitionColor",
+            "specialStateColor",
+        ] {
+            set_derived_string_unless_explicit(tv, explicit, key, line_color.clone());
         }
     }
 
-    if let Some(main_bkg) = get_truthy_string(tv, "mainBkg") {
-        if explicit.contains_key("mainBkg") {
-            for key in [
-                "actorBkg",
-                "labelBoxBkgColor",
-                "personBkg",
-                "stateBkg",
-                "labelBackgroundColor",
-            ] {
-                set_derived_string_unless_explicit(tv, explicit, key, main_bkg.clone());
-            }
+    if let Some(secondary) = get_truthy_string(tv, "secondaryColor")
+        && (explicit.contains_key("secondaryColor") || explicit.contains_key("primaryColor"))
+    {
+        let dark_mode = tv
+            .get("darkMode")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let label_background = if dark_mode {
+            darken_color_hsl_string(&secondary, 30.0).unwrap_or_else(|| secondary.clone())
+        } else {
+            secondary.clone()
+        };
+        for key in [
+            "edgeLabelBackground",
+            "activationBkgColor",
+            "commitLabelBackground",
+            "relationLabelBackground",
+        ] {
+            set_derived_string_unless_explicit(tv, explicit, key, label_background.clone());
+        }
+    }
+
+    if let Some(main_bkg) = get_truthy_string(tv, "mainBkg")
+        && explicit.contains_key("mainBkg")
+    {
+        for key in [
+            "actorBkg",
+            "labelBoxBkgColor",
+            "personBkg",
+            "stateBkg",
+            "labelBackgroundColor",
+        ] {
+            set_derived_string_unless_explicit(tv, explicit, key, main_bkg.clone());
         }
     }
 
     if explicit.contains_key("primaryColor")
         && matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color")
+        && let Some(primary) = get_truthy_string(tv, "primaryColor")
     {
-        if let Some(primary) = get_truthy_string(tv, "primaryColor") {
-            for key in ["requirementBackground", "pie1", "quadrant1Fill"] {
-                set_derived_string_unless_explicit(tv, explicit, key, primary.clone());
-            }
+        for key in ["requirementBackground", "pie1", "quadrant1Fill"] {
+            set_derived_string_unless_explicit(tv, explicit, key, primary.clone());
         }
     }
 
@@ -577,12 +577,12 @@ fn apply_extended_theme_visible_derivations(
     for i in 0..8 {
         let git_key = format!("git{i}");
         let git_inv_key = format!("gitInv{i}");
-        if explicit.contains_key(&git_key) && !explicit.contains_key(&git_inv_key) {
-            if let Some(git) = get_truthy_string(tv, &git_key) {
-                if let Some(inv) = invert_color_css_string(&git) {
-                    tv.insert(git_inv_key, Value::String(inv));
-                }
-            }
+        if explicit.contains_key(&git_key)
+            && !explicit.contains_key(&git_inv_key)
+            && let Some(git) = get_truthy_string(tv, &git_key)
+            && let Some(inv) = invert_color_css_string(&git)
+        {
+            tv.insert(git_inv_key, Value::String(inv));
         }
     }
 }
@@ -614,18 +614,17 @@ fn derive_redux_dark_git_palette(explicit: &Map<String, Value>, tv: &mut Map<Str
             continue;
         };
         let git_key = format!("git{i}");
-        if !explicit.contains_key(&git_key) {
-            if let Some(git) = darken_color_hsl_string(&base, 25.0) {
-                tv.insert(git_key.clone(), Value::String(git));
-            }
+        if !explicit.contains_key(&git_key)
+            && let Some(git) = darken_color_hsl_string(&base, 25.0)
+        {
+            tv.insert(git_key.clone(), Value::String(git));
         }
         let git_inv_key = format!("gitInv{i}");
-        if !explicit.contains_key(&git_inv_key) {
-            if let Some(git) = get_truthy_string(tv, &git_key) {
-                if let Some(inv) = invert_color_css_string(&git) {
-                    tv.insert(git_inv_key, Value::String(inv));
-                }
-            }
+        if !explicit.contains_key(&git_inv_key)
+            && let Some(git) = get_truthy_string(tv, &git_key)
+            && let Some(inv) = invert_color_css_string(&git)
+        {
+            tv.insert(git_inv_key, Value::String(inv));
         }
     }
 }
@@ -1216,15 +1215,14 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     // headless renderers do not fall back to default-theme black text on dark backgrounds.
     set_string_if_missing(&mut tv, "background", "#333");
     set_string_if_missing(&mut tv, "primaryColor", "#1f2020");
-    if get_truthy_string(&tv, "primaryTextColor").is_none() {
-        if let Some(primary_color) = get_truthy_string(&tv, "primaryColor") {
-            if let Some(rgb) = parse_hex_rgb01(&primary_color) {
-                tv.insert(
-                    "primaryTextColor".to_string(),
-                    Value::String(invert_rgb01_to_hex(rgb)),
-                );
-            }
-        }
+    if get_truthy_string(&tv, "primaryTextColor").is_none()
+        && let Some(primary_color) = get_truthy_string(&tv, "primaryColor")
+        && let Some(rgb) = parse_hex_rgb01(&primary_color)
+    {
+        tv.insert(
+            "primaryTextColor".to_string(),
+            Value::String(invert_rgb01_to_hex(rgb)),
+        );
     }
     set_string_if_missing(&mut tv, "textColor", "#ccc");
     set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
@@ -1727,15 +1725,14 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
     set_string_if_missing(&mut tv, "primaryColor", "#eee");
     set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
     set_string_if_missing(&mut tv, "fontSize", "16px");
-    if get_truthy_string(&tv, "primaryTextColor").is_none() {
-        if let Some(primary_color) = get_truthy_string(&tv, "primaryColor") {
-            if let Some(rgb) = parse_hex_rgb01(&primary_color) {
-                tv.insert(
-                    "primaryTextColor".to_string(),
-                    Value::String(invert_rgb01_to_hex(rgb)),
-                );
-            }
-        }
+    if get_truthy_string(&tv, "primaryTextColor").is_none()
+        && let Some(primary_color) = get_truthy_string(&tv, "primaryColor")
+        && let Some(rgb) = parse_hex_rgb01(&primary_color)
+    {
+        tv.insert(
+            "primaryTextColor".to_string(),
+            Value::String(invert_rgb01_to_hex(rgb)),
+        );
     }
 
     // Mermaid 11.12.2: `theme-neutral` color scale seeds.
@@ -2092,13 +2089,13 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         tv.insert("tertiaryBorderColor".to_string(), Value::String(color));
     }
 
-    if get_truthy_string(&tv, "lineColor").is_none() {
-        if let Some(bg_rgb) = parse_hex_rgb01(&background) {
-            tv.insert(
-                "lineColor".to_string(),
-                Value::String(invert_rgb01_to_hex(bg_rgb)),
-            );
-        }
+    if get_truthy_string(&tv, "lineColor").is_none()
+        && let Some(bg_rgb) = parse_hex_rgb01(&background)
+    {
+        tv.insert(
+            "lineColor".to_string(),
+            Value::String(invert_rgb01_to_hex(bg_rgb)),
+        );
     }
     let line_color = get_truthy_string(&tv, "lineColor").unwrap_or_else(|| "#333333".to_string());
     set_if_missing(&mut tv, "arrowheadColor", Value::String(line_color));

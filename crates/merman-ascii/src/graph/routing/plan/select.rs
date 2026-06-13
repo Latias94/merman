@@ -103,12 +103,12 @@ fn plan_left_right_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
         return plan_left_right_bottom_lane_route(from, to, edge, charset);
     }
 
-    if from.center_y() == to.center_y() && from.x < to.x {
-        if let Some(plan) =
+    if from.center_y() == to.center_y()
+        && from.x < to.x
+        && let Some(plan) =
             plan_left_right_direct_route(&graph_layout.nodes, from, to, edge, charset)
-        {
-            return Some(plan);
-        }
+    {
+        return Some(plan);
     }
 
     if let Some(plan) = plan_left_right_grid_path_route(graph_layout, from, to, edge, charset) {
@@ -154,12 +154,11 @@ fn plan_top_down_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
         return plan_top_down_back_route(from, to, edge, charset);
     }
 
-    if from.center_y() == to.center_y() {
-        if let Some(plan) =
+    if from.center_y() == to.center_y()
+        && let Some(plan) =
             plan_left_right_direct_route(&request.graph_layout.nodes, from, to, edge, charset)
-        {
-            return Some(plan);
-        }
+    {
+        return Some(plan);
     }
 
     if from.center_x() != to.center_x() {

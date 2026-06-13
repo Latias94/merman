@@ -548,10 +548,10 @@ fn add_missing_areas(areas: &[VennArea], distinct: bool) -> Vec<VennArea> {
             }
         }
         for area in &mut out {
-            if area.sets.len() < 3 {
-                if let Some(size) = count.get(&area.sets.join(";")).copied() {
-                    area.size = size;
-                }
+            if area.sets.len() < 3
+                && let Some(size) = count.get(&area.sets.join(";")).copied()
+            {
+                area.size = size;
             }
         }
     }
@@ -1122,12 +1122,12 @@ pub fn disjoint_cluster(circles: Vec<VennCircle>) -> Vec<Vec<VennCircle>> {
 
     let mut order = Vec::new();
     let mut grouped: IndexMap<usize, Vec<VennCircle>> = IndexMap::new();
-    for i in 0..n {
+    for (i, circle) in circles.iter().enumerate().take(n) {
         let root = find(&mut parent, i);
         if !grouped.contains_key(&root) {
             order.push(root);
         }
-        grouped.entry(root).or_default().push(circles[i].clone());
+        grouped.entry(root).or_default().push(circle.clone());
     }
     order
         .into_iter()
@@ -1775,12 +1775,12 @@ where
             break;
         }
 
-        for i in 0..n {
-            centroid[i] = 0.0;
+        for (i, centroid_value) in centroid.iter_mut().enumerate().take(n) {
+            *centroid_value = 0.0;
             for point in simplex.iter().take(n) {
-                centroid[i] += point.x[i];
+                *centroid_value += point.x[i];
             }
-            centroid[i] /= n as f64;
+            *centroid_value /= n as f64;
         }
 
         let worst = simplex[n].x.clone();

@@ -42,15 +42,15 @@ pub(super) fn render_state_node_svg(
             return v;
         }
 
-        if let Ok(global) = state_global_rough_circle_cache().lock() {
-            if let Some(v) = global.get(&key) {
-                let v = Arc::clone(v);
-                state_tls_put_circle(key, Arc::clone(&v));
-                ctx.rough_circle_cache
-                    .borrow_mut()
-                    .insert(key, Arc::clone(&v));
-                return v;
-            }
+        if let Ok(global) = state_global_rough_circle_cache().lock()
+            && let Some(v) = global.get(&key)
+        {
+            let v = Arc::clone(v);
+            state_tls_put_circle(key, Arc::clone(&v));
+            ctx.rough_circle_cache
+                .borrow_mut()
+                .insert(key, Arc::clone(&v));
+            return v;
         }
 
         let built = Arc::new(build());
@@ -84,15 +84,15 @@ pub(super) fn render_state_node_svg(
             return v;
         }
 
-        if let Ok(global) = state_global_rough_paths_cache().lock() {
-            if let Some((fill_d, stroke_d)) = global.get(&key) {
-                let v = (Arc::clone(fill_d), Arc::clone(stroke_d));
-                state_tls_put_paths(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-                ctx.rough_paths_cache
-                    .borrow_mut()
-                    .insert(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-                return v;
-            }
+        if let Ok(global) = state_global_rough_paths_cache().lock()
+            && let Some((fill_d, stroke_d)) = global.get(&key)
+        {
+            let v = (Arc::clone(fill_d), Arc::clone(stroke_d));
+            state_tls_put_paths(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
+            ctx.rough_paths_cache
+                .borrow_mut()
+                .insert(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
+            return v;
         }
 
         let (fill_d, stroke_d) = build();
@@ -591,11 +591,9 @@ pub(super) fn render_state_node_svg(
                 let v = d.val.trim().trim_end_matches(';').trim();
                 let v_no_imp = v.trim_end_matches("!important").trim();
                 match k.as_str() {
-                    "font-weight" => {
-                        if !v_no_imp.is_empty() {
-                            measure_style.font_weight = Some(v_no_imp.to_string());
-                            has_metrics_style = true;
-                        }
+                    "font-weight" if !v_no_imp.is_empty() => {
+                        measure_style.font_weight = Some(v_no_imp.to_string());
+                        has_metrics_style = true;
                     }
                     "font-style" => {
                         let lower = v_no_imp.to_ascii_lowercase();
@@ -605,18 +603,17 @@ pub(super) fn render_state_node_svg(
                         }
                     }
                     "font-size" => {
-                        if let Some(px) = parse_css_px_f64(v_no_imp) {
-                            if px.is_finite() && px > 0.0 {
-                                measure_style.font_size = px;
-                                has_metrics_style = true;
-                            }
-                        }
-                    }
-                    "font-family" => {
-                        if !v_no_imp.is_empty() {
-                            measure_style.font_family = Some(v_no_imp.to_string());
+                        if let Some(px) = parse_css_px_f64(v_no_imp)
+                            && px.is_finite()
+                            && px > 0.0
+                        {
+                            measure_style.font_size = px;
                             has_metrics_style = true;
                         }
+                    }
+                    "font-family" if !v_no_imp.is_empty() => {
+                        measure_style.font_family = Some(v_no_imp.to_string());
+                        has_metrics_style = true;
                     }
                     _ => {}
                 }
@@ -653,15 +650,14 @@ pub(super) fn render_state_node_svg(
                 metrics.width = metrics.width.min(ctx.html_label_wrapping_width);
             }
 
-            if !has_metrics_style {
-                if let Some(w) =
+            if !has_metrics_style
+                && let Some(w) =
                     crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
                         measure_style.font_size,
                         label.trim(),
                     )
-                {
-                    metrics.width = w;
-                }
+            {
+                metrics.width = w;
             }
 
             let bold = measure_style

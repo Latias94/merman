@@ -286,15 +286,13 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            if dom_ok {
-                if let (Some(upstream_dom), Some(local_dom)) =
+            if dom_ok
+                && let (Some(upstream_dom), Some(local_dom)) =
                     (upstream_dom.as_ref(), local_dom.as_ref())
-                {
-                    if let Some(diff) = svgdom::dom_diff(upstream_dom, local_dom) {
-                        dom_ok = false;
-                        dom_failures.push(format!("{stem}: {diff}"));
-                    }
-                }
+                && let Some(diff) = svgdom::dom_diff(upstream_dom, local_dom)
+            {
+                dom_ok = false;
+                dom_failures.push(format!("{stem}: {diff}"));
             }
 
             if !dom_ok {

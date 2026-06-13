@@ -105,10 +105,10 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
             nesting_graph::run(g);
             true
         };
-        if let Some(s) = nesting_start {
-            if ran_nesting {
-                timings.nesting_run = s.elapsed();
-            }
+        if let Some(s) = nesting_start
+            && ran_nesting
+        {
+            timings.nesting_run = s.elapsed();
         }
     }
 
@@ -532,18 +532,20 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
 
         lbl.points = pts;
 
-        if (lbl.width > 0.0 || lbl.height > 0.0) && lbl.x.is_none() && lbl.y.is_none() {
-            if let Some(mid) = lbl.points.get(lbl.points.len() / 2).copied() {
-                let mut ex = mid.x;
-                let ey = mid.y;
-                match lbl.labelpos {
-                    LabelPos::C => {}
-                    LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
-                    LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
-                }
-                lbl.x = Some(ex);
-                lbl.y = Some(ey);
+        if (lbl.width > 0.0 || lbl.height > 0.0)
+            && lbl.x.is_none()
+            && lbl.y.is_none()
+            && let Some(mid) = lbl.points.get(lbl.points.len() / 2).copied()
+        {
+            let mut ex = mid.x;
+            let ey = mid.y;
+            match lbl.labelpos {
+                LabelPos::C => {}
+                LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
+                LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
             }
+            lbl.x = Some(ex);
+            lbl.y = Some(ey);
         }
     }
     if let Some(s) = edge_points_start {

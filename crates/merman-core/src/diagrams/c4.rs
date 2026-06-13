@@ -502,19 +502,17 @@ impl C4Db {
     }
 
     fn update_layout_config(&mut self, args: Vec<Value>) -> Result<()> {
-        if let Some(v) = args.first() {
-            if let Some(parsed) = value_as_i64(v) {
-                if parsed >= 1 {
-                    self.c4_shape_in_row = parsed;
-                }
-            }
+        if let Some(v) = args.first()
+            && let Some(parsed) = value_as_i64(v)
+            && parsed >= 1
+        {
+            self.c4_shape_in_row = parsed;
         }
-        if let Some(v) = args.get(1) {
-            if let Some(parsed) = value_as_i64(v) {
-                if parsed >= 1 {
-                    self.c4_boundary_in_row = parsed;
-                }
-            }
+        if let Some(v) = args.get(1)
+            && let Some(parsed) = value_as_i64(v)
+            && parsed >= 1
+        {
+            self.c4_boundary_in_row = parsed;
         }
         Ok(())
     }

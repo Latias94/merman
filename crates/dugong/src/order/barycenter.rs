@@ -206,17 +206,17 @@ fn merge_conflict_entries(mapped: &mut [ConflictEntry], target: usize, source: u
 
     let mut sum: f64 = 0.0;
     let mut weight: f64 = 0.0;
-    if let (Some(b), Some(w)) = (target_bary, target_weight) {
-        if w != 0.0 {
-            sum += b * w;
-            weight += w;
-        }
+    if let (Some(b), Some(w)) = (target_bary, target_weight)
+        && w != 0.0
+    {
+        sum += b * w;
+        weight += w;
     }
-    if let (Some(b), Some(w)) = (source_bary, source_weight) {
-        if w != 0.0 {
-            sum += b * w;
-            weight += w;
-        }
+    if let (Some(b), Some(w)) = (source_bary, source_weight)
+        && w != 0.0
+    {
+        sum += b * w;
+        weight += w;
     }
 
     let mut merged_vs = std::mem::take(&mut s.vs);
@@ -730,42 +730,38 @@ where
 
                 if let (Some(bl), Some(br)) =
                     (frame.border_left.as_deref(), frame.border_right.as_deref())
-                {
-                    if let (Some(bl_ix), Some(br_ix)) =
+                    && let (Some(bl_ix), Some(br_ix)) =
                         (frame.border_left_ix, frame.border_right_ix)
+                {
+                    let border_start = timings.is_some().then(Instant::now);
+                    let mut out: Vec<usize> = Vec::with_capacity(result.vs.len() + 2);
+                    out.push(bl_ix);
+                    out.extend(result.vs);
+                    out.push(br_ix);
+                    result.vs = out;
+
+                    if let (Some(bl_pred), Some(br_pred)) =
+                        (g.first_predecessor(bl), g.first_predecessor(br))
+                        && let (Some(bl_pred_ix), Some(br_pred_ix)) =
+                            (g.node_ix(bl_pred), g.node_ix(br_pred))
                     {
-                        let border_start = timings.is_some().then(Instant::now);
-                        let mut out: Vec<usize> = Vec::with_capacity(result.vs.len() + 2);
-                        out.push(bl_ix);
-                        out.extend(result.vs);
-                        out.push(br_ix);
-                        result.vs = out;
+                        let bl_order = g
+                            .node_label_by_ix(bl_pred_ix)
+                            .and_then(|n| n.order())
+                            .unwrap_or(0) as f64;
+                        let br_order = g
+                            .node_label_by_ix(br_pred_ix)
+                            .and_then(|n| n.order())
+                            .unwrap_or(0) as f64;
 
-                        if let (Some(bl_pred), Some(br_pred)) =
-                            (g.first_predecessor(bl), g.first_predecessor(br))
-                        {
-                            if let (Some(bl_pred_ix), Some(br_pred_ix)) =
-                                (g.node_ix(bl_pred), g.node_ix(br_pred))
-                            {
-                                let bl_order =
-                                    g.node_label_by_ix(bl_pred_ix)
-                                        .and_then(|n| n.order())
-                                        .unwrap_or(0) as f64;
-                                let br_order =
-                                    g.node_label_by_ix(br_pred_ix)
-                                        .and_then(|n| n.order())
-                                        .unwrap_or(0) as f64;
-
-                                let bc = result.barycenter.unwrap_or(0.0);
-                                let w = result.weight.unwrap_or(0.0);
-                                let denom = w + 2.0;
-                                result.barycenter = Some((bc * w + bl_order + br_order) / denom);
-                                result.weight = Some(denom);
-                            }
-                        }
-                        if let (Some(start), Some(t)) = (border_start, timings.as_deref_mut()) {
-                            t.border_adjust += start.elapsed();
-                        }
+                        let bc = result.barycenter.unwrap_or(0.0);
+                        let w = result.weight.unwrap_or(0.0);
+                        let denom = w + 2.0;
+                        result.barycenter = Some((bc * w + bl_order + br_order) / denom);
+                        result.weight = Some(denom);
+                    }
+                    if let (Some(start), Some(t)) = (border_start, timings.as_deref_mut()) {
+                        t.border_adjust += start.elapsed();
                     }
                 }
 
@@ -779,7 +775,7 @@ where
         }
     }
 
-    if let (Some(start), Some(t)) = (total_start, timings.as_deref_mut()) {
+    if let (Some(start), Some(t)) = (total_start, timings) {
         t.total += start.elapsed();
     }
 
@@ -1041,17 +1037,17 @@ fn merge_conflict_entries_ix(mapped: &mut [ConflictEntryIx], target: usize, sour
 
     let mut sum: f64 = 0.0;
     let mut weight: f64 = 0.0;
-    if let (Some(b), Some(w)) = (target_bary, target_weight) {
-        if w != 0.0 {
-            sum += b * w;
-            weight += w;
-        }
+    if let (Some(b), Some(w)) = (target_bary, target_weight)
+        && w != 0.0
+    {
+        sum += b * w;
+        weight += w;
     }
-    if let (Some(b), Some(w)) = (source_bary, source_weight) {
-        if w != 0.0 {
-            sum += b * w;
-            weight += w;
-        }
+    if let (Some(b), Some(w)) = (source_bary, source_weight)
+        && w != 0.0
+    {
+        sum += b * w;
+        weight += w;
     }
 
     let mut merged_vs = std::mem::take(&mut s.vs);

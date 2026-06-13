@@ -384,12 +384,10 @@ fn adjust_flowchart_clusters_and_edges(
         if parent.is_some_and(|p| p != id.as_str())
             && parent.is_some_and(|p| cluster_db.contains_key(p))
             && parent.is_some_and(|p| !cluster_db.get(p).is_some_and(|e| e.external_connections))
+            && let Some(p) = parent
+            && let Some(entry) = cluster_db.get_mut(&id)
         {
-            if let Some(p) = parent {
-                if let Some(entry) = cluster_db.get_mut(&id) {
-                    entry.anchor_id = p.to_string();
-                }
-            }
+            entry.anchor_id = p.to_string();
         }
     }
 
@@ -425,10 +423,10 @@ fn adjust_flowchart_clusters_and_edges(
         let _ = graph.remove_edge_key(&ek);
 
         if v != ek.v {
-            if let Some(parent) = graph.parent(&v) {
-                if let Some(entry) = cluster_db.get_mut(parent) {
-                    entry.external_connections = true;
-                }
+            if let Some(parent) = graph.parent(&v)
+                && let Some(entry) = cluster_db.get_mut(parent)
+            {
+                entry.external_connections = true;
             }
             edge_label
                 .extras
@@ -436,10 +434,10 @@ fn adjust_flowchart_clusters_and_edges(
         }
 
         if w != ek.w {
-            if let Some(parent) = graph.parent(&w) {
-                if let Some(entry) = cluster_db.get_mut(parent) {
-                    entry.external_connections = true;
-                }
+            if let Some(parent) = graph.parent(&w)
+                && let Some(entry) = cluster_db.get_mut(parent)
+            {
+                entry.external_connections = true;
             }
             edge_label
                 .extras
@@ -522,10 +520,10 @@ fn copy_cluster(
         let data = graph.node(&node).cloned().unwrap_or_default();
         new_graph.set_node(node.clone(), data);
 
-        if let Some(parent) = graph.parent(&node) {
-            if parent != root_id {
-                new_graph.set_parent(node.clone(), parent.to_string());
-            }
+        if let Some(parent) = graph.parent(&node)
+            && parent != root_id
+        {
+            new_graph.set_parent(node.clone(), parent.to_string());
         }
         if owner_cluster != root_id && node != owner_cluster {
             new_graph.set_parent(node.clone(), owner_cluster);
@@ -1571,11 +1569,11 @@ fn layout_flowchart_v2_with_model(
                         n.width = r.width().max(1.0);
                         n.height = r.height().max(1.0);
                     }
-                } else if let Some(n_child) = child.node(&id) {
-                    if let Some(n) = graph.node_mut(&id) {
-                        n.width = n_child.width.max(1.0);
-                        n.height = n_child.height.max(1.0);
-                    }
+                } else if let Some(n_child) = child.node(&id)
+                    && let Some(n) = graph.node_mut(&id)
+                {
+                    n.width = n_child.width.max(1.0);
+                    n.height = n_child.height.max(1.0);
                 }
             }
         }
@@ -1759,14 +1757,14 @@ fn layout_flowchart_v2_with_model(
             let mut out: Option<Rect> = None;
             let mut stack: Vec<String> = graph.children(id).iter().map(|s| s.to_string()).collect();
             while let Some(node) = stack.pop() {
-                if let Some(n) = graph.node(&node) {
-                    if let (Some(x), Some(y)) = (n.x, n.y) {
-                        let r = Rect::from_center(x, y, n.width, n.height);
-                        if let Some(ref mut cur) = out {
-                            cur.union(r);
-                        } else {
-                            out = Some(r);
-                        }
+                if let Some(n) = graph.node(&node)
+                    && let (Some(x), Some(y)) = (n.x, n.y)
+                {
+                    let r = Rect::from_center(x, y, n.width, n.height);
+                    if let Some(ref mut cur) = out {
+                        cur.union(r);
+                    } else {
+                        out = Some(r);
                     }
                 }
                 for child in graph.children(&node) {
@@ -1813,15 +1811,15 @@ fn layout_flowchart_v2_with_model(
                 if out.cluster_rects_from_graph.contains_key(&id) {
                     continue;
                 }
-                if let Some(n) = frame.graph.node(&id) {
-                    if let (Some(x), Some(y)) = (n.x, n.y) {
-                        if n.width > 0.0 && n.height > 0.0 {
-                            let mut r = Rect::from_center(x, y, n.width, n.height);
-                            r.translate(frame.offset.0, frame.offset.1);
-                            out.cluster_rects_from_graph.insert(id, r);
-                            continue;
-                        }
-                    }
+                if let Some(n) = frame.graph.node(&id)
+                    && let (Some(x), Some(y)) = (n.x, n.y)
+                    && n.width > 0.0
+                    && n.height > 0.0
+                {
+                    let mut r = Rect::from_center(x, y, n.width, n.height);
+                    r.translate(frame.offset.0, frame.offset.1);
+                    out.cluster_rects_from_graph.insert(id, r);
+                    continue;
                 }
 
                 let Some(mut r) = subtree_rect_iterative(frame.graph, &id) else {
@@ -1844,15 +1842,15 @@ fn layout_flowchart_v2_with_model(
                     continue;
                 };
 
-                if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
-                    if lbl.width > 0.0 || lbl.height > 0.0 {
-                        let lx = x + frame.offset.0;
-                        let ly = y + frame.offset.1;
-                        let leaf_id = format!("edge-label::{edge_id}");
-                        out.base_pos.insert(leaf_id.clone(), (lx, ly));
-                        out.leaf_rects
-                            .insert(leaf_id, Rect::from_center(lx, ly, lbl.width, lbl.height));
-                    }
+                if let (Some(x), Some(y)) = (lbl.x, lbl.y)
+                    && (lbl.width > 0.0 || lbl.height > 0.0)
+                {
+                    let lx = x + frame.offset.0;
+                    let ly = y + frame.offset.1;
+                    let leaf_id = format!("edge-label::{edge_id}");
+                    out.base_pos.insert(leaf_id.clone(), (lx, ly));
+                    out.leaf_rects
+                        .insert(leaf_id, Rect::from_center(lx, ly, lbl.width, lbl.height));
                 }
 
                 if !frame.is_root {
@@ -2711,30 +2709,30 @@ fn layout_flowchart_v2_with_model(
             continue;
         }
 
-        if let Some(node) = layout_node_by_id.get(e.from.as_str()) {
-            if !node.is_cluster {
-                let shape = node_shape_by_id
-                    .get(e.from.as_str())
-                    .copied()
-                    .unwrap_or("squareRect");
-                if matches!(shape, "diamond" | "question" | "diam") {
-                    if let Some(p) = diamond_intersection(node, &e.points[1]) {
-                        e.points[0] = p;
-                    }
-                }
+        if let Some(node) = layout_node_by_id.get(e.from.as_str())
+            && !node.is_cluster
+        {
+            let shape = node_shape_by_id
+                .get(e.from.as_str())
+                .copied()
+                .unwrap_or("squareRect");
+            if matches!(shape, "diamond" | "question" | "diam")
+                && let Some(p) = diamond_intersection(node, &e.points[1])
+            {
+                e.points[0] = p;
             }
         }
-        if let Some(node) = layout_node_by_id.get(e.to.as_str()) {
-            if !node.is_cluster {
-                let shape = node_shape_by_id
-                    .get(e.to.as_str())
-                    .copied()
-                    .unwrap_or("squareRect");
-                if matches!(shape, "diamond" | "question" | "diam") {
-                    let n = e.points.len();
-                    if let Some(p) = diamond_intersection(node, &e.points[n - 2]) {
-                        e.points[n - 1] = p;
-                    }
+        if let Some(node) = layout_node_by_id.get(e.to.as_str())
+            && !node.is_cluster
+        {
+            let shape = node_shape_by_id
+                .get(e.to.as_str())
+                .copied()
+                .unwrap_or("squareRect");
+            if matches!(shape, "diamond" | "question" | "diam") {
+                let n = e.points.len();
+                if let Some(p) = diamond_intersection(node, &e.points[n - 2]) {
+                    e.points[n - 1] = p;
                 }
             }
         }

@@ -884,7 +884,7 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
     let wantv = true;
 
     let nct = (m.saturating_sub(1)).min(n);
-    let nrt = (n.saturating_sub(2)).min(m).max(0);
+    let nrt = (n.saturating_sub(2)).min(m);
 
     let k_max = nct.max(nrt);
     for k in 0..k_max {

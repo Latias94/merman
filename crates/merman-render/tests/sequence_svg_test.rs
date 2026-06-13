@@ -107,7 +107,7 @@ fn render_sequence_svg_from_fixture_with_options(
 
 fn render_sequence_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 

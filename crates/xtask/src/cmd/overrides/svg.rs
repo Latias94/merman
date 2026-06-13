@@ -846,14 +846,14 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
                         meta.debug_cfg_width,
                         meta.debug_line_ids
                     );
-                    if meta.center_diff.is_none() {
-                        if let Some(s) = meta.debug_svg_start.as_deref() {
-                            eprintln!("    debug_svg_start: {}", s);
-                        }
+                    if meta.center_diff.is_none()
+                        && let Some(s) = meta.debug_svg_start.as_deref()
+                    {
+                        eprintln!("    debug_svg_start: {}", s);
                     }
                 }
             }
-            for (text, w_px_opt) in strings.into_iter().zip(widths.into_iter()) {
+            for (text, w_px_opt) in strings.into_iter().zip(widths) {
                 let Some(w_px) = w_px_opt else {
                     continue;
                 };
@@ -888,7 +888,7 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
             &strings,
         )?;
 
-        for (text, m) in strings.into_iter().zip(metrics.into_iter()) {
+        for (text, m) in strings.into_iter().zip(metrics) {
             let bbox_x = m.bbox_x;
             let bbox_w = m.bbox_w;
             if !(bbox_x.is_finite() && bbox_w.is_finite()) {

@@ -422,11 +422,11 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "mmd") {
-                if let Ok(text) = fs::read_to_string(&path) {
-                    let canon = canonical_fixture_text(&text);
-                    map.insert(canon, path);
-                }
+            if path.extension().is_some_and(|e| e == "mmd")
+                && let Ok(text) = fs::read_to_string(&path)
+            {
+                let canon = canonical_fixture_text(&text);
+                map.insert(canon, path);
             }
         }
         map
@@ -469,10 +469,10 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
             if body.trim().is_empty() {
                 continue;
             }
-            if let Some(min) = min_lines {
-                if body.lines().count() < min {
-                    continue;
-                }
+            if let Some(min) = min_lines
+                && body.lines().count() < min
+            {
+                continue;
             }
 
             if let Some(f) = filter.as_deref() {
@@ -596,10 +596,10 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         });
 
         imported += 1;
-        if let Some(max) = limit {
-            if imported >= max {
-                break;
-            }
+        if let Some(max) = limit
+            && imported >= max
+        {
+            break;
         }
     }
 
@@ -669,12 +669,10 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                         return Some("flowchart diagram type flowchart-elk (deferred)");
                     }
                 }
-                "sequence" => {
-                    if fixture_text.contains("$$") {
-                        return Some(
-                            "sequence math rendering uses <foreignObject> upstream (deferred)",
-                        );
-                    }
+                "sequence" if fixture_text.contains("$$") => {
+                    return Some(
+                        "sequence math rendering uses <foreignObject> upstream (deferred)",
+                    );
                 }
                 _ => {}
             }

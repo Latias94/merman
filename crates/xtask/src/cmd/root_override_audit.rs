@@ -647,10 +647,10 @@ fn collect_dom_mismatch_keys(text: &str) -> BTreeSet<String> {
         fail_status_re(),
     ] {
         for cap in re.captures_iter(text) {
-            if let Some(key) = cap.get(1).map(|m| m.as_str()) {
-                if is_fixture_like_key(key) {
-                    keys.insert(key.to_string());
-                }
+            if let Some(key) = cap.get(1).map(|m| m.as_str())
+                && is_fixture_like_key(key)
+            {
+                keys.insert(key.to_string());
             }
         }
     }

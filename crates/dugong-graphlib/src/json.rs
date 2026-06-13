@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value as JsonValue;
 use std::io;
 
+type OptionalLabelGraph<N, E, G> = Graph<Option<N>, Option<E>, Option<G>>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphJson {
     pub options: GraphOptions,
@@ -40,9 +42,7 @@ pub struct GraphJsonEdge {
     pub value: Option<JsonValue>,
 }
 
-pub fn write<N, E, G>(
-    graph: &Graph<Option<N>, Option<E>, Option<G>>,
-) -> Result<GraphJson, serde_json::Error>
+pub fn write<N, E, G>(graph: &OptionalLabelGraph<N, E, G>) -> Result<GraphJson, serde_json::Error>
 where
     N: Default + Serialize + 'static,
     E: Default + Serialize + 'static,
@@ -87,9 +87,7 @@ where
     })
 }
 
-pub fn read<N, E, G>(
-    json: &GraphJson,
-) -> Result<Graph<Option<N>, Option<E>, Option<G>>, serde_json::Error>
+pub fn read<N, E, G>(json: &GraphJson) -> Result<OptionalLabelGraph<N, E, G>, serde_json::Error>
 where
     N: Default + DeserializeOwned + 'static,
     E: Default + DeserializeOwned + 'static,

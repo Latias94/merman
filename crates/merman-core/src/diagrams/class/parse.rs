@@ -43,20 +43,20 @@ pub(super) fn parse_class_via_lalrpop(code: &str, meta: &ParseMetadata) -> Resul
 }
 
 pub fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    if prefer_fast_class_parser() {
-        if let Some(db) = parse_class_fast_db(code, meta)? {
-            return Ok(db.into_model(meta));
-        }
+    if prefer_fast_class_parser()
+        && let Some(db) = parse_class_fast_db(code, meta)?
+    {
+        return Ok(db.into_model(meta));
     }
 
     parse_class_via_lalrpop(code, meta)
 }
 
 pub fn parse_class_typed(code: &str, meta: &ParseMetadata) -> Result<class_typed::ClassDiagram> {
-    if prefer_fast_class_parser() {
-        if let Some(db) = parse_class_fast_db(code, meta)? {
-            return Ok(db.into_typed_model(meta));
-        }
+    if prefer_fast_class_parser()
+        && let Some(db) = parse_class_fast_db(code, meta)?
+    {
+        return Ok(db.into_typed_model(meta));
     }
 
     let db = parse_class_via_lalrpop_db(code, meta)?;

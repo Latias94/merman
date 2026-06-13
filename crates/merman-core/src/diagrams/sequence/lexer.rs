@@ -309,10 +309,10 @@ impl<'input> Lexer<'input> {
             if b == b'#' {
                 break;
             }
-            if let Some([b'%', b'%']) = self.peek2() {
-                if b == b'%' {
-                    break;
-                }
+            if let Some([b'%', b'%']) = self.peek2()
+                && b == b'%'
+            {
+                break;
             }
             self.pos += 1;
         }
@@ -670,21 +670,21 @@ impl<'input> Lexer<'input> {
         let tok = self.lex_actor()?;
         let after_actor = self.pos;
 
-        if let Tok::Actor(actor) = &tok.1 {
-            if let Some(stripped) = actor.strip_suffix("()") {
-                let mut pos = after_actor;
-                while let Some(b) = self.input.as_bytes().get(pos) {
-                    if *b == b' ' || *b == b'\t' || *b == b'\r' {
-                        pos += 1;
-                        continue;
-                    }
-                    break;
+        if let Tok::Actor(actor) = &tok.1
+            && let Some(stripped) = actor.strip_suffix("()")
+        {
+            let mut pos = after_actor;
+            while let Some(b) = self.input.as_bytes().get(pos) {
+                if *b == b' ' || *b == b'\t' || *b == b'\r' {
+                    pos += 1;
+                    continue;
                 }
-                if self.peek_signal_type_at(pos) {
-                    self.pending
-                        .push_back((after_actor - 2, Tok::Central, after_actor));
-                    return Some((tok.0, Tok::Actor(stripped.to_string()), after_actor - 2));
-                }
+                break;
+            }
+            if self.peek_signal_type_at(pos) {
+                self.pending
+                    .push_back((after_actor - 2, Tok::Central, after_actor));
+                return Some((tok.0, Tok::Actor(stripped.to_string()), after_actor - 2));
             }
         }
 
@@ -805,10 +805,10 @@ impl<'input> Iterator for Lexer<'input> {
                 return self.emit(tok);
             }
 
-            if self.force_actor_id {
-                if let Some(tok) = self.lex_forced_actor_id() {
-                    return self.emit(tok);
-                }
+            if self.force_actor_id
+                && let Some(tok) = self.lex_forced_actor_id()
+            {
+                return self.emit(tok);
             }
 
             if self.after_signal_type {

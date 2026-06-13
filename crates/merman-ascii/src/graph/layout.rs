@@ -884,9 +884,7 @@ fn raw_group_bounds(
     layouts: &[NodeLayout],
     group_index: usize,
 ) -> Option<RawBounds> {
-    if graph.groups.get(group_index).is_none() {
-        return None;
-    }
+    graph.groups.get(group_index)?;
 
     let mut layout_bounds_by_id = HashMap::new();
     for layout in layouts {
@@ -942,10 +940,10 @@ fn raw_group_bounds(
                 .get(member.as_str())
                 .copied()
                 .filter(|child_index| *child_index != index)
+                && !completed.contains_key(&child_index)
+                && !visiting.contains(&child_index)
             {
-                if !completed.contains_key(&child_index) && !visiting.contains(&child_index) {
-                    stack.push((child_index, false));
-                }
+                stack.push((child_index, false));
             }
         }
     }

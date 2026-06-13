@@ -97,13 +97,13 @@ fn strip_animation_declarations(css: &str) -> String {
     let mut cursor = 0usize;
 
     while cursor < css.len() {
-        if cursor == 0 {
-            if let Some(end) = animation_declaration_end_after_delimiter(css, 0) {
-                out.push_str(&css[copied_until..cursor]);
-                copied_until = end;
-                cursor = end;
-                continue;
-            }
+        if cursor == 0
+            && let Some(end) = animation_declaration_end_after_delimiter(css, 0)
+        {
+            out.push_str(&css[copied_until..cursor]);
+            copied_until = end;
+            cursor = end;
+            continue;
         }
 
         let Some(ch) = css[cursor..].chars().next() else {
@@ -211,10 +211,10 @@ fn css_deg_unit_match_at(css: &str, start: usize) -> Option<(usize, usize)> {
     if !css.get(cursor..unit_end)?.eq_ignore_ascii_case("deg") {
         return None;
     }
-    if let Some(next) = css.get(unit_end..).and_then(|tail| tail.chars().next()) {
-        if is_css_regex_word_char(next) {
-            return None;
-        }
+    if let Some(next) = css.get(unit_end..).and_then(|tail| tail.chars().next())
+        && is_css_regex_word_char(next)
+    {
+        return None;
     }
 
     Some((cursor, unit_end))

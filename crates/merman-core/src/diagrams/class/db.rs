@@ -109,14 +109,13 @@ impl ClassMember {
                 self.return_type = return_type.to_string();
             }
 
-            if self.classifier.is_empty() {
-                if let Some(last) = self.return_type.chars().last() {
-                    if last == '$' || last == '*' {
-                        self.classifier = last.to_string();
-                        self.return_type.pop();
-                        self.return_type = self.return_type.trim().to_string();
-                    }
-                }
+            if self.classifier.is_empty()
+                && let Some(last) = self.return_type.chars().last()
+                && (last == '$' || last == '*')
+            {
+                self.classifier = last.to_string();
+                self.return_type.pop();
+                self.return_type = self.return_type.trim().to_string();
             }
         } else {
             let first = input.chars().next().unwrap_or('\0');
@@ -664,10 +663,10 @@ impl<'a> ClassDb<'a> {
             text: text.to_string(),
             parent: parent.clone(),
         });
-        if let Some(parent) = parent {
-            if let Some(ns) = self.namespaces.get_mut(&parent) {
-                ns.note_ids.push(note_id);
-            }
+        if let Some(parent) = parent
+            && let Some(ns) = self.namespaces.get_mut(&parent)
+        {
+            ns.note_ids.push(note_id);
         }
     }
 
@@ -953,20 +952,20 @@ impl<'a> ClassDb<'a> {
             let Some(parent) = class_node.parent.as_deref() else {
                 continue;
             };
-            if let Some(ns) = self.namespaces.get_mut(parent) {
-                if !ns.class_ids.contains(id) {
-                    ns.class_ids.push(id.clone());
-                }
+            if let Some(ns) = self.namespaces.get_mut(parent)
+                && !ns.class_ids.contains(id)
+            {
+                ns.class_ids.push(id.clone());
             }
         }
         for note in &self.notes {
             let Some(parent) = note.parent.as_deref() else {
                 continue;
             };
-            if let Some(ns) = self.namespaces.get_mut(parent) {
-                if !ns.note_ids.contains(&note.id) {
-                    ns.note_ids.push(note.id.clone());
-                }
+            if let Some(ns) = self.namespaces.get_mut(parent)
+                && !ns.note_ids.contains(&note.id)
+            {
+                ns.note_ids.push(note.id.clone());
             }
         }
     }

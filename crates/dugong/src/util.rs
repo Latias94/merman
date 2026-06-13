@@ -85,10 +85,10 @@ where
     simplified.set_graph(g.graph().clone());
 
     for v in g.node_ids() {
-        if g.children(&v).is_empty() {
-            if let Some(lbl) = g.node(&v) {
-                simplified.set_node(v, lbl.clone());
-            }
+        if g.children(&v).is_empty()
+            && let Some(lbl) = g.node(&v)
+        {
+            simplified.set_node(v, lbl.clone());
         }
     }
 
@@ -289,10 +289,10 @@ pub fn remove_empty_ranks(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         }
         if let Some(vs) = layers.get(&i) {
             for v in vs {
-                if let Some(n) = g.node_mut(v) {
-                    if let Some(rank) = n.rank {
-                        n.rank = Some(rank + delta);
-                    }
+                if let Some(n) = g.node_mut(v)
+                    && let Some(rank) = n.rank
+                {
+                    n.rank = Some(rank + delta);
                 }
             }
         }

@@ -209,10 +209,10 @@ fn css_important_match_bounds_at_bang(svg: &str, bang: usize) -> Option<(usize, 
         return None;
     }
 
-    if let Some(next) = svg.get(marker_end..).and_then(|tail| tail.chars().next()) {
-        if is_css_regex_word_char(next) {
-            return None;
-        }
+    if let Some(next) = svg.get(marker_end..).and_then(|tail| tail.chars().next())
+        && is_css_regex_word_char(next)
+    {
+        return None;
     }
 
     let start = svg[..bang]

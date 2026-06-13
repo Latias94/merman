@@ -739,12 +739,12 @@ fn wrap_text(text: &str, max_chars: usize) -> String {
 
     let mut lines: Vec<String> = Vec::new();
     for word in text.split_whitespace() {
-        if let Some(last) = lines.last_mut() {
-            if last.len() + 1 + word.len() <= max_chars {
-                last.push(' ');
-                last.push_str(word);
-                continue;
-            }
+        if let Some(last) = lines.last_mut()
+            && last.len() + 1 + word.len() <= max_chars
+        {
+            last.push(' ');
+            last.push_str(word);
+            continue;
         }
         lines.push(word.to_string());
     }

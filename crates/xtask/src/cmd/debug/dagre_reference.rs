@@ -205,15 +205,15 @@ pub(crate) fn normalize_cluster_edge_endpoints_like_harness(graph: &mut DagreLay
     for key in edge_keys {
         let mut v = key.v.clone();
         let mut w = key.w.clone();
-        if cluster_ids.iter().any(|c| c == &v) {
-            if let Some(a) = anchor.get(&v) {
-                v = a.clone();
-            }
+        if cluster_ids.iter().any(|c| c == &v)
+            && let Some(a) = anchor.get(&v)
+        {
+            v = a.clone();
         }
-        if cluster_ids.iter().any(|c| c == &w) {
-            if let Some(a) = anchor.get(&w) {
-                w = a.clone();
-            }
+        if cluster_ids.iter().any(|c| c == &w)
+            && let Some(a) = anchor.get(&w)
+        {
+            w = a.clone();
         }
         if v == key.v && w == key.w {
             continue;
@@ -683,7 +683,7 @@ mod tests {
             .as_array()
             .expect("nodes array")
             .iter()
-            .find(|node| node["v"] == JsonValue::from("child"))
+            .find(|node| node["v"] == "child")
             .expect("child node");
         assert_eq!(child["parent"], JsonValue::from("cluster"));
         assert_eq!(child["value"]["width"], JsonValue::from(10.0));
@@ -746,7 +746,7 @@ mod tests {
             .as_array()
             .expect("nodes array")
             .iter()
-            .find(|node| node["v"] == JsonValue::from("a"))
+            .find(|node| node["v"] == "a")
             .expect("node a");
         assert_eq!(node["value"]["x"], JsonValue::from(30.0));
         assert_eq!(node["value"]["rank"], JsonValue::from(2));

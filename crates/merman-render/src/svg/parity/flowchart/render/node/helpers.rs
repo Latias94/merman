@@ -266,27 +266,27 @@ pub(super) fn resolve_node_render_info<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     node_id: &str,
 ) -> Option<ResolvedNodeRenderInfo<'a>> {
-    if let Some(sg) = ctx.subgraphs_by_id.get(node_id) {
-        if sg.nodes.is_empty() {
-            return Some(ResolvedNodeRenderInfo {
-                dom_idx: None,
-                class_attr_base: "node",
-                wrapped_in_a: false,
-                href: None,
-                label_text: sg.title.as_str(),
-                label_text_is_node_id: false,
-                label_type: sg.label_type.as_deref().unwrap_or("text"),
-                shape: "squareRect",
-                node_icon: None,
-                node_img: None,
-                node_pos: None,
-                node_constraint: None,
-                node_asset_width: None,
-                node_asset_height: None,
-                node_styles: &sg.styles,
-                node_classes: &sg.classes,
-            });
-        }
+    if let Some(sg) = ctx.subgraphs_by_id.get(node_id)
+        && sg.nodes.is_empty()
+    {
+        return Some(ResolvedNodeRenderInfo {
+            dom_idx: None,
+            class_attr_base: "node",
+            wrapped_in_a: false,
+            href: None,
+            label_text: sg.title.as_str(),
+            label_text_is_node_id: false,
+            label_type: sg.label_type.as_deref().unwrap_or("text"),
+            shape: "squareRect",
+            node_icon: None,
+            node_img: None,
+            node_pos: None,
+            node_constraint: None,
+            node_asset_width: None,
+            node_asset_height: None,
+            node_styles: &sg.styles,
+            node_classes: &sg.classes,
+        });
     }
 
     if let Some(node) = ctx.nodes_by_id.get(node_id) {

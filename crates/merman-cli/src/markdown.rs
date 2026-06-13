@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn extracts_backtick_and_colon_mermaid_blocks() {
         let source = "before\n```mermaid\nflowchart LR\nA-->B\n```\n:::mermaid\nsequenceDiagram\nA->>B: Hi\n:::\nafter";
-        let charts = extract_charts(&source);
+        let charts = extract_charts(source);
 
         assert_eq!(charts.len(), 2);
         assert!(charts[0].definition.contains("flowchart LR"));

@@ -875,15 +875,15 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             for c in n.children() {
                 if c.is_element() {
                     children.push(build_node(c, mode, decimals));
-                } else if c.is_text() {
-                    if let Some(t) = c.text().and_then(normalize_text_node_text) {
-                        children.push(SvgDomNode {
-                            name: "#text".to_string(),
-                            attrs: BTreeMap::new(),
-                            text: Some(t),
-                            children: Vec::new(),
-                        });
-                    }
+                } else if c.is_text()
+                    && let Some(t) = c.text().and_then(normalize_text_node_text)
+                {
+                    children.push(SvgDomNode {
+                        name: "#text".to_string(),
+                        attrs: BTreeMap::new(),
+                        text: Some(t),
+                        children: Vec::new(),
+                    });
                 }
             }
         } else {
@@ -923,10 +923,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         }
 
         fn find_first_attr<'a>(n: &'a SvgDomNode, tag: &str, attr: &str) -> Option<&'a str> {
-            if n.name == tag {
-                if let Some(v) = n.attrs.get(attr) {
-                    return Some(v.as_str());
-                }
+            if n.name == tag
+                && let Some(v) = n.attrs.get(attr)
+            {
+                return Some(v.as_str());
             }
             for c in &n.children {
                 if let Some(v) = find_first_attr(c, tag, attr) {
@@ -949,10 +949,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 
         fn min_tspan_dy(n: &SvgDomNode) -> Option<f64> {
             let mut best: Option<f64> = None;
-            if n.name == "tspan" {
-                if let Some(dy) = n.attrs.get("dy").and_then(|s| s.parse::<f64>().ok()) {
-                    best = Some(best.map(|v| v.min(dy)).unwrap_or(dy));
-                }
+            if n.name == "tspan"
+                && let Some(dy) = n.attrs.get("dy").and_then(|s| s.parse::<f64>().ok())
+            {
+                best = Some(best.map(|v| v.min(dy)).unwrap_or(dy));
             }
             for c in &n.children {
                 if let Some(v) = min_tspan_dy(c) {
@@ -963,14 +963,12 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         }
 
         fn find_first_cluster_id(n: &SvgDomNode) -> Option<&str> {
-            if n.name == "g" {
-                if let Some(class) = n.attrs.get("class") {
-                    if class.split_whitespace().any(is_cluster_class_token) {
-                        if let Some(id) = n.attrs.get("id") {
-                            return Some(id.as_str());
-                        }
-                    }
-                }
+            if n.name == "g"
+                && let Some(class) = n.attrs.get("class")
+                && class.split_whitespace().any(is_cluster_class_token)
+                && let Some(id) = n.attrs.get("id")
+            {
+                return Some(id.as_str());
             }
             for c in &n.children {
                 if let Some(id) = find_first_cluster_id(c) {
@@ -982,10 +980,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 
         fn sort_hint(n: &SvgDomNode) -> &str {
             fn find_first_path_id(n: &SvgDomNode) -> Option<&str> {
-                if n.name == "path" {
-                    if let Some(id) = n.attrs.get("id") {
-                        return Some(id.as_str());
-                    }
+                if n.name == "path"
+                    && let Some(id) = n.attrs.get("id")
+                {
+                    return Some(id.as_str());
                 }
                 for c in &n.children {
                     if let Some(id) = find_first_path_id(c) {
@@ -1018,10 +1016,11 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 // on incidental content differences (e.g. label wrapping changes the `tspan`
                 // structure), causing spurious diffs. Prefer the first descendant edge path id as
                 // a stable semantic key.
-                if !n.attrs.contains_key("id") && !n.attrs.contains_key("data-id") {
-                    if let Some(id) = find_first_path_id(n) {
-                        return id;
-                    }
+                if !n.attrs.contains_key("id")
+                    && !n.attrs.contains_key("data-id")
+                    && let Some(id) = find_first_path_id(n)
+                {
+                    return id;
                 }
 
                 fn find_first_data_id(n: &SvgDomNode) -> Option<&str> {
@@ -1037,15 +1036,15 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 }
 
                 if let Some(class) = n.attrs.get("class") {
-                    if class.split_whitespace().any(|c| c == "root") {
-                        if let Some(id) = find_first_cluster_id(n) {
-                            return id;
-                        }
+                    if class.split_whitespace().any(|c| c == "root")
+                        && let Some(id) = find_first_cluster_id(n)
+                    {
+                        return id;
                     }
-                    if class.split_whitespace().any(|c| c == "edgeLabel") {
-                        if let Some(id) = find_first_data_id(n) {
-                            return id;
-                        }
+                    if class.split_whitespace().any(|c| c == "edgeLabel")
+                        && let Some(id) = find_first_data_id(n)
+                    {
+                        return id;
                     }
                 }
             }

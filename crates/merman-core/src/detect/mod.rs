@@ -371,7 +371,7 @@ fn starts_with_header_case_insensitive(text: &str, header: &str) -> bool {
     text[header.len()..]
         .chars()
         .next()
-        .map_or(true, |c| c.is_whitespace() || c == ';')
+        .is_none_or(|c| c.is_whitespace() || c == ';')
 }
 
 pub(crate) fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {

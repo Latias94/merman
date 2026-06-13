@@ -249,27 +249,27 @@ impl RequirementDb {
             }
 
             for req_name in &self.requirement_order {
-                if let Some(req) = self.requirements.get_mut(req_name) {
-                    if req.classes.iter().any(|c| c == id) {
-                        req.css_styles.extend(
-                            styles
-                                .iter()
-                                .flat_map(|s| s.split(','))
-                                .map(|s| s.to_string()),
-                        );
-                    }
+                if let Some(req) = self.requirements.get_mut(req_name)
+                    && req.classes.iter().any(|c| c == id)
+                {
+                    req.css_styles.extend(
+                        styles
+                            .iter()
+                            .flat_map(|s| s.split(','))
+                            .map(|s| s.to_string()),
+                    );
                 }
             }
             for el_name in &self.element_order {
-                if let Some(el) = self.elements.get_mut(el_name) {
-                    if el.classes.iter().any(|c| c == id) {
-                        el.css_styles.extend(
-                            styles
-                                .iter()
-                                .flat_map(|s| s.split(','))
-                                .map(|s| s.to_string()),
-                        );
-                    }
+                if let Some(el) = self.elements.get_mut(el_name)
+                    && el.classes.iter().any(|c| c == id)
+                {
+                    el.css_styles.extend(
+                        styles
+                            .iter()
+                            .flat_map(|s| s.split(','))
+                            .map(|s| s.to_string()),
+                    );
                 }
             }
         }

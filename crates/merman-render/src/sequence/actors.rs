@@ -409,17 +409,19 @@ fn actor_left_x(
         let cur_box = actor_box[i];
 
         // end of box
-        if prev_box.is_some() && prev_box != cur_box {
-            if let Some(prev) = prev_box {
-                prev_margin += ctx.box_margin + box_margins[prev];
-            }
+        if prev_box.is_some()
+            && prev_box != cur_box
+            && let Some(prev) = prev_box
+        {
+            prev_margin += ctx.box_margin + box_margins[prev];
         }
 
         // new box
-        if cur_box.is_some() && cur_box != prev_box {
-            if let Some(bi) = cur_box {
-                prev_margin += box_margins[bi];
-            }
+        if cur_box.is_some()
+            && cur_box != prev_box
+            && let Some(bi) = cur_box
+        {
+            prev_margin += box_margins[bi];
         }
 
         // Mermaid widens the margin before a created actor by `actor.width / 2`.

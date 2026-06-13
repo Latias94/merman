@@ -937,14 +937,12 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                         cur_ops.clear();
                     }
                 }
-                "svg" => {
-                    if nested_svg_depth > 0 {
-                        nested_svg_depth -= 1;
-                        if let Some(len) = tf_stack.pop() {
-                            cur_ops.truncate(len);
-                        } else {
-                            cur_ops.clear();
-                        }
+                "svg" if nested_svg_depth > 0 => {
+                    nested_svg_depth -= 1;
+                    if let Some(len) = tf_stack.pop() {
+                        cur_ops.truncate(len);
+                    } else {
+                        cur_ops.clear();
                     }
                 }
                 _ => {}

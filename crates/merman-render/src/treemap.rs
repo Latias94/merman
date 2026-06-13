@@ -50,10 +50,10 @@ fn push_node(nodes: &mut Vec<HierNode>, node: &TreemapNode, parent: Option<usize
             y1: 0.0,
         });
 
-        if let Some(parent_idx) = parent_idx {
-            if let Some(parent_node) = nodes.get_mut(parent_idx) {
-                parent_node.children.push(idx);
-            }
+        if let Some(parent_idx) = parent_idx
+            && let Some(parent_node) = nodes.get_mut(parent_idx)
+        {
+            parent_node.children.push(idx);
         }
 
         if let Some(children) = current.children.as_ref() {

@@ -174,11 +174,11 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
         out.push_str(from);
         out.push_str(seq_arrow);
         out.push_str(to);
-        if let Some(lbl) = label {
-            if !lbl.is_empty() {
-                out.push_str(": ");
-                out.push_str(lbl);
-            }
+        if let Some(lbl) = label
+            && !lbl.is_empty()
+        {
+            out.push_str(": ");
+            out.push_str(lbl);
         }
         Some(out)
     }
@@ -224,15 +224,11 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
         // For `if { ... } else { ... }` and `try { ... } catch { ... }`, the brace before the next
         // branch must *not* close the translated Mermaid fragment.
         match top {
-            BlockKind::IfAlt => {
-                if rest.starts_with("else") {
-                    return;
-                }
+            BlockKind::IfAlt if rest.starts_with("else") => {
+                return;
             }
-            BlockKind::TryAlt => {
-                if rest.starts_with("catch") || rest.starts_with("finally") {
-                    return;
-                }
+            BlockKind::TryAlt if (rest.starts_with("catch") || rest.starts_with("finally")) => {
+                return;
             }
             BlockKind::SyncCall { .. } => {}
             _ => {}

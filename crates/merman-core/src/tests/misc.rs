@@ -590,11 +590,12 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
             }
 
             #[cfg(feature = "full")]
-            for (label, diagram_type, source) in [(
-                "architecture",
-                "architecture",
-                "architecture-beta\n  service a(server)[A]\n",
-            )] {
+            {
+                let (label, diagram_type, source) = (
+                    "architecture",
+                    "architecture",
+                    "architecture-beta\n  service a(server)[A]\n",
+                );
                 let parsed = engine
                     .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
                     .expect("parse succeeds")

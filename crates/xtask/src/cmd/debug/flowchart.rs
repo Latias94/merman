@@ -109,57 +109,56 @@ pub(crate) fn debug_flowchart_svg_roots(args: Vec<String>) -> Result<(), XtaskEr
         let mut clusters: Vec<ClusterInfo> = Vec::new();
 
         for n in doc.descendants().filter(|n| n.is_element()) {
-            if n.tag_name().name() == "g" {
-                if let Some(class) = n.attribute("class") {
-                    if class.split_whitespace().any(|t| t == "root") {
-                        if let Some(transform) = n.attribute("transform") {
-                            if let Some(t) = parse_translate(transform) {
-                                root_transforms.push(t);
-                            }
+            if n.tag_name().name() == "g"
+                && let Some(class) = n.attribute("class")
+            {
+                if class.split_whitespace().any(|t| t == "root")
+                    && let Some(transform) = n.attribute("transform")
+                    && let Some(t) = parse_translate(transform)
+                {
+                    root_transforms.push(t);
+                }
+                if class.split_whitespace().any(|t| t == "cluster")
+                    && let Some(id) = n.attribute("id")
+                {
+                    let mut root_translate: Option<String> = None;
+                    for a in n.ancestors() {
+                        if !a.is_element() || a.tag_name().name() != "g" {
+                            continue;
                         }
-                    }
-                    if class.split_whitespace().any(|t| t == "cluster") {
-                        if let Some(id) = n.attribute("id") {
-                            let mut root_translate: Option<String> = None;
-                            for a in n.ancestors() {
-                                if !a.is_element() || a.tag_name().name() != "g" {
-                                    continue;
-                                }
-                                let Some(class) = a.attribute("class") else {
-                                    continue;
-                                };
-                                if !class.split_whitespace().any(|t| t == "root") {
-                                    continue;
-                                }
-                                let Some(transform) = a.attribute("transform") else {
-                                    continue;
-                                };
-                                root_translate = parse_translate(transform);
-                                break;
-                            }
-
-                            let rect = n
-                                .children()
-                                .find(|c| c.is_element() && c.tag_name().name() == "rect");
-                            let rect_x = rect.and_then(|r| r.attribute("x")).map(|s| s.to_string());
-                            let rect_y = rect.and_then(|r| r.attribute("y")).map(|s| s.to_string());
-                            let rect_w = rect
-                                .and_then(|r| r.attribute("width"))
-                                .map(|s| s.to_string());
-                            let rect_h = rect
-                                .and_then(|r| r.attribute("height"))
-                                .map(|s| s.to_string());
-
-                            clusters.push(ClusterInfo {
-                                id: id.to_string(),
-                                root_translate,
-                                rect_x,
-                                rect_y,
-                                rect_w,
-                                rect_h,
-                            });
+                        let Some(class) = a.attribute("class") else {
+                            continue;
+                        };
+                        if !class.split_whitespace().any(|t| t == "root") {
+                            continue;
                         }
+                        let Some(transform) = a.attribute("transform") else {
+                            continue;
+                        };
+                        root_translate = parse_translate(transform);
+                        break;
                     }
+
+                    let rect = n
+                        .children()
+                        .find(|c| c.is_element() && c.tag_name().name() == "rect");
+                    let rect_x = rect.and_then(|r| r.attribute("x")).map(|s| s.to_string());
+                    let rect_y = rect.and_then(|r| r.attribute("y")).map(|s| s.to_string());
+                    let rect_w = rect
+                        .and_then(|r| r.attribute("width"))
+                        .map(|s| s.to_string());
+                    let rect_h = rect
+                        .and_then(|r| r.attribute("height"))
+                        .map(|s| s.to_string());
+
+                    clusters.push(ClusterInfo {
+                        id: id.to_string(),
+                        root_translate,
+                        rect_x,
+                        rect_y,
+                        rect_w,
+                        rect_h,
+                    });
                 }
             }
         }
@@ -337,11 +336,11 @@ pub(crate) fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), Xta
         let mut y = 0.0;
         // `ancestors()` includes the node itself; we want the sum of parent transforms only.
         for n in node.ancestors().filter(|n| n.is_element()).skip(1) {
-            if let Some(transform) = n.attribute("transform") {
-                if let Some(t) = parse_translate(transform) {
-                    x += t.x;
-                    y += t.y;
-                }
+            if let Some(transform) = n.attribute("transform")
+                && let Some(t) = parse_translate(transform)
+            {
+                x += t.x;
+                y += t.y;
             }
         }
         Translate { x, y }
@@ -644,11 +643,11 @@ pub(crate) fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskErr
         let mut x = 0.0;
         let mut y = 0.0;
         for n in node.ancestors().filter(|n| n.is_element()) {
-            if let Some(transform) = n.attribute("transform") {
-                if let Some(t) = parse_translate(transform) {
-                    x += t.x;
-                    y += t.y;
-                }
+            if let Some(transform) = n.attribute("transform")
+                && let Some(t) = parse_translate(transform)
+            {
+                x += t.x;
+                y += t.y;
             }
         }
         Translate { x, y }
@@ -775,20 +774,16 @@ pub(crate) fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskErr
         let mut root_transforms: Vec<String> = Vec::new();
 
         for n in doc.descendants().filter(|n| n.is_element()) {
-            if n.tag_name().name() == "g" {
-                if let Some(class) = n.attribute("class") {
-                    if class.split_whitespace().any(|t| t == "root") {
-                        if let Some(transform) = n.attribute("transform") {
-                            if let Some(t) = transform
-                                .trim()
-                                .strip_prefix("translate(")
-                                .and_then(|s| s.strip_suffix(')'))
-                            {
-                                root_transforms.push(t.trim().to_string());
-                            }
-                        }
-                    }
-                }
+            if n.tag_name().name() == "g"
+                && let Some(class) = n.attribute("class")
+                && class.split_whitespace().any(|t| t == "root")
+                && let Some(transform) = n.attribute("transform")
+                && let Some(t) = transform
+                    .trim()
+                    .strip_prefix("translate(")
+                    .and_then(|s| s.strip_suffix(')'))
+            {
+                root_transforms.push(t.trim().to_string());
             }
 
             if n.tag_name().name() == "g" {
@@ -1396,18 +1391,16 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     )
     .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
 
-    if let Ok(doc) = roxmltree::Document::parse(&svg) {
-        if let Some(dp) = find_data_points(&doc, edge_id) {
-            if let Some(json) = decode_data_points_json(&dp) {
-                println!("== Rendered SVG data-points (decoded) ==");
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&json)
-                        .unwrap_or_else(|_| "<unprintable>".to_string())
-                );
-                println!();
-            }
-        }
+    if let Ok(doc) = roxmltree::Document::parse(&svg)
+        && let Some(dp) = find_data_points(&doc, edge_id)
+        && let Some(json) = decode_data_points_json(&dp)
+    {
+        println!("== Rendered SVG data-points (decoded) ==");
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).unwrap_or_else(|_| "<unprintable>".to_string())
+        );
+        println!();
     }
 
     let trace_json = fs::read_to_string(&out).map_err(|source| XtaskError::ReadFile {

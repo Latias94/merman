@@ -88,13 +88,13 @@ fn normalize_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, e: EdgeKey) {
             g.graph_mut().dummy_chains.push(dummy_id.clone());
         }
 
-        if label_rank == Some(r) {
-            if let Some(n) = g.node_mut(&dummy_id) {
-                n.width = edge_label.width;
-                n.height = edge_label.height;
-                n.dummy = Some("edge-label".to_string());
-                n.labelpos = Some(edge_label.labelpos);
-            }
+        if label_rank == Some(r)
+            && let Some(n) = g.node_mut(&dummy_id)
+        {
+            n.width = edge_label.width;
+            n.height = edge_label.height;
+            n.dummy = Some("edge-label".to_string());
+            n.labelpos = Some(edge_label.labelpos);
         }
 
         g.set_edge_named(

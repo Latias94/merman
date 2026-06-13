@@ -158,10 +158,10 @@ fn parse_source_frames(tail: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut iter = tail.split_whitespace();
     while let Some(token) = iter.next() {
-        if token == "->>" {
-            if let Some(name) = iter.next() {
-                out.push(trim_trailing_syntax(name).to_string());
-            }
+        if token == "->>"
+            && let Some(name) = iter.next()
+        {
+            out.push(trim_trailing_syntax(name).to_string());
         }
     }
     out
@@ -260,7 +260,7 @@ fn strip_keyword<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let rest = line.strip_prefix(keyword)?;
     rest.chars()
         .next()
-        .map_or(true, |ch| ch.is_whitespace())
+        .is_none_or(|ch| ch.is_whitespace())
         .then_some(rest)
 }
 
