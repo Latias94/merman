@@ -249,6 +249,53 @@ state Parent {
 }
 
 #[test]
+fn state_svg_root_html_labels_false_uses_svg_text_for_notes() {
+    let svg = render_state_svg_from_text(
+        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
+stateDiagram-v2
+A
+note right of A : Note text
+"#,
+    );
+
+    assert!(
+        svg.contains("statediagram-note")
+            && svg.contains(
+                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Note text</tspan>"#
+            ),
+        "root htmlLabels=false should render State notes as SVG text: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"<span class="nodeLabel"><p>Note text</p></span>"#),
+        "root htmlLabels=false should not render State note text through HTML node labels: {svg}"
+    );
+}
+
+#[test]
+fn state_svg_root_html_labels_false_uses_svg_text_for_rect_with_title() {
+    let svg = render_state_svg_from_text(
+        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
+stateDiagram-v2
+Display : Ready
+Display : Running
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"title-state"#)
+            && svg.contains(r#"<text y="-10.1""#)
+            && svg.contains(r#"class="text-outer-tspan row""#)
+            && svg.contains("Ready")
+            && svg.contains("Running"),
+        "root htmlLabels=false should render State rectWithTitle labels as SVG text: {svg}"
+    );
+    assert!(
+        !svg.contains("<foreignObject"),
+        "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for State rectWithTitle DOM: {svg}"
+    );
+}
+
+#[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
     let svg = render_state_svg_from_text(
         r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%
