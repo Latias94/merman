@@ -138,7 +138,7 @@ fn requirement_svg_hand_drawn_seed_controls_visible_rough_paths() {
                     "themeVariables": {
                         "mainBkg": "#f0fdf4",
                         "nodeBorder": "#16a34a",
-                        "requirementBkgColor": "#f0fdf4",
+                        "requirementBackground": "#f0fdf4",
                         "requirementBorderColor": "#16a34a"
                     }
                 }),
@@ -155,7 +155,7 @@ fn requirement_svg_hand_drawn_seed_controls_visible_rough_paths() {
         &[
             r#"id="requirement-seed-req1" data-look="classic""#,
             r#"class="basic label-container outer-path""#,
-            r##"fill="#ECECFF""##,
+            r##"fill="#f0fdf4""##,
             r##"stroke="#16a34a" stroke-width="1.3""##,
             r#"class="divider""#,
         ],
