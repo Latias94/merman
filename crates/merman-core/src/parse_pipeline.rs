@@ -177,7 +177,8 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let mut effective_config = self.engine.site_config.clone();
-        effective_config.deep_merge(pre.config.as_value());
+        let effective_overrides = effective_config.secure_filtered_overrides(&pre.config);
+        effective_config.deep_merge(effective_overrides.as_value());
 
         let diagram_type = match self
             .engine
@@ -221,7 +222,8 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let mut effective_config = self.engine.site_config.clone();
-        effective_config.deep_merge(pre.config.as_value());
+        let effective_overrides = effective_config.secure_filtered_overrides(&pre.config);
+        effective_config.deep_merge(effective_overrides.as_value());
         family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
         theme::apply_theme_defaults(&mut effective_config);
 

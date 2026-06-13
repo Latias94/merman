@@ -499,6 +499,38 @@ fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
 }
 
 #[test]
+fn site_config_secure_keys_protect_effective_config_from_diagram_config() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "fontFamily": "site-font",
+        "fontSize": 16,
+        "securityLevel": "strict",
+        "secure": ["secure", "fontSize", "securityLevel", "customLockedKey"]
+    })));
+    let text = r#"%%{init: {"fontFamily": "diagram-font", "fontSize": 99, "securityLevel": "loose"}}%%
+flowchart TD
+    A --> B
+"#;
+
+    let meta = engine
+        .parse_metadata_sync(text, ParseOptions::strict())
+        .expect("parse succeeds")
+        .expect("diagram detected");
+
+    assert_eq!(meta.config.get_str("fontFamily"), Some("diagram-font"));
+    assert_eq!(meta.config.as_value()["fontSize"], json!(99));
+    assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
+    assert_eq!(
+        meta.effective_config.get_str("fontFamily"),
+        Some("diagram-font")
+    );
+    assert_eq!(meta.effective_config.as_value()["fontSize"], json!(16));
+    assert_eq!(
+        meta.effective_config.get_str("securityLevel"),
+        Some("strict")
+    );
+}
+
+#[test]
 fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
     let site_config = MermaidConfig::from_value(deep_config_value(

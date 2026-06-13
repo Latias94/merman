@@ -1,5 +1,5 @@
 use futures::executor::block_on;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
     SvgRenderOptions, render_flowchart_v2_debug_svg, render_flowchart_v2_svg,
@@ -34,7 +34,10 @@ fn fmt(v: f64) -> String {
 }
 
 fn render_flowchart_svg_from_text(text: &str) -> String {
-    let engine = Engine::new();
+    render_flowchart_svg_from_text_with_engine(Engine::new(), text)
+}
+
+fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -119,7 +122,10 @@ flowchart TD
         "expected Mermaid-compatible strict SVG to omit sanitized about:blank href: {strict}"
     );
 
-    let loose = render_flowchart_svg_from_text(
+    let loose = render_flowchart_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
         r#"%%{init: {"securityLevel": "loose"}}%%
 flowchart TD
     A[Alpha] --> B[Beta]
