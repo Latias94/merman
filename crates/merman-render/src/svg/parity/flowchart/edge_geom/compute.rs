@@ -148,19 +148,24 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let local_points = scratch.local_points.as_slice();
 
     use super::{
-        FlowchartEdgeTraceInput, TraceEndpointIntersection, boundary_for_cluster,
-        boundary_for_node, curve_path_d_and_bounds, cut_path_at_intersect_into,
-        dedup_consecutive_points_into, force_intersect_for_layout_shape,
-        intersect_for_layout_shape, is_rounded_intersect_shift_shape,
-        line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
-        maybe_fix_corners, maybe_normalize_selfedge_loop_points,
-        maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
-        maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
-        normalize_cyclic_special_data_points, rounded_line_with_marker_offsets_for_edge_type,
-        write_flowchart_edge_trace,
+        FlowchartEdgeTraceInput, TraceEndpointIntersection, apply_flowchart_elk_endpoint_cutter,
+        boundary_for_cluster, boundary_for_node, curve_path_d_and_bounds,
+        cut_path_at_intersect_into, dedup_consecutive_points_into,
+        force_intersect_for_layout_shape, intersect_for_layout_shape,
+        is_rounded_intersect_shift_shape, line_with_offset_for_edge_type,
+        maybe_collapse_degenerate_subgraph_edge_route, maybe_fix_corners,
+        maybe_normalize_selfedge_loop_points, maybe_remove_redundant_cluster_run_point,
+        maybe_snap_data_point_to_f32, maybe_snap_shallow_basis_triplet_y_to_f32,
+        maybe_truncate_data_point, normalize_cyclic_special_data_points,
+        rounded_line_with_marker_offsets_for_edge_type, write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
+    let is_elk_layout = ctx.diagram_type == "flowchart-elk"
+        || ctx
+            .config
+            .get_str("layout")
+            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
     dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
     let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
     maybe_normalize_selfedge_loop_points(base_points);
@@ -169,7 +174,17 @@ pub(super) fn flowchart_compute_edge_path_geom(
     scratch.tmp_points_b.extend_from_slice(base_points);
     let points_after_intersect: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
 
-    if base_points.len() >= 3 {
+    if is_elk_layout {
+        apply_flowchart_elk_endpoint_cutter(
+            ctx,
+            edge,
+            origin_x,
+            origin_y,
+            is_cyclic_special,
+            base_points,
+            points_after_intersect,
+        );
+    } else if base_points.len() >= 3 {
         let tail_shape = ctx
             .nodes_by_id
             .get(edge.from.as_str())
@@ -300,11 +315,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
         p.y = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.y));
     }
 
-    let is_elk_layout = ctx.diagram_type == "flowchart-elk"
-        || ctx
-            .config
-            .get_str("layout")
-            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
     let interpolate = if is_elk_layout {
         "rounded"
     } else {

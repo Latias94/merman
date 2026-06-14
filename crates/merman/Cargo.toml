@@ -55,6 +55,7 @@ tiny-skia = { workspace = true, optional = true }
 svg2pdf = { workspace = true, optional = true }
 
 [dev-dependencies]
+base64.workspace = true
 criterion = "0.5"
 png.workspace = true
 roxmltree.workspace = true

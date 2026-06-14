@@ -2683,6 +2683,7 @@ dependencies = [
 name = "merman"
 version = "0.8.0-alpha.2"
 dependencies = [
+ "base64",
  "chrono",
  "criterion",
  "eframe",
