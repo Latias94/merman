@@ -2772,6 +2772,7 @@ fn layout_flowchart_v2_with_model(
         clusters,
         bounds,
         dom_node_order_by_root,
+        source_backed_edge_label_bboxes: false,
     })
 }
 

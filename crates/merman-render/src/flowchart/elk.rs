@@ -45,7 +45,7 @@ pub fn layout_flowchart_elk_typed(
     let layout = layout_elk_graph(&graph, backend).map_err(|err| Error::InvalidModel {
         message: format!("ELK layout failed: {err}"),
     })?;
-    flowchart_layout_from_elk(model, effective_config, &graph, layout)
+    flowchart_layout_from_elk(model, effective_config, &graph, layout, backend)
 }
 
 fn layout_elk_graph(
@@ -65,6 +65,7 @@ fn flowchart_layout_from_elk(
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
+    backend: FlowchartElkBackend,
 ) -> Result<FlowchartV2Layout> {
     let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
@@ -213,6 +214,7 @@ fn flowchart_layout_from_elk(
         clusters,
         bounds,
         dom_node_order_by_root,
+        source_backed_edge_label_bboxes: backend == FlowchartElkBackend::SourcePorted,
     })
 }
 

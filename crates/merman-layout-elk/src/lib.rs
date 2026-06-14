@@ -124,8 +124,6 @@ fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
     };
     options.force_node_model_order = graph.options.layered.force_node_model_order;
     options.merge_edges = graph.options.layered.merge_edges;
-    options.spacing.node_node = graph.spacing.node_node;
-    options.spacing.node_node_between_layers = graph.spacing.layer_layer;
     options.greedy_switch_activation_threshold = 0;
     options.greedy_switch_hierarchical_type = GreedySwitchType::TwoSided;
     options

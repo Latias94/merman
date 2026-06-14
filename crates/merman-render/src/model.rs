@@ -611,6 +611,9 @@ pub struct FlowchartV2Layout {
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
     #[serde(skip)]
     pub dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
+    /// Source-backed ELK carries Mermaid DOM `getBoundingClientRect()` edge-label bounds.
+    #[serde(skip)]
+    pub source_backed_edge_label_bboxes: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

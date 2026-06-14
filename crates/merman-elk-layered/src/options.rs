@@ -282,6 +282,32 @@ impl Default for SpacingOptions {
     }
 }
 
+impl SpacingOptions {
+    /// Applies Eclipse ELK's `LayeredSpacings.withBaseValue(...)` default factors.
+    ///
+    /// Source:
+    /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/options/LayeredSpacings.java
+    pub fn layered_base_value(base_value: f64) -> Self {
+        let defaults = Self::default();
+        let scale = base_value / defaults.node_node;
+        Self {
+            node_node: base_value,
+            edge_edge: defaults.edge_edge * scale,
+            edge_node: defaults.edge_node * scale,
+            edge_label: defaults.edge_label * scale,
+            label_label: defaults.label_label * scale,
+            label_node: defaults.label_node * scale,
+            label_port_horizontal: defaults.label_port_horizontal * scale,
+            label_port_vertical: defaults.label_port_vertical * scale,
+            port_port: defaults.port_port * scale,
+            edge_edge_between_layers: defaults.edge_edge_between_layers * scale,
+            edge_node_between_layers: defaults.edge_node_between_layers * scale,
+            node_node_between_layers: defaults.node_node_between_layers * scale,
+            ports_surrounding: defaults.ports_surrounding,
+        }
+    }
+}
+
 impl Default for LayeredOptions {
     fn default() -> Self {
         Self {
@@ -340,6 +366,7 @@ impl LayeredOptions {
             hierarchy_handling: HierarchyHandling::IncludeChildren,
             node_placement_strategy: NodePlacementStrategy::BrandesKoepf,
             consider_model_order_strategy: OrderingStrategy::NodesAndEdges,
+            spacing: SpacingOptions::layered_base_value(40.0),
             unnecessary_bendpoints: true,
             self_loop_distribution: SelfLoopDistributionStrategy::Equally,
             wrapping_multi_edge_improve_cuts: true,
@@ -379,5 +406,28 @@ impl PortConstraints {
 
     pub fn is_side_fixed(self) -> bool {
         !matches!(self, Self::Free | Self::Undefined)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mermaid_flowchart_defaults_apply_layered_spacing_base_value() {
+        let options = LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down);
+
+        assert_eq!(options.spacing.node_node, 40.0);
+        assert_eq!(options.spacing.edge_edge, 20.0);
+        assert_eq!(options.spacing.edge_node, 20.0);
+        assert_eq!(options.spacing.edge_label, 4.0);
+        assert_eq!(options.spacing.label_label, 0.0);
+        assert_eq!(options.spacing.label_node, 10.0);
+        assert_eq!(options.spacing.label_port_horizontal, 2.0);
+        assert_eq!(options.spacing.label_port_vertical, 2.0);
+        assert_eq!(options.spacing.port_port, 20.0);
+        assert_eq!(options.spacing.edge_edge_between_layers, 20.0);
+        assert_eq!(options.spacing.edge_node_between_layers, 20.0);
+        assert_eq!(options.spacing.node_node_between_layers, 40.0);
     }
 }

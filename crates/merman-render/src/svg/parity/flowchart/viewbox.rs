@@ -134,7 +134,7 @@ where
         .flatten()
         {
             let label_width = if ctx.edge_html_labels {
-                flowchart_html_edge_label_render_width(lbl.width)
+                flowchart_html_edge_label_width_for_layout(ctx, lbl.width)
             } else {
                 lbl.width
             };

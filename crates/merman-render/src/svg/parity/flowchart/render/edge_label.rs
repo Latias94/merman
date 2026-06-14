@@ -447,7 +447,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             }
 
             let layout_w = lbl.width.max(0.0);
-            let render_w = flowchart_html_edge_label_render_width(layout_w);
+            let render_w = flowchart_html_edge_label_width_for_layout(ctx, layout_w);
             let h = lbl.height.max(0.0);
             let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
@@ -513,7 +513,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 )
             };
             let layout_w = metrics.width.max(1.0);
-            let render_w = flowchart_html_edge_label_render_width(layout_w);
+            let render_w = flowchart_html_edge_label_width_for_layout(ctx, layout_w);
             let h = metrics.height.max(1.0);
             let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(

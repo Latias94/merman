@@ -56,6 +56,18 @@ pub(in crate::svg::parity::flowchart) fn flowchart_html_edge_label_render_width(
     }
 }
 
+#[inline]
+pub(in crate::svg::parity::flowchart) fn flowchart_html_edge_label_width_for_layout(
+    ctx: &FlowchartRenderCtx<'_>,
+    layout_width: f64,
+) -> f64 {
+    if ctx.source_backed_edge_label_bboxes {
+        layout_width.max(0.0)
+    } else {
+        flowchart_html_edge_label_render_width(layout_width)
+    }
+}
+
 // In flowchart SVG emission, many attribute payloads are known to be short-lived (colors, inline
 // `d` strings, etc). Avoid allocating an owned `String` for attribute escaping by default.
 #[inline]

@@ -249,6 +249,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         icon_registry: options.icon_registry.as_deref(),
         node_html_labels,
         edge_html_labels,
+        source_backed_edge_label_bboxes: layout.source_backed_edge_label_bboxes,
         class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,
