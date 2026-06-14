@@ -26,10 +26,10 @@ pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
     import_graph,
 };
-pub use intermediate::restore_reversed_edges;
+pub use intermediate::{restore_reversed_edges, split_edge, split_long_edges};
 pub use options::{
     EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions,
-    NodePlacementStrategy, SelfLoopDistributionStrategy, SpacingOptions,
+    NodePlacementStrategy, PortConstraints, SelfLoopDistributionStrategy, SpacingOptions,
 };
 pub use p2layers::layer_network_simplex;
 pub use pipeline::{

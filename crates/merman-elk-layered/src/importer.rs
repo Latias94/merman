@@ -226,6 +226,7 @@ fn transform_edge(
         model_order: Some(model_order),
         priority_direction: edge.priority_direction,
         priority_shortness: edge.priority_shortness,
+        thickness: 0.0,
     });
 
     Ok(edge_index)

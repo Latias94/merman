@@ -106,6 +106,17 @@ pub enum SelfLoopDistributionStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PortConstraints {
+    #[default]
+    Undefined,
+    Free,
+    FixedSide,
+    FixedOrder,
+    FixedRatio,
+    FixedPos,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LayerConstraint {
     #[default]
     None,

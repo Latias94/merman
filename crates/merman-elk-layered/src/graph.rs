@@ -6,7 +6,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LEdge.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LPort.java
 
-use super::options::LayeredOptions;
+use super::options::{LayeredOptions, PortConstraints};
 use crate::random::JavaRandom;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +71,11 @@ pub struct LNode {
     pub model_order: Option<usize>,
     pub layer_index: Option<usize>,
     pub layer_constraint: super::options::LayerConstraint,
+    pub port_constraints: PortConstraints,
+    pub origin_edge: Option<usize>,
+    pub long_edge_source: Option<PortRef>,
+    pub long_edge_target: Option<PortRef>,
+    pub long_edge_has_label_dummies: bool,
     pub compound: bool,
 }
 
@@ -87,6 +92,11 @@ impl LNode {
             model_order,
             layer_index: None,
             layer_constraint: super::options::LayerConstraint::None,
+            port_constraints: PortConstraints::Undefined,
+            origin_edge: None,
+            long_edge_source: None,
+            long_edge_target: None,
+            long_edge_has_label_dummies: false,
             compound: false,
         }
     }
@@ -144,6 +154,7 @@ pub struct LayeredEdge {
     pub model_order: Option<usize>,
     pub priority_direction: i32,
     pub priority_shortness: i32,
+    pub thickness: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,6 +169,7 @@ pub struct LLabel {
     pub size: LSize,
     pub placement: EdgeLabelPlacement,
     pub inline: bool,
+    pub end_label_edge: Option<usize>,
 }
 
 impl LLabel {
@@ -167,6 +179,7 @@ impl LLabel {
             size: LSize { width, height },
             placement: EdgeLabelPlacement::Center,
             inline: false,
+            end_label_edge: None,
         }
     }
 }
@@ -262,6 +275,83 @@ impl LGraph {
 
         self.layerless_nodes[node_index].layer_index = Some(layer_index);
         self.layers[layer_index].nodes.push(node_index);
+    }
+
+    pub fn add_port(
+        &mut self,
+        node_index: usize,
+        port_type: PortType,
+        side: PortSide,
+        position: LPoint,
+    ) -> Option<PortRef> {
+        let node = self.layerless_nodes.get_mut(node_index)?;
+        let port_index = node.ports.len();
+        let mut port = LPort::new(format!("{}:{port_index}", node.id), node_index, port_type);
+        port.side = side;
+        port.position = position;
+        node.ports.push(port);
+        Some(PortRef {
+            node: node_index,
+            port: port_index,
+        })
+    }
+
+    pub fn set_edge_source(&mut self, edge_index: usize, source: PortRef) -> bool {
+        if self.edges.get(edge_index).is_none() || !port_exists(self, source) {
+            return false;
+        }
+
+        let old_source = self.edges[edge_index].source;
+        if port_exists(self, old_source) {
+            remove_edge(
+                &mut self.layerless_nodes[old_source.node].ports[old_source.port].outgoing_edges,
+                edge_index,
+            );
+        }
+
+        self.layerless_nodes[source.node].ports[source.port]
+            .outgoing_edges
+            .push(edge_index);
+        self.edges[edge_index].source = source;
+        true
+    }
+
+    pub fn set_edge_target(&mut self, edge_index: usize, target: PortRef) -> bool {
+        if self.edges.get(edge_index).is_none() || !port_exists(self, target) {
+            return false;
+        }
+
+        let old_target = self.edges[edge_index].target;
+        if port_exists(self, old_target) {
+            remove_edge(
+                &mut self.layerless_nodes[old_target.node].ports[old_target.port].incoming_edges,
+                edge_index,
+            );
+        }
+
+        self.layerless_nodes[target.node].ports[target.port]
+            .incoming_edges
+            .push(edge_index);
+        self.edges[edge_index].target = target;
+        true
+    }
+
+    pub fn add_edge(&mut self, edge: LayeredEdge) -> Option<usize> {
+        if !port_exists(self, edge.source) || !port_exists(self, edge.target) {
+            return None;
+        }
+
+        let edge_index = self.edges.len();
+        let source = edge.source;
+        let target = edge.target;
+        self.edges.push(edge);
+        self.layerless_nodes[source.node].ports[source.port]
+            .outgoing_edges
+            .push(edge_index);
+        self.layerless_nodes[target.node].ports[target.port]
+            .incoming_edges
+            .push(edge_index);
+        Some(edge_index)
     }
 
     pub fn node_incoming_edges(&self, node_index: usize) -> Vec<usize> {
