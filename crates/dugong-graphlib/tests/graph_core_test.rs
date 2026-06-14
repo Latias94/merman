@@ -263,6 +263,26 @@ fn remove_node_is_idempotent_and_removes_incident_edges() {
 }
 
 #[test]
+fn remove_node_removes_self_loop_once_with_cached_adjacency() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge("a", "b");
+    g.set_edge_named("b", "b", Some("self"), Some(()));
+    g.set_edge("b", "c");
+
+    assert_eq!(g.successors("b"), vec!["b", "c"]);
+    assert_eq!(g.predecessors("b"), vec!["a", "b"]);
+
+    assert!(g.remove_node("b"));
+
+    assert_eq!(g.edge_count(), 0);
+    assert!(g.successors("a").is_empty());
+    assert!(g.predecessors("c").is_empty());
+}
+
+#[test]
 fn set_edge_creates_endpoint_nodes_and_uses_default_edge_label() {
     let mut g: Graph<(), Option<i32>, ()> = Graph::new(GraphOptions::default());
     g.set_default_edge_label(|| Some(9));

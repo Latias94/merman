@@ -187,6 +187,49 @@ fn normalize_run_preserves_the_weight_for_the_edge() {
 }
 
 #[test]
+fn normalize_run_allocates_dummy_ids_without_rescanning_from_the_prefix() {
+    let mut g = new_graph();
+    g.set_node(
+        "_d",
+        NodeLabel {
+            rank: Some(0),
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "_d1",
+        NodeLabel {
+            rank: Some(0),
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "a",
+        NodeLabel {
+            rank: Some(0),
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "b",
+        NodeLabel {
+            rank: Some(3),
+            ..Default::default()
+        },
+    );
+    g.set_edge_with_label("a", "b", EdgeLabel::default());
+
+    normalize::run(&mut g);
+
+    assert_eq!(g.successors("a"), vec!["_d2"]);
+    assert_eq!(g.successors("_d2"), vec!["_d3"]);
+    assert_eq!(g.successors("_d3"), vec!["b"]);
+    assert_eq!(g.graph().dummy_chains, vec!["_d2"]);
+    assert_eq!(g.node("_d").unwrap().dummy, None);
+    assert_eq!(g.node("_d1").unwrap().dummy, None);
+}
+
+#[test]
 fn normalize_undo_reverses_the_run_operation() {
     let mut g = new_graph();
     g.set_node(
