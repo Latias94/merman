@@ -24,9 +24,9 @@ use source_port::{
 };
 
 pub use compat::{
-    Algorithm, CycleBreakingStrategy, Direction, Edge, EdgeLayout, EdgeRouting, Error, Graph,
-    HierarchyHandling, Label, LayeredOptions, LayoutOptions, LayoutResult, Node, NodeKind,
-    NodeLayout, Point, Result, Spacing,
+    Algorithm, CycleBreakingStrategy, Direction, Edge, EdgeLabelLayout, EdgeLayout, EdgeRouting,
+    Error, Graph, HierarchyHandling, Label, LayeredOptions, LayoutOptions, LayoutResult, Node,
+    NodeKind, NodeLayout, Point, Result, Spacing,
 };
 
 pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
@@ -204,6 +204,7 @@ fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mu
                     y: graph_origin.y + point.y,
                 })
                 .collect(),
+            labels: edge_labels(graph_origin, edge.1),
         })
         .collect::<Vec<_>>();
     result.edges.extend(edges);
@@ -256,6 +257,18 @@ fn edge_points(graph: &LGraph, edge: &source_port::LayeredEdge) -> Vec<source_po
     points.extend(edge.bend_points.iter().copied());
     points.push(port_anchor(graph, edge.target));
     points
+}
+
+fn edge_labels(graph_origin: LPoint, edge: &source_port::LayeredEdge) -> Vec<EdgeLabelLayout> {
+    edge.labels
+        .iter()
+        .map(|label| EdgeLabelLayout {
+            x: graph_origin.x + label.position.x,
+            y: graph_origin.y + label.position.y,
+            width: label.size.width,
+            height: label.size.height,
+        })
+        .collect()
 }
 
 fn port_anchor(graph: &LGraph, port_ref: PortRef) -> source_port::LPoint {
@@ -349,6 +362,31 @@ mod tests {
             1
         );
         assert!(long.points.len() > 4);
+    }
+
+    #[test]
+    fn source_ported_layout_exports_edge_label_layouts() {
+        let mut labelled = edge("A-C", "A", "C");
+        labelled.label = Some(Label {
+            width: 48.0,
+            height: 12.0,
+        });
+        let graph = flat_graph(
+            vec![leaf("A"), leaf("B"), leaf("C")],
+            vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), labelled],
+        );
+
+        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+
+        let edge = result.edges.iter().find(|edge| edge.id == "A-C").unwrap();
+        let label = edge
+            .labels
+            .first()
+            .expect("source-backed ELK should export placed edge label bounds");
+        assert_eq!(label.width, 48.0);
+        assert_eq!(label.height, 12.0);
+        assert!(label.x.is_finite());
+        assert!(label.y.is_finite());
     }
 
     #[test]

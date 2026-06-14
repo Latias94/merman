@@ -1059,13 +1059,17 @@ fn place_labels_for_vertical_layout(
     left_aligned: bool,
     direction: ElkDirection,
 ) {
+    let inline = labels.iter().all(|label| label.inline);
+
     if direction == ElkDirection::Up {
         labels.reverse();
     }
 
     for label in &mut *labels {
         label.position.x = label_position.x;
-        if left_aligned {
+        if inline {
+            label.position.y = label_position.y + (label_space.y - label.size.height) / 2.0;
+        } else if left_aligned {
             label.position.y = label_position.y;
         } else {
             label.position.y = label_position.y + label_space.y - label.size.height;
@@ -2219,7 +2223,7 @@ fn move_head_labels(graph: &mut LGraph, old_edge: usize, new_edge: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{LLabel, PortType};
+    use crate::graph::{LLabel, LSize, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayerConstraint, LayeredOptions};
     use crate::p2layers::layer_network_simplex;
@@ -2471,6 +2475,54 @@ mod tests {
                     .unwrap()
             )
         );
+    }
+
+    #[test]
+    fn label_dummy_remover_centers_vertical_inline_labels_in_label_space() {
+        let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
+        center.placement = EdgeLabelPlacement::Center;
+        let mut labelled = edge("A-C", "A", "C");
+        labelled.label = Some(center);
+        let mut graph = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), labelled],
+        );
+        let edge_index = graph
+            .edges
+            .iter()
+            .position(|edge| edge.id == "A-C")
+            .unwrap();
+
+        insert_label_dummies(&mut graph);
+        layer_network_simplex(&mut graph);
+        split_long_edges(&mut graph);
+        switch_label_dummies(&mut graph);
+        select_label_sides(&mut graph);
+        let dummy = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.kind == LNodeKind::Label)
+            .unwrap();
+        graph.layerless_nodes[dummy].position = LPoint { x: 20.0, y: 40.0 };
+        graph.layerless_nodes[dummy].size.height = 14.0;
+        graph.layerless_nodes[dummy].labels.push(LLabel {
+            text: "short".to_string(),
+            size: LSize {
+                width: 12.0,
+                height: 4.0,
+            },
+            position: LPoint::default(),
+            placement: EdgeLabelPlacement::Center,
+            inline: true,
+            end_label_edge: None,
+        });
+
+        remove_label_dummies(&mut graph);
+
+        let labels = &graph.edges[edge_index].labels;
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].position.y, 42.0);
+        assert_eq!(labels[1].position.y, 46.0);
     }
 
     #[test]

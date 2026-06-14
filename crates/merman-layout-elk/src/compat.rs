@@ -168,6 +168,15 @@ pub struct NodeLayout {
 pub struct EdgeLayout {
     pub id: String,
     pub points: Vec<Point>,
+    pub labels: Vec<EdgeLabelLayout>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EdgeLabelLayout {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -847,6 +856,7 @@ impl<'a> LayoutEngine<'a> {
                 Some(EdgeLayout {
                     id: edge.id.clone(),
                     points,
+                    labels: Vec::new(),
                 })
             })
             .collect()

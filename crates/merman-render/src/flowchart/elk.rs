@@ -176,9 +176,12 @@ fn flowchart_layout_from_elk(
                 y: point.y,
             })
             .collect::<Vec<_>>();
-        let label = source
-            .label
-            .and_then(|label| edge_label_position(&points, label));
+        let label = source.label.and_then(|source_label| {
+            edge.labels
+                .first()
+                .map(edge_label_layout)
+                .or_else(|| edge_label_position(&points, source_label))
+        });
         out_edges.push(LayoutEdge {
             id: edge.id,
             from: source.source.clone(),
@@ -227,6 +230,15 @@ fn endpoint_cluster(id: &str, layout_node_by_id: &HashMap<&str, &LayoutNode>) ->
         .get(id)
         .filter(|node| node.is_cluster)
         .map(|node| node.id.clone())
+}
+
+fn edge_label_layout(label: &elk::EdgeLabelLayout) -> LayoutLabel {
+    LayoutLabel {
+        x: label.x + label.width / 2.0,
+        y: label.y + label.height / 2.0,
+        width: label.width,
+        height: label.height,
+    }
 }
 
 fn edge_label_position(points: &[LayoutPoint], label: elk::Label) -> Option<LayoutLabel> {
@@ -1019,6 +1031,7 @@ mod tests {
             &MermaidConfig::default(),
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
+            FlowchartElkBackend::Compat,
         )
         .unwrap();
 
@@ -1029,6 +1042,53 @@ mod tests {
         assert!(layout.edges[0].points.len() >= 2);
         assert!(layout.edges[0].label.is_some());
         assert!(layout.bounds.is_some());
+    }
+
+    #[test]
+    #[cfg(feature = "elk-layout")]
+    fn flowchart_source_ported_elk_uses_exported_edge_label_position() {
+        let model = model(
+            vec![
+                node("A", Some("Alpha"), None),
+                node("B", Some("Beta"), None),
+                node("C", Some("Gamma"), None),
+            ],
+            vec![
+                edge("L-A-B", "A", "B", None),
+                edge("L-B-C", "B", "C", None),
+                edge("L-A-C", "A", "C", Some("choice")),
+            ],
+        );
+        let graph = build_flowchart_elk_graph(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+        let raw_layout = elk::layout_source_ported(&graph, elk::Algorithm::Layered).unwrap();
+        let raw_edge = raw_layout
+            .edges
+            .iter()
+            .find(|edge| edge.id == "L-A-C")
+            .unwrap();
+        let raw_label = raw_edge.labels.first().unwrap();
+
+        let layout = layout_flowchart_elk_typed(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+            FlowchartElkBackend::SourcePorted,
+        )
+        .unwrap();
+
+        let edge = layout.edges.iter().find(|edge| edge.id == "L-A-C").unwrap();
+        let label = edge.label.as_ref().unwrap();
+        assert_eq!(label.x, raw_label.x + raw_label.width / 2.0);
+        assert_eq!(label.y, raw_label.y + raw_label.height / 2.0);
+        assert_eq!(label.width, raw_label.width);
+        assert_eq!(label.height, raw_label.height);
     }
 
     #[test]
@@ -1056,6 +1116,7 @@ mod tests {
             &MermaidConfig::default(),
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
+            FlowchartElkBackend::Compat,
         )
         .unwrap();
         let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
