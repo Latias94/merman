@@ -368,6 +368,9 @@ impl<'a> LayoutEngine<'a> {
         for ids in by_rank.values_mut() {
             self.sort_rank_ids(ids);
         }
+        let rank_edges =
+            self.cycle_broken_rank_edges(&self.rank_edges_for_container(parent_id, &child_ids));
+        self.minimize_rank_crossings(&mut by_rank, &rank_edges);
 
         let mut rank_span: BTreeMap<usize, (f64, f64)> = BTreeMap::new();
         for (rank, ids) in &by_rank {
@@ -393,20 +396,36 @@ impl<'a> LayoutEngine<'a> {
             cursor += main + self.graph.spacing.layer_layer.max(0.0);
         }
 
-        let mut positions: HashMap<&'a str, Point> = HashMap::new();
-        for (rank, ids) in by_rank {
+        let mut cross_positions: HashMap<&'a str, f64> = HashMap::new();
+        for (rank, ids) in &by_rank {
             let Some((_, total_cross)) = rank_span.get(&rank) else {
                 continue;
             };
             let mut cross_cursor = -total_cross / 2.0;
             for id in ids {
-                let Some(size) = size_by_id.get(id).copied() else {
+                let Some(size) = size_by_id.get(*id).copied() else {
                     continue;
                 };
                 let cross = cross_size(size, direction);
-                let main = *rank_main_center.get(&rank).unwrap_or(&0.0);
                 let cross_center = cross_cursor + cross / 2.0;
                 cross_cursor += cross + self.graph.spacing.node_node.max(0.0);
+                cross_positions.insert(*id, cross_center);
+            }
+        }
+        align_rank_cross_positions(
+            &by_rank,
+            &rank_edges,
+            &size_by_id,
+            direction,
+            self.graph.spacing.node_node.max(0.0),
+            &mut cross_positions,
+        );
+
+        let mut positions: HashMap<&'a str, Point> = HashMap::new();
+        for (rank, ids) in by_rank {
+            for id in ids {
+                let main = *rank_main_center.get(&rank).unwrap_or(&0.0);
+                let cross_center = cross_positions.get(id).copied().unwrap_or(0.0);
                 let (x, y) = orient_point(main, cross_center, direction);
                 positions.insert(id, Point { x, y });
             }
@@ -515,36 +534,15 @@ impl<'a> LayoutEngine<'a> {
         parent_id: Option<&'a str>,
         child_ids: &[&'a str],
     ) -> HashMap<&'a str, usize> {
-        let child_set: HashSet<&str> = child_ids.iter().copied().collect();
         let mut incoming: HashMap<&str, usize> = child_ids.iter().map(|id| (*id, 0)).collect();
-        let mut outgoing: HashMap<&str, Vec<(&str, usize)>> =
+        let mut outgoing: HashMap<&str, Vec<RankEdge<'a>>> =
             child_ids.iter().map(|id| (*id, Vec::new())).collect();
+        let rank_edges =
+            self.cycle_broken_rank_edges(&self.rank_edges_for_container(parent_id, child_ids));
 
-        let mut rank_edges: Vec<(&str, &str, usize)> = Vec::new();
-        for edge in &self.graph.edges {
-            let Some(source) = self
-                .index
-                .direct_child_under(parent_id, edge.source.as_str())
-            else {
-                continue;
-            };
-            let Some(target) = self
-                .index
-                .direct_child_under(parent_id, edge.target.as_str())
-            else {
-                continue;
-            };
-            if source == target || !child_set.contains(source) || !child_set.contains(target) {
-                continue;
-            }
-            rank_edges.push((source, target, edge.minlen.max(1)));
-        }
-
-        let rank_edges = self.cycle_broken_rank_edges(&rank_edges);
-
-        for (source, target, minlen) in rank_edges.iter().copied() {
-            outgoing.entry(source).or_default().push((target, minlen));
-            *incoming.entry(target).or_default() += 1;
+        for edge in &rank_edges {
+            outgoing.entry(edge.source).or_default().push(*edge);
+            *incoming.entry(edge.target).or_default() += 1;
         }
 
         let mut queue: VecDeque<&str> = child_ids
@@ -558,16 +556,16 @@ impl<'a> LayoutEngine<'a> {
         while let Some(id) = queue.pop_front() {
             visited += 1;
             let base = ranks.get(id).copied().unwrap_or(0);
-            for (target, minlen) in outgoing.get(id).into_iter().flatten().copied() {
-                let next = base.saturating_add(minlen);
+            for edge in outgoing.get(id).into_iter().flatten().copied() {
+                let next = base.saturating_add(edge.minlen);
                 ranks
-                    .entry(target)
+                    .entry(edge.target)
                     .and_modify(|rank| *rank = (*rank).max(next))
                     .or_insert(next);
-                if let Some(deg) = incoming.get_mut(target) {
+                if let Some(deg) = incoming.get_mut(edge.target) {
                     *deg = deg.saturating_sub(1);
                     if *deg == 0 {
-                        queue.push_back(target);
+                        queue.push_back(edge.target);
                     }
                 }
             }
@@ -590,31 +588,80 @@ impl<'a> LayoutEngine<'a> {
         ranks
     }
 
-    fn cycle_broken_rank_edges(
+    fn rank_edges_for_container(
         &self,
-        rank_edges: &[(&'a str, &'a str, usize)],
-    ) -> Vec<(&'a str, &'a str, usize)> {
+        parent_id: Option<&'a str>,
+        child_ids: &[&'a str],
+    ) -> Vec<RankEdge<'a>> {
+        let child_set: HashSet<&str> = child_ids.iter().copied().collect();
+        let mut rank_edges = Vec::new();
+        for edge in &self.graph.edges {
+            let Some(source) = self
+                .index
+                .direct_child_under(parent_id, edge.source.as_str())
+            else {
+                continue;
+            };
+            let Some(target) = self
+                .index
+                .direct_child_under(parent_id, edge.target.as_str())
+            else {
+                continue;
+            };
+            if source == target || !child_set.contains(source) || !child_set.contains(target) {
+                continue;
+            }
+            rank_edges.push(RankEdge {
+                source,
+                target,
+                minlen: edge.minlen.max(1),
+                order: rank_edges.len(),
+                model_order_backward: self.model_order_backward(source, target),
+            });
+        }
+        rank_edges
+    }
+
+    fn model_order_backward(&self, source: &'a str, target: &'a str) -> bool {
+        let source_order = self
+            .index
+            .topo_order_by_id
+            .get(source)
+            .copied()
+            .unwrap_or(usize::MAX);
+        let target_order = self
+            .index
+            .topo_order_by_id
+            .get(target)
+            .copied()
+            .unwrap_or(usize::MAX);
+        source_order > target_order
+    }
+
+    fn cycle_broken_rank_edges(&self, rank_edges: &[RankEdge<'a>]) -> Vec<RankEdge<'a>> {
         match self.graph.options.layered.cycle_breaking {
             CycleBreakingStrategy::ModelOrder => rank_edges
                 .iter()
                 .copied()
                 .enumerate()
-                .filter_map(|(edge_index, (source, target, minlen))| {
-                    (!self
-                        .model_order_rank_edge_closes_cycle(rank_edges, edge_index, source, target))
-                    .then_some((source, target, minlen))
+                .filter_map(|(edge_index, edge)| {
+                    (!self.model_order_rank_edge_closes_cycle(
+                        rank_edges,
+                        edge_index,
+                        edge.source,
+                        edge.target,
+                    ))
+                    .then_some(edge)
                 })
                 .collect(),
             CycleBreakingStrategy::Greedy => {
                 let mut accepted_edges = Vec::new();
                 let mut accepted_indices = Vec::new();
-                for (edge_index, (source, target, minlen)) in
-                    rank_edges.iter().copied().enumerate().rev()
-                {
-                    if rank_path_exists(&accepted_edges, target, source) {
+                for (edge_index, edge) in rank_edges.iter().copied().enumerate().rev() {
+                    if rank_path_exists(&accepted_edges, edge.target, edge.source) {
                         continue;
                     }
-                    accepted_edges.push((source, target, minlen));
+                    accepted_edges.push(edge);
                     accepted_indices.push(edge_index);
                 }
                 accepted_indices.sort_unstable();
@@ -628,7 +675,7 @@ impl<'a> LayoutEngine<'a> {
 
     fn model_order_rank_edge_closes_cycle(
         &self,
-        rank_edges: &[(&'a str, &'a str, usize)],
+        rank_edges: &[RankEdge<'a>],
         edge_index: usize,
         source: &'a str,
         target: &'a str,
@@ -661,7 +708,7 @@ impl<'a> LayoutEngine<'a> {
     fn tighten_ranks_toward_successors(
         &self,
         child_ids: &[&'a str],
-        rank_edges: &[(&'a str, &'a str, usize)],
+        rank_edges: &[RankEdge<'a>],
         ranks: &mut HashMap<&'a str, usize>,
     ) {
         let mut changed = true;
@@ -672,22 +719,8 @@ impl<'a> LayoutEngine<'a> {
 
             for id in ids {
                 let current = ranks.get(id).copied().unwrap_or(0);
-                let lower_bound = rank_edges
-                    .iter()
-                    .filter(|(_, target, _)| *target == id)
-                    .filter_map(|(source, _, minlen)| {
-                        ranks.get(source).map(|rank| rank.saturating_add(*minlen))
-                    })
-                    .max()
-                    .unwrap_or(0);
-                let Some(upper_bound) = rank_edges
-                    .iter()
-                    .filter(|(source, _, _)| *source == id)
-                    .filter_map(|(_, target, minlen)| {
-                        ranks.get(target).map(|rank| rank.saturating_sub(*minlen))
-                    })
-                    .min()
-                else {
+                let lower_bound = best_incoming_rank(rank_edges, ranks, id).unwrap_or(0);
+                let Some(upper_bound) = best_outgoing_rank(rank_edges, ranks, id) else {
                     continue;
                 };
 
@@ -713,6 +746,74 @@ impl<'a> LayoutEngine<'a> {
         } else {
             ids.sort_unstable();
         }
+    }
+
+    fn minimize_rank_crossings(
+        &self,
+        by_rank: &mut BTreeMap<usize, Vec<&'a str>>,
+        rank_edges: &[RankEdge<'a>],
+    ) {
+        if by_rank.len() < 2 || self.graph.options.layered.force_node_model_order {
+            return;
+        }
+
+        for _ in 0..4 {
+            let ranks = by_rank.keys().copied().collect::<Vec<_>>();
+            for rank in ranks.iter().copied().skip(1) {
+                let order = node_order_by_id(by_rank);
+                self.sort_rank_by_neighbors(by_rank, rank, rank_edges, &order, false);
+            }
+
+            let ranks = by_rank.keys().copied().rev().collect::<Vec<_>>();
+            for rank in ranks.into_iter().skip(1) {
+                let order = node_order_by_id(by_rank);
+                self.sort_rank_by_neighbors(by_rank, rank, rank_edges, &order, true);
+            }
+        }
+    }
+
+    fn sort_rank_by_neighbors(
+        &self,
+        by_rank: &mut BTreeMap<usize, Vec<&'a str>>,
+        rank: usize,
+        rank_edges: &[RankEdge<'a>],
+        order: &HashMap<&'a str, usize>,
+        reverse: bool,
+    ) {
+        let Some(ids) = by_rank.get_mut(&rank) else {
+            return;
+        };
+        if ids.len() < 2 {
+            return;
+        }
+
+        let mut ordered = ids
+            .iter()
+            .copied()
+            .map(|id| {
+                (
+                    id,
+                    neighbor_order(id, rank_edges, order, reverse),
+                    self.index
+                        .topo_order_by_id
+                        .get(id)
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                )
+            })
+            .collect::<Vec<_>>();
+        ordered.sort_by(|a, b| match (a.1, b.1) {
+            (Some(a_order), Some(b_order)) => a_order
+                .partial_cmp(&b_order)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.2.cmp(&b.2))
+                .then_with(|| a.0.cmp(b.0)),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => a.2.cmp(&b.2).then_with(|| a.0.cmp(b.0)),
+        });
+        ids.clear();
+        ids.extend(ordered.into_iter().map(|(id, _, _)| id));
     }
 
     fn route_edges(&self, nodes: &[NodeLayout]) -> Vec<EdgeLayout> {
@@ -816,11 +917,204 @@ impl<'a> LayoutEngine<'a> {
     }
 }
 
-fn rank_path_exists<'a>(
-    rank_edges: &[(&'a str, &'a str, usize)],
-    start: &'a str,
-    target: &'a str,
-) -> bool {
+fn best_incoming_rank<'a>(
+    rank_edges: &[RankEdge<'a>],
+    ranks: &HashMap<&'a str, usize>,
+    node_id: &'a str,
+) -> Option<usize> {
+    rank_edges
+        .iter()
+        .filter(|edge| edge.target == node_id)
+        .filter_map(|edge| {
+            ranks
+                .get(edge.source)
+                .map(|rank| rank.saturating_add(edge.minlen))
+        })
+        .max()
+}
+
+fn best_outgoing_rank<'a>(
+    rank_edges: &[RankEdge<'a>],
+    ranks: &HashMap<&'a str, usize>,
+    node_id: &'a str,
+) -> Option<usize> {
+    rank_edges
+        .iter()
+        .filter(|edge| edge.source == node_id)
+        .filter_map(|edge| {
+            ranks
+                .get(edge.target)
+                .map(|rank| rank.saturating_sub(edge.minlen))
+        })
+        .min()
+}
+
+fn node_order_by_id<'a>(by_rank: &BTreeMap<usize, Vec<&'a str>>) -> HashMap<&'a str, usize> {
+    by_rank
+        .values()
+        .flat_map(|ids| ids.iter().copied().enumerate().map(|(idx, id)| (id, idx)))
+        .collect()
+}
+
+fn neighbor_order<'a>(
+    node_id: &'a str,
+    rank_edges: &[RankEdge<'a>],
+    order: &HashMap<&'a str, usize>,
+    reverse: bool,
+) -> Option<f64> {
+    let mut sum = 0.0;
+    let mut weight_sum = 0.0;
+    for edge in rank_edges {
+        let neighbor = if reverse {
+            (edge.source == node_id).then_some(edge.target)
+        } else {
+            (edge.target == node_id).then_some(edge.source)
+        };
+        let Some(neighbor) = neighbor else {
+            continue;
+        };
+        let Some(neighbor_order) = order.get(neighbor).copied() else {
+            continue;
+        };
+        sum += neighbor_order as f64;
+        weight_sum += 1.0;
+    }
+
+    (weight_sum > 0.0).then_some(sum / weight_sum)
+}
+
+fn align_rank_cross_positions<'a>(
+    by_rank: &BTreeMap<usize, Vec<&'a str>>,
+    rank_edges: &[RankEdge<'a>],
+    size_by_id: &HashMap<&'a str, NodeSize>,
+    direction: Direction,
+    spacing: f64,
+    positions: &mut HashMap<&'a str, f64>,
+) {
+    if by_rank.len() < 2 {
+        return;
+    }
+
+    for _ in 0..4 {
+        for rank in by_rank.keys().copied().collect::<Vec<_>>() {
+            align_single_rank_cross_positions(
+                by_rank, rank, rank_edges, size_by_id, direction, spacing, positions, false,
+            );
+        }
+        for rank in by_rank.keys().copied().rev().collect::<Vec<_>>() {
+            align_single_rank_cross_positions(
+                by_rank, rank, rank_edges, size_by_id, direction, spacing, positions, true,
+            );
+        }
+    }
+}
+
+fn align_single_rank_cross_positions<'a>(
+    by_rank: &BTreeMap<usize, Vec<&'a str>>,
+    rank: usize,
+    rank_edges: &[RankEdge<'a>],
+    size_by_id: &HashMap<&'a str, NodeSize>,
+    direction: Direction,
+    spacing: f64,
+    positions: &mut HashMap<&'a str, f64>,
+    reverse: bool,
+) {
+    let Some(ids) = by_rank.get(&rank) else {
+        return;
+    };
+    if ids.len() != 1 {
+        return;
+    }
+
+    let desired = ids
+        .iter()
+        .copied()
+        .map(|id| {
+            (
+                id,
+                preferred_neighbor_cross_position(id, rank_edges, positions, reverse)
+                    .unwrap_or_else(|| positions.get(id).copied().unwrap_or(0.0)),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let packed = pack_rank_cross_positions(ids, &desired, size_by_id, direction, spacing);
+    positions.extend(packed);
+}
+
+fn preferred_neighbor_cross_position<'a>(
+    node_id: &'a str,
+    rank_edges: &[RankEdge<'a>],
+    positions: &HashMap<&'a str, f64>,
+    reverse: bool,
+) -> Option<f64> {
+    let mut candidates = rank_edges
+        .iter()
+        .filter_map(|edge| {
+            let neighbor = if reverse {
+                (edge.source == node_id).then_some(edge.target)
+            } else {
+                (edge.target == node_id).then_some(edge.source)
+            };
+            let position = positions.get(neighbor?).copied()?;
+            Some((*edge, position))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|(a, _), (b, _)| {
+        a.model_order_backward
+            .cmp(&b.model_order_backward)
+            .then_with(|| b.order.cmp(&a.order))
+    });
+    candidates.first().map(|(_, position)| *position)
+}
+
+fn pack_rank_cross_positions<'a>(
+    ids: &[&'a str],
+    desired: &HashMap<&'a str, f64>,
+    size_by_id: &HashMap<&'a str, NodeSize>,
+    direction: Direction,
+    spacing: f64,
+) -> HashMap<&'a str, f64> {
+    let mut out = HashMap::new();
+    let mut cursor: Option<f64> = None;
+
+    for id in ids {
+        let Some(size) = size_by_id.get(*id).copied() else {
+            continue;
+        };
+        let cross = cross_size(size, direction);
+        let wanted = desired.get(*id).copied().unwrap_or(0.0);
+        let min_center = cursor.map(|right| right + spacing + cross / 2.0);
+        let center = min_center.map_or(wanted, |min_center| wanted.max(min_center));
+        cursor = Some(center + cross / 2.0);
+        out.insert(*id, center);
+    }
+
+    if out.is_empty() {
+        return out;
+    }
+
+    let mut shift = 0.0;
+    let mut weight = 0.0;
+    for id in ids {
+        let Some(center) = out.get(*id).copied() else {
+            continue;
+        };
+        let wanted = desired.get(*id).copied().unwrap_or(center);
+        shift += wanted - center;
+        weight += 1.0;
+    }
+    if weight > 0.0 {
+        let shift = shift / weight;
+        for center in out.values_mut() {
+            *center += shift;
+        }
+    }
+
+    out
+}
+
+fn rank_path_exists<'a>(rank_edges: &[RankEdge<'a>], start: &'a str, target: &'a str) -> bool {
     let mut seen = HashSet::new();
     let mut stack = vec![start];
 
@@ -831,9 +1125,9 @@ fn rank_path_exists<'a>(
         if !seen.insert(id) {
             continue;
         }
-        for (from, to, _) in rank_edges.iter().copied() {
-            if from == id {
-                stack.push(to);
+        for edge in rank_edges.iter().copied() {
+            if edge.source == id {
+                stack.push(edge.target);
             }
         }
     }
@@ -851,6 +1145,15 @@ struct NodeSubtree<'a> {
     id: &'a str,
     node: NodeLayout,
     descendants: Vec<NodeLayout>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RankEdge<'a> {
+    source: &'a str,
+    target: &'a str,
+    minlen: usize,
+    order: usize,
+    model_order_backward: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1494,6 +1797,35 @@ mod tests {
         assert_ne!(i.x, e.x);
         assert!(f.y > e.y);
         assert_eq!(h.y, g.y);
+    }
+
+    #[test]
+    fn layered_layout_prefers_forward_edges_when_aligning_feedback_targets() {
+        let graph = Graph {
+            id: "root".to_string(),
+            direction: Direction::Down,
+            nodes: vec![
+                leaf("A", None),
+                leaf("B", None),
+                leaf("C", None),
+                leaf("D", None),
+            ],
+            edges: vec![
+                edge("A-B", "A", "B"),
+                edge("B-C", "B", "C"),
+                edge("C-D", "C", "D"),
+                edge("D-B", "D", "B"),
+            ],
+            ..Default::default()
+        };
+
+        let result = layout(&graph, Algorithm::Layered).unwrap();
+        let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let d = result.nodes.iter().find(|node| node.id == "D").unwrap();
+
+        assert_eq!(a.x, b.x);
+        assert_ne!(d.x, b.x);
     }
 
     fn graph_with_two_nodes() -> Graph {
