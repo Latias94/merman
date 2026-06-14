@@ -16,6 +16,13 @@ pub enum ElkDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DirectionCongruency {
+    #[default]
+    ReadingDirection,
+    Rotation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HierarchyHandling {
     Inherit,
     IncludeChildren,
@@ -144,6 +151,7 @@ pub enum LayerConstraint {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayeredOptions {
     pub direction: ElkDirection,
+    pub direction_congruency: DirectionCongruency,
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,
     pub spacing: SpacingOptions,
@@ -195,6 +203,7 @@ impl Default for LayeredOptions {
     fn default() -> Self {
         Self {
             direction: ElkDirection::Undefined,
+            direction_congruency: DirectionCongruency::ReadingDirection,
             hierarchy_handling: HierarchyHandling::SeparateChildren,
             edge_routing: EdgeRouting::Orthogonal,
             spacing: SpacingOptions::default(),

@@ -78,6 +78,7 @@ pub struct LNode {
     pub long_edge_source: Option<PortRef>,
     pub long_edge_target: Option<PortRef>,
     pub long_edge_has_label_dummies: bool,
+    pub in_layer_constraint: InLayerConstraint,
     pub layer_constraint_explicit: bool,
     pub hidden: bool,
     pub compound: bool,
@@ -101,6 +102,7 @@ impl LNode {
             long_edge_source: None,
             long_edge_target: None,
             long_edge_has_label_dummies: false,
+            in_layer_constraint: InLayerConstraint::None,
             layer_constraint_explicit: false,
             hidden: false,
             compound: false,
@@ -119,6 +121,14 @@ pub enum LNodeKind {
     BreakingPoint,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InLayerConstraint {
+    #[default]
+    None,
+    Top,
+    Bottom,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LPort {
     pub id: String,
@@ -129,7 +139,7 @@ pub struct LPort {
     pub position: LPoint,
     pub anchor: LPoint,
     pub model_order: Option<usize>,
-    pub port_index: Option<usize>,
+    pub port_index: Option<isize>,
     pub incoming_edges: Vec<usize>,
     pub outgoing_edges: Vec<usize>,
 }
@@ -207,6 +217,7 @@ pub struct PortRef {
 pub struct LLabel {
     pub text: String,
     pub size: LSize,
+    pub position: LPoint,
     pub placement: EdgeLabelPlacement,
     pub inline: bool,
     pub end_label_edge: Option<usize>,
@@ -217,6 +228,7 @@ impl LLabel {
         Self {
             text: text.into(),
             size: LSize { width, height },
+            position: LPoint::default(),
             placement: EdgeLabelPlacement::Center,
             inline: false,
             end_label_edge: None,

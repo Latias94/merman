@@ -17,6 +17,7 @@ pub mod p2layers;
 pub mod p3order;
 pub mod pipeline;
 pub mod random;
+pub mod transform;
 
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
 pub use graph::{
@@ -33,9 +34,9 @@ pub use intermediate::{
     reverse_edges_for_edge_and_layer_constraints, split_edge, split_long_edges,
 };
 pub use options::{
-    EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions,
-    LongEdgeOrderingStrategy, NodePlacementStrategy, OrderingStrategy, PortConstraints,
-    PortSortingStrategy, SelfLoopDistributionStrategy, SpacingOptions,
+    DirectionCongruency, EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint,
+    LayeredOptions, LongEdgeOrderingStrategy, NodePlacementStrategy, OrderingStrategy,
+    PortConstraints, PortSortingStrategy, SelfLoopDistributionStrategy, SpacingOptions,
 };
 pub use p2layers::layer_network_simplex;
 pub use p3order::counting::CrossingsCounter;
@@ -51,3 +52,4 @@ pub use pipeline::{
     assemble_processors_for_graph, execute_processors_until,
 };
 pub use random::JavaRandom;
+pub use transform::{GraphTransformMode, transform_graph_direction};

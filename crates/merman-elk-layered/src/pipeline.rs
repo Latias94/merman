@@ -25,6 +25,7 @@ use crate::p2layers::layer_network_simplex;
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists, sweep::minimize_crossings_layer_sweep,
 };
+use crate::transform::{GraphTransformMode, transform_graph_direction};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PipelineError {
@@ -366,6 +367,12 @@ pub fn execute_processors_until(
 
 fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<()> {
     match kind {
+        ProcessorKind::DirectionPreprocessor => {
+            transform_graph_direction(graph, GraphTransformMode::ToInputDirection);
+        }
+        ProcessorKind::DirectionPostprocessor => {
+            transform_graph_direction(graph, GraphTransformMode::ToInternalLeftToRight);
+        }
         ProcessorKind::EdgeAndLayerConstraintEdgeReverser => {
             reverse_edges_for_edge_and_layer_constraints(graph);
         }
@@ -1008,23 +1015,24 @@ mod tests {
     }
 
     #[test]
-    fn execute_processors_until_p3_reports_unported_direction_processor() {
+    fn execute_processors_until_p3_runs_mermaid_down_direction_preprocessor() {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
-            nodes: vec![node("A"), node("B")],
-            edges: vec![edge("A-B", "A", "B")],
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
         })
         .unwrap();
 
-        let err = execute_processors_until(&mut graph, LayeredPhase::P3NodeOrdering).unwrap_err();
+        let executed = execute_processors_until(&mut graph, LayeredPhase::P3NodeOrdering).unwrap();
 
+        assert_eq!(executed[0], ProcessorKind::DirectionPreprocessor);
+        assert!(executed.contains(&ProcessorKind::SortByInputModelProcessor));
         assert_eq!(
-            err,
-            PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::DirectionPreprocessor
-            }
+            executed.last(),
+            Some(&ProcessorKind::LayerSweepCrossingMinimizerBarycenter)
         );
+        assert_eq!(graph.layers.len(), 3);
     }
 
     #[test]
