@@ -269,6 +269,38 @@ fn bench_parse_known_type(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_parse_cold_engine(c: &mut Criterion) {
+    let parse_opts = ParseOptions::strict();
+
+    let mut group = c.benchmark_group("parse_cold_engine");
+    for (name, input) in fixtures() {
+        // Tracks request-style usage that constructs a fresh Engine per parse, so parse wins are
+        // not accidentally attributed only to the hot shared-engine benchmark shape.
+        let engine = Engine::new();
+        if engine
+            .parse_diagram_for_render_model_sync(input, parse_opts)
+            .is_err()
+        {
+            eprintln!("[bench][skip][parse_cold_engine] {name}: parse error");
+            continue;
+        }
+
+        group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
+            b.iter(|| {
+                let engine = Engine::new();
+                let parsed =
+                    engine.parse_diagram_for_render_model_sync(black_box(data), parse_opts);
+                let parsed = match parsed {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                black_box(parsed.is_some());
+            })
+        });
+    }
+    group.finish();
+}
+
 fn bench_layout(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
@@ -547,6 +579,7 @@ criterion_group!(
     benches,
     bench_parse,
     bench_parse_known_type,
+    bench_parse_cold_engine,
     bench_parse_typed,
     bench_parse_typed_only,
     bench_layout,
