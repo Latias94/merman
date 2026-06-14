@@ -137,6 +137,155 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     }
 }
 
+pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    session: &mut FlowchartRootRenderSession<'_, '_>,
+) {
+    session.details.root_calls += 1;
+
+    render_flowchart_elk_subgraphs(out, ctx, session);
+    render_flowchart_elk_nodes(out, ctx, session);
+
+    let _g_edges_select = detail_guard(session.timing_enabled, &mut session.details.edges_select);
+    let edges = flowchart_edges_for_root(ctx, None);
+    drop(_g_edges_select);
+
+    render_flowchart_elk_edge_paths(out, ctx, session, &edges);
+    render_flowchart_elk_edge_labels(out, ctx, session, &edges);
+}
+
+fn render_flowchart_elk_subgraphs(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    session: &mut FlowchartRootRenderSession<'_, '_>,
+) {
+    let _g_clusters = detail_guard(session.timing_enabled, &mut session.details.clusters);
+
+    let mut clusters_to_draw: Vec<&LayoutCluster> = ctx
+        .subgraph_order
+        .iter()
+        .filter_map(|id| {
+            let sg = ctx.subgraphs_by_id.get(*id)?;
+            if sg.nodes.is_empty() {
+                return None;
+            }
+            ctx.layout_clusters_by_id.get(*id).copied()
+        })
+        .collect();
+
+    clusters_to_draw.sort_by(|a, b| {
+        let a_idx = ctx
+            .subgraph_order
+            .iter()
+            .position(|id| *id == a.id.as_str())
+            .unwrap_or(usize::MAX);
+        let b_idx = ctx
+            .subgraph_order
+            .iter()
+            .position(|id| *id == b.id.as_str())
+            .unwrap_or(usize::MAX);
+        a_idx
+            .cmp(&b_idx)
+            .then_with(|| a.id.as_str().cmp(b.id.as_str()))
+    });
+
+    if clusters_to_draw.is_empty() {
+        out.push_str(r#"<g class="subgraphs"/>"#);
+        return;
+    }
+
+    out.push_str(r#"<g class="subgraphs">"#);
+    for cluster in clusters_to_draw {
+        render_flowchart_cluster(out, ctx, cluster, 0.0, 0.0);
+    }
+    out.push_str("</g>");
+}
+
+fn render_flowchart_elk_nodes(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    session: &mut FlowchartRootRenderSession<'_, '_>,
+) {
+    out.push_str(r#"<g class="nodes">"#);
+
+    let _g_dom_order = detail_guard(session.timing_enabled, &mut session.details.dom_order);
+    let mut dom_order: Vec<&str> = ctx
+        .dom_node_order_by_root
+        .get("")
+        .map(|ids| ids.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+    if dom_order.is_empty() {
+        dom_order = flowchart_root_children_nodes(ctx, None);
+    }
+    drop(_g_dom_order);
+
+    for id in dom_order {
+        if ctx
+            .subgraphs_by_id
+            .get(id)
+            .is_some_and(|sg| !sg.nodes.is_empty())
+        {
+            continue;
+        }
+
+        let node_start = session.timing_enabled.then(web_time::Instant::now);
+        render_flowchart_node(
+            out,
+            ctx,
+            id,
+            0.0,
+            0.0,
+            session.timing_enabled,
+            &mut *session.details,
+        );
+        if let Some(s) = node_start {
+            session.details.nodes += s.elapsed();
+        }
+    }
+
+    out.push_str("</g>");
+}
+
+fn render_flowchart_elk_edge_paths(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    session: &mut FlowchartRootRenderSession<'_, '_>,
+    edges: &[&crate::flowchart::FlowEdge],
+) {
+    let _g_edge_paths = detail_guard(session.timing_enabled, &mut session.details.edge_paths);
+    if edges.is_empty() {
+        out.push_str(r#"<g class="edges edgePaths"/>"#);
+        return;
+    }
+
+    out.push_str(r#"<g class="edges edgePaths">"#);
+    let mut scratch = FlowchartEdgeDataPointsScratch::default();
+    for e in edges {
+        render_flowchart_edge_path(out, ctx, e, 0.0, 0.0, &mut scratch, session.edge_cache);
+    }
+    out.push_str("</g>");
+}
+
+fn render_flowchart_elk_edge_labels(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    session: &mut FlowchartRootRenderSession<'_, '_>,
+    edges: &[&crate::flowchart::FlowEdge],
+) {
+    let _g_edge_labels = detail_guard(session.timing_enabled, &mut session.details.edge_labels);
+    if edges.is_empty() {
+        out.push_str(r#"<g class="edgeLabels"/>"#);
+        return;
+    }
+
+    out.push_str(r#"<g class="edgeLabels">"#);
+    for e in edges {
+        render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, session.edge_cache);
+    }
+    out.push_str("</g>");
+}
+
 fn initialize_flowchart_root_frame<'a>(
     out: &mut String,
     ctx: &'a FlowchartRenderCtx<'a>,

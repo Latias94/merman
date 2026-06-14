@@ -23,6 +23,8 @@ Last updated: 2026-06-14
   so `flowchart-elk`, `layout: elk`, and `flowchart.defaultRenderer=elk` share the same policy.
 - `crates/merman-render/src/svg/parity.rs` preserves `flowchart-elk` as the root
   `aria-roledescription` and marker prefix when rendering a layouted Flowchart ELK diagram.
+- Flowchart ELK SVG emission uses Mermaid's root-level group order: marker group, shadow `defs`,
+  `subgraphs`, `nodes`, `edges edgePaths`, then `edgeLabels`.
 - `repo-ref/mermaid/cypress/integration/rendering/flowchart/flowchart-elk.spec.js` provides the
   upstream fixture set to classify.
 
@@ -52,13 +54,12 @@ cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowch
 Current result:
 
 - Default compare skips the fixture with the centralized local-policy reason and returns success.
-- Explicit probe fails at DOM parity. The first mismatch is still root-shape related:
-  upstream emits root-level `marker` elements before shadow `defs`, then `subgraphs`, `nodes`,
-  `edges edgePaths`, and `edgeLabels`; local output still uses the Flowchart V2 wrapper
-  `<g><g class="root">...`.
-- The remaining geometry is a real layout gap, not only DOM wrapping. Upstream places `C`,
-  `D/I/E`, `F/H/G`, and the feedback edge across multiple columns with orthogonal routing; the
-  lightweight backend still stacks most nodes vertically for this probe.
+- Explicit probe now gets past the old Flowchart V2 wrapper mismatch. The first remaining DOM
+  mismatch is an edge path `d` geometry difference: upstream emits ELK-style orthogonal segments
+  with rounded `Q` turns while the local renderer still curves the current lightweight route.
+- The remaining geometry is a real layout gap. Upstream places `C`, `D/I/E`, `F/H/G`, and the
+  feedback edge across multiple columns with orthogonal routing; the lightweight backend still
+  stacks most nodes vertically for this probe.
 
 ## Future Admission Gates
 

@@ -389,21 +389,30 @@ fn render_flowchart_v2_svg_with_config_inner(
     out.push_str("<style>");
     out.push_str(&css);
     out.push_str("</style>");
-    push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
 
     let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx);
 
-    out.push_str("<g>");
-    defs.push_base_markers(&mut out);
     let mut root_session = FlowchartRootRenderSession {
         timing_enabled,
         details: &mut detail,
         edge_cache: Some(&edge_path_cache),
     };
-    render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session);
+    if diagram_type == "flowchart-elk" {
+        out.push_str("<g>");
+        defs.push_base_markers(&mut out);
+        defs.push_extra_markers(&mut out);
+        out.push_str("</g>");
+        push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session);
+    } else {
+        push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
+        out.push_str("<g>");
+        defs.push_base_markers(&mut out);
+        render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session);
 
-    defs.push_extra_markers(&mut out);
-    out.push_str("</g>");
+        defs.push_extra_markers(&mut out);
+        out.push_str("</g>");
+    }
     push_flowchart_gradient(&mut out, diagram_id, effective_config_value);
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;

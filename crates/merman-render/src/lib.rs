@@ -782,6 +782,30 @@ A-->B
         assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
         assert!(svg.contains("elk-smoke_flowchart-elk-pointEnd"));
         assert!(!svg.contains(r#"aria-roledescription="flowchart-v2""#));
+        assert!(!svg.contains(r#"<g class="root""#));
+
+        let marker_pos = svg
+            .find(r#"<g><marker id="elk-smoke_flowchart-elk-pointEnd""#)
+            .expect("ELK marker group");
+        let defs_pos = svg
+            .find(r#"<defs><filter id="elk-smoke-drop-shadow""#)
+            .expect("ELK shadow defs");
+        let subgraphs_pos = svg
+            .find(r#"<g class="subgraphs"/>"#)
+            .expect("ELK subgraphs group");
+        let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
+        let edges_pos = svg
+            .find(r#"<g class="edges edgePaths">"#)
+            .expect("ELK edge paths group");
+        let labels_pos = svg
+            .find(r#"<g class="edgeLabels">"#)
+            .expect("ELK edge labels group");
+
+        assert!(marker_pos < defs_pos);
+        assert!(defs_pos < subgraphs_pos);
+        assert!(subgraphs_pos < nodes_pos);
+        assert!(nodes_pos < edges_pos);
+        assert!(edges_pos < labels_pos);
     }
 
     #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]

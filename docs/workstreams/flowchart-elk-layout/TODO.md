@@ -16,6 +16,7 @@ Last updated: 2026-06-14
 - [x] Improve cluster/hierarchy handling for outgoing links and links between subgraphs.
 - [x] Add an explicit ELK probe lane in `xtask` without admitting failing fixtures to the default
   Flowchart parity matrix.
+- [x] Align Flowchart ELK root SVG group structure with Mermaid before working on layout geometry.
 - [ ] Tighten label and multi-edge spacing where the current subset is visibly close.
 - [ ] Re-check whether the diamond/intersection cases can be handled without a full port.
 
@@ -29,9 +30,9 @@ Notes:
   config fields through the Flowchart adapter, and separates parallel edges unless
   `elk.mergeEdges` is set.
 - 2026-06-14: `compare-flowchart-svgs --include-elk-probes` can now run known ELK probe
-  candidates explicitly. The HTML demo probe is still not admitted by default because it fails on
-  Flowchart-ELK DOM shape and layout geometry, so the default parity matrix remains green and
-  honest.
+  candidates explicitly. The HTML demo probe is still not admitted by default; its first remaining
+  mismatch is now ELK edge path geometry after the root-level DOM wrapper was aligned, so the
+  default parity matrix remains green and honest.
 
 ## Phase 3 - Port Decision
 
