@@ -59,6 +59,7 @@ pub(crate) use host_time::{Duration, Instant};
 use crate::math::MathRenderer;
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer};
+use merman_core::diagrams::flowchart::FlowchartV2Model;
 use merman_core::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
 use serde_json::Value;
 use std::sync::Arc;
@@ -207,11 +208,11 @@ pub fn layout_parsed_render_layout_only(
             diagram_type: diagram_type.to_string(),
         }),
         RenderSemanticModel::Flowchart(model) => Ok(LayoutDiagram::FlowchartV2(Box::new(
-            flowchart::layout_flowchart_v2_typed(
+            layout_flowchart_typed_by_engine(
+                diagram_type,
                 model,
                 &parsed.meta.effective_config,
-                options.text_measurer.as_ref(),
-                options.math_renderer.as_deref(),
+                options,
             )?,
         ))),
         RenderSemanticModel::State(model) => Ok(LayoutDiagram::StateDiagramV2(Box::new(
@@ -385,6 +386,113 @@ pub fn layout_parsed_render_layout_only(
     }
 }
 
+fn flowchart_uses_elk_layout(
+    diagram_type: &str,
+    effective_config: &merman_core::MermaidConfig,
+) -> bool {
+    diagram_type == "flowchart-elk" || effective_config.get_str("layout") == Some("elk")
+}
+
+fn layout_flowchart_typed_by_engine(
+    diagram_type: &str,
+    model: &FlowchartV2Model,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutOptions,
+) -> Result<model::FlowchartV2Layout> {
+    if flowchart_uses_elk_layout(diagram_type, effective_config) {
+        return layout_flowchart_elk_typed_by_feature(
+            diagram_type,
+            model,
+            effective_config,
+            options,
+        );
+    }
+
+    flowchart::layout_flowchart_v2_typed(
+        model,
+        effective_config,
+        options.text_measurer.as_ref(),
+        options.math_renderer.as_deref(),
+    )
+}
+
+#[cfg(feature = "elk-layout")]
+fn layout_flowchart_elk_typed_by_feature(
+    _diagram_type: &str,
+    model: &FlowchartV2Model,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutOptions,
+) -> Result<model::FlowchartV2Layout> {
+    flowchart::elk::layout_flowchart_elk_typed(
+        model,
+        effective_config,
+        options.text_measurer.as_ref(),
+        options.math_renderer.as_deref(),
+    )
+}
+
+#[cfg(not(feature = "elk-layout"))]
+fn layout_flowchart_elk_typed_by_feature(
+    diagram_type: &str,
+    _model: &FlowchartV2Model,
+    _effective_config: &merman_core::MermaidConfig,
+    _options: &LayoutOptions,
+) -> Result<model::FlowchartV2Layout> {
+    Err(Error::UnsupportedDiagram {
+        diagram_type: diagram_type.to_string(),
+    })
+}
+
+fn layout_flowchart_json_by_engine(
+    diagram_type: &str,
+    semantic: &Value,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutOptions,
+) -> Result<model::FlowchartV2Layout> {
+    if flowchart_uses_elk_layout(diagram_type, effective_config) {
+        return layout_flowchart_elk_json_by_feature(
+            diagram_type,
+            semantic,
+            effective_config,
+            options,
+        );
+    }
+
+    flowchart::layout_flowchart_v2(
+        semantic,
+        effective_config,
+        options.text_measurer.as_ref(),
+        options.math_renderer.as_deref(),
+    )
+}
+
+#[cfg(feature = "elk-layout")]
+fn layout_flowchart_elk_json_by_feature(
+    _diagram_type: &str,
+    semantic: &Value,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutOptions,
+) -> Result<model::FlowchartV2Layout> {
+    flowchart::elk::layout_flowchart_elk(
+        semantic,
+        effective_config,
+        options.text_measurer.as_ref(),
+        options.math_renderer.as_deref(),
+    )
+}
+
+#[cfg(not(feature = "elk-layout"))]
+fn layout_flowchart_elk_json_by_feature(
+    diagram_type: &str,
+    _semantic: &Value,
+    _effective_config: &merman_core::MermaidConfig,
+    _options: &LayoutOptions,
+) -> Result<model::FlowchartV2Layout> {
+    Err(Error::UnsupportedDiagram {
+        diagram_type: diagram_type.to_string(),
+    })
+}
+
 fn layout_json_by_type(
     diagram_type: &str,
     semantic: &Value,
@@ -446,13 +554,8 @@ fn layout_json_by_type(
         "venn" => Ok(LayoutDiagram::VennDiagram(Box::new(
             venn::layout_venn_diagram(semantic, title, effective_config_value)?,
         ))),
-        "flowchart-v2" => Ok(LayoutDiagram::FlowchartV2(Box::new(
-            flowchart::layout_flowchart_v2(
-                semantic,
-                effective_config,
-                options.text_measurer.as_ref(),
-                options.math_renderer.as_deref(),
-            )?,
+        "flowchart-v2" | "flowchart-elk" => Ok(LayoutDiagram::FlowchartV2(Box::new(
+            layout_flowchart_json_by_engine(diagram_type, semantic, effective_config, options)?,
         ))),
         "stateDiagram" => Ok(LayoutDiagram::StateDiagramV2(Box::new(
             state::layout_state_diagram_v2(
@@ -612,7 +715,7 @@ mod tests {
     use super::*;
     use merman_core::{Engine, ParseOptions};
 
-    #[cfg(feature = "core-full")]
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_accepts_diagram_type_aliases() {
         let parsed = Engine::new()
@@ -626,6 +729,53 @@ mod tests {
 
         let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
         assert!(matches!(layout, LayoutDiagram::FlowchartV2(_)));
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_model_dispatch_uses_elk_for_flowchart_default_renderer_config() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  flowchart:
+    defaultRenderer: elk
+---
+flowchart TD
+A-->B
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "flowchart-elk");
+        let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+        let LayoutDiagram::FlowchartV2(layout) = layout else {
+            panic!("expected flowchart layout");
+        };
+        let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+        assert!(b.y > a.y);
+    }
+
+    #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
+    #[test]
+    fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_with_type_sync(
+                "flowchart-elk",
+                "flowchart-elk TD\nA-->B;",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        let err = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::UnsupportedDiagram { diagram_type } if diagram_type == "flowchart-elk"
+        ));
     }
 
     #[test]

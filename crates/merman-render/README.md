@@ -19,9 +19,9 @@ and host randomness for diagnostic or browser-oriented builds.
 
 ELK integration is kept behind the explicit `elk-layout` feature in this low-level crate. The
 public `merman` render facade enables that feature for ordinary render builds, while direct
-`merman-render` users can keep it disabled for minimal custom stacks. The current feature exposes
-the Flowchart-to-ELK graph adapter surface; full `flowchart-elk` layout execution and SVG parity
-remain a follow-up admission slice.
+`merman-render` users can keep it disabled for minimal custom stacks. The current feature makes
+`flowchart-elk` and `layout: elk` renderable through a lightweight deterministic layered backend;
+full Eclipse ELK parity remains a follow-up admission slice.
 
 Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use `merman-render` directly when you need lower-level control over layout, text measurement, SVG options, or SVG postprocessing.
 

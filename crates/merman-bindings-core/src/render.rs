@@ -98,6 +98,18 @@ mod tests {
     }
 
     #[test]
+    fn render_svg_returns_svg_for_flowchart_elk() {
+        let svg =
+            String::from_utf8(render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"").unwrap())
+                .unwrap();
+
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("Hello"));
+        assert!(svg.contains("World"));
+        assert!(!svg.contains("NaN"));
+    }
+
+    #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
             "layout": { "text_measurer": "deterministic", "viewport_width": 640, "viewport_height": 480 },

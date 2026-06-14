@@ -1,4 +1,7 @@
 use crate::math::MathRenderer;
+use crate::model::{
+    FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
@@ -8,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartV2Model};
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
+use super::label::compute_bounds;
 use super::layout::{first_parent_cycle_assignment, flowchart_svg_plain_computed_width_px};
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{
@@ -17,6 +21,242 @@ use super::{
     flowchart_label_plain_text_for_layout, flowchart_node_has_span_css_height_parity,
     flowchart_whole_label_font_style_requests_italic,
 };
+
+pub fn layout_flowchart_elk(
+    semantic: &serde_json::Value,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<FlowchartV2Layout> {
+    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
+    layout_flowchart_elk_typed(&model, effective_config, measurer, math_renderer)
+}
+
+pub fn layout_flowchart_elk_typed(
+    model: &FlowchartV2Model,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<FlowchartV2Layout> {
+    let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
+    let layout =
+        elk::layout(&graph, elk::Algorithm::Layered).map_err(|err| Error::InvalidModel {
+            message: format!("ELK layout failed: {err}"),
+        })?;
+    flowchart_layout_from_elk(model, effective_config, &graph, layout)
+}
+
+fn flowchart_layout_from_elk(
+    model: &FlowchartV2Model,
+    effective_config: &MermaidConfig,
+    graph: &elk::Graph,
+    layout: elk::LayoutResult,
+) -> Result<FlowchartV2Layout> {
+    let effective_config_value = effective_config.as_value();
+    let FlowchartLayoutSettings {
+        cluster_padding,
+        title_margin_top,
+        title_margin_bottom,
+        ..
+    } = FlowchartConfigView::new(effective_config_value).layout_settings();
+
+    let source_node_by_id: HashMap<&str, &elk::Node> = graph
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let source_edge_by_id: HashMap<&str, &elk::Edge> = graph
+        .edges
+        .iter()
+        .map(|edge| (edge.id.as_str(), edge))
+        .collect();
+
+    let mut out_nodes = Vec::with_capacity(layout.nodes.len());
+    for node in layout.nodes {
+        let Some(source) = source_node_by_id.get(node.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned unknown node {}", node.id),
+            });
+        };
+        out_nodes.push(LayoutNode {
+            id: node.id,
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+            is_cluster: source.kind == elk::NodeKind::Group,
+            label_width: source.label.map(|label| label.width),
+            label_height: source.label.map(|label| label.height),
+        });
+    }
+
+    let layout_node_by_id: HashMap<&str, &LayoutNode> = out_nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let diagram_direction = model.direction.as_deref().unwrap_or("TB");
+    let mut clusters = Vec::new();
+    for sg in &model.subgraphs {
+        if sg.nodes.is_empty() {
+            continue;
+        }
+        let Some(node) = layout_node_by_id.get(sg.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("missing ELK layout cluster {}", sg.id),
+            });
+        };
+        let label = source_node_by_id
+            .get(sg.id.as_str())
+            .and_then(|node| node.label)
+            .unwrap_or(elk::Label {
+                width: 1.0,
+                height: 1.0,
+            });
+        let title_label = LayoutLabel {
+            x: node.x,
+            y: node.y - node.height / 2.0 + title_margin_top + label.height / 2.0,
+            width: label.width,
+            height: label.height,
+        };
+        let title_w = label.width.max(1.0);
+        let diff = if node.width <= title_w {
+            (title_w - node.width) / 2.0 - cluster_padding / 2.0
+        } else {
+            -cluster_padding / 2.0
+        };
+        clusters.push(LayoutCluster {
+            id: sg.id.clone(),
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+            diff,
+            offset_y: label.height - cluster_padding / 2.0,
+            title: sg.title.clone(),
+            title_label,
+            requested_dir: sg.dir.as_ref().map(|dir| normalize_flow_direction(dir)),
+            effective_dir: sg
+                .dir
+                .as_deref()
+                .map(normalize_flow_direction)
+                .unwrap_or_else(|| normalize_flow_direction(diagram_direction)),
+            padding: cluster_padding,
+            title_margin_top,
+            title_margin_bottom,
+        });
+    }
+    clusters.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut out_edges = Vec::with_capacity(layout.edges.len());
+    for edge in layout.edges {
+        let Some(source) = source_edge_by_id.get(edge.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned unknown edge {}", edge.id),
+            });
+        };
+        let points = edge
+            .points
+            .into_iter()
+            .map(|point| LayoutPoint {
+                x: point.x,
+                y: point.y,
+            })
+            .collect::<Vec<_>>();
+        let label = source
+            .label
+            .and_then(|label| edge_label_position(&points, label));
+        out_edges.push(LayoutEdge {
+            id: edge.id,
+            from: source.source.clone(),
+            to: source.target.clone(),
+            from_cluster: endpoint_cluster(source.source.as_str(), &layout_node_by_id),
+            to_cluster: endpoint_cluster(source.target.as_str(), &layout_node_by_id),
+            points,
+            label,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        });
+    }
+
+    let bounds = compute_bounds(&out_nodes, &out_edges);
+    let dom_node_order_by_root = std::iter::once((
+        String::new(),
+        graph.nodes.iter().map(|node| node.id.clone()).collect(),
+    ))
+    .collect();
+
+    Ok(FlowchartV2Layout {
+        nodes: out_nodes,
+        edges: out_edges,
+        clusters,
+        bounds,
+        dom_node_order_by_root,
+    })
+}
+
+fn normalize_flow_direction(dir: &str) -> String {
+    let upper = dir.trim().to_uppercase();
+    if upper == "TD" {
+        "TB".to_string()
+    } else {
+        upper
+    }
+}
+
+fn endpoint_cluster(id: &str, layout_node_by_id: &HashMap<&str, &LayoutNode>) -> Option<String> {
+    layout_node_by_id
+        .get(id)
+        .filter(|node| node.is_cluster)
+        .map(|node| node.id.clone())
+}
+
+fn edge_label_position(points: &[LayoutPoint], label: elk::Label) -> Option<LayoutLabel> {
+    let point = polyline_midpoint(points)?;
+    Some(LayoutLabel {
+        x: point.x,
+        y: point.y,
+        width: label.width,
+        height: label.height,
+    })
+}
+
+fn polyline_midpoint(points: &[LayoutPoint]) -> Option<LayoutPoint> {
+    match points {
+        [] => None,
+        [single] => Some(single.clone()),
+        _ => {
+            let total = points
+                .windows(2)
+                .map(|pair| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y))
+                .sum::<f64>();
+            if !total.is_finite() || total <= 0.0 {
+                return points.first().cloned();
+            }
+            let mut remaining = total / 2.0;
+            for pair in points.windows(2) {
+                let len = (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y);
+                if len <= 0.0 {
+                    continue;
+                }
+                if remaining > len {
+                    remaining -= len;
+                    continue;
+                }
+                let t = remaining / len;
+                return Some(LayoutPoint {
+                    x: pair[0].x + (pair[1].x - pair[0].x) * t,
+                    y: pair[0].y + (pair[1].y - pair[0].y) * t,
+                });
+            }
+            points.last().cloned()
+        }
+    }
+}
 
 pub fn build_flowchart_elk_graph(
     model: &FlowchartV2Model,
@@ -37,6 +277,8 @@ pub fn build_flowchart_elk_graph(
         edge_wrap_mode,
         cluster_wrap_mode,
         cluster_padding,
+        nodesep,
+        ranksep,
         text_style,
         html_label_text_style,
         ..
@@ -68,6 +310,13 @@ pub fn build_flowchart_elk_graph(
     let mut graph = elk::Graph {
         id: "root".to_string(),
         direction: diagram_direction,
+        spacing: elk::Spacing {
+            node_node: nodesep,
+            layer_layer: ranksep,
+            group_padding_x: cluster_padding,
+            group_padding_y: cluster_padding,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -678,5 +927,31 @@ mod tests {
             assert!(node.width >= label.width, "node width for {}", node.id);
             assert!(node.height >= label.height, "node height for {}", node.id);
         }
+    }
+
+    #[test]
+    fn flowchart_elk_layout_produces_nodes_edges_and_bounds() {
+        let model = model(
+            vec![
+                node("A", Some("Alpha"), None),
+                node("B", Some("Beta"), None),
+            ],
+            vec![edge("L-A-B", "A", "B", Some("go"))],
+        );
+        let layout = layout_flowchart_elk_typed(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+
+        let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+        assert!(b.y > a.y);
+        assert_eq!(layout.edges.len(), 1);
+        assert!(layout.edges[0].points.len() >= 2);
+        assert!(layout.edges[0].label.is_some());
+        assert!(layout.bounds.is_some());
     }
 }
