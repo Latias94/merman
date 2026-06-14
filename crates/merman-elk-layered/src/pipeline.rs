@@ -16,13 +16,13 @@ use super::options::{
     WrappingStrategy,
 };
 use crate::configurator::{configure_graph_properties, configured_options};
-use crate::graph::LGraph;
+use crate::graph::{LGraph, LNodeKind, PortSide};
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, join_long_edges,
     postprocess_layer_constraints, preprocess_layer_constraints,
     process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
-    process_hierarchical_port_positions, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, split_long_edges,
+    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
+    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, split_long_edges,
 };
 use crate::p1cycles::break_cycles_greedy;
 use crate::p2layers::layer_network_simplex;
@@ -672,6 +672,11 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
             process_hierarchical_port_positions(graph);
         }
         ProcessorKind::OrthogonalEdgeRouter => route_edges_orthogonal(graph),
+        ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
+            if !has_north_south_external_port_dummy(graph) =>
+        {
+            process_hierarchical_port_orthogonal_edges(graph);
+        }
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
         ProcessorKind::EndLabelSorter if !graph.options.graph_has_end_labels => {}
         ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
@@ -681,6 +686,13 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
     }
 
     Ok(())
+}
+
+fn has_north_south_external_port_dummy(graph: &LGraph) -> bool {
+    graph.layerless_nodes.iter().any(|node| {
+        node.kind == LNodeKind::ExternalPort
+            && matches!(node.external_port_side, PortSide::North | PortSide::South)
+    })
 }
 
 fn resize_hierarchical_node_graph(graph: &mut LGraph) {
@@ -1053,8 +1065,9 @@ fn edge_routing_dependencies(options: &LayeredOptions, _processor: ProcessorKind
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{LNode, LNodeKind, PortSide, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
-    use crate::options::{ElkDirection, GreedySwitchType, LayeredOptions};
+    use crate::options::{ElkDirection, GreedySwitchType, LayeredOptions, PortConstraints};
     use crate::p3order::{counting::CrossingsCounter, process_port_sides, sort_port_lists};
 
     fn kinds(options: &LayeredOptions) -> Vec<ProcessorKind> {
@@ -1238,6 +1251,48 @@ mod tests {
         assert!(processors.contains(&ProcessorKind::SelfLoopPreProcessor));
         assert!(processors.contains(&ProcessorKind::SelfLoopRouter));
         assert!(processors.contains(&ProcessorKind::SelfLoopPostProcessor));
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_runs_for_east_west_external_ports() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions {
+                port_constraints: PortConstraints::FixedPos,
+                ..LayeredOptions::default()
+            },
+        );
+        let port = push_test_external_dummy(&mut graph, "west", PortSide::West);
+        graph.layerless_nodes[port].port_ratio_or_position = 20.0;
+        graph.set_node_layer(port, 0);
+
+        execute_processor(
+            &mut graph,
+            ProcessorKind::HierarchicalPortOrthogonalEdgeRouter,
+        )
+        .unwrap();
+
+        assert_eq!(graph.layerless_nodes[port].position.y, 20.0);
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_stays_unsupported_for_north_south_external_ports() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let port = push_test_external_dummy(&mut graph, "north", PortSide::North);
+        graph.set_node_layer(port, 0);
+
+        let err = execute_processor(
+            &mut graph,
+            ProcessorKind::HierarchicalPortOrthogonalEdgeRouter,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            PipelineError::UnsupportedProcessor {
+                kind: ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
+            }
+        );
     }
 
     #[test]
@@ -1751,5 +1806,17 @@ mod tests {
             !graph_kinds(&nested)
                 .contains(&ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch)
         );
+    }
+
+    fn push_test_external_dummy(graph: &mut LGraph, id: &str, side: PortSide) -> usize {
+        let node = graph.layerless_nodes.len();
+        let mut dummy = LNode::new(id, 0.0, 0.0, None);
+        dummy.kind = LNodeKind::ExternalPort;
+        dummy.external_port_side = side;
+        graph.layerless_nodes.push(dummy);
+        graph
+            .add_port(node, PortType::Input, side.opposed(), Default::default())
+            .unwrap();
+        node
     }
 }

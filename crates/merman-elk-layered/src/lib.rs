@@ -35,8 +35,9 @@ pub use intermediate::{
     IntermediateError, IntermediateResult, calculate_layer_sizes_and_graph_height,
     postprocess_layer_constraints, preprocess_layer_constraints,
     process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
-    process_hierarchical_port_positions, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, split_edge, split_long_edges,
+    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
+    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, split_edge,
+    split_long_edges,
 };
 pub use options::{
     Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeRouting, ElkDirection,

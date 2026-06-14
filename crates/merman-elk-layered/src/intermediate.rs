@@ -11,6 +11,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortConstraintProcessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortDummySizeProcessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortPositionProcessor.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortOrthogonalEdgeRouter.java
 
 use crate::graph::{
     EdgeLabelPlacement, LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortRef, PortSide, PortType,
@@ -836,6 +837,151 @@ fn first_port_anchor_y(graph: &LGraph, node: usize) -> f64 {
 
 fn border_to_content_area_y(graph: &mut LGraph, node: usize) {
     graph.layerless_nodes[node].position.y -= graph.padding.top + graph.offset.y;
+}
+
+pub fn process_hierarchical_port_orthogonal_edges(graph: &mut LGraph) {
+    if graph.layers.is_empty() {
+        return;
+    }
+
+    fix_hierarchical_port_coordinates(graph);
+    correct_hierarchical_port_slanted_edge_segments(graph);
+}
+
+fn fix_hierarchical_port_coordinates(graph: &mut LGraph) {
+    fix_hierarchical_port_coordinates_for_layer(graph, 0);
+    fix_hierarchical_port_coordinates_for_layer(graph, graph.layers.len() - 1);
+}
+
+fn fix_hierarchical_port_coordinates_for_layer(graph: &mut LGraph, layer_index: usize) {
+    let nodes = graph.layers[layer_index].nodes.clone();
+    let graph_actual_height = actual_graph_height(graph);
+    let mut new_actual_graph_height = graph_actual_height;
+
+    for node in &nodes {
+        if graph.layerless_nodes[*node].kind != LNodeKind::ExternalPort {
+            continue;
+        }
+
+        match graph.layerless_nodes[*node].external_port_side {
+            PortSide::East => {
+                graph.layerless_nodes[*node].position.x =
+                    graph.size.width + graph.padding.right - graph.offset.x;
+            }
+            PortSide::West => {
+                graph.layerless_nodes[*node].position.x = -graph.offset.x - graph.padding.left;
+            }
+            PortSide::North | PortSide::South | PortSide::Undefined => {}
+        }
+
+        if matches!(
+            graph.layerless_nodes[*node].external_port_side,
+            PortSide::East | PortSide::West
+        ) {
+            let required_actual_graph_height =
+                fix_hierarchical_port_east_west_y_coordinate(graph, *node, graph_actual_height);
+            new_actual_graph_height = new_actual_graph_height.max(required_actual_graph_height);
+        }
+    }
+
+    graph.size.height += new_actual_graph_height - graph_actual_height;
+
+    for node in nodes {
+        if graph.layerless_nodes[node].kind != LNodeKind::ExternalPort {
+            continue;
+        }
+
+        match graph.layerless_nodes[node].external_port_side {
+            PortSide::North => {
+                graph.layerless_nodes[node].position.y = -graph.offset.y - graph.padding.top;
+            }
+            PortSide::South => {
+                graph.layerless_nodes[node].position.y =
+                    graph.size.height + graph.padding.bottom - graph.offset.y;
+            }
+            PortSide::East | PortSide::West | PortSide::Undefined => {}
+        }
+    }
+}
+
+fn fix_hierarchical_port_east_west_y_coordinate(
+    graph: &mut LGraph,
+    node: usize,
+    graph_actual_height: f64,
+) -> f64 {
+    let mut required_actual_graph_height = 0.0;
+
+    if graph.options.port_constraints.is_ratio_fixed() {
+        graph.layerless_nodes[node].position.y = graph_actual_height
+            * graph.layerless_nodes[node].port_ratio_or_position
+            - first_port_anchor_y(graph, node);
+        required_actual_graph_height = graph.layerless_nodes[node].position.y
+            + graph.layerless_nodes[node].external_port_size.height;
+        border_to_content_area_y(graph, node);
+    } else if graph.options.port_constraints.is_pos_fixed() {
+        graph.layerless_nodes[node].position.y =
+            graph.layerless_nodes[node].port_ratio_or_position - first_port_anchor_y(graph, node);
+        required_actual_graph_height = graph.layerless_nodes[node].position.y
+            + graph.layerless_nodes[node].external_port_size.height;
+        border_to_content_area_y(graph, node);
+    }
+
+    required_actual_graph_height
+}
+
+fn correct_hierarchical_port_slanted_edge_segments(graph: &mut LGraph) {
+    correct_hierarchical_port_slanted_edge_segments_for_layer(graph, 0);
+    correct_hierarchical_port_slanted_edge_segments_for_layer(graph, graph.layers.len() - 1);
+}
+
+fn correct_hierarchical_port_slanted_edge_segments_for_layer(
+    graph: &mut LGraph,
+    layer_index: usize,
+) {
+    let nodes = graph.layers[layer_index].nodes.clone();
+
+    for node in nodes {
+        if graph.layerless_nodes[node].kind != LNodeKind::ExternalPort
+            || !matches!(
+                graph.layerless_nodes[node].external_port_side,
+                PortSide::East | PortSide::West
+            )
+        {
+            continue;
+        }
+
+        let connected_edges = graph.node_connected_edges(node);
+        for edge in connected_edges {
+            if graph.edges[edge].bend_points.is_empty() {
+                continue;
+            }
+
+            let source = graph.edges[edge].source;
+            if source.node == node {
+                let source_y = absolute_port_anchor(graph, source).y;
+                if let Some(first) = graph.edges[edge].bend_points.first_mut() {
+                    first.y = source_y;
+                }
+            }
+
+            let target = graph.edges[edge].target;
+            if target.node == node {
+                let target_y = absolute_port_anchor(graph, target).y;
+                if let Some(last) = graph.edges[edge].bend_points.last_mut() {
+                    last.y = target_y;
+                }
+            }
+        }
+    }
+}
+
+fn absolute_port_anchor(graph: &LGraph, port_ref: PortRef) -> LPoint {
+    let node = &graph.layerless_nodes[port_ref.node];
+    let port = &node.ports[port_ref.port];
+    LPoint {
+        x: node.position.x + port.position.x + port.anchor.x,
+        y: node.position.y + port.position.y + port.anchor.y,
+    }
 }
 
 pub fn process_hierarchical_port_constraints(graph: &mut LGraph) {
@@ -1863,6 +2009,66 @@ mod tests {
         assert_eq!(graph.layerless_nodes[first].position.y, 25.0);
         assert_eq!(graph.layerless_nodes[middle].position.y, 0.0);
         assert_eq!(graph.layerless_nodes[last].position.y, 43.0);
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_tail_fixes_east_west_coordinates_and_slanted_segments() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedPos;
+        graph.size.width = 100.0;
+        graph.size.height = 40.0;
+        graph.padding.left = 5.0;
+        graph.padding.right = 7.0;
+        graph.padding.top = 3.0;
+        graph.padding.bottom = 11.0;
+        graph.offset.x = 2.0;
+        graph.offset.y = 4.0;
+
+        let west = push_external_dummy(&mut graph, "west", PortSide::West, 22.0);
+        let east = push_external_dummy(&mut graph, "east", PortSide::East, 70.0);
+        let middle = push_normal_node(&mut graph, "A");
+        graph.layerless_nodes[west].external_port_size.height = 6.0;
+        graph.layerless_nodes[east].external_port_size.height = 8.0;
+        graph.layerless_nodes[west].ports[0].position.y = 2.0;
+        graph.layerless_nodes[east].ports[0].position.y = 5.0;
+
+        graph.set_node_layer(west, 0);
+        graph.set_node_layer(middle, 1);
+        graph.set_node_layer(east, 2);
+
+        let west_edge = add_test_edge(&mut graph, "west-A", west, 0, middle, 0);
+        graph.edges[west_edge].bend_points = vec![LPoint { x: 10.0, y: 999.0 }];
+        let east_edge = add_test_edge(&mut graph, "A-east", middle, 0, east, 0);
+        graph.edges[east_edge].bend_points = vec![LPoint { x: 90.0, y: 999.0 }];
+
+        process_hierarchical_port_orthogonal_edges(&mut graph);
+
+        assert_eq!(graph.layerless_nodes[west].position.x, -7.0);
+        assert_eq!(graph.layerless_nodes[east].position.x, 105.0);
+        assert_eq!(graph.layerless_nodes[west].position.y, 13.0);
+        assert_eq!(graph.layerless_nodes[east].position.y, 58.0);
+        assert_eq!(graph.size.height, 59.0);
+        assert_eq!(graph.edges[west_edge].bend_points[0].y, 15.0);
+        assert_eq!(graph.edges[east_edge].bend_points[0].y, 63.0);
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_tail_sets_north_south_border_y_coordinates() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.size.height = 80.0;
+        graph.padding.top = 6.0;
+        graph.padding.bottom = 9.0;
+        graph.offset.y = 4.0;
+
+        let north = push_replaced_north_south_dummy(&mut graph, "north", PortSide::North);
+        let south = push_replaced_north_south_dummy(&mut graph, "south", PortSide::South);
+        graph.set_node_layer(north, 0);
+        graph.set_node_layer(south, 1);
+
+        process_hierarchical_port_orthogonal_edges(&mut graph);
+
+        assert_eq!(graph.layerless_nodes[north].position.y, -10.0);
+        assert_eq!(graph.layerless_nodes[south].position.y, 85.0);
     }
 
     fn push_replaced_north_south_dummy(
