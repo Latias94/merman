@@ -13,7 +13,12 @@ const ITER_LIMIT_FACTOR: usize = 4;
 
 pub fn layer_network_simplex(graph: &mut LGraph) {
     graph.clear_layers();
-    let nodes = (0..graph.layerless_nodes.len()).collect::<Vec<_>>();
+    let nodes = graph
+        .layerless_nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| (!node.hidden).then_some(index))
+        .collect::<Vec<_>>();
     if nodes.is_empty() {
         return;
     }
@@ -156,6 +161,7 @@ mod tests {
             parent: None,
             direction: None,
             hierarchy_handling: None,
+            layer_constraint: None,
             label: None,
         }
     }

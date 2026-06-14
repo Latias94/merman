@@ -26,7 +26,10 @@ pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
     import_graph,
 };
-pub use intermediate::{restore_reversed_edges, split_edge, split_long_edges};
+pub use intermediate::{
+    IntermediateError, IntermediateResult, postprocess_layer_constraints,
+    preprocess_layer_constraints, restore_reversed_edges, split_edge, split_long_edges,
+};
 pub use options::{
     EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions,
     NodePlacementStrategy, PortConstraints, SelfLoopDistributionStrategy, SpacingOptions,

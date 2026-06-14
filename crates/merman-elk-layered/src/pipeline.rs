@@ -771,6 +771,7 @@ mod tests {
                     parent: None,
                     direction: None,
                     hierarchy_handling: Some(crate::options::HierarchyHandling::IncludeChildren),
+                    layer_constraint: None,
                     label: None,
                 },
                 ElkInputNode {
@@ -780,6 +781,7 @@ mod tests {
                     parent: Some("cluster".to_string()),
                     direction: None,
                     hierarchy_handling: None,
+                    layer_constraint: None,
                     label: None,
                 },
             ],

@@ -23,6 +23,7 @@ pub struct LGraph {
     pub cyclic: bool,
     pub random: JavaRandom,
     pub parent_node_id: Option<String>,
+    pub hidden_nodes: Vec<usize>,
 }
 
 impl LGraph {
@@ -41,6 +42,7 @@ impl LGraph {
             cyclic: false,
             random,
             parent_node_id: None,
+            hidden_nodes: Vec::new(),
         }
     }
 
@@ -76,6 +78,8 @@ pub struct LNode {
     pub long_edge_source: Option<PortRef>,
     pub long_edge_target: Option<PortRef>,
     pub long_edge_has_label_dummies: bool,
+    pub layer_constraint_explicit: bool,
+    pub hidden: bool,
     pub compound: bool,
 }
 
@@ -97,6 +101,8 @@ impl LNode {
             long_edge_source: None,
             long_edge_target: None,
             long_edge_has_label_dummies: false,
+            layer_constraint_explicit: false,
+            hidden: false,
             compound: false,
         }
     }
@@ -155,6 +161,7 @@ pub struct LayeredEdge {
     pub priority_direction: i32,
     pub priority_shortness: i32,
     pub thickness: f64,
+    pub original_opposite_port: Option<PortRef>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,6 +284,36 @@ impl LGraph {
         self.layers[layer_index].nodes.push(node_index);
     }
 
+    pub fn insert_layer(&mut self, layer_index: usize) {
+        self.layers.insert(layer_index, Layer { nodes: Vec::new() });
+        for node in &mut self.layerless_nodes {
+            if let Some(current) = node.layer_index {
+                if current >= layer_index {
+                    node.layer_index = Some(current + 1);
+                }
+            }
+        }
+    }
+
+    pub fn compact_empty_layers(&mut self) {
+        let mut layer_map = vec![None; self.layers.len()];
+        let mut compacted = Vec::new();
+
+        for (old_index, layer) in self.layers.iter().enumerate() {
+            if !layer.nodes.is_empty() {
+                layer_map[old_index] = Some(compacted.len());
+                compacted.push(layer.clone());
+            }
+        }
+
+        self.layers = compacted;
+        for node in &mut self.layerless_nodes {
+            if let Some(old_index) = node.layer_index {
+                node.layer_index = layer_map.get(old_index).copied().flatten();
+            }
+        }
+    }
+
     pub fn add_port(
         &mut self,
         node_index: usize,
@@ -334,6 +371,50 @@ impl LGraph {
             .push(edge_index);
         self.edges[edge_index].target = target;
         true
+    }
+
+    pub fn detach_edge_source(&mut self, edge_index: usize) -> Option<PortRef> {
+        let source = self.edges.get(edge_index)?.source;
+        if port_exists(self, source) {
+            remove_edge(
+                &mut self.layerless_nodes[source.node].ports[source.port].outgoing_edges,
+                edge_index,
+            );
+        }
+        Some(source)
+    }
+
+    pub fn detach_edge_target(&mut self, edge_index: usize) -> Option<PortRef> {
+        let target = self.edges.get(edge_index)?.target;
+        if port_exists(self, target) {
+            remove_edge(
+                &mut self.layerless_nodes[target.node].ports[target.port].incoming_edges,
+                edge_index,
+            );
+        }
+        Some(target)
+    }
+
+    pub fn edge_source_attached(&self, edge_index: usize) -> bool {
+        let Some(edge) = self.edges.get(edge_index) else {
+            return false;
+        };
+        self.layerless_nodes
+            .get(edge.source.node)
+            .and_then(|node| node.ports.get(edge.source.port))
+            .map(|port| port.outgoing_edges.contains(&edge_index))
+            .unwrap_or(false)
+    }
+
+    pub fn edge_target_attached(&self, edge_index: usize) -> bool {
+        let Some(edge) = self.edges.get(edge_index) else {
+            return false;
+        };
+        self.layerless_nodes
+            .get(edge.target.node)
+            .and_then(|node| node.ports.get(edge.target.port))
+            .map(|port| port.incoming_edges.contains(&edge_index))
+            .unwrap_or(false)
     }
 
     pub fn add_edge(&mut self, edge: LayeredEdge) -> Option<usize> {

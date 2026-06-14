@@ -217,6 +217,7 @@ mod tests {
             parent: None,
             direction: None,
             hierarchy_handling: None,
+            layer_constraint: None,
             label: None,
         }
     }

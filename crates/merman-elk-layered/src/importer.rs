@@ -10,7 +10,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::graph::{
     EdgeLabelPlacement, LGraph, LLabel, LNode, LNodeKind, LPort, LayeredEdge, PortRef, PortType,
 };
-use crate::options::{ElkDirection, HierarchyHandling, LayeredOptions};
+use crate::options::{ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElkInputGraph {
@@ -28,6 +28,7 @@ pub struct ElkInputNode {
     pub parent: Option<String>,
     pub direction: Option<ElkDirection>,
     pub hierarchy_handling: Option<HierarchyHandling>,
+    pub layer_constraint: Option<LayerConstraint>,
     pub label: Option<ElkInputLabel>,
 }
 
@@ -159,6 +160,10 @@ fn import_hierarchical_graph(
 
 fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<usize>) -> usize {
     let mut lnode = LNode::new(node.id.clone(), node.width, node.height, model_order);
+    if let Some(layer_constraint) = node.layer_constraint {
+        lnode.layer_constraint = layer_constraint;
+        lnode.layer_constraint_explicit = true;
+    }
     if let Some(label) = node.label.as_ref() {
         lnode.labels.push(label_to_lgraph(label));
     }
@@ -227,6 +232,7 @@ fn transform_edge(
         priority_direction: edge.priority_direction,
         priority_shortness: edge.priority_shortness,
         thickness: 0.0,
+        original_opposite_port: None,
     });
 
     Ok(edge_index)
@@ -462,6 +468,7 @@ mod tests {
             parent: None,
             direction: None,
             hierarchy_handling: None,
+            layer_constraint: None,
             label: None,
         }
     }
