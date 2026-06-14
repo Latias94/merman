@@ -89,6 +89,7 @@ fn mirror_all_x(graph: &mut LGraph) {
 
 fn mirror_node_x(node: &mut LNode, offset: f64) {
     node.position.mirror_x(offset - node.size.width);
+    node.padding.swap_left_right();
     for port in &mut node.ports {
         mirror_port_x(port, node.size.width);
     }
@@ -105,6 +106,9 @@ fn mirror_port_x(port: &mut LPort, node_width: f64) {
     port.anchor.mirror_x(port.size.width);
     port.side = mirror_port_side_x(port.side);
     reverse_port_index(port);
+    for label in &mut port.labels {
+        mirror_label_x_within_node(label, port.size.width);
+    }
 }
 
 fn mirror_all_y(graph: &mut LGraph) {
@@ -126,6 +130,12 @@ fn mirror_all_y(graph: &mut LGraph) {
 
 fn mirror_node_y(node: &mut LNode, offset: f64) {
     node.position.mirror_y(offset - node.size.height);
+    node.padding.swap_top_bottom();
+    node.in_layer_constraint = match node.in_layer_constraint {
+        InLayerConstraint::Top => InLayerConstraint::Bottom,
+        InLayerConstraint::Bottom => InLayerConstraint::Top,
+        InLayerConstraint::None => InLayerConstraint::None,
+    };
     for port in &mut node.ports {
         mirror_port_y(port, node.size.height);
     }
@@ -139,6 +149,9 @@ fn mirror_port_y(port: &mut LPort, node_height: f64) {
     port.anchor.mirror_y(port.size.height);
     port.side = mirror_port_side_y(port.side);
     reverse_port_index(port);
+    for label in &mut port.labels {
+        mirror_label_y_within_node(label, port.size.height);
+    }
 }
 
 fn transpose_all(graph: &mut LGraph) {
@@ -162,6 +175,7 @@ fn transpose_all(graph: &mut LGraph) {
 fn transpose_node(node: &mut LNode) {
     node.position.transpose();
     node.size.transpose();
+    node.padding.transpose();
     for port in &mut node.ports {
         transpose_port(port);
     }
@@ -179,6 +193,9 @@ fn transpose_port(port: &mut LPort) {
     port.size.transpose();
     port.side = transpose_port_side(port.side);
     reverse_port_index(port);
+    for label in &mut port.labels {
+        transpose_label(label);
+    }
 }
 
 fn graph_x_offset(graph: &LGraph) -> f64 {
@@ -186,7 +203,7 @@ fn graph_x_offset(graph: &LGraph) -> f64 {
         graph
             .layerless_nodes
             .iter()
-            .map(|node| node.position.x + node.size.width)
+            .map(|node| node.position.x + node.size.width + node.margin.right)
             .fold(0.0, f64::max)
     } else {
         graph.size.width - graph.offset.x
@@ -199,7 +216,7 @@ fn graph_y_offset(graph: &LGraph) -> f64 {
         graph
             .layerless_nodes
             .iter()
-            .map(|node| node.position.y + node.size.height)
+            .map(|node| node.position.y + node.size.height + node.margin.bottom)
             .fold(0.0, f64::max)
     } else {
         graph.size.height - graph.offset.y

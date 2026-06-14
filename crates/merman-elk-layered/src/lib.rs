@@ -15,14 +15,15 @@ pub mod options;
 pub mod p1cycles;
 pub mod p2layers;
 pub mod p3order;
+pub mod p4nodes;
 pub mod pipeline;
 pub mod random;
 pub mod transform;
 
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
 pub use graph::{
-    EdgeLabelPlacement, GraphProperties, LGraph, LLabel, LNode, LNodeKind, LPadding, LPoint, LPort,
-    LSize, Layer, LayeredEdge, PortRef, PortSide, PortType, reverse_edge,
+    EdgeLabelPlacement, GraphProperties, LGraph, LLabel, LMargin, LNode, LNodeKind, LPadding,
+    LPoint, LPort, LSize, Layer, LayeredEdge, PortRef, PortSide, PortType, reverse_edge,
 };
 pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
@@ -46,6 +47,9 @@ pub use p3order::sweep::{
 pub use p3order::{
     long_edge_target_node_preprocessing, process_port_sides, set_port_side, sort_by_input_model,
     sort_port_lists, target_node,
+};
+pub use p4nodes::{
+    calculate_innermost_node_margins, calculate_label_and_node_sizes, process_in_layer_constraints,
 };
 pub use pipeline::{
     LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot, assemble_processors,

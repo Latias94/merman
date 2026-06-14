@@ -139,6 +139,16 @@ pub enum PortConstraints {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PortAlignment {
+    #[default]
+    Distributed,
+    Justified,
+    Begin,
+    Center,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LayerConstraint {
     #[default]
     None,
@@ -167,6 +177,7 @@ pub struct LayeredOptions {
     pub consider_model_order_port_model_order: bool,
     pub force_node_model_order: bool,
     pub port_sorting_strategy: PortSortingStrategy,
+    pub port_alignment_default: PortAlignment,
     pub merge_edges: bool,
     pub merge_hierarchy_edges: bool,
     pub unnecessary_bendpoints: bool,
@@ -191,11 +202,33 @@ pub struct LayeredOptions {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpacingOptions {
     pub edge_edge: f64,
+    pub label_label: f64,
+    pub label_node: f64,
+    pub label_port_horizontal: f64,
+    pub label_port_vertical: f64,
+    pub port_port: f64,
+    pub ports_surrounding: SpacingMargin,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct SpacingMargin {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
 }
 
 impl Default for SpacingOptions {
     fn default() -> Self {
-        Self { edge_edge: 2.0 }
+        Self {
+            edge_edge: 10.0,
+            label_label: 0.0,
+            label_node: 5.0,
+            label_port_horizontal: 1.0,
+            label_port_vertical: 1.0,
+            port_port: 10.0,
+            ports_surrounding: SpacingMargin::default(),
+        }
     }
 }
 
@@ -219,6 +252,7 @@ impl Default for LayeredOptions {
             consider_model_order_port_model_order: false,
             force_node_model_order: false,
             port_sorting_strategy: PortSortingStrategy::InputOrder,
+            port_alignment_default: PortAlignment::Distributed,
             merge_edges: false,
             merge_hierarchy_edges: true,
             unnecessary_bendpoints: false,

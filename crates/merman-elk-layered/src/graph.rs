@@ -6,7 +6,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LEdge.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LPort.java
 
-use super::options::{LayeredOptions, PortConstraints};
+use super::options::{LayeredOptions, PortAlignment, PortConstraints};
 use crate::random::JavaRandom;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +67,8 @@ pub struct LNode {
     pub kind: LNodeKind,
     pub size: LSize,
     pub position: LPoint,
+    pub margin: LMargin,
+    pub padding: LPadding,
     pub labels: Vec<LLabel>,
     pub ports: Vec<LPort>,
     pub nested_graph: Option<Box<LGraph>>,
@@ -74,6 +76,7 @@ pub struct LNode {
     pub layer_index: Option<usize>,
     pub layer_constraint: super::options::LayerConstraint,
     pub port_constraints: PortConstraints,
+    pub port_alignment: Option<PortAlignment>,
     pub origin_edge: Option<usize>,
     pub long_edge_source: Option<PortRef>,
     pub long_edge_target: Option<PortRef>,
@@ -91,6 +94,8 @@ impl LNode {
             kind: LNodeKind::Normal,
             size: LSize { width, height },
             position: LPoint::default(),
+            margin: LMargin::default(),
+            padding: LPadding::default(),
             labels: Vec::new(),
             ports: Vec::new(),
             nested_graph: None,
@@ -98,6 +103,7 @@ impl LNode {
             layer_index: None,
             layer_constraint: super::options::LayerConstraint::None,
             port_constraints: PortConstraints::Undefined,
+            port_alignment: None,
             origin_edge: None,
             long_edge_source: None,
             long_edge_target: None,
@@ -138,8 +144,13 @@ pub struct LPort {
     pub size: LSize,
     pub position: LPoint,
     pub anchor: LPoint,
+    pub margin: LMargin,
+    pub labels: Vec<LLabel>,
     pub model_order: Option<usize>,
     pub port_index: Option<isize>,
+    pub border_offset: Option<f64>,
+    pub ratio_or_position: f64,
+    pub connected_to_external_nodes: bool,
     pub incoming_edges: Vec<usize>,
     pub outgoing_edges: Vec<usize>,
 }
@@ -154,8 +165,13 @@ impl LPort {
             size: LSize::default(),
             position: LPoint::default(),
             anchor: LPoint::default(),
+            margin: LMargin::default(),
+            labels: Vec::new(),
             model_order: None,
             port_index: None,
+            border_offset: None,
+            ratio_or_position: 0.0,
+            connected_to_external_nodes: true,
             incoming_edges: Vec::new(),
             outgoing_edges: Vec::new(),
         }
@@ -250,6 +266,14 @@ pub struct LSize {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct LPadding {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct LMargin {
     pub top: f64,
     pub right: f64,
     pub bottom: f64,

@@ -25,6 +25,9 @@ use crate::p2layers::layer_network_simplex;
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists, sweep::minimize_crossings_layer_sweep,
 };
+use crate::p4nodes::{
+    calculate_innermost_node_margins, calculate_label_and_node_sizes, process_in_layer_constraints,
+};
 use crate::transform::{GraphTransformMode, transform_graph_direction};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -387,6 +390,9 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
             minimize_crossings_layer_sweep(graph);
         }
+        ProcessorKind::InLayerConstraintProcessor => process_in_layer_constraints(graph),
+        ProcessorKind::LabelAndNodeSizeProcessor => calculate_label_and_node_sizes(graph),
+        ProcessorKind::InnermostNodeMarginCalculator => calculate_innermost_node_margins(graph),
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -1033,6 +1039,45 @@ mod tests {
             Some(&ProcessorKind::LayerSweepCrossingMinimizerBarycenter)
         );
         assert_eq!(graph.layers.len(), 3);
+    }
+
+    #[test]
+    fn execute_processors_until_p4_runs_prerequisites_before_unported_bk_placer() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_type: GreedySwitchType::Off,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        })
+        .unwrap();
+
+        let err = execute_processors_until(&mut graph, LayeredPhase::P4NodePlacement).unwrap_err();
+
+        assert_eq!(
+            err,
+            PipelineError::UnsupportedProcessor {
+                kind: ProcessorKind::BKNodePlacer
+            }
+        );
+        for node in &graph.layerless_nodes {
+            for port in &node.ports {
+                if port.side == crate::graph::PortSide::East {
+                    assert_eq!(port.position.x, node.size.width);
+                }
+                if port.side == crate::graph::PortSide::West {
+                    assert_eq!(port.position.x, 0.0);
+                }
+            }
+        }
+        assert!(graph.layerless_nodes.iter().any(|node| {
+            node.ports
+                .iter()
+                .any(|port| port.side != crate::graph::PortSide::Undefined)
+        }));
     }
 
     #[test]
