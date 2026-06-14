@@ -1,11 +1,12 @@
 //! Layered graph configuration before processor assembly.
 //!
 //! Source references:
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/GraphConfigurator.java`
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/options/Spacings.java`
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/GraphConfigurator.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/options/Spacings.java
 
 use crate::graph::LGraph;
 use crate::options::{EdgeRouting, ElkDirection, LayeredOptions};
+use crate::random::JavaRandom;
 
 const MIN_EDGE_SPACING: f64 = 2.0;
 
@@ -39,6 +40,7 @@ pub fn configure_graph_properties(graph: &mut LGraph) {
         graph.options.node_placement_favor_straight_edges =
             Some(graph.options.edge_routing == EdgeRouting::Orthogonal);
     }
+    graph.random = JavaRandom::from_layout_seed(graph.options.random_seed);
 
     for node in &mut graph.layerless_nodes {
         if let Some(nested_graph) = node.nested_graph.as_mut() {

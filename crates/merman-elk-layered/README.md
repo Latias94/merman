@@ -10,9 +10,9 @@ this EPL-2.0 boundary.
 
 Current source baseline:
 
-- Mermaid adapter: `repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts`
-- elkjs: `repo-ref/elkjs` tag `0.9.3`
-- Eclipse ELK: `repo-ref/elk` tag `v0.9.1`
+- Mermaid adapter: https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid-layout-elk/src/render.ts
+- elkjs: https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436
+- Eclipse ELK: https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e
 
 The initial implementation exposes the layered graph, option model, and
 processor assembly scaffold. Layout phases are ported incrementally from the

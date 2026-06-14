@@ -1,9 +1,9 @@
 //! ELK layered option model.
 //!
 //! Source references:
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/Layered.melk`
-//! - `repo-ref/elk/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/Core.melk`
-//! - `repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts`
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/Layered.melk
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/Core.melk
+//! - https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid-layout-elk/src/render.ts
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ElkDirection {
@@ -128,6 +128,7 @@ pub struct LayeredOptions {
     pub wrapping_multi_edge_improve_cuts: bool,
     pub wrapping_multi_edge_improve_wrapped_edges: bool,
     pub feedback_edges: bool,
+    pub random_seed: i32,
     pub node_placement_favor_straight_edges: Option<bool>,
     pub graph_has_self_loops: bool,
     pub graph_has_center_labels: bool,
@@ -174,6 +175,7 @@ impl Default for LayeredOptions {
             wrapping_multi_edge_improve_cuts: true,
             wrapping_multi_edge_improve_wrapped_edges: true,
             feedback_edges: false,
+            random_seed: 1,
             node_placement_favor_straight_edges: None,
             graph_has_self_loops: false,
             graph_has_center_labels: false,
@@ -190,7 +192,8 @@ impl Default for LayeredOptions {
 impl LayeredOptions {
     /// Options set by Mermaid's ELK adapter before calling `elk.layout(...)`.
     ///
-    /// Source: `repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts`.
+    /// Source:
+    /// https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid-layout-elk/src/render.ts
     pub fn mermaid_flowchart_defaults(direction: ElkDirection) -> Self {
         Self {
             direction,

@@ -1,9 +1,9 @@
 //! ELK graph importer scaffold.
 //!
 //! Source references:
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/transform/ElkGraphImporter.java`
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/LayeredLayoutProvider.java`
-//! - `repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts`
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/transform/ElkGraphImporter.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/LayeredLayoutProvider.java
+//! - https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid-layout-elk/src/render.ts
 
 use std::collections::{HashMap, VecDeque};
 
@@ -38,6 +38,7 @@ pub struct ElkInputEdge {
     pub target: String,
     pub label: Option<ElkInputLabel>,
     pub minlen: usize,
+    pub priority_direction: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -222,6 +223,7 @@ fn transform_edge(
         reversed: false,
         bend_points: Vec::new(),
         model_order: Some(model_order),
+        priority_direction: edge.priority_direction,
     });
 
     Ok(edge_index)
@@ -468,6 +470,7 @@ mod tests {
             target: target.to_string(),
             label: None,
             minlen: 1,
+            priority_direction: 0,
         }
     }
 

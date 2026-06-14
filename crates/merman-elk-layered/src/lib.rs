@@ -1,26 +1,30 @@
 //! Source-backed Eclipse ELK layered port.
 //!
 //! This module mirrors the structure of Eclipse ELK instead of the old compatibility backend:
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/LayeredPhases.java`
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/GraphConfigurator.java`
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/IntermediateProcessorStrategy.java`
-//! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/*.java`
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/LayeredPhases.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/GraphConfigurator.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/IntermediateProcessorStrategy.java
+//! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph
 
 pub mod configurator;
 pub mod graph;
 pub mod importer;
+pub mod intermediate;
 pub mod options;
+pub mod p1cycles;
 pub mod pipeline;
+pub mod random;
 
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
 pub use graph::{
     EdgeLabelPlacement, GraphProperties, LGraph, LLabel, LNode, LNodeKind, LPadding, LPoint, LPort,
-    LSize, Layer, LayeredEdge, PortRef, PortSide, PortType,
+    LSize, Layer, LayeredEdge, PortRef, PortSide, PortType, reverse_edge,
 };
 pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
     import_graph,
 };
+pub use intermediate::restore_reversed_edges;
 pub use options::{
     EdgeRouting, ElkDirection, HierarchyHandling, LayeredOptions, NodePlacementStrategy,
     SelfLoopDistributionStrategy, SpacingOptions,
@@ -28,3 +32,4 @@ pub use options::{
 pub use pipeline::{
     LayeredPhase, ProcessorKind, ProcessorSlot, assemble_processors, assemble_processors_for_graph,
 };
+pub use random::JavaRandom;
