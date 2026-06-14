@@ -17,8 +17,9 @@ use super::options::{
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
 use crate::intermediate::{
-    IntermediateError, calculate_layer_sizes_and_graph_height, postprocess_layer_constraints,
-    preprocess_layer_constraints, reverse_edges_for_edge_and_layer_constraints, split_long_edges,
+    IntermediateError, calculate_layer_sizes_and_graph_height, join_long_edges,
+    postprocess_layer_constraints, preprocess_layer_constraints,
+    reverse_edges_for_edge_and_layer_constraints, split_long_edges,
 };
 use crate::p1cycles::break_cycles_greedy;
 use crate::p2layers::layer_network_simplex;
@@ -400,6 +401,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
             calculate_layer_sizes_and_graph_height(graph);
         }
         ProcessorKind::OrthogonalEdgeRouter => route_edges_orthogonal(graph),
+        ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -1142,6 +1144,42 @@ mod tests {
             .unwrap();
 
         assert!(joiner > router);
+    }
+
+    #[test]
+    fn long_edge_joiner_processor_removes_split_dummies_after_p5() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_type: GreedySwitchType::Off,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![
+                edge("A-B", "A", "B"),
+                edge("B-C", "B", "C"),
+                edge("A-C", "A", "C"),
+            ],
+        })
+        .unwrap();
+
+        execute_processors_until(&mut graph, LayeredPhase::P5EdgeRouting).unwrap();
+        assert!(
+            graph
+                .layerless_nodes
+                .iter()
+                .any(|node| node.kind == crate::graph::LNodeKind::LongEdge)
+        );
+
+        execute_processor(&mut graph, ProcessorKind::LongEdgeJoiner).unwrap();
+
+        assert!(!graph.layers.iter().any(|layer| {
+            layer
+                .nodes
+                .iter()
+                .any(|node| graph.layerless_nodes[*node].kind == crate::graph::LNodeKind::LongEdge)
+        }));
     }
 
     #[test]

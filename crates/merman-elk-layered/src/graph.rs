@@ -440,6 +440,15 @@ impl LGraph {
     }
 
     pub fn set_edge_target(&mut self, edge_index: usize, target: PortRef) -> bool {
+        self.set_edge_target_at(edge_index, target, None)
+    }
+
+    pub fn set_edge_target_at(
+        &mut self,
+        edge_index: usize,
+        target: PortRef,
+        insert_at: Option<usize>,
+    ) -> bool {
         if self.edges.get(edge_index).is_none() || !port_exists(self, target) {
             return false;
         }
@@ -452,9 +461,13 @@ impl LGraph {
             );
         }
 
-        self.layerless_nodes[target.node].ports[target.port]
-            .incoming_edges
-            .push(edge_index);
+        let incoming_edges =
+            &mut self.layerless_nodes[target.node].ports[target.port].incoming_edges;
+        if let Some(index) = insert_at {
+            incoming_edges.insert(index.min(incoming_edges.len()), edge_index);
+        } else {
+            incoming_edges.push(edge_index);
+        }
         self.edges[edge_index].target = target;
         true
     }
@@ -479,6 +492,12 @@ impl LGraph {
             );
         }
         Some(target)
+    }
+
+    pub fn detach_edge(&mut self, edge_index: usize) -> Option<(PortRef, PortRef)> {
+        let source = self.detach_edge_source(edge_index)?;
+        let target = self.detach_edge_target(edge_index)?;
+        Some((source, target))
     }
 
     pub fn edge_source_attached(&self, edge_index: usize) -> bool {

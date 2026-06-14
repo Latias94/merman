@@ -6,6 +6,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerConstraintPreprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerConstraintPostprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeSplitter.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeJoiner.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerSizeAndGraphHeightCalculator.java
 
 use crate::graph::{
@@ -569,6 +570,103 @@ pub fn split_long_edges(graph: &mut LGraph) {
     }
 }
 
+pub fn join_long_edges(graph: &mut LGraph) {
+    let add_unnecessary_bendpoints = graph.options.unnecessary_bendpoints;
+
+    for layer_index in 0..graph.layers.len() {
+        let mut node_position = 0usize;
+
+        while node_position < graph.layers[layer_index].nodes.len() {
+            let node_index = graph.layers[layer_index].nodes[node_position];
+
+            if graph.layerless_nodes[node_index].kind == LNodeKind::LongEdge {
+                join_long_edge_at(graph, node_index, add_unnecessary_bendpoints);
+                graph.layers[layer_index].nodes.remove(node_position);
+            } else {
+                node_position += 1;
+            }
+        }
+    }
+}
+
+pub fn join_long_edge_at(
+    graph: &mut LGraph,
+    long_edge_dummy: usize,
+    add_unnecessary_bendpoints: bool,
+) {
+    let Some(input_port) = first_port_on_side(graph, long_edge_dummy, PortSide::West) else {
+        return;
+    };
+    let Some(output_port) = first_port_on_side(graph, long_edge_dummy, PortSide::East) else {
+        return;
+    };
+
+    let mut input_port_edges = graph.layerless_nodes[long_edge_dummy].ports[input_port]
+        .incoming_edges
+        .clone();
+    let mut output_port_edges = graph.layerless_nodes[long_edge_dummy].ports[output_port]
+        .outgoing_edges
+        .clone();
+
+    while !input_port_edges.is_empty() && !output_port_edges.is_empty() {
+        let surviving_edge = input_port_edges.remove(0);
+        let dropped_edge = output_port_edges.remove(0);
+        join_long_edge_pair(
+            graph,
+            long_edge_dummy,
+            surviving_edge,
+            dropped_edge,
+            add_unnecessary_bendpoints,
+        );
+    }
+}
+
+fn first_port_on_side(graph: &LGraph, node: usize, side: PortSide) -> Option<usize> {
+    graph.layerless_nodes[node]
+        .ports
+        .iter()
+        .position(|port| port.side == side)
+}
+
+fn join_long_edge_pair(
+    graph: &mut LGraph,
+    long_edge_dummy: usize,
+    surviving_edge: usize,
+    dropped_edge: usize,
+    add_unnecessary_bendpoints: bool,
+) {
+    let dropped_target = graph.edges[dropped_edge].target;
+    let dropped_target_index = graph.layerless_nodes[dropped_target.node].ports
+        [dropped_target.port]
+        .incoming_edges
+        .iter()
+        .position(|edge| *edge == dropped_edge);
+    let dropped_bend_points = graph.edges[dropped_edge].bend_points.clone();
+    let dropped_labels = std::mem::take(&mut graph.edges[dropped_edge].labels);
+
+    graph.set_edge_target_at(surviving_edge, dropped_target, dropped_target_index);
+    graph.detach_edge(dropped_edge);
+
+    if add_unnecessary_bendpoints {
+        let unnecessary_bendpoint = long_edge_dummy_anchor(graph, long_edge_dummy);
+        graph.edges[surviving_edge]
+            .bend_points
+            .push(unnecessary_bendpoint);
+    }
+    graph.edges[surviving_edge]
+        .bend_points
+        .extend(dropped_bend_points);
+    graph.edges[surviving_edge].labels.extend(dropped_labels);
+}
+
+fn long_edge_dummy_anchor(graph: &LGraph, node: usize) -> LPoint {
+    let port = &graph.layerless_nodes[node].ports[0];
+    LPoint {
+        x: graph.layerless_nodes[node].position.x + port.position.x + port.anchor.x,
+        y: graph.layerless_nodes[node].position.y + port.position.y + port.anchor.y,
+    }
+}
+
 pub fn calculate_layer_sizes_and_graph_height(graph: &mut LGraph) {
     let mut min_y = f64::INFINITY;
     let mut max_y = f64::NEG_INFINITY;
@@ -739,6 +837,7 @@ fn move_head_labels(graph: &mut LGraph, old_edge: usize, new_edge: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::LLabel;
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayerConstraint, LayeredOptions};
     use crate::p2layers::layer_network_simplex;
@@ -900,6 +999,89 @@ mod tests {
         assert_eq!(
             graph.edges[moved_label_edge].labels[0].end_label_edge,
             Some(long_edge)
+        );
+    }
+
+    #[test]
+    fn long_edge_joiner_merges_split_segments_and_removes_dummy_from_layer() {
+        let mut graph = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![
+                edge("A-B", "A", "B"),
+                edge("B-C", "B", "C"),
+                edge("A-C", "A", "C"),
+            ],
+        );
+        graph.options.unnecessary_bendpoints = true;
+        layer_network_simplex(&mut graph);
+
+        let long_edge = graph
+            .edges
+            .iter()
+            .position(|edge| edge.id == "A-C")
+            .unwrap();
+        split_long_edges(&mut graph);
+
+        let dummy = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.kind == LNodeKind::LongEdge)
+            .unwrap();
+        graph.layerless_nodes[dummy].position = LPoint { x: 50.0, y: 70.0 };
+        graph.edges[long_edge]
+            .bend_points
+            .push(LPoint { x: 10.0, y: 20.0 });
+        let dropped = graph
+            .edges
+            .iter()
+            .enumerate()
+            .find(|(index, edge)| *index != long_edge && edge.id == "A-C")
+            .map(|(index, _)| index)
+            .unwrap();
+        graph.edges[dropped]
+            .bend_points
+            .push(LPoint { x: 90.0, y: 100.0 });
+        let mut label = LLabel::new("head", 20.0, 10.0);
+        label.placement = EdgeLabelPlacement::Head;
+        graph.edges[dropped].labels.push(label);
+        let original_target = graph.edges[dropped].target;
+        let tail_edge = graph
+            .edges
+            .iter()
+            .enumerate()
+            .find(|(index, edge)| *index != long_edge && *index != dropped && edge.id == "A-B")
+            .map(|(index, _)| index)
+            .unwrap();
+        graph.set_edge_target(tail_edge, original_target);
+        graph.layerless_nodes[original_target.node].ports[original_target.port].incoming_edges =
+            vec![dropped, tail_edge];
+
+        join_long_edges(&mut graph);
+
+        assert_eq!(graph.edges[long_edge].target, original_target);
+        assert!(graph.edge_source_attached(long_edge));
+        assert!(graph.edge_target_attached(long_edge));
+        assert!(!graph.edge_source_attached(dropped));
+        assert!(!graph.edge_target_attached(dropped));
+        assert!(
+            !graph
+                .layers
+                .iter()
+                .any(|layer| layer.nodes.contains(&dummy))
+        );
+        assert_eq!(
+            graph.edges[long_edge].bend_points,
+            vec![
+                LPoint { x: 10.0, y: 20.0 },
+                LPoint { x: 50.0, y: 70.0 },
+                LPoint { x: 90.0, y: 100.0 }
+            ]
+        );
+        assert_eq!(graph.edges[long_edge].labels.len(), 1);
+        assert!(graph.edges[dropped].labels.is_empty());
+        assert_eq!(
+            graph.layerless_nodes[original_target.node].ports[original_target.port].incoming_edges,
+            vec![long_edge, tail_edge]
         );
     }
 
