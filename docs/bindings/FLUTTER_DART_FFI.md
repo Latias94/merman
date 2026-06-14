@@ -30,6 +30,7 @@ for current Mermaid parity.
   - `Merman.validate` / `validateJsonRaw`
   - `Merman.supportedDiagrams`
   - `Merman.asciiSupportedDiagrams`
+  - `Merman.diagramFamilyCapabilities`
   - `Merman.supportedThemes`
   - `Merman.supportedHostThemePresets`
 - Converts non-OK C ABI results into `MermanException`.

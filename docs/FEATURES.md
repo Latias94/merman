@@ -65,6 +65,10 @@ The current `merman-wasm` crate is a browser/JavaScript WebAssembly package. It 
 pure-WASM or Typst plugin surface. The Typst surface is `merman-typst-plugin`, which uses
 wasm-minimal-protocol and must keep browser/wasm-bindgen imports out of package builds.
 
+Bindings expose the selected registry profile and per-family parser/render capability metadata so
+hosts can inspect the actual full/tiny diagram surface in slim artifacts instead of inferring it
+from package names.
+
 ## Host Profiles
 
 | Profile | Intended host | Feature posture |

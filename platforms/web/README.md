@@ -114,8 +114,10 @@ rendering in the browser. Treat it as a feature module, not as first-paint UI co
 The package does not publish separate npm subpaths for render-only or ASCII-only artifacts yet. Use
 the source build presets above when you need to produce a local slim package, and call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`core_full`, `core_host`, or `ratex_math` capability. The ASCII preset currently preserves the
-full core registry for compatibility with the browser ASCII implementation.
+`core_full`, `core_host`, or `ratex_math` capability. `selectedRegistryProfile()` reports the active
+Mermaid registry profile, and `diagramFamilyCapabilities()` reports the diagram parser/render facts
+registered in the current artifact. The ASCII preset currently preserves the full core registry for
+compatibility with the browser ASCII implementation.
 
 ## Web Worker integration
 
@@ -178,7 +180,7 @@ initialization is usually simpler.
 - `layoutJson()`, `layoutObject()`
 - `validate()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
-- `bindingCapabilities()`
+- `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.

@@ -209,6 +209,7 @@ MermanResult merman_validate_json(
  */
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_supported_diagrams_json(void);
+MermanResult merman_diagram_family_capabilities_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);
 

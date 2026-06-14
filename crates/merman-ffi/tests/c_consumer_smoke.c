@@ -30,6 +30,7 @@ typedef struct MermanApi {
     MermanCall validate_json;
     MermanResult (*supported_diagrams_json)(void);
     MermanResult (*ascii_supported_diagrams_json)(void);
+    MermanResult (*diagram_family_capabilities_json)(void);
     MermanResult (*supported_themes_json)(void);
     MermanResult (*supported_host_theme_presets_json)(void);
     MermanFree buffer_free;
@@ -115,6 +116,7 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.validate_json == NULL ||
         api.supported_diagrams_json == NULL ||
         api.ascii_supported_diagrams_json == NULL ||
+        api.diagram_family_capabilities_json == NULL ||
         api.supported_themes_json == NULL ||
         api.supported_host_theme_presets_json == NULL ||
         api.buffer_free == NULL
@@ -220,6 +222,15 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.ascii_supported_diagrams_json(),
         api.buffer_free,
         api.ascii_enabled ? "sequence" : "[]"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.diagram_family_capabilities_json(),
+        api.buffer_free,
+        "\"diagram_type\":\"flowchart\""
     );
     if (rc != 0) {
         return rc;

@@ -175,6 +175,15 @@ export interface BindingCapabilities {
   ratex_math: boolean;
 }
 
+export type RegistryProfile = "full" | "tiny";
+
+export interface DiagramFamilyCapability {
+  diagram_type: string;
+  metadata_id: DiagramType | null;
+  has_semantic_parser: boolean;
+  has_render_parser: boolean;
+}
+
 export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
   render: true,
   ascii: true,
@@ -245,6 +254,8 @@ export interface MermanWasmModule {
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   asciiSupportedDiagrams: () => string[];
   bindingCapabilities?: () => BindingCapabilities;
+  selectedRegistryProfile?: () => string;
+  diagramFamilyCapabilities?: () => DiagramFamilyCapability[];
   supportedDiagrams: () => string[];
   supportedHostThemePresets?: () => string[];
   supportedThemes: () => string[];
@@ -263,6 +274,7 @@ let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
 let supportedDiagramsCache: DiagramType[] | null = null;
 let asciiSupportedDiagramsCache: DiagramType[] | null = null;
+let diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null = null;
 let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
 let supportedThemesCache: ThemeName[] | null = null;
 
@@ -371,9 +383,24 @@ export function bindingCapabilities(): BindingCapabilities {
     : { ...DEFAULT_BINDING_CAPABILITIES };
 }
 
+export function selectedRegistryProfile(): RegistryProfile {
+  const profile = getMerman().selectedRegistryProfile?.();
+  if (profile === "full" || profile === "tiny") {
+    return profile;
+  }
+  return bindingCapabilities().core_full ? "full" : "tiny";
+}
+
 export function supportedDiagrams(): DiagramType[] {
   supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
   return [...supportedDiagramsCache];
+}
+
+export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
+  diagramFamilyCapabilitiesCache ??= (
+    getMerman().diagramFamilyCapabilities?.() ?? []
+  ).map(normalizeDiagramFamilyCapability);
+  return diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
 }
 
 export function asciiSupportedDiagrams(): DiagramType[] {
@@ -417,6 +444,27 @@ function assertDiagramType(diagram: string): DiagramType {
     return diagram;
   }
   throw new Error(`Merman WASM returned unknown diagram type: ${diagram}`);
+}
+
+function normalizeDiagramFamilyCapability(
+  capability: DiagramFamilyCapability
+): DiagramFamilyCapability {
+  if (!capability || typeof capability !== "object") {
+    throw new Error("Merman WASM returned an invalid diagram family capability.");
+  }
+  if (typeof capability.diagram_type !== "string") {
+    throw new Error("Merman WASM returned an invalid diagram family capability.");
+  }
+  const metadataId =
+    capability.metadata_id === undefined || capability.metadata_id === null
+      ? null
+      : assertDiagramType(String(capability.metadata_id));
+  return {
+    diagram_type: capability.diagram_type,
+    metadata_id: metadataId,
+    has_semantic_parser: Boolean(capability.has_semantic_parser),
+    has_render_parser: Boolean(capability.has_render_parser),
+  };
 }
 
 function assertThemeName(theme: string): ThemeName {

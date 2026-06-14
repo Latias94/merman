@@ -49,10 +49,11 @@ npm run build:wasm:full --prefix platforms/web
 npm run build:wasm:ratex-math --prefix platforms/web
 ```
 
-The generated module exports `bindingCapabilities()` so JavaScript callers can detect whether the
-current artifact includes `render`, `ascii`, `core_full`, `core_host`, or `ratex_math` support.
-The ASCII preset still carries the full core registry because it depends on the browser ASCII
-implementation, but render entry points remain disabled.
+The generated module exports `bindingCapabilities()`, `selectedRegistryProfile()`, and
+`diagramFamilyCapabilities()` so JavaScript callers can detect whether the current artifact includes
+`render`, `ascii`, `core_full`, `core_host`, or `ratex_math` support and which diagram parser/render
+facts are registered. The ASCII preset still carries the full core registry because it depends on
+the browser ASCII implementation, but render entry points remain disabled.
 
 For feature-preset size measurements, use:
 

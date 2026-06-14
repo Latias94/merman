@@ -87,6 +87,17 @@ pub fn binding_capabilities() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = selectedRegistryProfile)]
+pub fn selected_registry_profile() -> String {
+    merman_bindings_core::selected_registry_profile().to_string()
+}
+
+#[wasm_bindgen(js_name = diagramFamilyCapabilities)]
+pub fn diagram_family_capabilities() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&merman_bindings_core::diagram_family_capabilities())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 #[wasm_bindgen(js_name = supportedThemes)]
 pub fn supported_themes() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(merman_bindings_core::supported_themes())
@@ -219,6 +230,31 @@ mod tests {
             cfg!(feature = "core-host") || cfg!(feature = "ascii")
         );
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
+    }
+
+    #[test]
+    fn registry_profile_and_family_capabilities_are_exposed() {
+        let expected_profile = if cfg!(feature = "core-full") || cfg!(feature = "ascii") {
+            "full"
+        } else {
+            "tiny"
+        };
+        assert_eq!(selected_registry_profile(), expected_profile);
+
+        let capabilities = merman_bindings_core::diagram_family_capabilities();
+        assert!(
+            capabilities
+                .iter()
+                .any(|capability| capability.diagram_type == "flowchart"
+                    && capability.has_semantic_parser
+                    && capability.has_render_parser)
+        );
+        assert_eq!(
+            capabilities
+                .iter()
+                .any(|capability| capability.diagram_type == "mindmap"),
+            expected_profile == "full"
+        );
     }
 
     #[cfg(feature = "ascii")]

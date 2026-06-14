@@ -198,6 +198,53 @@ class MermanValidationResult {
   }
 }
 
+/// Parser/render capability for one Mermaid diagram family in the active native artifact.
+class MermanDiagramFamilyCapability {
+  /// Creates a diagram family capability record.
+  const MermanDiagramFamilyCapability({
+    required this.diagramType,
+    required this.metadataId,
+    required this.hasSemanticParser,
+    required this.hasRenderParser,
+  });
+
+  /// Mermaid parser/detector id, including aliases such as `flowchart-v2`.
+  final String diagramType;
+
+  /// Public supported-diagram metadata id, when this family contributes one.
+  final String? metadataId;
+
+  /// Whether semantic JSON parsing is registered for [diagramType].
+  final bool hasSemanticParser;
+
+  /// Whether typed render-model parsing is registered for [diagramType].
+  final bool hasRenderParser;
+
+  /// Decodes a capability object produced by the native ABI.
+  factory MermanDiagramFamilyCapability.fromJson(Map<String, Object?> json) {
+    final diagramType = json['diagram_type'];
+    final metadataId = json['metadata_id'];
+    final hasSemanticParser = json['has_semantic_parser'];
+    final hasRenderParser = json['has_render_parser'];
+    if (diagramType is! String ||
+        (metadataId != null && metadataId is! String) ||
+        hasSemanticParser is! bool ||
+        hasRenderParser is! bool) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_JSON_TYPE_ERROR',
+        message: 'expected diagram family capability JSON object',
+      );
+    }
+    return MermanDiagramFamilyCapability(
+      diagramType: diagramType,
+      metadataId: metadataId is String ? metadataId : null,
+      hasSemanticParser: hasSemanticParser,
+      hasRenderParser: hasRenderParser,
+    );
+  }
+}
+
 /// High-level Dart wrapper around the native `merman-ffi` ABI.
 class Merman {
   /// Creates an engine wrapper from an already-opened [DynamicLibrary].
@@ -220,6 +267,7 @@ class Merman {
   final _MermanBindings _bindings;
   List<String>? _supportedDiagramsCache;
   List<String>? _asciiSupportedDiagramsCache;
+  List<MermanDiagramFamilyCapability>? _diagramFamilyCapabilitiesCache;
   List<String>? _themesCache;
   List<String>? _hostThemePresetsCache;
 
@@ -298,6 +346,15 @@ class Merman {
     );
   }
 
+  /// Returns parser/render capability records for the active native artifact.
+  List<MermanDiagramFamilyCapability> diagramFamilyCapabilities() {
+    return _diagramFamilyCapabilitiesCache ??= List.unmodifiable(
+      _decodeJsonCapabilityList(
+        _decodeText(_bindings.metadata(_bindings.diagramFamilyCapabilitiesJson)),
+      ),
+    );
+  }
+
   /// Returns built-in Mermaid theme names.
   List<String> supportedThemes() {
     return _themesCache ??= List.unmodifiable(
@@ -343,6 +400,31 @@ class Merman {
       message: 'expected JSON string array',
     );
   }
+
+  static List<MermanDiagramFamilyCapability> _decodeJsonCapabilityList(
+    String text,
+  ) {
+    final decoded = jsonDecode(text);
+    if (decoded is List) {
+      return decoded
+          .map((item) {
+            if (item is Map<String, Object?>) {
+              return MermanDiagramFamilyCapability.fromJson(item);
+            }
+            throw const MermanException(
+              code: -1,
+              codeName: 'DART_JSON_TYPE_ERROR',
+              message: 'expected diagram family capability JSON object',
+            );
+          })
+          .toList(growable: false);
+    }
+    throw const MermanException(
+      code: -1,
+      codeName: 'DART_JSON_TYPE_ERROR',
+      message: 'expected diagram family capability JSON array',
+    );
+  }
 }
 
 class _MermanBindings {
@@ -385,6 +467,10 @@ class _MermanBindings {
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_ascii_supported_diagrams_json',
         ),
+        diagramFamilyCapabilitiesJson =
+            library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
+          'merman_diagram_family_capabilities_json',
+        ),
         supportedThemesJson =
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_supported_themes_json',
@@ -409,6 +495,7 @@ class _MermanBindings {
   final _MermanCallDart validateJson;
   final _MermanMetadataDart supportedDiagramsJson;
   final _MermanMetadataDart asciiSupportedDiagramsJson;
+  final _MermanMetadataDart diagramFamilyCapabilitiesJson;
   final _MermanMetadataDart supportedThemesJson;
   final _MermanMetadataDart supportedHostThemePresetsJson;
 

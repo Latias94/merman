@@ -35,6 +35,14 @@ Hosts that inline SVG in a browser and want fallback text while retaining the or
 of the shared low-level binding contract; use this SVG pipeline option or the higher-level Rust/CLI
 raster helpers.
 
+## Capability Metadata
+
+`binding_capabilities()` reports compiled output and host profiles. `selected_registry_profile()`
+reports the active Mermaid registry profile (`"full"` or `"tiny"`), and
+`diagram_family_capabilities()` exposes the diagram parser/render facts selected by that profile.
+Use this diagnostic surface when a host needs to reason about slim WASM/native artifacts without
+assuming capabilities from a package name.
+
 For product scope, diagram coverage, and compatibility policy, see the
 [project README](https://github.com/Latias94/merman#readme) and
 [alignment status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).

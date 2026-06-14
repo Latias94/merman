@@ -57,7 +57,9 @@ WFS-090 decision: keep `@mermanjs/web` as one npm package and one published arti
 now. The published package uses the `browser-full` preset. Source, CI, and local package builds can
 choose a different browser preset through `platforms/web/scripts/build-wasm.mjs`; the TypeScript
 wrapper exposes `bindingCapabilities()` so callers can discover the active artifact's compiled
-capabilities after initialization.
+capabilities after initialization. It also exposes `selectedRegistryProfile()` and
+`diagramFamilyCapabilities()` so local slim builds can report the actual full/tiny diagram
+parser/render matrix they contain.
 
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
@@ -79,9 +81,10 @@ Current release semantics are intentionally conservative:
   feature behavior changed for normal Rust or browser consumers.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full`. Slim browser
   presets are source-build presets only; they are not npm subpackages or package export paths.
-- `bindingCapabilities()` reports the active browser artifact's compiled capabilities. Consumers
-  that load an older artifact without this export should treat it as the historical full browser
-  artifact.
+- `bindingCapabilities()` reports the active browser artifact's compiled capabilities.
+  `selectedRegistryProfile()` and `diagramFamilyCapabilities()` report the selected diagram registry
+  profile and registered parser/render family facts. Consumers that load an older artifact without
+  these exports should treat it as the historical full browser artifact.
 - `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
   artifact is Typst-compatible or pure-WASM compatible.
 - `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render;

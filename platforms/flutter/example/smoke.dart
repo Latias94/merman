@@ -37,6 +37,16 @@ void main(List<String> args) {
   if (!merman.asciiSupportedDiagrams().contains('sequence')) {
     throw StateError('asciiSupportedDiagrams smoke failed');
   }
+  final flowchartCapability = merman.diagramFamilyCapabilities().any(
+        (capability) =>
+            capability.diagramType == 'flowchart' &&
+            capability.metadataId == 'flowchart' &&
+            capability.hasSemanticParser &&
+            capability.hasRenderParser,
+      );
+  if (!flowchartCapability) {
+    throw StateError('diagramFamilyCapabilities smoke failed');
+  }
   if (!merman.supportedThemes().contains('default')) {
     throw StateError('themes smoke failed');
   }

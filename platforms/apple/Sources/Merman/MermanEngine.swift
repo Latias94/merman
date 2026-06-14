@@ -38,6 +38,20 @@ public struct MermanValidationResult: Decodable {
     }
 }
 
+public struct MermanDiagramFamilyCapability: Decodable {
+    public let diagramType: String
+    public let metadataId: String?
+    public let hasSemanticParser: Bool
+    public let hasRenderParser: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case diagramType = "diagram_type"
+        case metadataId = "metadata_id"
+        case hasSemanticParser = "has_semantic_parser"
+        case hasRenderParser = "has_render_parser"
+    }
+}
+
 public final class MermanEngine {
     public static let abiVersion: UInt32 = 1
     private static let okCode: Int32 = 0
@@ -45,6 +59,7 @@ public final class MermanEngine {
     public let packageVersion: String
     private var supportedDiagramsCache: [String]?
     private var asciiSupportedDiagramsCache: [String]?
+    private var diagramFamilyCapabilitiesCache: [MermanDiagramFamilyCapability]?
     private var themesCache: [String]?
     private var hostThemePresetsCache: [String]?
 
@@ -93,6 +108,16 @@ public final class MermanEngine {
         }
         let values = try metadata(merman_ascii_supported_diagrams_json)
         asciiSupportedDiagramsCache = values
+        return values
+    }
+
+    public func diagramFamilyCapabilities() throws -> [MermanDiagramFamilyCapability] {
+        if let diagramFamilyCapabilitiesCache {
+            return diagramFamilyCapabilitiesCache
+        }
+        let text = try decode(merman_diagram_family_capabilities_json())
+        let values = try decodeJson([MermanDiagramFamilyCapability].self, from: Data(text.utf8))
+        diagramFamilyCapabilitiesCache = values
         return values
     }
 

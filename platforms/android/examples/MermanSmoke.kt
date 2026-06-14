@@ -36,6 +36,9 @@ fun runMermanSmoke() {
     check(MermanEngine.asciiSupportedDiagramsJson().contains("sequence")) {
         "ASCII supported diagrams smoke failed"
     }
+    check(MermanEngine.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
+        "diagram family capabilities smoke failed"
+    }
     check(MermanEngine.supportedThemesJson().contains("default")) {
         "themes smoke failed"
     }

@@ -6,6 +6,7 @@ static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[cfg(feature = "ascii")]
 pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &["class", "er", "flowchart", "sequence", "xychart"];
@@ -19,6 +20,14 @@ pub struct BindingCapabilities {
     pub ratex_math: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BindingDiagramFamilyCapability {
+    pub diagram_type: &'static str,
+    pub metadata_id: Option<&'static str>,
+    pub has_semantic_parser: bool,
+    pub has_render_parser: bool,
+}
+
 pub const fn binding_capabilities() -> BindingCapabilities {
     BindingCapabilities {
         render: cfg!(feature = "render"),
@@ -27,6 +36,22 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         core_host: cfg!(feature = "core-host") || cfg!(feature = "ascii"),
         ratex_math: cfg!(feature = "ratex-math"),
     }
+}
+
+pub fn selected_registry_profile() -> &'static str {
+    merman::selected_baseline_registry_profile().as_str()
+}
+
+pub fn diagram_family_capabilities() -> Vec<BindingDiagramFamilyCapability> {
+    merman::diagram_family_capabilities()
+        .iter()
+        .map(|capability| BindingDiagramFamilyCapability {
+            diagram_type: capability.diagram_type,
+            metadata_id: capability.metadata_id,
+            has_semantic_parser: capability.has_semantic_parser,
+            has_render_parser: capability.has_render_parser,
+        })
+        .collect()
 }
 
 pub fn supported_themes() -> &'static [&'static str] {
@@ -76,6 +101,16 @@ pub fn supported_host_theme_presets_json() -> Result<Vec<u8>, BindingError> {
         &SUPPORTED_HOST_THEME_PRESETS_JSON,
         supported_host_theme_presets,
     )
+}
+
+pub fn diagram_family_capabilities_json() -> Result<Vec<u8>, BindingError> {
+    if let Some(bytes) = DIAGRAM_FAMILY_CAPABILITIES_JSON.get() {
+        return Ok(bytes.clone());
+    }
+
+    let bytes = serde_json::to_vec(&diagram_family_capabilities()).map_err(internal_json_error)?;
+    let _ = DIAGRAM_FAMILY_CAPABILITIES_JSON.set(bytes.clone());
+    Ok(bytes)
 }
 
 fn cached_json(
@@ -134,11 +169,49 @@ mod tests {
     }
 
     #[test]
+    fn selected_registry_profile_reports_core_profile() {
+        assert_eq!(
+            selected_registry_profile(),
+            merman::selected_baseline_registry_profile().as_str()
+        );
+        assert_eq!(
+            selected_registry_profile(),
+            if cfg!(feature = "core-full") || cfg!(feature = "ascii") {
+                "full"
+            } else {
+                "tiny"
+            }
+        );
+    }
+
+    #[test]
     fn supported_diagrams_exposes_binding_surface() {
         assert_eq!(supported_diagrams(), merman::supported_diagrams());
         assert!(supported_diagrams().contains(&"flowchart"));
         assert!(supported_diagrams().contains(&"sequence"));
         assert!(supported_diagrams().contains(&"requirement"));
+    }
+
+    #[test]
+    fn diagram_family_capabilities_expose_parser_and_render_surface() {
+        let capabilities = diagram_family_capabilities();
+        assert_eq!(
+            capabilities.len(),
+            merman::diagram_family_capabilities().len()
+        );
+
+        let flowchart = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "flowchart")
+            .expect("flowchart capability should be present");
+        assert_eq!(flowchart.metadata_id, Some("flowchart"));
+        assert!(flowchart.has_semantic_parser);
+        assert!(flowchart.has_render_parser);
+
+        let has_mindmap = capabilities
+            .iter()
+            .any(|capability| capability.diagram_type == "mindmap");
+        assert_eq!(has_mindmap, selected_registry_profile() == "full");
     }
 
     #[test]
@@ -181,6 +254,8 @@ mod tests {
         let themes: Value = serde_json::from_slice(&supported_themes_json().unwrap()).unwrap();
         let host_presets: Value =
             serde_json::from_slice(&supported_host_theme_presets_json().unwrap()).unwrap();
+        let family_capabilities: Value =
+            serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
 
         assert!(
             diagrams
@@ -204,5 +279,12 @@ mod tests {
                     .contains(&Value::String("one-dark".to_string()))
             );
         }
+        assert!(
+            family_capabilities
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|capability| capability["diagram_type"] == "flowchart")
+        );
     }
 }

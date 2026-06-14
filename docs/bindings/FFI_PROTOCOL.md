@@ -293,6 +293,7 @@ If the native library is built without the `render` feature, this function still
 ```c
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_supported_diagrams_json(void);
+MermanResult merman_diagram_family_capabilities_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);
 ```
@@ -300,6 +301,23 @@ MermanResult merman_supported_host_theme_presets_json(void);
 Each function returns a UTF-8 JSON string array. `merman_supported_themes_json` reports Mermaid core
 theme names, while `merman_supported_host_theme_presets_json` reports host/editor presets accepted
 by `options_json.host_theme.preset`. The same buffer ownership rules apply.
+
+`merman_diagram_family_capabilities_json` returns a UTF-8 JSON array of objects:
+
+```json
+[
+  {
+    "diagram_type": "flowchart",
+    "metadata_id": "flowchart",
+    "has_semantic_parser": true,
+    "has_render_parser": true
+  }
+]
+```
+
+This is diagnostic metadata for profile-aware hosts. `diagram_type` is the Mermaid parser/detector
+id and may include aliases such as `flowchart-v2`; `metadata_id` is the public supported-diagram
+id when the family contributes one.
 
 ## Threading
 

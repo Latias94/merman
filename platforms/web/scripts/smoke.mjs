@@ -47,6 +47,23 @@ assert.equal(typeof capabilities.core_full, "boolean");
 assert.equal(typeof capabilities.core_host, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
 
+const registryProfile = api.selectedRegistryProfile();
+assert.match(registryProfile, /^(full|tiny)$/);
+assert.equal(registryProfile, capabilities.core_full ? "full" : "tiny");
+
+const familyCapabilities = api.diagramFamilyCapabilities();
+assert.equal(Array.isArray(familyCapabilities), true);
+assert.equal(
+  familyCapabilities.some(
+    (capability) =>
+      capability.diagram_type === "flowchart" &&
+      capability.metadata_id === "flowchart" &&
+      capability.has_semantic_parser &&
+      capability.has_render_parser
+  ),
+  true
+);
+
 if (capabilities.render) {
   const svg = api.renderSvg(source, options);
   assert.match(svg, /<svg/);
@@ -90,10 +107,18 @@ if (capabilities.render) {
 
 if (capabilities.core_full) {
   assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
+  assert.equal(
+    familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
+    true
+  );
 } else {
   for (const diagram of api.supportedDiagrams()) {
     assert.equal(api.isDiagramType(diagram), true);
   }
+  assert.equal(
+    familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
+    false
+  );
 }
 
 const asciiDiagrams = api.asciiSupportedDiagrams();
