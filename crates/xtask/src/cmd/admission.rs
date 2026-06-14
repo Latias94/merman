@@ -630,6 +630,10 @@ mod tests {
 
         let expected = [
             (["architecture", "seed"].as_slice(), serde_json::json!(1)),
+            (
+                ["ishikawa", "useMaxWidth"].as_slice(),
+                serde_json::json!(true),
+            ),
             (["pie", "donutHole"].as_slice(), serde_json::json!(0)),
             (["pie", "highlightSlice"].as_slice(), serde_json::json!("")),
             (

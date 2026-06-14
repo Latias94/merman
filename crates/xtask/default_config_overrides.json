@@ -19,6 +19,12 @@
   },
   {
     "op": "set",
+    "path": ["ishikawa", "useMaxWidth"],
+    "value": true,
+    "reason": "Mermaid 11.15 Ishikawa upstream SVG baselines use max-width sizing by default, so the generated default config must retain the runtime max-width default."
+  },
+  {
+    "op": "set",
     "path": ["sankey", "useMaxWidth"],
     "value": true,
     "reason": "Pinned Mermaid Sankey baselines render the default SVG with width=100% and max-width styling, so the generated default config must keep the runtime max-width default enabled."

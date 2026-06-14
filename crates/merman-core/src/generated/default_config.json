@@ -236,7 +236,7 @@
   "handDrawnSeed": 0,
   "ishikawa": {
     "diagramPadding": 20,
-    "useMaxWidth": false
+    "useMaxWidth": true
   },
   "journey": {
     "activationWidth": 10,

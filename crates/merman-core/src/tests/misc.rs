@@ -450,7 +450,7 @@ fn parse_metadata_exposes_admitted_11_15_family_config_defaults() {
 
     let ishikawa = &config["ishikawa"];
     assert_eq!(ishikawa["diagramPadding"], json!(20));
-    assert_eq!(ishikawa["useMaxWidth"], json!(false));
+    assert_eq!(ishikawa["useMaxWidth"], json!(true));
 
     let venn = &config["venn"];
     assert_eq!(venn["width"], json!(800));
