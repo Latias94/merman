@@ -16,6 +16,7 @@ pub mod p1cycles;
 pub mod p2layers;
 pub mod p3order;
 pub mod p4nodes;
+pub mod p5edges;
 pub mod pipeline;
 pub mod random;
 pub mod transform;
