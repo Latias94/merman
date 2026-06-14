@@ -14,6 +14,7 @@ pub mod intermediate;
 pub mod options;
 pub mod p1cycles;
 pub mod p2layers;
+pub mod p3order;
 pub mod pipeline;
 pub mod random;
 
@@ -32,9 +33,14 @@ pub use intermediate::{
 };
 pub use options::{
     EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions,
-    NodePlacementStrategy, PortConstraints, SelfLoopDistributionStrategy, SpacingOptions,
+    LongEdgeOrderingStrategy, NodePlacementStrategy, OrderingStrategy, PortConstraints,
+    PortSortingStrategy, SelfLoopDistributionStrategy, SpacingOptions,
 };
 pub use p2layers::layer_network_simplex;
+pub use p3order::{
+    long_edge_target_node_preprocessing, process_port_sides, set_port_side, sort_by_input_model,
+    sort_port_lists, target_node,
+};
 pub use pipeline::{
     LayeredPhase, ProcessorKind, ProcessorSlot, assemble_processors, assemble_processors_for_graph,
 };

@@ -125,8 +125,11 @@ pub struct LPort {
     pub node: usize,
     pub port_type: PortType,
     pub side: PortSide,
+    pub size: LSize,
     pub position: LPoint,
     pub anchor: LPoint,
+    pub model_order: Option<usize>,
+    pub port_index: Option<usize>,
     pub incoming_edges: Vec<usize>,
     pub outgoing_edges: Vec<usize>,
 }
@@ -138,11 +141,41 @@ impl LPort {
             node,
             port_type,
             side: PortSide::Undefined,
+            size: LSize::default(),
             position: LPoint::default(),
             anchor: LPoint::default(),
+            model_order: None,
+            port_index: None,
             incoming_edges: Vec::new(),
             outgoing_edges: Vec::new(),
         }
+    }
+
+    pub fn set_side(&mut self, side: PortSide) {
+        self.side = side;
+        self.anchor = match side {
+            PortSide::North => LPoint {
+                x: self.size.width / 2.0,
+                y: 0.0,
+            },
+            PortSide::East => LPoint {
+                x: self.size.width,
+                y: self.size.height / 2.0,
+            },
+            PortSide::South => LPoint {
+                x: self.size.width / 2.0,
+                y: self.size.height,
+            },
+            PortSide::West => LPoint {
+                x: 0.0,
+                y: self.size.height / 2.0,
+            },
+            PortSide::Undefined => self.anchor,
+        };
+    }
+
+    pub fn net_flow(&self) -> isize {
+        self.incoming_edges.len() as isize - self.outgoing_edges.len() as isize
     }
 }
 
@@ -324,7 +357,7 @@ impl LGraph {
         let node = self.layerless_nodes.get_mut(node_index)?;
         let port_index = node.ports.len();
         let mut port = LPort::new(format!("{}:{port_index}", node.id), node_index, port_type);
-        port.side = side;
+        port.set_side(side);
         port.position = position;
         node.ports.push(port);
         Some(PortRef {
@@ -462,6 +495,71 @@ impl LGraph {
                     .copied()
             })
             .collect()
+    }
+
+    pub fn reorder_node_ports(
+        &mut self,
+        node_index: usize,
+        new_order: impl IntoIterator<Item = usize>,
+    ) -> bool {
+        let Some(node) = self.layerless_nodes.get(node_index) else {
+            return false;
+        };
+        let port_count = node.ports.len();
+        let new_order = new_order.into_iter().collect::<Vec<_>>();
+        if new_order.len() != port_count {
+            return false;
+        }
+
+        let mut seen = vec![false; port_count];
+        for old_index in &new_order {
+            if *old_index >= port_count || seen[*old_index] {
+                return false;
+            }
+            seen[*old_index] = true;
+        }
+
+        let old_ports = std::mem::take(&mut self.layerless_nodes[node_index].ports);
+        let mut old_to_new = vec![0usize; old_ports.len()];
+        let mut reordered = Vec::with_capacity(old_ports.len());
+
+        for (new_index, old_index) in new_order.into_iter().enumerate() {
+            old_to_new[old_index] = new_index;
+            let mut port = old_ports[old_index].clone();
+            port.node = node_index;
+            reordered.push(port);
+        }
+
+        self.layerless_nodes[node_index].ports = reordered;
+
+        for edge in &mut self.edges {
+            if edge.source.node == node_index {
+                edge.source.port = old_to_new[edge.source.port];
+            }
+            if edge.target.node == node_index {
+                edge.target.port = old_to_new[edge.target.port];
+            }
+            if let Some(port) = edge.original_opposite_port.as_mut()
+                && port.node == node_index
+            {
+                port.port = old_to_new[port.port];
+            }
+        }
+
+        for node in &mut self.layerless_nodes {
+            if let Some(port) = node.long_edge_source.as_mut()
+                && port.node == node_index
+            {
+                port.port = old_to_new[port.port];
+            }
+            if let Some(port) = node.long_edge_target.as_mut()
+                && port.node == node_index
+            {
+                port.port = old_to_new[port.port];
+            }
+        }
+
+        true
     }
 }
 

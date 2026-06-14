@@ -91,6 +91,21 @@ pub enum OrderingStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PortSortingStrategy {
+    #[default]
+    InputOrder,
+    PortDegree,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LongEdgeOrderingStrategy {
+    #[default]
+    DummyNodeOver,
+    DummyNodeUnder,
+    Equal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WrappingStrategy {
     #[default]
     Off,
@@ -140,7 +155,10 @@ pub struct LayeredOptions {
     pub greedy_switch_hierarchical_type: GreedySwitchType,
     pub greedy_switch_activation_threshold: usize,
     pub consider_model_order_strategy: OrderingStrategy,
+    pub consider_model_order_long_edge_strategy: LongEdgeOrderingStrategy,
+    pub consider_model_order_port_model_order: bool,
     pub force_node_model_order: bool,
+    pub port_sorting_strategy: PortSortingStrategy,
     pub merge_edges: bool,
     pub merge_hierarchy_edges: bool,
     pub unnecessary_bendpoints: bool,
@@ -188,7 +206,10 @@ impl Default for LayeredOptions {
             greedy_switch_hierarchical_type: GreedySwitchType::Off,
             greedy_switch_activation_threshold: 40,
             consider_model_order_strategy: OrderingStrategy::None,
+            consider_model_order_long_edge_strategy: LongEdgeOrderingStrategy::DummyNodeOver,
+            consider_model_order_port_model_order: false,
             force_node_model_order: false,
+            port_sorting_strategy: PortSortingStrategy::InputOrder,
             merge_edges: false,
             merge_hierarchy_edges: true,
             unnecessary_bendpoints: false,
@@ -234,5 +255,33 @@ impl LayeredOptions {
 
     pub fn is_hierarchical_layout(&self) -> bool {
         self.hierarchy_handling == HierarchyHandling::IncludeChildren
+    }
+}
+
+impl LongEdgeOrderingStrategy {
+    pub fn return_value(self) -> i64 {
+        match self {
+            Self::DummyNodeOver => i64::MAX,
+            Self::DummyNodeUnder => -1,
+            Self::Equal => 0,
+        }
+    }
+}
+
+impl PortConstraints {
+    pub fn is_pos_fixed(self) -> bool {
+        self == Self::FixedPos
+    }
+
+    pub fn is_ratio_fixed(self) -> bool {
+        self == Self::FixedRatio
+    }
+
+    pub fn is_order_fixed(self) -> bool {
+        matches!(self, Self::FixedOrder | Self::FixedRatio | Self::FixedPos)
+    }
+
+    pub fn is_side_fixed(self) -> bool {
+        !matches!(self, Self::Free | Self::Undefined)
     }
 }
