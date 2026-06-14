@@ -7,7 +7,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LPort.java
 
 use super::options::{
-    ElkDirection, LayerConstraint, LayeredOptions, PortAlignment, PortConstraints,
+    Alignment, ElkDirection, LayerConstraint, LayeredOptions, PortAlignment, PortConstraints,
 };
 use crate::random::JavaRandom;
 
@@ -93,8 +93,11 @@ pub struct LNode {
     pub model_order: Option<usize>,
     pub layer_index: Option<usize>,
     pub layer_constraint: super::options::LayerConstraint,
+    pub node_alignment: Alignment,
     pub port_constraints: PortConstraints,
     pub port_alignment: Option<PortAlignment>,
+    pub external_port_side: PortSide,
+    pub external_port_size: LSize,
     pub origin_edge: Option<usize>,
     pub long_edge_source: Option<PortRef>,
     pub long_edge_target: Option<PortRef>,
@@ -120,8 +123,11 @@ impl LNode {
             model_order,
             layer_index: None,
             layer_constraint: super::options::LayerConstraint::None,
+            node_alignment: Alignment::Automatic,
             port_constraints: PortConstraints::Undefined,
             port_alignment: None,
+            external_port_side: PortSide::Undefined,
+            external_port_size: LSize::default(),
             origin_edge: None,
             long_edge_source: None,
             long_edge_target: None,
@@ -749,6 +755,8 @@ pub fn create_external_port_dummy(
     let mut dummy = LNode::new(id, 0.0, 0.0, None);
     dummy.kind = LNodeKind::ExternalPort;
     dummy.port_constraints = PortConstraints::FixedPos;
+    dummy.external_port_side = external_side;
+    dummy.external_port_size = port_size;
 
     let mut anchor = LPoint {
         x: port_size.width / 2.0,

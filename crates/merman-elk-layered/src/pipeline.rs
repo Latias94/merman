@@ -19,7 +19,8 @@ use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, join_long_edges,
-    postprocess_layer_constraints, preprocess_layer_constraints, restore_reversed_edges,
+    postprocess_layer_constraints, preprocess_layer_constraints,
+    process_hierarchical_port_dummy_sizes, restore_reversed_edges,
     reverse_edges_for_edge_and_layer_constraints, split_long_edges,
 };
 use crate::p1cycles::break_cycles_greedy;
@@ -659,6 +660,9 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
         ProcessorKind::LayerSizeAndGraphHeightCalculator => {
             calculate_layer_sizes_and_graph_height(graph);
+        }
+        ProcessorKind::HierarchicalPortDummySizeProcessor => {
+            process_hierarchical_port_dummy_sizes(graph);
         }
         ProcessorKind::OrthogonalEdgeRouter => route_edges_orthogonal(graph),
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),

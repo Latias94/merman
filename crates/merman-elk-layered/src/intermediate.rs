@@ -8,12 +8,13 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeSplitter.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeJoiner.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerSizeAndGraphHeightCalculator.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortDummySizeProcessor.java
 
 use crate::graph::{
     EdgeLabelPlacement, LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortSide, PortType,
     reverse_edge,
 };
-use crate::options::{LayerConstraint, PortConstraints};
+use crate::options::{Alignment, LayerConstraint, PortConstraints};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IntermediateError {
@@ -717,6 +718,68 @@ pub fn calculate_layer_sizes_and_graph_height(graph: &mut LGraph) {
     graph.offset.y -= min_y;
 }
 
+pub fn process_hierarchical_port_dummy_sizes(graph: &mut LGraph) {
+    let delta = graph.options.spacing.edge_edge_between_layers * 2.0;
+
+    for layer_index in 0..graph.layers.len() {
+        let (northern_dummies, southern_dummies) =
+            collect_north_south_external_port_dummies(graph, layer_index);
+        set_hierarchical_port_dummy_widths(graph, &northern_dummies, true, delta);
+        set_hierarchical_port_dummy_widths(graph, &southern_dummies, false, delta);
+    }
+}
+
+fn collect_north_south_external_port_dummies(
+    graph: &LGraph,
+    layer_index: usize,
+) -> (Vec<usize>, Vec<usize>) {
+    let mut northern_dummies = Vec::new();
+    let mut southern_dummies = Vec::new();
+
+    for node_index in &graph.layers[layer_index].nodes {
+        let node = &graph.layerless_nodes[*node_index];
+        if node.kind != LNodeKind::ExternalPort {
+            continue;
+        }
+
+        match node.external_port_side {
+            PortSide::North => northern_dummies.push(*node_index),
+            PortSide::South => southern_dummies.push(*node_index),
+            PortSide::Undefined | PortSide::East | PortSide::West => {}
+        }
+    }
+
+    (northern_dummies, southern_dummies)
+}
+
+fn set_hierarchical_port_dummy_widths(
+    graph: &mut LGraph,
+    nodes: &[usize],
+    top_down: bool,
+    delta: f64,
+) {
+    let mut current_width = if top_down {
+        0.0
+    } else {
+        delta * nodes.len().saturating_sub(1) as f64
+    };
+    let step = if top_down { delta } else { -delta };
+
+    for node_index in nodes {
+        let node = &mut graph.layerless_nodes[*node_index];
+        node.node_alignment = Alignment::Center;
+        node.size.width = current_width;
+
+        for port in &mut node.ports {
+            if port.side == PortSide::East {
+                port.position.x = current_width;
+            }
+        }
+
+        current_width += step;
+    }
+}
+
 fn create_long_edge_dummy_node(
     graph: &mut LGraph,
     target_layer_index: usize,
@@ -837,7 +900,7 @@ fn move_head_labels(graph: &mut LGraph, old_edge: usize, new_edge: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::LLabel;
+    use crate::graph::{LLabel, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayerConstraint, LayeredOptions};
     use crate::p2layers::layer_network_simplex;
@@ -1357,5 +1420,67 @@ mod tests {
         assert_eq!(graph.layers[0].size.height, 29.0);
         assert_eq!(graph.size.height, 29.0);
         assert_eq!(graph.offset.y, -3.0);
+    }
+
+    #[test]
+    fn hierarchical_port_dummy_size_processor_sizes_north_south_dummies_per_layer() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.spacing.edge_edge_between_layers = 7.0;
+
+        let north_a = push_replaced_north_south_dummy(&mut graph, "north-a", PortSide::North);
+        let north_b = push_replaced_north_south_dummy(&mut graph, "north-b", PortSide::North);
+        let south_a = push_replaced_north_south_dummy(&mut graph, "south-a", PortSide::South);
+        let south_b = push_replaced_north_south_dummy(&mut graph, "south-b", PortSide::South);
+
+        graph.set_node_layer(north_a, 0);
+        graph.set_node_layer(north_b, 0);
+        graph.set_node_layer(south_a, 0);
+        graph.set_node_layer(south_b, 0);
+
+        process_hierarchical_port_dummy_sizes(&mut graph);
+
+        assert_eq!(
+            graph.layerless_nodes[north_a].node_alignment,
+            Alignment::Center
+        );
+        assert_eq!(
+            graph.layerless_nodes[north_b].node_alignment,
+            Alignment::Center
+        );
+        assert_eq!(
+            graph.layerless_nodes[south_a].node_alignment,
+            Alignment::Center
+        );
+        assert_eq!(
+            graph.layerless_nodes[south_b].node_alignment,
+            Alignment::Center
+        );
+        assert_eq!(graph.layerless_nodes[north_a].size.width, 0.0);
+        assert_eq!(graph.layerless_nodes[north_b].size.width, 14.0);
+        assert_eq!(graph.layerless_nodes[south_a].size.width, 14.0);
+        assert_eq!(graph.layerless_nodes[south_b].size.width, 0.0);
+        assert_eq!(graph.layerless_nodes[north_a].ports[0].position.x, 0.0);
+        assert_eq!(graph.layerless_nodes[north_b].ports[0].position.x, 0.0);
+        assert_eq!(graph.layerless_nodes[north_b].ports[1].position.x, 14.0);
+        assert_eq!(graph.layerless_nodes[south_a].ports[1].position.x, 14.0);
+    }
+
+    fn push_replaced_north_south_dummy(
+        graph: &mut LGraph,
+        id: &str,
+        external_side: PortSide,
+    ) -> usize {
+        let node = graph.layerless_nodes.len();
+        let mut dummy = LNode::new(id, 0.0, 0.0, None);
+        dummy.kind = LNodeKind::ExternalPort;
+        dummy.external_port_side = external_side;
+        graph.layerless_nodes.push(dummy);
+        graph
+            .add_port(node, PortType::Input, PortSide::West, Default::default())
+            .unwrap();
+        graph
+            .add_port(node, PortType::Output, PortSide::East, Default::default())
+            .unwrap();
+        node
     }
 }

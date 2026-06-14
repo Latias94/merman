@@ -92,6 +92,17 @@ pub enum FixedAlignment {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Alignment {
+    #[default]
+    Automatic,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Center,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EdgeStraighteningStrategy {
     None,
     #[default]
