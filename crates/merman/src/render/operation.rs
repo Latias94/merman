@@ -124,10 +124,11 @@ impl<'a> HeadlessOperation<'a> {
         };
 
         let layout = merman_render::layout_parsed_render_layout_only(&parsed, self.layout_options)?;
-        let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
+        let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_metadata(
             &layout,
             &parsed.model,
             &parsed.meta.effective_config,
+            &parsed.meta.diagram_type,
             parsed.meta.title.as_deref(),
             self.layout_options.text_measurer.as_ref(),
             svg_options,

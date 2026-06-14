@@ -141,7 +141,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         default_edge_style,
         node_border_color,
         node_fill_color,
-    } = prepare_flowchart_render_config(model, effective_config_value);
+    } = prepare_flowchart_render_config(model, effective_config_value, diagram_type);
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(

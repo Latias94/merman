@@ -26,6 +26,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartV2Model,
     effective_config_value: &serde_json::Value,
+    diagram_type: &str,
 ) -> FlowchartRenderConfig {
     let config = FlowchartConfigView::new(effective_config_value);
     let font_family = config.font_family();
@@ -42,7 +43,16 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let text_style = config.render_text_style(&font_family, font_size);
     let html_label_text_style = config.html_label_measurement_base_style(&text_style);
 
-    let cfg_curve = config.render_curve();
+    let is_elk_layout = diagram_type == "flowchart-elk"
+        || effective_config_value
+            .get("layout")
+            .and_then(|value| value.as_str())
+            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
+    let cfg_curve = if is_elk_layout {
+        Some("rounded".to_string())
+    } else {
+        config.render_curve()
+    };
     let default_edge_interpolate = model
         .edge_defaults
         .as_ref()

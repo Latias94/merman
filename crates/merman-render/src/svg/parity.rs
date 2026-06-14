@@ -515,6 +515,37 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
     apply_theme_css(svg, effective_config.as_value())
 }
 
+pub fn render_layout_svg_parts_for_render_model_with_metadata(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &merman_core::RenderSemanticModel,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_type: &str,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let mut scoped_options;
+    let options = if options.aria_roledescription.is_none()
+        && matches!(layout, crate::model::LayoutDiagram::FlowchartV2(_))
+    {
+        scoped_options = options.clone();
+        scoped_options.aria_roledescription = Some(diagram_type.to_string());
+        &scoped_options
+    } else {
+        options
+    };
+
+    let svg = render_layout_svg_parts_for_render_model_with_config_raw(
+        layout,
+        semantic,
+        effective_config,
+        title,
+        measurer,
+        options,
+    )?;
+    apply_theme_css(svg, effective_config.as_value())
+}
+
 fn render_layout_svg_parts_for_render_model_with_config_raw(
     layout: &crate::model::LayoutDiagram,
     semantic: &merman_core::RenderSemanticModel,

@@ -300,10 +300,18 @@ pub(super) fn flowchart_compute_edge_path_geom(
         p.y = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.y));
     }
 
-    let interpolate = edge
-        .interpolate
-        .as_deref()
-        .unwrap_or(ctx.default_edge_interpolate.as_str());
+    let is_elk_layout = ctx.diagram_type == "flowchart-elk"
+        || ctx
+            .config
+            .get_str("layout")
+            .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
+    let interpolate = if is_elk_layout {
+        "rounded"
+    } else {
+        edge.interpolate
+            .as_deref()
+            .unwrap_or(ctx.default_edge_interpolate.as_str())
+    };
     let is_rounded = interpolate == "rounded";
     let is_basis = !matches!(
         interpolate,

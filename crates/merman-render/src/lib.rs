@@ -808,6 +808,34 @@ A-->B
         assert!(edges_pos < labels_pos);
     }
 
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_layouted_svg_uses_rounded_edges_for_flowchart_elk() {
+        let parsed = Engine::new()
+            .parse_diagram_sync("flowchart-elk LR\nA --> B\nA --> C", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        let layout_options = LayoutOptions {
+            text_measurer: Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        };
+        let layouted = layout_parsed(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layouted_svg(
+            &layouted,
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions::default(),
+        )
+        .unwrap();
+
+        let path = edge_path_chunk(&svg, "L_A_B_0");
+        let d = edge_path_d(path);
+        assert!(
+            d.contains('Q') && !d.contains('C'),
+            "expected ELK edges to use rounded right-angle paths by default: {d}"
+        );
+    }
+
     #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
@@ -842,5 +870,21 @@ A-->B
         let message = err.to_string();
         assert!(message.contains("sequence"));
         assert!(message.contains("flowchart-v2"));
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    fn edge_path_chunk<'a>(svg: &'a str, edge_id: &str) -> &'a str {
+        let id_attr = format!(r#"id="merman-{edge_id}""#);
+        let id_start = svg.find(&id_attr).expect("edge id");
+        let path_start = svg[..id_start].rfind("<path ").expect("edge path start");
+        let path_end = svg[id_start..].find("/>").expect("edge path end") + id_start;
+        &svg[path_start..path_end]
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    fn edge_path_d(path: &str) -> &str {
+        let d_start = path.find(r#"d=""#).expect("edge path d") + r#"d=""#.len();
+        let d_end = path[d_start..].find('"').expect("edge path d end") + d_start;
+        &path[d_start..d_end]
     }
 }
