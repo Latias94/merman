@@ -113,8 +113,10 @@ Legend:
    - Risk: H (shape/path output diverges substantially).
 
 7. **Flowchart `layout=elk` parity**
-   - Requires ELK layout integration with deterministic version pinning.
-   - Risk: H (different layout engine, large surface area).
+   - Lightweight `elk.layered` integration exists; remaining parity work is fixture admission,
+     subgraph-local direction, hierarchy/cross-cluster edges, order/crossing heuristics, and
+     ELK-style orthogonal edge routing.
+   - Risk: H (different layout semantics, large surface area).
 
 8. **ZenUML “practical” compatibility expansion**
    - Snapshot-gated only (no upstream SVG baselines).

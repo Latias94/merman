@@ -15,7 +15,7 @@ fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str
 
     if diagram == "flowchart" && stem == "upstream_html_demos_flowchart_elk_flowchart_elk_001" {
         return Some(
-            "local Flowchart ELK layout is not implemented; F115-070 treats flowchart-elk as a documented out-of-matrix upstream family until a dedicated ELK layout lane lands",
+            "local Flowchart ELK layout is a lightweight subset and is not admitted to the SVG parity matrix; F115-070 keeps this upstream fixture out-of-matrix until a dedicated ELK layout lane proves it",
         );
     }
 
@@ -652,7 +652,7 @@ mod tests {
             "upstream_html_demos_flowchart_elk_flowchart_elk_001",
         )
         .expect("flowchart-elk fixture should be explicitly skipped");
-        assert!(reason.contains("ELK layout is not implemented"));
+        assert!(reason.contains("lightweight subset"));
         assert_eq!(
             svg_xml_compare_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
             None

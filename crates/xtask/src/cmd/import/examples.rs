@@ -229,12 +229,12 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         match diagram_dir {
             "flowchart" => {
                 if fixture_text.trim_start().starts_with("flowchart-elk") {
-                    return Some("flowchart-elk directive (deferred)");
+                    return Some("flowchart-elk directive (ELK parity deferred)");
                 }
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    return Some("flowchart frontmatter config.layout=elk (deferred)");
+                    return Some("flowchart frontmatter config.layout=elk (ELK parity deferred)");
                 }
                 if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
                     && !fixture_text.contains("\n  look: classic")

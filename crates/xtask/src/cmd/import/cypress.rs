@@ -2501,8 +2501,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             // Keep `--with-baselines` aligned with the current parity hardening scope.
             //
             // We explicitly defer/skip cases that:
-            // - require the ELK layout engine (`flowchart-elk`), which is out of scope for the
-            //   headless layout engine in this repo
+            // - require Flowchart ELK parity (`flowchart-elk`), which now has a lightweight
+            //   renderer path but is not admitted to the parity-gated corpus yet
             // - exercise browser-only math rendering (`$$...$$`)
             // - are sourced from the upstream `errorDiagram` spec (these are intentionally-invalid
             //   inputs that should render as Mermaid "error" diagrams, not as flowcharts)
@@ -2767,12 +2767,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
             }
             "flowchart" => {
-                // ELK layout is currently out of scope for the headless layout engine, but we
-                // still keep the upstream SVG baseline so the case remains traceable.
+                // Flowchart ELK has a lightweight renderer path, but full SVG parity is tracked in
+                // a dedicated layout lane. Keep upstream SVG baselines traceable under `_deferred`.
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    return Some("flowchart frontmatter config.layout=elk (deferred)");
+                    return Some("flowchart frontmatter config.layout=elk (ELK parity deferred)");
                 }
 
                 // Non-classic looks (e.g. `handDrawn`) are currently out of scope for parity-gated
@@ -2785,13 +2785,13 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     return Some("flowchart frontmatter config.look!=classic (deferred)");
                 }
 
-                // Mermaid also has a dedicated `flowchart-elk` diagram type.
-                // Keep these fixtures in `_deferred` until we implement ELK layout parity.
+                // Mermaid also has a dedicated `flowchart-elk` diagram type. Keep these fixtures
+                // in `_deferred` until the ELK layout lane admits them to SVG parity.
                 if fixture_text
                     .lines()
                     .any(|l| l.trim_start().starts_with("flowchart-elk"))
                 {
-                    return Some("flowchart diagram type flowchart-elk (deferred)");
+                    return Some("flowchart diagram type flowchart-elk (ELK parity deferred)");
                 }
 
                 // Mermaid supports flowchart nodes with an `@{ icon: ... }` modifier. merman does

@@ -23,9 +23,11 @@ and trimmed shapeData markdown block trailing newlines. The latest supported-DOM
 aligned non-markdown subgraph title wrapping, empty subgraph node ids, non-markdown edge label
 paragraph wrappers, and literal `\n` handling in `nonMarkdownToHTML`. The supported fresh Flowchart
 comparison now passes with zero canonical XML mismatches and one documented skip for the unsupported
-`flowchart-elk` local layout family. Stored Flowchart upstream SVG baselines have been refreshed to
-Mermaid 11.15, and the four former parser-only KaTeX demo fixtures are now active `*_katex`
-semantic/layout/SVG baselines. Both stored Flowchart gates pass.
+`flowchart-elk` upstream parity family. A later lightweight `elk.layered` backend makes
+`flowchart-elk` renderable, but upstream ELK fixture admission remains a separate layout lane.
+Stored Flowchart upstream SVG baselines have been refreshed to Mermaid 11.15, and the four former
+parser-only KaTeX demo fixtures are now active `*_katex` semantic/layout/SVG baselines. Both stored
+Flowchart gates pass.
 
 ## Active Task
 
@@ -46,8 +48,8 @@ semantic/layout/SVG baselines. Both stored Flowchart gates pass.
   Flowchart green.
 - Fresh-target comparison is the authoritative gate for renderer work; stored Flowchart baselines
   are downstream evidence only.
-- `flowchart-elk` is not covered by the current local layout path and needs an explicit support,
-  skip, or split decision.
+- `flowchart-elk` is covered by a lightweight local layout path, but still needs dedicated fixture
+  admission before it can join the Flowchart SVG parity matrix.
 - Mermaid 11.15 preserves bare backtick-wrapped pipe edge labels as plain SVG text instead of
   dropping them as an empty code span.
 - Mermaid 11.15 is asymmetric for Flowchart `htmlLabels`: normal node shapes read root
@@ -64,17 +66,17 @@ semantic/layout/SVG baselines. Both stored Flowchart gates pass.
   literal `\n` and actual newlines as `<br />`.
 - Mermaid 11.15 non-markdown subgraph titles route through deprecated `createLabel(...)` with
   effectively infinite width; markdown subgraph titles still route through `createText(...)`.
-- `flowchart-elk` is explicitly out of the current supported headless Flowchart matrix. The
+- `flowchart-elk` is explicitly out of the current upstream-parity Flowchart matrix. The
   `compare-svg-xml` gate skips only
-  `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` with a local-policy reason until a
-  dedicated ELK layout lane lands.
+  `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` with a local-policy reason until
+  the dedicated ELK layout lane admits it.
 - The four former `*_parser_only_katex` Flowchart demo fixtures are now active `*_katex` fixtures
   with upstream SVG baselines and Node/Puppeteer KaTeX measurement. The shared `xtask` upstream SVG
   policy now only skips the existing Flowchart ellipse parser-only fixture in this family.
 
 ## Blockers
 
-- No current blocker for the supported Flowchart matrix. ELK layout support remains a follow-on
+- No current blocker for the supported Flowchart matrix. ELK layout parity remains a follow-on
   layout lane, not part of this DOM convergence lane.
 
 ## Next Recommended Action

@@ -253,8 +253,8 @@ their unpinned renderer output was correct or only a tiny browser/root residual.
   diagram-scoped batches.
 - `parity-root` has a broad root-only residual set. Treat it as viewBox/max-width policy and root
   geometry work, not as structural DOM parity failure.
-- `flowchart-elk` is not supported by the local layout path; it needs either an explicit skip
-  policy or a separate ELK layout support lane.
+- `flowchart-elk` is renderable through a lightweight local layout subset, but upstream SVG parity
+  fixture admission still needs the separate ELK layout lane.
 
 ## Next Recommended Action
 

@@ -12,7 +12,7 @@ cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-roo
 This now passes for the supported Flowchart corpus. The report records zero canonical XML
 mismatches and one documented skip:
 `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001`, because local Flowchart ELK layout
-is not implemented and is out of the current supported matrix.
+is currently a lightweight subset and is out of the parity-admitted matrix.
 
 ## Gate Set
 
@@ -352,9 +352,10 @@ git diff --check
 - 2026-06-01 F115-070 `flowchart-elk` gate policy:
   - Added a narrow `compare-svg-xml` skip reason for
     `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001`. The skip is local-policy
-    driven, not an upstream regeneration failure: Flowchart ELK layout is not implemented by the
-    local headless layout path, so `flowchart-elk` is treated as an out-of-matrix upstream family
-    until a dedicated ELK layout lane lands.
+    driven, not an upstream regeneration failure: Flowchart ELK layout was not implemented by the
+    local headless layout path at the time, and the later lightweight subset still keeps
+    `flowchart-elk` out of the upstream SVG parity matrix until a dedicated ELK layout lane admits
+    fixtures.
   - Kept the existing sequence `stress_end_keyword_016` skip reason intact.
   - `cargo test -p xtask svg_xml_compare_skip_reason`: passed, 2 tests.
   - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
@@ -405,6 +406,7 @@ Do not treat stored Flowchart baseline failures as authoritative until the fresh
 been used to classify the current slice. Do not bulk-refresh stored Flowchart baselines while the
 fresh target still shows renderer DOM drift.
 
-`flowchart-elk` is currently a documented out-of-matrix layout family for the headless renderer.
-Future ELK support should be opened as a dedicated layout lane rather than hidden inside ordinary
-Flowchart DOM convergence work.
+`flowchart-elk` is currently renderable through the lightweight `merman-layout-elk` backend, but it
+is still a documented out-of-matrix family for upstream SVG parity. Future ELK fixture admission
+should happen through the dedicated layout lane rather than hidden inside ordinary Flowchart DOM
+convergence work.

@@ -3,8 +3,8 @@
 //! Optional ELK layout engine integration for `merman`.
 //!
 //! This crate owns the ELK-specific dependency surface so higher-level crates can keep the layout
-//! engine optional. The current package boundary is intentionally small; renderer integration will
-//! grow from this API as the first `flowchart-elk` admission slice lands.
+//! engine optional. The current backend is a lightweight deterministic subset of Mermaid's
+//! `elk.layered` path, not a complete Eclipse ELK port.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 

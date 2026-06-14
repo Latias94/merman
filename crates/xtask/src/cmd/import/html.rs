@@ -660,13 +660,15 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                     if fixture_text.contains("\n  layout: elk")
                         || fixture_text.contains("\nlayout: elk")
                     {
-                        return Some("flowchart frontmatter config.layout=elk (deferred)");
+                        return Some(
+                            "flowchart frontmatter config.layout=elk (ELK parity deferred)",
+                        );
                     }
                     if fixture_text
                         .lines()
                         .any(|l| l.trim_start().starts_with("flowchart-elk"))
                     {
-                        return Some("flowchart diagram type flowchart-elk (deferred)");
+                        return Some("flowchart diagram type flowchart-elk (ELK parity deferred)");
                     }
                 }
                 "sequence" if fixture_text.contains("$$") => {

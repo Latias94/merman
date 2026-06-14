@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "slug": "flowchart-elk-layout",
+  "title": "Flowchart ELK Layout",
+  "status": "active",
+  "updated": "2026-06-14",
+  "scope_kind": "execution",
+  "problem": "Flowchart is now renderable through a lightweight ELK subset, but the upstream `flowchart-elk` surface still needs a separate lane to decide which fixtures can be admitted with incremental work and which ones would justify a deeper ELK port.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/flowchart-elk-layout/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/flowchart-elk-layout/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/flowchart-elk-layout/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/flowchart-elk-layout/HANDOFF.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/flowchart-elk-layout/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/flowchart-elk-layout/CONTEXT.jsonl",
+  "gates": [
+    "cargo nextest run -p merman-bindings-core render_svg_returns_svg_for_flowchart_elk",
+    "cargo nextest run -p merman flowchart_elk_render",
+    "cargo test -p xtask svg_xml_compare_skip_reason",
+    "cargo fmt --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/flowchart-elk-layout/EVIDENCE_AND_GATES.md",
+    "docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md",
+    "repo-ref/mermaid/cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+    "crates/merman-layout-elk/src/lib.rs",
+    "crates/merman-render/src/flowchart/elk.rs"
+  ],
+  "adr_refs": [
+    "docs/adr/0001-upstream-baseline.md",
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0042-rendering-strategy.md",
+    "docs/adr/0062-fixture-derived-overrides.md"
+  ],
+  "architecture_refs": [
+    "crates/merman-layout-elk/src/lib.rs",
+    "crates/merman-render/src/flowchart/elk.rs",
+    "repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts",
+    "repo-ref/mermaid/cypress/integration/rendering/flowchart/flowchart-elk.spec.js"
+  ],
+  "capability_tags": [
+    "flowchart",
+    "elk",
+    "layout",
+    "parity",
+    "upstream-baseline"
+  ],
+  "lane_slug": "flowchart-11-15-svg-convergence",
+  "parent_workstream": "docs/workstreams/flowchart-11-15-svg-convergence/DESIGN.md",
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "Start subset-first. Keep the lightweight ELK backend as the default implementation boundary, and only split to a deeper ELK port if the tier-2 fixture group proves the subset is no longer enough."
+  }
+}

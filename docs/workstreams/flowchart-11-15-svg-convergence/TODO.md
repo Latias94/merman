@@ -108,9 +108,10 @@ Last updated: 2026-06-01
   Handoff: DONE. Clickable/tooltip wrapper drift is no longer present in the supported fresh
   Flowchart mismatch report. `compare-svg-xml` now narrowly skips
   `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` with a local-policy reason:
-  Flowchart ELK layout is not implemented and remains out of the current supported matrix until a
-  dedicated ELK layout lane lands. The full fresh Flowchart gate now passes with zero canonical XML
-  mismatches and one documented skip.
+  Flowchart ELK was outside the supported matrix at the time of F115-070; the later lightweight
+  subset keeps it renderable, while upstream SVG parity remains in the dedicated ELK layout lane.
+  The full fresh Flowchart gate now passes with zero canonical XML mismatches and one documented
+  skip.
 
 ## M3 - Fresh Full Gate And Stored Baseline Refresh
 

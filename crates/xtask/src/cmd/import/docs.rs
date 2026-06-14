@@ -638,15 +638,15 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
         match diagram_dir {
             "flowchart" => {
-                // Flowchart-ELK is currently out of scope for the headless layout engine.
+                // Flowchart-ELK has a lightweight renderer path, but upstream SVG parity is tracked
+                // by the dedicated ELK layout lane.
                 if fixture_text.trim_start().starts_with("flowchart-elk") {
-                    return Some("flowchart-elk directive (deferred)");
+                    return Some("flowchart-elk directive (ELK parity deferred)");
                 }
-                // ELK layout is currently out of scope for the headless layout engine.
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    return Some("flowchart frontmatter config.layout=elk (deferred)");
+                    return Some("flowchart frontmatter config.layout=elk (ELK parity deferred)");
                 }
                 // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
                 if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))

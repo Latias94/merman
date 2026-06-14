@@ -184,7 +184,11 @@ upstream SVG baselines (rendered via `mmdc` with our pinned CLI config):
 
 Deferred (not parity-gated yet):
 
-- `layout: elk` fixtures (requires ELK layout parity support): `fixtures/_deferred/flowchart/upstream_cypress_flowchart_elk_spec_*.mmd`
+- Flowchart ELK fixtures remain outside the parity-gated corpus until the dedicated
+  `flowchart-elk` layout lane admits them. The current lightweight backend is renderable but does
+  not claim upstream ELK SVG parity. Note that
+  `fixtures/flowchart/upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063.mmd`
+  is sourced from the ELK spec file but does not encode `layout: elk` in the fixture text.
 
 ## Cypress platform HTML fixtures
 

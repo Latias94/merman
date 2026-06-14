@@ -267,7 +267,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 == Some("elk");
         if parsed.meta.diagram_type == "flowchart-elk" || flowchart_layout_elk {
             skipped.push(format!(
-                "skipped {stem}: layout not implemented for ELK (`flowchart-elk` / config layout=elk)"
+                "skipped {stem}: ELK layout subset is not admitted to Flowchart SVG parity (`flowchart-elk` / config layout=elk)"
             ));
             continue;
         }
