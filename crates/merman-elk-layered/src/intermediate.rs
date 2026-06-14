@@ -2,6 +2,7 @@
 //!
 //! Source references:
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/ReversedEdgeRestorer.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/EdgeAndLayerConstraintEdgeReverser.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerConstraintPreprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerConstraintPostprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeSplitter.java
@@ -29,6 +30,13 @@ pub enum IntermediateError {
 }
 
 pub type IntermediateResult<T> = Result<T, IntermediateError>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EdgeReversalPortType {
+    Input,
+    Output,
+    All,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HiddenNodeConnections {
@@ -88,6 +96,161 @@ pub fn restore_reversed_edges(graph: &mut LGraph) {
             }
         }
     }
+}
+
+pub fn reverse_edges_for_edge_and_layer_constraints(graph: &mut LGraph) {
+    let mut remaining_nodes = Vec::new();
+
+    for node in 0..graph.layerless_nodes.len() {
+        let layer_constraint = graph.layerless_nodes[node].layer_constraint;
+        if let Some(target_port_type) = target_port_type_for_layer_constraint(layer_constraint) {
+            reverse_node_edges(graph, node, layer_constraint, target_port_type);
+        } else {
+            remaining_nodes.push(node);
+        }
+    }
+
+    for node in remaining_nodes {
+        if should_reverse_all_fixed_side_edges(graph, node) {
+            let layer_constraint = graph.layerless_nodes[node].layer_constraint;
+            reverse_node_edges(graph, node, layer_constraint, EdgeReversalPortType::All);
+        }
+    }
+}
+
+fn target_port_type_for_layer_constraint(
+    layer_constraint: LayerConstraint,
+) -> Option<EdgeReversalPortType> {
+    match layer_constraint {
+        LayerConstraint::First | LayerConstraint::FirstSeparate => {
+            Some(EdgeReversalPortType::Output)
+        }
+        LayerConstraint::Last | LayerConstraint::LastSeparate => Some(EdgeReversalPortType::Input),
+        LayerConstraint::None => None,
+    }
+}
+
+fn should_reverse_all_fixed_side_edges(graph: &LGraph, node: usize) -> bool {
+    let lnode = &graph.layerless_nodes[node];
+    if !lnode.port_constraints.is_side_fixed() || lnode.ports.is_empty() {
+        return false;
+    }
+
+    for port in &lnode.ports {
+        let reversed_port = match port.side {
+            PortSide::East => port.net_flow() > 0,
+            PortSide::West => port.net_flow() < 0,
+            PortSide::North | PortSide::South | PortSide::Undefined => false,
+        };
+        if !reversed_port {
+            return false;
+        }
+
+        for edge in &port.outgoing_edges {
+            let target_layer_constraint =
+                graph.layerless_nodes[graph.edges[*edge].target.node].layer_constraint;
+            if matches!(
+                target_layer_constraint,
+                LayerConstraint::Last | LayerConstraint::LastSeparate
+            ) {
+                return false;
+            }
+        }
+        for edge in &port.incoming_edges {
+            let source_layer_constraint =
+                graph.layerless_nodes[graph.edges[*edge].source.node].layer_constraint;
+            if matches!(
+                source_layer_constraint,
+                LayerConstraint::First | LayerConstraint::FirstSeparate
+            ) {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+fn reverse_node_edges(
+    graph: &mut LGraph,
+    node: usize,
+    node_layer_constraint: LayerConstraint,
+    target_port_type: EdgeReversalPortType,
+) {
+    let port_count = graph.layerless_nodes[node].ports.len();
+    for port in 0..port_count {
+        if matches!(
+            target_port_type,
+            EdgeReversalPortType::Input | EdgeReversalPortType::All
+        ) {
+            let outgoing_edges = graph.layerless_nodes[node].ports[port]
+                .outgoing_edges
+                .clone();
+            for edge in outgoing_edges {
+                if can_reverse_outgoing_edge(graph, node_layer_constraint, edge) {
+                    reverse_edge(graph, edge, true);
+                }
+            }
+        }
+
+        if matches!(
+            target_port_type,
+            EdgeReversalPortType::Output | EdgeReversalPortType::All
+        ) {
+            let incoming_edges = graph.layerless_nodes[node].ports[port]
+                .incoming_edges
+                .clone();
+            for edge in incoming_edges {
+                if can_reverse_incoming_edge(graph, node_layer_constraint, edge) {
+                    reverse_edge(graph, edge, true);
+                }
+            }
+        }
+    }
+}
+
+fn can_reverse_outgoing_edge(
+    graph: &LGraph,
+    source_node_layer_constraint: LayerConstraint,
+    edge: usize,
+) -> bool {
+    let Some(edge) = graph.edges.get(edge) else {
+        return false;
+    };
+    if edge.reversed {
+        return false;
+    }
+
+    let target_node = edge.target.node;
+    if source_node_layer_constraint == LayerConstraint::Last
+        && graph.layerless_nodes[target_node].kind == LNodeKind::Label
+    {
+        return false;
+    }
+
+    graph.layerless_nodes[target_node].layer_constraint != LayerConstraint::LastSeparate
+}
+
+fn can_reverse_incoming_edge(
+    graph: &LGraph,
+    target_node_layer_constraint: LayerConstraint,
+    edge: usize,
+) -> bool {
+    let Some(edge) = graph.edges.get(edge) else {
+        return false;
+    };
+    if edge.reversed {
+        return false;
+    }
+
+    let source_node = edge.source.node;
+    if target_node_layer_constraint == LayerConstraint::First
+        && graph.layerless_nodes[source_node].kind == LNodeKind::Label
+    {
+        return false;
+    }
+
+    graph.layerless_nodes[source_node].layer_constraint != LayerConstraint::FirstSeparate
 }
 
 pub fn preprocess_layer_constraints(graph: &mut LGraph) -> IntermediateResult<()> {
@@ -561,6 +724,44 @@ mod tests {
             edges,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn edge_and_layer_constraint_reverser_makes_first_nodes_outgoing_only() {
+        let mut first = node("start");
+        first.layer_constraint = Some(LayerConstraint::First);
+        let mut graph = graph(vec![node("A"), first], vec![edge("A-start", "A", "start")]);
+        let start = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "start")
+            .unwrap();
+
+        reverse_edges_for_edge_and_layer_constraints(&mut graph);
+
+        assert!(graph.edges[0].reversed);
+        assert_eq!(graph.edges[0].source.node, start);
+        assert!(graph.node_incoming_edges(start).is_empty());
+        assert_eq!(graph.node_outgoing_edges(start), vec![0]);
+    }
+
+    #[test]
+    fn edge_and_layer_constraint_reverser_makes_last_nodes_incoming_only() {
+        let mut last = node("end");
+        last.layer_constraint = Some(LayerConstraint::Last);
+        let mut graph = graph(vec![last, node("A")], vec![edge("end-A", "end", "A")]);
+        let end = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "end")
+            .unwrap();
+
+        reverse_edges_for_edge_and_layer_constraints(&mut graph);
+
+        assert!(graph.edges[0].reversed);
+        assert_eq!(graph.edges[0].target.node, end);
+        assert_eq!(graph.node_incoming_edges(end), vec![0]);
+        assert!(graph.node_outgoing_edges(end).is_empty());
     }
 
     #[test]

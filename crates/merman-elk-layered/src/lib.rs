@@ -29,7 +29,8 @@ pub use importer::{
 };
 pub use intermediate::{
     IntermediateError, IntermediateResult, postprocess_layer_constraints,
-    preprocess_layer_constraints, restore_reversed_edges, split_edge, split_long_edges,
+    preprocess_layer_constraints, restore_reversed_edges,
+    reverse_edges_for_edge_and_layer_constraints, split_edge, split_long_edges,
 };
 pub use options::{
     EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions,
@@ -37,11 +38,16 @@ pub use options::{
     PortSortingStrategy, SelfLoopDistributionStrategy, SpacingOptions,
 };
 pub use p2layers::layer_network_simplex;
+pub use p3order::counting::CrossingsCounter;
+pub use p3order::sweep::{
+    CrossMinType, minimize_crossings_layer_sweep, minimize_crossings_layer_sweep_with_type,
+};
 pub use p3order::{
     long_edge_target_node_preprocessing, process_port_sides, set_port_side, sort_by_input_model,
     sort_port_lists, target_node,
 };
 pub use pipeline::{
-    LayeredPhase, ProcessorKind, ProcessorSlot, assemble_processors, assemble_processors_for_graph,
+    LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot, assemble_processors,
+    assemble_processors_for_graph, execute_processors_until,
 };
 pub use random::JavaRandom;

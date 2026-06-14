@@ -14,8 +14,27 @@ use super::options::{
     GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
     WrappingStrategy,
 };
-use crate::configurator::configured_options;
+use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
+use crate::intermediate::{
+    IntermediateError, postprocess_layer_constraints, preprocess_layer_constraints,
+    reverse_edges_for_edge_and_layer_constraints, split_long_edges,
+};
+use crate::p1cycles::break_cycles_greedy;
+use crate::p2layers::layer_network_simplex;
+use crate::p3order::{
+    process_port_sides, sort_by_input_model, sort_port_lists, sweep::minimize_crossings_layer_sweep,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PipelineError {
+    #[error("layered processor `{kind:?}` is not ported yet")]
+    UnsupportedProcessor { kind: ProcessorKind },
+    #[error(transparent)]
+    Intermediate(#[from] IntermediateError),
+}
+
+pub type PipelineResult<T> = Result<T, PipelineError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LayeredPhase {
@@ -318,6 +337,54 @@ pub fn assemble_processors_for_graph(graph: &LGraph) -> Vec<ProcessorSlot> {
         graph.layerless_nodes.len(),
         graph.parent_node_id.is_none(),
     )
+}
+
+/// Execute the source-backed layered pipeline until the requested phase completes.
+///
+/// This follows the processor sequence assembled from Eclipse ELK's `GraphConfigurator` and phase
+/// dependency configuration. Processors that have not been ported fail explicitly instead of being
+/// silently skipped, because skipping them would make later phase evidence misleading.
+pub fn execute_processors_until(
+    graph: &mut LGraph,
+    target: LayeredPhase,
+) -> PipelineResult<Vec<ProcessorKind>> {
+    let mut executed = Vec::new();
+    configure_graph_properties(graph);
+    let processors = assemble_processors_for_graph(graph);
+
+    for slot in processors {
+        execute_processor(graph, slot.kind)?;
+        executed.push(slot.kind);
+
+        if slot.phase == Some(target) {
+            break;
+        }
+    }
+
+    Ok(executed)
+}
+
+fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<()> {
+    match kind {
+        ProcessorKind::EdgeAndLayerConstraintEdgeReverser => {
+            reverse_edges_for_edge_and_layer_constraints(graph);
+        }
+        ProcessorKind::GreedyCycleBreaker => break_cycles_greedy(graph),
+        ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
+        ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph),
+        ProcessorKind::LayerConstraintPostprocessor => postprocess_layer_constraints(graph)?,
+        ProcessorKind::LongEdgeSplitter => split_long_edges(graph),
+        ProcessorKind::PortSideProcessor => process_port_sides(graph),
+        ProcessorKind::PortListSorter => sort_port_lists(graph),
+        ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph),
+        ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
+            minimize_crossings_layer_sweep(graph);
+        }
+        ProcessorKind::NoCrossingMinimizer => {}
+        _ => return Err(PipelineError::UnsupportedProcessor { kind }),
+    }
+
+    Ok(())
 }
 
 fn assemble_processors_with_graph_size(
@@ -673,7 +740,8 @@ fn edge_routing_dependencies(options: &LayeredOptions, _processor: ProcessorKind
 mod tests {
     use super::*;
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
-    use crate::options::{ElkDirection, LayeredOptions};
+    use crate::options::{ElkDirection, GreedySwitchType, LayeredOptions};
+    use crate::p3order::{counting::CrossingsCounter, process_port_sides, sort_port_lists};
 
     fn kinds(options: &LayeredOptions) -> Vec<ProcessorKind> {
         assemble_processors(options)
@@ -687,6 +755,39 @@ mod tests {
             .into_iter()
             .map(|slot| slot.kind)
             .collect()
+    }
+
+    fn node(id: &str) -> ElkInputNode {
+        ElkInputNode {
+            id: id.to_string(),
+            width: 80.0,
+            height: 40.0,
+            parent: None,
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label: None,
+        }
+    }
+
+    fn edge(id: &str, source: &str, target: &str) -> ElkInputEdge {
+        ElkInputEdge {
+            id: id.to_string(),
+            source: source.to_string(),
+            target: target.to_string(),
+            label: None,
+            minlen: 1,
+            priority_direction: 0,
+            priority_shortness: 0,
+        }
+    }
+
+    fn p3_options() -> LayeredOptions {
+        LayeredOptions {
+            direction: ElkDirection::Right,
+            greedy_switch_type: GreedySwitchType::Off,
+            ..LayeredOptions::default()
+        }
     }
 
     #[test]
@@ -819,6 +920,111 @@ mod tests {
         assert!(processors.contains(&ProcessorKind::SelfLoopPreProcessor));
         assert!(processors.contains(&ProcessorKind::SelfLoopRouter));
         assert!(processors.contains(&ProcessorKind::SelfLoopPostProcessor));
+    }
+
+    #[test]
+    fn execute_processors_until_p3_runs_source_ported_processor_sequence() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: p3_options(),
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        })
+        .unwrap();
+
+        let executed = execute_processors_until(&mut graph, LayeredPhase::P3NodeOrdering).unwrap();
+
+        assert_eq!(
+            executed,
+            vec![
+                ProcessorKind::EdgeAndLayerConstraintEdgeReverser,
+                ProcessorKind::GreedyCycleBreaker,
+                ProcessorKind::LayerConstraintPreprocessor,
+                ProcessorKind::NetworkSimplexLayerer,
+                ProcessorKind::LayerConstraintPostprocessor,
+                ProcessorKind::LongEdgeSplitter,
+                ProcessorKind::PortSideProcessor,
+                ProcessorKind::PortListSorter,
+                ProcessorKind::LayerSweepCrossingMinimizerBarycenter,
+            ]
+        );
+        assert_eq!(graph.layers.len(), 3);
+        assert_eq!(
+            graph
+                .layerless_nodes
+                .iter()
+                .filter(|node| node.hidden)
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn execute_processors_until_p3_minimizes_crossings() {
+        let input = ElkInputGraph {
+            id: "root".to_string(),
+            options: p3_options(),
+            nodes: vec![node("Top"), node("Bottom"), node("Left"), node("Right")],
+            edges: vec![
+                edge("Top-Right", "Top", "Right"),
+                edge("Bottom-Left", "Bottom", "Left"),
+            ],
+        };
+        let mut before_graph = import_graph(&input).unwrap();
+
+        layer_network_simplex(&mut before_graph);
+        process_port_sides(&mut before_graph);
+        sort_port_lists(&mut before_graph);
+        let top = before_graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Top")
+            .unwrap();
+        let bottom = before_graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Bottom")
+            .unwrap();
+        let left = before_graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Left")
+            .unwrap();
+        let right = before_graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Right")
+            .unwrap();
+        before_graph.layers[0].nodes = vec![top, bottom];
+        before_graph.layers[1].nodes = vec![left, right];
+        let before = CrossingsCounter::new().count_all_crossings(&before_graph);
+
+        let mut graph = import_graph(&input).unwrap();
+        execute_processors_until(&mut graph, LayeredPhase::P3NodeOrdering).unwrap();
+
+        let after = CrossingsCounter::new().count_all_crossings(&graph);
+        assert_eq!(before, 1);
+        assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn execute_processors_until_p3_reports_unported_direction_processor() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![node("A"), node("B")],
+            edges: vec![edge("A-B", "A", "B")],
+        })
+        .unwrap();
+
+        let err = execute_processors_until(&mut graph, LayeredPhase::P3NodeOrdering).unwrap_err();
+
+        assert_eq!(
+            err,
+            PipelineError::UnsupportedProcessor {
+                kind: ProcessorKind::DirectionPreprocessor
+            }
+        );
     }
 
     #[test]
