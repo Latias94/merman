@@ -96,7 +96,7 @@ impl Default for LayeredOptions {
         Self {
             hierarchy_handling: HierarchyHandling::IncludeChildren,
             edge_routing: EdgeRouting::Orthogonal,
-            cycle_breaking: CycleBreakingStrategy::ModelOrder,
+            cycle_breaking: CycleBreakingStrategy::Greedy,
             consider_model_order: true,
             force_node_model_order: false,
             merge_edges: false,
@@ -120,8 +120,8 @@ pub enum EdgeRouting {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CycleBreakingStrategy {
-    #[default]
     ModelOrder,
+    #[default]
     Greedy,
 }
 
@@ -520,6 +520,7 @@ impl<'a> LayoutEngine<'a> {
         let mut outgoing: HashMap<&str, Vec<(&str, usize)>> =
             child_ids.iter().map(|id| (*id, Vec::new())).collect();
 
+        let mut rank_edges: Vec<(&str, &str, usize)> = Vec::new();
         for edge in &self.graph.edges {
             let Some(source) = self
                 .index
@@ -536,10 +537,13 @@ impl<'a> LayoutEngine<'a> {
             if source == target || !child_set.contains(source) || !child_set.contains(target) {
                 continue;
             }
-            outgoing
-                .entry(source)
-                .or_default()
-                .push((target, edge.minlen.max(1)));
+            rank_edges.push((source, target, edge.minlen.max(1)));
+        }
+
+        let rank_edges = self.cycle_broken_rank_edges(&rank_edges);
+
+        for (source, target, minlen) in rank_edges.iter().copied() {
+            outgoing.entry(source).or_default().push((target, minlen));
             *incoming.entry(target).or_default() += 1;
         }
 
@@ -582,7 +586,117 @@ impl<'a> LayoutEngine<'a> {
             }
         }
 
+        self.tighten_ranks_toward_successors(child_ids, &rank_edges, &mut ranks);
         ranks
+    }
+
+    fn cycle_broken_rank_edges(
+        &self,
+        rank_edges: &[(&'a str, &'a str, usize)],
+    ) -> Vec<(&'a str, &'a str, usize)> {
+        match self.graph.options.layered.cycle_breaking {
+            CycleBreakingStrategy::ModelOrder => rank_edges
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(edge_index, (source, target, minlen))| {
+                    (!self
+                        .model_order_rank_edge_closes_cycle(rank_edges, edge_index, source, target))
+                    .then_some((source, target, minlen))
+                })
+                .collect(),
+            CycleBreakingStrategy::Greedy => {
+                let mut accepted_edges = Vec::new();
+                let mut accepted_indices = Vec::new();
+                for (edge_index, (source, target, minlen)) in
+                    rank_edges.iter().copied().enumerate().rev()
+                {
+                    if rank_path_exists(&accepted_edges, target, source) {
+                        continue;
+                    }
+                    accepted_edges.push((source, target, minlen));
+                    accepted_indices.push(edge_index);
+                }
+                accepted_indices.sort_unstable();
+                accepted_indices
+                    .into_iter()
+                    .filter_map(|idx| rank_edges.get(idx).copied())
+                    .collect()
+            }
+        }
+    }
+
+    fn model_order_rank_edge_closes_cycle(
+        &self,
+        rank_edges: &[(&'a str, &'a str, usize)],
+        edge_index: usize,
+        source: &'a str,
+        target: &'a str,
+    ) -> bool {
+        let source_order = self
+            .index
+            .topo_order_by_id
+            .get(source)
+            .copied()
+            .unwrap_or(usize::MAX);
+        let target_order = self
+            .index
+            .topo_order_by_id
+            .get(target)
+            .copied()
+            .unwrap_or(usize::MAX);
+        if source_order <= target_order {
+            return false;
+        }
+
+        let rank_edges = rank_edges
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(idx, edge)| (idx != edge_index).then_some(edge))
+            .collect::<Vec<_>>();
+        rank_path_exists(&rank_edges, target, source)
+    }
+
+    fn tighten_ranks_toward_successors(
+        &self,
+        child_ids: &[&'a str],
+        rank_edges: &[(&'a str, &'a str, usize)],
+        ranks: &mut HashMap<&'a str, usize>,
+    ) {
+        let mut changed = true;
+        while changed {
+            changed = false;
+            let mut ids = child_ids.to_vec();
+            ids.sort_by_key(|id| std::cmp::Reverse(ranks.get(*id).copied().unwrap_or(0)));
+
+            for id in ids {
+                let current = ranks.get(id).copied().unwrap_or(0);
+                let lower_bound = rank_edges
+                    .iter()
+                    .filter(|(_, target, _)| *target == id)
+                    .filter_map(|(source, _, minlen)| {
+                        ranks.get(source).map(|rank| rank.saturating_add(*minlen))
+                    })
+                    .max()
+                    .unwrap_or(0);
+                let Some(upper_bound) = rank_edges
+                    .iter()
+                    .filter(|(source, _, _)| *source == id)
+                    .filter_map(|(_, target, minlen)| {
+                        ranks.get(target).map(|rank| rank.saturating_sub(*minlen))
+                    })
+                    .min()
+                else {
+                    continue;
+                };
+
+                if upper_bound > current && upper_bound >= lower_bound {
+                    ranks.insert(id, upper_bound);
+                    changed = true;
+                }
+            }
+        }
     }
 
     fn sort_rank_ids(&self, ids: &mut Vec<&'a str>) {
@@ -700,6 +814,31 @@ impl<'a> LayoutEngine<'a> {
         let inherited = self.effective_direction(node.parent.as_deref());
         node.direction.unwrap_or(inherited)
     }
+}
+
+fn rank_path_exists<'a>(
+    rank_edges: &[(&'a str, &'a str, usize)],
+    start: &'a str,
+    target: &'a str,
+) -> bool {
+    let mut seen = HashSet::new();
+    let mut stack = vec![start];
+
+    while let Some(id) = stack.pop() {
+        if id == target {
+            return true;
+        }
+        if !seen.insert(id) {
+            continue;
+        }
+        for (from, to, _) in rank_edges.iter().copied() {
+            if from == id {
+                stack.push(to);
+            }
+        }
+    }
+
+    false
 }
 
 #[derive(Debug, Clone)]
@@ -1305,6 +1444,56 @@ mod tests {
         let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
 
         assert_ne!(a.y, b.y);
+    }
+
+    #[test]
+    fn layered_layout_breaks_feedback_edges_before_ranking_branches() {
+        let graph = Graph {
+            id: "root".to_string(),
+            direction: Direction::Down,
+            nodes: vec![
+                leaf("A", None),
+                leaf("B", None),
+                leaf("C", None),
+                leaf("D", None),
+                leaf("I", None),
+                leaf("E", None),
+                leaf("F", None),
+                leaf("H", None),
+                leaf("G", None),
+            ],
+            edges: vec![
+                edge("A-B", "A", "B"),
+                edge("B-C", "B", "C"),
+                edge("C-D", "C", "D"),
+                edge("C-I", "C", "I"),
+                edge("C-E", "C", "E"),
+                edge("D-F", "D", "F"),
+                edge("E-F", "E", "F"),
+                edge("F-H", "F", "H"),
+                edge("H-B", "H", "B"),
+                edge("F-G", "F", "G"),
+            ],
+            ..Default::default()
+        };
+
+        let result = layout(&graph, Algorithm::Layered).unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let c = result.nodes.iter().find(|node| node.id == "C").unwrap();
+        let d = result.nodes.iter().find(|node| node.id == "D").unwrap();
+        let i = result.nodes.iter().find(|node| node.id == "I").unwrap();
+        let e = result.nodes.iter().find(|node| node.id == "E").unwrap();
+        let f = result.nodes.iter().find(|node| node.id == "F").unwrap();
+        let h = result.nodes.iter().find(|node| node.id == "H").unwrap();
+        let g = result.nodes.iter().find(|node| node.id == "G").unwrap();
+
+        assert!(c.y < b.y);
+        assert_eq!(d.y, i.y);
+        assert_eq!(i.y, e.y);
+        assert_ne!(d.x, i.x);
+        assert_ne!(i.x, e.x);
+        assert!(f.y > e.y);
+        assert_eq!(h.y, g.y);
     }
 
     fn graph_with_two_nodes() -> Graph {
