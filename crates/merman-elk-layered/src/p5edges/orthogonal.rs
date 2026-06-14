@@ -5,9 +5,11 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/HyperEdgeSegmentDependency.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/HyperEdgeCycleDetector.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/OrthogonalRoutingGenerator.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/direction/WestToEastRoutingStrategy.java
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 
+use crate::graph::{LGraph, LPoint, PortRef, PortSide, PortType};
 use crate::random::JavaRandom;
 
 pub const TOLERANCE: f64 = 1e-3;
@@ -26,7 +28,7 @@ pub enum DependencyType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HyperEdgeSegment {
-    pub ports: Vec<usize>,
+    pub ports: Vec<PortRef>,
     pub mark: i32,
     pub routing_slot: i32,
     start_position: f64,
@@ -364,6 +366,69 @@ impl OrthogonalRoutingThresholds {
     }
 }
 
+pub fn route_edges_west_to_east(
+    graph: &mut LGraph,
+    source_layer_nodes: Option<&[usize]>,
+    target_layer_nodes: Option<&[usize]>,
+    start_pos: f64,
+    edge_spacing: f64,
+) -> usize {
+    let mut hyper_graph = HyperEdgeGraph::default();
+    let mut port_to_segment = HashMap::new();
+
+    create_hyperedge_segments_west_to_east(
+        graph,
+        source_layer_nodes,
+        PortSide::East,
+        &mut hyper_graph,
+        &mut port_to_segment,
+    );
+    create_hyperedge_segments_west_to_east(
+        graph,
+        target_layer_nodes,
+        PortSide::West,
+        &mut hyper_graph,
+        &mut port_to_segment,
+    );
+
+    let thresholds = OrthogonalRoutingThresholds::from_edge_spacing_and_segments(
+        edge_spacing,
+        &hyper_graph.segments,
+    );
+    let mut critical_dependency_count = 0usize;
+
+    for first in 0..hyper_graph.segments.len().saturating_sub(1) {
+        for second in (first + 1)..hyper_graph.segments.len() {
+            critical_dependency_count +=
+                hyper_graph.create_dependency_if_necessary(first, second, thresholds);
+        }
+    }
+
+    if critical_dependency_count >= 2 {
+        // Critical-cycle splitting is represented by the segment graph but its splitter is ported separately.
+        // Until that processor is connected, keep the dependency graph source-backed and deterministic.
+    }
+
+    break_non_critical_cycles(&mut hyper_graph, &mut graph.random);
+    topological_numbering(&mut hyper_graph);
+
+    let mut rank_count = -1;
+    for segment in 0..hyper_graph.segments.len() {
+        if (hyper_graph.segments[segment].start_coordinate()
+            - hyper_graph.segments[segment].end_coordinate())
+        .abs()
+            < TOLERANCE
+        {
+            continue;
+        }
+
+        rank_count = rank_count.max(hyper_graph.segments[segment].routing_slot);
+        calculate_bend_points_west_to_east(graph, &hyper_graph, segment, start_pos, edge_spacing);
+    }
+
+    (rank_count + 1) as usize
+}
+
 pub fn count_crossings(positions: &[f64], start: f64, end: f64) -> i32 {
     let mut crossings = 0;
     for position in positions {
@@ -388,6 +453,160 @@ pub fn minimum_horizontal_segment_distance(segments: &[HyperEdgeSegment]) -> f64
             .flat_map(|segment| segment.outgoing_connection_coordinates.iter().copied()),
     );
     incoming.min(outgoing)
+}
+
+fn create_hyperedge_segments_west_to_east(
+    graph: &LGraph,
+    nodes: Option<&[usize]>,
+    port_side: PortSide,
+    hyper_graph: &mut HyperEdgeGraph,
+    port_to_segment: &mut HashMap<PortRef, usize>,
+) {
+    let Some(nodes) = nodes else {
+        return;
+    };
+
+    for node in nodes {
+        let Some(lnode) = graph.layerless_nodes.get(*node) else {
+            continue;
+        };
+        for port_index in 0..lnode.ports.len() {
+            let port = &lnode.ports[port_index];
+            if port.port_type != PortType::Output || port.side != port_side {
+                continue;
+            }
+
+            let port_ref = PortRef {
+                node: *node,
+                port: port_index,
+            };
+            if !port_to_segment.contains_key(&port_ref) {
+                let segment = hyper_graph.add_segment(HyperEdgeSegment::new());
+                add_port_positions_west_to_east(
+                    graph,
+                    port_ref,
+                    hyper_graph,
+                    segment,
+                    port_to_segment,
+                );
+            }
+        }
+    }
+}
+
+fn add_port_positions_west_to_east(
+    graph: &LGraph,
+    port_ref: PortRef,
+    hyper_graph: &mut HyperEdgeGraph,
+    segment: usize,
+    port_to_segment: &mut HashMap<PortRef, usize>,
+) {
+    port_to_segment.insert(port_ref, segment);
+    hyper_graph.segments[segment].ports.push(port_ref);
+    let port_position = port_position_on_hypernode_west_to_east(graph, port_ref);
+    let port = &graph.layerless_nodes[port_ref.node].ports[port_ref.port];
+
+    if port.side == PortSide::East {
+        hyper_graph.segments[segment].insert_incoming(port_position);
+    } else {
+        hyper_graph.segments[segment].insert_outgoing(port_position);
+    }
+
+    for other_port in connected_ports(graph, port_ref) {
+        if !port_to_segment.contains_key(&other_port) {
+            add_port_positions_west_to_east(
+                graph,
+                other_port,
+                hyper_graph,
+                segment,
+                port_to_segment,
+            );
+        }
+    }
+}
+
+fn calculate_bend_points_west_to_east(
+    graph: &mut LGraph,
+    hyper_graph: &HyperEdgeGraph,
+    segment_index: usize,
+    start_pos: f64,
+    edge_spacing: f64,
+) {
+    let segment = &hyper_graph.segments[segment_index];
+    if segment.is_dummy() {
+        return;
+    }
+
+    let segment_x = start_pos + f64::from(segment.routing_slot) * edge_spacing;
+
+    for port_ref in &segment.ports {
+        let source_y = absolute_anchor(graph, *port_ref).y;
+        let outgoing_edges = graph.layerless_nodes[port_ref.node].ports[port_ref.port]
+            .outgoing_edges
+            .clone();
+
+        for edge_index in outgoing_edges {
+            if is_self_loop(graph, edge_index) {
+                continue;
+            }
+
+            let target = graph.edges[edge_index].target;
+            let target_y = absolute_anchor(graph, target).y;
+
+            if (source_y - target_y).abs() <= TOLERANCE {
+                continue;
+            }
+
+            let mut current_x = segment_x;
+
+            add_bend_point_if_needed(
+                graph,
+                edge_index,
+                LPoint {
+                    x: current_x,
+                    y: source_y,
+                },
+            );
+
+            if let Some(split_partner) = segment.split_partner {
+                let split_y = hyper_graph.segments[split_partner]
+                    .incoming_connection_coordinates
+                    .first()
+                    .copied()
+                    .unwrap_or(source_y);
+
+                add_bend_point_if_needed(
+                    graph,
+                    edge_index,
+                    LPoint {
+                        x: current_x,
+                        y: split_y,
+                    },
+                );
+
+                current_x = start_pos
+                    + f64::from(hyper_graph.segments[split_partner].routing_slot) * edge_spacing;
+
+                add_bend_point_if_needed(
+                    graph,
+                    edge_index,
+                    LPoint {
+                        x: current_x,
+                        y: split_y,
+                    },
+                );
+            }
+
+            add_bend_point_if_needed(
+                graph,
+                edge_index,
+                LPoint {
+                    x: current_x,
+                    y: target_y,
+                },
+            );
+        }
+    }
 }
 
 pub fn detect_cycles(
@@ -698,6 +917,54 @@ fn dependency_weight(
         .sum()
 }
 
+fn connected_ports(graph: &LGraph, port_ref: PortRef) -> Vec<PortRef> {
+    let Some(node) = graph.layerless_nodes.get(port_ref.node) else {
+        return Vec::new();
+    };
+    let Some(port) = node.ports.get(port_ref.port) else {
+        return Vec::new();
+    };
+
+    port.outgoing_edges
+        .iter()
+        .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.target))
+        .chain(
+            port.incoming_edges
+                .iter()
+                .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.source)),
+        )
+        .filter(|other| *other != port_ref)
+        .collect()
+}
+
+fn port_position_on_hypernode_west_to_east(graph: &LGraph, port_ref: PortRef) -> f64 {
+    absolute_anchor(graph, port_ref).y
+}
+
+fn absolute_anchor(graph: &LGraph, port_ref: PortRef) -> LPoint {
+    let node = &graph.layerless_nodes[port_ref.node];
+    let port = &node.ports[port_ref.port];
+    LPoint {
+        x: node.position.x + port.position.x + port.anchor.x,
+        y: node.position.y + port.position.y + port.anchor.y,
+    }
+}
+
+fn is_self_loop(graph: &LGraph, edge_index: usize) -> bool {
+    graph.edges[edge_index].source.node == graph.edges[edge_index].target.node
+}
+
+fn add_bend_point_if_needed(graph: &mut LGraph, edge_index: usize, point: LPoint) {
+    if let Some(last) = graph.edges[edge_index].bend_points.last()
+        && (last.x - point.x).abs() < TOLERANCE
+        && (last.y - point.y).abs() < TOLERANCE
+    {
+        return;
+    }
+
+    graph.edges[edge_index].bend_points.push(point);
+}
+
 fn count_conflicts(
     positions1: &[f64],
     positions2: &[f64],
@@ -774,9 +1041,70 @@ fn remove_value(values: &mut Vec<usize>, value: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{LGraph, LNode, LayeredEdge};
+    use crate::options::LayeredOptions;
 
     fn segment(incoming: &[f64], outgoing: &[f64]) -> HyperEdgeSegment {
         HyperEdgeSegment::with_incoming_outgoing(incoming.to_vec(), outgoing.to_vec())
+    }
+
+    fn route_test_graph(source_y: f64, target_y: f64) -> LGraph {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let source = graph.layerless_nodes.len();
+        let mut source_node = LNode::new("A", 40.0, 20.0, Some(0));
+        source_node.position = LPoint {
+            x: 0.0,
+            y: source_y,
+        };
+        graph.layerless_nodes.push(source_node);
+
+        let target = graph.layerless_nodes.len();
+        let mut target_node = LNode::new("B", 40.0, 20.0, Some(1));
+        target_node.position = LPoint {
+            x: 100.0,
+            y: target_y,
+        };
+        graph.layerless_nodes.push(target_node);
+
+        graph.set_node_layer(source, 0);
+        graph.set_node_layer(target, 1);
+
+        let source_port = graph
+            .add_port(
+                source,
+                PortType::Output,
+                PortSide::East,
+                LPoint { x: 40.0, y: 5.0 },
+            )
+            .unwrap();
+        let target_port = graph
+            .add_port(
+                target,
+                PortType::Output,
+                PortSide::West,
+                LPoint { x: 0.0, y: 15.0 },
+            )
+            .unwrap();
+
+        graph.add_edge(LayeredEdge {
+            id: "A-B".to_string(),
+            source: source_port,
+            target: target_port,
+            source_node_id: "A".to_string(),
+            target_node_id: "B".to_string(),
+            labels: Vec::new(),
+            minlen: 1,
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order: Some(0),
+            priority_direction: 0,
+            priority_shortness: 0,
+            priority_straightness: 0,
+            thickness: 0.0,
+            original_opposite_port: None,
+        });
+
+        graph
     }
 
     #[test]
@@ -914,5 +1242,32 @@ mod tests {
         assert_eq!(graph.segments[partner].split_partner, Some(a));
         assert!(graph.segments[a].outgoing_segment_dependencies.is_empty());
         assert!(graph.segments[b].incoming_segment_dependencies.is_empty());
+    }
+
+    #[test]
+    fn route_edges_west_to_east_writes_orthogonal_bendpoints_for_non_straight_edge() {
+        let mut graph = route_test_graph(0.0, 30.0);
+        let left = graph.layers[0].nodes.clone();
+        let right = graph.layers[1].nodes.clone();
+
+        let slots = route_edges_west_to_east(&mut graph, Some(&left), Some(&right), 50.0, 10.0);
+
+        assert_eq!(slots, 1);
+        assert_eq!(
+            graph.edges[0].bend_points,
+            vec![LPoint { x: 50.0, y: 5.0 }, LPoint { x: 50.0, y: 45.0 }]
+        );
+    }
+
+    #[test]
+    fn route_edges_west_to_east_leaves_straight_edge_without_bendpoints() {
+        let mut graph = route_test_graph(0.0, -10.0);
+        let left = graph.layers[0].nodes.clone();
+        let right = graph.layers[1].nodes.clone();
+
+        let slots = route_edges_west_to_east(&mut graph, Some(&left), Some(&right), 50.0, 10.0);
+
+        assert_eq!(slots, 0);
+        assert!(graph.edges[0].bend_points.is_empty());
     }
 }

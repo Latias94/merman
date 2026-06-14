@@ -29,6 +29,7 @@ use crate::p4nodes::{
     calculate_innermost_node_margins, calculate_label_and_node_sizes, place_nodes_brandes_koepf,
     process_in_layer_constraints,
 };
+use crate::p5edges::route_edges_orthogonal;
 use crate::transform::{GraphTransformMode, transform_graph_direction};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -398,6 +399,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::LayerSizeAndGraphHeightCalculator => {
             calculate_layer_sizes_and_graph_height(graph);
         }
+        ProcessorKind::OrthogonalEdgeRouter => route_edges_orthogonal(graph),
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -1094,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_processors_until_p5_runs_layer_size_calculator_before_unported_edge_router() {
+    fn execute_processors_until_p5_runs_orthogonal_router() {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions {
@@ -1107,14 +1109,9 @@ mod tests {
         })
         .unwrap();
 
-        let err = execute_processors_until(&mut graph, LayeredPhase::P5EdgeRouting).unwrap_err();
+        let executed = execute_processors_until(&mut graph, LayeredPhase::P5EdgeRouting).unwrap();
 
-        assert_eq!(
-            err,
-            PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::OrthogonalEdgeRouter
-            }
-        );
+        assert_eq!(executed.last(), Some(&ProcessorKind::OrthogonalEdgeRouter));
         assert!(
             graph
                 .layerless_nodes
@@ -1122,8 +1119,29 @@ mod tests {
                 .all(|node| node.position.y.is_finite())
         );
         assert!(graph.size.height > 0.0);
+        assert!(graph.size.width > 0.0);
         assert!(graph.layers.iter().all(|layer| layer.size.width > 0.0));
         assert!(graph.layers.iter().all(|layer| layer.size.height > 0.0));
+        assert!(graph.edges.iter().all(|edge| {
+            edge.bend_points
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
+        }));
+    }
+
+    #[test]
+    fn assembled_processors_keep_long_edge_joiner_after_p5_router() {
+        let processors = kinds(&p3_options());
+        let router = processors
+            .iter()
+            .position(|kind| *kind == ProcessorKind::OrthogonalEdgeRouter)
+            .unwrap();
+        let joiner = processors
+            .iter()
+            .position(|kind| *kind == ProcessorKind::LongEdgeJoiner)
+            .unwrap();
+
+        assert!(joiner > router);
     }
 
     #[test]
