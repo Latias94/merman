@@ -1,4 +1,6 @@
 mod config;
+#[cfg(feature = "elk-layout")]
+pub mod elk;
 mod label;
 mod layout;
 mod node;

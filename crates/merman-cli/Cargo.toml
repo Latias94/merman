@@ -15,8 +15,9 @@ categories = ["command-line-utilities", "visualization"]
 exclude = ["tests/**"]
 
 [features]
-default = ["ratex-math", "ascii"]
+default = ["ratex-math", "ascii", "elk-layout"]
 ascii = ["merman/ascii"]
+elk-layout = ["merman/elk-layout"]
 ratex-math = ["merman/ratex-math"]
 
 [dependencies]

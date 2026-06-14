@@ -23,6 +23,7 @@ default = ["core-full"]
 core-full = ["merman-core/full", "cytoscape-layout"]
 host = ["chrono/clock", "merman-core/host", "roughr/host-random"]
 cytoscape-layout = ["dep:manatee"]
+elk-layout = ["dep:merman-layout-elk"]
 ratex-math = [
   "dep:ratex-layout",
   "dep:ratex-parser",
@@ -38,6 +39,7 @@ chrono.workspace = true
 dugong.workspace = true
 indexmap.workspace = true
 manatee = { workspace = true, optional = true }
+merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }

@@ -792,6 +792,7 @@ sanitization.
 | [`dugong`](https://crates.io/crates/dugong) | Dagre-compatible layout port. |
 | [`dugong-graphlib`](https://crates.io/crates/dugong-graphlib) | Graph container APIs ported from `dagrejs/graphlib`. |
 | [`manatee`](https://crates.io/crates/manatee) | COSE/FCoSE-style compound graph layout ports. |
+| [`merman-layout-elk`](https://crates.io/crates/merman-layout-elk) | Optional ELK layout engine integration point. |
 | [`roughr-merman`](https://crates.io/crates/roughr-merman) | Forked Rough.js-style renderer dependency stabilized for Mermaid parity. |
 
 ## Star History

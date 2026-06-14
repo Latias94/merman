@@ -22,7 +22,7 @@ use super::{
     flowchart_whole_label_font_style_requests_italic,
 };
 
-fn flowchart_svg_plain_computed_width_px(
+pub(super) fn flowchart_svg_plain_computed_width_px(
     measurer: &dyn TextMeasurer,
     plain: &str,
     style: &TextStyle,
@@ -156,7 +156,7 @@ fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
         .unwrap_or(false)
 }
 
-fn first_parent_cycle_assignment<'a, I>(
+pub(super) fn first_parent_cycle_assignment<'a, I>(
     order: I,
     parent_by_id: &HashMap<String, String>,
 ) -> Option<(String, String)>

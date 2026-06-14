@@ -2776,6 +2776,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-layout-elk"
+version = "0.8.0-alpha.2"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "merman-render"
 version = "0.8.0-alpha.2"
 dependencies = [
@@ -2786,6 +2793,7 @@ dependencies = [
  "indexmap",
  "manatee",
  "merman-core",
+ "merman-layout-elk",
  "pulldown-cmark",
  "ratex-layout",
  "ratex-parser",

@@ -17,6 +17,12 @@ other size-sensitive pure-wasm consumers, then opt into `cytoscape-layout` only 
 families are needed. Enable the `host` feature when you want host clock access, host-seeded timing,
 and host randomness for diagnostic or browser-oriented builds.
 
+ELK integration is kept behind the explicit `elk-layout` feature in this low-level crate. The
+public `merman` render facade enables that feature for ordinary render builds, while direct
+`merman-render` users can keep it disabled for minimal custom stacks. The current feature exposes
+the Flowchart-to-ELK graph adapter surface; full `flowchart-elk` layout execution and SVG parity
+remain a follow-up admission slice.
+
 Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use `merman-render` directly when you need lower-level control over layout, text measurement, SVG options, or SVG postprocessing.
 
 ## What It Provides
