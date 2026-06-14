@@ -6,7 +6,10 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/HyperEdgeCycleDetector.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/HyperEdgeSegmentSplitter.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/OrthogonalRoutingGenerator.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/direction/BaseRoutingDirectionStrategy.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/direction/WestToEastRoutingStrategy.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/direction/NorthToSouthRoutingStrategy.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal/direction/SouthToNorthRoutingStrategy.java
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
@@ -20,6 +23,48 @@ const CONFLICT_THRESHOLD_FACTOR: f64 = 0.5;
 const CRITICAL_CONFLICT_THRESHOLD_FACTOR: f64 = 0.2;
 const CONFLICT_PENALTY: i32 = 1;
 const CROSSING_PENALTY: i32 = 16;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoutingDirection {
+    WestToEast,
+    NorthToSouth,
+    SouthToNorth,
+}
+
+impl RoutingDirection {
+    fn source_port_side(self) -> PortSide {
+        match self {
+            Self::WestToEast => PortSide::East,
+            Self::NorthToSouth => PortSide::South,
+            Self::SouthToNorth => PortSide::North,
+        }
+    }
+
+    fn target_port_side(self) -> PortSide {
+        match self {
+            Self::WestToEast => PortSide::West,
+            Self::NorthToSouth => PortSide::North,
+            Self::SouthToNorth => PortSide::South,
+        }
+    }
+
+    fn port_position_on_hypernode(self, graph: &LGraph, port_ref: PortRef) -> f64 {
+        let anchor = absolute_anchor(graph, port_ref);
+        match self {
+            Self::WestToEast => anchor.y,
+            Self::NorthToSouth | Self::SouthToNorth => anchor.x,
+        }
+    }
+
+    fn routing_slot_position(self, start_pos: f64, routing_slot: i32, edge_spacing: f64) -> f64 {
+        match self {
+            Self::WestToEast | Self::NorthToSouth => {
+                start_pos + f64::from(routing_slot) * edge_spacing
+            }
+            Self::SouthToNorth => start_pos - f64::from(routing_slot) * edge_spacing,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DependencyType {
@@ -419,20 +464,40 @@ pub fn route_edges_west_to_east(
     start_pos: f64,
     edge_spacing: f64,
 ) -> usize {
+    route_edges(
+        graph,
+        RoutingDirection::WestToEast,
+        source_layer_nodes,
+        target_layer_nodes,
+        start_pos,
+        edge_spacing,
+    )
+}
+
+pub fn route_edges(
+    graph: &mut LGraph,
+    direction: RoutingDirection,
+    source_layer_nodes: Option<&[usize]>,
+    target_layer_nodes: Option<&[usize]>,
+    start_pos: f64,
+    edge_spacing: f64,
+) -> usize {
     let mut hyper_graph = HyperEdgeGraph::default();
     let mut port_to_segment = HashMap::new();
 
-    create_hyperedge_segments_west_to_east(
+    create_hyperedge_segments(
         graph,
+        direction,
         source_layer_nodes,
-        PortSide::East,
+        direction.source_port_side(),
         &mut hyper_graph,
         &mut port_to_segment,
     );
-    create_hyperedge_segments_west_to_east(
+    create_hyperedge_segments(
         graph,
+        direction,
         target_layer_nodes,
-        PortSide::West,
+        direction.target_port_side(),
         &mut hyper_graph,
         &mut port_to_segment,
     );
@@ -468,7 +533,14 @@ pub fn route_edges_west_to_east(
         }
 
         rank_count = rank_count.max(hyper_graph.segments[segment].routing_slot);
-        calculate_bend_points_west_to_east(graph, &hyper_graph, segment, start_pos, edge_spacing);
+        calculate_bend_points(
+            graph,
+            direction,
+            &hyper_graph,
+            segment,
+            start_pos,
+            edge_spacing,
+        );
     }
 
     (rank_count + 1) as usize
@@ -500,8 +572,9 @@ pub fn minimum_horizontal_segment_distance(segments: &[HyperEdgeSegment]) -> f64
     incoming.min(outgoing)
 }
 
-fn create_hyperedge_segments_west_to_east(
+fn create_hyperedge_segments(
     graph: &LGraph,
+    direction: RoutingDirection,
     nodes: Option<&[usize]>,
     port_side: PortSide,
     hyper_graph: &mut HyperEdgeGraph,
@@ -527,8 +600,9 @@ fn create_hyperedge_segments_west_to_east(
             };
             if !port_to_segment.contains_key(&port_ref) {
                 let segment = hyper_graph.add_segment(HyperEdgeSegment::new());
-                add_port_positions_west_to_east(
+                add_port_positions(
                     graph,
+                    direction,
                     port_ref,
                     hyper_graph,
                     segment,
@@ -539,8 +613,9 @@ fn create_hyperedge_segments_west_to_east(
     }
 }
 
-fn add_port_positions_west_to_east(
+fn add_port_positions(
     graph: &LGraph,
+    direction: RoutingDirection,
     port_ref: PortRef,
     hyper_graph: &mut HyperEdgeGraph,
     segment: usize,
@@ -548,10 +623,10 @@ fn add_port_positions_west_to_east(
 ) {
     port_to_segment.insert(port_ref, segment);
     hyper_graph.segments[segment].ports.push(port_ref);
-    let port_position = port_position_on_hypernode_west_to_east(graph, port_ref);
+    let port_position = direction.port_position_on_hypernode(graph, port_ref);
     let port = &graph.layerless_nodes[port_ref.node].ports[port_ref.port];
 
-    if port.side == PortSide::East {
+    if port.side == direction.source_port_side() {
         hyper_graph.segments[segment].insert_incoming(port_position);
     } else {
         hyper_graph.segments[segment].insert_outgoing(port_position);
@@ -559,8 +634,9 @@ fn add_port_positions_west_to_east(
 
     for other_port in connected_ports(graph, port_ref) {
         if !port_to_segment.contains_key(&other_port) {
-            add_port_positions_west_to_east(
+            add_port_positions(
                 graph,
+                direction,
                 other_port,
                 hyper_graph,
                 segment,
@@ -570,8 +646,9 @@ fn add_port_positions_west_to_east(
     }
 }
 
-fn calculate_bend_points_west_to_east(
+fn calculate_bend_points(
     graph: &mut LGraph,
+    direction: RoutingDirection,
     hyper_graph: &HyperEdgeGraph,
     segment_index: usize,
     start_pos: f64,
@@ -582,10 +659,11 @@ fn calculate_bend_points_west_to_east(
         return;
     }
 
-    let segment_x = start_pos + f64::from(segment.routing_slot) * edge_spacing;
+    let segment_position =
+        direction.routing_slot_position(start_pos, segment.routing_slot, edge_spacing);
 
     for port_ref in &segment.ports {
-        let source_y = absolute_anchor(graph, *port_ref).y;
+        let source_anchor = absolute_anchor(graph, *port_ref);
         let outgoing_edges = graph.layerless_nodes[port_ref.node].ports[port_ref.port]
             .outgoing_edges
             .clone();
@@ -596,59 +674,50 @@ fn calculate_bend_points_west_to_east(
             }
 
             let target = graph.edges[edge_index].target;
-            let target_y = absolute_anchor(graph, target).y;
+            let target_anchor = absolute_anchor(graph, target);
 
-            if (source_y - target_y).abs() <= TOLERANCE {
+            if bend_point_axis_delta(direction, source_anchor, target_anchor).abs() <= TOLERANCE {
                 continue;
             }
 
-            let mut current_x = segment_x;
+            let mut current_position = segment_position;
 
             add_bend_point_if_needed(
                 graph,
                 edge_index,
-                LPoint {
-                    x: current_x,
-                    y: source_y,
-                },
+                source_bend_point(direction, source_anchor, current_position),
             );
 
             if let Some(split_partner) = segment.split_partner {
-                let split_y = hyper_graph.segments[split_partner]
+                let split_position = hyper_graph.segments[split_partner]
                     .incoming_connection_coordinates
                     .first()
                     .copied()
-                    .unwrap_or(source_y);
+                    .unwrap_or_else(|| direction.port_position_on_hypernode(graph, *port_ref));
 
                 add_bend_point_if_needed(
                     graph,
                     edge_index,
-                    LPoint {
-                        x: current_x,
-                        y: split_y,
-                    },
+                    split_bend_point(direction, split_position, current_position),
                 );
 
-                current_x = start_pos
-                    + f64::from(hyper_graph.segments[split_partner].routing_slot) * edge_spacing;
+                current_position = direction.routing_slot_position(
+                    start_pos,
+                    hyper_graph.segments[split_partner].routing_slot,
+                    edge_spacing,
+                );
 
                 add_bend_point_if_needed(
                     graph,
                     edge_index,
-                    LPoint {
-                        x: current_x,
-                        y: split_y,
-                    },
+                    split_bend_point(direction, split_position, current_position),
                 );
             }
 
             add_bend_point_if_needed(
                 graph,
                 edge_index,
-                LPoint {
-                    x: current_x,
-                    y: target_y,
-                },
+                target_bend_point(direction, target_anchor, current_position),
             );
         }
     }
@@ -1327,16 +1396,76 @@ fn connected_ports(graph: &LGraph, port_ref: PortRef) -> Vec<PortRef> {
         .collect()
 }
 
-fn port_position_on_hypernode_west_to_east(graph: &LGraph, port_ref: PortRef) -> f64 {
-    absolute_anchor(graph, port_ref).y
-}
-
 fn absolute_anchor(graph: &LGraph, port_ref: PortRef) -> LPoint {
     let node = &graph.layerless_nodes[port_ref.node];
     let port = &node.ports[port_ref.port];
     LPoint {
         x: node.position.x + port.position.x + port.anchor.x,
         y: node.position.y + port.position.y + port.anchor.y,
+    }
+}
+
+fn bend_point_axis_delta(
+    direction: RoutingDirection,
+    source_anchor: LPoint,
+    target_anchor: LPoint,
+) -> f64 {
+    match direction {
+        RoutingDirection::WestToEast => source_anchor.y - target_anchor.y,
+        RoutingDirection::NorthToSouth | RoutingDirection::SouthToNorth => {
+            source_anchor.x - target_anchor.x
+        }
+    }
+}
+
+fn source_bend_point(
+    direction: RoutingDirection,
+    source_anchor: LPoint,
+    routing_position: f64,
+) -> LPoint {
+    match direction {
+        RoutingDirection::WestToEast => LPoint {
+            x: routing_position,
+            y: source_anchor.y,
+        },
+        RoutingDirection::NorthToSouth | RoutingDirection::SouthToNorth => LPoint {
+            x: source_anchor.x,
+            y: routing_position,
+        },
+    }
+}
+
+fn split_bend_point(
+    direction: RoutingDirection,
+    split_position: f64,
+    routing_position: f64,
+) -> LPoint {
+    match direction {
+        RoutingDirection::WestToEast => LPoint {
+            x: routing_position,
+            y: split_position,
+        },
+        RoutingDirection::NorthToSouth | RoutingDirection::SouthToNorth => LPoint {
+            x: split_position,
+            y: routing_position,
+        },
+    }
+}
+
+fn target_bend_point(
+    direction: RoutingDirection,
+    target_anchor: LPoint,
+    routing_position: f64,
+) -> LPoint {
+    match direction {
+        RoutingDirection::WestToEast => LPoint {
+            x: routing_position,
+            y: target_anchor.y,
+        },
+        RoutingDirection::NorthToSouth | RoutingDirection::SouthToNorth => LPoint {
+            x: target_anchor.x,
+            y: routing_position,
+        },
     }
 }
 
@@ -1477,6 +1606,78 @@ mod tests {
                 PortType::Output,
                 PortSide::West,
                 LPoint { x: 0.0, y: 15.0 },
+            )
+            .unwrap();
+
+        graph.add_edge(LayeredEdge {
+            id: "A-B".to_string(),
+            source: source_port,
+            target: target_port,
+            source_node_id: "A".to_string(),
+            target_node_id: "B".to_string(),
+            labels: Vec::new(),
+            minlen: 1,
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order: Some(0),
+            priority_direction: 0,
+            priority_shortness: 0,
+            priority_straightness: 0,
+            thickness: 0.0,
+            original_opposite_port: None,
+        });
+
+        graph
+    }
+
+    fn vertical_route_test_graph(source_x: f64, target_x: f64, source_side: PortSide) -> LGraph {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let source = graph.layerless_nodes.len();
+        let mut source_node = LNode::new("A", 20.0, 40.0, Some(0));
+        source_node.position = LPoint {
+            x: source_x,
+            y: 0.0,
+        };
+        graph.layerless_nodes.push(source_node);
+
+        let target = graph.layerless_nodes.len();
+        let mut target_node = LNode::new("B", 20.0, 40.0, Some(1));
+        target_node.position = LPoint {
+            x: target_x,
+            y: 100.0,
+        };
+        graph.layerless_nodes.push(target_node);
+
+        graph.set_node_layer(source, 0);
+        graph.set_node_layer(target, 1);
+
+        let source_port_side = source_side;
+        let target_port_side = source_side.opposed();
+        let source_port_position = match source_port_side {
+            PortSide::North => LPoint { x: 5.0, y: 0.0 },
+            PortSide::South => LPoint { x: 5.0, y: 40.0 },
+            _ => unreachable!("vertical test only uses north/south source ports"),
+        };
+        let target_port_position = match target_port_side {
+            PortSide::North => LPoint { x: 15.0, y: 0.0 },
+            PortSide::South => LPoint { x: 15.0, y: 40.0 },
+            _ => unreachable!("vertical test only uses north/south target ports"),
+        };
+
+        let source_port = graph
+            .add_port(
+                source,
+                PortType::Output,
+                source_port_side,
+                source_port_position,
+            )
+            .unwrap();
+        let target_port = graph
+            .add_port(
+                target,
+                PortType::Output,
+                target_port_side,
+                target_port_position,
             )
             .unwrap();
 
@@ -1742,5 +1943,49 @@ mod tests {
 
         assert_eq!(slots, 0);
         assert!(graph.edges[0].bend_points.is_empty());
+    }
+
+    #[test]
+    fn route_edges_north_to_south_writes_orthogonal_bendpoints_for_non_straight_edge() {
+        let mut graph = vertical_route_test_graph(0.0, 30.0, PortSide::South);
+        let source = graph.layers[0].nodes.clone();
+        let target = graph.layers[1].nodes.clone();
+
+        let slots = route_edges(
+            &mut graph,
+            RoutingDirection::NorthToSouth,
+            Some(&source),
+            Some(&target),
+            60.0,
+            10.0,
+        );
+
+        assert_eq!(slots, 1);
+        assert_eq!(
+            graph.edges[0].bend_points,
+            vec![LPoint { x: 5.0, y: 60.0 }, LPoint { x: 45.0, y: 60.0 }]
+        );
+    }
+
+    #[test]
+    fn route_edges_south_to_north_writes_orthogonal_bendpoints_for_non_straight_edge() {
+        let mut graph = vertical_route_test_graph(0.0, 30.0, PortSide::North);
+        let source = graph.layers[0].nodes.clone();
+        let target = graph.layers[1].nodes.clone();
+
+        let slots = route_edges(
+            &mut graph,
+            RoutingDirection::SouthToNorth,
+            Some(&source),
+            Some(&target),
+            -20.0,
+            10.0,
+        );
+
+        assert_eq!(slots, 1);
+        assert_eq!(
+            graph.edges[0].bend_points,
+            vec![LPoint { x: 5.0, y: -20.0 }, LPoint { x: 45.0, y: -20.0 }]
+        );
     }
 }
