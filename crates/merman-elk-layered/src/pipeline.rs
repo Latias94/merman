@@ -18,7 +18,7 @@ use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, join_long_edges,
-    postprocess_layer_constraints, preprocess_layer_constraints,
+    postprocess_layer_constraints, preprocess_layer_constraints, restore_reversed_edges,
     reverse_edges_for_edge_and_layer_constraints, split_long_edges,
 };
 use crate::p1cycles::break_cycles_greedy;
@@ -402,6 +402,8 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         }
         ProcessorKind::OrthogonalEdgeRouter => route_edges_orthogonal(graph),
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
+        ProcessorKind::EndLabelSorter if !graph.options.graph_has_end_labels => {}
+        ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -777,6 +779,19 @@ mod tests {
             .into_iter()
             .map(|slot| slot.kind)
             .collect()
+    }
+
+    fn execute_all_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<ProcessorKind>> {
+        let mut executed = Vec::new();
+        configure_graph_properties(graph);
+        let processors = assemble_processors_for_graph(graph);
+
+        for slot in processors {
+            execute_processor(graph, slot.kind)?;
+            executed.push(slot.kind);
+        }
+
+        Ok(executed)
     }
 
     fn node(id: &str) -> ElkInputNode {
@@ -1180,6 +1195,78 @@ mod tests {
                 .iter()
                 .any(|node| graph.layerless_nodes[*node].kind == crate::graph::LNodeKind::LongEdge)
         }));
+    }
+
+    #[test]
+    fn source_ported_plain_flowchart_runs_through_reversed_edge_restorer() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_type: GreedySwitchType::Off,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        })
+        .unwrap();
+
+        let executed = execute_all_ported_processors(&mut graph).unwrap();
+
+        assert!(executed.contains(&ProcessorKind::EndLabelSorter));
+        assert!(executed.contains(&ProcessorKind::ReversedEdgeRestorer));
+        assert_eq!(executed.last(), Some(&ProcessorKind::ReversedEdgeRestorer));
+        assert!(graph.edges.iter().all(|edge| !edge.reversed));
+    }
+
+    #[test]
+    fn reversed_edge_restorer_processor_restores_cycle_breaking_edges() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_type: GreedySwitchType::Off,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-A", "B", "A")],
+        })
+        .unwrap();
+
+        execute_processors_until(&mut graph, LayeredPhase::P5EdgeRouting).unwrap();
+        assert!(graph.edges.iter().any(|edge| edge.reversed));
+
+        execute_processor(&mut graph, ProcessorKind::ReversedEdgeRestorer).unwrap();
+
+        assert!(graph.edges.iter().all(|edge| !edge.reversed));
+    }
+
+    #[test]
+    fn end_label_sorter_stays_unsupported_until_label_cells_are_ported() {
+        let mut head = ElkInputLabel::center("head", 20.0, 10.0);
+        head.placement = crate::graph::EdgeLabelPlacement::Head;
+        let mut labelled_edge = edge("A-B", "A", "B");
+        labelled_edge.label = Some(head);
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_type: GreedySwitchType::Off,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B")],
+            edges: vec![labelled_edge],
+        })
+        .unwrap();
+
+        let err = execute_processor(&mut graph, ProcessorKind::EndLabelSorter).unwrap_err();
+
+        assert_eq!(
+            err,
+            PipelineError::UnsupportedProcessor {
+                kind: ProcessorKind::EndLabelSorter
+            }
+        );
     }
 
     #[test]
