@@ -6,7 +6,9 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LEdge.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LPort.java
 
-use super::options::{LayeredOptions, PortAlignment, PortConstraints};
+use super::options::{
+    ElkDirection, LayerConstraint, LayeredOptions, PortAlignment, PortConstraints,
+};
 use crate::random::JavaRandom;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -312,6 +314,18 @@ pub enum PortSide {
     East,
     South,
     West,
+}
+
+impl PortSide {
+    pub fn opposed(self) -> Self {
+        match self {
+            Self::North => Self::South,
+            Self::East => Self::West,
+            Self::South => Self::North,
+            Self::West => Self::East,
+            Self::Undefined => Self::Undefined,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -704,5 +718,194 @@ fn remove_edge(edges: &mut Vec<usize>, edge_index: usize) {
 fn remove_node(nodes: &mut Vec<usize>, node_index: usize) {
     if let Some(position) = nodes.iter().position(|candidate| *candidate == node_index) {
         nodes.remove(position);
+    }
+}
+
+/// Create an external port dummy node following ELK's `LGraphUtil.createExternalPortDummy(...)`.
+///
+/// Source:
+/// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LGraphUtil.java
+pub fn create_external_port_dummy(
+    id: impl Into<String>,
+    port_id: impl Into<String>,
+    port_type: PortType,
+    port_constraints: PortConstraints,
+    port_side: PortSide,
+    net_flow: isize,
+    port_position: LPoint,
+    port_size: LSize,
+    port_node_size: LSize,
+    border_offset: f64,
+    layout_direction: ElkDirection,
+) -> LNode {
+    let external_side = if port_constraints.is_side_fixed() {
+        port_side
+    } else if net_flow >= 0 {
+        port_side_from_direction(layout_direction)
+    } else {
+        port_side_from_direction(layout_direction).opposed()
+    };
+
+    let mut dummy = LNode::new(id, 0.0, 0.0, None);
+    dummy.kind = LNodeKind::ExternalPort;
+    dummy.port_constraints = PortConstraints::FixedPos;
+
+    let mut anchor = LPoint {
+        x: port_size.width / 2.0,
+        y: port_size.height / 2.0,
+    };
+    let mut dummy_port_side = external_side.opposed();
+
+    match external_side {
+        PortSide::West => {
+            dummy.layer_constraint = LayerConstraint::FirstSeparate;
+            dummy.layer_constraint_explicit = true;
+            dummy.size.height = port_size.height;
+            if border_offset < 0.0 {
+                dummy.size.width = -border_offset;
+            }
+            anchor.x = 0.0;
+        }
+        PortSide::East => {
+            dummy.layer_constraint = LayerConstraint::LastSeparate;
+            dummy.layer_constraint_explicit = true;
+            dummy.size.height = port_size.height;
+            if border_offset < 0.0 {
+                dummy.size.width = -border_offset;
+            }
+            anchor.x = 0.0;
+        }
+        PortSide::North => {
+            dummy.in_layer_constraint = InLayerConstraint::Top;
+            dummy.size.width = port_size.width;
+            if border_offset < 0.0 {
+                dummy.size.height = -border_offset;
+            }
+            anchor.y = 0.0;
+        }
+        PortSide::South => {
+            dummy.in_layer_constraint = InLayerConstraint::Bottom;
+            dummy.size.width = port_size.width;
+            if border_offset < 0.0 {
+                dummy.size.height = -border_offset;
+            }
+            anchor.y = 0.0;
+        }
+        PortSide::Undefined => {
+            dummy_port_side = PortSide::Undefined;
+        }
+    }
+
+    let mut port = LPort::new(port_id, 0, port_type);
+    port.side = dummy_port_side;
+    port.position = anchor;
+    port.anchor = LPoint::default();
+    port.size = port_size;
+    port.border_offset = Some(border_offset);
+    if port_constraints.is_order_fixed() {
+        port.ratio_or_position = port_ratio_or_position(
+            external_side,
+            port_position,
+            port_node_size,
+            port_constraints.is_ratio_fixed(),
+        );
+    }
+    dummy.ports.push(port);
+    dummy
+}
+
+fn port_side_from_direction(direction: ElkDirection) -> PortSide {
+    match direction {
+        ElkDirection::Right | ElkDirection::Undefined => PortSide::East,
+        ElkDirection::Left => PortSide::West,
+        ElkDirection::Down => PortSide::South,
+        ElkDirection::Up => PortSide::North,
+    }
+}
+
+fn port_ratio_or_position(
+    side: PortSide,
+    port_position: LPoint,
+    port_node_size: LSize,
+    ratio_fixed: bool,
+) -> f64 {
+    match side {
+        PortSide::West | PortSide::East => {
+            if ratio_fixed && port_node_size.height > 0.0 {
+                port_position.y / port_node_size.height
+            } else {
+                port_position.y
+            }
+        }
+        PortSide::North | PortSide::South => {
+            if ratio_fixed && port_node_size.width > 0.0 {
+                port_position.x / port_node_size.width
+            } else {
+                port_position.x
+            }
+        }
+        PortSide::Undefined => 0.0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_port_dummy_uses_direction_and_net_flow_for_free_ports() {
+        let dummy = create_external_port_dummy(
+            "external:A",
+            "external:A:0",
+            PortType::Input,
+            PortConstraints::Free,
+            PortSide::Undefined,
+            1,
+            LPoint::default(),
+            LSize {
+                width: 4.0,
+                height: 6.0,
+            },
+            LSize::default(),
+            0.0,
+            ElkDirection::Down,
+        );
+
+        assert_eq!(dummy.kind, LNodeKind::ExternalPort);
+        assert_eq!(dummy.in_layer_constraint, InLayerConstraint::Bottom);
+        assert_eq!(dummy.port_constraints, PortConstraints::FixedPos);
+        assert_eq!(dummy.ports[0].side, PortSide::North);
+        assert_eq!(dummy.ports[0].position, LPoint { x: 2.0, y: 0.0 });
+    }
+
+    #[test]
+    fn external_port_dummy_keeps_fixed_side_and_order_metadata() {
+        let dummy = create_external_port_dummy(
+            "external:A",
+            "external:A:0",
+            PortType::Output,
+            PortConstraints::FixedRatio,
+            PortSide::West,
+            -1,
+            LPoint { x: 0.0, y: 40.0 },
+            LSize {
+                width: 4.0,
+                height: 6.0,
+            },
+            LSize {
+                width: 20.0,
+                height: 80.0,
+            },
+            -3.0,
+            ElkDirection::Right,
+        );
+
+        assert_eq!(dummy.layer_constraint, LayerConstraint::FirstSeparate);
+        assert_eq!(dummy.size.width, 3.0);
+        assert_eq!(dummy.size.height, 6.0);
+        assert_eq!(dummy.ports[0].side, PortSide::East);
+        assert_eq!(dummy.ports[0].position, LPoint { x: 0.0, y: 3.0 });
+        assert_eq!(dummy.ports[0].border_offset, Some(-3.0));
+        assert_eq!(dummy.ports[0].ratio_or_position, 0.5);
     }
 }

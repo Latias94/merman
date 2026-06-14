@@ -8,9 +8,12 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::graph::{
-    EdgeLabelPlacement, LGraph, LLabel, LNode, LNodeKind, LPort, LayeredEdge, PortRef, PortType,
+    EdgeLabelPlacement, LGraph, LLabel, LNode, LPort, LSize, LayeredEdge, PortRef, PortSide,
+    PortType, create_external_port_dummy,
 };
-use crate::options::{ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions};
+use crate::options::{
+    ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions, PortConstraints,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElkInputGraph {
@@ -241,27 +244,41 @@ fn transform_edge(
 }
 
 fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> Option<PortRef> {
-    let node = match graph
+    if let Some(node) = graph
         .layerless_nodes
         .iter()
         .position(|candidate| candidate.id == node_id)
     {
-        Some(node) => node,
-        None => {
-            graph.graph_properties.external_ports = true;
-            let mut dummy = LNode::new(format!("external:{node_id}"), 0.0, 0.0, None);
-            dummy.kind = LNodeKind::ExternalPort;
-            graph.layerless_nodes.push(dummy);
-            graph.layerless_nodes.len() - 1
-        }
-    };
-    let port = graph.layerless_nodes[node].ports.len();
-    graph.layerless_nodes[node].ports.push(LPort::new(
-        format!("{node_id}:{port:?}"),
-        node,
+        let port = graph.layerless_nodes[node].ports.len();
+        graph.layerless_nodes[node].ports.push(LPort::new(
+            format!("{node_id}:{port:?}"),
+            node,
+            port_type,
+        ));
+        return Some(PortRef { node, port });
+    }
+
+    graph.graph_properties.external_ports = true;
+    let mut dummy = create_external_port_dummy(
+        format!("external:{node_id}"),
+        format!("external:{node_id}:0"),
         port_type,
-    ));
-    Some(PortRef { node, port })
+        PortConstraints::Free,
+        PortSide::Undefined,
+        match port_type {
+            PortType::Input => 1,
+            PortType::Output => -1,
+        },
+        Default::default(),
+        LSize::default(),
+        LSize::default(),
+        0.0,
+        graph.options.direction,
+    );
+    let node = graph.layerless_nodes.len();
+    dummy.ports[0].node = node;
+    graph.layerless_nodes.push(dummy);
+    Some(PortRef { node, port: 0 })
 }
 
 fn has_parallel_port_edges(port: &LPort) -> bool {
@@ -460,6 +477,7 @@ fn detect_parent_cycles<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{InLayerConstraint, LNodeKind};
     use crate::options::OrderingStrategy;
 
     fn node(id: &str) -> ElkInputNode {
@@ -561,6 +579,20 @@ mod tests {
         assert_eq!(nested.edges[0].target_node_id, "A");
         assert!(nested.graph_properties.external_ports);
         assert!(nested.options.graph_has_external_ports);
+        let external = nested
+            .layerless_nodes
+            .iter()
+            .find(|node| node.kind == LNodeKind::ExternalPort)
+            .unwrap();
+        assert_eq!(external.id, "external:cluster");
+        assert_eq!(external.layer_constraint, LayerConstraint::None);
+        assert_eq!(external.in_layer_constraint, InLayerConstraint::Top);
+        assert!(!external.layer_constraint_explicit);
+        assert_eq!(external.port_constraints, PortConstraints::FixedPos);
+        assert_eq!(external.ports.len(), 1);
+        assert_eq!(external.ports[0].side, PortSide::South);
+        assert_eq!(nested.edges[0].source.node, 1);
+        assert_eq!(nested.edges[0].source.port, 0);
     }
 
     #[test]
