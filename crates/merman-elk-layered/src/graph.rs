@@ -59,6 +59,22 @@ impl LGraph {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
     pub nodes: Vec<usize>,
+    pub size: LSize,
+}
+
+impl Layer {
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::new(),
+            size: LSize::default(),
+        }
+    }
+}
+
+impl Default for Layer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -341,7 +357,7 @@ impl LGraph {
 
     pub fn set_node_layer(&mut self, node_index: usize, layer_index: usize) {
         while self.layers.len() <= layer_index {
-            self.layers.push(Layer { nodes: Vec::new() });
+            self.layers.push(Layer::new());
         }
 
         if let Some(old_layer) = self.layerless_nodes[node_index].layer_index {
@@ -355,7 +371,7 @@ impl LGraph {
     }
 
     pub fn insert_layer(&mut self, layer_index: usize) {
-        self.layers.insert(layer_index, Layer { nodes: Vec::new() });
+        self.layers.insert(layer_index, Layer::new());
         for node in &mut self.layerless_nodes {
             if let Some(current) = node.layer_index {
                 if current >= layer_index {

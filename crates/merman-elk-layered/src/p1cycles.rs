@@ -307,6 +307,7 @@ mod tests {
         break_cycles_greedy(&mut graph);
         graph.layers.push(Layer {
             nodes: (0..graph.layerless_nodes.len()).collect(),
+            size: Default::default(),
         });
         restore_reversed_edges(&mut graph);
 

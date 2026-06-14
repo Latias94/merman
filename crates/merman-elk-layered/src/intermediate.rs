@@ -6,6 +6,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerConstraintPreprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerConstraintPostprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeSplitter.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerSizeAndGraphHeightCalculator.java
 
 use crate::graph::{
     EdgeLabelPlacement, LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortSide, PortType,
@@ -429,7 +430,7 @@ fn move_first_and_last_nodes(graph: &mut LGraph) -> IntermediateResult<()> {
 
     if !last_label_nodes.is_empty() {
         let layer = graph.layers.len();
-        graph.layers.push(crate::graph::Layer { nodes: Vec::new() });
+        graph.layers.push(crate::graph::Layer::new());
         for node in last_label_nodes {
             graph.set_node_layer(node, layer);
         }
@@ -483,7 +484,7 @@ fn restore_hidden_layer_constraint_nodes(graph: &mut LGraph) {
 
     if !last_separate_nodes.is_empty() {
         let layer = graph.layers.len();
-        graph.layers.push(crate::graph::Layer { nodes: Vec::new() });
+        graph.layers.push(crate::graph::Layer::new());
         for node in last_separate_nodes {
             graph.set_node_layer(node, layer);
         }
@@ -566,6 +567,56 @@ pub fn split_long_edges(graph: &mut LGraph) {
 
         layer_index += 1;
     }
+}
+
+pub fn calculate_layer_sizes_and_graph_height(graph: &mut LGraph) {
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut found_nodes = false;
+    let ports_surrounding = graph.options.spacing.ports_surrounding;
+
+    for layer in &mut graph.layers {
+        layer.size.width = 0.0;
+        layer.size.height = 0.0;
+
+        if layer.nodes.is_empty() {
+            continue;
+        }
+
+        found_nodes = true;
+
+        for node_index in &layer.nodes {
+            let node = &graph.layerless_nodes[*node_index];
+            layer.size.width = layer
+                .size
+                .width
+                .max(node.size.width + node.margin.left + node.margin.right);
+        }
+
+        let first_node = &graph.layerless_nodes[layer.nodes[0]];
+        let mut top = first_node.position.y - first_node.margin.top;
+        if first_node.kind == LNodeKind::ExternalPort {
+            top -= ports_surrounding.top;
+        }
+
+        let last_node = &graph.layerless_nodes[layer.nodes[layer.nodes.len() - 1]];
+        let mut bottom = last_node.position.y + last_node.size.height + last_node.margin.bottom;
+        if last_node.kind == LNodeKind::ExternalPort {
+            bottom += ports_surrounding.bottom;
+        }
+
+        layer.size.height = bottom - top;
+        min_y = min_y.min(top);
+        max_y = max_y.max(bottom);
+    }
+
+    if !found_nodes {
+        min_y = 0.0;
+        max_y = 0.0;
+    }
+
+    graph.size.height = max_y - min_y;
+    graph.offset.y -= min_y;
 }
 
 fn create_long_edge_dummy_node(
@@ -1060,5 +1111,69 @@ mod tests {
 
         let err = postprocess_layer_constraints(&mut graph).unwrap_err();
         assert!(matches!(err, IntermediateError::FirstIncomingEdge { .. }));
+    }
+
+    #[test]
+    fn layer_size_calculator_sets_layer_sizes_graph_height_and_vertical_offset() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::default(),
+            nodes: vec![node("A"), node("B")],
+            edges: Vec::new(),
+        })
+        .unwrap();
+        graph.layerless_nodes[0].size.width = 30.0;
+        graph.layerless_nodes[0].size.height = 10.0;
+        graph.layerless_nodes[0].position.y = -5.0;
+        graph.layerless_nodes[0].margin.top = 3.0;
+        graph.layerless_nodes[0].margin.right = 7.0;
+        graph.layerless_nodes[0].margin.bottom = 11.0;
+        graph.layerless_nodes[0].margin.left = 5.0;
+        graph.layerless_nodes[1].size.width = 40.0;
+        graph.layerless_nodes[1].size.height = 20.0;
+        graph.layerless_nodes[1].position.y = 25.0;
+        graph.layerless_nodes[1].margin.top = 2.0;
+        graph.layerless_nodes[1].margin.right = 3.0;
+        graph.layerless_nodes[1].margin.bottom = 4.0;
+        graph.layerless_nodes[1].margin.left = 1.0;
+        graph.layers.push(crate::graph::Layer {
+            nodes: vec![0, 1],
+            size: Default::default(),
+        });
+
+        calculate_layer_sizes_and_graph_height(&mut graph);
+
+        assert_eq!(graph.layers[0].size.width, 44.0);
+        assert_eq!(graph.layers[0].size.height, 57.0);
+        assert_eq!(graph.size.height, 57.0);
+        assert_eq!(graph.offset.y, 8.0);
+    }
+
+    #[test]
+    fn layer_size_calculator_includes_surrounding_spacing_for_external_port_bounds() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::default(),
+            nodes: vec![node("port")],
+            edges: Vec::new(),
+        })
+        .unwrap();
+        graph.options.spacing.ports_surrounding.top = 6.0;
+        graph.options.spacing.ports_surrounding.bottom = 8.0;
+        graph.layerless_nodes[0].kind = LNodeKind::ExternalPort;
+        graph.layerless_nodes[0].size.height = 12.0;
+        graph.layerless_nodes[0].position.y = 10.0;
+        graph.layerless_nodes[0].margin.top = 1.0;
+        graph.layerless_nodes[0].margin.bottom = 2.0;
+        graph.layers.push(crate::graph::Layer {
+            nodes: vec![0],
+            size: Default::default(),
+        });
+
+        calculate_layer_sizes_and_graph_height(&mut graph);
+
+        assert_eq!(graph.layers[0].size.height, 29.0);
+        assert_eq!(graph.size.height, 29.0);
+        assert_eq!(graph.offset.y, -3.0);
     }
 }

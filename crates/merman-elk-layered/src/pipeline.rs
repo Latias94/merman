@@ -17,8 +17,8 @@ use super::options::{
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
 use crate::intermediate::{
-    IntermediateError, postprocess_layer_constraints, preprocess_layer_constraints,
-    reverse_edges_for_edge_and_layer_constraints, split_long_edges,
+    IntermediateError, calculate_layer_sizes_and_graph_height, postprocess_layer_constraints,
+    preprocess_layer_constraints, reverse_edges_for_edge_and_layer_constraints, split_long_edges,
 };
 use crate::p1cycles::break_cycles_greedy;
 use crate::p2layers::layer_network_simplex;
@@ -395,6 +395,9 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::LabelAndNodeSizeProcessor => calculate_label_and_node_sizes(graph),
         ProcessorKind::InnermostNodeMarginCalculator => calculate_innermost_node_margins(graph),
         ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
+        ProcessorKind::LayerSizeAndGraphHeightCalculator => {
+            calculate_layer_sizes_and_graph_height(graph);
+        }
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -1091,7 +1094,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_processors_until_p5_stops_at_unported_edge_router_after_bk() {
+    fn execute_processors_until_p5_runs_layer_size_calculator_before_unported_edge_router() {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions {
@@ -1109,7 +1112,7 @@ mod tests {
         assert_eq!(
             err,
             PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::LayerSizeAndGraphHeightCalculator
+                kind: ProcessorKind::OrthogonalEdgeRouter
             }
         );
         assert!(
@@ -1118,6 +1121,9 @@ mod tests {
                 .iter()
                 .all(|node| node.position.y.is_finite())
         );
+        assert!(graph.size.height > 0.0);
+        assert!(graph.layers.iter().all(|layer| layer.size.width > 0.0));
+        assert!(graph.layers.iter().all(|layer| layer.size.height > 0.0));
     }
 
     #[test]

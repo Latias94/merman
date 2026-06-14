@@ -30,8 +30,8 @@ pub use importer::{
     import_graph,
 };
 pub use intermediate::{
-    IntermediateError, IntermediateResult, postprocess_layer_constraints,
-    preprocess_layer_constraints, restore_reversed_edges,
+    IntermediateError, IntermediateResult, calculate_layer_sizes_and_graph_height,
+    postprocess_layer_constraints, preprocess_layer_constraints, restore_reversed_edges,
     reverse_edges_for_edge_and_layer_constraints, split_edge, split_long_edges,
 };
 pub use options::{
