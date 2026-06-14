@@ -50,6 +50,30 @@ impl JavaRandom {
         }
     }
 
+    pub fn next_bool(&mut self) -> bool {
+        self.next_bits(1) != 0
+    }
+
+    pub fn next_float(&mut self) -> f32 {
+        self.next_bits(24) as f32 / (1u32 << 24) as f32
+    }
+
+    pub fn next_double(&mut self) -> f64 {
+        let high = i64::from(self.next_bits(26));
+        let low = i64::from(self.next_bits(27));
+        ((high << 27) + low) as f64 / (1u64 << 53) as f64
+    }
+
+    pub fn next_long(&mut self) -> i64 {
+        let high = i64::from(self.next_bits(32));
+        let low = i64::from(self.next_bits(32));
+        (high << 32).wrapping_add(low)
+    }
+
+    pub fn set_seed(&mut self, seed: i64) {
+        self.seed = ((seed as u64) ^ MULTIPLIER) & MASK;
+    }
+
     fn next_bits(&mut self, bits: u32) -> i32 {
         self.seed = self.seed.wrapping_mul(MULTIPLIER).wrapping_add(ADDEND) & MASK;
         (self.seed >> (48 - bits)) as i32
@@ -81,5 +105,16 @@ mod tests {
         assert_eq!(random.next_int(3), Some(1));
         assert_eq!(random.next_int(3), Some(1));
         assert_eq!(random.next_int(10), Some(3));
+    }
+
+    #[test]
+    fn scalar_methods_match_java_random_for_seed_one() {
+        let mut random = JavaRandom::new(1);
+
+        assert!(random.next_bool());
+        assert_eq!(random.next_float().to_bits(), 0x3dcdc4e0);
+
+        let mut random = JavaRandom::new(1);
+        assert_eq!(random.next_long(), -4964420948893066024);
     }
 }

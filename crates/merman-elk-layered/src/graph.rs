@@ -197,7 +197,7 @@ pub struct LayeredEdge {
     pub original_opposite_port: Option<PortRef>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PortRef {
     pub node: usize,
     pub port: usize,

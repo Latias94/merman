@@ -13,6 +13,142 @@ use std::collections::{HashMap, HashSet};
 use crate::graph::{LGraph, LNodeKind, PortRef, PortSide};
 use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
 
+pub mod counting;
+pub mod sweep;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepCopy {
+    pub node_order: Vec<Vec<usize>>,
+    pub port_orders: Vec<Vec<Vec<String>>>,
+}
+
+impl SweepCopy {
+    pub fn new(graph: &LGraph, node_order: &[Vec<usize>]) -> Self {
+        Self {
+            node_order: node_order.to_vec(),
+            port_orders: node_order
+                .iter()
+                .map(|layer| {
+                    layer
+                        .iter()
+                        .map(|node| {
+                            graph.layerless_nodes[*node]
+                                .ports
+                                .iter()
+                                .map(|port| port.id.clone())
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect(),
+        }
+    }
+
+    pub fn transfer_node_and_port_orders_to_graph(
+        &self,
+        graph: &mut LGraph,
+        set_port_constraints: bool,
+    ) -> bool {
+        if self.node_order.len() != graph.layers.len() {
+            return false;
+        }
+
+        for (layer_index, layer_order) in self.node_order.iter().enumerate() {
+            if layer_order.len() != graph.layers[layer_index].nodes.len() {
+                return false;
+            }
+        }
+
+        for (layer_index, layer_order) in self.node_order.iter().enumerate() {
+            graph.layers[layer_index].nodes = layer_order.clone();
+            for (position, node) in layer_order.iter().copied().enumerate() {
+                graph.layerless_nodes[node].layer_index = Some(layer_index);
+                let Some(port_order) = self
+                    .port_orders
+                    .get(layer_index)
+                    .and_then(|layer| layer.get(position))
+                else {
+                    return false;
+                };
+                let Some(port_order) = port_order_indices_by_id(graph, node, port_order) else {
+                    return false;
+                };
+                if !graph.reorder_node_ports(node, port_order) {
+                    return false;
+                }
+                if set_port_constraints
+                    && !graph.layerless_nodes[node]
+                        .port_constraints
+                        .is_order_fixed()
+                {
+                    graph.layerless_nodes[node].port_constraints = PortConstraints::FixedOrder;
+                }
+            }
+        }
+
+        true
+    }
+}
+
+fn port_order_indices_by_id(
+    graph: &LGraph,
+    node: usize,
+    port_ids: &[String],
+) -> Option<Vec<usize>> {
+    let ports = graph.layerless_nodes.get(node)?.ports.as_slice();
+    if ports.len() != port_ids.len() {
+        return None;
+    }
+
+    let mut order = Vec::with_capacity(port_ids.len());
+    let mut used = vec![false; ports.len()];
+    for port_id in port_ids {
+        let index = ports
+            .iter()
+            .enumerate()
+            .find_map(|(index, port)| (!used[index] && port.id == *port_id).then_some(index))?;
+        used[index] = true;
+        order.push(index);
+    }
+    Some(order)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphInfoHolder {
+    pub current_node_order: Vec<Vec<usize>>,
+    pub currently_best_node_and_port_order: Option<SweepCopy>,
+    pub best_node_and_port_order: Option<SweepCopy>,
+}
+
+impl GraphInfoHolder {
+    pub fn new(graph: &LGraph) -> Self {
+        Self {
+            current_node_order: graph
+                .layers
+                .iter()
+                .map(|layer| layer.nodes.clone())
+                .collect(),
+            currently_best_node_and_port_order: None,
+            best_node_and_port_order: None,
+        }
+    }
+
+    pub fn set_currently_best_node_and_port_order(&mut self, graph: &LGraph) {
+        self.currently_best_node_and_port_order =
+            Some(SweepCopy::new(graph, &self.current_node_order));
+    }
+
+    pub fn set_best_node_and_port_order(&mut self, copy: SweepCopy) {
+        self.best_node_and_port_order = Some(copy);
+    }
+
+    pub fn get_best_sweep(&self) -> Option<&SweepCopy> {
+        self.best_node_and_port_order
+            .as_ref()
+            .or(self.currently_best_node_and_port_order.as_ref())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct SortableF64(f64);
 
@@ -1040,5 +1176,48 @@ mod tests {
         let orders = long_edge_target_node_preprocessing(&graph, a);
 
         assert_eq!(orders.get(&d), Some(&3));
+    }
+
+    #[test]
+    fn sweep_copy_restores_ports_by_stable_id_after_reorder() {
+        let mut graph = graph(vec![node("A")], vec![]);
+        let a = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        graph.layerless_nodes[a].ports.clear();
+        let first = graph
+            .add_port(
+                a,
+                PortType::Output,
+                PortSide::East,
+                LPoint { x: 0.0, y: 0.0 },
+            )
+            .unwrap();
+        let second = graph
+            .add_port(
+                a,
+                PortType::Output,
+                PortSide::East,
+                LPoint { x: 0.0, y: 0.0 },
+            )
+            .unwrap();
+        graph.layerless_nodes[a].ports[first.port].id = "first".to_string();
+        graph.layerless_nodes[a].ports[second.port].id = "second".to_string();
+        graph.set_node_layer(a, 0);
+
+        let copy = SweepCopy::new(&graph, &[vec![a]]);
+        graph.reorder_node_ports(a, [1, 0]);
+
+        assert!(copy.transfer_node_and_port_orders_to_graph(&mut graph, false));
+        assert_eq!(
+            graph.layerless_nodes[a]
+                .ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first", "second"]
+        );
     }
 }
