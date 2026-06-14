@@ -81,6 +81,24 @@ pub enum NodePlacementStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FixedAlignment {
+    #[default]
+    None,
+    LeftUp,
+    RightUp,
+    LeftDown,
+    RightDown,
+    Balanced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EdgeStraighteningStrategy {
+    None,
+    #[default]
+    ImproveStraightness,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GreedySwitchType {
     Off,
     OneSided,
@@ -189,6 +207,8 @@ pub struct LayeredOptions {
     pub random_seed: i32,
     pub thoroughness: usize,
     pub node_placement_favor_straight_edges: Option<bool>,
+    pub node_placement_bk_fixed_alignment: FixedAlignment,
+    pub node_placement_bk_edge_straightening: EdgeStraighteningStrategy,
     pub graph_has_self_loops: bool,
     pub graph_has_center_labels: bool,
     pub graph_has_end_labels: bool,
@@ -201,12 +221,17 @@ pub struct LayeredOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpacingOptions {
+    pub node_node: f64,
     pub edge_edge: f64,
+    pub edge_node: f64,
     pub label_label: f64,
     pub label_node: f64,
     pub label_port_horizontal: f64,
     pub label_port_vertical: f64,
     pub port_port: f64,
+    pub edge_edge_between_layers: f64,
+    pub edge_node_between_layers: f64,
+    pub node_node_between_layers: f64,
     pub ports_surrounding: SpacingMargin,
 }
 
@@ -221,12 +246,17 @@ pub struct SpacingMargin {
 impl Default for SpacingOptions {
     fn default() -> Self {
         Self {
+            node_node: 20.0,
             edge_edge: 10.0,
+            edge_node: 10.0,
             label_label: 0.0,
             label_node: 5.0,
             label_port_horizontal: 1.0,
             label_port_vertical: 1.0,
             port_port: 10.0,
+            edge_edge_between_layers: 10.0,
+            edge_node_between_layers: 10.0,
+            node_node_between_layers: 20.0,
             ports_surrounding: SpacingMargin::default(),
         }
     }
@@ -264,6 +294,8 @@ impl Default for LayeredOptions {
             random_seed: 1,
             thoroughness: 7,
             node_placement_favor_straight_edges: None,
+            node_placement_bk_fixed_alignment: FixedAlignment::None,
+            node_placement_bk_edge_straightening: EdgeStraighteningStrategy::ImproveStraightness,
             graph_has_self_loops: false,
             graph_has_center_labels: false,
             graph_has_end_labels: false,

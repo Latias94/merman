@@ -543,6 +543,7 @@ mod tests {
             model_order: None,
             priority_direction: 0,
             priority_shortness: 0,
+            priority_straightness: 0,
             thickness: 0.0,
             original_opposite_port: None,
         };

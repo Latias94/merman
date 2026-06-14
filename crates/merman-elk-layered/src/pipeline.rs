@@ -26,7 +26,8 @@ use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists, sweep::minimize_crossings_layer_sweep,
 };
 use crate::p4nodes::{
-    calculate_innermost_node_margins, calculate_label_and_node_sizes, process_in_layer_constraints,
+    calculate_innermost_node_margins, calculate_label_and_node_sizes, place_nodes_brandes_koepf,
+    process_in_layer_constraints,
 };
 use crate::transform::{GraphTransformMode, transform_graph_direction};
 
@@ -393,6 +394,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::InLayerConstraintProcessor => process_in_layer_constraints(graph),
         ProcessorKind::LabelAndNodeSizeProcessor => calculate_label_and_node_sizes(graph),
         ProcessorKind::InnermostNodeMarginCalculator => calculate_innermost_node_margins(graph),
+        ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -792,6 +794,7 @@ mod tests {
             minlen: 1,
             priority_direction: 0,
             priority_shortness: 0,
+            priority_straightness: 0,
         }
     }
 
@@ -908,6 +911,7 @@ mod tests {
                     minlen: 1,
                     priority_direction: 0,
                     priority_shortness: 0,
+                    priority_straightness: 0,
                 },
                 ElkInputEdge {
                     id: "A-A".to_string(),
@@ -917,6 +921,7 @@ mod tests {
                     minlen: 1,
                     priority_direction: 0,
                     priority_shortness: 0,
+                    priority_straightness: 0,
                 },
             ],
         })
@@ -1042,7 +1047,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_processors_until_p4_runs_prerequisites_before_unported_bk_placer() {
+    fn execute_processors_until_p4_runs_bk_node_placer_after_prerequisites() {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions {
@@ -1055,14 +1060,11 @@ mod tests {
         })
         .unwrap();
 
-        let err = execute_processors_until(&mut graph, LayeredPhase::P4NodePlacement).unwrap_err();
+        let executed = execute_processors_until(&mut graph, LayeredPhase::P4NodePlacement).unwrap();
 
-        assert_eq!(
-            err,
-            PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::BKNodePlacer
-            }
-        );
+        assert!(executed.contains(&ProcessorKind::LabelAndNodeSizeProcessor));
+        assert!(executed.contains(&ProcessorKind::InnermostNodeMarginCalculator));
+        assert_eq!(executed.last(), Some(&ProcessorKind::BKNodePlacer));
         for node in &graph.layerless_nodes {
             for port in &node.ports {
                 if port.side == crate::graph::PortSide::East {
@@ -1078,6 +1080,44 @@ mod tests {
                 .iter()
                 .any(|port| port.side != crate::graph::PortSide::Undefined)
         }));
+        for layer in &graph.layers {
+            let mut bottom = f64::NEG_INFINITY;
+            for node in &layer.nodes {
+                let lnode = &graph.layerless_nodes[*node];
+                assert!(lnode.position.y - lnode.margin.top > bottom);
+                bottom = lnode.position.y + lnode.size.height + lnode.margin.bottom;
+            }
+        }
+    }
+
+    #[test]
+    fn execute_processors_until_p5_stops_at_unported_edge_router_after_bk() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_type: GreedySwitchType::Off,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B")],
+            edges: vec![edge("A-B", "A", "B")],
+        })
+        .unwrap();
+
+        let err = execute_processors_until(&mut graph, LayeredPhase::P5EdgeRouting).unwrap_err();
+
+        assert_eq!(
+            err,
+            PipelineError::UnsupportedProcessor {
+                kind: ProcessorKind::LayerSizeAndGraphHeightCalculator
+            }
+        );
+        assert!(
+            graph
+                .layerless_nodes
+                .iter()
+                .all(|node| node.position.y.is_finite())
+        );
     }
 
     #[test]

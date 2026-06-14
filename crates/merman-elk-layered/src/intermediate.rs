@@ -620,6 +620,7 @@ pub fn split_edge(graph: &mut LGraph, edge_index: usize, dummy_node: usize) -> O
         model_order: old_segment.model_order,
         priority_direction: old_segment.priority_direction,
         priority_shortness: old_segment.priority_shortness,
+        priority_straightness: old_segment.priority_straightness,
         thickness,
         original_opposite_port: old_segment.original_opposite_port,
     };
@@ -713,6 +714,7 @@ mod tests {
             minlen: 1,
             priority_direction: 0,
             priority_shortness: 0,
+            priority_straightness: 0,
         }
     }
 

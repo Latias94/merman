@@ -41,6 +41,7 @@ pub struct ElkInputEdge {
     pub minlen: usize,
     pub priority_direction: i32,
     pub priority_shortness: i32,
+    pub priority_straightness: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -231,6 +232,7 @@ fn transform_edge(
         model_order: Some(model_order),
         priority_direction: edge.priority_direction,
         priority_shortness: edge.priority_shortness,
+        priority_straightness: edge.priority_straightness,
         thickness: 0.0,
         original_opposite_port: None,
     });
@@ -482,6 +484,7 @@ mod tests {
             minlen: 1,
             priority_direction: 0,
             priority_shortness: 0,
+            priority_straightness: 0,
         }
     }
 

@@ -219,6 +219,7 @@ pub struct LayeredEdge {
     pub model_order: Option<usize>,
     pub priority_direction: i32,
     pub priority_shortness: i32,
+    pub priority_straightness: i32,
     pub thickness: f64,
     pub original_opposite_port: Option<PortRef>,
 }
