@@ -12,10 +12,20 @@ Last updated: 2026-06-14
 
 ## Phase 2 - Subset Growth
 
-- [ ] Carry `Node.direction` through nested subgraphs.
-- [ ] Improve cluster/hierarchy handling for outgoing links and links between subgraphs.
+- [x] Carry `Node.direction` through nested subgraphs.
+- [x] Improve cluster/hierarchy handling for outgoing links and links between subgraphs.
 - [ ] Tighten label and multi-edge spacing where the current subset is visibly close.
 - [ ] Re-check whether the diamond/intersection cases can be handled without a full port.
+
+Notes:
+
+- 2026-06-14: `merman-layout-elk` now lays out containers recursively. Group nodes inherit the
+  parent direction unless they set their own `Node.direction`, so nested Flowchart subgraph
+  directions affect final geometry instead of only metadata.
+- 2026-06-14: The lightweight backend now ranks direct children per container, routes edges with
+  the lowest common container direction, exposes typed `LayoutOptions`, maps Mermaid `elk.*`
+  config fields through the Flowchart adapter, and separates parallel edges unless
+  `elk.mergeEdges` is set.
 
 ## Phase 3 - Port Decision
 

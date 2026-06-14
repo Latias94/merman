@@ -1,3 +1,4 @@
+use crate::config::{config_bool, config_string};
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -317,6 +318,7 @@ pub fn build_flowchart_elk_graph(
             group_padding_y: cluster_padding,
             ..Default::default()
         },
+        options: elk_layout_options(effective_config_value),
         ..Default::default()
     };
 
@@ -537,6 +539,31 @@ fn dir_to_elk_direction(dir: &str) -> elk::Direction {
         "BT" => elk::Direction::Up,
         "TB" | "TD" => elk::Direction::Down,
         _ => elk::Direction::Down,
+    }
+}
+
+fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOptions {
+    let consider_model_order = config_string(effective_config, &["elk", "considerModelOrder"])
+        .map(|strategy| !strategy.trim().eq_ignore_ascii_case("NONE"))
+        .unwrap_or(true);
+    let cycle_breaking = config_string(effective_config, &["elk", "cycleBreakingStrategy"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "GREEDY" | "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::Greedy,
+                _ => elk::CycleBreakingStrategy::ModelOrder,
+            },
+        )
+        .unwrap_or_default();
+
+    elk::LayoutOptions {
+        layered: elk::LayeredOptions {
+            merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
+            force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
+                .unwrap_or(false),
+            consider_model_order,
+            cycle_breaking,
+            ..Default::default()
+        },
     }
 }
 
@@ -783,6 +810,7 @@ fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
 mod tests {
     use super::*;
     use indexmap::IndexMap;
+    use serde_json::json;
 
     fn node(id: &str, label: Option<&str>, label_type: Option<&str>) -> FlowNode {
         FlowNode {
@@ -904,6 +932,41 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_elk_graph_adapter_maps_elk_layout_options() {
+        let model = model(
+            vec![
+                node("A", Some("Alpha"), None),
+                node("B", Some("Beta"), None),
+            ],
+            vec![edge("L-A-B", "A", "B", None)],
+        );
+        let config = MermaidConfig::from_value(json!({
+            "elk": {
+                "mergeEdges": true,
+                "forceNodeModelOrder": true,
+                "considerModelOrder": "NONE",
+                "cycleBreakingStrategy": "GREEDY"
+            }
+        }));
+
+        let graph = build_flowchart_elk_graph(
+            &model,
+            &config,
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+
+        assert!(graph.options.layered.merge_edges);
+        assert!(graph.options.layered.force_node_model_order);
+        assert!(!graph.options.layered.consider_model_order);
+        assert_eq!(
+            graph.options.layered.cycle_breaking,
+            elk::CycleBreakingStrategy::Greedy
+        );
+    }
+
+    #[test]
     fn flowchart_elk_graph_adapter_measures_markdown_and_html_labels() {
         let model = model(
             vec![
@@ -953,5 +1016,40 @@ mod tests {
         assert!(layout.edges[0].points.len() >= 2);
         assert!(layout.edges[0].label.is_some());
         assert!(layout.bounds.is_some());
+    }
+
+    #[test]
+    fn flowchart_elk_layout_uses_subgraph_direction_for_child_geometry() {
+        let mut model = model(
+            vec![
+                node("A", Some("Alpha"), None),
+                node("B", Some("Beta"), None),
+                node("C", Some("Gamma"), None),
+            ],
+            vec![edge("L-A-B", "A", "B", None), edge("L-B-C", "B", "C", None)],
+        );
+        model.subgraphs.push(FlowSubgraph {
+            id: "cluster".to_string(),
+            title: "Cluster".to_string(),
+            dir: Some("LR".to_string()),
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["A".to_string(), "B".to_string()],
+        });
+
+        let layout = layout_flowchart_elk_typed(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+        let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+        let c = layout.nodes.iter().find(|node| node.id == "C").unwrap();
+
+        assert!(b.x > a.x);
+        assert!(c.y > b.y);
     }
 }

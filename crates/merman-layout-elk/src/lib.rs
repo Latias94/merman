@@ -13,6 +13,7 @@ const DEFAULT_LAYER_SPACING: f64 = 70.0;
 const DEFAULT_GROUP_PADDING_X: f64 = 40.0;
 const DEFAULT_GROUP_PADDING_Y: f64 = 48.0;
 const DEFAULT_GROUP_LABEL_GAP: f64 = 10.0;
+const PARALLEL_EDGE_SPACING: f64 = 12.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Algorithm {
@@ -43,6 +44,7 @@ pub struct Graph {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     pub spacing: Spacing,
+    pub options: LayoutOptions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -64,6 +66,63 @@ impl Default for Spacing {
             group_label_gap: DEFAULT_GROUP_LABEL_GAP,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutOptions {
+    pub layered: LayeredOptions,
+}
+
+impl Default for LayoutOptions {
+    fn default() -> Self {
+        Self {
+            layered: LayeredOptions::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayeredOptions {
+    pub hierarchy_handling: HierarchyHandling,
+    pub edge_routing: EdgeRouting,
+    pub cycle_breaking: CycleBreakingStrategy,
+    pub consider_model_order: bool,
+    pub force_node_model_order: bool,
+    pub merge_edges: bool,
+}
+
+impl Default for LayeredOptions {
+    fn default() -> Self {
+        Self {
+            hierarchy_handling: HierarchyHandling::IncludeChildren,
+            edge_routing: EdgeRouting::Orthogonal,
+            cycle_breaking: CycleBreakingStrategy::ModelOrder,
+            consider_model_order: true,
+            force_node_model_order: false,
+            merge_edges: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HierarchyHandling {
+    #[default]
+    IncludeChildren,
+    SeparateChildren,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EdgeRouting {
+    #[default]
+    Orthogonal,
+    Polyline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CycleBreakingStrategy {
+    #[default]
+    ModelOrder,
+    Greedy,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -143,19 +202,13 @@ pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
 
 fn layered_layout(graph: &Graph) -> Result<LayoutResult> {
     let index = GraphIndex::new(graph)?;
-    let placement = place_leaf_nodes(graph, &index);
-    let node_layouts = expand_groups(graph, &index, placement);
-    let edges = route_edges(graph, &node_layouts, graph.direction);
-
-    Ok(LayoutResult {
-        nodes: node_layouts,
-        edges,
-    })
+    let engine = LayoutEngine { graph, index };
+    Ok(engine.run())
 }
 
 struct GraphIndex<'a> {
     nodes_by_id: HashMap<&'a str, &'a Node>,
-    leaf_ids: Vec<&'a str>,
+    root_child_ids: Vec<&'a str>,
     child_ids_by_parent: HashMap<&'a str, Vec<&'a str>>,
     topo_order_by_id: HashMap<&'a str, usize>,
 }
@@ -163,21 +216,19 @@ struct GraphIndex<'a> {
 impl<'a> GraphIndex<'a> {
     fn new(graph: &'a Graph) -> Result<Self> {
         let mut nodes_by_id = HashMap::new();
-        let mut leaf_ids = Vec::new();
-        let mut child_ids_by_parent: HashMap<&'a str, Vec<&'a str>> = HashMap::new();
         for node in &graph.nodes {
             if nodes_by_id.insert(node.id.as_str(), node).is_some() {
                 return Err(Error::DuplicateNode {
                     id: node.id.clone(),
                 });
             }
-            if node.kind == NodeKind::Leaf {
-                leaf_ids.push(node.id.as_str());
-            }
         }
 
+        let mut root_child_ids = Vec::new();
+        let mut child_ids_by_parent: HashMap<&'a str, Vec<&'a str>> = HashMap::new();
         for node in &graph.nodes {
             let Some(parent) = node.parent.as_deref() else {
+                root_child_ids.push(node.id.as_str());
                 continue;
             };
             if !nodes_by_id.contains_key(parent) {
@@ -218,235 +269,455 @@ impl<'a> GraphIndex<'a> {
 
         Ok(Self {
             nodes_by_id,
-            leaf_ids,
+            root_child_ids,
             child_ids_by_parent,
             topo_order_by_id,
         })
     }
+
+    fn direct_children(&self, parent_id: Option<&'a str>) -> Vec<&'a str> {
+        match parent_id {
+            Some(parent_id) => self
+                .child_ids_by_parent
+                .get(parent_id)
+                .cloned()
+                .unwrap_or_default(),
+            None => self.root_child_ids.clone(),
+        }
+    }
+
+    fn direct_child_under(
+        &self,
+        container_parent: Option<&'a str>,
+        node_id: &'a str,
+    ) -> Option<&'a str> {
+        let mut current = node_id;
+        loop {
+            let node = self.nodes_by_id.get(current).copied()?;
+            if node.parent.as_deref() == container_parent {
+                return Some(current);
+            }
+            current = node.parent.as_deref()?;
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-struct LeafPlacement {
-    by_id: HashMap<String, NodeLayout>,
+struct LayoutEngine<'a> {
+    graph: &'a Graph,
+    index: GraphIndex<'a>,
 }
 
-fn place_leaf_nodes(graph: &Graph, index: &GraphIndex<'_>) -> LeafPlacement {
-    let ranks = assign_leaf_ranks(graph, index);
-    let mut by_rank: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
-    for id in &index.leaf_ids {
-        by_rank
-            .entry(*ranks.get(id).unwrap_or(&0))
-            .or_default()
-            .push(id);
-    }
-
-    for ids in by_rank.values_mut() {
-        ids.sort_by_key(|id| {
-            index
-                .topo_order_by_id
-                .get(*id)
-                .copied()
-                .unwrap_or(usize::MAX)
-        });
-    }
-
-    let mut rank_span: BTreeMap<usize, (f64, f64)> = BTreeMap::new();
-    for (rank, ids) in &by_rank {
-        let main = ids
+impl<'a> LayoutEngine<'a> {
+    fn run(&self) -> LayoutResult {
+        let container = self.layout_container(None, self.graph.direction);
+        let mut nodes_by_id: HashMap<String, NodeLayout> = container
+            .nodes
+            .into_iter()
+            .map(|node| (node.id.clone(), node))
+            .collect();
+        let nodes = self
+            .graph
+            .nodes
             .iter()
-            .filter_map(|id| index.nodes_by_id.get(id).copied())
-            .map(|node| main_size(node, graph.direction))
-            .fold(0.0, f64::max);
-        let cross = ids
+            .filter_map(|node| nodes_by_id.remove(node.id.as_str()))
+            .collect::<Vec<_>>();
+        let edges = self.route_edges(&nodes);
+
+        LayoutResult { nodes, edges }
+    }
+
+    fn layout_container(
+        &self,
+        parent_id: Option<&'a str>,
+        direction: Direction,
+    ) -> ContainerLayout {
+        let child_ids = self.index.direct_children(parent_id);
+        if child_ids.is_empty() {
+            return ContainerLayout { nodes: Vec::new() };
+        }
+
+        let subtrees = child_ids
             .iter()
-            .filter_map(|id| index.nodes_by_id.get(id).copied())
-            .map(|node| cross_size(node, graph.direction))
-            .sum::<f64>()
-            + graph.spacing.node_node.max(0.0) * ids.len().saturating_sub(1) as f64;
-        rank_span.insert(*rank, (main, cross));
-    }
+            .filter_map(|child_id| self.layout_node(child_id, direction))
+            .collect::<Vec<_>>();
+        if subtrees.is_empty() {
+            return ContainerLayout { nodes: Vec::new() };
+        }
 
-    let mut rank_main_center: BTreeMap<usize, f64> = BTreeMap::new();
-    let mut cursor = 0.0;
-    for (rank, (main, _)) in &rank_span {
-        let half = main / 2.0;
-        rank_main_center.insert(*rank, cursor + half);
-        cursor += main + graph.spacing.layer_layer.max(0.0);
-    }
+        let size_by_id = subtrees
+            .iter()
+            .map(|subtree| {
+                (
+                    subtree.id,
+                    NodeSize {
+                        width: subtree.node.width,
+                        height: subtree.node.height,
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let ranks = self.assign_child_ranks(parent_id, &child_ids);
+        let mut by_rank: BTreeMap<usize, Vec<&'a str>> = BTreeMap::new();
+        for subtree in &subtrees {
+            by_rank
+                .entry(ranks.get(subtree.id).copied().unwrap_or(0))
+                .or_default()
+                .push(subtree.id);
+        }
 
-    let mut by_id = HashMap::new();
-    for (rank, ids) in by_rank {
-        let Some((_, total_cross)) = rank_span.get(&rank) else {
-            continue;
-        };
-        let mut cross_cursor = -total_cross / 2.0;
-        for id in ids {
-            let Some(node) = index.nodes_by_id.get(id).copied() else {
+        for ids in by_rank.values_mut() {
+            self.sort_rank_ids(ids);
+        }
+
+        let mut rank_span: BTreeMap<usize, (f64, f64)> = BTreeMap::new();
+        for (rank, ids) in &by_rank {
+            let main = ids
+                .iter()
+                .filter_map(|id| size_by_id.get(*id).copied())
+                .map(|size| main_size(size, direction))
+                .fold(0.0, f64::max);
+            let cross = ids
+                .iter()
+                .filter_map(|id| size_by_id.get(*id).copied())
+                .map(|size| cross_size(size, direction))
+                .sum::<f64>()
+                + self.graph.spacing.node_node.max(0.0) * ids.len().saturating_sub(1) as f64;
+            rank_span.insert(*rank, (main, cross));
+        }
+
+        let mut rank_main_center: BTreeMap<usize, f64> = BTreeMap::new();
+        let mut cursor = 0.0;
+        for (rank, (main, _)) in &rank_span {
+            let half = main / 2.0;
+            rank_main_center.insert(*rank, cursor + half);
+            cursor += main + self.graph.spacing.layer_layer.max(0.0);
+        }
+
+        let mut positions: HashMap<&'a str, Point> = HashMap::new();
+        for (rank, ids) in by_rank {
+            let Some((_, total_cross)) = rank_span.get(&rank) else {
                 continue;
             };
-            let cross = cross_size(node, graph.direction);
-            let main = *rank_main_center.get(&rank).unwrap_or(&0.0);
-            let cross_center = cross_cursor + cross / 2.0;
-            cross_cursor += cross + graph.spacing.node_node.max(0.0);
-            let (x, y) = orient_point(main, cross_center, graph.direction);
-            by_id.insert(
-                node.id.clone(),
-                NodeLayout {
-                    id: node.id.clone(),
-                    x,
-                    y,
-                    width: node.width.max(1.0),
-                    height: node.height.max(1.0),
-                },
-            );
-        }
-    }
-
-    LeafPlacement { by_id }
-}
-
-fn assign_leaf_ranks<'a>(graph: &'a Graph, index: &GraphIndex<'a>) -> HashMap<&'a str, usize> {
-    let leaf_set: HashSet<&str> = index.leaf_ids.iter().copied().collect();
-    let mut incoming: HashMap<&str, usize> = index.leaf_ids.iter().map(|id| (*id, 0)).collect();
-    let mut outgoing: HashMap<&str, Vec<(&str, usize)>> =
-        index.leaf_ids.iter().map(|id| (*id, Vec::new())).collect();
-
-    for edge in &graph.edges {
-        let source = edge.source.as_str();
-        let target = edge.target.as_str();
-        if source == target || !leaf_set.contains(source) || !leaf_set.contains(target) {
-            continue;
-        }
-        outgoing
-            .entry(source)
-            .or_default()
-            .push((target, edge.minlen.max(1)));
-        *incoming.entry(target).or_default() += 1;
-    }
-
-    let mut queue: VecDeque<&str> = index
-        .leaf_ids
-        .iter()
-        .copied()
-        .filter(|id| incoming.get(id).copied().unwrap_or(0) == 0)
-        .collect();
-    let mut ranks: HashMap<&str, usize> = index.leaf_ids.iter().map(|id| (*id, 0)).collect();
-    let mut visited = 0usize;
-
-    while let Some(id) = queue.pop_front() {
-        visited += 1;
-        let base = ranks.get(id).copied().unwrap_or(0);
-        for (target, minlen) in outgoing.get(id).into_iter().flatten().copied() {
-            let next = base.saturating_add(minlen);
-            ranks
-                .entry(target)
-                .and_modify(|rank| *rank = (*rank).max(next))
-                .or_insert(next);
-            if let Some(deg) = incoming.get_mut(target) {
-                *deg = deg.saturating_sub(1);
-                if *deg == 0 {
-                    queue.push_back(target);
-                }
+            let mut cross_cursor = -total_cross / 2.0;
+            for id in ids {
+                let Some(size) = size_by_id.get(id).copied() else {
+                    continue;
+                };
+                let cross = cross_size(size, direction);
+                let main = *rank_main_center.get(&rank).unwrap_or(&0.0);
+                let cross_center = cross_cursor + cross / 2.0;
+                cross_cursor += cross + self.graph.spacing.node_node.max(0.0);
+                let (x, y) = orient_point(main, cross_center, direction);
+                positions.insert(id, Point { x, y });
             }
         }
+
+        let mut nodes = Vec::new();
+        for mut subtree in subtrees {
+            let Some(position) = positions.get(subtree.id).copied() else {
+                continue;
+            };
+            translate_layout(&mut subtree.node, position.x, position.y);
+            nodes.push(subtree.node);
+            for mut descendant in subtree.descendants {
+                translate_layout(&mut descendant, position.x, position.y);
+                nodes.push(descendant);
+            }
+        }
+
+        ContainerLayout { nodes }
     }
 
-    if visited != index.leaf_ids.len() {
-        let mut pending: Vec<&str> = index
-            .leaf_ids
-            .iter()
-            .copied()
-            .filter(|id| incoming.get(id).copied().unwrap_or(0) > 0)
-            .collect();
-        pending.sort_by_key(|id| {
-            index
-                .topo_order_by_id
-                .get(*id)
-                .copied()
-                .unwrap_or(usize::MAX)
-        });
-        let start_rank = ranks.values().copied().max().unwrap_or(0).saturating_add(1);
-        for (idx, id) in pending.into_iter().enumerate() {
-            ranks.insert(id, start_rank + idx);
-        }
-    }
-
-    ranks
-}
-
-fn expand_groups(
-    graph: &Graph,
-    index: &GraphIndex<'_>,
-    placement: LeafPlacement,
-) -> Vec<NodeLayout> {
-    let mut layouts = placement.by_id;
-    for node in graph.nodes.iter().rev() {
-        if node.kind != NodeKind::Group {
-            continue;
-        }
-        let Some(children) = index.child_ids_by_parent.get(node.id.as_str()) else {
-            let width = node.width.max(label_width(node.label.as_ref())).max(1.0);
-            let height = node.height.max(label_height(node.label.as_ref())).max(1.0);
-            layouts.insert(
-                node.id.clone(),
-                NodeLayout {
+    fn layout_node(
+        &self,
+        node_id: &'a str,
+        inherited_direction: Direction,
+    ) -> Option<NodeSubtree<'a>> {
+        let node = self.index.nodes_by_id.get(node_id).copied()?;
+        if node.kind == NodeKind::Leaf {
+            return Some(NodeSubtree {
+                id: node.id.as_str(),
+                node: NodeLayout {
                     id: node.id.clone(),
                     x: 0.0,
                     y: 0.0,
-                    width,
-                    height,
+                    width: leaf_width(node),
+                    height: leaf_height(node),
                 },
-            );
-            continue;
-        };
+                descendants: Vec::new(),
+            });
+        }
 
-        let mut bounds = Bounds::new();
-        let mut has_child = false;
-        for child_id in children {
-            if let Some(child) = layouts.get(*child_id) {
-                bounds.include_layout(child);
-                has_child = true;
+        let direction = node.direction.unwrap_or(inherited_direction);
+        let mut child_container = self.layout_container(Some(node.id.as_str()), direction);
+        let (width, height) = self.group_size(node, &child_container.nodes);
+        if let Some(bounds) = Bounds::from_layouts(&child_container.nodes) {
+            let label_block = label_block_height(
+                node.label.as_ref(),
+                self.graph.spacing.group_label_gap.max(0.0),
+            );
+            let content_center_y = if label_block > 0.0 {
+                -height / 2.0
+                    + self.graph.spacing.group_padding_y.max(0.0)
+                    + label_block
+                    + bounds.height() / 2.0
+            } else {
+                0.0
+            };
+            let dx = -bounds.center_x();
+            let dy = content_center_y - bounds.center_y();
+            for child in &mut child_container.nodes {
+                translate_layout(child, dx, dy);
             }
         }
 
-        if !has_child {
-            continue;
-        }
-
-        let label_w = label_width(node.label.as_ref());
-        let label_h = label_height(node.label.as_ref());
-        let width = (bounds.max_x - bounds.min_x + graph.spacing.group_padding_x * 2.0)
-            .max(label_w + graph.spacing.group_padding_x)
-            .max(node.width)
-            .max(1.0);
-        let height = (bounds.max_y - bounds.min_y
-            + graph.spacing.group_padding_y * 2.0
-            + if label_h > 0.0 {
-                label_h + graph.spacing.group_label_gap
-            } else {
-                0.0
-            })
-        .max(label_h + graph.spacing.group_padding_y)
-        .max(node.height)
-        .max(1.0);
-
-        layouts.insert(
-            node.id.clone(),
-            NodeLayout {
+        Some(NodeSubtree {
+            id: node.id.as_str(),
+            node: NodeLayout {
                 id: node.id.clone(),
-                x: (bounds.min_x + bounds.max_x) / 2.0,
-                y: (bounds.min_y + bounds.max_y) / 2.0,
+                x: 0.0,
+                y: 0.0,
                 width,
                 height,
             },
-        );
+            descendants: child_container.nodes,
+        })
     }
 
-    graph
-        .nodes
-        .iter()
-        .filter_map(|node| layouts.remove(node.id.as_str()))
-        .collect()
+    fn group_size(&self, node: &Node, children: &[NodeLayout]) -> (f64, f64) {
+        let pad_x = self.graph.spacing.group_padding_x.max(0.0);
+        let pad_y = self.graph.spacing.group_padding_y.max(0.0);
+        let label_w = label_width(node.label.as_ref());
+        let label_h = label_height(node.label.as_ref());
+        let label_block =
+            label_block_height(node.label.as_ref(), self.graph.spacing.group_label_gap);
+
+        if let Some(bounds) = Bounds::from_layouts(children) {
+            let width = (bounds.width() + pad_x * 2.0)
+                .max(label_w + pad_x * 2.0)
+                .max(node.width)
+                .max(1.0);
+            let height = (bounds.height() + pad_y * 2.0 + label_block.max(0.0))
+                .max(label_h + pad_y * 2.0)
+                .max(node.height)
+                .max(1.0);
+            return (width, height);
+        }
+
+        (
+            node.width.max(label_w + pad_x * 2.0).max(1.0),
+            node.height.max(label_h + pad_y * 2.0).max(1.0),
+        )
+    }
+
+    fn assign_child_ranks(
+        &self,
+        parent_id: Option<&'a str>,
+        child_ids: &[&'a str],
+    ) -> HashMap<&'a str, usize> {
+        let child_set: HashSet<&str> = child_ids.iter().copied().collect();
+        let mut incoming: HashMap<&str, usize> = child_ids.iter().map(|id| (*id, 0)).collect();
+        let mut outgoing: HashMap<&str, Vec<(&str, usize)>> =
+            child_ids.iter().map(|id| (*id, Vec::new())).collect();
+
+        for edge in &self.graph.edges {
+            let Some(source) = self
+                .index
+                .direct_child_under(parent_id, edge.source.as_str())
+            else {
+                continue;
+            };
+            let Some(target) = self
+                .index
+                .direct_child_under(parent_id, edge.target.as_str())
+            else {
+                continue;
+            };
+            if source == target || !child_set.contains(source) || !child_set.contains(target) {
+                continue;
+            }
+            outgoing
+                .entry(source)
+                .or_default()
+                .push((target, edge.minlen.max(1)));
+            *incoming.entry(target).or_default() += 1;
+        }
+
+        let mut queue: VecDeque<&str> = child_ids
+            .iter()
+            .copied()
+            .filter(|id| incoming.get(id).copied().unwrap_or(0) == 0)
+            .collect();
+        let mut ranks: HashMap<&str, usize> = child_ids.iter().map(|id| (*id, 0)).collect();
+        let mut visited = 0usize;
+
+        while let Some(id) = queue.pop_front() {
+            visited += 1;
+            let base = ranks.get(id).copied().unwrap_or(0);
+            for (target, minlen) in outgoing.get(id).into_iter().flatten().copied() {
+                let next = base.saturating_add(minlen);
+                ranks
+                    .entry(target)
+                    .and_modify(|rank| *rank = (*rank).max(next))
+                    .or_insert(next);
+                if let Some(deg) = incoming.get_mut(target) {
+                    *deg = deg.saturating_sub(1);
+                    if *deg == 0 {
+                        queue.push_back(target);
+                    }
+                }
+            }
+        }
+
+        if visited != child_ids.len() {
+            let mut pending = child_ids
+                .iter()
+                .copied()
+                .filter(|id| incoming.get(id).copied().unwrap_or(0) > 0)
+                .collect::<Vec<_>>();
+            self.sort_rank_ids(&mut pending);
+            let start_rank = ranks.values().copied().max().unwrap_or(0).saturating_add(1);
+            for (idx, id) in pending.into_iter().enumerate() {
+                ranks.insert(id, start_rank + idx);
+            }
+        }
+
+        ranks
+    }
+
+    fn sort_rank_ids(&self, ids: &mut Vec<&'a str>) {
+        if self.graph.options.layered.force_node_model_order
+            || self.graph.options.layered.consider_model_order
+        {
+            ids.sort_by_key(|id| {
+                self.index
+                    .topo_order_by_id
+                    .get(*id)
+                    .copied()
+                    .unwrap_or(usize::MAX)
+            });
+        } else {
+            ids.sort_unstable();
+        }
+    }
+
+    fn route_edges(&self, nodes: &[NodeLayout]) -> Vec<EdgeLayout> {
+        let node_by_id: HashMap<&str, &NodeLayout> =
+            nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+        let parallel_edges = self.parallel_edge_positions();
+
+        self.graph
+            .edges
+            .iter()
+            .filter_map(|edge| {
+                let source = node_by_id.get(edge.source.as_str()).copied()?;
+                let target = node_by_id.get(edge.target.as_str()).copied()?;
+                let direction = self.edge_direction(edge);
+                let mut points = match self.graph.options.layered.edge_routing {
+                    EdgeRouting::Orthogonal => orthogonal_route(source, target, direction),
+                    EdgeRouting::Polyline => polyline_route(source, target, direction),
+                };
+                if !self.graph.options.layered.merge_edges {
+                    if let Some((index, total)) = parallel_edges.get(edge.id.as_str()).copied() {
+                        offset_parallel_route(&mut points, direction, index, total);
+                    }
+                }
+                if let Some(label) = edge.label {
+                    insert_label_clearance(&mut points, label, direction);
+                }
+                Some(EdgeLayout {
+                    id: edge.id.clone(),
+                    points,
+                })
+            })
+            .collect()
+    }
+
+    fn parallel_edge_positions(&self) -> HashMap<&'a str, (usize, usize)> {
+        let mut totals: HashMap<(&str, &str), usize> = HashMap::new();
+        for edge in &self.graph.edges {
+            *totals
+                .entry((edge.source.as_str(), edge.target.as_str()))
+                .or_default() += 1;
+        }
+
+        let mut seen: HashMap<(&str, &str), usize> = HashMap::new();
+        let mut positions = HashMap::new();
+        for edge in &self.graph.edges {
+            let key = (edge.source.as_str(), edge.target.as_str());
+            let total = totals.get(&key).copied().unwrap_or(1);
+            let index = seen.entry(key).or_default();
+            positions.insert(edge.id.as_str(), (*index, total));
+            *index += 1;
+        }
+        positions
+    }
+
+    fn edge_direction(&self, edge: &'a Edge) -> Direction {
+        let container = self.lowest_common_container(edge.source.as_str(), edge.target.as_str());
+        self.effective_direction(container)
+    }
+
+    fn lowest_common_container(&self, source_id: &'a str, target_id: &'a str) -> Option<&'a str> {
+        let source_chain = self.container_chain_for_endpoint(source_id);
+        let target_chain = self.container_chain_for_endpoint(target_id);
+        source_chain
+            .into_iter()
+            .find(|container| target_chain.contains(container))
+            .flatten()
+    }
+
+    fn container_chain_for_endpoint(&self, node_id: &'a str) -> Vec<Option<&'a str>> {
+        let Some(node) = self.index.nodes_by_id.get(node_id).copied() else {
+            return vec![None];
+        };
+
+        let mut chain = Vec::new();
+        if node.kind == NodeKind::Group {
+            chain.push(Some(node.id.as_str()));
+        }
+
+        let mut parent = node.parent.as_deref();
+        while let Some(parent_id) = parent {
+            chain.push(Some(parent_id));
+            parent = self
+                .index
+                .nodes_by_id
+                .get(parent_id)
+                .and_then(|node| node.parent.as_deref());
+        }
+        chain.push(None);
+        chain
+    }
+
+    fn effective_direction(&self, container_id: Option<&'a str>) -> Direction {
+        let Some(container_id) = container_id else {
+            return self.graph.direction;
+        };
+        let Some(node) = self.index.nodes_by_id.get(container_id).copied() else {
+            return self.graph.direction;
+        };
+        let inherited = self.effective_direction(node.parent.as_deref());
+        node.direction.unwrap_or(inherited)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ContainerLayout {
+    nodes: Vec<NodeLayout>,
+}
+
+#[derive(Debug, Clone)]
+struct NodeSubtree<'a> {
+    id: &'a str,
+    node: NodeLayout,
+    descendants: Vec<NodeLayout>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NodeSize {
+    width: f64,
+    height: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -467,34 +738,45 @@ impl Bounds {
         }
     }
 
+    fn from_layouts(layouts: &[NodeLayout]) -> Option<Self> {
+        let mut bounds = Self::new();
+        for layout in layouts {
+            bounds.include_layout(layout);
+        }
+        bounds.is_valid().then_some(bounds)
+    }
+
     fn include_layout(&mut self, layout: &NodeLayout) {
         self.min_x = self.min_x.min(layout.x - layout.width / 2.0);
         self.min_y = self.min_y.min(layout.y - layout.height / 2.0);
         self.max_x = self.max_x.max(layout.x + layout.width / 2.0);
         self.max_y = self.max_y.max(layout.y + layout.height / 2.0);
     }
-}
 
-fn route_edges(graph: &Graph, nodes: &[NodeLayout], direction: Direction) -> Vec<EdgeLayout> {
-    let node_by_id: HashMap<&str, &NodeLayout> =
-        nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+    fn is_valid(&self) -> bool {
+        self.min_x.is_finite()
+            && self.min_y.is_finite()
+            && self.max_x.is_finite()
+            && self.max_y.is_finite()
+            && self.max_x >= self.min_x
+            && self.max_y >= self.min_y
+    }
 
-    graph
-        .edges
-        .iter()
-        .filter_map(|edge| {
-            let source = node_by_id.get(edge.source.as_str()).copied()?;
-            let target = node_by_id.get(edge.target.as_str()).copied()?;
-            let mut points = orthogonal_route(source, target, direction);
-            if let Some(label) = edge.label {
-                insert_label_clearance(&mut points, label, direction);
-            }
-            Some(EdgeLayout {
-                id: edge.id.clone(),
-                points,
-            })
-        })
-        .collect()
+    fn width(&self) -> f64 {
+        self.max_x - self.min_x
+    }
+
+    fn height(&self) -> f64 {
+        self.max_y - self.min_y
+    }
+
+    fn center_x(&self) -> f64 {
+        (self.min_x + self.max_x) / 2.0
+    }
+
+    fn center_y(&self) -> f64 {
+        (self.min_y + self.max_y) / 2.0
+    }
 }
 
 fn orthogonal_route(source: &NodeLayout, target: &NodeLayout, direction: Direction) -> Vec<Point> {
@@ -529,6 +811,11 @@ fn orthogonal_route(source: &NodeLayout, target: &NodeLayout, direction: Directi
             ]
         }
     }
+}
+
+fn polyline_route(source: &NodeLayout, target: &NodeLayout, direction: Direction) -> Vec<Point> {
+    let (start, end) = endpoint_pair(source, target, direction);
+    vec![start, end]
 }
 
 fn endpoint_pair(source: &NodeLayout, target: &NodeLayout, direction: Direction) -> (Point, Point) {
@@ -573,6 +860,69 @@ fn endpoint_pair(source: &NodeLayout, target: &NodeLayout, direction: Direction)
                 y: target.y,
             },
         ),
+    }
+}
+
+fn offset_parallel_route(
+    points: &mut Vec<Point>,
+    direction: Direction,
+    index: usize,
+    total: usize,
+) {
+    if total <= 1 || points.len() < 2 {
+        return;
+    }
+
+    let center = (total.saturating_sub(1)) as f64 / 2.0;
+    let offset = (index as f64 - center) * PARALLEL_EDGE_SPACING;
+    if offset.abs() <= 1e-9 {
+        return;
+    }
+
+    if points.len() == 2 {
+        let start = points[0];
+        let end = points[1];
+        *points = match direction {
+            Direction::Down | Direction::Up => {
+                let mid_y = (start.y + end.y) / 2.0;
+                vec![
+                    start,
+                    Point {
+                        x: start.x + offset,
+                        y: mid_y,
+                    },
+                    Point {
+                        x: end.x + offset,
+                        y: mid_y,
+                    },
+                    end,
+                ]
+            }
+            Direction::Right | Direction::Left => {
+                let mid_x = (start.x + end.x) / 2.0;
+                vec![
+                    start,
+                    Point {
+                        x: mid_x,
+                        y: start.y + offset,
+                    },
+                    Point {
+                        x: mid_x,
+                        y: end.y + offset,
+                    },
+                    end,
+                ]
+            }
+        };
+        return;
+    }
+
+    let last = points.len().saturating_sub(1);
+    for point in points.iter_mut().take(last).skip(1) {
+        match direction {
+            Direction::Down | Direction::Up => point.x += offset,
+            Direction::Right | Direction::Left => point.y += offset,
+        }
     }
 }
 
@@ -632,17 +982,17 @@ fn insert_label_clearance(points: &mut Vec<Point>, label: Label, direction: Dire
     }
 }
 
-fn main_size(node: &Node, direction: Direction) -> f64 {
+fn main_size(size: NodeSize, direction: Direction) -> f64 {
     match direction {
-        Direction::Down | Direction::Up => node.height.max(1.0),
-        Direction::Right | Direction::Left => node.width.max(1.0),
+        Direction::Down | Direction::Up => size.height.max(1.0),
+        Direction::Right | Direction::Left => size.width.max(1.0),
     }
 }
 
-fn cross_size(node: &Node, direction: Direction) -> f64 {
+fn cross_size(size: NodeSize, direction: Direction) -> f64 {
     match direction {
-        Direction::Down | Direction::Up => node.width.max(1.0),
-        Direction::Right | Direction::Left => node.height.max(1.0),
+        Direction::Down | Direction::Up => size.width.max(1.0),
+        Direction::Right | Direction::Left => size.height.max(1.0),
     }
 }
 
@@ -655,12 +1005,34 @@ fn orient_point(main: f64, cross: f64, direction: Direction) -> (f64, f64) {
     }
 }
 
+fn leaf_width(node: &Node) -> f64 {
+    node.width.max(label_width(node.label.as_ref())).max(1.0)
+}
+
+fn leaf_height(node: &Node) -> f64 {
+    node.height.max(label_height(node.label.as_ref())).max(1.0)
+}
+
 fn label_width(label: Option<&Label>) -> f64 {
     label.map(|label| label.width.max(0.0)).unwrap_or(0.0)
 }
 
 fn label_height(label: Option<&Label>) -> f64 {
     label.map(|label| label.height.max(0.0)).unwrap_or(0.0)
+}
+
+fn label_block_height(label: Option<&Label>, gap: f64) -> f64 {
+    let height = label_height(label);
+    if height > 0.0 {
+        height + gap.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn translate_layout(layout: &mut NodeLayout, dx: f64, dy: f64) {
+    layout.x += dx;
+    layout.y += dy;
 }
 
 fn detect_parent_cycles<'a>(
@@ -787,6 +1159,122 @@ mod tests {
     }
 
     #[test]
+    fn layered_layout_uses_local_group_direction() {
+        let mut graph = graph_with_two_nodes();
+        graph
+            .nodes
+            .insert(0, group("cluster", None, Some(Direction::Right)));
+        for node in &mut graph.nodes {
+            if node.kind == NodeKind::Leaf {
+                node.parent = Some("cluster".to_string());
+            }
+        }
+
+        let result = layout(&graph, Algorithm::Layered).unwrap();
+        let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let edge = result.edges.iter().find(|edge| edge.id == "A-B").unwrap();
+
+        assert!(b.x > a.x);
+        assert_eq!(edge.points[0].x, a.x + a.width / 2.0);
+        assert_eq!(edge.points[1].x, b.x - b.width / 2.0);
+    }
+
+    #[test]
+    fn layered_layout_composes_nested_group_directions() {
+        let graph = Graph {
+            id: "root".to_string(),
+            direction: Direction::Down,
+            nodes: vec![
+                group("outer", None, Some(Direction::Right)),
+                group("inner", Some("outer"), Some(Direction::Down)),
+                leaf("A", Some("inner")),
+                leaf("B", Some("inner")),
+                leaf("C", Some("outer")),
+            ],
+            edges: vec![edge("A-B", "A", "B"), edge("inner-C", "inner", "C")],
+            ..Default::default()
+        };
+
+        let result = layout(&graph, Algorithm::Layered).unwrap();
+        let inner = result.nodes.iter().find(|node| node.id == "inner").unwrap();
+        let c = result.nodes.iter().find(|node| node.id == "C").unwrap();
+        let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+
+        assert!(b.y > a.y);
+        assert!(c.x > inner.x);
+    }
+
+    #[test]
+    fn layered_layout_routes_cross_group_edge_with_common_container_direction() {
+        let graph = Graph {
+            id: "root".to_string(),
+            direction: Direction::Down,
+            nodes: vec![
+                group("cluster", None, Some(Direction::Right)),
+                leaf("A", Some("cluster")),
+                leaf("B", Some("cluster")),
+                leaf("C", None),
+            ],
+            edges: vec![edge("B-C", "B", "C")],
+            ..Default::default()
+        };
+
+        let result = layout(&graph, Algorithm::Layered).unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let c = result.nodes.iter().find(|node| node.id == "C").unwrap();
+        let route = result.edges.iter().find(|edge| edge.id == "B-C").unwrap();
+
+        assert!(c.y > b.y);
+        assert_eq!(route.points.first().unwrap().y, b.y + b.height / 2.0);
+        assert_eq!(route.points.last().unwrap().y, c.y - c.height / 2.0);
+        assert!(route.points.len() >= 2);
+    }
+
+    #[test]
+    fn layered_layout_keeps_sibling_groups_non_overlapping() {
+        let graph = Graph {
+            id: "root".to_string(),
+            direction: Direction::Down,
+            nodes: vec![
+                group("left", None, Some(Direction::Down)),
+                leaf("A", Some("left")),
+                group("right", None, Some(Direction::Down)),
+                leaf("B", Some("right")),
+            ],
+            edges: Vec::new(),
+            ..Default::default()
+        };
+
+        let result = layout(&graph, Algorithm::Layered).unwrap();
+        let left = result.nodes.iter().find(|node| node.id == "left").unwrap();
+        let right = result.nodes.iter().find(|node| node.id == "right").unwrap();
+
+        assert!(left.x + left.width / 2.0 <= right.x - right.width / 2.0);
+    }
+
+    #[test]
+    fn layered_layout_separates_parallel_edges() {
+        let mut graph = graph_with_two_nodes();
+        graph.edges.push(Edge {
+            id: "A-B-2".to_string(),
+            source: "A".to_string(),
+            target: "B".to_string(),
+            label: None,
+            minlen: 1,
+        });
+
+        let result = layout(&graph, Algorithm::Layered).unwrap();
+        let first = result.edges.iter().find(|edge| edge.id == "A-B").unwrap();
+        let second = result.edges.iter().find(|edge| edge.id == "A-B-2").unwrap();
+
+        assert_ne!(first.points, second.points);
+        assert!(first.points.len() > 2);
+        assert!(second.points.len() > 2);
+    }
+
+    #[test]
     fn layered_layout_rejects_missing_edge_endpoint() {
         let mut graph = graph_with_two_nodes();
         graph.edges[0].target = "missing".to_string();
@@ -823,34 +1311,46 @@ mod tests {
         Graph {
             id: "root".to_string(),
             direction: Direction::Down,
-            nodes: vec![
-                Node {
-                    id: "A".to_string(),
-                    kind: NodeKind::Leaf,
-                    width: 80.0,
-                    height: 40.0,
-                    parent: None,
-                    direction: None,
-                    label: None,
-                },
-                Node {
-                    id: "B".to_string(),
-                    kind: NodeKind::Leaf,
-                    width: 80.0,
-                    height: 40.0,
-                    parent: None,
-                    direction: None,
-                    label: None,
-                },
-            ],
-            edges: vec![Edge {
-                id: "A-B".to_string(),
-                source: "A".to_string(),
-                target: "B".to_string(),
-                label: None,
-                minlen: 1,
-            }],
+            nodes: vec![leaf("A", None), leaf("B", None)],
+            edges: vec![edge("A-B", "A", "B")],
             ..Default::default()
+        }
+    }
+
+    fn leaf(id: &str, parent: Option<&str>) -> Node {
+        Node {
+            id: id.to_string(),
+            kind: NodeKind::Leaf,
+            width: 80.0,
+            height: 40.0,
+            parent: parent.map(str::to_string),
+            direction: None,
+            label: None,
+        }
+    }
+
+    fn group(id: &str, parent: Option<&str>, direction: Option<Direction>) -> Node {
+        Node {
+            id: id.to_string(),
+            kind: NodeKind::Group,
+            width: 0.0,
+            height: 0.0,
+            parent: parent.map(str::to_string),
+            direction,
+            label: Some(Label {
+                width: 80.0,
+                height: 20.0,
+            }),
+        }
+    }
+
+    fn edge(id: &str, source: &str, target: &str) -> Edge {
+        Edge {
+            id: id.to_string(),
+            source: source.to_string(),
+            target: target.to_string(),
+            label: None,
+            minlen: 1,
         }
     }
 }
