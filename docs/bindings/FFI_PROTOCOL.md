@@ -194,6 +194,13 @@ MermanResult merman_render_svg(
 On success, `data` contains UTF-8 SVG bytes. If the native library is built without the `render`
 feature, this function returns `MERMAN_UNSUPPORTED_FORMAT`.
 
+Passing `NULL/0` options returns Mermaid-parity SVG. Hosts that need export-safe SVG without adding
+a raster byte ABI should pass:
+
+```json
+{ "svg": { "pipeline": "resvg-safe" } }
+```
+
 On error, `data` contains UTF-8 JSON:
 
 ```json

@@ -123,6 +123,37 @@ mod tests {
     }
 
     #[test]
+    fn render_svg_resvg_safe_pipeline_selects_export_contract() {
+        let source = b"flowchart TD
+A[Start] --> B{Is it working?}
+B -->|Yes| C[Ship it]
+B -->|No| D[Debug]";
+        let parity_svg = String::from_utf8(render_svg(source, b"").unwrap()).unwrap();
+        let export_svg =
+            String::from_utf8(render_svg(source, br#"{"svg":{"pipeline":"resvg-safe"}}"#).unwrap())
+                .unwrap();
+
+        assert!(
+            parity_svg.contains("<foreignObject"),
+            "default binding SVG should preserve Mermaid HTML label DOM: {parity_svg}"
+        );
+        assert!(
+            !export_svg.contains("<foreignObject"),
+            "resvg-safe binding SVG should not rely on foreignObject: {export_svg}"
+        );
+        assert!(
+            export_svg.contains(r#"data-merman-foreignobject="fallback""#),
+            "resvg-safe binding SVG should keep generated text fallbacks: {export_svg}"
+        );
+        for label in ["Start", "Is it working?", "Yes", "Ship it", "No", "Debug"] {
+            assert!(
+                export_svg.contains(label),
+                "resvg-safe binding SVG should keep visible label {label:?}: {export_svg}"
+            );
+        }
+    }
+
+    #[test]
     fn render_svg_accepts_external_site_config() {
         let options = br##"{
             "site_config": {

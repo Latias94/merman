@@ -55,6 +55,11 @@ Mermaid license and provenance notes.
 - ASCII/Unicode diagrams for terminals, logs, and documentation snippets.
 - PNG, JPG, and PDF via SVG rasterization/conversion.
 
+Merman keeps SVG and export outputs as separate contracts. Plain SVG output is Mermaid-parity SVG
+and may include `<foreignObject>` HTML labels just like Mermaid.js. PNG/JPG/PDF export, and
+`render_svg_resvg_safe_sync()` for hosts that need SVG bytes, run the export-safe pipeline that
+adds SVG text fallbacks and strips rasterizer-hostile SVG constructs.
+
 Diagram coverage and current parity status live in [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
 
 ## Sample output

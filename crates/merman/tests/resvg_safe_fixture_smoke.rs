@@ -664,6 +664,49 @@ fn is_treemap_value_line(line: &str) -> bool {
 }
 
 #[test]
+fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
+    let source = r#"flowchart TD
+  A[Start] --> B{Is it working?}
+  B -->|Yes| C[Ship it]
+  B -->|No| D[Debug]
+"#;
+    let renderer = HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_diagram_id("export-contract");
+
+    let parity_svg = renderer
+        .render_svg_sync(source)
+        .expect("parity render should succeed")
+        .expect("diagram should be detected");
+    assert!(
+        parity_svg.contains("<foreignObject"),
+        "parity SVG should preserve Mermaid HTML label DOM: {parity_svg}"
+    );
+    for label in ["Start", "Ship it"] {
+        assert!(
+            parity_svg.contains(label),
+            "parity SVG should keep visible label {label:?}: {parity_svg}"
+        );
+    }
+
+    let export_svg = renderer
+        .render_svg_resvg_safe_sync(source)
+        .expect("resvg-safe render should succeed")
+        .expect("diagram should be detected");
+    assert_resvg_safe_output("export-contract", source, &export_svg);
+    assert!(
+        export_svg.contains(r#"data-merman-foreignobject="fallback""#),
+        "resvg-safe SVG should keep generated text fallbacks: {export_svg}"
+    );
+    for label in ["Start", "Is it working?", "Yes", "Ship it", "No", "Debug"] {
+        assert!(
+            export_svg.contains(label),
+            "resvg-safe SVG should keep visible label {label:?}: {export_svg}"
+        );
+    }
+}
+
+#[test]
 fn host_reported_diagrams_render_headless_resvg_safe() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (

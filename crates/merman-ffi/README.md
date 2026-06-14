@@ -52,6 +52,10 @@ The first C ABI release candidate exposes SVG, ASCII text, semantic JSON, layout
 JSON, and binding metadata. Native raster byte outputs are intentionally split into a later ABI
 lane.
 
+Hosts that need SVG for strict renderers can still request the export-safe SVG pipeline through
+`options_json`, for example `{ "svg": { "pipeline": "resvg-safe" } }`. `NULL/0` options keep the
+default Mermaid-parity SVG contract.
+
 ## Minimal C Usage
 
 ```c

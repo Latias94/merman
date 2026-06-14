@@ -8,7 +8,8 @@
 
 Default SVG output is not optimized or cleaned by default because parity output is the comparison
 surface for upstream Mermaid fixtures. Consumers that need renderer compatibility should opt in to
-a pipeline explicitly.
+a pipeline explicitly. Mermaid-parity SVG may contain `<foreignObject>` HTML labels; that is
+expected and should not be treated as the export-safe surface.
 
 Typical choices:
 

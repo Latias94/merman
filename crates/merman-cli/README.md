@@ -60,6 +60,10 @@ provided.
 | ASCII | `.txt`, `.ascii` | Rust extension, enabled by default |
 | Unicode | `.txt`, `.ascii` | Rust extension, enabled by default |
 
+SVG output uses the Mermaid-parity contract. PNG, JPG, and PDF output use the export contract: the
+CLI applies the `resvg-safe` SVG pipeline before raster/PDF conversion so strict headless renderers
+do not have to understand Mermaid HTML labels in `<foreignObject>`.
+
 Examples:
 
 ```sh

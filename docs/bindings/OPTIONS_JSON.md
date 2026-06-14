@@ -204,6 +204,11 @@ non-`resvg-safe` pipelines, and its generic text matching should be treated as a
 postprocessing choice. HTML label fallback text inherits Mermaid label/root fill colors when
 available, so dark host profiles do not fall back to unreadable legacy text colors.
 
+`svg.pipeline` also selects the output contract. The default `parity` value intentionally preserves
+Mermaid-compatible SVG and can include `<foreignObject>` HTML labels. Hosts that need to feed SVG
+bytes into strict SVG renderers, rasterizers, or PDF converters should request `resvg-safe`
+explicitly instead of treating the default SVG as export-safe input.
+
 `svg.scoped_css` is for host-owned styling, not Mermaid parity CSS. Selectors are scoped to the
 root SVG id and injected after Mermaid's styles so host rules have normal cascade priority. When
 `svg.pipeline` is `resvg-safe`, merman sanitizes the injected CSS after insertion to preserve the
