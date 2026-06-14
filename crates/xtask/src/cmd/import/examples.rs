@@ -224,17 +224,22 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
 
     fn deferred_with_baselines_reason(
         diagram_dir: &str,
+        stem: &str,
         fixture_text: &str,
     ) -> Option<&'static str> {
         match diagram_dir {
             "flowchart" => {
                 if fixture_text.trim_start().starts_with("flowchart-elk") {
-                    return Some("flowchart-elk directive (ELK parity deferred)");
+                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                        return Some(reason);
+                    }
                 }
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    return Some("flowchart frontmatter config.layout=elk (ELK parity deferred)");
+                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                        return Some(reason);
+                    }
                 }
                 if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
                     && !fixture_text.contains("\n  look: classic")
@@ -492,7 +497,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             continue;
         }
 
-        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &c.body) {
+        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &f.stem, &c.body) {
             report_lines.push(format!(
                 "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\texample_idx={}\ttitle={}\treason={reason}",
                 f.diagram_dir,

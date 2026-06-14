@@ -20,6 +20,7 @@ are dominated by hierarchy/order/section semantics that the subset cannot repres
 
 - The current smoke fixtures remain renderable.
 - ELK fixtures are classified by difficulty instead of being treated as one undifferentiated block.
+- ELK fixture probes can run explicitly without weakening the default Flowchart parity matrix.
 - The lane can answer, with evidence, whether any remaining fixture class truly needs a full port.
 - If a deeper port is ever chosen, it stays isolated from the default MIT/Apache workspace surface.
 
@@ -50,7 +51,8 @@ are dominated by hierarchy/order/section semantics that the subset cannot repres
 | Batch | Candidate fixtures | Expected work |
 | --- | --- | --- |
 | A0 - current smoke | `render_svg_returns_svg_for_flowchart_elk`, `headless_renderer_renders_flowchart_elk_svg`, and the already active non-ELK fixture `upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063` | Keep default renderability and avoid confusing spec-file provenance with actual `layout: elk` coverage. |
-| A1 - simple ELK | Upstream `1-elk` through `8-elk`, `1433-elk`, `2388-elk` | Import/admit simple `flowchart-elk` and `layout: elk` cases after comparing geometry drift. |
+| A0.5 - explicit probes | `upstream_html_demos_flowchart_elk_flowchart_elk_001` and later selected Tier A imports | Run with `--include-elk-probes`; do not admit to default parity until DOM shape and layout geometry pass. |
+| A1 - simple ELK | Upstream `1-elk` through `8-elk`, `1433-elk`, `2388-elk` | Import/probe simple `flowchart-elk` and `layout: elk` cases, then admit only the fixtures whose DOM and geometry drift is understood and closed. |
 | A2 - routing basics | `4-elk`, `2824-elk`, `7213` | Tighten edge length, clipping, and right-angle orthogonal routing without introducing full ELK sections. |
 | B1 - hierarchy basics | `50-57.x`, `66-74` nested/outgoing subgraph cases | Improve parent/cluster handling and cross-subgraph edges. |
 | B2 - local direction | `2050-elk`, direction-specific nested cases `66-72` | Make `Node.direction` affect nested layout instead of only using the graph direction. |

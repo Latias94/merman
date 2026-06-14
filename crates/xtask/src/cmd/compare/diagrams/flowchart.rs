@@ -28,6 +28,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut dom_mode: String = "parity".to_string();
     let mut text_measurer: String = "vendored".to_string();
     let mut apply_root_overrides: bool = true;
+    let mut include_elk_probes: bool = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -89,6 +90,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                     .unwrap_or_else(|| "deterministic".to_string());
             }
             "--no-root-overrides" => apply_root_overrides = false,
+            "--include-elk-probes" => include_elk_probes = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -266,10 +268,14 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 .get_str("flowchart.defaultRenderer")
                 == Some("elk");
         if parsed.meta.diagram_type == "flowchart-elk" || flowchart_layout_elk {
-            skipped.push(format!(
-                "skipped {stem}: ELK layout subset is not admitted to Flowchart SVG parity (`flowchart-elk` / config layout=elk)"
-            ));
-            continue;
+            let admitted = crate::cmd::flowchart_elk_svg_parity_admitted(stem)
+                || (include_elk_probes && crate::cmd::flowchart_elk_svg_probe_candidate(stem));
+            if !admitted
+                && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+            {
+                skipped.push(format!("skipped {stem}: {reason}"));
+                continue;
+            }
         }
 
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
@@ -291,6 +297,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
 
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
+            aria_roledescription: Some(parsed.meta.diagram_type.clone()),
             math_renderer: flowchart_math_renderer.clone(),
             apply_root_overrides,
             ..Default::default()

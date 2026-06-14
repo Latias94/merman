@@ -143,6 +143,19 @@ pub fn render_layouted_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let flowchart_roledescription =
+        matches!(&diagram.layout, crate::model::LayoutDiagram::FlowchartV2(_))
+            .then_some(diagram.meta.diagram_type.as_str());
+    let mut scoped_options;
+    let options = if options.aria_roledescription.is_none()
+        && let Some(roledescription) = flowchart_roledescription
+    {
+        scoped_options = options.clone();
+        scoped_options.aria_roledescription = Some(roledescription.to_string());
+        &scoped_options
+    } else {
+        options
+    };
     render_layout_svg_parts(
         &diagram.layout,
         &diagram.semantic,

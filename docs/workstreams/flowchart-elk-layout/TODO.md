@@ -14,6 +14,8 @@ Last updated: 2026-06-14
 
 - [x] Carry `Node.direction` through nested subgraphs.
 - [x] Improve cluster/hierarchy handling for outgoing links and links between subgraphs.
+- [x] Add an explicit ELK probe lane in `xtask` without admitting failing fixtures to the default
+  Flowchart parity matrix.
 - [ ] Tighten label and multi-edge spacing where the current subset is visibly close.
 - [ ] Re-check whether the diamond/intersection cases can be handled without a full port.
 
@@ -26,6 +28,10 @@ Notes:
   the lowest common container direction, exposes typed `LayoutOptions`, maps Mermaid `elk.*`
   config fields through the Flowchart adapter, and separates parallel edges unless
   `elk.mergeEdges` is set.
+- 2026-06-14: `compare-flowchart-svgs --include-elk-probes` can now run known ELK probe
+  candidates explicitly. The HTML demo probe is still not admitted by default because it fails on
+  Flowchart-ELK DOM shape and layout geometry, so the default parity matrix remains green and
+  honest.
 
 ## Phase 3 - Port Decision
 

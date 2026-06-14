@@ -13,12 +13,6 @@ fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str
         return Some(reason);
     }
 
-    if diagram == "flowchart" && stem == "upstream_html_demos_flowchart_elk_flowchart_elk_001" {
-        return Some(
-            "local Flowchart ELK layout is a lightweight subset and is not admitted to the SVG parity matrix; F115-070 keeps this upstream fixture out-of-matrix until a dedicated ELK layout lane proves it",
-        );
-    }
-
     if diagram == "class" && stem == "upstream_parser_class_spec" {
         return Some(
             "upstream Mermaid 11.15 renders prototype-key class ids with NaN transforms and missing nodes; merman keeps those ids deterministic and compare-class-svgs already excludes this fixture",
@@ -38,6 +32,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixtures_root_arg: Option<PathBuf> = None;
     let mut out_root_arg: Option<PathBuf> = None;
     let mut only_diagrams: Vec<String> = Vec::new();
+    let mut include_elk_probes = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -78,6 +73,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                     only_diagrams.push(d);
                 }
             }
+            "--include-elk-probes" => include_elk_probes = true,
             "--help" | "-h" => {
                 return Err(XtaskError::Usage);
             }
@@ -412,6 +408,27 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
+            if diagram == "flowchart" {
+                let flowchart_layout_elk = parsed.meta.diagram_type == "flowchart-elk"
+                    || parsed.meta.effective_config.get_str("layout") == Some("elk")
+                    || parsed
+                        .meta
+                        .effective_config
+                        .get_str("flowchart.defaultRenderer")
+                        == Some("elk");
+                if flowchart_layout_elk {
+                    let admitted = crate::cmd::flowchart_elk_svg_parity_admitted(stem)
+                        || (include_elk_probes
+                            && crate::cmd::flowchart_elk_svg_probe_candidate(stem));
+                    if !admitted
+                        && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                    {
+                        skipped.push((format!("{diagram}/{stem}"), reason));
+                        continue;
+                    }
+                }
+            }
+
             let mut layout_opts = layout_opts.clone();
             if matches!(diagram.as_str(), "flowchart" | "sequence") {
                 layout_opts.math_renderer = node_math_renderer.clone();
@@ -646,13 +663,37 @@ mod tests {
     }
 
     #[test]
-    fn svg_xml_compare_skip_reason_is_narrow_for_flowchart_elk() {
-        let reason = svg_xml_compare_skip_reason(
-            "flowchart",
-            "upstream_html_demos_flowchart_elk_flowchart_elk_001",
-        )
-        .expect("flowchart-elk fixture should be explicitly skipped");
-        assert!(reason.contains("lightweight subset"));
+    fn svg_xml_compare_skip_reason_defers_flowchart_elk_after_parse() {
+        assert_eq!(
+            svg_xml_compare_skip_reason(
+                "flowchart",
+                "upstream_html_demos_flowchart_elk_flowchart_elk_001",
+            ),
+            None
+        );
+        assert_eq!(
+            svg_xml_compare_skip_reason(
+                "flowchart",
+                "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
+            ),
+            None
+        );
+        assert_eq!(
+            crate::cmd::flowchart_elk_svg_parity_skip_reason(
+                "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
+            ),
+            Some(
+                "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes"
+            )
+        );
+        assert_eq!(
+            crate::cmd::flowchart_elk_svg_parity_skip_reason(
+                "upstream_html_demos_flowchart_elk_flowchart_elk_001",
+            ),
+            Some(
+                "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes"
+            )
+        );
         assert_eq!(
             svg_xml_compare_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
             None

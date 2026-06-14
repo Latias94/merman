@@ -111,7 +111,10 @@ fn render_flowchart_v2_svg_with_config_inner(
     let effective_config_value = effective_config.as_value();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_type = "flowchart-v2";
+    let diagram_type = options
+        .aria_roledescription
+        .as_deref()
+        .unwrap_or("flowchart-v2");
 
     let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
 
@@ -237,6 +240,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     let ctx = FlowchartRenderCtx {
         diagram_id,
+        diagram_type,
         tx,
         ty,
         measurer,
@@ -387,7 +391,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     out.push_str("</style>");
     push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
 
-    let defs = prepare_flowchart_defs(diagram_id, &ctx);
+    let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx);
 
     out.push_str("<g>");
     defs.push_base_markers(&mut out);

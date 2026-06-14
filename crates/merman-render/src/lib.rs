@@ -759,6 +759,31 @@ A-->B
         assert!(b.y > a.y);
     }
 
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_layouted_svg_preserves_flowchart_elk_roledescription() {
+        let parsed = Engine::new()
+            .parse_diagram_sync("flowchart-elk TD\nA-->B;", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        let layout_options = LayoutOptions::default();
+        let layouted = layout_parsed(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layouted_svg(
+            &layouted,
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions {
+                diagram_id: Some("elk-smoke".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
+        assert!(svg.contains("elk-smoke_flowchart-elk-pointEnd"));
+        assert!(!svg.contains(r#"aria-roledescription="flowchart-v2""#));
+    }
+
     #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {

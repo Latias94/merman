@@ -128,12 +128,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     );
     if let Some(base) = flowchart_edge_marker_start_base(edge) {
         out.push_str(r#" marker-start="url(#"#);
-        write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
+        write_flowchart_marker_id_xml(out, ctx.diagram_id, ctx.diagram_type, base, marker_color);
         out.push_str(r#")""#);
     }
     if let Some(base) = flowchart_edge_marker_end_base(edge) {
         out.push_str(r#" marker-end="url(#"#);
-        write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
+        write_flowchart_marker_id_xml(out, ctx.diagram_id, ctx.diagram_type, base, marker_color);
         out.push_str(r#")""#);
     }
     out.push_str(" />");

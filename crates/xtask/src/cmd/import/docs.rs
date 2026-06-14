@@ -629,6 +629,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
 
     fn deferred_with_baselines_reason(
         diagram_dir: &str,
+        stem: &str,
         fixture_text: &str,
     ) -> Option<&'static str> {
         // Keep `--with-baselines` aligned with the current parity hardening scope.
@@ -641,12 +642,16 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 // Flowchart-ELK has a lightweight renderer path, but upstream SVG parity is tracked
                 // by the dedicated ELK layout lane.
                 if fixture_text.trim_start().starts_with("flowchart-elk") {
-                    return Some("flowchart-elk directive (ELK parity deferred)");
+                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                        return Some(reason);
+                    }
                 }
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    return Some("flowchart frontmatter config.layout=elk (ELK parity deferred)");
+                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                        return Some(reason);
+                    }
                 }
                 // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
                 if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
@@ -787,7 +792,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
 
         // `--with-baselines`: treat `--limit` as the number of fixtures that survive upstream
         // rendering + snapshot updates (instead of the number of files written).
-        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &c.body) {
+        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &f.stem, &c.body) {
             report_lines.push(format!(
                 "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\treason={reason}",
                 f.diagram_dir,

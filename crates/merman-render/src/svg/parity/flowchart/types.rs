@@ -8,6 +8,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) diagram_id: &'a str,
+    pub(in crate::svg::parity::flowchart) diagram_type: &'a str,
     pub(in crate::svg::parity::flowchart) tx: f64,
     pub(in crate::svg::parity::flowchart) ty: f64,
     pub(in crate::svg::parity::flowchart) measurer: &'a dyn TextMeasurer,

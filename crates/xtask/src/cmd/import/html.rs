@@ -654,21 +654,29 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                 || first.contains(r#"style="max-width: 16px"#)
         }
 
-        fn should_defer_fixture(diagram_dir: &str, fixture_text: &str) -> Option<&'static str> {
+        fn should_defer_fixture(
+            diagram_dir: &str,
+            stem: &str,
+            fixture_text: &str,
+        ) -> Option<&'static str> {
             match diagram_dir {
                 "flowchart" => {
                     if fixture_text.contains("\n  layout: elk")
                         || fixture_text.contains("\nlayout: elk")
                     {
-                        return Some(
-                            "flowchart frontmatter config.layout=elk (ELK parity deferred)",
-                        );
+                        if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                        {
+                            return Some(reason);
+                        }
                     }
                     if fixture_text
                         .lines()
                         .any(|l| l.trim_start().starts_with("flowchart-elk"))
                     {
-                        return Some("flowchart diagram type flowchart-elk (ELK parity deferred)");
+                        if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                        {
+                            return Some(reason);
+                        }
                     }
                 }
                 "sequence" if fixture_text.contains("$$") => {
@@ -716,7 +724,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                     continue;
                 }
             };
-            if let Some(reason) = should_defer_fixture(&f.diagram_dir, &fixture_text) {
+            if let Some(reason) = should_defer_fixture(&f.diagram_dir, &f.stem, &fixture_text) {
                 skipped.push(format!("defer ({reason}): {}", f.path.display()));
                 defer_fixture_files_keep_baselines(f);
                 continue;

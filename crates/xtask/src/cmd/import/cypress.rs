@@ -2500,24 +2500,15 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
             // Keep `--with-baselines` aligned with the current parity hardening scope.
             //
-            // We explicitly defer/skip cases that:
-            // - require Flowchart ELK parity (`flowchart-elk`), which now has a lightweight
-            //   renderer path but is not admitted to the parity-gated corpus yet
-            // - exercise browser-only math rendering (`$$...$$`)
-            // - are sourced from the upstream `errorDiagram` spec (these are intentionally-invalid
-            //   inputs that should render as Mermaid "error" diagrams, not as flowcharts)
+            // We explicitly defer/skip cases that exercise browser-only math rendering
+            // (`$$...$$`) or are sourced from the upstream `errorDiagram` spec. Flowchart ELK is
+            // handled after fixture stem assignment so admitted ELK cases can enter the dedicated
+            // layout lane while unknown ELK fixtures remain deferred.
             if with_baselines && diagram_dir == "flowchart" {
                 let spec_name = spec_path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or_default();
-                if spec_name.contains("flowchart-elk.spec.") {
-                    skipped.push(format!(
-                        "skip (deferred for --with-baselines): {} (flowchart-elk spec)",
-                        spec_path.display()
-                    ));
-                    continue;
-                }
                 if spec_name.contains("katex.spec.") {
                     skipped.push(format!(
                         "skip (deferred for --with-baselines): {} (katex spec)",
@@ -2535,16 +2526,6 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 if body.contains("$$") {
                     skipped.push(format!(
                         "skip (deferred for --with-baselines): {} (flowchart math)",
-                        spec_path.display()
-                    ));
-                    continue;
-                }
-                if body
-                    .lines()
-                    .any(|l| l.trim_start().starts_with("flowchart-elk"))
-                {
-                    skipped.push(format!(
-                        "skip (deferred for --with-baselines): {} (flowchart-elk diagram type)",
                         spec_path.display()
                     ));
                     continue;
@@ -2723,6 +2704,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
     fn deferred_keep_baselines_reason(
         diagram_dir: &str,
+        stem: &str,
         fixture_text: &str,
     ) -> Option<&'static str> {
         match diagram_dir {
@@ -2768,11 +2750,14 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             }
             "flowchart" => {
                 // Flowchart ELK has a lightweight renderer path, but full SVG parity is tracked in
-                // a dedicated layout lane. Keep upstream SVG baselines traceable under `_deferred`.
+                // a dedicated layout lane. Keep unadmitted upstream SVG baselines traceable under
+                // `_deferred`.
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    return Some("flowchart frontmatter config.layout=elk (ELK parity deferred)");
+                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                        return Some(reason);
+                    }
                 }
 
                 // Non-classic looks (e.g. `handDrawn`) are currently out of scope for parity-gated
@@ -2791,7 +2776,9 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     .lines()
                     .any(|l| l.trim_start().starts_with("flowchart-elk"))
                 {
-                    return Some("flowchart diagram type flowchart-elk (ELK parity deferred)");
+                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                        return Some(reason);
+                    }
                 }
 
                 // Mermaid supports flowchart nodes with an `@{ icon: ... }` modifier. merman does
@@ -3058,7 +3045,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
-        if let Some(reason) = deferred_keep_baselines_reason(&f.diagram_dir, &fixture_text) {
+        if let Some(reason) = deferred_keep_baselines_reason(&f.diagram_dir, &f.stem, &fixture_text)
+        {
             report_lines.push(format!(
                 "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
                 f.diagram_dir,
