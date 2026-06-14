@@ -229,6 +229,7 @@ mod tests {
             label: None,
             minlen: 1,
             priority_direction: 0,
+            priority_shortness: 0,
         }
     }
 

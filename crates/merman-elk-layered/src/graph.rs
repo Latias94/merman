@@ -69,6 +69,8 @@ pub struct LNode {
     pub ports: Vec<LPort>,
     pub nested_graph: Option<Box<LGraph>>,
     pub model_order: Option<usize>,
+    pub layer_index: Option<usize>,
+    pub layer_constraint: super::options::LayerConstraint,
     pub compound: bool,
 }
 
@@ -83,6 +85,8 @@ impl LNode {
             ports: Vec::new(),
             nested_graph: None,
             model_order,
+            layer_index: None,
+            layer_constraint: super::options::LayerConstraint::None,
             compound: false,
         }
     }
@@ -139,6 +143,7 @@ pub struct LayeredEdge {
     pub bend_points: Vec<LPoint>,
     pub model_order: Option<usize>,
     pub priority_direction: i32,
+    pub priority_shortness: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,6 +241,59 @@ impl GraphProperties {
     }
 }
 
+impl LGraph {
+    pub fn clear_layers(&mut self) {
+        self.layers.clear();
+        for node in &mut self.layerless_nodes {
+            node.layer_index = None;
+        }
+    }
+
+    pub fn set_node_layer(&mut self, node_index: usize, layer_index: usize) {
+        while self.layers.len() <= layer_index {
+            self.layers.push(Layer { nodes: Vec::new() });
+        }
+
+        if let Some(old_layer) = self.layerless_nodes[node_index].layer_index {
+            if let Some(layer) = self.layers.get_mut(old_layer) {
+                remove_node(&mut layer.nodes, node_index);
+            }
+        }
+
+        self.layerless_nodes[node_index].layer_index = Some(layer_index);
+        self.layers[layer_index].nodes.push(node_index);
+    }
+
+    pub fn node_incoming_edges(&self, node_index: usize) -> Vec<usize> {
+        self.layerless_nodes[node_index]
+            .ports
+            .iter()
+            .flat_map(|port| port.incoming_edges.iter().copied())
+            .collect()
+    }
+
+    pub fn node_outgoing_edges(&self, node_index: usize) -> Vec<usize> {
+        self.layerless_nodes[node_index]
+            .ports
+            .iter()
+            .flat_map(|port| port.outgoing_edges.iter().copied())
+            .collect()
+    }
+
+    pub fn node_connected_edges(&self, node_index: usize) -> Vec<usize> {
+        self.layerless_nodes[node_index]
+            .ports
+            .iter()
+            .flat_map(|port| {
+                port.incoming_edges
+                    .iter()
+                    .chain(port.outgoing_edges.iter())
+                    .copied()
+            })
+            .collect()
+    }
+}
+
 /// Reverse an edge according to `LEdge.reverse(...)`.
 ///
 /// Source:
@@ -299,5 +357,11 @@ fn port_exists(graph: &LGraph, port_ref: PortRef) -> bool {
 fn remove_edge(edges: &mut Vec<usize>, edge_index: usize) {
     if let Some(position) = edges.iter().position(|candidate| *candidate == edge_index) {
         edges.remove(position);
+    }
+}
+
+fn remove_node(nodes: &mut Vec<usize>, node_index: usize) {
+    if let Some(position) = nodes.iter().position(|candidate| *candidate == node_index) {
+        nodes.remove(position);
     }
 }

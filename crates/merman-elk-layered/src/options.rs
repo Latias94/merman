@@ -105,6 +105,16 @@ pub enum SelfLoopDistributionStrategy {
     Equally,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayerConstraint {
+    #[default]
+    None,
+    First,
+    FirstSeparate,
+    Last,
+    LastSeparate,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayeredOptions {
     pub direction: ElkDirection,
@@ -129,6 +139,7 @@ pub struct LayeredOptions {
     pub wrapping_multi_edge_improve_wrapped_edges: bool,
     pub feedback_edges: bool,
     pub random_seed: i32,
+    pub thoroughness: usize,
     pub node_placement_favor_straight_edges: Option<bool>,
     pub graph_has_self_loops: bool,
     pub graph_has_center_labels: bool,
@@ -176,6 +187,7 @@ impl Default for LayeredOptions {
             wrapping_multi_edge_improve_wrapped_edges: true,
             feedback_edges: false,
             random_seed: 1,
+            thoroughness: 7,
             node_placement_favor_straight_edges: None,
             graph_has_self_loops: false,
             graph_has_center_labels: false,

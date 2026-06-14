@@ -6,12 +6,14 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/IntermediateProcessorStrategy.java
 //! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph
 
+pub mod common;
 pub mod configurator;
 pub mod graph;
 pub mod importer;
 pub mod intermediate;
 pub mod options;
 pub mod p1cycles;
+pub mod p2layers;
 pub mod pipeline;
 pub mod random;
 
@@ -26,9 +28,10 @@ pub use importer::{
 };
 pub use intermediate::restore_reversed_edges;
 pub use options::{
-    EdgeRouting, ElkDirection, HierarchyHandling, LayeredOptions, NodePlacementStrategy,
-    SelfLoopDistributionStrategy, SpacingOptions,
+    EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions,
+    NodePlacementStrategy, SelfLoopDistributionStrategy, SpacingOptions,
 };
+pub use p2layers::layer_network_simplex;
 pub use pipeline::{
     LayeredPhase, ProcessorKind, ProcessorSlot, assemble_processors, assemble_processors_for_graph,
 };

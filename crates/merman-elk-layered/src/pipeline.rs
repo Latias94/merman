@@ -791,6 +791,7 @@ mod tests {
                     label: Some(ElkInputLabel::center("inside", 24.0, 12.0)),
                     minlen: 1,
                     priority_direction: 0,
+                    priority_shortness: 0,
                 },
                 ElkInputEdge {
                     id: "A-A".to_string(),
@@ -799,6 +800,7 @@ mod tests {
                     label: None,
                     minlen: 1,
                     priority_direction: 0,
+                    priority_shortness: 0,
                 },
             ],
         })

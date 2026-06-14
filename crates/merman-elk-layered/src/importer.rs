@@ -39,6 +39,7 @@ pub struct ElkInputEdge {
     pub label: Option<ElkInputLabel>,
     pub minlen: usize,
     pub priority_direction: i32,
+    pub priority_shortness: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -224,6 +225,7 @@ fn transform_edge(
         bend_points: Vec::new(),
         model_order: Some(model_order),
         priority_direction: edge.priority_direction,
+        priority_shortness: edge.priority_shortness,
     });
 
     Ok(edge_index)
@@ -471,6 +473,7 @@ mod tests {
             label: None,
             minlen: 1,
             priority_direction: 0,
+            priority_shortness: 0,
         }
     }
 
