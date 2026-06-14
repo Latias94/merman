@@ -428,9 +428,9 @@ pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<Proce
 /// This follows Eclipse ELK's `ElkLayered#hierarchicalLayout(...)` execution shape: collect all
 /// nested graphs in bottom-up order, keep a processor cursor for each graph, pause non-root graphs
 /// at hierarchy-aware processors, execute those hierarchy-aware processors only at the root graph,
-/// and then continue from the deepest graph again. Cross-hierarchy edges are still rejected because
-/// they require the compound graph pre/postprocessors and hierarchical port processors to be ported
-/// first.
+/// and then continue from the deepest graph again. Cross-hierarchy edges are represented as
+/// hierarchical external port dummies by the importer and routed by the hierarchical port processors
+/// in the same schedule.
 pub fn execute_ported_compound_processors(
     graph: &mut LGraph,
 ) -> PipelineResult<Vec<GraphExecution>> {
@@ -523,21 +523,6 @@ fn execute_hierarchy_aware_processor(
 }
 
 fn reject_unsupported_compound_graph(graph: &LGraph) -> PipelineResult<()> {
-    if graph.graph_properties.external_ports || graph.options.graph_has_external_ports {
-        return Err(PipelineError::UnsupportedCompoundGraph {
-            reason: "cross-hierarchy edges require ELK compound and hierarchical port processors",
-        });
-    }
-    if graph
-        .layerless_nodes
-        .iter()
-        .any(|node| node.kind == crate::graph::LNodeKind::ExternalPort)
-    {
-        return Err(PipelineError::UnsupportedCompoundGraph {
-            reason: "external port dummy nodes require ELK hierarchical port processors",
-        });
-    }
-
     for node in &graph.layerless_nodes {
         if let Some(nested_graph) = node.nested_graph.as_deref() {
             reject_unsupported_compound_graph(nested_graph)?;
@@ -1681,7 +1666,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_compound_runner_rejects_external_ports() {
+    fn source_ported_compound_runner_routes_cross_hierarchy_edges() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(crate::options::HierarchyHandling::IncludeChildren);
         let mut child = node("A");
@@ -1694,12 +1679,18 @@ mod tests {
         })
         .unwrap();
 
-        let err = execute_ported_compound_processors(&mut graph).unwrap_err();
+        let executed = execute_ported_compound_processors(&mut graph).unwrap();
 
-        assert!(matches!(
-            err,
-            PipelineError::UnsupportedCompoundGraph { .. }
-        ));
+        assert_eq!(executed.len(), 2);
+        assert!(
+            graph
+                .layerless_nodes
+                .iter()
+                .filter(|node| node.kind == crate::graph::LNodeKind::ExternalPort)
+                .all(|node| node.layer_index.is_none())
+        );
+        assert!(graph.size.width > 0.0);
+        assert!(graph.size.height > 0.0);
     }
 
     #[test]

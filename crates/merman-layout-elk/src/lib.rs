@@ -190,22 +190,23 @@ fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mu
                 height: node.size.height,
             }),
     );
-    result.edges.extend(
-        graph
-            .edges
-            .iter()
-            .filter(|edge| edge_has_layout_endpoints(graph, edge.source, edge.target))
-            .map(|edge| EdgeLayout {
-                id: edge.id.clone(),
-                points: edge_points(graph, edge)
-                    .into_iter()
-                    .map(|point| Point {
-                        x: graph_origin.x + point.x,
-                        y: graph_origin.y + point.y,
-                    })
-                    .collect(),
-            }),
-    );
+    let edges = graph
+        .edges
+        .iter()
+        .enumerate()
+        .filter(|(edge_index, edge)| edge_has_layout_endpoints(graph, result, *edge_index, edge))
+        .map(|edge| EdgeLayout {
+            id: edge.1.id.clone(),
+            points: edge_points(graph, edge.1)
+                .into_iter()
+                .map(|point| Point {
+                    x: graph_origin.x + point.x,
+                    y: graph_origin.y + point.y,
+                })
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    result.edges.extend(edges);
 
     for node in &graph.layerless_nodes {
         let Some(nested_graph) = node.nested_graph.as_deref() else {
@@ -222,15 +223,31 @@ fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mu
     }
 }
 
-fn edge_has_layout_endpoints(graph: &LGraph, source: PortRef, target: PortRef) -> bool {
+fn edge_has_layout_endpoints(
+    graph: &LGraph,
+    result: &LayoutResult,
+    edge_index: usize,
+    edge: &source_port::LayeredEdge,
+) -> bool {
+    if !graph.edge_source_attached(edge_index) || !graph.edge_target_attached(edge_index) {
+        return false;
+    }
+
+    endpoint_has_layout(graph, result, edge.source, edge.source_node_id.as_str())
+        && endpoint_has_layout(graph, result, edge.target, edge.target_node_id.as_str())
+}
+
+fn endpoint_has_layout(
+    graph: &LGraph,
+    result: &LayoutResult,
+    endpoint: PortRef,
+    original_node_id: &str,
+) -> bool {
     graph
         .layerless_nodes
-        .get(source.node)
+        .get(endpoint.node)
         .is_some_and(|node| node.kind == LNodeKind::Normal)
-        && graph
-            .layerless_nodes
-            .get(target.node)
-            .is_some_and(|node| node.kind == LNodeKind::Normal)
+        || result.nodes.iter().any(|node| node.id == original_node_id)
 }
 
 fn edge_points(graph: &LGraph, edge: &source_port::LayeredEdge) -> Vec<source_port::LPoint> {
@@ -379,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_rejects_cross_hierarchy_edge_until_ports_are_ported() {
+    fn source_ported_layout_routes_cross_hierarchy_edge() {
         let mut child = leaf("A");
         child.parent = Some("cluster".to_string());
         let mut graph = flat_graph(
@@ -399,9 +416,26 @@ mod tests {
         );
         graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
-        let err = layout_source_ported(&graph, Algorithm::Layered).unwrap_err();
+        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
 
-        assert!(matches!(err, Error::SourcePipeline(_)));
+        let cluster = result
+            .nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap();
+        let child = result.nodes.iter().find(|node| node.id == "A").unwrap();
+        let edge = result
+            .edges
+            .iter()
+            .find(|edge| edge.id == "cluster-A")
+            .unwrap();
+        assert_eq!(result.nodes.len(), 2);
+        assert!(edge.points.len() >= 2);
+        assert!(
+            edge.points.first().unwrap().x >= cluster.x - cluster.width / 2.0
+                && edge.points.first().unwrap().x <= cluster.x + cluster.width / 2.0
+        );
+        assert_eq!(edge.points.last().unwrap().x, child.x);
     }
 
     #[test]
