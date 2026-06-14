@@ -6,12 +6,19 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/AbstractBarycenterPortDistributor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/NodeRelativePortDistributor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/LayerTotalPortDistributor.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/GreedySwitchHeuristic.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/SwitchDecider.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/CrossingMatrixFiller.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/BetweenLayerEdgeTwoNodeCrossingsCounter.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/NorthSouthEdgeNeighbouringNodeCrossingsCounter.java
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::graph::{LGraph, LNodeKind, PortRef, PortType};
+use crate::graph::{LGraph, LNodeKind, PortRef, PortSide, PortType};
 use crate::options::OrderingStrategy;
-use crate::p3order::counting::CrossingsCounter;
+use crate::p3order::counting::{
+    BinaryIndexedTree, CrossingsCounter, ports_in_north_south_east_west_order,
+};
 use crate::random::JavaRandom;
 
 use super::GraphInfoHolder;
@@ -19,6 +26,8 @@ use super::GraphInfoHolder;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CrossMinType {
     Barycenter,
+    OneSidedGreedySwitch,
+    TwoSidedGreedySwitch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,6 +386,823 @@ impl BarycenterHeuristic {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CrossingCountSide {
+    West,
+    East,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Adjacency {
+    position: usize,
+    cardinality: usize,
+    current_cardinality: usize,
+}
+
+impl Adjacency {
+    fn new(position: usize) -> Self {
+        Self {
+            position,
+            cardinality: 1,
+            current_cardinality: 1,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.current_cardinality = self.cardinality;
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct AdjacencyList {
+    adjacency_list: Vec<Adjacency>,
+    size: usize,
+    current_size: usize,
+    current_index: usize,
+}
+
+impl AdjacencyList {
+    fn new(graph: &LGraph, current_node_order: &[Vec<usize>], node: usize, side: PortSide) -> Self {
+        let mut adjacency_list = Vec::new();
+        let mut size = 0usize;
+        let port_positions =
+            neighboring_layer_port_positions(graph, current_node_order, node, side);
+
+        for port in ports_in_north_south_east_west_order(graph, node, side) {
+            for edge in edges_connected_to_side(graph, port, side) {
+                if !is_edge_self_loop(graph, edge) && !is_in_layer_edge(graph, edge) {
+                    let adjacent_port = adjacent_port_of_side(graph, edge, side);
+                    if let Some(adjacent_port_position) = port_positions.get(&adjacent_port) {
+                        adjacency_list.push(Adjacency::new(*adjacent_port_position));
+                        size += 1;
+                    }
+                }
+            }
+        }
+
+        adjacency_list.sort_by_key(|adjacency| adjacency.position);
+        let adjacency_list = merge_equal_adjacencies(adjacency_list);
+        Self {
+            adjacency_list,
+            size,
+            current_size: size,
+            current_index: 0,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.current_index = 0;
+        self.current_size = self.size;
+        if !self.is_empty() {
+            self.current_adjacency_mut().reset();
+        }
+    }
+
+    fn count_adjacencies_below_node_of_first_port(&self) -> usize {
+        self.current_size - self.current_adjacency().current_cardinality
+    }
+
+    fn remove_first(&mut self) {
+        if self.is_empty() {
+            return;
+        }
+
+        if self.current_adjacency().current_cardinality == 1 {
+            self.increment_current_index();
+        } else {
+            self.current_adjacency_mut().current_cardinality -= 1;
+        }
+
+        self.current_size -= 1;
+    }
+
+    fn increment_current_index(&mut self) {
+        self.current_index += 1;
+        if self.current_index < self.adjacency_list.len() {
+            self.current_adjacency_mut().reset();
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.current_size == 0
+    }
+
+    fn first(&self) -> usize {
+        self.current_adjacency().position
+    }
+
+    fn size(&self) -> usize {
+        self.current_size
+    }
+
+    fn current_adjacency(&self) -> &Adjacency {
+        &self.adjacency_list[self.current_index]
+    }
+
+    fn current_adjacency_mut(&mut self) -> &mut Adjacency {
+        &mut self.adjacency_list[self.current_index]
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct BetweenLayerEdgeTwoNodeCrossingsCounter {
+    upper_lower_crossings: usize,
+    lower_upper_crossings: usize,
+    eastern_adjacencies: HashMap<usize, AdjacencyList>,
+    western_adjacencies: HashMap<usize, AdjacencyList>,
+}
+
+impl BetweenLayerEdgeTwoNodeCrossingsCounter {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn count_eastern_edge_crossings(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        free_layer_index: usize,
+        upper_node: usize,
+        lower_node: usize,
+    ) {
+        self.reset_crossing_count();
+        if upper_node == lower_node {
+            return;
+        }
+        self.add_crossings(
+            graph,
+            current_node_order,
+            free_layer_index,
+            upper_node,
+            lower_node,
+            PortSide::East,
+        );
+    }
+
+    fn count_western_edge_crossings(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        free_layer_index: usize,
+        upper_node: usize,
+        lower_node: usize,
+    ) {
+        self.reset_crossing_count();
+        if upper_node == lower_node {
+            return;
+        }
+        self.add_crossings(
+            graph,
+            current_node_order,
+            free_layer_index,
+            upper_node,
+            lower_node,
+            PortSide::West,
+        );
+    }
+
+    fn count_both_side_crossings(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        free_layer_index: usize,
+        upper_node: usize,
+        lower_node: usize,
+    ) {
+        self.reset_crossing_count();
+        if upper_node == lower_node {
+            return;
+        }
+        self.add_crossings(
+            graph,
+            current_node_order,
+            free_layer_index,
+            upper_node,
+            lower_node,
+            PortSide::West,
+        );
+        self.add_crossings(
+            graph,
+            current_node_order,
+            free_layer_index,
+            upper_node,
+            lower_node,
+            PortSide::East,
+        );
+    }
+
+    fn reset_crossing_count(&mut self) {
+        self.upper_lower_crossings = 0;
+        self.lower_upper_crossings = 0;
+    }
+
+    fn add_crossings(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        free_layer_index: usize,
+        upper_node: usize,
+        lower_node: usize,
+        side: PortSide,
+    ) {
+        if !neighboring_layer_exists(current_node_order, free_layer_index, side) {
+            return;
+        }
+
+        let (upper, lower) = match side {
+            PortSide::East => {
+                if self.eastern_adjacencies.is_empty() {
+                    self.eastern_adjacencies =
+                        build_adjacencies(graph, current_node_order, free_layer_index, side);
+                }
+                (
+                    self.eastern_adjacencies.get(&upper_node).cloned(),
+                    self.eastern_adjacencies.get(&lower_node).cloned(),
+                )
+            }
+            PortSide::West => {
+                if self.western_adjacencies.is_empty() {
+                    self.western_adjacencies =
+                        build_adjacencies(graph, current_node_order, free_layer_index, side);
+                }
+                (
+                    self.western_adjacencies.get(&upper_node).cloned(),
+                    self.western_adjacencies.get(&lower_node).cloned(),
+                )
+            }
+            _ => (None, None),
+        };
+
+        let (Some(mut upper), Some(mut lower)) = (upper, lower) else {
+            return;
+        };
+        upper.reset();
+        lower.reset();
+        if upper.size() == 0 || lower.size() == 0 {
+            return;
+        }
+        self.count_crossings_by_merging_adjacency_lists(upper, lower);
+    }
+
+    fn count_crossings_by_merging_adjacency_lists(
+        &mut self,
+        mut upper_adjacencies: AdjacencyList,
+        mut lower_adjacencies: AdjacencyList,
+    ) {
+        while !upper_adjacencies.is_empty() && !lower_adjacencies.is_empty() {
+            if is_below(upper_adjacencies.first(), lower_adjacencies.first()) {
+                self.upper_lower_crossings += upper_adjacencies.size();
+                lower_adjacencies.remove_first();
+            } else if is_below(lower_adjacencies.first(), upper_adjacencies.first()) {
+                self.lower_upper_crossings += lower_adjacencies.size();
+                upper_adjacencies.remove_first();
+            } else {
+                self.upper_lower_crossings +=
+                    upper_adjacencies.count_adjacencies_below_node_of_first_port();
+                self.lower_upper_crossings +=
+                    lower_adjacencies.count_adjacencies_below_node_of_first_port();
+                upper_adjacencies.remove_first();
+                lower_adjacencies.remove_first();
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CrossingMatrixFiller {
+    is_crossing_matrix_filled: Vec<Vec<bool>>,
+    crossing_matrix: Vec<Vec<usize>>,
+    in_between_layer_crossing_counter: BetweenLayerEdgeTwoNodeCrossingsCounter,
+    direction: CrossingCountSide,
+    one_sided: bool,
+}
+
+impl CrossingMatrixFiller {
+    fn new(
+        free_layer_len: usize,
+        greedy_switch_type: CrossMinType,
+        direction: CrossingCountSide,
+    ) -> Self {
+        Self {
+            is_crossing_matrix_filled: vec![vec![false; free_layer_len]; free_layer_len],
+            crossing_matrix: vec![vec![0; free_layer_len]; free_layer_len],
+            in_between_layer_crossing_counter: BetweenLayerEdgeTwoNodeCrossingsCounter::new(),
+            direction,
+            one_sided: greedy_switch_type == CrossMinType::OneSidedGreedySwitch,
+        }
+    }
+
+    fn get_crossing_matrix_entry(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        free_layer_index: usize,
+        layer_positions: &HashMap<usize, usize>,
+        upper_node: usize,
+        lower_node: usize,
+    ) -> usize {
+        let Some(upper_position) = layer_positions.get(&upper_node).copied() else {
+            return 0;
+        };
+        let Some(lower_position) = layer_positions.get(&lower_node).copied() else {
+            return 0;
+        };
+
+        if !self.is_crossing_matrix_filled[upper_position][lower_position] {
+            self.fill_crossing_matrix(
+                graph,
+                current_node_order,
+                free_layer_index,
+                upper_position,
+                lower_position,
+                upper_node,
+                lower_node,
+            );
+            self.is_crossing_matrix_filled[upper_position][lower_position] = true;
+            self.is_crossing_matrix_filled[lower_position][upper_position] = true;
+        }
+        self.crossing_matrix[upper_position][lower_position]
+    }
+
+    fn fill_crossing_matrix(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        free_layer_index: usize,
+        upper_position: usize,
+        lower_position: usize,
+        upper_node: usize,
+        lower_node: usize,
+    ) {
+        if self.one_sided {
+            match self.direction {
+                CrossingCountSide::East => self
+                    .in_between_layer_crossing_counter
+                    .count_eastern_edge_crossings(
+                        graph,
+                        current_node_order,
+                        free_layer_index,
+                        upper_node,
+                        lower_node,
+                    ),
+                CrossingCountSide::West => self
+                    .in_between_layer_crossing_counter
+                    .count_western_edge_crossings(
+                        graph,
+                        current_node_order,
+                        free_layer_index,
+                        upper_node,
+                        lower_node,
+                    ),
+            }
+        } else {
+            self.in_between_layer_crossing_counter
+                .count_both_side_crossings(
+                    graph,
+                    current_node_order,
+                    free_layer_index,
+                    upper_node,
+                    lower_node,
+                );
+        }
+
+        self.crossing_matrix[upper_position][lower_position] =
+            self.in_between_layer_crossing_counter.upper_lower_crossings;
+        self.crossing_matrix[lower_position][upper_position] =
+            self.in_between_layer_crossing_counter.lower_upper_crossings;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InLayerCrossingCounter {
+    port_positions: HashMap<PortRef, usize>,
+    node_cardinalities: HashMap<usize, usize>,
+    side: PortSide,
+}
+
+impl InLayerCrossingCounter {
+    fn new(graph: &LGraph, free_layer: &[usize], side: PortSide) -> Self {
+        let mut port_positions = HashMap::new();
+        let mut node_cardinalities = HashMap::new();
+        let mut position = 0usize;
+        for node in free_layer {
+            let ports = ports_for_counter_side(graph, *node, side, true);
+            node_cardinalities.insert(*node, ports.len());
+            for port in ports {
+                port_positions.insert(port, position);
+                position += 1;
+            }
+        }
+        Self {
+            port_positions,
+            node_cardinalities,
+            side,
+        }
+    }
+
+    fn count_in_layer_crossings_between_nodes_in_both_orders(
+        &mut self,
+        graph: &LGraph,
+        upper_node: usize,
+        lower_node: usize,
+    ) -> (usize, usize) {
+        let mut ports =
+            self.connected_in_layer_ports_sorted_by_position(graph, upper_node, lower_node);
+        let upper_lower_crossings = self.count_in_layer_crossings_on_ports(graph, &ports);
+        self.switch_nodes(graph, upper_node, lower_node);
+        ports.sort_by_key(|port| self.position_of(*port));
+        let lower_upper_crossings = self.count_in_layer_crossings_on_ports(graph, &ports);
+        self.switch_nodes(graph, lower_node, upper_node);
+        (upper_lower_crossings, lower_upper_crossings)
+    }
+
+    fn switch_nodes(&mut self, graph: &LGraph, was_upper_node: usize, was_lower_node: usize) {
+        let lower_cardinality = *self.node_cardinalities.get(&was_lower_node).unwrap_or(&0);
+        for port in ports_in_north_south_east_west_order(graph, was_upper_node, self.side) {
+            if let Some(position) = self.port_positions.get_mut(&port) {
+                *position += lower_cardinality;
+            }
+        }
+
+        let upper_cardinality = *self.node_cardinalities.get(&was_upper_node).unwrap_or(&0);
+        for port in ports_in_north_south_east_west_order(graph, was_lower_node, self.side) {
+            if let Some(position) = self.port_positions.get_mut(&port) {
+                *position = position.saturating_sub(upper_cardinality);
+            }
+        }
+    }
+
+    fn connected_in_layer_ports_sorted_by_position(
+        &self,
+        graph: &LGraph,
+        upper_node: usize,
+        lower_node: usize,
+    ) -> Vec<PortRef> {
+        let mut ports = HashSet::new();
+        for node in [upper_node, lower_node] {
+            for port in ports_in_north_south_east_west_order(graph, node, self.side) {
+                for edge in connected_edges(graph, port) {
+                    if is_edge_self_loop(graph, edge) {
+                        continue;
+                    }
+                    ports.insert(port);
+                    if is_in_layer_edge(graph, edge)
+                        && let Some(other) = other_end_of_edge(graph, edge, port)
+                    {
+                        ports.insert(other);
+                    }
+                }
+            }
+        }
+
+        let mut ports = ports.into_iter().collect::<Vec<_>>();
+        ports.sort_by_key(|port| self.position_of(*port));
+        ports
+    }
+
+    fn count_in_layer_crossings_on_ports(&self, graph: &LGraph, ports: &[PortRef]) -> usize {
+        let mut crossings = 0usize;
+        let mut ends = Vec::new();
+        let mut index_tree = BinaryIndexedTree::new(self.port_positions.len());
+
+        for port in ports {
+            let Some(port_position) = self.position_of_checked(*port) else {
+                continue;
+            };
+            index_tree.remove_all(port_position);
+            let mut num_between_layer_edges = 0usize;
+
+            for edge in connected_edges(graph, *port) {
+                if is_in_layer_edge(graph, edge) {
+                    let Some(other_end) = other_end_of_edge(graph, edge, *port) else {
+                        continue;
+                    };
+                    let Some(end_position) = self.position_of_checked(other_end) else {
+                        continue;
+                    };
+                    if end_position > port_position {
+                        crossings += index_tree.rank(end_position);
+                        ends.push(end_position);
+                    }
+                } else {
+                    num_between_layer_edges += 1;
+                }
+            }
+
+            crossings += index_tree.size() * num_between_layer_edges;
+            while let Some(end) = ends.pop() {
+                index_tree.add(end);
+            }
+        }
+
+        crossings
+    }
+
+    fn position_of(&self, port: PortRef) -> usize {
+        self.position_of_checked(port).unwrap_or(usize::MAX)
+    }
+
+    fn position_of_checked(&self, port: PortRef) -> Option<usize> {
+        self.port_positions.get(&port).copied()
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct NorthSouthEdgeNeighbouringNodeCrossingsCounter {
+    upper_lower_crossings: usize,
+    lower_upper_crossings: usize,
+}
+
+impl NorthSouthEdgeNeighbouringNodeCrossingsCounter {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn count_crossings(&mut self, graph: &LGraph, upper_node: usize, lower_node: usize) {
+        self.upper_lower_crossings = 0;
+        self.lower_upper_crossings = 0;
+        self.process_if_north_south_long_edge_dummy_crossing(graph, upper_node, lower_node);
+        self.process_if_normal_node_with_ns_ports_and_long_edge_dummy(
+            graph, upper_node, lower_node,
+        );
+    }
+
+    fn process_if_north_south_long_edge_dummy_crossing(
+        &mut self,
+        graph: &LGraph,
+        upper_node: usize,
+        lower_node: usize,
+    ) {
+        if is_north_south_node(graph, upper_node) && is_long_edge_dummy(graph, lower_node) {
+            if north_south_dummy_is_north_of_normal_node(graph, upper_node) {
+                self.upper_lower_crossings = 1;
+            } else {
+                self.lower_upper_crossings = 1;
+            }
+        } else if is_north_south_node(graph, lower_node) && is_long_edge_dummy(graph, upper_node) {
+            if north_south_dummy_is_north_of_normal_node(graph, lower_node) {
+                self.lower_upper_crossings = 1;
+            } else {
+                self.upper_lower_crossings = 1;
+            }
+        }
+    }
+
+    fn process_if_normal_node_with_ns_ports_and_long_edge_dummy(
+        &mut self,
+        graph: &LGraph,
+        upper_node: usize,
+        lower_node: usize,
+    ) {
+        if graph.layerless_nodes[upper_node].kind == LNodeKind::Normal
+            && is_long_edge_dummy(graph, lower_node)
+        {
+            self.upper_lower_crossings =
+                number_of_north_south_edges(graph, upper_node, PortSide::South);
+            self.lower_upper_crossings =
+                number_of_north_south_edges(graph, upper_node, PortSide::North);
+        }
+        if graph.layerless_nodes[lower_node].kind == LNodeKind::Normal
+            && is_long_edge_dummy(graph, upper_node)
+        {
+            self.upper_lower_crossings =
+                number_of_north_south_edges(graph, lower_node, PortSide::North);
+            self.lower_upper_crossings =
+                number_of_north_south_edges(graph, lower_node, PortSide::South);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SwitchDecider {
+    free_layer_index: usize,
+    one_sided: bool,
+    crossing_matrix_filler: CrossingMatrixFiller,
+    left_in_layer_counter: InLayerCrossingCounter,
+    right_in_layer_counter: InLayerCrossingCounter,
+    north_south_counter: NorthSouthEdgeNeighbouringNodeCrossingsCounter,
+}
+
+impl SwitchDecider {
+    fn new(
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        free_layer_index: usize,
+        crossing_matrix_filler: CrossingMatrixFiller,
+        one_sided: bool,
+    ) -> Self {
+        let free_layer = &current_node_order[free_layer_index];
+        Self {
+            free_layer_index,
+            one_sided,
+            crossing_matrix_filler,
+            left_in_layer_counter: InLayerCrossingCounter::new(graph, free_layer, PortSide::West),
+            right_in_layer_counter: InLayerCrossingCounter::new(graph, free_layer, PortSide::East),
+            north_south_counter: NorthSouthEdgeNeighbouringNodeCrossingsCounter::new(),
+        }
+    }
+
+    fn notify_of_switch(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        upper_node: usize,
+        lower_node: usize,
+    ) {
+        self.left_in_layer_counter
+            .switch_nodes(graph, upper_node, lower_node);
+        self.right_in_layer_counter
+            .switch_nodes(graph, upper_node, lower_node);
+        self.crossing_matrix_filler = CrossingMatrixFiller::new(
+            current_node_order[self.free_layer_index].len(),
+            if self.one_sided {
+                CrossMinType::OneSidedGreedySwitch
+            } else {
+                CrossMinType::TwoSidedGreedySwitch
+            },
+            self.crossing_matrix_filler.direction,
+        );
+    }
+
+    fn does_switch_reduce_crossings(
+        &mut self,
+        graph: &LGraph,
+        current_node_order: &[Vec<usize>],
+        upper_node_index: usize,
+        lower_node_index: usize,
+    ) -> bool {
+        if self.constraints_prevent_switch(
+            graph,
+            &current_node_order[self.free_layer_index],
+            upper_node_index,
+            lower_node_index,
+        ) {
+            return false;
+        }
+
+        let free_layer = &current_node_order[self.free_layer_index];
+        let upper_node = free_layer[upper_node_index];
+        let lower_node = free_layer[lower_node_index];
+        let layer_positions = layer_position_map(free_layer);
+
+        let left_in_layer = self
+            .left_in_layer_counter
+            .count_in_layer_crossings_between_nodes_in_both_orders(graph, upper_node, lower_node);
+        let right_in_layer = self
+            .right_in_layer_counter
+            .count_in_layer_crossings_between_nodes_in_both_orders(graph, upper_node, lower_node);
+        self.north_south_counter
+            .count_crossings(graph, upper_node, lower_node);
+
+        let upper_lower_crossings = self.crossing_matrix_filler.get_crossing_matrix_entry(
+            graph,
+            current_node_order,
+            self.free_layer_index,
+            &layer_positions,
+            upper_node,
+            lower_node,
+        ) + left_in_layer.0
+            + right_in_layer.0
+            + self.north_south_counter.upper_lower_crossings;
+        let lower_upper_crossings = self.crossing_matrix_filler.get_crossing_matrix_entry(
+            graph,
+            current_node_order,
+            self.free_layer_index,
+            &layer_positions,
+            lower_node,
+            upper_node,
+        ) + left_in_layer.1
+            + right_in_layer.1
+            + self.north_south_counter.lower_upper_crossings;
+
+        upper_lower_crossings > lower_upper_crossings
+    }
+
+    fn constraints_prevent_switch(
+        &self,
+        graph: &LGraph,
+        free_layer: &[usize],
+        upper_node_index: usize,
+        lower_node_index: usize,
+    ) -> bool {
+        let upper_node = free_layer[upper_node_index];
+        let lower_node = free_layer[lower_node_index];
+        are_normal_and_north_south_port_dummy(graph, upper_node, lower_node)
+            || have_north_south_layout_unit_guard(graph, upper_node, lower_node)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GreedySwitchHeuristic {
+    greedy_switch_type: CrossMinType,
+}
+
+impl GreedySwitchHeuristic {
+    fn new(greedy_switch_type: CrossMinType) -> Self {
+        Self { greedy_switch_type }
+    }
+
+    fn minimize_crossings(
+        &mut self,
+        graph: &LGraph,
+        order: &mut [Vec<usize>],
+        free_layer_index: usize,
+        forward: bool,
+    ) -> bool {
+        self.set_up_and_switch(graph, order, free_layer_index, forward, true)
+    }
+
+    fn set_first_layer_order(
+        &mut self,
+        graph: &LGraph,
+        order: &mut [Vec<usize>],
+        forward: bool,
+    ) -> bool {
+        let start_index = first_index(forward, order.len());
+        self.set_up_and_switch(graph, order, start_index, forward, false)
+    }
+
+    fn set_up_and_switch(
+        &mut self,
+        graph: &LGraph,
+        order: &mut [Vec<usize>],
+        free_layer_index: usize,
+        forward: bool,
+        repeat_until_stable: bool,
+    ) -> bool {
+        let side = if forward {
+            CrossingCountSide::West
+        } else {
+            CrossingCountSide::East
+        };
+        let filler =
+            CrossingMatrixFiller::new(order[free_layer_index].len(), self.greedy_switch_type, side);
+        let mut switch_decider = SwitchDecider::new(
+            graph,
+            order,
+            free_layer_index,
+            filler,
+            self.greedy_switch_type == CrossMinType::OneSidedGreedySwitch,
+        );
+
+        if repeat_until_stable {
+            self.continue_switching_until_no_improvement_in_layer(
+                graph,
+                order,
+                free_layer_index,
+                &mut switch_decider,
+            )
+        } else {
+            self.sweep_downward_in_layer(graph, order, free_layer_index, &mut switch_decider)
+        }
+    }
+
+    fn continue_switching_until_no_improvement_in_layer(
+        &mut self,
+        graph: &LGraph,
+        order: &mut [Vec<usize>],
+        free_layer_index: usize,
+        switch_decider: &mut SwitchDecider,
+    ) -> bool {
+        let mut improved = false;
+        loop {
+            let continue_switching =
+                self.sweep_downward_in_layer(graph, order, free_layer_index, switch_decider);
+            improved |= continue_switching;
+            if !continue_switching {
+                return improved;
+            }
+        }
+    }
+
+    fn sweep_downward_in_layer(
+        &mut self,
+        graph: &LGraph,
+        order: &mut [Vec<usize>],
+        layer_index: usize,
+        switch_decider: &mut SwitchDecider,
+    ) -> bool {
+        let mut continue_switching = false;
+        let length_of_free_layer = order[layer_index].len();
+        for upper_node_index in 0..length_of_free_layer.saturating_sub(1) {
+            let lower_node_index = upper_node_index + 1;
+            if switch_decider.does_switch_reduce_crossings(
+                graph,
+                order,
+                upper_node_index,
+                lower_node_index,
+            ) {
+                let upper_node = order[layer_index][upper_node_index];
+                let lower_node = order[layer_index][lower_node_index];
+                switch_decider.notify_of_switch(graph, order, upper_node, lower_node);
+                order[layer_index].swap(upper_node_index, lower_node_index);
+                continue_switching = true;
+            }
+        }
+        continue_switching
+    }
+}
+
 pub fn minimize_crossings_layer_sweep(graph: &mut LGraph) -> bool {
     minimize_crossings_layer_sweep_with_type(graph, CrossMinType::Barycenter)
 }
@@ -394,6 +1220,8 @@ pub fn minimize_crossings_layer_sweep_with_type(
 
     match cross_min_type {
         CrossMinType::Barycenter => minimize_barycenter(graph),
+        CrossMinType::OneSidedGreedySwitch => minimize_one_sided_greedy_switch(graph),
+        CrossMinType::TwoSidedGreedySwitch => minimize_two_sided_greedy_switch(graph),
     }
 }
 
@@ -443,6 +1271,69 @@ fn minimize_barycenter(graph: &mut LGraph) -> bool {
     }
 
     graph.random = random;
+    let Some(best_sweep) = graph_info.get_best_sweep().cloned() else {
+        return false;
+    };
+    best_sweep.transfer_node_and_port_orders_to_graph(graph, true)
+}
+
+fn minimize_two_sided_greedy_switch(graph: &mut LGraph) -> bool {
+    let mut graph_info = GraphInfoHolder::new(graph);
+    let mut heuristic = GreedySwitchHeuristic::new(CrossMinType::TwoSidedGreedySwitch);
+    let mut is_forward_sweep = graph.random.next_bool();
+
+    loop {
+        let mut sweep_improved = heuristic.set_first_layer_order(
+            graph,
+            &mut graph_info.current_node_order,
+            is_forward_sweep,
+        );
+        sweep_improved |= sweep_reducing_crossings_greedy(
+            graph,
+            &mut graph_info,
+            &mut heuristic,
+            is_forward_sweep,
+        );
+        if !sweep_improved {
+            break;
+        }
+        is_forward_sweep = !is_forward_sweep;
+    }
+
+    graph_info.set_currently_best_node_and_port_order(graph);
+
+    let Some(best_sweep) = graph_info.get_best_sweep().cloned() else {
+        return false;
+    };
+    best_sweep.transfer_node_and_port_orders_to_graph(graph, true)
+}
+
+fn minimize_one_sided_greedy_switch(graph: &mut LGraph) -> bool {
+    let mut graph_info = GraphInfoHolder::new(graph);
+    let mut heuristic = GreedySwitchHeuristic::new(CrossMinType::OneSidedGreedySwitch);
+    let mut is_forward_sweep = graph.random.next_bool();
+
+    heuristic.set_first_layer_order(graph, &mut graph_info.current_node_order, is_forward_sweep);
+    sweep_reducing_crossings_greedy(graph, &mut graph_info, &mut heuristic, is_forward_sweep);
+
+    let mut crossings_in_graph =
+        CrossingsCounter::new().count_all_crossings_in_order(graph, &graph_info.current_node_order);
+    loop {
+        graph_info.set_currently_best_node_and_port_order(graph);
+        if crossings_in_graph == 0 {
+            break;
+        }
+
+        is_forward_sweep = !is_forward_sweep;
+        let old_number_of_crossings = crossings_in_graph;
+        sweep_reducing_crossings_greedy(graph, &mut graph_info, &mut heuristic, is_forward_sweep);
+        crossings_in_graph = CrossingsCounter::new()
+            .count_all_crossings_in_order(graph, &graph_info.current_node_order);
+        if old_number_of_crossings <= crossings_in_graph {
+            break;
+        }
+    }
+
     let Some(best_sweep) = graph_info.get_best_sweep().cloned() else {
         return false;
     };
@@ -530,6 +1421,32 @@ fn sweep_reducing_crossings(
     }
 }
 
+fn sweep_reducing_crossings_greedy(
+    graph: &LGraph,
+    graph_info: &mut GraphInfoHolder,
+    heuristic: &mut GreedySwitchHeuristic,
+    forward: bool,
+) -> bool {
+    let length = graph_info.current_node_order.len();
+    if length == 0 {
+        return false;
+    }
+
+    let mut improved = false;
+    let mut index = first_free(forward, length);
+    while is_not_end(length, index, forward) {
+        let free_layer_index = index as usize;
+        improved |= heuristic.minimize_crossings(
+            graph,
+            &mut graph_info.current_node_order,
+            free_layer_index,
+            forward,
+        );
+        index = next_index(index, forward);
+    }
+    improved
+}
+
 fn actual_ports_of_type(graph: &LGraph, node: usize, port_type: PortType) -> Vec<PortRef> {
     graph.layerless_nodes[node]
         .ports
@@ -543,6 +1460,235 @@ fn actual_ports_of_type(graph: &LGraph, node: usize, port_type: PortType) -> Vec
             matches.then_some(PortRef { node, port })
         })
         .collect()
+}
+
+fn build_adjacencies(
+    graph: &LGraph,
+    current_node_order: &[Vec<usize>],
+    free_layer_index: usize,
+    side: PortSide,
+) -> HashMap<usize, AdjacencyList> {
+    current_node_order
+        .get(free_layer_index)
+        .into_iter()
+        .flatten()
+        .copied()
+        .map(|node| {
+            (
+                node,
+                AdjacencyList::new(graph, current_node_order, node, side),
+            )
+        })
+        .collect()
+}
+
+fn merge_equal_adjacencies(adjacencies: Vec<Adjacency>) -> Vec<Adjacency> {
+    let mut merged: Vec<Adjacency> = Vec::new();
+    for adjacency in adjacencies {
+        if let Some(last) = merged.last_mut()
+            && last.position == adjacency.position
+        {
+            last.cardinality += adjacency.cardinality;
+            last.current_cardinality += adjacency.current_cardinality;
+            continue;
+        }
+        merged.push(adjacency);
+    }
+    merged
+}
+
+fn neighboring_layer_port_positions(
+    graph: &LGraph,
+    current_node_order: &[Vec<usize>],
+    node: usize,
+    side: PortSide,
+) -> HashMap<PortRef, usize> {
+    let mut positions = HashMap::new();
+    let Some(layer_index) = graph.layerless_nodes[node].layer_index else {
+        return positions;
+    };
+    let neighbor = match side {
+        PortSide::West if layer_index > 0 => Some((layer_index - 1, PortSide::East)),
+        PortSide::East if layer_index + 1 < current_node_order.len() => {
+            Some((layer_index + 1, PortSide::West))
+        }
+        _ => None,
+    };
+    let Some((neighbor_index, neighbor_side)) = neighbor else {
+        return positions;
+    };
+
+    for (position, port) in current_node_order[neighbor_index]
+        .iter()
+        .copied()
+        .flat_map(|node| ports_in_north_south_east_west_order(graph, node, neighbor_side))
+        .enumerate()
+    {
+        positions.insert(port, position);
+    }
+    positions
+}
+
+fn neighboring_layer_exists(
+    current_node_order: &[Vec<usize>],
+    free_layer_index: usize,
+    side: PortSide,
+) -> bool {
+    match side {
+        PortSide::West => free_layer_index > 0,
+        PortSide::East => free_layer_index + 1 < current_node_order.len(),
+        _ => false,
+    }
+}
+
+fn edges_connected_to_side(graph: &LGraph, port: PortRef, side: PortSide) -> Vec<usize> {
+    match side {
+        PortSide::West => graph.layerless_nodes[port.node].ports[port.port]
+            .incoming_edges
+            .clone(),
+        PortSide::East => graph.layerless_nodes[port.node].ports[port.port]
+            .outgoing_edges
+            .clone(),
+        _ => connected_edges(graph, port).collect(),
+    }
+}
+
+fn adjacent_port_of_side(graph: &LGraph, edge: usize, side: PortSide) -> PortRef {
+    if side == PortSide::West {
+        graph.edges[edge].source
+    } else {
+        graph.edges[edge].target
+    }
+}
+
+fn is_below(first_port: usize, second_port: usize) -> bool {
+    first_port > second_port
+}
+
+fn layer_position_map(layer: &[usize]) -> HashMap<usize, usize> {
+    layer
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(position, node)| (node, position))
+        .collect()
+}
+
+fn ports_for_counter_side(
+    graph: &LGraph,
+    node: usize,
+    side: PortSide,
+    top_down: bool,
+) -> Vec<PortRef> {
+    let mut ports = graph.layerless_nodes[node]
+        .ports
+        .iter()
+        .enumerate()
+        .filter_map(|(port_index, port)| {
+            (port.side == side).then_some(PortRef {
+                node,
+                port: port_index,
+            })
+        })
+        .collect::<Vec<_>>();
+    let preserve_order =
+        (side == PortSide::East && top_down) || (side == PortSide::West && !top_down);
+    if !preserve_order {
+        ports.reverse();
+    }
+    ports
+}
+
+fn connected_edges(graph: &LGraph, port: PortRef) -> impl Iterator<Item = usize> + '_ {
+    graph.layerless_nodes[port.node].ports[port.port]
+        .incoming_edges
+        .iter()
+        .chain(
+            graph.layerless_nodes[port.node].ports[port.port]
+                .outgoing_edges
+                .iter(),
+        )
+        .copied()
+}
+
+fn is_edge_self_loop(graph: &LGraph, edge: usize) -> bool {
+    graph
+        .edges
+        .get(edge)
+        .is_some_and(|edge| edge.source.node == edge.target.node)
+}
+
+fn is_in_layer_edge(graph: &LGraph, edge: usize) -> bool {
+    let Some(edge) = graph.edges.get(edge) else {
+        return false;
+    };
+    graph.layerless_nodes[edge.source.node].layer_index
+        == graph.layerless_nodes[edge.target.node].layer_index
+}
+
+fn other_end_of_edge(graph: &LGraph, edge: usize, port: PortRef) -> Option<PortRef> {
+    let edge = graph.edges.get(edge)?;
+    if edge.source == port {
+        Some(edge.target)
+    } else if edge.target == port {
+        Some(edge.source)
+    } else {
+        None
+    }
+}
+
+fn are_normal_and_north_south_port_dummy(
+    graph: &LGraph,
+    upper_node: usize,
+    lower_node: usize,
+) -> bool {
+    (is_north_south_node(graph, upper_node)
+        && graph.layerless_nodes[lower_node].kind == LNodeKind::Normal)
+        || (is_north_south_node(graph, lower_node)
+            && graph.layerless_nodes[upper_node].kind == LNodeKind::Normal)
+}
+
+fn have_north_south_layout_unit_guard(
+    graph: &LGraph,
+    upper_node: usize,
+    lower_node: usize,
+) -> bool {
+    if graph.layerless_nodes[upper_node].kind == LNodeKind::LongEdge
+        || graph.layerless_nodes[lower_node].kind == LNodeKind::LongEdge
+    {
+        return false;
+    }
+
+    has_edges_on_side(graph, upper_node, PortSide::North)
+        || has_edges_on_side(graph, lower_node, PortSide::South)
+}
+
+fn has_edges_on_side(graph: &LGraph, node: usize, side: PortSide) -> bool {
+    ports_in_north_south_east_west_order(graph, node, side)
+        .into_iter()
+        .any(|port| connected_edges(graph, port).next().is_some())
+}
+
+fn is_north_south_node(graph: &LGraph, node: usize) -> bool {
+    graph.layerless_nodes[node].kind == LNodeKind::NorthSouthPort
+}
+
+fn is_long_edge_dummy(graph: &LGraph, node: usize) -> bool {
+    graph.layerless_nodes[node].kind == LNodeKind::LongEdge
+}
+
+fn north_south_dummy_is_north_of_normal_node(graph: &LGraph, node: usize) -> bool {
+    graph.layerless_nodes[node]
+        .ports
+        .first()
+        .is_some_and(|port| port.side == PortSide::North)
+}
+
+fn number_of_north_south_edges(graph: &LGraph, node: usize, side: PortSide) -> usize {
+    ports_in_north_south_east_west_order(graph, node, side)
+        .into_iter()
+        .filter(|port| connected_edges(graph, *port).next().is_some())
+        .count()
 }
 
 fn connected_ports_for_sweep(graph: &LGraph, port: PortRef, forward: bool) -> Vec<PortRef> {
@@ -731,6 +1877,126 @@ mod tests {
 
         let before = CrossingsCounter::new().count_all_crossings(&graph);
         assert!(minimize_crossings_layer_sweep(&mut graph));
+        let after = CrossingsCounter::new().count_all_crossings(&graph);
+
+        assert_eq!(before, 1);
+        assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn two_sided_greedy_switch_orders_layer_by_both_neighbors() {
+        let mut graph = prepared_graph(
+            vec![
+                node("LeftTop"),
+                node("LeftBottom"),
+                node("MiddleTop"),
+                node("MiddleBottom"),
+                node("RightTop"),
+                node("RightBottom"),
+            ],
+            vec![
+                edge("LeftTop-MiddleBottom", "LeftTop", "MiddleBottom"),
+                edge("LeftBottom-MiddleTop", "LeftBottom", "MiddleTop"),
+                edge("MiddleTop-RightBottom", "MiddleTop", "RightBottom"),
+                edge("MiddleBottom-RightTop", "MiddleBottom", "RightTop"),
+            ],
+        );
+        let left_top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "LeftTop")
+            .unwrap();
+        let left_bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "LeftBottom")
+            .unwrap();
+        let middle_top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "MiddleTop")
+            .unwrap();
+        let middle_bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "MiddleBottom")
+            .unwrap();
+        let right_top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "RightTop")
+            .unwrap();
+        let right_bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "RightBottom")
+            .unwrap();
+        graph.layers[0].nodes = vec![left_top, left_bottom];
+        graph.layers[1].nodes = vec![middle_top, middle_bottom];
+        graph.layers[2].nodes = vec![right_top, right_bottom];
+        for (layer_index, layer) in graph.layers.iter().enumerate() {
+            for node in &layer.nodes {
+                graph.layerless_nodes[*node].layer_index = Some(layer_index);
+            }
+        }
+
+        let before = CrossingsCounter::new().count_all_crossings(&graph);
+        let mut order = graph
+            .layers
+            .iter()
+            .map(|layer| layer.nodes.clone())
+            .collect::<Vec<_>>();
+        let mut heuristic = GreedySwitchHeuristic::new(CrossMinType::TwoSidedGreedySwitch);
+
+        assert!(heuristic.minimize_crossings(&graph, &mut order, 1, true));
+        assert_eq!(order[1], vec![middle_bottom, middle_top]);
+
+        graph.layers[1].nodes = order[1].clone();
+        let after = CrossingsCounter::new().count_all_crossings(&graph);
+
+        assert_eq!(before, 2);
+        assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn one_sided_greedy_switch_reduces_between_layer_crossings() {
+        let mut graph = prepared_graph(
+            vec![node("Top"), node("Bottom"), node("Left"), node("Right")],
+            vec![
+                edge("Top-Right", "Top", "Right"),
+                edge("Bottom-Left", "Bottom", "Left"),
+            ],
+        );
+        let top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Top")
+            .unwrap();
+        let bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Bottom")
+            .unwrap();
+        let left = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Left")
+            .unwrap();
+        let right = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Right")
+            .unwrap();
+        graph.layers[0].nodes = vec![top, bottom];
+        graph.layers[1].nodes = vec![left, right];
+        for (layer_index, layer) in graph.layers.iter().enumerate() {
+            for node in &layer.nodes {
+                graph.layerless_nodes[*node].layer_index = Some(layer_index);
+            }
+        }
+
+        let before = CrossingsCounter::new().count_all_crossings(&graph);
+        minimize_crossings_layer_sweep_with_type(&mut graph, CrossMinType::OneSidedGreedySwitch);
         let after = CrossingsCounter::new().count_all_crossings(&graph);
 
         assert_eq!(before, 1);

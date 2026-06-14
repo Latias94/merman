@@ -24,7 +24,10 @@ use crate::intermediate::{
 use crate::p1cycles::break_cycles_greedy;
 use crate::p2layers::layer_network_simplex;
 use crate::p3order::{
-    process_port_sides, sort_by_input_model, sort_port_lists, sweep::minimize_crossings_layer_sweep,
+    process_port_sides, sort_by_input_model, sort_port_lists,
+    sweep::{
+        CrossMinType, minimize_crossings_layer_sweep, minimize_crossings_layer_sweep_with_type,
+    },
 };
 use crate::p4nodes::{
     calculate_innermost_node_margins, calculate_label_and_node_sizes, place_nodes_brandes_koepf,
@@ -392,6 +395,12 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph),
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
             minimize_crossings_layer_sweep(graph);
+        }
+        ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch => {
+            minimize_crossings_layer_sweep_with_type(graph, CrossMinType::OneSidedGreedySwitch);
+        }
+        ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch => {
+            minimize_crossings_layer_sweep_with_type(graph, CrossMinType::TwoSidedGreedySwitch);
         }
         ProcessorKind::InLayerConstraintProcessor => process_in_layer_constraints(graph),
         ProcessorKind::LabelAndNodeSizeProcessor => calculate_label_and_node_sizes(graph),
@@ -1048,6 +1057,51 @@ mod tests {
     }
 
     #[test]
+    fn execute_processors_until_p4_runs_two_sided_greedy_switch_processor() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_activation_threshold: 0,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("Top"), node("Bottom"), node("Left"), node("Right")],
+            edges: vec![
+                edge("Top-Right", "Top", "Right"),
+                edge("Bottom-Left", "Bottom", "Left"),
+            ],
+        })
+        .unwrap();
+
+        let executed = execute_processors_until(&mut graph, LayeredPhase::P4NodePlacement).unwrap();
+
+        assert!(executed.contains(&ProcessorKind::LayerSweepCrossingMinimizerBarycenter));
+        assert!(executed.contains(&ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch));
+        assert_eq!(executed.last(), Some(&ProcessorKind::BKNodePlacer));
+    }
+
+    #[test]
+    fn execute_processors_until_p4_runs_one_sided_greedy_switch_processor() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                greedy_switch_type: GreedySwitchType::OneSided,
+                greedy_switch_activation_threshold: 0,
+                ..LayeredOptions::default()
+            },
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        })
+        .unwrap();
+
+        let executed = execute_processors_until(&mut graph, LayeredPhase::P4NodePlacement).unwrap();
+
+        assert!(executed.contains(&ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch));
+        assert_eq!(executed.last(), Some(&ProcessorKind::BKNodePlacer));
+    }
+
+    #[test]
     fn execute_processors_until_p3_runs_mermaid_down_direction_preprocessor() {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
@@ -1217,6 +1271,24 @@ mod tests {
         assert!(executed.contains(&ProcessorKind::ReversedEdgeRestorer));
         assert_eq!(executed.last(), Some(&ProcessorKind::ReversedEdgeRestorer));
         assert!(graph.edges.iter().all(|edge| !edge.reversed));
+    }
+
+    #[test]
+    fn source_ported_default_elk_runs_through_two_sided_greedy_switch() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::default(),
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        })
+        .unwrap();
+
+        let executed = execute_all_ported_processors(&mut graph).unwrap();
+
+        assert!(executed.contains(&ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch));
+        assert_eq!(executed.last(), Some(&ProcessorKind::ReversedEdgeRestorer));
+        assert!(graph.size.height > 0.0);
+        assert!(graph.size.width > 0.0);
     }
 
     #[test]
