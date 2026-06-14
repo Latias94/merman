@@ -188,6 +188,12 @@ pub enum Error {
     MissingParent { node_id: String, parent_id: String },
     #[error("ELK parent assignment would create a cycle at node `{node_id}`")]
     ParentCycle { node_id: String },
+    #[error("source-backed ELK layout does not support this graph yet: {reason}")]
+    UnsupportedSourceGraph { reason: &'static str },
+    #[error(transparent)]
+    SourceImport(#[from] merman_elk_layered::ImportError),
+    #[error(transparent)]
+    SourcePipeline(#[from] merman_elk_layered::PipelineError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

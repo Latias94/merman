@@ -8,6 +8,7 @@
 //! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order
 //! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p4nodes
 //! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalNodeResizingProcessor.java
 
 use super::options::{
     CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting, ElkDirection,
@@ -374,6 +375,24 @@ pub fn execute_processors_until(
     Ok(executed)
 }
 
+/// Execute all currently source-ported processors assembled for this graph.
+///
+/// This is the library equivalent of `ElkLayered.layout(...)`: it uses the same assembled
+/// processor list as the phase-limited runner, fails at the first unsupported processor, and leaves
+/// the graph in the post-processor state produced by the ported pipeline.
+pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<ProcessorKind>> {
+    let mut executed = Vec::new();
+    configure_graph_properties(graph);
+    let processors = assemble_processors_for_graph(graph);
+
+    for slot in processors {
+        execute_processor(graph, slot.kind)?;
+        executed.push(slot.kind);
+    }
+
+    Ok(executed)
+}
+
 fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<()> {
     match kind {
         ProcessorKind::DirectionPreprocessor => {
@@ -413,11 +432,26 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
         ProcessorKind::EndLabelSorter if !graph.options.graph_has_end_labels => {}
         ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
+        ProcessorKind::HierarchicalNodeResizer => resize_hierarchical_node_graph(graph),
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
 
     Ok(())
+}
+
+fn resize_hierarchical_node_graph(graph: &mut LGraph) {
+    let layered_nodes = graph
+        .layers
+        .iter()
+        .flat_map(|layer| layer.nodes.iter().copied())
+        .collect::<Vec<_>>();
+    for node in layered_nodes {
+        graph.layerless_nodes[node].layer_index = None;
+    }
+    graph.layers.clear();
+    graph.size.width = graph.size.width.max(0.0);
+    graph.size.height = graph.size.height.max(0.0);
 }
 
 fn assemble_processors_with_graph_size(
@@ -788,19 +822,6 @@ mod tests {
             .into_iter()
             .map(|slot| slot.kind)
             .collect()
-    }
-
-    fn execute_all_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<ProcessorKind>> {
-        let mut executed = Vec::new();
-        configure_graph_properties(graph);
-        let processors = assemble_processors_for_graph(graph);
-
-        for slot in processors {
-            execute_processor(graph, slot.kind)?;
-            executed.push(slot.kind);
-        }
-
-        Ok(executed)
     }
 
     fn node(id: &str) -> ElkInputNode {
@@ -1265,7 +1286,7 @@ mod tests {
         })
         .unwrap();
 
-        let executed = execute_all_ported_processors(&mut graph).unwrap();
+        let executed = execute_ported_processors(&mut graph).unwrap();
 
         assert!(executed.contains(&ProcessorKind::EndLabelSorter));
         assert!(executed.contains(&ProcessorKind::ReversedEdgeRestorer));
@@ -1283,10 +1304,38 @@ mod tests {
         })
         .unwrap();
 
-        let executed = execute_all_ported_processors(&mut graph).unwrap();
+        let executed = execute_ported_processors(&mut graph).unwrap();
 
         assert!(executed.contains(&ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch));
         assert_eq!(executed.last(), Some(&ProcessorKind::ReversedEdgeRestorer));
+        assert!(graph.size.height > 0.0);
+        assert!(graph.size.width > 0.0);
+    }
+
+    #[test]
+    fn source_ported_mermaid_defaults_run_through_hierarchical_resizer_for_flat_graph() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        })
+        .unwrap();
+
+        let executed = execute_ported_processors(&mut graph).unwrap();
+
+        assert!(executed.contains(&ProcessorKind::HierarchicalNodeResizer));
+        assert_eq!(
+            executed.last(),
+            Some(&ProcessorKind::DirectionPostprocessor)
+        );
+        assert!(graph.layers.is_empty());
+        assert!(
+            graph
+                .layerless_nodes
+                .iter()
+                .all(|node| node.layer_index.is_none())
+        );
         assert!(graph.size.height > 0.0);
         assert!(graph.size.width > 0.0);
     }

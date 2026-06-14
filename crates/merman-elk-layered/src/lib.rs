@@ -36,9 +36,10 @@ pub use intermediate::{
     reverse_edges_for_edge_and_layer_constraints, split_edge, split_long_edges,
 };
 pub use options::{
-    DirectionCongruency, EdgeRouting, ElkDirection, HierarchyHandling, LayerConstraint,
-    LayeredOptions, LongEdgeOrderingStrategy, NodePlacementStrategy, OrderingStrategy,
-    PortConstraints, PortSortingStrategy, SelfLoopDistributionStrategy, SpacingOptions,
+    CycleBreakingStrategy, DirectionCongruency, EdgeRouting, ElkDirection, GreedySwitchType,
+    HierarchyHandling, LayerConstraint, LayeredOptions, LongEdgeOrderingStrategy,
+    NodePlacementStrategy, OrderingStrategy, PortConstraints, PortSortingStrategy,
+    SelfLoopDistributionStrategy, SpacingOptions,
 };
 pub use p2layers::layer_network_simplex;
 pub use p3order::counting::CrossingsCounter;
@@ -54,7 +55,7 @@ pub use p4nodes::{
 };
 pub use pipeline::{
     LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot, assemble_processors,
-    assemble_processors_for_graph, execute_processors_until,
+    assemble_processors_for_graph, execute_ported_processors, execute_processors_until,
 };
 pub use random::JavaRandom;
 pub use transform::{GraphTransformMode, transform_graph_direction};
