@@ -20,7 +20,7 @@ pub use merman_elk_layered as source_port;
 
 use source_port::{
     ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, GreedySwitchType,
-    LGraph, LNodeKind, LayeredOptions as SourceLayeredOptions, PortRef,
+    LGraph, LNodeKind, LPoint, LayeredOptions as SourceLayeredOptions, PortRef,
 };
 
 pub use compat::{
@@ -45,14 +45,23 @@ pub fn layout_source_ported(graph: &Graph, algorithm: Algorithm) -> Result<Layou
 }
 
 fn layout_layered_source_ported(graph: &Graph) -> Result<LayoutResult> {
-    if graph.nodes.iter().any(|node| node.parent.is_some()) {
+    let has_parent_nodes = graph.nodes.iter().any(|node| node.parent.is_some());
+    if has_parent_nodes
+        && graph.options.layered.hierarchy_handling != HierarchyHandling::IncludeChildren
+    {
         return Err(Error::UnsupportedSourceGraph {
-            reason: "compound hierarchy requires the ported compound layout runner",
+            reason: "source-backed ELK separate hierarchy handling is not ported yet",
         });
     }
+
     let input = graph_to_source_input(graph);
     let mut lgraph = source_port::import_graph(&input).map_err(Error::SourceImport)?;
-    source_port::execute_ported_processors(&mut lgraph).map_err(Error::SourcePipeline)?;
+    if has_parent_nodes {
+        source_port::execute_ported_compound_processors(&mut lgraph)
+            .map_err(Error::SourcePipeline)?;
+    } else {
+        source_port::execute_ported_processors(&mut lgraph).map_err(Error::SourcePipeline)?;
+    }
     Ok(source_graph_to_layout_result(&lgraph))
 }
 
@@ -157,20 +166,32 @@ fn cycle_breaking_to_source(
 }
 
 fn source_graph_to_layout_result(graph: &LGraph) -> LayoutResult {
-    LayoutResult {
-        nodes: graph
+    let mut result = LayoutResult::default();
+    append_source_graph_layout(graph, LPoint::default(), &mut result);
+    result
+}
+
+fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mut LayoutResult) {
+    let graph_origin = LPoint {
+        x: parent_origin.x + graph.offset.x,
+        y: parent_origin.y + graph.offset.y,
+    };
+
+    result.nodes.extend(
+        graph
             .layerless_nodes
             .iter()
             .filter(|node| node.kind == LNodeKind::Normal)
             .map(|node| NodeLayout {
                 id: node.id.clone(),
-                x: node.position.x + node.size.width / 2.0 + graph.offset.x,
-                y: node.position.y + node.size.height / 2.0 + graph.offset.y,
+                x: graph_origin.x + node.position.x + node.size.width / 2.0,
+                y: graph_origin.y + node.position.y + node.size.height / 2.0,
                 width: node.size.width,
                 height: node.size.height,
-            })
-            .collect(),
-        edges: graph
+            }),
+    );
+    result.edges.extend(
+        graph
             .edges
             .iter()
             .filter(|edge| edge_has_layout_endpoints(graph, edge.source, edge.target))
@@ -179,12 +200,25 @@ fn source_graph_to_layout_result(graph: &LGraph) -> LayoutResult {
                 points: edge_points(graph, edge)
                     .into_iter()
                     .map(|point| Point {
-                        x: point.x + graph.offset.x,
-                        y: point.y + graph.offset.y,
+                        x: graph_origin.x + point.x,
+                        y: graph_origin.y + point.y,
                     })
                     .collect(),
-            })
-            .collect(),
+            }),
+    );
+
+    for node in &graph.layerless_nodes {
+        let Some(nested_graph) = node.nested_graph.as_deref() else {
+            continue;
+        };
+        append_source_graph_layout(
+            nested_graph,
+            LPoint {
+                x: graph_origin.x + node.position.x,
+                y: graph_origin.y + node.position.y,
+            },
+            result,
+        );
     }
 }
 
@@ -301,7 +335,77 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_rejects_compound_graph_until_compound_runner_is_ported() {
+    fn source_ported_layout_exports_nested_compound_nodes_with_parent_offset() {
+        let mut child = leaf("A");
+        child.parent = Some("cluster".to_string());
+        let mut second_child = leaf("B");
+        second_child.parent = Some("cluster".to_string());
+        let mut graph = flat_graph(
+            vec![
+                Node {
+                    id: "cluster".to_string(),
+                    kind: NodeKind::Group,
+                    width: 0.0,
+                    height: 0.0,
+                    parent: None,
+                    direction: Some(Direction::Down),
+                    label: None,
+                },
+                child,
+                second_child,
+            ],
+            vec![edge("A-B", "A", "B")],
+        );
+        graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
+
+        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+
+        let cluster = result
+            .nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap();
+        let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let edge = result.edges.iter().find(|edge| edge.id == "A-B").unwrap();
+        assert_eq!(result.nodes.len(), 3);
+        assert!(cluster.width >= a.width);
+        assert!(cluster.height >= b.y - a.y);
+        assert!(a.y > cluster.y - cluster.height / 2.0);
+        assert!(b.y < cluster.y + cluster.height / 2.0);
+        assert!(b.y > a.y);
+        assert_eq!(edge.points.first().unwrap().y, a.y + a.height / 2.0);
+        assert_eq!(edge.points.last().unwrap().y, b.y - b.height / 2.0);
+    }
+
+    #[test]
+    fn source_ported_layout_rejects_cross_hierarchy_edge_until_ports_are_ported() {
+        let mut child = leaf("A");
+        child.parent = Some("cluster".to_string());
+        let mut graph = flat_graph(
+            vec![
+                Node {
+                    id: "cluster".to_string(),
+                    kind: NodeKind::Group,
+                    width: 0.0,
+                    height: 0.0,
+                    parent: None,
+                    direction: Some(Direction::Down),
+                    label: None,
+                },
+                child,
+            ],
+            vec![edge("cluster-A", "cluster", "A")],
+        );
+        graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
+
+        let err = layout_source_ported(&graph, Algorithm::Layered).unwrap_err();
+
+        assert!(matches!(err, Error::SourcePipeline(_)));
+    }
+
+    #[test]
+    fn source_ported_layout_rejects_separate_hierarchy_until_ported() {
         let mut child = leaf("A");
         child.parent = Some("cluster".to_string());
         let mut graph = flat_graph(
@@ -319,7 +423,7 @@ mod tests {
             ],
             Vec::new(),
         );
-        graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
+        graph.options.layered.hierarchy_handling = HierarchyHandling::SeparateChildren;
 
         let err = layout_source_ported(&graph, Algorithm::Layered).unwrap_err();
 

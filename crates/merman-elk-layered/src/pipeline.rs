@@ -41,6 +41,8 @@ use crate::transform::{GraphTransformMode, transform_graph_direction};
 pub enum PipelineError {
     #[error("layered processor `{kind:?}` is not ported yet")]
     UnsupportedProcessor { kind: ProcessorKind },
+    #[error("source-backed compound ELK layout does not support this graph yet: {reason}")]
+    UnsupportedCompoundGraph { reason: &'static str },
     #[error(transparent)]
     Intermediate(#[from] IntermediateError),
 }
@@ -167,6 +169,32 @@ pub enum ProcessorKind {
     BreakingPointProcessor,
     BreakingPointRemover,
     SingleEdgeGraphWrapper,
+}
+
+impl ProcessorKind {
+    pub fn is_hierarchy_aware(self) -> bool {
+        matches!(
+            self,
+            Self::LayerSweepCrossingMinimizerBarycenter
+                | Self::LayerSweepCrossingMinimizerOneSidedGreedySwitch
+                | Self::LayerSweepCrossingMinimizerTwoSidedGreedySwitch
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphExecution {
+    pub graph_id: String,
+    pub parent_node_id: Option<String>,
+    pub processors: Vec<ProcessorKind>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GraphAlgorithm {
+    path: Vec<usize>,
+    next_processor: usize,
+    processors: Vec<ProcessorKind>,
+    execution: GraphExecution,
 }
 
 #[derive(Debug)]
@@ -391,6 +419,210 @@ pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<Proce
     }
 
     Ok(executed)
+}
+
+/// Execute the source-backed layered pipeline for a compound graph hierarchy.
+///
+/// This follows Eclipse ELK's `ElkLayered#hierarchicalLayout(...)` execution shape: collect all
+/// nested graphs in bottom-up order, keep a processor cursor for each graph, pause non-root graphs
+/// at hierarchy-aware processors, execute those hierarchy-aware processors only at the root graph,
+/// and then continue from the deepest graph again. Cross-hierarchy edges are still rejected because
+/// they require the compound graph pre/postprocessors and hierarchical port processors to be ported
+/// first.
+pub fn execute_ported_compound_processors(
+    graph: &mut LGraph,
+) -> PipelineResult<Vec<GraphExecution>> {
+    configure_graph_properties(graph);
+    reject_unsupported_compound_graph(graph)?;
+    review_and_correct_hierarchical_processors(graph)?;
+
+    let paths = collect_graph_paths_bottom_up(graph);
+    let root_index = paths.len().saturating_sub(1);
+    let mut algorithms = paths
+        .into_iter()
+        .map(|path| {
+            let current = graph_at_path(graph, &path);
+            GraphAlgorithm {
+                path,
+                next_processor: 0,
+                processors: assemble_processors_for_graph(current)
+                    .into_iter()
+                    .map(|slot| slot.kind)
+                    .collect(),
+                execution: GraphExecution {
+                    graph_id: current.id.clone(),
+                    parent_node_id: current.parent_node_id.clone(),
+                    processors: Vec::new(),
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+
+    while algorithms[root_index].next_processor < algorithms[root_index].processors.len() {
+        for index in 0..algorithms.len() {
+            execute_compound_algorithm_until_pause(
+                graph,
+                &mut algorithms[index],
+                index == root_index,
+            )?;
+        }
+    }
+
+    Ok(algorithms
+        .into_iter()
+        .map(|algorithm| algorithm.execution)
+        .collect())
+}
+
+fn execute_compound_algorithm_until_pause(
+    graph: &mut LGraph,
+    algorithm: &mut GraphAlgorithm,
+    is_root: bool,
+) -> PipelineResult<()> {
+    while algorithm.next_processor < algorithm.processors.len() {
+        let kind = algorithm.processors[algorithm.next_processor];
+        algorithm.next_processor += 1;
+
+        if kind.is_hierarchy_aware() && !is_root {
+            break;
+        }
+
+        let size = if kind.is_hierarchy_aware() {
+            execute_hierarchy_aware_processor(graph, kind)?;
+            graph_at_path(graph, &algorithm.path).size
+        } else {
+            let current = graph_mut_at_path(graph, &algorithm.path);
+            execute_processor(current, kind)?;
+            current.size
+        };
+        if kind == ProcessorKind::HierarchicalNodeResizer {
+            transfer_nested_graph_layout_to_parent_node(graph, &algorithm.path, size);
+        }
+        algorithm.execution.processors.push(kind);
+
+        if kind.is_hierarchy_aware() {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+fn execute_hierarchy_aware_processor(
+    graph: &mut LGraph,
+    kind: ProcessorKind,
+) -> PipelineResult<()> {
+    let paths = collect_graph_paths_bottom_up(graph);
+    for path in paths {
+        let current = graph_mut_at_path(graph, &path);
+        execute_processor(current, kind)?;
+    }
+    Ok(())
+}
+
+fn reject_unsupported_compound_graph(graph: &LGraph) -> PipelineResult<()> {
+    if graph.graph_properties.external_ports || graph.options.graph_has_external_ports {
+        return Err(PipelineError::UnsupportedCompoundGraph {
+            reason: "cross-hierarchy edges require ELK compound and hierarchical port processors",
+        });
+    }
+    if graph
+        .layerless_nodes
+        .iter()
+        .any(|node| node.kind == crate::graph::LNodeKind::ExternalPort)
+    {
+        return Err(PipelineError::UnsupportedCompoundGraph {
+            reason: "external port dummy nodes require ELK hierarchical port processors",
+        });
+    }
+
+    for node in &graph.layerless_nodes {
+        if let Some(nested_graph) = node.nested_graph.as_deref() {
+            reject_unsupported_compound_graph(nested_graph)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn review_and_correct_hierarchical_processors(root: &mut LGraph) -> PipelineResult<()> {
+    let root_crossing = root.options.crossing_minimization_strategy;
+    let root_greedy_switch = root.options.greedy_switch_hierarchical_type;
+    review_nested_hierarchical_processors(root, root_crossing, root_greedy_switch)
+}
+
+fn review_nested_hierarchical_processors(
+    graph: &mut LGraph,
+    root_crossing: CrossingMinimizationStrategy,
+    root_greedy_switch: GreedySwitchType,
+) -> PipelineResult<()> {
+    if graph.options.crossing_minimization_strategy != root_crossing {
+        return Err(PipelineError::UnsupportedCompoundGraph {
+            reason: "child graphs must use the root hierarchy-aware crossing minimizer",
+        });
+    }
+    graph.options.greedy_switch_hierarchical_type = root_greedy_switch;
+
+    for node in &mut graph.layerless_nodes {
+        if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
+            review_nested_hierarchical_processors(nested_graph, root_crossing, root_greedy_switch)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_graph_paths_bottom_up(graph: &LGraph) -> Vec<Vec<usize>> {
+    let mut paths = vec![Vec::new()];
+    let mut search = vec![Vec::new()];
+
+    while let Some(path) = search.pop() {
+        let current = graph_at_path(graph, &path);
+        for (index, node) in current.layerless_nodes.iter().enumerate() {
+            if node.nested_graph.is_some() {
+                let mut child_path = path.clone();
+                child_path.push(index);
+                paths.insert(0, child_path.clone());
+                search.push(child_path);
+            }
+        }
+    }
+
+    paths
+}
+
+fn graph_at_path<'a>(mut graph: &'a LGraph, path: &[usize]) -> &'a LGraph {
+    for index in path {
+        graph = graph.layerless_nodes[*index]
+            .nested_graph
+            .as_deref()
+            .expect("graph path should only contain nested graph nodes");
+    }
+    graph
+}
+
+fn graph_mut_at_path<'a>(mut graph: &'a mut LGraph, path: &[usize]) -> &'a mut LGraph {
+    for index in path {
+        graph = graph.layerless_nodes[*index]
+            .nested_graph
+            .as_deref_mut()
+            .expect("graph path should only contain nested graph nodes");
+    }
+    graph
+}
+
+fn transfer_nested_graph_layout_to_parent_node(
+    graph: &mut LGraph,
+    path: &[usize],
+    size: crate::graph::LSize,
+) {
+    let Some((node_index, parent_path)) = path.split_last() else {
+        return;
+    };
+    let parent = graph_mut_at_path(graph, parent_path);
+    let node = &mut parent.layerless_nodes[*node_index];
+    node.size.width = node.size.width.max(size.width);
+    node.size.height = node.size.height.max(size.height);
 }
 
 fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<()> {
@@ -1338,6 +1570,79 @@ mod tests {
         );
         assert!(graph.size.height > 0.0);
         assert!(graph.size.width > 0.0);
+    }
+
+    #[test]
+    fn source_ported_compound_runner_executes_bottom_up_and_resizes_parent_node() {
+        let mut cluster = node("cluster");
+        cluster.width = 1.0;
+        cluster.height = 1.0;
+        cluster.hierarchy_handling = Some(crate::options::HierarchyHandling::IncludeChildren);
+        let mut child_a = node("A");
+        child_a.parent = Some("cluster".to_string());
+        let mut child_b = node("B");
+        child_b.parent = Some("cluster".to_string());
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![cluster, child_a, child_b, node("C")],
+            edges: vec![edge("A-B", "A", "B")],
+        })
+        .unwrap();
+
+        let executed = execute_ported_compound_processors(&mut graph).unwrap();
+
+        assert_eq!(executed.len(), 2);
+        assert_eq!(executed[0].graph_id, "cluster");
+        assert_eq!(executed[1].graph_id, "root");
+        assert!(
+            executed[0]
+                .processors
+                .contains(&ProcessorKind::HierarchicalNodeResizer)
+        );
+        assert!(
+            !executed[0]
+                .processors
+                .iter()
+                .any(|kind| kind.is_hierarchy_aware())
+        );
+        assert!(
+            executed[1]
+                .processors
+                .iter()
+                .any(|kind| kind.is_hierarchy_aware())
+        );
+        let cluster = graph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap();
+        let nested = cluster.nested_graph.as_ref().unwrap();
+        assert!(cluster.size.width >= nested.size.width);
+        assert!(cluster.size.height >= nested.size.height);
+        assert!(nested.layers.is_empty());
+    }
+
+    #[test]
+    fn source_ported_compound_runner_rejects_external_ports() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(crate::options::HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![cluster, child],
+            edges: vec![edge("cluster-A", "cluster", "A")],
+        })
+        .unwrap();
+
+        let err = execute_ported_compound_processors(&mut graph).unwrap_err();
+
+        assert!(matches!(
+            err,
+            PipelineError::UnsupportedCompoundGraph { .. }
+        ));
     }
 
     #[test]

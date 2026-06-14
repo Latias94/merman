@@ -54,8 +54,9 @@ pub use p4nodes::{
     calculate_innermost_node_margins, calculate_label_and_node_sizes, process_in_layer_constraints,
 };
 pub use pipeline::{
-    LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot, assemble_processors,
-    assemble_processors_for_graph, execute_ported_processors, execute_processors_until,
+    GraphExecution, LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot,
+    assemble_processors, assemble_processors_for_graph, execute_ported_compound_processors,
+    execute_ported_processors, execute_processors_until,
 };
 pub use random::JavaRandom;
 pub use transform::{GraphTransformMode, transform_graph_direction};
