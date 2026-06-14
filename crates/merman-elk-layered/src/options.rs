@@ -110,6 +110,7 @@ pub struct LayeredOptions {
     pub direction: ElkDirection,
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,
+    pub spacing: SpacingOptions,
     pub cycle_breaking_strategy: CycleBreakingStrategy,
     pub layering_strategy: LayeringStrategy,
     pub crossing_minimization_strategy: CrossingMinimizationStrategy,
@@ -127,6 +128,7 @@ pub struct LayeredOptions {
     pub wrapping_multi_edge_improve_cuts: bool,
     pub wrapping_multi_edge_improve_wrapped_edges: bool,
     pub feedback_edges: bool,
+    pub node_placement_favor_straight_edges: Option<bool>,
     pub graph_has_self_loops: bool,
     pub graph_has_center_labels: bool,
     pub graph_has_end_labels: bool,
@@ -137,12 +139,24 @@ pub struct LayeredOptions {
     pub graph_has_hypernodes: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpacingOptions {
+    pub edge_edge: f64,
+}
+
+impl Default for SpacingOptions {
+    fn default() -> Self {
+        Self { edge_edge: 2.0 }
+    }
+}
+
 impl Default for LayeredOptions {
     fn default() -> Self {
         Self {
             direction: ElkDirection::Undefined,
             hierarchy_handling: HierarchyHandling::SeparateChildren,
             edge_routing: EdgeRouting::Orthogonal,
+            spacing: SpacingOptions::default(),
             cycle_breaking_strategy: CycleBreakingStrategy::Greedy,
             layering_strategy: LayeringStrategy::NetworkSimplex,
             crossing_minimization_strategy: CrossingMinimizationStrategy::LayerSweep,
@@ -160,6 +174,7 @@ impl Default for LayeredOptions {
             wrapping_multi_edge_improve_cuts: true,
             wrapping_multi_edge_improve_wrapped_edges: true,
             feedback_edges: false,
+            node_placement_favor_straight_edges: None,
             graph_has_self_loops: false,
             graph_has_center_labels: false,
             graph_has_end_labels: false,

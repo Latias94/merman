@@ -14,6 +14,8 @@ use super::options::{
     GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
     WrappingStrategy,
 };
+use crate::configurator::configured_options;
+use crate::graph::LGraph;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LayeredPhase {
@@ -306,10 +308,27 @@ fn intermediate_processor_order(kind: ProcessorKind) -> usize {
 /// `getLayoutProcessorConfiguration(...)` methods. It intentionally returns processor kinds rather
 /// than executing them so each Java phase can be ported independently.
 pub fn assemble_processors(options: &LayeredOptions) -> Vec<ProcessorSlot> {
+    assemble_processors_with_graph_size(options, 0, true)
+}
+
+pub fn assemble_processors_for_graph(graph: &LGraph) -> Vec<ProcessorSlot> {
+    let options = configured_options(graph);
+    assemble_processors_with_graph_size(
+        &options,
+        graph.layerless_nodes.len(),
+        graph.parent_node_id.is_none(),
+    )
+}
+
+fn assemble_processors_with_graph_size(
+    options: &LayeredOptions,
+    graph_size: usize,
+    is_root_graph: bool,
+) -> Vec<ProcessorSlot> {
     let mut config = Config::default();
 
     add_baseline_processors(&mut config);
-    add_graph_configurator_processors(&mut config, options);
+    add_graph_configurator_processors(&mut config, options, graph_size, is_root_graph);
 
     let cycle = cycle_breaking_processor(options.cycle_breaking_strategy);
     config.merge(cycle_breaking_dependencies(cycle));
@@ -350,7 +369,12 @@ fn add_baseline_processors(config: &mut Config) {
     config.add_after(LayeredPhase::P5EdgeRouting, ProcessorKind::EndLabelSorter);
 }
 
-fn add_graph_configurator_processors(config: &mut Config, options: &LayeredOptions) {
+fn add_graph_configurator_processors(
+    config: &mut Config,
+    options: &LayeredOptions,
+    graph_size: usize,
+    is_root_graph: bool,
+) {
     if options.hierarchy_handling == super::options::HierarchyHandling::IncludeChildren {
         config.add_after(
             LayeredPhase::P5EdgeRouting,
@@ -379,7 +403,7 @@ fn add_graph_configurator_processors(config: &mut Config, options: &LayeredOptio
         ElkDirection::Right | ElkDirection::Undefined => {}
     }
 
-    if activate_greedy_switch_for(options) {
+    if activate_greedy_switch_for(options, graph_size, is_root_graph) {
         let kind = if options.is_hierarchical_layout() {
             match options.greedy_switch_hierarchical_type {
                 GreedySwitchType::OneSided => {
@@ -436,16 +460,21 @@ fn add_graph_configurator_processors(config: &mut Config, options: &LayeredOptio
     }
 }
 
-fn activate_greedy_switch_for(options: &LayeredOptions) -> bool {
+fn activate_greedy_switch_for(
+    options: &LayeredOptions,
+    graph_size: usize,
+    is_root_graph: bool,
+) -> bool {
     if options.is_hierarchical_layout() {
-        return options.greedy_switch_hierarchical_type != GreedySwitchType::Off;
+        return is_root_graph && options.greedy_switch_hierarchical_type != GreedySwitchType::Off;
     }
 
     let interactive_cross_min =
         options.crossing_minimization_strategy == CrossingMinimizationStrategy::Interactive;
     !interactive_cross_min
         && options.greedy_switch_type != GreedySwitchType::Off
-        && options.greedy_switch_activation_threshold != 0
+        && (options.greedy_switch_activation_threshold == 0
+            || options.greedy_switch_activation_threshold > graph_size)
 }
 
 fn cycle_breaking_processor(strategy: CycleBreakingStrategy) -> ProcessorKind {
@@ -643,10 +672,18 @@ fn edge_routing_dependencies(options: &LayeredOptions, _processor: ProcessorKind
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayeredOptions};
 
     fn kinds(options: &LayeredOptions) -> Vec<ProcessorKind> {
         assemble_processors(options)
+            .into_iter()
+            .map(|slot| slot.kind)
+            .collect()
+    }
+
+    fn graph_kinds(graph: &LGraph) -> Vec<ProcessorKind> {
+        assemble_processors_for_graph(graph)
             .into_iter()
             .map(|slot| slot.kind)
             .collect()
@@ -719,5 +756,104 @@ mod tests {
         assert!(!processors.contains(&ProcessorKind::BreakingPointInserter));
         assert!(!processors.contains(&ProcessorKind::BreakingPointProcessor));
         assert!(!processors.contains(&ProcessorKind::BreakingPointRemover));
+    }
+
+    #[test]
+    fn graph_properties_insert_label_self_loop_and_external_port_processors() {
+        let graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![
+                ElkInputNode {
+                    id: "cluster".to_string(),
+                    width: 0.0,
+                    height: 0.0,
+                    parent: None,
+                    direction: None,
+                    hierarchy_handling: Some(crate::options::HierarchyHandling::IncludeChildren),
+                    label: None,
+                },
+                ElkInputNode {
+                    id: "A".to_string(),
+                    width: 80.0,
+                    height: 40.0,
+                    parent: Some("cluster".to_string()),
+                    direction: None,
+                    hierarchy_handling: None,
+                    label: None,
+                },
+            ],
+            edges: vec![
+                ElkInputEdge {
+                    id: "cluster-A".to_string(),
+                    source: "cluster".to_string(),
+                    target: "A".to_string(),
+                    label: Some(ElkInputLabel::center("inside", 24.0, 12.0)),
+                    minlen: 1,
+                },
+                ElkInputEdge {
+                    id: "A-A".to_string(),
+                    source: "A".to_string(),
+                    target: "A".to_string(),
+                    label: None,
+                    minlen: 1,
+                },
+            ],
+        })
+        .unwrap();
+
+        let nested = graph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+        let processors = graph_kinds(nested);
+        assert!(processors.contains(&ProcessorKind::HierarchicalPortConstraintProcessor));
+        assert!(processors.contains(&ProcessorKind::HierarchicalPortDummySizeProcessor));
+        assert!(processors.contains(&ProcessorKind::HierarchicalPortOrthogonalEdgeRouter));
+        assert!(processors.contains(&ProcessorKind::LabelDummyInserter));
+        assert!(processors.contains(&ProcessorKind::LabelDummySwitcher));
+        assert!(processors.contains(&ProcessorKind::LabelDummyRemover));
+        assert!(processors.contains(&ProcessorKind::SelfLoopPreProcessor));
+        assert!(processors.contains(&ProcessorKind::SelfLoopRouter));
+        assert!(processors.contains(&ProcessorKind::SelfLoopPostProcessor));
+    }
+
+    #[test]
+    fn graph_aware_greedy_switch_matches_graph_configurator_activation_rules() {
+        let mut options = LayeredOptions {
+            hierarchy_handling: crate::options::HierarchyHandling::SeparateChildren,
+            direction: ElkDirection::Right,
+            greedy_switch_activation_threshold: 1,
+            ..LayeredOptions::default()
+        };
+        let mut graph = LGraph::new("root", options.clone());
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("A", 10.0, 10.0, Some(0)));
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("B", 10.0, 10.0, Some(1)));
+        assert!(
+            !graph_kinds(&graph)
+                .contains(&ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch)
+        );
+
+        options.greedy_switch_activation_threshold = 0;
+        graph.options = options;
+        assert!(
+            graph_kinds(&graph)
+                .contains(&ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch)
+        );
+
+        let mut nested = LGraph::new(
+            "cluster",
+            LayeredOptions {
+                hierarchy_handling: crate::options::HierarchyHandling::IncludeChildren,
+                greedy_switch_hierarchical_type: crate::options::GreedySwitchType::TwoSided,
+                ..LayeredOptions::default()
+            },
+        );
+        nested.parent_node_id = Some("cluster".to_string());
+        assert!(
+            !graph_kinds(&nested)
+                .contains(&ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch)
+        );
     }
 }
