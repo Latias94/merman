@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{Error, ParseMetadata, Result};
 
-use super::db::MindmapDb;
+use super::db::{MindmapDb, MindmapParseConfig};
 use super::render_model::MindmapDiagramRenderModel;
 use super::utils::{
     parse_node_spec, split_indent, starts_with_case_insensitive, strip_inline_comment,
@@ -35,6 +35,7 @@ pub fn parse_mindmap_model_for_render(
 fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
     let mut db = MindmapDb::default();
     db.clear();
+    let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
 
     let mut lines = code.lines();
     let mut found_header = false;
@@ -138,6 +139,7 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
                 diagram_type: &meta.diagram_type,
             },
             &meta.effective_config,
+            parse_config,
         )?;
         Ok(HandleOutcome::Done)
     };
