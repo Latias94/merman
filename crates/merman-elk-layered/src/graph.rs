@@ -26,6 +26,7 @@ pub struct LGraph {
     pub random: JavaRandom,
     pub parent_node_id: Option<String>,
     pub hidden_nodes: Vec<usize>,
+    pub replaced_external_port_dummies: Vec<usize>,
 }
 
 impl LGraph {
@@ -45,6 +46,7 @@ impl LGraph {
             random,
             parent_node_id: None,
             hidden_nodes: Vec::new(),
+            replaced_external_port_dummies: Vec::new(),
         }
     }
 
@@ -98,6 +100,9 @@ pub struct LNode {
     pub port_alignment: Option<PortAlignment>,
     pub external_port_side: PortSide,
     pub external_port_size: LSize,
+    pub port_ratio_or_position: f64,
+    pub replaced_external_port_dummy: Option<usize>,
+    pub in_layer_successor_constraints: Vec<usize>,
     pub origin_edge: Option<usize>,
     pub long_edge_source: Option<PortRef>,
     pub long_edge_target: Option<PortRef>,
@@ -128,6 +133,9 @@ impl LNode {
             port_alignment: None,
             external_port_side: PortSide::Undefined,
             external_port_size: LSize::default(),
+            port_ratio_or_position: 0.0,
+            replaced_external_port_dummy: None,
+            in_layer_successor_constraints: Vec::new(),
             origin_edge: None,
             long_edge_source: None,
             long_edge_target: None,
@@ -398,6 +406,15 @@ impl LGraph {
                     node.layer_index = Some(current + 1);
                 }
             }
+        }
+    }
+
+    pub fn remove_node_from_layer(&mut self, node_index: usize) {
+        let Some(layer_index) = self.layerless_nodes[node_index].layer_index.take() else {
+            return;
+        };
+        if let Some(layer) = self.layers.get_mut(layer_index) {
+            remove_node(&mut layer.nodes, node_index);
         }
     }
 
@@ -811,7 +828,7 @@ pub fn create_external_port_dummy(
     port.size = port_size;
     port.border_offset = Some(border_offset);
     if port_constraints.is_order_fixed() {
-        port.ratio_or_position = port_ratio_or_position(
+        dummy.port_ratio_or_position = port_ratio_or_position(
             external_side,
             port_position,
             port_node_size,
@@ -914,6 +931,6 @@ mod tests {
         assert_eq!(dummy.ports[0].side, PortSide::East);
         assert_eq!(dummy.ports[0].position, LPoint { x: 0.0, y: 3.0 });
         assert_eq!(dummy.ports[0].border_offset, Some(-3.0));
-        assert_eq!(dummy.ports[0].ratio_or_position, 0.5);
+        assert_eq!(dummy.port_ratio_or_position, 0.5);
     }
 }

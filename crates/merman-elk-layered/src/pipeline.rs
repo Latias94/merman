@@ -20,8 +20,8 @@ use crate::graph::LGraph;
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, join_long_edges,
     postprocess_layer_constraints, preprocess_layer_constraints,
-    process_hierarchical_port_dummy_sizes, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, split_long_edges,
+    process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
+    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, split_long_edges,
 };
 use crate::p1cycles::break_cycles_greedy;
 use crate::p2layers::layer_network_simplex;
@@ -641,6 +641,9 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
         ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph),
         ProcessorKind::LayerConstraintPostprocessor => postprocess_layer_constraints(graph)?,
+        ProcessorKind::HierarchicalPortConstraintProcessor => {
+            process_hierarchical_port_constraints(graph);
+        }
         ProcessorKind::LongEdgeSplitter => split_long_edges(graph),
         ProcessorKind::PortSideProcessor => process_port_sides(graph),
         ProcessorKind::PortListSorter => sort_port_lists(graph),
