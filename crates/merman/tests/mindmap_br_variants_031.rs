@@ -19,6 +19,7 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
         ),
         math_renderer: None,
         use_manatee_layout: true,
+        flowchart_elk_backend: Default::default(),
     };
 
     let svg_opts = merman::render::SvgRenderOptions {

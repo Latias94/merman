@@ -107,6 +107,7 @@ pub struct LNode {
     pub long_edge_source: Option<PortRef>,
     pub long_edge_target: Option<PortRef>,
     pub long_edge_has_label_dummies: bool,
+    pub label_side: LabelSide,
     pub in_layer_constraint: InLayerConstraint,
     pub layer_constraint_explicit: bool,
     pub hidden: bool,
@@ -140,6 +141,7 @@ impl LNode {
             long_edge_source: None,
             long_edge_target: None,
             long_edge_has_label_dummies: false,
+            label_side: LabelSide::Below,
             in_layer_constraint: InLayerConstraint::None,
             layer_constraint_explicit: false,
             hidden: false,
@@ -348,6 +350,14 @@ pub enum EdgeLabelPlacement {
     Tail,
     #[default]
     Center,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LabelSide {
+    Above,
+    #[default]
+    Below,
+    Inline,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

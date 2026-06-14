@@ -8,16 +8,20 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeSplitter.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LongEdgeJoiner.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LayerSizeAndGraphHeightCalculator.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LabelDummyInserter.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LabelDummySwitcher.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LabelSideSelector.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/LabelDummyRemover.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortConstraintProcessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortDummySizeProcessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortPositionProcessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortOrthogonalEdgeRouter.java
 
 use crate::graph::{
-    EdgeLabelPlacement, LGraph, LNode, LNodeKind, LPoint, LayeredEdge, PortRef, PortSide, PortType,
-    reverse_edge,
+    EdgeLabelPlacement, LGraph, LLabel, LNode, LNodeKind, LPoint, LabelSide, LayeredEdge, PortRef,
+    PortSide, PortType, reverse_edge,
 };
-use crate::options::{Alignment, LayerConstraint, PortConstraints};
+use crate::options::{Alignment, ElkDirection, LayerConstraint, PortConstraints};
 use crate::p5edges::orthogonal::{RoutingDirection, route_edges};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -541,6 +545,98 @@ fn ensure_no_outgoing_except_label_dummies(graph: &LGraph, node: usize) -> Inter
     Ok(())
 }
 
+pub fn insert_label_dummies(graph: &mut LGraph) {
+    let edge_indices = graph
+        .edges
+        .iter()
+        .enumerate()
+        .filter(|(_, edge)| edge.source.node != edge.target.node)
+        .filter(|(_, edge)| {
+            edge.labels
+                .iter()
+                .any(|label| label.placement == EdgeLabelPlacement::Center)
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+
+    for edge_index in edge_indices {
+        if !graph.edge_source_attached(edge_index) || !graph.edge_target_attached(edge_index) {
+            continue;
+        }
+
+        let thickness = graph.edges[edge_index].thickness.max(0.0);
+        graph.edges[edge_index].thickness = thickness;
+        let original_source = graph.edges[edge_index].source;
+        let original_target = graph.edges[edge_index].target;
+        let dummy = create_label_dummy_node(graph, edge_index, thickness);
+        if split_edge(graph, edge_index, dummy).is_none() {
+            continue;
+        }
+
+        graph.layerless_nodes[dummy].long_edge_source = Some(original_source);
+        graph.layerless_nodes[dummy].long_edge_target = Some(original_target);
+        move_center_labels_to_dummy(graph, edge_index, dummy);
+        size_label_dummy(graph, dummy, thickness);
+    }
+}
+
+fn create_label_dummy_node(graph: &mut LGraph, edge_index: usize, thickness: f64) -> usize {
+    let dummy_index = graph.layerless_nodes.len();
+    let mut dummy = LNode::new(format!("label:{edge_index}:{dummy_index}"), 0.0, 0.0, None);
+    dummy.kind = LNodeKind::Label;
+    dummy.origin_edge = Some(edge_index);
+    dummy.port_constraints = PortConstraints::FixedPos;
+    graph.layerless_nodes.push(dummy);
+    graph.layerless_nodes[dummy_index].size.height = thickness.max(0.0);
+    dummy_index
+}
+
+fn move_center_labels_to_dummy(graph: &mut LGraph, edge_index: usize, dummy: usize) {
+    let mut retained = Vec::new();
+    let mut moved = Vec::new();
+
+    for label in std::mem::take(&mut graph.edges[edge_index].labels) {
+        if label.placement == EdgeLabelPlacement::Center {
+            moved.push(label);
+        } else {
+            retained.push(label);
+        }
+    }
+
+    graph.edges[edge_index].labels = retained;
+    graph.layerless_nodes[dummy].labels = moved;
+}
+
+fn size_label_dummy(graph: &mut LGraph, dummy: usize, thickness: f64) {
+    let edge_label_spacing = graph.options.spacing.edge_label;
+    let label_label_spacing = graph.options.spacing.label_label;
+    let mut width = 0.0;
+    let mut height = 0.0;
+
+    if graph.options.direction.is_vertical() {
+        for label in &graph.layerless_nodes[dummy].labels {
+            width += label.size.width + label_label_spacing;
+            height = f64::max(height, label.size.height);
+        }
+        if !graph.layerless_nodes[dummy].labels.is_empty() {
+            width -= label_label_spacing;
+        }
+        height += edge_label_spacing + thickness;
+    } else {
+        for label in &graph.layerless_nodes[dummy].labels {
+            width = f64::max(width, label.size.width);
+            height += label.size.height + label_label_spacing;
+        }
+        if !graph.layerless_nodes[dummy].labels.is_empty() {
+            height -= label_label_spacing;
+        }
+        height += edge_label_spacing + thickness;
+    }
+
+    graph.layerless_nodes[dummy].size.width = width.max(0.0);
+    graph.layerless_nodes[dummy].size.height = height.max(thickness);
+}
+
 pub fn split_long_edges(graph: &mut LGraph) {
     if graph.layers.len() <= 2 {
         return;
@@ -591,6 +687,394 @@ pub fn join_long_edges(graph: &mut LGraph) {
                 node_position += 1;
             }
         }
+    }
+}
+
+pub fn switch_label_dummies(graph: &mut LGraph) {
+    let label_dummies = graph
+        .layers
+        .iter()
+        .flat_map(|layer| layer.nodes.iter().copied())
+        .filter(|node| graph.layerless_nodes[*node].kind == LNodeKind::Label)
+        .collect::<Vec<_>>();
+
+    for label_dummy in label_dummies {
+        if let Some(info) = LabelDummyInfo::new(graph, label_dummy) {
+            let target_layer = find_center_layer_target_id(graph, &info);
+            assign_label_dummy_layer(graph, &info, target_layer);
+            update_long_edge_before_label_dummy_info(graph, info.label_dummy);
+        }
+    }
+}
+
+pub fn select_label_sides(graph: &mut LGraph) {
+    for layer_index in 0..graph.layers.len() {
+        let nodes = graph.layers[layer_index].nodes.clone();
+        for node in nodes {
+            if graph.layerless_nodes[node].kind == LNodeKind::Label {
+                apply_label_side(graph, node, LabelSide::Below);
+            }
+        }
+    }
+}
+
+pub fn remove_label_dummies(graph: &mut LGraph) {
+    for layer_index in 0..graph.layers.len() {
+        let mut node_position = 0usize;
+
+        while node_position < graph.layers[layer_index].nodes.len() {
+            let node = graph.layers[layer_index].nodes[node_position];
+            if graph.layerless_nodes[node].kind == LNodeKind::Label {
+                place_label_dummy_labels(graph, node);
+                let add_unnecessary_bendpoints =
+                    graph.options.edge_routing == crate::options::EdgeRouting::Polyline;
+                join_long_edge_at(graph, node, add_unnecessary_bendpoints);
+                graph.layers[layer_index].nodes.remove(node_position);
+            } else {
+                node_position += 1;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LabelDummyInfo {
+    label_dummy: usize,
+    left_long_edge_dummies: Vec<usize>,
+    right_long_edge_dummies: Vec<usize>,
+    leftmost_layer_id: usize,
+    rightmost_layer_id: usize,
+}
+
+impl LabelDummyInfo {
+    fn new(graph: &LGraph, label_dummy: usize) -> Option<Self> {
+        let left_long_edge_dummies = gather_left_long_edge_dummies(graph, label_dummy)?;
+        let right_long_edge_dummies = gather_right_long_edge_dummies(graph, label_dummy)?;
+        let leftmost_layer_id = left_long_edge_dummies
+            .first()
+            .copied()
+            .unwrap_or(label_dummy);
+        let leftmost_layer_id = graph.layerless_nodes[leftmost_layer_id].layer_index?;
+        let rightmost_layer_id = right_long_edge_dummies
+            .last()
+            .copied()
+            .unwrap_or(label_dummy);
+        let rightmost_layer_id = graph.layerless_nodes[rightmost_layer_id].layer_index?;
+
+        Some(Self {
+            label_dummy,
+            left_long_edge_dummies,
+            right_long_edge_dummies,
+            leftmost_layer_id,
+            rightmost_layer_id,
+        })
+    }
+
+    fn dummy_at_offset(&self, offset: usize) -> Option<usize> {
+        if offset < self.left_long_edge_dummies.len() {
+            self.left_long_edge_dummies.get(offset).copied()
+        } else if offset == self.left_long_edge_dummies.len() {
+            Some(self.label_dummy)
+        } else {
+            self.right_long_edge_dummies
+                .get(offset - self.left_long_edge_dummies.len() - 1)
+                .copied()
+        }
+    }
+}
+
+fn gather_left_long_edge_dummies(graph: &LGraph, label_dummy: usize) -> Option<Vec<usize>> {
+    let mut out = Vec::new();
+    let mut current = label_dummy;
+
+    loop {
+        let incoming = graph.node_incoming_edges(current).into_iter().next()?;
+        let source = graph.edges[incoming].source.node;
+        if graph.layerless_nodes[source].kind == LNodeKind::LongEdge {
+            out.push(source);
+            current = source;
+        } else {
+            break;
+        }
+    }
+
+    out.reverse();
+    Some(out)
+}
+
+fn gather_right_long_edge_dummies(graph: &LGraph, label_dummy: usize) -> Option<Vec<usize>> {
+    let mut out = Vec::new();
+    let mut current = label_dummy;
+
+    loop {
+        let outgoing = graph.node_outgoing_edges(current).into_iter().next()?;
+        let target = graph.edges[outgoing].target.node;
+        if graph.layerless_nodes[target].kind == LNodeKind::LongEdge {
+            out.push(target);
+            current = target;
+        } else {
+            break;
+        }
+    }
+
+    Some(out)
+}
+
+fn find_center_layer_target_id(graph: &LGraph, info: &LabelDummyInfo) -> usize {
+    let layer_width_sums = compute_layer_width_sums(graph, info);
+    let threshold = layer_width_sums.last().copied().unwrap_or(0.0) / 2.0;
+    for (offset, width_sum) in layer_width_sums.iter().enumerate() {
+        if *width_sum >= threshold {
+            return info.leftmost_layer_id + offset;
+        }
+    }
+    info.leftmost_layer_id + info.left_long_edge_dummies.len()
+}
+
+fn compute_layer_width_sums(graph: &LGraph, info: &LabelDummyInfo) -> Vec<f64> {
+    let total = info.rightmost_layer_id - info.leftmost_layer_id + 1;
+    let edge_node_spacing = graph.options.spacing.edge_node_between_layers * 2.0;
+    let node_node_spacing = graph.options.spacing.node_node_between_layers;
+    let min_space_between_layers = edge_node_spacing.max(node_node_spacing);
+    let mut width_sums = Vec::with_capacity(total);
+    let mut current_sum = -min_space_between_layers;
+
+    for layer in info.leftmost_layer_id..=info.rightmost_layer_id {
+        current_sum += graph.layers[layer].size.width + min_space_between_layers;
+        width_sums.push(current_sum);
+    }
+
+    width_sums
+}
+
+fn assign_label_dummy_layer(graph: &mut LGraph, info: &LabelDummyInfo, target_layer: usize) {
+    let current_layer = graph.layerless_nodes[info.label_dummy]
+        .layer_index
+        .unwrap_or(target_layer);
+    if current_layer == target_layer {
+        return;
+    }
+
+    let Some(target_dummy) = info.dummy_at_offset(target_layer - info.leftmost_layer_id) else {
+        return;
+    };
+    if graph.layerless_nodes[target_dummy].kind != LNodeKind::LongEdge {
+        return;
+    }
+    swap_label_and_long_edge_dummies(graph, info.label_dummy, target_dummy);
+}
+
+fn swap_label_and_long_edge_dummies(
+    graph: &mut LGraph,
+    label_dummy: usize,
+    long_edge_dummy: usize,
+) {
+    let Some(label_layer) = graph.layerless_nodes[label_dummy].layer_index else {
+        return;
+    };
+    let Some(long_edge_layer) = graph.layerless_nodes[long_edge_dummy].layer_index else {
+        return;
+    };
+    let Some(label_position) = graph.layers[label_layer]
+        .nodes
+        .iter()
+        .position(|node| *node == label_dummy)
+    else {
+        return;
+    };
+    let Some(long_edge_position) = graph.layers[long_edge_layer]
+        .nodes
+        .iter()
+        .position(|node| *node == long_edge_dummy)
+    else {
+        return;
+    };
+
+    let Some(label_input) = first_port_on_side(graph, label_dummy, PortSide::West) else {
+        return;
+    };
+    let Some(label_output) = first_port_on_side(graph, label_dummy, PortSide::East) else {
+        return;
+    };
+    let Some(long_input) = first_port_on_side(graph, long_edge_dummy, PortSide::West) else {
+        return;
+    };
+    let Some(long_output) = first_port_on_side(graph, long_edge_dummy, PortSide::East) else {
+        return;
+    };
+
+    let label_input_ref = PortRef {
+        node: label_dummy,
+        port: label_input,
+    };
+    let label_output_ref = PortRef {
+        node: label_dummy,
+        port: label_output,
+    };
+    let long_input_ref = PortRef {
+        node: long_edge_dummy,
+        port: long_input,
+    };
+    let long_output_ref = PortRef {
+        node: long_edge_dummy,
+        port: long_output,
+    };
+    let label_incoming = graph.layerless_nodes[label_dummy].ports[label_input]
+        .incoming_edges
+        .clone();
+    let label_outgoing = graph.layerless_nodes[label_dummy].ports[label_output]
+        .outgoing_edges
+        .clone();
+    let long_incoming = graph.layerless_nodes[long_edge_dummy].ports[long_input]
+        .incoming_edges
+        .clone();
+    let long_outgoing = graph.layerless_nodes[long_edge_dummy].ports[long_output]
+        .outgoing_edges
+        .clone();
+
+    graph.layers[long_edge_layer].nodes[long_edge_position] = label_dummy;
+    graph.layerless_nodes[label_dummy].layer_index = Some(long_edge_layer);
+    for edge in long_incoming {
+        graph.set_edge_target(edge, label_input_ref);
+    }
+    for edge in long_outgoing {
+        graph.set_edge_source(edge, label_output_ref);
+    }
+
+    graph.layers[label_layer].nodes[label_position] = long_edge_dummy;
+    graph.layerless_nodes[long_edge_dummy].layer_index = Some(label_layer);
+    for edge in label_incoming {
+        graph.set_edge_target(edge, long_input_ref);
+    }
+    for edge in label_outgoing {
+        graph.set_edge_source(edge, long_output_ref);
+    }
+}
+
+fn update_long_edge_before_label_dummy_info(graph: &mut LGraph, label_dummy: usize) {
+    let mut current = label_dummy;
+    loop {
+        let Some(incoming) = graph.node_incoming_edges(current).into_iter().next() else {
+            break;
+        };
+        let source = graph.edges[incoming].source.node;
+        if graph.layerless_nodes[source].kind != LNodeKind::LongEdge {
+            break;
+        }
+        graph.layerless_nodes[source].long_edge_has_label_dummies = true;
+        current = source;
+    }
+}
+
+fn apply_label_side(graph: &mut LGraph, label_dummy: usize, side: LabelSide) {
+    graph.layerless_nodes[label_dummy].label_side = side;
+    if side == LabelSide::Below {
+        return;
+    }
+
+    let origin_edge = graph.layerless_nodes[label_dummy]
+        .origin_edge
+        .and_then(|edge| graph.edges.get(edge))
+        .map(|edge| edge.thickness.max(0.0))
+        .unwrap_or(0.0);
+    let port_y = match side {
+        LabelSide::Above => {
+            graph.layerless_nodes[label_dummy].size.height - (origin_edge / 2.0).ceil()
+        }
+        LabelSide::Inline => {
+            let edge_label_spacing = graph.options.spacing.edge_label;
+            graph.layerless_nodes[label_dummy].size.height =
+                (graph.layerless_nodes[label_dummy].size.height - edge_label_spacing - origin_edge)
+                    .max(0.0);
+            (graph.layerless_nodes[label_dummy].size.height / 2.0).ceil()
+        }
+        LabelSide::Below => 0.0,
+    };
+
+    for port in &mut graph.layerless_nodes[label_dummy].ports {
+        port.position.y = port_y;
+    }
+}
+
+fn place_label_dummy_labels(graph: &mut LGraph, label_dummy: usize) {
+    let Some(origin_edge) = graph.layerless_nodes[label_dummy].origin_edge else {
+        return;
+    };
+    let thickness = graph.edges[origin_edge].thickness.max(0.0);
+    let edge_label_spacing = graph.options.spacing.edge_label;
+    let label_label_spacing = graph.options.spacing.label_label;
+    let labels_below_edge = graph.layerless_nodes[label_dummy].label_side == LabelSide::Below;
+    let mut label_position = graph.layerless_nodes[label_dummy].position;
+
+    if labels_below_edge {
+        label_position.y += thickness + edge_label_spacing;
+    }
+
+    let label_space = LPoint {
+        x: graph.layerless_nodes[label_dummy].size.width,
+        y: (graph.layerless_nodes[label_dummy].size.height - thickness - edge_label_spacing)
+            .max(0.0),
+    };
+    let mut labels = std::mem::take(&mut graph.layerless_nodes[label_dummy].labels);
+
+    if graph.options.direction.is_vertical() {
+        place_labels_for_vertical_layout(
+            &mut labels,
+            label_position,
+            label_label_spacing,
+            label_space,
+            labels_below_edge,
+            graph.options.direction,
+        );
+    } else {
+        place_labels_for_horizontal_layout(
+            &mut labels,
+            label_position,
+            label_label_spacing,
+            label_space,
+        );
+    }
+
+    graph.edges[origin_edge].labels.extend(labels);
+}
+
+fn place_labels_for_horizontal_layout(
+    labels: &mut [LLabel],
+    mut label_position: LPoint,
+    label_spacing: f64,
+    label_space: LPoint,
+) {
+    for label in labels {
+        label.position.x = label_position.x + (label_space.x - label.size.width) / 2.0;
+        label.position.y = label_position.y;
+        label_position.y += label.size.height + label_spacing;
+    }
+}
+
+fn place_labels_for_vertical_layout(
+    labels: &mut [LLabel],
+    mut label_position: LPoint,
+    label_spacing: f64,
+    label_space: LPoint,
+    left_aligned: bool,
+    direction: ElkDirection,
+) {
+    if direction == ElkDirection::Up {
+        labels.reverse();
+    }
+
+    for label in &mut *labels {
+        label.position.x = label_position.x;
+        if left_aligned {
+            label.position.y = label_position.y;
+        } else {
+            label.position.y = label_position.y + label_space.y - label.size.height;
+        }
+        label_position.x += label.size.width + label_spacing;
+    }
+
+    if direction == ElkDirection::Up {
+        labels.reverse();
     }
 }
 
@@ -1897,6 +2381,95 @@ mod tests {
         assert_eq!(
             graph.edges[moved_label_edge].labels[0].end_label_edge,
             Some(long_edge)
+        );
+    }
+
+    #[test]
+    fn label_dummy_inserter_splits_center_label_edges_and_moves_labels_to_dummy() {
+        let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
+        center.placement = EdgeLabelPlacement::Center;
+        let mut labelled = edge("A-B", "A", "B");
+        labelled.label = Some(center);
+        let mut graph = graph(vec![node("A"), node("B")], vec![labelled]);
+        let edge_index = graph
+            .edges
+            .iter()
+            .position(|edge| edge.id == "A-B")
+            .unwrap();
+        let original_source = graph.edges[edge_index].source;
+        let original_target = graph.edges[edge_index].target;
+
+        insert_label_dummies(&mut graph);
+
+        let dummy = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.kind == LNodeKind::Label)
+            .unwrap();
+        assert_eq!(graph.layerless_nodes[dummy].origin_edge, Some(edge_index));
+        assert_eq!(
+            graph.layerless_nodes[dummy].long_edge_source,
+            Some(original_source)
+        );
+        assert_eq!(
+            graph.layerless_nodes[dummy].long_edge_target,
+            Some(original_target)
+        );
+        assert_eq!(graph.layerless_nodes[dummy].labels.len(), 1);
+        assert_eq!(graph.layerless_nodes[dummy].labels[0].text, "choice");
+        assert!(graph.edges[edge_index].labels.is_empty());
+        assert_eq!(graph.node_incoming_edges(dummy).len(), 1);
+        assert_eq!(graph.node_outgoing_edges(dummy).len(), 1);
+    }
+
+    #[test]
+    fn label_dummy_remover_restores_center_labels_to_origin_edge() {
+        let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
+        center.placement = EdgeLabelPlacement::Center;
+        let mut labelled = edge("A-C", "A", "C");
+        labelled.label = Some(center);
+        let mut graph = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), labelled],
+        );
+        let edge_index = graph
+            .edges
+            .iter()
+            .position(|edge| edge.id == "A-C")
+            .unwrap();
+
+        insert_label_dummies(&mut graph);
+        layer_network_simplex(&mut graph);
+        split_long_edges(&mut graph);
+        switch_label_dummies(&mut graph);
+        select_label_sides(&mut graph);
+        let dummy = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.kind == LNodeKind::Label)
+            .unwrap();
+        graph.layerless_nodes[dummy].position = LPoint { x: 20.0, y: 40.0 };
+
+        remove_label_dummies(&mut graph);
+
+        assert!(!graph.layers.iter().any(|layer| {
+            layer
+                .nodes
+                .iter()
+                .any(|node| graph.layerless_nodes[*node].kind == LNodeKind::Label)
+        }));
+        assert_eq!(graph.edges[edge_index].labels.len(), 1);
+        assert_eq!(graph.edges[edge_index].labels[0].text, "choice");
+        assert!(
+            !graph.edge_source_attached(
+                graph
+                    .edges
+                    .iter()
+                    .enumerate()
+                    .find(|(index, edge)| *index != edge_index && edge.id == "A-C")
+                    .map(|(index, _)| index)
+                    .unwrap()
+            )
         );
     }
 

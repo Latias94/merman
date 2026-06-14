@@ -4,7 +4,7 @@ use crate::model::{
     FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
-use crate::{Error, Result};
+use crate::{Error, FlowchartElkBackend, Result};
 use merman_core::MermaidConfig;
 use merman_layout_elk as elk;
 use std::collections::{HashMap, HashSet};
@@ -28,9 +28,10 @@ pub fn layout_flowchart_elk(
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    backend: FlowchartElkBackend,
 ) -> Result<FlowchartV2Layout> {
     let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
-    layout_flowchart_elk_typed(&model, effective_config, measurer, math_renderer)
+    layout_flowchart_elk_typed(&model, effective_config, measurer, math_renderer, backend)
 }
 
 pub fn layout_flowchart_elk_typed(
@@ -38,13 +39,25 @@ pub fn layout_flowchart_elk_typed(
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    backend: FlowchartElkBackend,
 ) -> Result<FlowchartV2Layout> {
     let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
-    let layout =
-        elk::layout(&graph, elk::Algorithm::Layered).map_err(|err| Error::InvalidModel {
-            message: format!("ELK layout failed: {err}"),
-        })?;
+    let layout = layout_elk_graph(&graph, backend).map_err(|err| Error::InvalidModel {
+        message: format!("ELK layout failed: {err}"),
+    })?;
     flowchart_layout_from_elk(model, effective_config, &graph, layout)
+}
+
+fn layout_elk_graph(
+    graph: &elk::Graph,
+    backend: FlowchartElkBackend,
+) -> std::result::Result<elk::LayoutResult, elk::Error> {
+    match backend {
+        FlowchartElkBackend::Compat => elk::layout(graph, elk::Algorithm::Layered),
+        FlowchartElkBackend::SourcePorted => {
+            elk::layout_source_ported(graph, elk::Algorithm::Layered)
+        }
+    }
 }
 
 fn flowchart_layout_from_elk(

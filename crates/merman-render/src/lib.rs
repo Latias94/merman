@@ -97,6 +97,18 @@ pub struct LayoutOptions {
     /// Enable experimental layout engines (e.g. Cytoscape COSE/FCoSE ports) for diagrams that
     /// currently use placeholder layouts in merman.
     pub use_manatee_layout: bool,
+    /// Selects the Flowchart ELK backend.
+    ///
+    /// `Compat` keeps the current public render path stable. `SourcePorted` executes the Rust
+    /// source port of ELK layered layout and is intended for ELK fixture convergence work.
+    pub flowchart_elk_backend: FlowchartElkBackend,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FlowchartElkBackend {
+    #[default]
+    Compat,
+    SourcePorted,
 }
 
 impl Default for LayoutOptions {
@@ -107,6 +119,7 @@ impl Default for LayoutOptions {
             viewport_width: 800.0,
             viewport_height: 600.0,
             use_manatee_layout: false,
+            flowchart_elk_backend: FlowchartElkBackend::Compat,
         }
     }
 }
@@ -122,6 +135,7 @@ impl LayoutOptions {
             // Mermaid parity fixtures for diagrams like mindmap/architecture rely on the COSE
             // layout port (manatee). Make the headless defaults "just work" for UI integrations.
             use_manatee_layout: true,
+            flowchart_elk_backend: FlowchartElkBackend::Compat,
             ..Default::default()
         }
     }
@@ -428,6 +442,7 @@ fn layout_flowchart_elk_typed_by_feature(
         effective_config,
         options.text_measurer.as_ref(),
         options.math_renderer.as_deref(),
+        options.flowchart_elk_backend,
     )
 }
 
@@ -478,6 +493,7 @@ fn layout_flowchart_elk_json_by_feature(
         effective_config,
         options.text_measurer.as_ref(),
         options.math_renderer.as_deref(),
+        options.flowchart_elk_backend,
     )
 }
 

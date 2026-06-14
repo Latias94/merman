@@ -33,6 +33,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_root_arg: Option<PathBuf> = None;
     let mut only_diagrams: Vec<String> = Vec::new();
     let mut include_elk_probes = false;
+    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
 
     let mut i = 0;
     while i < args.len() {
@@ -72,6 +73,11 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 if !d.is_empty() {
                     only_diagrams.push(d);
                 }
+            }
+            "--flowchart-elk-backend" => {
+                i += 1;
+                flowchart_elk_backend =
+                    parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--include-elk-probes" => include_elk_probes = true,
             "--help" | "-h" => {
@@ -117,6 +123,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     ));
     let layout_opts = merman_render::LayoutOptions {
         text_measurer: Arc::clone(&measurer),
+        flowchart_elk_backend,
         ..Default::default()
     };
 
@@ -644,6 +651,18 @@ pub(crate) fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let xml = svgdom::canonical_xml(&svg, mode, decimals).map_err(XtaskError::SvgCompareFailed)?;
     print!("{xml}");
     Ok(())
+}
+
+fn parse_flowchart_elk_backend(
+    raw: Option<&str>,
+) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
+    match raw.map(str::trim) {
+        Some("compat") => Ok(merman_render::FlowchartElkBackend::Compat),
+        Some("source-ported" | "source_ported" | "source") => {
+            Ok(merman_render::FlowchartElkBackend::SourcePorted)
+        }
+        _ => Err(XtaskError::Usage),
+    }
 }
 
 #[cfg(test)]

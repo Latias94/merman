@@ -15,6 +15,12 @@ pub enum ElkDirection {
     Undefined,
 }
 
+impl ElkDirection {
+    pub fn is_vertical(self) -> bool {
+        matches!(self, Self::Up | Self::Down)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DirectionCongruency {
     #[default]
@@ -236,6 +242,7 @@ pub struct SpacingOptions {
     pub node_node: f64,
     pub edge_edge: f64,
     pub edge_node: f64,
+    pub edge_label: f64,
     pub label_label: f64,
     pub label_node: f64,
     pub label_port_horizontal: f64,
@@ -261,6 +268,7 @@ impl Default for SpacingOptions {
             node_node: 20.0,
             edge_edge: 10.0,
             edge_node: 10.0,
+            edge_label: 2.0,
             label_label: 0.0,
             label_node: 5.0,
             label_port_horizontal: 1.0,

@@ -17,7 +17,7 @@ pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
 };
 pub use merman_render::{
-    Error as RenderError, LayoutOptions, Result as RenderResult, layout_parsed,
+    Error as RenderError, FlowchartElkBackend, LayoutOptions, Result as RenderResult, layout_parsed,
 };
 
 mod operation;

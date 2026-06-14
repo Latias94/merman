@@ -29,6 +29,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut text_measurer: String = "vendored".to_string();
     let mut apply_root_overrides: bool = true;
     let mut include_elk_probes: bool = false;
+    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
 
     let mut i = 0;
     while i < args.len() {
@@ -89,6 +90,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "deterministic".to_string());
             }
+            "--flowchart-elk-backend" => {
+                i += 1;
+                flowchart_elk_backend =
+                    parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
+            }
             "--no-root-overrides" => apply_root_overrides = false,
             "--include-elk-probes" => include_elk_probes = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
@@ -143,10 +149,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     if let Some(renderer) = flowchart_math_renderer.clone() {
         layout_opts.math_renderer = Some(renderer);
     }
+    layout_opts.flowchart_elk_backend = flowchart_elk_backend;
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
+        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Flowchart ELK backend: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
         dom_mode,
         dom_decimals,
         text_measurer,
@@ -160,6 +167,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         } else {
             "disabled"
         },
+        flowchart_elk_backend_name(flowchart_elk_backend),
         if report_root_pins_only {
             "root-pins-only"
         } else {
@@ -452,4 +460,23 @@ fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
     re.captures_iter(&src)
         .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
         .collect()
+}
+
+fn parse_flowchart_elk_backend(
+    raw: Option<&str>,
+) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
+    match raw.map(str::trim) {
+        Some("compat") => Ok(merman_render::FlowchartElkBackend::Compat),
+        Some("source-ported" | "source_ported" | "source") => {
+            Ok(merman_render::FlowchartElkBackend::SourcePorted)
+        }
+        _ => Err(XtaskError::Usage),
+    }
+}
+
+fn flowchart_elk_backend_name(backend: merman_render::FlowchartElkBackend) -> &'static str {
+    match backend {
+        merman_render::FlowchartElkBackend::Compat => "compat",
+        merman_render::FlowchartElkBackend::SourcePorted => "source-ported",
+    }
 }

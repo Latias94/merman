@@ -18,11 +18,12 @@ use super::options::{
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
 use crate::intermediate::{
-    IntermediateError, calculate_layer_sizes_and_graph_height, join_long_edges,
-    postprocess_layer_constraints, preprocess_layer_constraints,
+    IntermediateError, calculate_layer_sizes_and_graph_height, insert_label_dummies,
+    join_long_edges, postprocess_layer_constraints, preprocess_layer_constraints,
     process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
     process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
-    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, split_long_edges,
+    remove_label_dummies, restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints,
+    select_label_sides, split_long_edges, switch_label_dummies,
 };
 use crate::p1cycles::break_cycles_greedy;
 use crate::p2layers::layer_network_simplex;
@@ -625,6 +626,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         }
         ProcessorKind::GreedyCycleBreaker => break_cycles_greedy(graph),
         ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
+        ProcessorKind::LabelDummyInserter => insert_label_dummies(graph),
         ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph),
         ProcessorKind::LayerConstraintPostprocessor => postprocess_layer_constraints(graph)?,
         ProcessorKind::HierarchicalPortConstraintProcessor => {
@@ -646,6 +648,8 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::InLayerConstraintProcessor => process_in_layer_constraints(graph),
         ProcessorKind::LabelAndNodeSizeProcessor => calculate_label_and_node_sizes(graph),
         ProcessorKind::InnermostNodeMarginCalculator => calculate_innermost_node_margins(graph),
+        ProcessorKind::LabelDummySwitcher => switch_label_dummies(graph),
+        ProcessorKind::LabelSideSelector => select_label_sides(graph),
         ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
         ProcessorKind::LayerSizeAndGraphHeightCalculator => {
             calculate_layer_sizes_and_graph_height(graph);
@@ -661,6 +665,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
             process_hierarchical_port_orthogonal_edges(graph);
         }
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
+        ProcessorKind::LabelDummyRemover => remove_label_dummies(graph),
         ProcessorKind::EndLabelSorter if !graph.options.graph_has_end_labels => {}
         ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
         ProcessorKind::HierarchicalNodeResizer => resize_hierarchical_node_graph(graph),
@@ -1584,6 +1589,38 @@ mod tests {
         assert_eq!(executed.last(), Some(&ProcessorKind::ReversedEdgeRestorer));
         assert!(graph.size.height > 0.0);
         assert!(graph.size.width > 0.0);
+    }
+
+    #[test]
+    fn source_ported_center_label_flowchart_runs_through_label_dummy_lifecycle() {
+        let mut labelled = edge("A-C", "A", "C");
+        labelled.label = Some(ElkInputLabel::center("choice", 48.0, 12.0));
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), labelled],
+        })
+        .unwrap();
+
+        let executed = execute_ported_processors(&mut graph).unwrap();
+
+        assert!(executed.contains(&ProcessorKind::LabelDummyInserter));
+        assert!(executed.contains(&ProcessorKind::LabelDummySwitcher));
+        assert!(executed.contains(&ProcessorKind::LabelDummyRemover));
+        assert!(
+            !graph
+                .layers
+                .iter()
+                .flat_map(|layer| layer.nodes.iter().copied())
+                .any(|node| graph.layerless_nodes[node].kind == crate::graph::LNodeKind::Label)
+        );
+        let restored = graph
+            .edges
+            .iter()
+            .find(|edge| edge.id == "A-C" && !edge.labels.is_empty())
+            .expect("center label should be restored to an A-C segment");
+        assert_eq!(restored.labels[0].text, "choice");
     }
 
     #[test]

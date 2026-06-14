@@ -49,6 +49,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
         text_measurer: Arc::new(merman::render::VendoredFontMetricsTextMeasurer::default()),
         math_renderer: None,
         use_manatee_layout: true,
+        flowchart_elk_backend: Default::default(),
     };
 
     for path in fixtures {
