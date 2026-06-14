@@ -6,24 +6,54 @@
 
 use crate::graphlib::{EdgeKey, Graph};
 use crate::{EdgeLabel, GraphLabel, NodeLabel, Point};
+use rustc_hash::FxHashMap;
+
+#[derive(Default)]
+struct DummyNodeIdGen {
+    next_suffix: FxHashMap<&'static str, usize>,
+}
+
+impl DummyNodeIdGen {
+    fn unique_id(
+        &mut self,
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        prefix: &'static str,
+    ) -> String {
+        let suffix = match self.next_suffix.get(&prefix).copied() {
+            Some(v) => v,
+            None => {
+                if !g.has_node(prefix) {
+                    self.next_suffix.insert(prefix, 1);
+                    return prefix.to_string();
+                }
+                self.next_suffix.insert(prefix, 1);
+                1
+            }
+        };
+
+        // Keep the legacy naming scheme (`prefix`, `prefix1`, `prefix2`, ...) while avoiding
+        // repeated scans from suffix 1 for every dummy node.
+        let mut next = suffix;
+        loop {
+            let id = format!("{prefix}{next}");
+            if !g.has_node(&id) {
+                self.next_suffix.insert(prefix, next + 1);
+                return id;
+            }
+            next += 1;
+        }
+    }
+}
 
 fn add_dummy_node(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ids: &mut DummyNodeIdGen,
     label: NodeLabel,
-    prefix: &str,
-) -> Option<String> {
-    if !g.has_node(prefix) {
-        g.set_node(prefix, label);
-        return Some(prefix.to_string());
-    }
-    for i in 1usize.. {
-        let v = format!("{prefix}{i}");
-        if !g.has_node(&v) {
-            g.set_node(&v, label.clone());
-            return Some(v);
-        }
-    }
-    None
+    prefix: &'static str,
+) -> String {
+    let id = ids.unique_id(g, prefix);
+    g.set_node(id.clone(), label);
+    id
 }
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -37,12 +67,17 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         })
         .cloned()
         .collect();
+    let mut ids = DummyNodeIdGen::default();
     for e in to_normalize {
-        normalize_edge(g, e);
+        normalize_edge(g, &mut ids, e);
     }
 }
 
-fn normalize_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, e: EdgeKey) {
+fn normalize_edge(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ids: &mut DummyNodeIdGen,
+    e: EdgeKey,
+) {
     let v = e.v.clone();
     let w = e.w.clone();
     let name = e.name.clone();
@@ -67,8 +102,9 @@ fn normalize_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, e: EdgeKey) {
     let mut r = v_rank + 1;
 
     while r < w_rank {
-        let Some(dummy_id) = add_dummy_node(
+        let dummy_id = add_dummy_node(
             g,
+            ids,
             NodeLabel {
                 width: 0.0,
                 height: 0.0,
@@ -79,9 +115,7 @@ fn normalize_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, e: EdgeKey) {
                 ..Default::default()
             },
             "_d",
-        ) else {
-            break;
-        };
+        );
 
         if first_dummy.is_none() {
             first_dummy = Some(dummy_id.clone());

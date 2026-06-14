@@ -35,3 +35,7 @@ harness = false
 [[bench]]
 name = "feasible_tree"
 harness = false
+
+[[bench]]
+name = "layout_dagreish"
+harness = false

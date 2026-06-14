@@ -6,6 +6,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+- Improved `dugong` layered layout performance by avoiding repeated dummy-node ID scans during
+  long-edge normalization and by using cached adjacency when removing graph nodes. Added a
+  `layout_dagreish` benchmark covering the full layout pipeline and normalize run/undo costs.
+
 ## [0.8.0-alpha.2] - 2026-06-13
 
 This alpha continues Merman for the next stable release by tightening headless rendering

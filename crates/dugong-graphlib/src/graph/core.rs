@@ -982,10 +982,28 @@ where
     }
 
     pub fn remove_node(&mut self, id: &str) -> bool {
-        let Some(idx) = self.node_index.remove(id) else {
+        let Some(&idx) = self.node_index.get(id) else {
             return false;
         };
 
+        let mut incident_edges: Vec<usize> = if self.options.directed {
+            let cache = self.ensure_directed_adj();
+            let out_edges = cache.out_edges(idx);
+            let in_edges = cache.in_edges(idx);
+            let mut edge_indices = Vec::with_capacity(out_edges.len() + in_edges.len());
+            edge_indices.extend_from_slice(out_edges);
+            edge_indices.extend_from_slice(in_edges);
+            edge_indices
+        } else {
+            let cache = self.ensure_undirected_adj();
+            cache.edges(idx).to_vec()
+        };
+        if incident_edges.len() > 1 {
+            incident_edges.sort_unstable();
+            incident_edges.dedup();
+        }
+
+        let _ = self.node_index.remove(id);
         self.invalidate_adj();
         if let Some(slot) = self.nodes.get_mut(idx)
             && slot.is_some()
@@ -995,16 +1013,17 @@ where
         }
 
         // Remove incident edges.
-        for e in self.edges.iter_mut() {
-            let Some(edge) = e.as_ref() else {
+        for edge_idx in incident_edges {
+            let Some(slot) = self.edges.get_mut(edge_idx) else {
                 continue;
             };
-            if edge.v_ix == idx || edge.w_ix == idx {
-                let key = edge.key.clone();
-                let _ = self.edge_index.remove_entry(&key);
-                *e = None;
-                self.edge_len = self.edge_len.saturating_sub(1);
-            }
+            let Some(edge) = slot.as_ref() else {
+                continue;
+            };
+            let key = edge.key.clone();
+            let _ = self.edge_index.remove_entry(&key);
+            *slot = None;
+            self.edge_len = self.edge_len.saturating_sub(1);
         }
 
         if self.options.compound {
