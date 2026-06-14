@@ -16,7 +16,7 @@ use super::options::{
     WrappingStrategy,
 };
 use crate::configurator::{configure_graph_properties, configured_options};
-use crate::graph::{LGraph, LNodeKind, PortSide};
+use crate::graph::LGraph;
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, join_long_edges,
     postprocess_layer_constraints, preprocess_layer_constraints,
@@ -672,9 +672,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
             process_hierarchical_port_positions(graph);
         }
         ProcessorKind::OrthogonalEdgeRouter => route_edges_orthogonal(graph),
-        ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
-            if !has_north_south_external_port_dummy(graph) =>
-        {
+        ProcessorKind::HierarchicalPortOrthogonalEdgeRouter => {
             process_hierarchical_port_orthogonal_edges(graph);
         }
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
@@ -686,13 +684,6 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
     }
 
     Ok(())
-}
-
-fn has_north_south_external_port_dummy(graph: &LGraph) -> bool {
-    graph.layerless_nodes.iter().any(|node| {
-        node.kind == LNodeKind::ExternalPort
-            && matches!(node.external_port_side, PortSide::North | PortSide::South)
-    })
 }
 
 fn resize_hierarchical_node_graph(graph: &mut LGraph) {
@@ -1276,23 +1267,18 @@ mod tests {
     }
 
     #[test]
-    fn hierarchical_port_orthogonal_router_stays_unsupported_for_north_south_external_ports() {
+    fn hierarchical_port_orthogonal_router_runs_for_north_south_external_ports() {
         let mut graph = LGraph::new("root", LayeredOptions::default());
         let port = push_test_external_dummy(&mut graph, "north", PortSide::North);
         graph.set_node_layer(port, 0);
 
-        let err = execute_processor(
+        execute_processor(
             &mut graph,
             ProcessorKind::HierarchicalPortOrthogonalEdgeRouter,
         )
-        .unwrap_err();
+        .unwrap();
 
-        assert_eq!(
-            err,
-            PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
-            }
-        );
+        assert_eq!(graph.layerless_nodes[port].position.y, 0.0);
     }
 
     #[test]

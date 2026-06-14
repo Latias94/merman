@@ -18,6 +18,7 @@ use crate::graph::{
     reverse_edge,
 };
 use crate::options::{Alignment, LayerConstraint, PortConstraints};
+use crate::p5edges::orthogonal::{RoutingDirection, route_edges};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IntermediateError {
@@ -844,8 +845,417 @@ pub fn process_hierarchical_port_orthogonal_edges(graph: &mut LGraph) {
         return;
     }
 
+    let north_south_dummies = restore_north_south_dummies(graph);
+    set_north_south_dummy_coordinates(graph, &north_south_dummies);
+    route_north_south_dummy_edges(graph, &north_south_dummies);
+    remove_temporary_north_south_dummies(graph);
     fix_hierarchical_port_coordinates(graph);
     correct_hierarchical_port_slanted_edge_segments(graph);
+}
+
+fn restore_north_south_dummies(graph: &mut LGraph) -> Vec<usize> {
+    let restored_dummies = graph.replaced_external_port_dummies.clone();
+    if restored_dummies.is_empty() {
+        return restored_dummies;
+    }
+
+    for dummy in &restored_dummies {
+        restore_north_south_dummy(graph, *dummy);
+    }
+
+    let replacement_nodes = graph
+        .layers
+        .iter()
+        .flat_map(|layer| layer.nodes.iter().copied())
+        .filter(|node| {
+            graph.layerless_nodes[*node].kind == LNodeKind::ExternalPort
+                && graph.layerless_nodes[*node]
+                    .replaced_external_port_dummy
+                    .is_some()
+        })
+        .collect::<Vec<_>>();
+
+    for replacement in replacement_nodes {
+        if let Some(original) = graph.layerless_nodes[replacement].replaced_external_port_dummy {
+            connect_replacement_dummy_to_original(graph, replacement, original);
+        }
+    }
+
+    let last_layer = graph.layers.len() - 1;
+    for dummy in &restored_dummies {
+        graph.set_node_layer(*dummy, last_layer);
+    }
+
+    restored_dummies
+}
+
+fn restore_north_south_dummy(graph: &mut LGraph, dummy: usize) {
+    let external_side = graph.layerless_nodes[dummy].external_port_side;
+    let Some(port) = graph.layerless_nodes[dummy].ports.first_mut() else {
+        return;
+    };
+
+    port.side = match external_side {
+        PortSide::North => PortSide::South,
+        PortSide::South => PortSide::North,
+        side => side,
+    };
+    port.port_type = PortType::Output;
+}
+
+fn connect_replacement_dummy_to_original(graph: &mut LGraph, replacement: usize, original: usize) {
+    if graph.layerless_nodes[replacement].ports.iter().any(|port| {
+        port.side == graph.layerless_nodes[replacement].external_port_side
+            && port.outgoing_edges.iter().any(|edge| {
+                graph.edges[*edge].target.node == original && graph.edges[*edge].target.port == 0
+            })
+    }) {
+        return;
+    }
+
+    let external_side = graph.layerless_nodes[replacement].external_port_side;
+    let Some(origin_port) = graph.add_port(
+        replacement,
+        PortType::Output,
+        external_side,
+        Default::default(),
+    ) else {
+        return;
+    };
+
+    let edge = LayeredEdge {
+        id: format!(
+            "{}->{}:hierarchical-origin",
+            graph.layerless_nodes[replacement].id, graph.layerless_nodes[original].id
+        ),
+        source: origin_port,
+        target: PortRef {
+            node: original,
+            port: 0,
+        },
+        source_node_id: graph.layerless_nodes[replacement].id.clone(),
+        target_node_id: graph.layerless_nodes[original].id.clone(),
+        labels: Vec::new(),
+        minlen: 1,
+        reversed: false,
+        bend_points: Vec::new(),
+        model_order: None,
+        priority_direction: 0,
+        priority_shortness: 0,
+        priority_straightness: 0,
+        thickness: 0.0,
+        original_opposite_port: None,
+    };
+    graph.add_edge(edge);
+}
+
+fn set_north_south_dummy_coordinates(graph: &mut LGraph, north_south_dummies: &[usize]) {
+    if north_south_dummies.is_empty() {
+        return;
+    }
+
+    let graph_width = graph.size.width + graph.padding.left + graph.padding.right;
+    let north_y = -graph.padding.top - graph.offset.y;
+    let south_y = graph.size.height + graph.padding.top + graph.padding.bottom - graph.offset.y;
+    let mut northern_dummies = Vec::new();
+    let mut southern_dummies = Vec::new();
+
+    for dummy in north_south_dummies {
+        match graph.options.port_constraints {
+            PortConstraints::Free | PortConstraints::FixedSide | PortConstraints::FixedOrder => {
+                calculate_north_south_dummy_position(graph, *dummy);
+            }
+            PortConstraints::FixedRatio => {
+                graph.layerless_nodes[*dummy].position.x = graph_width
+                    * graph.layerless_nodes[*dummy].port_ratio_or_position
+                    - first_port_anchor_x(graph, *dummy);
+                border_to_content_area_x(graph, *dummy);
+            }
+            PortConstraints::FixedPos => {
+                graph.layerless_nodes[*dummy].position.x = graph.layerless_nodes[*dummy]
+                    .port_ratio_or_position
+                    - first_port_anchor_x(graph, *dummy);
+                border_to_content_area_x(graph, *dummy);
+                let required_width = graph.layerless_nodes[*dummy].position.x
+                    + graph.layerless_nodes[*dummy].size.width / 2.0;
+                graph.size.width = graph.size.width.max(required_width);
+            }
+            PortConstraints::Undefined => {
+                calculate_north_south_dummy_position(graph, *dummy);
+            }
+        }
+
+        match graph.layerless_nodes[*dummy].external_port_side {
+            PortSide::North => {
+                graph.layerless_nodes[*dummy].position.y = north_y;
+                northern_dummies.push(*dummy);
+            }
+            PortSide::South => {
+                graph.layerless_nodes[*dummy].position.y = south_y;
+                southern_dummies.push(*dummy);
+            }
+            PortSide::Undefined | PortSide::East | PortSide::West => {}
+        }
+    }
+
+    match graph.options.port_constraints {
+        PortConstraints::Free | PortConstraints::FixedSide | PortConstraints::Undefined => {
+            ensure_unique_north_south_positions(graph, &mut northern_dummies);
+            ensure_unique_north_south_positions(graph, &mut southern_dummies);
+        }
+        PortConstraints::FixedOrder => {
+            restore_north_south_dummy_order(graph, &mut northern_dummies);
+            restore_north_south_dummy_order(graph, &mut southern_dummies);
+        }
+        PortConstraints::FixedRatio | PortConstraints::FixedPos => {}
+    }
+}
+
+fn calculate_north_south_dummy_position(graph: &mut LGraph, dummy: usize) {
+    let Some(dummy_port) = graph.layerless_nodes[dummy].ports.first() else {
+        graph.layerless_nodes[dummy].position.x = 0.0;
+        return;
+    };
+
+    let connected_ports = dummy_port
+        .incoming_edges
+        .iter()
+        .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.source))
+        .chain(
+            dummy_port
+                .outgoing_edges
+                .iter()
+                .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.target)),
+        )
+        .collect::<Vec<_>>();
+
+    if connected_ports.is_empty() {
+        graph.layerless_nodes[dummy].position.x = 0.0;
+        return;
+    }
+
+    let pos_sum = connected_ports
+        .iter()
+        .map(|port_ref| absolute_port_anchor(graph, *port_ref).x)
+        .sum::<f64>();
+    graph.layerless_nodes[dummy].position.x =
+        pos_sum / connected_ports.len() as f64 - first_port_anchor_x(graph, dummy);
+}
+
+fn first_port_anchor_x(graph: &LGraph, node: usize) -> f64 {
+    graph.layerless_nodes[node]
+        .ports
+        .first()
+        .map(|port| port.position.x)
+        .unwrap_or(0.0)
+}
+
+fn border_to_content_area_x(graph: &mut LGraph, node: usize) {
+    graph.layerless_nodes[node].position.x -= graph.padding.left + graph.offset.x;
+}
+
+fn ensure_unique_north_south_positions(graph: &mut LGraph, dummies: &mut [usize]) {
+    dummies.sort_by(|left, right| {
+        graph.layerless_nodes[*left]
+            .position
+            .x
+            .total_cmp(&graph.layerless_nodes[*right].position.x)
+    });
+    assign_ascending_north_south_coordinates(graph, dummies);
+}
+
+fn restore_north_south_dummy_order(graph: &mut LGraph, dummies: &mut [usize]) {
+    dummies.sort_by(|left, right| {
+        graph.layerless_nodes[*left]
+            .port_ratio_or_position
+            .total_cmp(&graph.layerless_nodes[*right].port_ratio_or_position)
+    });
+    assign_ascending_north_south_coordinates(graph, dummies);
+}
+
+fn assign_ascending_north_south_coordinates(graph: &mut LGraph, dummies: &[usize]) {
+    let Some(first) = dummies.first() else {
+        return;
+    };
+
+    let spacing = graph.options.spacing.port_port;
+    let first_node = &graph.layerless_nodes[*first];
+    let mut next_valid_coordinate =
+        first_node.position.x + first_node.size.width + first_node.margin.right + spacing;
+
+    for dummy in dummies.iter().skip(1) {
+        let current = &graph.layerless_nodes[*dummy];
+        let delta = current.position.x - current.margin.left - next_valid_coordinate;
+        if delta < 0.0 {
+            graph.layerless_nodes[*dummy].position.x -= delta;
+        }
+
+        let current = &graph.layerless_nodes[*dummy];
+        graph.size.width = graph
+            .size
+            .width
+            .max(current.position.x + current.size.width);
+        next_valid_coordinate =
+            current.position.x + current.size.width + current.margin.right + spacing;
+    }
+}
+
+fn route_north_south_dummy_edges(graph: &mut LGraph, north_south_dummies: &[usize]) {
+    let mut northern_source_layer = Vec::new();
+    let mut northern_target_layer = Vec::new();
+    let mut southern_source_layer = Vec::new();
+    let mut southern_target_layer = Vec::new();
+
+    for dummy in north_south_dummies {
+        match graph.layerless_nodes[*dummy].external_port_side {
+            PortSide::North => {
+                push_unique(&mut northern_target_layer, *dummy);
+                for edge in graph.node_incoming_edges(*dummy) {
+                    push_unique(&mut northern_source_layer, graph.edges[edge].source.node);
+                }
+            }
+            PortSide::South => {
+                push_unique(&mut southern_target_layer, *dummy);
+                for edge in graph.node_incoming_edges(*dummy) {
+                    push_unique(&mut southern_source_layer, graph.edges[edge].source.node);
+                }
+            }
+            PortSide::Undefined | PortSide::East | PortSide::West => {}
+        }
+    }
+
+    let node_spacing = graph.options.spacing.node_node;
+    let edge_spacing = graph.options.spacing.edge_edge;
+
+    if !northern_source_layer.is_empty() {
+        let slots = route_edges(
+            graph,
+            RoutingDirection::SouthToNorth,
+            Some(&northern_source_layer),
+            Some(&northern_target_layer),
+            -node_spacing - graph.offset.y,
+            edge_spacing,
+        );
+        if slots > 0 {
+            let routing_height = node_spacing + slots.saturating_sub(1) as f64 * edge_spacing;
+            graph.offset.y += routing_height;
+            graph.size.height += routing_height;
+        }
+    }
+
+    if !southern_source_layer.is_empty() {
+        let slots = route_edges(
+            graph,
+            RoutingDirection::NorthToSouth,
+            Some(&southern_source_layer),
+            Some(&southern_target_layer),
+            graph.size.height + node_spacing - graph.offset.y,
+            edge_spacing,
+        );
+        if slots > 0 {
+            graph.size.height += node_spacing + slots.saturating_sub(1) as f64 * edge_spacing;
+        }
+    }
+}
+
+fn push_unique(nodes: &mut Vec<usize>, node: usize) {
+    if !nodes.contains(&node) {
+        nodes.push(node);
+    }
+}
+
+fn remove_temporary_north_south_dummies(graph: &mut LGraph) {
+    let temporary_nodes = graph
+        .layers
+        .iter()
+        .flat_map(|layer| layer.nodes.iter().copied())
+        .filter(|node| {
+            graph.layerless_nodes[*node].kind == LNodeKind::ExternalPort
+                && graph.layerless_nodes[*node]
+                    .replaced_external_port_dummy
+                    .is_some()
+        })
+        .collect::<Vec<_>>();
+
+    for node in &temporary_nodes {
+        remove_temporary_north_south_dummy(graph, *node);
+    }
+
+    for node in temporary_nodes {
+        graph.remove_node_from_layer(node);
+    }
+}
+
+fn remove_temporary_north_south_dummy(graph: &mut LGraph, node: usize) {
+    let Some(node_in_port) = first_port_on_side(graph, node, PortSide::West) else {
+        return;
+    };
+    let Some(node_out_port) = first_port_on_side(graph, node, PortSide::East) else {
+        return;
+    };
+    let Some(node_origin_port) = graph.layerless_nodes[node]
+        .ports
+        .iter()
+        .position(|port| !matches!(port.side, PortSide::West | PortSide::East))
+    else {
+        return;
+    };
+    let Some(node_to_origin_edge) = graph.layerless_nodes[node].ports[node_origin_port]
+        .outgoing_edges
+        .first()
+        .copied()
+    else {
+        return;
+    };
+    let Some(replaced_dummy) = graph.layerless_nodes[node].replaced_external_port_dummy else {
+        return;
+    };
+
+    let mut incoming_edge_bend_points = graph.edges[node_to_origin_edge].bend_points.clone();
+    incoming_edge_bend_points.insert(
+        0,
+        node_relative_port_position(graph, node, node_origin_port),
+    );
+
+    let mut outgoing_edge_bend_points = graph.edges[node_to_origin_edge].bend_points.clone();
+    outgoing_edge_bend_points.reverse();
+    outgoing_edge_bend_points.push(node_relative_port_position(graph, node, node_origin_port));
+
+    let replaced_dummy_port = PortRef {
+        node: replaced_dummy,
+        port: 0,
+    };
+
+    let incoming_edges = graph.layerless_nodes[node].ports[node_in_port]
+        .incoming_edges
+        .clone();
+    for edge in incoming_edges {
+        graph.set_edge_target(edge, replaced_dummy_port);
+        graph.edges[edge]
+            .bend_points
+            .extend(incoming_edge_bend_points.iter().copied());
+    }
+
+    let outgoing_edges = graph.layerless_nodes[node].ports[node_out_port]
+        .outgoing_edges
+        .clone();
+    for edge in outgoing_edges {
+        graph.set_edge_source(edge, replaced_dummy_port);
+        graph.edges[edge]
+            .bend_points
+            .splice(0..0, outgoing_edge_bend_points.iter().copied());
+    }
+
+    graph.detach_edge(node_to_origin_edge);
+}
+
+fn node_relative_port_position(graph: &LGraph, node: usize, port: usize) -> LPoint {
+    LPoint {
+        x: graph.layerless_nodes[node].position.x
+            + graph.layerless_nodes[node].ports[port].position.x,
+        y: graph.layerless_nodes[node].position.y
+            + graph.layerless_nodes[node].ports[port].position.y,
+    }
 }
 
 fn fix_hierarchical_port_coordinates(graph: &mut LGraph) {
@@ -1875,8 +2285,8 @@ mod tests {
     #[test]
     fn hierarchical_port_constraint_processor_replaces_north_south_dummies() {
         let mut graph = LGraph::new("root", LayeredOptions::default());
-        graph.options.port_constraints = PortConstraints::FixedSide;
-        let north = push_external_dummy(&mut graph, "north", PortSide::North, 0.0);
+        graph.options.port_constraints = PortConstraints::FixedPos;
+        let north = push_external_dummy(&mut graph, "north", PortSide::North, 5.0);
         let a = push_normal_node(&mut graph, "A");
         let b = push_normal_node(&mut graph, "B");
 
@@ -2069,6 +2479,188 @@ mod tests {
 
         assert_eq!(graph.layerless_nodes[north].position.y, -10.0);
         assert_eq!(graph.layerless_nodes[south].position.y, 85.0);
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_restores_and_removes_north_dummy_replacements() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedSide;
+        graph.options.spacing.node_node = 20.0;
+        graph.options.spacing.edge_edge = 10.0;
+        graph.size.height = 50.0;
+
+        let north = push_external_dummy(&mut graph, "north", PortSide::North, 0.0);
+        graph.layerless_nodes[north].size.width = 4.0;
+        graph.layerless_nodes[north].ports[0].position = LPoint { x: 2.0, y: 0.0 };
+        let source = push_normal_node(&mut graph, "A");
+        graph.layerless_nodes[source].position = LPoint { x: 50.0, y: 30.0 };
+        let source_port = graph
+            .add_port(
+                source,
+                PortType::Output,
+                PortSide::North,
+                LPoint { x: 30.0, y: 0.0 },
+            )
+            .unwrap();
+
+        graph.set_node_layer(source, 0);
+        graph.set_node_layer(north, 0);
+        let edge = graph
+            .add_edge(LayeredEdge {
+                id: "A-north".to_string(),
+                source: source_port,
+                target: PortRef {
+                    node: north,
+                    port: 0,
+                },
+                source_node_id: "A".to_string(),
+                target_node_id: "north".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+            })
+            .unwrap();
+
+        process_hierarchical_port_constraints(&mut graph);
+        let replacement = graph
+            .layerless_nodes
+            .iter()
+            .enumerate()
+            .find_map(|(index, node)| {
+                (node.replaced_external_port_dummy == Some(north)).then_some(index)
+            })
+            .unwrap();
+        process_hierarchical_port_orthogonal_edges(&mut graph);
+
+        assert_eq!(graph.layerless_nodes[north].layer_index, Some(1));
+        assert_eq!(graph.layerless_nodes[replacement].layer_index, None);
+        assert_eq!(graph.layerless_nodes[north].ports[0].side, PortSide::South);
+        assert_eq!(graph.edges[edge].target.node, north);
+        assert_eq!(graph.edges[edge].target.port, 0);
+        assert!(graph.edge_source_attached(edge));
+        assert!(graph.edge_target_attached(edge));
+        let detached_edge = graph
+            .edges
+            .iter()
+            .position(|edge| edge.id.ends_with(":hierarchical-origin"))
+            .unwrap();
+        assert!(!graph.edge_source_attached(detached_edge));
+        assert!(!graph.edge_target_attached(detached_edge));
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_places_fixed_ratio_north_south_dummies() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedRatio;
+        graph.size.width = 100.0;
+        graph.padding.left = 10.0;
+        graph.padding.right = 30.0;
+        graph.offset.x = 4.0;
+
+        let north = push_external_dummy(&mut graph, "north", PortSide::North, 0.25);
+        let south = push_external_dummy(&mut graph, "south", PortSide::South, 0.5);
+        graph.layerless_nodes[north].ports[0].position.x = 2.0;
+        graph.layerless_nodes[south].ports[0].position.x = 3.0;
+        graph.replaced_external_port_dummies = vec![north, south];
+        graph.layers.push(crate::graph::Layer {
+            nodes: vec![],
+            size: Default::default(),
+        });
+
+        process_hierarchical_port_orthogonal_edges(&mut graph);
+
+        assert_eq!(graph.layerless_nodes[north].position.x, 19.0);
+        assert_eq!(graph.layerless_nodes[south].position.x, 53.0);
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_routes_fixed_pos_north_edges_above_graph() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedPos;
+        graph.options.spacing.node_node = 20.0;
+        graph.options.spacing.edge_edge = 10.0;
+        graph.size.height = 50.0;
+
+        let north = push_external_dummy(&mut graph, "north", PortSide::North, 5.0);
+        graph.layerless_nodes[north].size.width = 4.0;
+        graph.layerless_nodes[north].ports[0].position = LPoint { x: 2.0, y: 0.0 };
+        let source = push_normal_node(&mut graph, "A");
+        let source_port = graph
+            .add_port(
+                source,
+                PortType::Output,
+                PortSide::North,
+                LPoint { x: 30.0, y: 0.0 },
+            )
+            .unwrap();
+
+        graph.set_node_layer(source, 0);
+        graph.set_node_layer(north, 0);
+        graph
+            .add_edge(LayeredEdge {
+                id: "A-north".to_string(),
+                source: source_port,
+                target: PortRef {
+                    node: north,
+                    port: 0,
+                },
+                source_node_id: "A".to_string(),
+                target_node_id: "north".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+            })
+            .unwrap();
+
+        process_hierarchical_port_constraints(&mut graph);
+        process_hierarchical_port_orthogonal_edges(&mut graph);
+
+        assert_eq!(graph.offset.y, 20.0);
+        assert!(graph.size.height > 50.0);
+        let origin_edge = graph
+            .edges
+            .iter()
+            .find(|edge| edge.id.ends_with(":hierarchical-origin"))
+            .unwrap();
+        assert!(!origin_edge.bend_points.is_empty());
+    }
+
+    #[test]
+    fn hierarchical_port_orthogonal_router_restores_fixed_order_north_south_spacing() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedOrder;
+        graph.options.spacing.port_port = 7.0;
+
+        let late = push_external_dummy(&mut graph, "late", PortSide::North, 0.8);
+        let early = push_external_dummy(&mut graph, "early", PortSide::North, 0.2);
+        graph.layerless_nodes[late].position.x = 0.0;
+        graph.layerless_nodes[early].position.x = 0.0;
+        graph.layerless_nodes[late].size.width = 5.0;
+        graph.layerless_nodes[early].size.width = 5.0;
+        graph.replaced_external_port_dummies = vec![late, early];
+        graph.layers.push(crate::graph::Layer {
+            nodes: vec![],
+            size: Default::default(),
+        });
+
+        process_hierarchical_port_orthogonal_edges(&mut graph);
+
+        assert_eq!(graph.layerless_nodes[early].position.x, 0.0);
+        assert_eq!(graph.layerless_nodes[late].position.x, 12.0);
     }
 
     fn push_replaced_north_south_dummy(
