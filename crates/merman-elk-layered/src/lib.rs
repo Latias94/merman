@@ -7,10 +7,18 @@
 //! - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/*.java`
 
 pub mod graph;
+pub mod importer;
 pub mod options;
 pub mod pipeline;
 
-pub use graph::{LGraph, LNode, LNodeKind, LPort, Layer, LayeredEdge};
+pub use graph::{
+    EdgeLabelPlacement, GraphProperties, LGraph, LLabel, LNode, LNodeKind, LPadding, LPoint, LPort,
+    LSize, Layer, LayeredEdge, PortRef, PortSide, PortType,
+};
+pub use importer::{
+    ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
+    import_graph,
+};
 pub use options::{
     EdgeRouting, ElkDirection, HierarchyHandling, LayeredOptions, NodePlacementStrategy,
     SelfLoopDistributionStrategy,

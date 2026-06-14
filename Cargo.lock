@@ -2768,6 +2768,9 @@ dependencies = [
 [[package]]
 name = "merman-elk-layered"
 version = "0.8.0-alpha.2"
+dependencies = [
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "merman-ffi"
