@@ -7,6 +7,7 @@ members = [
   "crates/merman-bindings-core",
   "crates/merman-cli",
   "crates/merman-ffi",
+  "crates/merman-elk-layered",
   "crates/merman-layout-elk",
   "crates/merman-rustdoc",
   "crates/merman-render",
@@ -94,6 +95,7 @@ merman = { path = "crates/merman", version = "0.8.0-alpha.2", default-features =
 merman-ascii = { path = "crates/merman-ascii", version = "0.8.0-alpha.2" }
 merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.8.0-alpha.2", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.8.0-alpha.2", default-features = false }
+merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.8.0-alpha.2", default-features = false }
 merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.8.0-alpha.2", default-features = false }
 merman-ffi = { path = "crates/merman-ffi", version = "0.8.0-alpha.2" }
 merman-rustdoc = { path = "crates/merman-rustdoc", version = "0.8.0-alpha.2" }

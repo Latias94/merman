@@ -1,16 +1,16 @@
 [package]
-name = "merman-layout-elk"
+name = "merman-elk-layered"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license.workspace = true
+license = "EPL-2.0"
 homepage.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Optional ELK layout engine integration for merman."
-documentation = "https://docs.rs/merman-layout-elk"
+description = "Source-backed Eclipse ELK layered layout port for merman."
+documentation = "https://docs.rs/merman-elk-layered"
 readme = "README.md"
-keywords = ["mermaid", "elk", "layout", "diagrams"]
+keywords = ["elk", "layout", "layered", "diagrams"]
 categories = ["visualization"]
 
 [features]
@@ -19,5 +19,3 @@ default = ["layered"]
 layered = []
 
 [dependencies]
-merman-elk-layered.workspace = true
-thiserror.workspace = true

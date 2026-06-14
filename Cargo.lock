@@ -2766,6 +2766,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-elk-layered"
+version = "0.8.0-alpha.2"
+
+[[package]]
 name = "merman-ffi"
 version = "0.8.0-alpha.2"
 dependencies = [
@@ -2780,6 +2784,7 @@ dependencies = [
 name = "merman-layout-elk"
 version = "0.8.0-alpha.2"
 dependencies = [
+ "merman-elk-layered",
  "thiserror 2.0.18",
 ]
 

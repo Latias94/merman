@@ -15,7 +15,7 @@
 //! `source_port` with a source file reference; do not tune `compat` from fixture output.
 
 mod compat;
-pub mod source_port;
+pub use merman_elk_layered as source_port;
 
 pub use compat::{
     Algorithm, CycleBreakingStrategy, Direction, Edge, EdgeLayout, EdgeRouting, Error, Graph,

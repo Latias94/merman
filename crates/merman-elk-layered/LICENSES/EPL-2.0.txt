@@ -1,0 +1,6 @@
+Eclipse Public License - v 2.0
+
+This crate is reserved for source-backed translations of Eclipse ELK layered
+layout code. The authoritative EPL-2.0 license text is available at:
+
+https://www.eclipse.org/legal/epl-2.0/

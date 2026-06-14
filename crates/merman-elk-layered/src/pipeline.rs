@@ -643,7 +643,7 @@ fn edge_routing_dependencies(options: &LayeredOptions, _processor: ProcessorKind
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source_port::options::{ElkDirection, LayeredOptions};
+    use crate::options::{ElkDirection, LayeredOptions};
 
     fn kinds(options: &LayeredOptions) -> Vec<ProcessorKind> {
         assemble_processors(options)
