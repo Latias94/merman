@@ -2320,6 +2320,7 @@ fn connect_replacement_dummy_to_original(graph: &mut LGraph, replacement: usize,
         priority_straightness: 0,
         thickness: 0.0,
         original_opposite_port: None,
+        compound_segment: None,
     };
     graph.add_edge(edge);
 }
@@ -3045,6 +3046,7 @@ pub fn split_edge(graph: &mut LGraph, edge_index: usize, dummy_node: usize) -> O
         priority_straightness: old_segment.priority_straightness,
         thickness,
         original_opposite_port: old_segment.original_opposite_port,
+        compound_segment: old_segment.compound_segment,
     };
     let dummy_edge_index = graph.add_edge(dummy_edge)?;
 
@@ -4067,6 +4069,7 @@ mod tests {
                 priority_straightness: 0,
                 thickness: 0.0,
                 original_opposite_port: None,
+                compound_segment: None,
             })
             .unwrap();
 
@@ -4165,6 +4168,7 @@ mod tests {
                 priority_straightness: 0,
                 thickness: 0.0,
                 original_opposite_port: None,
+                compound_segment: None,
             })
             .unwrap();
 
@@ -4282,6 +4286,7 @@ mod tests {
                 priority_straightness: 0,
                 thickness: 0.0,
                 original_opposite_port: None,
+                compound_segment: None,
             })
             .unwrap()
     }

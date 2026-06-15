@@ -614,6 +614,9 @@ pub struct FlowchartV2Layout {
     /// Source-backed ELK carries Mermaid DOM `getBoundingClientRect()` edge-label bounds.
     #[serde(skip)]
     pub source_backed_edge_label_bboxes: bool,
+    /// Source-ported ELK should follow Mermaid ELK renderer DOM quirks.
+    #[serde(skip)]
+    pub source_ported_elk_rendering: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

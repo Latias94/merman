@@ -19,6 +19,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,
     pub(in crate::svg::parity::flowchart) source_backed_edge_label_bboxes: bool,
+    pub(in crate::svg::parity::flowchart) source_ported_elk_rendering: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,

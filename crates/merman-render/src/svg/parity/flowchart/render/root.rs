@@ -137,6 +137,17 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     }
 }
 
+fn flowchart_elk_edges<'a>(ctx: &'a FlowchartRenderCtx<'a>) -> Vec<&'a crate::flowchart::FlowEdge> {
+    let mut out = Vec::with_capacity(ctx.edge_order.len());
+    for edge_id in &ctx.edge_order {
+        let Some(&edge) = ctx.edges_by_id.get(edge_id) else {
+            continue;
+        };
+        out.push(edge);
+    }
+    out
+}
+
 pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -148,7 +159,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     render_flowchart_elk_nodes(out, ctx, session);
 
     let _g_edges_select = detail_guard(session.timing_enabled, &mut session.details.edges_select);
-    let edges = flowchart_edges_for_root(ctx, None);
+    let edges = flowchart_elk_edges(ctx);
     drop(_g_edges_select);
 
     render_flowchart_elk_edge_paths(out, ctx, session, &edges);
@@ -197,7 +208,9 @@ fn render_flowchart_elk_subgraphs(
 
     out.push_str(r#"<g class="subgraphs">"#);
     for cluster in clusters_to_draw {
+        out.push_str(r#"<g class="subgraph">"#);
         render_flowchart_cluster(out, ctx, cluster, 0.0, 0.0);
+        out.push_str("</g>");
     }
     out.push_str("</g>");
 }

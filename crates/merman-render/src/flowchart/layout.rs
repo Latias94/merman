@@ -2773,6 +2773,7 @@ fn layout_flowchart_v2_with_model(
         bounds,
         dom_node_order_by_root,
         source_backed_edge_label_bboxes: false,
+        source_ported_elk_rendering: false,
     })
 }
 

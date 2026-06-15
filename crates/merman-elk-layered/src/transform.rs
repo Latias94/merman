@@ -548,6 +548,7 @@ mod tests {
             priority_straightness: 0,
             thickness: 0.0,
             original_opposite_port: None,
+            compound_segment: None,
         };
         graph.add_edge(edge);
 

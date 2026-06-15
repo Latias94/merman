@@ -155,10 +155,15 @@ fn render_flowchart_v2_svg_with_config_inner(
         let _ = nodes_by_id.entry(n.id.as_str()).or_insert(n);
     }
 
-    let edge_order: Vec<&str> = render_edges
-        .iter()
-        .map(|e| e.as_ref().id.as_str())
-        .collect();
+    let edge_order: Vec<&str> =
+        if layout.source_ported_elk_rendering && diagram_type == "flowchart-elk" {
+            layout.edges.iter().map(|e| e.id.as_str()).collect()
+        } else {
+            render_edges
+                .iter()
+                .map(|e| e.as_ref().id.as_str())
+                .collect()
+        };
     let mut edges_by_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
         FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {
@@ -250,6 +255,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         node_html_labels,
         edge_html_labels,
         source_backed_edge_label_bboxes: layout.source_backed_edge_label_bboxes,
+        source_ported_elk_rendering: layout.source_ported_elk_rendering,
         class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,

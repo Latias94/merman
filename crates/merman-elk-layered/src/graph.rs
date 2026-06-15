@@ -258,12 +258,19 @@ pub struct LayeredEdge {
     pub priority_straightness: i32,
     pub thickness: f64,
     pub original_opposite_port: Option<PortRef>,
+    pub compound_segment: Option<CompoundEdgeSegment>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PortRef {
     pub node: usize,
     pub port: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompoundEdgeSegment {
+    Output { depth: usize },
+    Input { depth: usize },
 }
 
 #[derive(Debug, Clone, PartialEq)]

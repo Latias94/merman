@@ -8,8 +8,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::graph::{
-    EdgeLabelPlacement, LGraph, LLabel, LNode, LPort, LSize, LayeredEdge, PortRef, PortSide,
-    PortType, create_external_port_dummy,
+    CompoundEdgeSegment, EdgeLabelPlacement, LGraph, LLabel, LNode, LPort, LSize, LayeredEdge,
+    PortRef, PortSide, PortType, create_external_port_dummy,
 };
 use crate::options::{
     ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint, LayeredOptions, PortConstraints,
@@ -156,9 +156,14 @@ fn import_hierarchical_graph(
     }
 
     for (edge_order, edge) in input.edges.iter().enumerate() {
-        let edge_parent = edge_parent_graph_id(index, edge.source.as_str(), edge.target.as_str());
-        let graph = graph_for_parent(root, edge_parent.as_deref());
-        transform_edge(edge, graph, edge_order)?;
+        let source_path = index.graph_path(edge.source.as_str());
+        let target_path = index.graph_path(edge.target.as_str());
+        if source_path == target_path {
+            let graph = graph_for_path(root, &source_path);
+            transform_edge(edge, graph, edge_order)?;
+        } else {
+            transform_cross_hierarchy_edge(edge, index, root, edge_order)?;
+        }
     }
 
     Ok(())
@@ -195,26 +200,42 @@ fn transform_edge(
     graph: &mut LGraph,
     model_order: usize,
 ) -> ImportResult<usize> {
-    let source = ensure_port(graph, edge.source.as_str(), PortType::Output).ok_or_else(|| {
-        ImportError::MissingEndpoint {
-            edge_id: edge.id.clone(),
-            node_id: edge.source.clone(),
-        }
-    })?;
-    let target = ensure_port(graph, edge.target.as_str(), PortType::Input).ok_or_else(|| {
-        ImportError::MissingEndpoint {
-            edge_id: edge.id.clone(),
-            node_id: edge.target.clone(),
-        }
-    })?;
+    transform_edge_between(
+        edge,
+        graph,
+        model_order,
+        edge.source.as_str(),
+        edge.target.as_str(),
+        edge.source.as_str(),
+        edge.target.as_str(),
+        None,
+        edge.label.as_ref(),
+    )
+}
 
-    let edge_index = graph.edges.len();
-    graph.layerless_nodes[source.node].ports[source.port]
-        .outgoing_edges
-        .push(edge_index);
-    graph.layerless_nodes[target.node].ports[target.port]
-        .incoming_edges
-        .push(edge_index);
+fn transform_edge_between(
+    edge: &ElkInputEdge,
+    graph: &mut LGraph,
+    model_order: usize,
+    local_source: &str,
+    local_target: &str,
+    source_node_id: &str,
+    target_node_id: &str,
+    compound_segment: Option<CompoundEdgeSegment>,
+    label: Option<&ElkInputLabel>,
+) -> ImportResult<usize> {
+    let source = ensure_port(graph, local_source, PortType::Output).ok_or_else(|| {
+        ImportError::MissingEndpoint {
+            edge_id: edge.id.clone(),
+            node_id: local_source.to_string(),
+        }
+    })?;
+    let target = ensure_port(graph, local_target, PortType::Input).ok_or_else(|| {
+        ImportError::MissingEndpoint {
+            edge_id: edge.id.clone(),
+            node_id: local_target.to_string(),
+        }
+    })?;
 
     if source.node == target.node {
         graph.graph_properties.self_loops = true;
@@ -227,7 +248,7 @@ fn transform_edge(
     }
 
     let mut labels = Vec::new();
-    if let Some(label) = edge.label.as_ref() {
+    if let Some(label) = label {
         match label.placement {
             EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
             EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
@@ -237,25 +258,186 @@ fn transform_edge(
         labels.push(label_to_lgraph(label));
     }
 
-    graph.edges.push(LayeredEdge {
-        id: edge.id.clone(),
-        source,
-        target,
-        source_node_id: edge.source.clone(),
-        target_node_id: edge.target.clone(),
-        labels,
-        minlen: edge.minlen.max(1),
-        reversed: false,
-        bend_points: Vec::new(),
-        model_order: Some(model_order),
-        priority_direction: edge.priority_direction,
-        priority_shortness: edge.priority_shortness,
-        priority_straightness: edge.priority_straightness,
-        thickness: 0.0,
-        original_opposite_port: None,
-    });
+    let edge_index = graph.edges.len();
+    graph
+        .add_edge(LayeredEdge {
+            id: edge.id.clone(),
+            source,
+            target,
+            source_node_id: source_node_id.to_string(),
+            target_node_id: target_node_id.to_string(),
+            labels,
+            minlen: edge.minlen.max(1),
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order: Some(model_order),
+            priority_direction: edge.priority_direction,
+            priority_shortness: edge.priority_shortness,
+            priority_straightness: edge.priority_straightness,
+            thickness: 0.0,
+            original_opposite_port: None,
+            compound_segment,
+        })
+        .expect("ports were created before adding edge");
 
     Ok(edge_index)
+}
+
+/// Split a hierarchy-crossing edge into graph-local segments following ELK's compound preprocessor.
+///
+/// Source:
+/// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPreprocessor.java
+fn transform_cross_hierarchy_edge(
+    edge: &ElkInputEdge,
+    index: &InputIndex<'_>,
+    root: &mut LGraph,
+    model_order: usize,
+) -> ImportResult<()> {
+    let source_path = index.graph_path(edge.source.as_str());
+    let target_path = index.graph_path(edge.target.as_str());
+    let common_depth = common_graph_depth(&source_path, &target_path);
+    let source_is_target_ancestor =
+        target_path.len() > common_depth && edge.source.as_str() == target_path[common_depth];
+    let target_is_source_ancestor =
+        source_path.len() > common_depth && edge.target.as_str() == source_path[common_depth];
+
+    let mut segments = Vec::new();
+
+    for depth in (common_depth + 1..=source_path.len()).rev() {
+        let source = if depth == source_path.len() {
+            edge.source.clone()
+        } else {
+            source_path[depth].to_string()
+        };
+        segments.push(PendingCompoundSegment {
+            graph_parent: Some(source_path[depth - 1].to_string()),
+            source,
+            target: source_path[depth - 1].to_string(),
+            segment: CompoundEdgeSegment::Output { depth },
+        });
+    }
+
+    if !source_is_target_ancestor && !target_is_source_ancestor {
+        let source = if source_path.len() > common_depth {
+            source_path[common_depth].to_string()
+        } else {
+            edge.source.clone()
+        };
+        let target = if target_path.len() > common_depth {
+            target_path[common_depth].to_string()
+        } else {
+            edge.target.clone()
+        };
+        let segment = if source_path.len() > common_depth {
+            CompoundEdgeSegment::Output {
+                depth: common_depth,
+            }
+        } else {
+            CompoundEdgeSegment::Input {
+                depth: common_depth,
+            }
+        };
+        segments.push(PendingCompoundSegment {
+            graph_parent: common_depth
+                .checked_sub(1)
+                .map(|parent_depth| source_path[parent_depth].to_string()),
+            source,
+            target,
+            segment,
+        });
+    }
+
+    for depth in common_depth + 1..=target_path.len() {
+        let target = if depth == target_path.len() {
+            edge.target.clone()
+        } else {
+            target_path[depth].to_string()
+        };
+        segments.push(PendingCompoundSegment {
+            graph_parent: Some(target_path[depth - 1].to_string()),
+            source: target_path[depth - 1].to_string(),
+            target,
+            segment: CompoundEdgeSegment::Input { depth },
+        });
+    }
+
+    let label_segment = edge
+        .label
+        .as_ref()
+        .map(|label| compound_label_segment_index(&segments, label.placement));
+
+    for (segment_index, pending) in segments.into_iter().enumerate() {
+        let graph = graph_for_parent(root, pending.graph_parent.as_deref());
+        transform_edge_between(
+            edge,
+            graph,
+            model_order,
+            pending.source.as_str(),
+            pending.target.as_str(),
+            edge.source.as_str(),
+            edge.target.as_str(),
+            Some(pending.segment),
+            edge.label
+                .as_ref()
+                .filter(|_| label_segment == Some(segment_index)),
+        )?;
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct PendingCompoundSegment {
+    graph_parent: Option<String>,
+    source: String,
+    target: String,
+    segment: CompoundEdgeSegment,
+}
+
+fn compound_label_segment_index(
+    segments: &[PendingCompoundSegment],
+    placement: EdgeLabelPlacement,
+) -> usize {
+    let mut sorted = segments
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| (index, segment.segment))
+        .collect::<Vec<_>>();
+    sorted.sort_by(|(_, left), (_, right)| compare_compound_segments(*left, *right));
+
+    match placement {
+        EdgeLabelPlacement::Tail => sorted.first().map(|(index, _)| *index).unwrap_or(0),
+        EdgeLabelPlacement::Head => sorted.last().map(|(index, _)| *index).unwrap_or(0),
+        EdgeLabelPlacement::Center => sorted
+            .iter()
+            .position(|(_, segment)| matches!(segment, CompoundEdgeSegment::Input { .. }))
+            .map(|index| index.saturating_sub(1))
+            .or_else(|| sorted.len().checked_sub(1))
+            .and_then(|index| sorted.get(index).map(|(segment_index, _)| *segment_index))
+            .unwrap_or(0),
+    }
+}
+
+fn compare_compound_segments(
+    left: CompoundEdgeSegment,
+    right: CompoundEdgeSegment,
+) -> std::cmp::Ordering {
+    match (left, right) {
+        (CompoundEdgeSegment::Output { .. }, CompoundEdgeSegment::Input { .. }) => {
+            std::cmp::Ordering::Less
+        }
+        (CompoundEdgeSegment::Input { .. }, CompoundEdgeSegment::Output { .. }) => {
+            std::cmp::Ordering::Greater
+        }
+        (
+            CompoundEdgeSegment::Output { depth: left },
+            CompoundEdgeSegment::Output { depth: right },
+        ) => right.cmp(&left),
+        (
+            CompoundEdgeSegment::Input { depth: left },
+            CompoundEdgeSegment::Input { depth: right },
+        ) => left.cmp(&right),
+    }
 }
 
 fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> Option<PortRef> {
@@ -331,6 +513,10 @@ fn graph_for_parent<'a>(graph: &'a mut LGraph, parent: Option<&str>) -> &'a mut 
     }
 }
 
+fn graph_for_path<'a>(graph: &'a mut LGraph, path: &[&str]) -> &'a mut LGraph {
+    graph_for_parent(graph, path.last().copied())
+}
+
 fn graph_path_for_parent(graph: &LGraph, parent: &str) -> Option<Vec<usize>> {
     for (index, node) in graph.layerless_nodes.iter().enumerate() {
         let Some(nested_graph) = node.nested_graph.as_deref() else {
@@ -355,16 +541,6 @@ fn graph_mut_at_path<'a>(mut graph: &'a mut LGraph, path: &[usize]) -> &'a mut L
             .expect("graph path should only contain nested graph nodes");
     }
     graph
-}
-
-fn edge_parent_graph_id(index: &InputIndex<'_>, source: &str, target: &str) -> Option<String> {
-    if index.is_descendant(target, source) {
-        return Some(source.to_string());
-    }
-    if index.is_descendant(source, target) {
-        return Some(target.to_string());
-    }
-    index.common_parent(source, target)
 }
 
 fn resolve_direction(direction: ElkDirection) -> ElkDirection {
@@ -439,35 +615,23 @@ impl<'a> InputIndex<'a> {
         self.nodes.get(id).and_then(|node| node.parent.as_deref())
     }
 
-    fn is_descendant(&self, node: &str, ancestor: &str) -> bool {
+    fn graph_path(&self, node: &str) -> Vec<&'a str> {
+        let mut path = Vec::new();
         let mut current = self.node_parent(node);
         while let Some(parent) = current {
-            if parent == ancestor {
-                return true;
-            }
+            path.push(parent);
             current = self.node_parent(parent);
         }
-        false
+        path.reverse();
+        path
     }
+}
 
-    fn common_parent(&self, source: &str, target: &str) -> Option<String> {
-        let mut source_ancestors = Vec::new();
-        let mut current = self.node_parent(source);
-        while let Some(parent) = current {
-            source_ancestors.push(parent);
-            current = self.node_parent(parent);
-        }
-
-        let mut current = self.node_parent(target);
-        while let Some(parent) = current {
-            if source_ancestors.contains(&parent) {
-                return Some(parent.to_string());
-            }
-            current = self.node_parent(parent);
-        }
-
-        None
-    }
+fn common_graph_depth(left: &[&str], right: &[&str]) -> usize {
+    left.iter()
+        .zip(right.iter())
+        .take_while(|(left, right)| left == right)
+        .count()
 }
 
 fn detect_parent_cycles<'a>(

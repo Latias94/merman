@@ -23,9 +23,9 @@ pub mod transform;
 
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
 pub use graph::{
-    EdgeLabelPlacement, GraphProperties, LGraph, LLabel, LMargin, LNode, LNodeKind, LPadding,
-    LPoint, LPort, LSize, LabelSide, Layer, LayeredEdge, PortRef, PortSide, PortType,
-    create_external_port_dummy, reverse_edge,
+    CompoundEdgeSegment, EdgeLabelPlacement, GraphProperties, LGraph, LLabel, LMargin, LNode,
+    LNodeKind, LPadding, LPoint, LPort, LSize, LabelSide, Layer, LayeredEdge, PortRef, PortSide,
+    PortType, create_external_port_dummy, reverse_edge,
 };
 pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,

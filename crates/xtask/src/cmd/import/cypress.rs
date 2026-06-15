@@ -9,6 +9,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     let mut overwrite: bool = false;
     let mut with_baselines: bool = false;
     let mut install: bool = false;
+    let mut flowchart_elk_source_backed_probes: bool = false;
     let mut spec_root: Option<PathBuf> = None;
 
     let mut i = 0;
@@ -36,6 +37,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             "--overwrite" => overwrite = true,
             "--with-baselines" => with_baselines = true,
             "--install" => install = true,
+            "--flowchart-elk-source-backed-probes" => flowchart_elk_source_backed_probes = true,
             "--spec-root" => {
                 i += 1;
                 let raw = args.get(i).ok_or(XtaskError::Usage)?;
@@ -2552,6 +2554,13 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 idx = b.idx_in_file + 1
             );
 
+            if flowchart_elk_source_backed_probes
+                && (diagram_dir != "flowchart"
+                    || !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(&stem))
+            {
+                continue;
+            }
+
             let score = complexity_score(&body, &diagram_dir);
             candidates.push(Candidate {
                 block: b,
@@ -2755,7 +2764,9 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                    if !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem)
+                        && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                    {
                         return Some(reason);
                     }
                 }
@@ -2776,7 +2787,9 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     .lines()
                     .any(|l| l.trim_start().starts_with("flowchart-elk"))
                 {
-                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
+                    if !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem)
+                        && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                    {
                         return Some(reason);
                     }
                 }

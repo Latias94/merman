@@ -1,6 +1,7 @@
 //! Flowchart cluster renderer.
 
 use super::super::*;
+use std::borrow::Cow;
 
 const FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH: f64 = 200.0;
 
@@ -27,6 +28,11 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
     let label_top = top + cluster.title_margin_top.max(0.0);
+    let cluster_dom_id = if ctx.source_ported_elk_rendering && ctx.diagram_type == "flowchart-elk" {
+        Cow::Borrowed("[object Object]")
+    } else {
+        Cow::Owned(format!("{}-{}", ctx.diagram_id, cluster.id))
+    };
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
 
@@ -54,10 +60,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         let title_text = flowchart_label_plain_text(&cluster.title, label_type, false);
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}-{}" data-look="{}"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><g><rect class="background" style="stroke: none"/>"#,
+            r#"<g class="{}" id="{}" data-look="{}"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><g><rect class="background" style="stroke: none"/>"#,
             escape_xml_display(&class_attr),
-            escape_xml_display(ctx.diagram_id),
-            escape_xml_display(&cluster.id),
+            escape_xml_display(&cluster_dom_id),
             escape_xml_display(data_look),
             escape_xml_display(rect_style),
             fmt_display(left),
@@ -99,10 +104,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}-{}" data-look="{}"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+        r#"<g class="{}" id="{}" data-look="{}"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
         escape_xml_display(&class_attr),
-        escape_xml_display(ctx.diagram_id),
-        escape_xml_display(&cluster.id),
+        escape_xml_display(&cluster_dom_id),
         escape_xml_display(data_look),
         escape_xml_display(rect_style),
         fmt_display(left),

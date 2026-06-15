@@ -215,6 +215,7 @@ fn flowchart_layout_from_elk(
         bounds,
         dom_node_order_by_root,
         source_backed_edge_label_bboxes: backend == FlowchartElkBackend::SourcePorted,
+        source_ported_elk_rendering: backend == FlowchartElkBackend::SourcePorted,
     })
 }
 

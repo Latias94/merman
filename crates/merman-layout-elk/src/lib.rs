@@ -15,6 +15,8 @@
 //! source-backed layered implementation is ported. New ELK layout behavior must land in
 //! `source_port` with a source file reference; do not tune `compat` from fixture output.
 
+use std::collections::HashMap;
+
 mod compat;
 pub use merman_elk_layered as source_port;
 
@@ -205,12 +207,58 @@ fn self_loop_distribution_to_source(
 }
 
 fn source_graph_to_layout_result(graph: &LGraph) -> LayoutResult {
-    let mut result = LayoutResult::default();
-    append_source_graph_layout(graph, LPoint::default(), &mut result);
-    result
+    let mut result = SourceLayoutAccumulator::default();
+    append_source_graph_layout(graph, LPoint::default(), 0, &mut result);
+    result.into_layout_result()
 }
 
-fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mut LayoutResult) {
+#[derive(Debug, Default)]
+struct SourceLayoutAccumulator {
+    nodes: Vec<NodeLayout>,
+    edges: Vec<OrderedEdgeLayout>,
+    compound_edges: HashMap<String, Vec<CompoundEdgeLayoutSegment>>,
+}
+
+impl SourceLayoutAccumulator {
+    fn into_layout_result(mut self) -> LayoutResult {
+        for segments in self.compound_edges.values_mut() {
+            segments.sort_by(compare_compound_layout_segments);
+            if let Some(edge) = merge_compound_edge_segments(segments) {
+                self.edges.push(OrderedEdgeLayout {
+                    model_order: segments
+                        .iter()
+                        .filter_map(|segment| segment.model_order)
+                        .min(),
+                    edge,
+                });
+            }
+        }
+        self.edges.sort_by(|left, right| {
+            left.model_order
+                .unwrap_or(usize::MAX)
+                .cmp(&right.model_order.unwrap_or(usize::MAX))
+                .then_with(|| left.edge.id.cmp(&right.edge.id))
+        });
+
+        LayoutResult {
+            nodes: self.nodes,
+            edges: self.edges.into_iter().map(|ordered| ordered.edge).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct OrderedEdgeLayout {
+    model_order: Option<usize>,
+    edge: EdgeLayout,
+}
+
+fn append_source_graph_layout(
+    graph: &LGraph,
+    parent_origin: LPoint,
+    graph_depth: usize,
+    result: &mut SourceLayoutAccumulator,
+) {
     let graph_origin = LPoint {
         x: parent_origin.x + graph.offset.x + graph.padding.left,
         y: parent_origin.y + graph.offset.y + graph.padding.top,
@@ -229,24 +277,6 @@ fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mu
                 height: node.size.height,
             }),
     );
-    let edges = graph
-        .edges
-        .iter()
-        .enumerate()
-        .filter(|(edge_index, edge)| edge_has_layout_endpoints(graph, result, *edge_index, edge))
-        .map(|edge| EdgeLayout {
-            id: edge.1.id.clone(),
-            points: edge_points(graph, edge.1)
-                .into_iter()
-                .map(|point| Point {
-                    x: graph_origin.x + point.x,
-                    y: graph_origin.y + point.y,
-                })
-                .collect(),
-            labels: edge_labels(graph_origin, edge.1),
-        })
-        .collect::<Vec<_>>();
-    result.edges.extend(edges);
 
     for node in &graph.layerless_nodes {
         let Some(nested_graph) = node.nested_graph.as_deref() else {
@@ -258,14 +288,145 @@ fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mu
                 x: graph_origin.x + node.position.x,
                 y: graph_origin.y + node.position.y,
             },
+            graph_depth + 1,
             result,
         );
+    }
+
+    for (edge_index, edge) in graph.edges.iter().enumerate() {
+        if !edge_has_layout_endpoints(graph, result, edge_index, edge) {
+            continue;
+        }
+
+        let edge_layout = EdgeLayout {
+            id: edge.id.clone(),
+            points: edge_points(graph, edge)
+                .into_iter()
+                .map(|point| Point {
+                    x: graph_origin.x + point.x,
+                    y: graph_origin.y + point.y,
+                })
+                .collect(),
+            labels: edge_labels(graph_origin, edge),
+        };
+
+        if let Some(segment) = edge.compound_segment {
+            result
+                .compound_edges
+                .entry(edge.id.clone())
+                .or_default()
+                .push(CompoundEdgeLayoutSegment {
+                    segment,
+                    graph_depth,
+                    model_order: edge.model_order,
+                    edge: edge_layout,
+                });
+        } else {
+            result.edges.push(OrderedEdgeLayout {
+                model_order: edge.model_order,
+                edge: edge_layout,
+            });
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CompoundEdgeLayoutSegment {
+    segment: source_port::CompoundEdgeSegment,
+    graph_depth: usize,
+    model_order: Option<usize>,
+    edge: EdgeLayout,
+}
+
+/// Merge hierarchy-local edge segments following ELK's compound postprocessor.
+///
+/// Source:
+/// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPostprocessor.java
+fn merge_compound_edge_segments(segments: &[CompoundEdgeLayoutSegment]) -> Option<EdgeLayout> {
+    let first = segments.first()?;
+    let mut points = Vec::new();
+    let mut labels = Vec::new();
+    let mut last_point = None;
+
+    for segment in segments {
+        let segment_points = &segment.edge.points;
+        if segment_points.is_empty() {
+            continue;
+        }
+
+        if let (Some(previous), Some(next)) =
+            (last_point, segment_points.get(1).or(segment_points.last()))
+            && compound_boundary_needs_bendpoint(previous, *next)
+            && let Some(source) = segment_points.first()
+        {
+            push_distinct_point(&mut points, *source);
+        }
+
+        for point in segment_points {
+            push_distinct_point(&mut points, *point);
+        }
+        labels.extend(segment.edge.labels.iter().cloned());
+        last_point = segment_points
+            .get(segment_points.len().saturating_sub(2))
+            .copied()
+            .or_else(|| segment_points.first().copied());
+    }
+
+    Some(EdgeLayout {
+        id: first.edge.id.clone(),
+        points,
+        labels,
+    })
+}
+
+fn compound_boundary_needs_bendpoint(previous: Point, next: Point) -> bool {
+    const ORTHOGONAL_TOLERANCE: f64 = 0.001;
+    (previous.x - next.x).abs() > ORTHOGONAL_TOLERANCE
+        || (previous.y - next.y).abs() > ORTHOGONAL_TOLERANCE
+}
+
+fn push_distinct_point(points: &mut Vec<Point>, point: Point) {
+    if points.last().is_some_and(|last| *last == point) {
+        return;
+    }
+    points.push(point);
+}
+
+fn compare_compound_layout_segments(
+    left: &CompoundEdgeLayoutSegment,
+    right: &CompoundEdgeLayoutSegment,
+) -> std::cmp::Ordering {
+    compare_compound_segments(left.segment, right.segment)
+        .then_with(|| left.graph_depth.cmp(&right.graph_depth))
+}
+
+fn compare_compound_segments(
+    left: source_port::CompoundEdgeSegment,
+    right: source_port::CompoundEdgeSegment,
+) -> std::cmp::Ordering {
+    match (left, right) {
+        (
+            source_port::CompoundEdgeSegment::Output { .. },
+            source_port::CompoundEdgeSegment::Input { .. },
+        ) => std::cmp::Ordering::Less,
+        (
+            source_port::CompoundEdgeSegment::Input { .. },
+            source_port::CompoundEdgeSegment::Output { .. },
+        ) => std::cmp::Ordering::Greater,
+        (
+            source_port::CompoundEdgeSegment::Output { depth: left },
+            source_port::CompoundEdgeSegment::Output { depth: right },
+        ) => right.cmp(&left),
+        (
+            source_port::CompoundEdgeSegment::Input { depth: left },
+            source_port::CompoundEdgeSegment::Input { depth: right },
+        ) => left.cmp(&right),
     }
 }
 
 fn edge_has_layout_endpoints(
     graph: &LGraph,
-    result: &LayoutResult,
+    result: &SourceLayoutAccumulator,
     edge_index: usize,
     edge: &source_port::LayeredEdge,
 ) -> bool {
@@ -279,7 +440,7 @@ fn edge_has_layout_endpoints(
 
 fn endpoint_has_layout(
     graph: &LGraph,
-    result: &LayoutResult,
+    result: &SourceLayoutAccumulator,
     endpoint: PortRef,
     original_node_id: &str,
 ) -> bool {
@@ -482,6 +643,7 @@ mod tests {
                 priority_straightness: 0,
                 thickness: 0.0,
                 original_opposite_port: None,
+                compound_segment: None,
             })
             .unwrap();
 
@@ -586,6 +748,44 @@ mod tests {
                 && edge.points.first().unwrap().x <= cluster.x + cluster.width / 2.0
         );
         assert_eq!(edge.points.last().unwrap().x, child.x);
+    }
+
+    #[test]
+    fn source_ported_layout_exports_edge_from_nested_child_to_outer_node() {
+        let mut child = leaf("A");
+        child.parent = Some("cluster".to_string());
+        let mut graph = flat_graph(
+            vec![
+                Node {
+                    id: "cluster".to_string(),
+                    kind: NodeKind::Group,
+                    width: 0.0,
+                    height: 0.0,
+                    parent: None,
+                    direction: Some(Direction::Down),
+                    label: None,
+                },
+                child,
+                leaf("B"),
+            ],
+            vec![edge("A-B", "A", "B")],
+        );
+        graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
+
+        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let edge = result
+            .edges
+            .iter()
+            .find(|edge| edge.id == "A-B")
+            .expect("cross-hierarchy child edge should be exported");
+        assert!(edge.points.len() >= 2);
+        assert!(
+            edge.points
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
+        );
+        assert_eq!(edge.points.last().unwrap().x, b.x);
     }
 
     #[test]

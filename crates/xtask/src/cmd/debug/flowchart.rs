@@ -1524,6 +1524,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     let mut fixture: Option<PathBuf> = None;
     let mut edge_id: Option<String> = None;
     let mut text_measurer: String = "deterministic".to_string();
+    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
 
     let mut i = 0;
     while i < args.len() {
@@ -1542,6 +1543,16 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
                     .get(i)
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "deterministic".to_string());
+            }
+            "--flowchart-elk-backend" => {
+                i += 1;
+                flowchart_elk_backend = match args.get(i).map(|s| s.trim()) {
+                    Some("compat") => merman_render::FlowchartElkBackend::Compat,
+                    Some("source-ported" | "source_ported" | "source") => {
+                        merman_render::FlowchartElkBackend::SourcePorted
+                    }
+                    _ => return Err(XtaskError::Usage),
+                };
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1582,6 +1593,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
         layout_opts.text_measurer =
             std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
     }
+    layout_opts.flowchart_elk_backend = flowchart_elk_backend;
     let layouted = merman_render::layout_parsed(&parsed, &layout_opts)
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
@@ -1598,6 +1610,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     }
     println!("diagram_type: {}", layouted.meta.diagram_type);
     println!("text_measurer: {}", text_measurer);
+    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!();
 
     // Mirror `compute_layout_bounds` (private to `merman-render`) for debugging.

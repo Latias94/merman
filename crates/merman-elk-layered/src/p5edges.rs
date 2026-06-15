@@ -159,6 +159,7 @@ mod tests {
             priority_straightness: 0,
             thickness: 0.0,
             original_opposite_port: None,
+            compound_segment: None,
         });
 
         route_edges_orthogonal(&mut graph);
