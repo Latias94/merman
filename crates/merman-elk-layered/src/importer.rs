@@ -7,10 +7,9 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::compound::compound_label_segment_index;
 use crate::graph::{
-    CompoundEdgeSegment, EdgeLabelPlacement, LGraph, LLabel, LNode, LPort, LSize, LayeredEdge,
-    PortRef, PortSide, PortType, create_external_port_dummy,
+    CompoundEdgeSegment, EdgeLabelPlacement, HierarchyEdge, LGraph, LLabel, LNode, LPort, LSize,
+    LayeredEdge, PortRef, PortSide, PortType, create_external_port_dummy,
 };
 use crate::options::{
     ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint, LayeredOptions, PortConstraints,
@@ -284,10 +283,10 @@ fn transform_edge_between(
     Ok(edge_index)
 }
 
-/// Split a hierarchy-crossing edge into graph-local segments following ELK's compound preprocessor.
+/// Preserve a hierarchy-crossing edge for ELK's compound preprocessor.
 ///
 /// Source:
-/// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPreprocessor.java
+/// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/transform/ElkGraphImporter.java
 fn transform_cross_hierarchy_edge(
     edge: &ElkInputEdge,
     index: &InputIndex<'_>,
@@ -296,34 +295,19 @@ fn transform_cross_hierarchy_edge(
 ) -> ImportResult<()> {
     let source_path = index.graph_path(edge.source.as_str());
     let target_path = index.graph_path(edge.target.as_str());
-    let segments = crate::compound::source_ported_cross_hierarchy_segments(
-        edge.source.as_str(),
-        edge.target.as_str(),
-        &source_path,
-        &target_path,
-    );
-
-    let label_segment = edge
-        .label
-        .as_ref()
-        .map(|label| compound_label_segment_index(&segments, label.placement));
-
-    for (segment_index, pending) in segments.into_iter().enumerate() {
-        let graph = graph_for_parent(root, pending.graph_parent.as_deref());
-        transform_edge_between(
-            edge,
-            graph,
-            model_order,
-            pending.source.as_str(),
-            pending.target.as_str(),
-            edge.source.as_str(),
-            edge.target.as_str(),
-            Some(pending.segment),
-            edge.label
-                .as_ref()
-                .filter(|_| label_segment == Some(segment_index)),
-        )?;
-    }
+    root.hierarchy_edges.push(HierarchyEdge {
+        id: edge.id.clone(),
+        source_node_id: edge.source.clone(),
+        target_node_id: edge.target.clone(),
+        source_path: source_path.into_iter().map(str::to_string).collect(),
+        target_path: target_path.into_iter().map(str::to_string).collect(),
+        labels: edge.label.iter().map(label_to_lgraph).collect(),
+        minlen: edge.minlen.max(1),
+        model_order: Some(model_order),
+        priority_direction: edge.priority_direction,
+        priority_shortness: edge.priority_shortness,
+        priority_straightness: edge.priority_straightness,
+    });
 
     Ok(())
 }
@@ -539,7 +523,6 @@ fn detect_parent_cycles<'a>(
 mod tests {
     use super::*;
     use crate::compound::preprocess_source_ported_compound_graph;
-    use crate::graph::{InLayerConstraint, LNodeKind};
     use crate::options::OrderingStrategy;
 
     fn node(id: &str) -> ElkInputNode {
@@ -653,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn imports_descendant_edge_into_ancestor_nested_graph() {
+    fn importer_preserves_descendant_edge_for_compound_preprocessor() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
         let mut child = node("A");
@@ -670,25 +653,13 @@ mod tests {
             .find(|node| node.id == "cluster")
             .unwrap();
         let nested = cluster.nested_graph.as_ref().unwrap();
-        assert_eq!(nested.edges[0].id, "cluster-A");
-        assert_eq!(nested.edges[0].source_node_id, "cluster");
-        assert_eq!(nested.edges[0].target_node_id, "A");
-        assert!(nested.graph_properties.external_ports);
-        assert!(nested.options.graph_has_external_ports);
-        let external = nested
-            .layerless_nodes
-            .iter()
-            .find(|node| node.kind == LNodeKind::ExternalPort)
-            .unwrap();
-        assert_eq!(external.id, "external:cluster");
-        assert_eq!(external.layer_constraint, LayerConstraint::None);
-        assert_eq!(external.in_layer_constraint, InLayerConstraint::Top);
-        assert!(!external.layer_constraint_explicit);
-        assert_eq!(external.port_constraints, PortConstraints::FixedPos);
-        assert_eq!(external.ports.len(), 1);
-        assert_eq!(external.ports[0].side, PortSide::South);
-        assert_eq!(nested.edges[0].source.node, 1);
-        assert_eq!(nested.edges[0].source.port, 0);
+        assert!(nested.edges.is_empty());
+        assert_eq!(lgraph.hierarchy_edges.len(), 1);
+        assert_eq!(lgraph.hierarchy_edges[0].id, "cluster-A");
+        assert_eq!(lgraph.hierarchy_edges[0].source_node_id, "cluster");
+        assert_eq!(lgraph.hierarchy_edges[0].target_node_id, "A");
+        assert_eq!(lgraph.hierarchy_edges[0].source_path, Vec::<String>::new());
+        assert_eq!(lgraph.hierarchy_edges[0].target_path, vec!["cluster"]);
     }
 
     #[test]

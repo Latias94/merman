@@ -6,7 +6,8 @@
 
 use crate::graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphNodeRef, GraphPortRef,
-    LGraph, LNodeKind, PortRef, PortSide,
+    HierarchyEdge, LGraph, LLabel, LNodeKind, LPort, LSize, LayeredEdge, PortRef, PortSide,
+    PortType, create_external_port_dummy,
 };
 use crate::options::{ElkDirection, PortConstraints};
 
@@ -20,9 +21,10 @@ pub(crate) struct PendingCompoundSegment {
 
 /// Build the graph-local segments for a hierarchy-crossing edge.
 ///
-/// This is the current compatibility bridge toward ELK's `CompoundGraphPreprocessor`: the importer
-/// still calls it directly, but the segment ordering and label-placement semantics live in this
-/// compound boundary instead of being spread through `ElkGraphImporter` code.
+/// This is the current segment-building core of the Rust `CompoundGraphPreprocessor` port. The
+/// full ELK algorithm introduces segments through `ExternalPort` records while walking the graph
+/// recursively; this helper keeps segment ordering and label-placement semantics in the compound
+/// boundary while that recursive port is filled in.
 pub(crate) fn source_ported_cross_hierarchy_segments(
     source: &str,
     target: &str,
@@ -125,8 +127,8 @@ pub(crate) fn compound_label_segment_index(
 /// Mirror `CompoundGraphPreprocessor#setSidesOfPortsToSidesOfDummyNodes` for an exported
 /// compound port / external-port dummy pair.
 ///
-/// The current importer still creates compatibility segments directly, but this keeps the ELK
-/// `ORIGIN`, `PORT_DUMMY`, and `INSIDE_CONNECTIONS` semantics represented in the graph model.
+/// This keeps the ELK `ORIGIN`, `PORT_DUMMY`, and `INSIDE_CONNECTIONS` semantics represented in
+/// the graph model for segment endpoints introduced by compound preprocessing.
 pub(crate) fn link_external_port_dummy(
     parent_graph: &mut LGraph,
     parent_port: PortRef,
@@ -181,11 +183,114 @@ pub(crate) fn record_cross_hierarchy_edge_segment(
 
 /// Compatibility entry point for the source-backed compound preprocessor boundary.
 ///
-/// ELK runs `CompoundGraphPreprocessor` after import and before recursive layout. The current
-/// Rust importer still creates hierarchy-local edge segments directly; this hook attaches the
-/// source-backed cross-hierarchy contract to those imported segments at the correct pipeline stage.
+/// ELK runs `CompoundGraphPreprocessor` after import and before recursive layout. The Rust port now
+/// keeps hierarchy-crossing input edges as `HierarchyEdge` records during import and introduces
+/// hierarchy-local layout segments here. The second pass still accepts already segmented edges as a
+/// migration bridge for tests and later postprocessor work.
 pub fn preprocess_source_ported_compound_graph(graph: &mut LGraph) {
+    introduce_source_ported_hierarchy_edge_segments(graph);
     preprocess_source_ported_compound_graph_inner(graph);
+}
+
+fn introduce_source_ported_hierarchy_edge_segments(graph: &mut LGraph) {
+    let hierarchy_edges = std::mem::take(&mut graph.hierarchy_edges);
+    for edge in hierarchy_edges {
+        introduce_source_ported_hierarchy_edge(graph, &edge);
+    }
+
+    for node in &mut graph.layerless_nodes {
+        if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
+            introduce_source_ported_hierarchy_edge_segments(nested_graph);
+        }
+    }
+}
+
+fn introduce_source_ported_hierarchy_edge(graph: &mut LGraph, edge: &HierarchyEdge) {
+    let source_path = edge
+        .source_path
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let target_path = edge
+        .target_path
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let segments = source_ported_cross_hierarchy_segments(
+        edge.source_node_id.as_str(),
+        edge.target_node_id.as_str(),
+        &source_path,
+        &target_path,
+    );
+    let label_segments = edge
+        .labels
+        .iter()
+        .map(|label| compound_label_segment_index(&segments, label.placement))
+        .collect::<Vec<_>>();
+
+    for (segment_index, pending) in segments.into_iter().enumerate() {
+        let labels = edge
+            .labels
+            .iter()
+            .zip(label_segments.iter())
+            .filter_map(|(label, label_segment)| {
+                (*label_segment == segment_index).then_some(label.clone())
+            })
+            .collect::<Vec<_>>();
+        let graph = graph_for_parent_mut(graph, pending.graph_parent.as_deref());
+        let edge_index = add_source_ported_hierarchy_edge_segment(graph, edge, &pending, labels);
+        record_cross_hierarchy_edge_segment(graph, edge.id.clone(), edge_index, pending.segment);
+    }
+}
+
+fn add_source_ported_hierarchy_edge_segment(
+    graph: &mut LGraph,
+    edge: &HierarchyEdge,
+    pending: &PendingCompoundSegment,
+    labels: Vec<LLabel>,
+) -> usize {
+    let source = ensure_port(graph, pending.source.as_str(), PortType::Output);
+    let target = ensure_port(graph, pending.target.as_str(), PortType::Input);
+
+    if source.node == target.node {
+        graph.graph_properties.self_loops = true;
+    }
+
+    if has_parallel_port_edges(&graph.layerless_nodes[source.node].ports[source.port])
+        || has_parallel_port_edges(&graph.layerless_nodes[target.node].ports[target.port])
+    {
+        graph.graph_properties.hyperedges = true;
+    }
+
+    for label in &labels {
+        match label.placement {
+            EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
+            EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
+                graph.graph_properties.end_labels = true;
+            }
+        }
+    }
+
+    graph
+        .add_edge(LayeredEdge {
+            id: edge.id.clone(),
+            source,
+            target,
+            source_node_id: edge.source_node_id.clone(),
+            target_node_id: edge.target_node_id.clone(),
+            labels,
+            minlen: edge.minlen,
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order: edge.model_order,
+            priority_direction: edge.priority_direction,
+            priority_shortness: edge.priority_shortness,
+            priority_straightness: edge.priority_straightness,
+            thickness: 0.0,
+            original_opposite_port: None,
+            compound_segment: Some(pending.segment),
+        })
+        .expect("ports were created before adding hierarchy edge segment")
 }
 
 fn preprocess_source_ported_compound_graph_inner(graph: &mut LGraph) {
@@ -305,6 +410,86 @@ fn external_dummy_for_compound_edge(
                 }))
             .then_some(node_index)
         })
+}
+
+fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> PortRef {
+    if let Some(node) = graph
+        .layerless_nodes
+        .iter()
+        .position(|candidate| candidate.id == node_id)
+    {
+        let port = graph.layerless_nodes[node].ports.len();
+        graph.layerless_nodes[node].ports.push(LPort::new(
+            format!("{node_id}:{port:?}"),
+            node,
+            port_type,
+        ));
+        return PortRef { node, port };
+    }
+
+    graph.graph_properties.external_ports = true;
+    let mut dummy = create_external_port_dummy(
+        format!("external:{node_id}"),
+        format!("external:{node_id}:0"),
+        port_type,
+        PortConstraints::Free,
+        PortSide::Undefined,
+        match port_type {
+            PortType::Input => 1,
+            PortType::Output => -1,
+        },
+        Default::default(),
+        LSize::default(),
+        LSize::default(),
+        0.0,
+        graph.options.direction,
+    );
+    let node = graph.layerless_nodes.len();
+    dummy.ports[0].node = node;
+    graph.layerless_nodes.push(dummy);
+    PortRef { node, port: 0 }
+}
+
+fn has_parallel_port_edges(port: &LPort) -> bool {
+    port.incoming_edges.len() + port.outgoing_edges.len() > 1
+}
+
+fn graph_for_parent_mut<'a>(graph: &'a mut LGraph, parent: Option<&str>) -> &'a mut LGraph {
+    let Some(parent) = parent else {
+        return graph;
+    };
+
+    let path = graph_path_for_parent(graph, parent);
+    match path {
+        Some(path) => graph_mut_at_path(graph, &path),
+        None => graph,
+    }
+}
+
+fn graph_path_for_parent(graph: &LGraph, parent: &str) -> Option<Vec<usize>> {
+    for (index, node) in graph.layerless_nodes.iter().enumerate() {
+        let Some(nested_graph) = node.nested_graph.as_deref() else {
+            continue;
+        };
+        if node.id == parent || nested_graph.id == parent {
+            return Some(vec![index]);
+        }
+        if let Some(mut path) = graph_path_for_parent(nested_graph, parent) {
+            path.insert(0, index);
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn graph_mut_at_path<'a>(mut graph: &'a mut LGraph, path: &[usize]) -> &'a mut LGraph {
+    for index in path {
+        graph = graph.layerless_nodes[*index]
+            .nested_graph
+            .as_deref_mut()
+            .expect("graph path should only contain nested graph nodes");
+    }
+    graph
 }
 
 fn port_side_from_direction(direction: ElkDirection) -> PortSide {

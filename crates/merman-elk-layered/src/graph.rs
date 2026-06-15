@@ -27,6 +27,7 @@ pub struct LGraph {
     pub parent_node_id: Option<String>,
     pub hidden_nodes: Vec<usize>,
     pub replaced_external_port_dummies: Vec<usize>,
+    pub hierarchy_edges: Vec<HierarchyEdge>,
     pub cross_hierarchy_edges: Vec<CrossHierarchyEdge>,
 }
 
@@ -48,6 +49,7 @@ impl LGraph {
             parent_node_id: None,
             hidden_nodes: Vec::new(),
             replaced_external_port_dummies: Vec::new(),
+            hierarchy_edges: Vec::new(),
             cross_hierarchy_edges: Vec::new(),
         }
     }
@@ -267,6 +269,21 @@ pub struct LayeredEdge {
     pub thickness: f64,
     pub original_opposite_port: Option<PortRef>,
     pub compound_segment: Option<CompoundEdgeSegment>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HierarchyEdge {
+    pub id: String,
+    pub source_node_id: String,
+    pub target_node_id: String,
+    pub source_path: Vec<String>,
+    pub target_path: Vec<String>,
+    pub labels: Vec<LLabel>,
+    pub minlen: usize,
+    pub model_order: Option<usize>,
+    pub priority_direction: i32,
+    pub priority_shortness: i32,
+    pub priority_straightness: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

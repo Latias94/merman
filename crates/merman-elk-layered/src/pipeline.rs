@@ -1186,7 +1186,7 @@ mod tests {
 
     #[test]
     fn graph_properties_insert_label_self_loop_and_external_port_processors() {
-        let graph = import_graph(&ElkInputGraph {
+        let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
             options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
             nodes: vec![
@@ -1235,6 +1235,7 @@ mod tests {
             ],
         })
         .unwrap();
+        preprocess_source_ported_compound_graph(&mut graph);
 
         let nested = graph.layerless_nodes[0].nested_graph.as_ref().unwrap();
         let processors = graph_kinds(nested);
