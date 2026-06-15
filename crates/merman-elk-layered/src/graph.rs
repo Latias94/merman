@@ -655,6 +655,24 @@ impl LGraph {
             .collect()
     }
 
+    /// ELK's `LNode#getPorts(PortType.OUTPUT)` is based on actual outgoing edge incidence.
+    pub fn port_has_output_type(&self, port_ref: PortRef) -> bool {
+        self.layerless_nodes
+            .get(port_ref.node)
+            .and_then(|node| node.ports.get(port_ref.port))
+            .map(|port| !port.outgoing_edges.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// ELK's `LNode#getPorts(PortType.INPUT)` is based on actual incoming edge incidence.
+    pub fn port_has_input_type(&self, port_ref: PortRef) -> bool {
+        self.layerless_nodes
+            .get(port_ref.node)
+            .and_then(|node| node.ports.get(port_ref.port))
+            .map(|port| !port.incoming_edges.is_empty())
+            .unwrap_or(false)
+    }
+
     pub fn reorder_node_ports(
         &mut self,
         node_index: usize,

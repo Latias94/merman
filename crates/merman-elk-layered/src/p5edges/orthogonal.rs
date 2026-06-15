@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
-use crate::graph::{LGraph, LPoint, PortRef, PortSide, PortType};
+use crate::graph::{LGraph, LPoint, PortRef, PortSide};
 use crate::random::JavaRandom;
 
 pub const TOLERANCE: f64 = 1e-3;
@@ -590,14 +590,14 @@ fn create_hyperedge_segments(
         };
         for port_index in 0..lnode.ports.len() {
             let port = &lnode.ports[port_index];
-            if port.port_type != PortType::Output || port.side != port_side {
-                continue;
-            }
-
             let port_ref = PortRef {
                 node: *node,
                 port: port_index,
             };
+            if !graph.port_has_output_type(port_ref) || port.side != port_side {
+                continue;
+            }
+
             if !port_to_segment.contains_key(&port_ref) {
                 let segment = hyper_graph.add_segment(HyperEdgeSegment::new());
                 add_port_positions(
@@ -1564,7 +1564,7 @@ fn remove_value(values: &mut Vec<usize>, value: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{LGraph, LNode, LayeredEdge};
+    use crate::graph::{LGraph, LNode, LayeredEdge, PortType};
     use crate::options::LayeredOptions;
 
     fn segment(incoming: &[f64], outgoing: &[f64]) -> HyperEdgeSegment {
@@ -1921,6 +1921,23 @@ mod tests {
     #[test]
     fn route_edges_west_to_east_writes_orthogonal_bendpoints_for_non_straight_edge() {
         let mut graph = route_test_graph(0.0, 30.0);
+        let left = graph.layers[0].nodes.clone();
+        let right = graph.layers[1].nodes.clone();
+
+        let slots = route_edges_west_to_east(&mut graph, Some(&left), Some(&right), 50.0, 10.0);
+
+        assert_eq!(slots, 1);
+        assert_eq!(
+            graph.edges[0].bend_points,
+            vec![LPoint { x: 50.0, y: 5.0 }, LPoint { x: 50.0, y: 45.0 }]
+        );
+    }
+
+    #[test]
+    fn route_edges_west_to_east_uses_actual_outgoing_edges_for_output_ports() {
+        let mut graph = route_test_graph(0.0, 30.0);
+        let source_port = graph.edges[0].source;
+        graph.layerless_nodes[source_port.node].ports[source_port.port].port_type = PortType::Input;
         let left = graph.layers[0].nodes.clone();
         let right = graph.layers[1].nodes.clone();
 

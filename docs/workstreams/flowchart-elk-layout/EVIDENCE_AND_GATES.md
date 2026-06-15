@@ -31,6 +31,9 @@ Last updated: 2026-06-15
 - `crates/merman-elk-layered/src/p3order/sweep.rs` ports Eclipse ELK's barycenter
   `distributePortsWhileSweeping(...)` hook for source-backed P3 sweeps and proves both free-layer
   and fixed-layer ports are redistributed during a sweep.
+- `crates/merman-elk-layered/src/p5edges/orthogonal.rs` follows Eclipse ELK's
+  `LNode#getPorts(PortType.OUTPUT, side)` semantics for source-backed P5 routing: output ports are
+  selected by actual outgoing edge incidence, not by the imported static port marker.
 - `https://github.com/mermaid-js/mermaid/blob/develop/cypress/integration/rendering/flowchart/flowchart-elk.spec.js`
   provides the upstream fixture set to classify.
 
@@ -61,12 +64,12 @@ cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowch
 
 Current result:
 
-- Default compare skips the fixture with the centralized local-policy reason and returns success.
-- Explicit source-backed probe gets past the earlier unsupported `GreedyModelOrderCycleBreaker`
-  processor. The first remaining DOM mismatch is now the edge path `d` at `svg/g[6]/path[1]`.
-- The remaining geometry is a real source-backed layout gap, not a default-renderer regression:
-  P3 ordering/port distribution now runs, and the next evidence should focus on the downstream
-  same-layer order/route-slot difference and P5 orthogonal edge router parity.
+- Default compat compare still skips the fixture with the centralized local-policy reason and
+  returns success.
+- Explicit source-backed probe now returns `All fixtures matched` for the HTML ELK demo fixture.
+- The last resolved geometry gap was P5 route-slot construction: Eclipse ELK filters
+  `PortType.OUTPUT` ports by actual outgoing edges, while the Rust port had been checking the
+  static imported port marker.
 
 ## Future Admission Gates
 

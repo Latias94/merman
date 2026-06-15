@@ -25,7 +25,7 @@ Last updated: 2026-06-15
   source-backed probes reach real P3/P5 geometry differences instead of unsupported processor
   failures.
 - [ ] Tighten label and multi-edge spacing where the current subset is visibly close.
-- [ ] Finish the remaining P3/P5 ordering and routing semantics needed by the HTML ELK demo probe.
+- [x] Finish the remaining P3/P5 ordering and routing semantics needed by the HTML ELK demo probe.
 
 Notes:
 
@@ -44,6 +44,10 @@ Notes:
   and calls the barycenter port distributor during each layer sweep. The explicit HTML demo probe
   no longer fails on an unsupported P1 processor; it reaches the current geometry mismatch at
   `svg/g[6]/path[1]`.
+- 2026-06-15: The source-backed P5 router now matches Eclipse ELK's actual `PortType.OUTPUT`
+  semantics by treating ports with outgoing edges as output ports, independent of the stored
+  imported port marker. The explicit HTML ELK demo probe now matches in the source-backed lane;
+  the default compat lane still keeps the fixture unadmitted by policy.
 
 ## Phase 3 - Port Decision
 
