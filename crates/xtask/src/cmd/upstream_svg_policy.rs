@@ -1,5 +1,8 @@
 //! Shared upstream SVG baseline policy.
 
+const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] =
+    &["upstream_html_demos_flowchart_elk_flowchart_elk_001"];
+
 fn normalized_fixture_stem(name_or_stem: &str) -> &str {
     name_or_stem
         .strip_suffix(".mmd")
@@ -12,11 +15,23 @@ pub(crate) fn flowchart_elk_svg_parity_admitted(name_or_stem: &str) -> bool {
     false
 }
 
-pub(crate) fn flowchart_elk_svg_probe_candidate(name_or_stem: &str) -> bool {
-    matches!(
-        normalized_fixture_stem(name_or_stem),
-        "upstream_html_demos_flowchart_elk_flowchart_elk_001"
-    )
+pub(crate) fn flowchart_elk_svg_source_backed_probe_stems() -> &'static [&'static str] {
+    FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS
+}
+
+pub(crate) fn flowchart_elk_svg_source_backed_probe_admitted(name_or_stem: &str) -> bool {
+    FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS.contains(&normalized_fixture_stem(name_or_stem))
+}
+
+pub(crate) fn flowchart_elk_svg_compare_admitted(
+    name_or_stem: &str,
+    include_elk_probes: bool,
+    backend: merman_render::FlowchartElkBackend,
+) -> bool {
+    flowchart_elk_svg_parity_admitted(name_or_stem)
+        || (include_elk_probes
+            && backend == merman_render::FlowchartElkBackend::SourcePorted
+            && flowchart_elk_svg_source_backed_probe_admitted(name_or_stem))
 }
 
 pub(crate) fn flowchart_elk_svg_parity_skip_reason(name_or_stem: &str) -> Option<&'static str> {
@@ -51,20 +66,24 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
 #[cfg(test)]
 mod tests {
     use super::{
-        flowchart_elk_svg_parity_admitted, flowchart_elk_svg_parity_skip_reason,
-        flowchart_elk_svg_probe_candidate, upstream_svg_baseline_skip_reason,
+        flowchart_elk_svg_compare_admitted, flowchart_elk_svg_parity_admitted,
+        flowchart_elk_svg_parity_skip_reason, flowchart_elk_svg_source_backed_probe_admitted,
+        upstream_svg_baseline_skip_reason,
     };
 
     #[test]
-    fn flowchart_elk_svg_probe_candidates_accept_names_and_stems() {
-        assert!(flowchart_elk_svg_probe_candidate(
+    fn flowchart_elk_svg_source_backed_probes_accept_names_and_stems() {
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001"
         ));
-        assert!(flowchart_elk_svg_probe_candidate(
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001.mmd"
         ));
-        assert!(flowchart_elk_svg_probe_candidate(
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001.svg"
+        ));
+        assert!(!flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001"
         ));
         assert!(!flowchart_elk_svg_parity_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001"
@@ -85,6 +104,27 @@ mod tests {
                 "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes"
             )
         );
+    }
+
+    #[test]
+    fn flowchart_elk_svg_probe_admission_requires_source_ported_backend() {
+        let stem = "upstream_html_demos_flowchart_elk_flowchart_elk_001";
+
+        assert!(!flowchart_elk_svg_compare_admitted(
+            stem,
+            false,
+            merman_render::FlowchartElkBackend::SourcePorted
+        ));
+        assert!(!flowchart_elk_svg_compare_admitted(
+            stem,
+            true,
+            merman_render::FlowchartElkBackend::Compat
+        ));
+        assert!(flowchart_elk_svg_compare_admitted(
+            stem,
+            true,
+            merman_render::FlowchartElkBackend::SourcePorted
+        ));
     }
 
     #[test]

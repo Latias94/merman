@@ -276,8 +276,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 .get_str("flowchart.defaultRenderer")
                 == Some("elk");
         if parsed.meta.diagram_type == "flowchart-elk" || flowchart_layout_elk {
-            let admitted = crate::cmd::flowchart_elk_svg_parity_admitted(stem)
-                || (include_elk_probes && crate::cmd::flowchart_elk_svg_probe_candidate(stem));
+            let admitted = crate::cmd::flowchart_elk_svg_compare_admitted(
+                stem,
+                include_elk_probes,
+                flowchart_elk_backend,
+            );
             if !admitted
                 && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
             {
@@ -444,6 +447,45 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     }
 }
 
+pub(crate) fn check_flowchart_elk_source_backed_probes(
+    args: Vec<String>,
+) -> Result<(), XtaskError> {
+    if !args.is_empty() {
+        return Err(XtaskError::Usage);
+    }
+
+    let mut failures = Vec::new();
+    for stem in crate::cmd::flowchart_elk_svg_source_backed_probe_stems() {
+        let out_path = crate::cmd::target_root()
+            .join("compare")
+            .join("flowchart_elk_source_backed")
+            .join(format!("{stem}.md"));
+        let result = compare_flowchart_svgs(vec![
+            "--filter".to_string(),
+            (*stem).to_string(),
+            "--include-elk-probes".to_string(),
+            "--flowchart-elk-backend".to_string(),
+            "source-ported".to_string(),
+            "--check-dom".to_string(),
+            "--dom-mode".to_string(),
+            "parity".to_string(),
+            "--dom-decimals".to_string(),
+            "3".to_string(),
+            "--out".to_string(),
+            out_path.display().to_string(),
+        ]);
+        if let Err(err) = result {
+            failures.push(format!("{stem}: {err}"));
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(XtaskError::SvgCompareFailed(failures.join("\n")))
+    }
+}
+
 fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
     let path = crate::cmd::workspace_root()
         .join("crates")
@@ -478,5 +520,37 @@ fn flowchart_elk_backend_name(backend: merman_render::FlowchartElkBackend) -> &'
     match backend {
         merman_render::FlowchartElkBackend::Compat => "compat",
         merman_render::FlowchartElkBackend::SourcePorted => "source-ported",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compare_flowchart_svgs;
+
+    #[test]
+    fn source_backed_elk_probe_matches_html_demo_fixture() {
+        let out_path = crate::cmd::target_root()
+            .join("compare")
+            .join("xtask-tests")
+            .join("flowchart_elk_demo_probe_sourceported.md");
+
+        compare_flowchart_svgs(vec![
+            "--filter".to_string(),
+            "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
+            "--include-elk-probes".to_string(),
+            "--flowchart-elk-backend".to_string(),
+            "source-ported".to_string(),
+            "--check-dom".to_string(),
+            "--dom-mode".to_string(),
+            "parity".to_string(),
+            "--dom-decimals".to_string(),
+            "3".to_string(),
+            "--out".to_string(),
+            out_path.display().to_string(),
+        ])
+        .expect("source-backed ELK probe should match the pinned HTML demo fixture");
+
+        let report = std::fs::read_to_string(&out_path).expect("probe report should be written");
+        assert!(report.contains("All fixtures matched."));
     }
 }

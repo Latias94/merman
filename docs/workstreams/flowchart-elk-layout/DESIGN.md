@@ -30,7 +30,7 @@ are dominated by hierarchy/order/section semantics that the subset cannot repres
 - `crates/merman-render/src/flowchart/elk.rs`
 - `crates/xtask/src/cmd/compare`
 - `crates/xtask/src/cmd/import`
-- `repo-ref/mermaid/cypress/integration/rendering/flowchart/flowchart-elk.spec.js`
+- `https://github.com/mermaid-js/mermaid/blob/develop/cypress/integration/rendering/flowchart/flowchart-elk.spec.js`
 
 ## Non-goals
 
@@ -66,7 +66,7 @@ are dominated by hierarchy/order/section semantics that the subset cannot repres
 | --- | --- | --- | --- |
 | The current lightweight backend is enough for the first smoke batch. | High | `render_svg_returns_svg_for_flowchart_elk`, `headless_renderer_renders_flowchart_elk_svg`. | Reclassify the smoke fixtures before widening the lane. |
 | Nested subgraph direction and hierarchy are the main non-smoke pressure points. | High | `flowchart-elk.spec.js` cases `50-76`, `2050`, `6080-6088`. | If they collapse cleanly into the subset, a full port is not needed yet. |
-| A full port is only justified if the remaining fixture classes need ELK hierarchy semantics we cannot model locally. | High | `repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts` and the upstream ELK spec surface. | Keep the lane subset-first and isolate any deeper port as a separate decision. |
+| A full port is only justified if the remaining fixture classes need ELK hierarchy semantics we cannot model locally. | High | `https://github.com/mermaid-js/mermaid/blob/develop/packages/mermaid-layout-elk/src/render.ts` and the upstream ELK spec surface. | Keep the lane subset-first and isolate any deeper port as a separate decision. |
 
 ## Architecture Direction
 

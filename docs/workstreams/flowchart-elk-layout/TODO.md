@@ -53,7 +53,16 @@ Notes:
 
 - [x] Decide to keep a deeper source-backed ELK lane for Flowchart parity while preserving the
   default lightweight backend.
-- [ ] Keep source-backed ELK behind an explicit backend/feature boundary until probe coverage is
+- [x] Keep source-backed ELK behind an explicit backend/feature boundary until probe coverage is
   mature enough for admission.
-- [ ] Update the compare/import policy so the lane reflects the final decision instead of leaving
-  `flowchart-elk` in a permanent limbo.
+- [x] Update the compare/import policy so the source-backed probe lane reflects the current
+  decision instead of leaving the HTML ELK demo only as an ad hoc command.
+- [ ] Import and probe the first Tier A upstream ELK batch against the source-backed lane before
+  default parity admission.
+
+Notes:
+
+- 2026-06-15: `--include-elk-probes` now only admits registered source-backed ELK probes when the
+  compare run selects `--flowchart-elk-backend source-ported`. The default compat lane still skips
+  the HTML ELK demo by policy, while `check-flowchart-elk-source-backed-probes` is the fixed gate
+  for the already matching source-backed fixture.

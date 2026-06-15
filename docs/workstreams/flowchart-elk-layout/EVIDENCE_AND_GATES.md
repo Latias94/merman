@@ -15,12 +15,15 @@ Last updated: 2026-06-15
 - `crates/merman-render/src/flowchart/elk.rs` unit tests prove Flowchart subgraph directions and
   Mermaid `elk` config fields reach the ELK graph adapter.
 - `crates/xtask/src/cmd/upstream_svg_policy.rs` keeps Flowchart ELK admission centralized.
-  Current upstream ELK fixtures are probe candidates only, not default parity admissions.
+  Current upstream ELK fixtures are source-backed probe admissions only, not default parity
+  admissions.
 - `crates/xtask/src/cmd/compare/diagrams/flowchart.rs` supports
-  `--include-elk-probes` for explicit ELK probe runs without turning the default Flowchart parity
-  matrix red.
+  `--include-elk-probes` with `--flowchart-elk-backend source-ported` for explicit ELK probe runs
+  without turning the default Flowchart parity matrix red. It also exposes
+  `check-flowchart-elk-source-backed-probes` as the fixed source-backed probe gate.
 - `crates/xtask/src/cmd/compare/xml.rs` skips unadmitted Flowchart ELK after parsing the fixture,
-  so `flowchart-elk`, `layout: elk`, and `flowchart.defaultRenderer=elk` share the same policy.
+  so `flowchart-elk`, `layout: elk`, and `flowchart.defaultRenderer=elk` share the same backend-
+  aware policy.
 - `crates/merman-render/src/svg/parity.rs` preserves `flowchart-elk` as the root
   `aria-roledescription` and marker prefix when rendering a layouted Flowchart ELK diagram.
 - Flowchart ELK SVG emission uses Mermaid's root-level group order: marker group, shadow `defs`,
@@ -46,8 +49,9 @@ cargo nextest run -p merman-render --features elk-layout flowchart_elk
 cargo nextest run -p merman-render --features elk-layout render_layouted_svg_preserves_flowchart_elk_roledescription
 cargo nextest run -p merman-bindings-core render_svg_returns_svg_for_flowchart_elk
 cargo nextest run -p merman --features elk-layout --test flowchart_elk_render
+cargo nextest run -p xtask source_backed_elk_probe_matches_html_demo_fixture
 cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_elk_flowchart_elk_001 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/flowchart_elk_demo_default.md
-cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_elk_flowchart_elk_001 --include-elk-probes --flowchart-elk-backend source-ported --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/flowchart_elk_demo_probe_sourceported.md
+cargo run -p xtask -- check-flowchart-elk-source-backed-probes
 cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter upstream_html_demos_flowchart_elk_flowchart_elk_001 --check --dom-mode parity --dom-decimals 3
 cargo test -p xtask svg_xml_compare_skip_reason
 cargo fmt --check
@@ -59,14 +63,17 @@ git diff --check
 Explicit probe command:
 
 ```bash
-cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_elk_flowchart_elk_001 --include-elk-probes --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/flowchart_elk_demo_probe.md
+cargo run -p xtask -- check-flowchart-elk-source-backed-probes
 ```
 
 Current result:
 
 - Default compat compare still skips the fixture with the centralized local-policy reason and
   returns success.
-- Explicit source-backed probe now returns `All fixtures matched` for the HTML ELK demo fixture.
+- `--include-elk-probes` only admits registered Flowchart ELK probe fixtures when the compare run
+  selects `--flowchart-elk-backend source-ported`.
+- Explicit source-backed probe now returns `All fixtures matched` for the HTML ELK demo fixture,
+  and the fixed `check-flowchart-elk-source-backed-probes` gate runs that admitted probe list.
 - The last resolved geometry gap was P5 route-slot construction: Eclipse ELK filters
   `PortType.OUTPUT` ports by actual outgoing edges, while the Rust port had been checking the
   static imported port marker.

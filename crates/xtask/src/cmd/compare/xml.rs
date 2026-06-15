@@ -424,9 +424,11 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                         .get_str("flowchart.defaultRenderer")
                         == Some("elk");
                 if flowchart_layout_elk {
-                    let admitted = crate::cmd::flowchart_elk_svg_parity_admitted(stem)
-                        || (include_elk_probes
-                            && crate::cmd::flowchart_elk_svg_probe_candidate(stem));
+                    let admitted = crate::cmd::flowchart_elk_svg_compare_admitted(
+                        stem,
+                        include_elk_probes,
+                        flowchart_elk_backend,
+                    );
                     if !admitted
                         && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
                     {

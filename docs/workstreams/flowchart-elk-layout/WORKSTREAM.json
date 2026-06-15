@@ -3,7 +3,7 @@
   "slug": "flowchart-elk-layout",
   "title": "Flowchart ELK Layout",
   "status": "active",
-  "updated": "2026-06-14",
+  "updated": "2026-06-15",
   "scope_kind": "execution",
   "problem": "Flowchart is now renderable through a lightweight ELK subset, but the upstream `flowchart-elk` surface still needs a separate lane to decide which fixtures can be admitted with incremental work and which ones would justify a deeper ELK port.",
   "authoritative_docs": [
@@ -32,6 +32,8 @@
   "gates": [
     "cargo nextest run -p merman-bindings-core render_svg_returns_svg_for_flowchart_elk",
     "cargo nextest run -p merman flowchart_elk_render",
+    "cargo nextest run -p xtask source_backed_elk_probe_matches_html_demo_fixture",
+    "cargo run -p xtask -- check-flowchart-elk-source-backed-probes",
     "cargo test -p xtask svg_xml_compare_skip_reason",
     "cargo fmt --check",
     "git diff --check"
@@ -39,7 +41,7 @@
   "evidence": [
     "docs/workstreams/flowchart-elk-layout/EVIDENCE_AND_GATES.md",
     "docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md",
-    "repo-ref/mermaid/cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+    "https://github.com/mermaid-js/mermaid/blob/develop/cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
     "crates/merman-layout-elk/src/lib.rs",
     "crates/merman-render/src/flowchart/elk.rs"
   ],
@@ -52,8 +54,8 @@
   "architecture_refs": [
     "crates/merman-layout-elk/src/lib.rs",
     "crates/merman-render/src/flowchart/elk.rs",
-    "repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts",
-    "repo-ref/mermaid/cypress/integration/rendering/flowchart/flowchart-elk.spec.js"
+    "https://github.com/mermaid-js/mermaid/blob/develop/packages/mermaid-layout-elk/src/render.ts",
+    "https://github.com/mermaid-js/mermaid/blob/develop/cypress/integration/rendering/flowchart/flowchart-elk.spec.js"
   ],
   "capability_tags": [
     "flowchart",

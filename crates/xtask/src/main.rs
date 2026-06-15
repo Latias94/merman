@@ -117,6 +117,7 @@ fn print_help(topic: Option<&str>) {
     println!("Per-diagram SVG compare commands:");
     println!("  compare-er-svgs");
     println!("  compare-flowchart-svgs");
+    println!("  check-flowchart-elk-source-backed-probes");
     println!("  compare-sequence-svgs");
     println!("  compare-class-svgs");
     println!("  compare-state-svgs");
@@ -207,6 +208,9 @@ fn main() -> Result<(), XtaskError> {
         "check-upstream-svgs" => cmd::check_upstream_svgs(args.collect()),
         "compare-er-svgs" => cmd::compare_er_svgs(args.collect()),
         "compare-flowchart-svgs" => cmd::compare_flowchart_svgs(args.collect()),
+        "check-flowchart-elk-source-backed-probes" => {
+            cmd::check_flowchart_elk_source_backed_probes(args.collect())
+        }
         "debug-flowchart-layout" => cmd::debug_flowchart_layout(args.collect()),
         "debug-flowchart-svg-roots" => cmd::debug_flowchart_svg_roots(args.collect()),
         "debug-flowchart-svg-positions" => cmd::debug_flowchart_svg_positions(args.collect()),
