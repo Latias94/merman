@@ -271,6 +271,7 @@ pub struct LLabel {
     pub position: LPoint,
     pub placement: EdgeLabelPlacement,
     pub inline: bool,
+    pub label_side: Option<LabelSide>,
     pub end_label_edge: Option<usize>,
 }
 
@@ -282,6 +283,7 @@ impl LLabel {
             position: LPoint::default(),
             placement: EdgeLabelPlacement::Center,
             inline: false,
+            label_side: None,
             end_label_edge: None,
         }
     }
@@ -358,6 +360,16 @@ pub enum LabelSide {
     #[default]
     Below,
     Inline,
+}
+
+impl LabelSide {
+    pub fn opposite(self) -> Self {
+        match self {
+            Self::Above => Self::Below,
+            Self::Below => Self::Above,
+            Self::Inline => Self::Inline,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

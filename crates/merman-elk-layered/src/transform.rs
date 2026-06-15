@@ -158,6 +158,7 @@ fn transpose_all(graph: &mut LGraph) {
     graph.offset.transpose();
     graph.size.transpose();
     graph.padding.transpose();
+    graph.options.edge_label_side_selection = graph.options.edge_label_side_selection.transpose();
 
     for node in &mut graph.layerless_nodes {
         transpose_node(node);
@@ -535,6 +536,7 @@ mod tests {
                 position: LPoint { x: 30.0, y: 40.0 },
                 placement: EdgeLabelPlacement::Center,
                 inline: false,
+                label_side: None,
                 end_label_edge: None,
             }],
             minlen: 1,

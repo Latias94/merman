@@ -193,6 +193,30 @@ pub enum LayerConstraint {
     LastSeparate,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EdgeLabelSideSelection {
+    AlwaysUp,
+    AlwaysDown,
+    DirectionUp,
+    DirectionDown,
+    SmartUp,
+    #[default]
+    SmartDown,
+}
+
+impl EdgeLabelSideSelection {
+    pub fn transpose(self) -> Self {
+        match self {
+            Self::AlwaysUp => Self::AlwaysDown,
+            Self::AlwaysDown => Self::AlwaysUp,
+            Self::DirectionUp => Self::DirectionDown,
+            Self::DirectionDown => Self::DirectionUp,
+            Self::SmartUp => Self::SmartDown,
+            Self::SmartDown => Self::SmartUp,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayeredOptions {
     pub direction: ElkDirection,
@@ -231,6 +255,7 @@ pub struct LayeredOptions {
     pub graph_has_self_loops: bool,
     pub graph_has_center_labels: bool,
     pub graph_has_end_labels: bool,
+    pub edge_label_side_selection: EdgeLabelSideSelection,
     pub graph_has_non_free_ports: bool,
     pub graph_has_north_south_ports: bool,
     pub graph_has_hyperedges: bool,
@@ -373,6 +398,7 @@ impl Default for LayeredOptions {
             graph_has_self_loops: false,
             graph_has_center_labels: false,
             graph_has_end_labels: false,
+            edge_label_side_selection: EdgeLabelSideSelection::SmartDown,
             graph_has_non_free_ports: false,
             graph_has_north_south_ports: false,
             graph_has_hyperedges: false,
@@ -463,5 +489,17 @@ mod tests {
         assert_eq!(options.spacing.edge_edge_between_layers, 20.0);
         assert_eq!(options.spacing.edge_node_between_layers, 20.0);
         assert_eq!(options.spacing.node_node_between_layers, 40.0);
+    }
+
+    #[test]
+    fn edge_label_side_selection_transposes_symmetrically() {
+        use EdgeLabelSideSelection::*;
+
+        assert_eq!(AlwaysUp.transpose(), AlwaysDown);
+        assert_eq!(AlwaysDown.transpose(), AlwaysUp);
+        assert_eq!(DirectionUp.transpose(), DirectionDown);
+        assert_eq!(DirectionDown.transpose(), DirectionUp);
+        assert_eq!(SmartUp.transpose(), SmartDown);
+        assert_eq!(SmartDown.transpose(), SmartUp);
     }
 }

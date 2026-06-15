@@ -304,6 +304,7 @@ fn label_to_lgraph(label: &ElkInputLabel) -> LLabel {
     let mut llabel = LLabel::new(label.text.clone(), label.width, label.height);
     llabel.placement = label.placement;
     llabel.inline = label.inline;
+    llabel.label_side = None;
     llabel
 }
 

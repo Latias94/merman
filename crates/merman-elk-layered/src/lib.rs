@@ -40,10 +40,10 @@ pub use intermediate::{
     select_label_sides, split_edge, split_long_edges, switch_label_dummies,
 };
 pub use options::{
-    Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeRouting, ElkDirection, ElkPadding,
-    GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions, LongEdgeOrderingStrategy,
-    NodePlacementStrategy, OrderingStrategy, PortConstraints, PortSortingStrategy,
-    SelfLoopDistributionStrategy, SpacingOptions,
+    Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeLabelSideSelection, EdgeRouting,
+    ElkDirection, ElkPadding, GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions,
+    LongEdgeOrderingStrategy, NodePlacementStrategy, OrderingStrategy, PortConstraints,
+    PortSortingStrategy, SelfLoopDistributionStrategy, SpacingOptions,
 };
 pub use p2layers::layer_network_simplex;
 pub use p3order::counting::CrossingsCounter;

@@ -343,6 +343,7 @@ mod tests {
                 position: crate::graph::LPoint { x: 10.0, y: 0.0 },
                 placement: crate::graph::EdgeLabelPlacement::Center,
                 inline: false,
+                label_side: None,
                 end_label_edge: None,
             });
 
