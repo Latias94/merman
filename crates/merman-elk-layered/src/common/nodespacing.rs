@@ -345,6 +345,7 @@ mod tests {
                 inline: false,
                 label_side: None,
                 end_label_edge: None,
+                original_label_edge: None,
             });
 
         calculate_node_margins(&mut graph, [node]);

@@ -304,7 +304,7 @@ pub struct GraphPortRef {
     pub port: PortRef,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompoundEdgeSegment {
     Output { depth: usize },
     Input { depth: usize },
@@ -313,6 +313,7 @@ pub enum CompoundEdgeSegment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CrossHierarchyEdge {
     pub original_edge_id: String,
+    pub original_model_order: Option<usize>,
     pub graph_id: String,
     pub edge: usize,
     pub segment: CompoundEdgeSegment,
@@ -327,6 +328,7 @@ pub struct LLabel {
     pub inline: bool,
     pub label_side: Option<LabelSide>,
     pub end_label_edge: Option<usize>,
+    pub original_label_edge: Option<String>,
 }
 
 impl LLabel {
@@ -339,6 +341,7 @@ impl LLabel {
             inline: false,
             label_side: None,
             end_label_edge: None,
+            original_label_edge: None,
         }
     }
 }

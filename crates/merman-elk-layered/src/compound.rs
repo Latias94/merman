@@ -170,11 +170,13 @@ pub(crate) fn set_external_dummy_origin(
 pub(crate) fn record_cross_hierarchy_edge_segment(
     graph: &mut LGraph,
     original_edge_id: impl Into<String>,
+    original_model_order: Option<usize>,
     edge: usize,
     segment: CompoundEdgeSegment,
 ) {
     graph.cross_hierarchy_edges.push(CrossHierarchyEdge {
         original_edge_id: original_edge_id.into(),
+        original_model_order,
         graph_id: graph.id.clone(),
         edge,
         segment,
@@ -234,12 +236,22 @@ fn introduce_source_ported_hierarchy_edge(graph: &mut LGraph, edge: &HierarchyEd
             .iter()
             .zip(label_segments.iter())
             .filter_map(|(label, label_segment)| {
-                (*label_segment == segment_index).then_some(label.clone())
+                (*label_segment == segment_index).then(|| {
+                    let mut label = label.clone();
+                    label.original_label_edge = Some(edge.id.clone());
+                    label
+                })
             })
             .collect::<Vec<_>>();
         let graph = graph_for_parent_mut(graph, pending.graph_parent.as_deref());
         let edge_index = add_source_ported_hierarchy_edge_segment(graph, edge, &pending, labels);
-        record_cross_hierarchy_edge_segment(graph, edge.id.clone(), edge_index, pending.segment);
+        record_cross_hierarchy_edge_segment(
+            graph,
+            edge.id.clone(),
+            edge.model_order,
+            edge_index,
+            pending.segment,
+        );
     }
 }
 
@@ -323,7 +335,13 @@ fn ensure_cross_hierarchy_edge_record(
     {
         return;
     }
-    record_cross_hierarchy_edge_segment(graph, edge_id, edge_index, segment);
+    record_cross_hierarchy_edge_segment(
+        graph,
+        edge_id,
+        graph.edges[edge_index].model_order,
+        edge_index,
+        segment,
+    );
 }
 
 fn apply_source_ported_compound_endpoint_metadata(

@@ -3715,6 +3715,7 @@ mod tests {
             inline: true,
             label_side: None,
             end_label_edge: None,
+            original_label_edge: None,
         });
 
         remove_label_dummies(&mut graph);

@@ -538,6 +538,7 @@ mod tests {
                 inline: false,
                 label_side: None,
                 end_label_edge: None,
+                original_label_edge: None,
             }],
             minlen: 1,
             reversed: false,
