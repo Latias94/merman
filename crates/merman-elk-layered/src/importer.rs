@@ -12,7 +12,7 @@ use crate::graph::{
     PortType, create_external_port_dummy,
 };
 use crate::options::{
-    ElkDirection, HierarchyHandling, LayerConstraint, LayeredOptions, PortConstraints,
+    ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint, LayeredOptions, PortConstraints,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +91,7 @@ pub fn import_graph(input: &ElkInputGraph) -> ImportResult<LGraph> {
     let index = InputIndex::new(input)?;
     let mut root = LGraph::new(input.id.clone(), input.options.clone());
     root.options.direction = resolve_direction(root.options.direction);
+    apply_graph_padding_from_options(&mut root);
 
     if root.options.hierarchy_handling == HierarchyHandling::IncludeChildren {
         import_hierarchical_graph(input, &index, &mut root)?;
@@ -147,6 +148,7 @@ fn import_hierarchical_graph(
             }
             let mut nested_graph = LGraph::new(node.id.clone(), nested_options);
             nested_graph.parent_node_id = Some(node.id.clone());
+            apply_graph_padding_from_options(&mut nested_graph);
             parent_graph.layerless_nodes[node_index].compound = true;
             parent_graph.layerless_nodes[node_index].nested_graph = Some(Box::new(nested_graph));
             queue.extend(index.children(Some(node.id.as_str())));
@@ -160,6 +162,19 @@ fn import_hierarchical_graph(
     }
 
     Ok(())
+}
+
+fn apply_graph_padding_from_options(graph: &mut LGraph) {
+    let ElkPadding {
+        top,
+        right,
+        bottom,
+        left,
+    } = graph.options.padding;
+    graph.padding.top += top;
+    graph.padding.right += right;
+    graph.padding.bottom += bottom;
+    graph.padding.left += left;
 }
 
 fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<usize>) -> usize {
@@ -536,6 +551,40 @@ mod tests {
         );
         assert!(lgraph.graph_properties.center_labels);
         assert!(lgraph.options.graph_has_center_labels);
+    }
+
+    #[test]
+    fn importer_applies_layered_padding_option_to_lgraph_padding() {
+        let mut input = graph(vec![node("A")], vec![]);
+        input.options.padding = ElkPadding {
+            top: 7.0,
+            right: 8.0,
+            bottom: 9.0,
+            left: 10.0,
+        };
+
+        let lgraph = import_graph(&input).unwrap();
+
+        assert_eq!(lgraph.padding.top, 7.0);
+        assert_eq!(lgraph.padding.right, 8.0);
+        assert_eq!(lgraph.padding.bottom, 9.0);
+        assert_eq!(lgraph.padding.left, 10.0);
+    }
+
+    #[test]
+    fn importer_applies_layered_padding_option_to_nested_graphs() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let lgraph = import_graph(&graph(vec![cluster, child], vec![])).unwrap();
+        let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+
+        assert_eq!(lgraph.padding.top, 12.0);
+        assert_eq!(lgraph.padding.left, 12.0);
+        assert_eq!(nested.padding.top, 12.0);
+        assert_eq!(nested.padding.left, 12.0);
     }
 
     #[test]

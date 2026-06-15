@@ -199,6 +199,7 @@ pub struct LayeredOptions {
     pub direction_congruency: DirectionCongruency,
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,
+    pub padding: ElkPadding,
     pub spacing: SpacingOptions,
     pub cycle_breaking_strategy: CycleBreakingStrategy,
     pub layering_strategy: LayeringStrategy,
@@ -235,6 +236,31 @@ pub struct LayeredOptions {
     pub graph_has_hyperedges: bool,
     pub graph_has_external_ports: bool,
     pub graph_has_hypernodes: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ElkPadding {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
+}
+
+impl ElkPadding {
+    pub fn uniform(value: f64) -> Self {
+        Self {
+            top: value,
+            right: value,
+            bottom: value,
+            left: value,
+        }
+    }
+}
+
+impl Default for ElkPadding {
+    fn default() -> Self {
+        Self::uniform(12.0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -315,6 +341,7 @@ impl Default for LayeredOptions {
             direction_congruency: DirectionCongruency::ReadingDirection,
             hierarchy_handling: HierarchyHandling::SeparateChildren,
             edge_routing: EdgeRouting::Orthogonal,
+            padding: ElkPadding::default(),
             spacing: SpacingOptions::default(),
             cycle_breaking_strategy: CycleBreakingStrategy::Greedy,
             layering_strategy: LayeringStrategy::NetworkSimplex,
@@ -412,6 +439,13 @@ impl PortConstraints {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mermaid_flowchart_defaults_apply_layered_padding_default() {
+        let options = LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down);
+
+        assert_eq!(options.padding, ElkPadding::uniform(12.0));
+    }
 
     #[test]
     fn mermaid_flowchart_defaults_apply_layered_spacing_base_value() {

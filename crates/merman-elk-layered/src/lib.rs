@@ -40,7 +40,7 @@ pub use intermediate::{
     select_label_sides, split_edge, split_long_edges, switch_label_dummies,
 };
 pub use options::{
-    Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeRouting, ElkDirection,
+    Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeRouting, ElkDirection, ElkPadding,
     GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions, LongEdgeOrderingStrategy,
     NodePlacementStrategy, OrderingStrategy, PortConstraints, PortSortingStrategy,
     SelfLoopDistributionStrategy, SpacingOptions,

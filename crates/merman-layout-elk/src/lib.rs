@@ -171,8 +171,8 @@ fn source_graph_to_layout_result(graph: &LGraph) -> LayoutResult {
 
 fn append_source_graph_layout(graph: &LGraph, parent_origin: LPoint, result: &mut LayoutResult) {
     let graph_origin = LPoint {
-        x: parent_origin.x + graph.offset.x,
-        y: parent_origin.y + graph.offset.y,
+        x: parent_origin.x + graph.offset.x + graph.padding.left,
+        y: parent_origin.y + graph.offset.y + graph.padding.top,
     };
 
     result.nodes.extend(
@@ -385,6 +385,79 @@ mod tests {
         assert_eq!(label.height, 12.0);
         assert!(label.x.is_finite());
         assert!(label.y.is_finite());
+    }
+
+    #[test]
+    fn source_graph_export_applies_graph_offset_and_padding_to_layout() {
+        let mut graph = LGraph::new("root", SourceLayeredOptions::default());
+        graph.offset = LPoint { x: 1.0, y: 2.0 };
+        graph.padding = source_port::LPadding {
+            top: 7.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 12.0,
+        };
+
+        let mut a = source_port::LNode::new("A", 10.0, 20.0, None);
+        a.position = LPoint { x: 3.0, y: 5.0 };
+        let mut b = source_port::LNode::new("B", 10.0, 20.0, None);
+        b.position = LPoint { x: 50.0, y: 60.0 };
+        graph.layerless_nodes.push(a);
+        graph.layerless_nodes.push(b);
+
+        let source = graph
+            .add_port(
+                0,
+                source_port::PortType::Output,
+                source_port::PortSide::South,
+                LPoint { x: 5.0, y: 20.0 },
+            )
+            .unwrap();
+        let target = graph
+            .add_port(
+                1,
+                source_port::PortType::Input,
+                source_port::PortSide::North,
+                LPoint { x: 5.0, y: 0.0 },
+            )
+            .unwrap();
+
+        let mut label = source_port::LLabel::new("label", 6.0, 7.0);
+        label.position = LPoint { x: 30.0, y: 40.0 };
+        graph
+            .add_edge(source_port::LayeredEdge {
+                id: "A-B".to_string(),
+                source,
+                target,
+                source_node_id: "A".to_string(),
+                target_node_id: "B".to_string(),
+                labels: vec![label],
+                minlen: 1,
+                reversed: false,
+                bend_points: vec![LPoint { x: 20.0, y: 30.0 }],
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+            })
+            .unwrap();
+
+        let result = source_graph_to_layout_result(&graph);
+
+        let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let edge = result.edges.iter().find(|edge| edge.id == "A-B").unwrap();
+        assert_eq!(a.x, 21.0);
+        assert_eq!(a.y, 24.0);
+        assert_eq!(b.x, 68.0);
+        assert_eq!(b.y, 79.0);
+        assert_eq!(edge.points[0], Point { x: 21.0, y: 34.0 });
+        assert_eq!(edge.points[1], Point { x: 33.0, y: 39.0 });
+        assert_eq!(edge.points[2], Point { x: 68.0, y: 69.0 });
+        assert_eq!(edge.labels[0].x, 43.0);
+        assert_eq!(edge.labels[0].y, 49.0);
     }
 
     #[test]
