@@ -7,7 +7,10 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::compound::{PendingCompoundSegment, compound_label_segment_index};
+use crate::compound::{
+    PendingCompoundSegment, compound_label_segment_index, link_external_port_dummy,
+    record_cross_hierarchy_edge_segment, set_external_dummy_origin,
+};
 use crate::graph::{
     CompoundEdgeSegment, EdgeLabelPlacement, LGraph, LLabel, LNode, LPort, LSize, LayeredEdge,
     PortRef, PortSide, PortType, create_external_port_dummy,
@@ -324,6 +327,7 @@ fn transform_cross_hierarchy_edge(
                 .as_ref()
                 .filter(|_| label_segment == Some(segment_index)),
         )?;
+        record_cross_hierarchy_edge_segment(graph, edge.id.clone(), edge_index, pending.segment);
         apply_source_ported_compound_endpoint_metadata(input, graph, &pending, edge_index);
     }
 
@@ -377,18 +381,29 @@ fn apply_source_ported_compound_endpoint_metadata(
     let Some(edge) = graph.edges.get(edge_index) else {
         return;
     };
+    let edge_id = edge.id.clone();
     let endpoint = match pending.segment {
         CompoundEdgeSegment::Output { .. } => edge.source,
         CompoundEdgeSegment::Input { .. } => edge.target,
     };
     let Some(node) = graph
         .layerless_nodes
-        .get_mut(endpoint.node)
+        .get(endpoint.node)
         .filter(|node| node.compound)
     else {
         return;
     };
+    let nested_dummy = node
+        .nested_graph
+        .as_deref()
+        .and_then(|nested| {
+            external_dummy_for_compound_edge(nested, edge_id.as_str(), node.id.as_str())
+        })
+        .map(|dummy| (node.nested_graph.as_ref().unwrap().id.clone(), dummy));
 
+    let Some(node) = graph.layerless_nodes.get_mut(endpoint.node) else {
+        return;
+    };
     node.port_constraints = PortConstraints::FixedSide;
     let port_side = match pending.segment {
         CompoundEdgeSegment::Output { .. } => port_side_from_direction(graph.options.direction),
@@ -401,12 +416,47 @@ fn apply_source_ported_compound_endpoint_metadata(
         port.set_side(port_side);
     }
 
+    if let Some((dummy_graph_id, dummy_node)) = nested_dummy {
+        let origin_graph_id = graph.id.clone();
+        link_external_port_dummy(graph, endpoint, dummy_graph_id, dummy_node);
+        if let Some(nested_graph) = graph
+            .layerless_nodes
+            .get_mut(endpoint.node)
+            .and_then(|node| node.nested_graph.as_deref_mut())
+        {
+            set_external_dummy_origin(nested_graph, dummy_node, origin_graph_id, endpoint);
+        }
+    }
+
     if input.options.port_constraints.is_side_fixed() {
         graph.options.port_constraints = PortConstraints::FixedSide;
     } else {
         graph.options.port_constraints = PortConstraints::Free;
     }
     graph.graph_properties.non_free_ports = true;
+}
+
+fn external_dummy_for_compound_edge(
+    nested_graph: &LGraph,
+    edge_id: &str,
+    compound_node_id: &str,
+) -> Option<usize> {
+    let dummy_id = format!("external:{compound_node_id}");
+    nested_graph
+        .layerless_nodes
+        .iter()
+        .enumerate()
+        .find_map(|(node_index, node)| {
+            (node.kind == crate::graph::LNodeKind::ExternalPort
+                && node.id == dummy_id
+                && node.ports.iter().any(|port| {
+                    port.incoming_edges
+                        .iter()
+                        .chain(port.outgoing_edges.iter())
+                        .any(|edge| nested_graph.edges[*edge].id == edge_id)
+                }))
+            .then_some(node_index)
+        })
 }
 
 fn port_side_from_direction(direction: ElkDirection) -> PortSide {
@@ -740,6 +790,91 @@ mod tests {
         assert_eq!(external.ports[0].side, PortSide::South);
         assert_eq!(nested.edges[0].source.node, 1);
         assert_eq!(nested.edges[0].source.port, 0);
+    }
+
+    #[test]
+    fn source_ported_compound_metadata_links_parent_port_and_external_dummy() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let lgraph = import_graph(&graph(
+            vec![cluster, child, node("B")],
+            vec![edge("A-B", "A", "B")],
+        ))
+        .unwrap();
+
+        let cluster_index = lgraph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "cluster")
+            .unwrap();
+        let cluster = &lgraph.layerless_nodes[cluster_index];
+        let parent_port = &cluster.ports[0];
+        let port_dummy = parent_port
+            .port_dummy
+            .as_ref()
+            .expect("compound port should point to nested external dummy");
+        assert!(parent_port.inside_connections);
+        assert_eq!(port_dummy.graph_id, "cluster");
+
+        let nested = cluster.nested_graph.as_ref().unwrap();
+        let external = &nested.layerless_nodes[port_dummy.node];
+        let origin = external
+            .origin_port
+            .as_ref()
+            .expect("external dummy should point back to parent port");
+        assert_eq!(origin.graph_id, "root");
+        assert_eq!(origin.port.node, cluster_index);
+        assert_eq!(origin.port.port, 0);
+    }
+
+    #[test]
+    fn source_ported_compound_import_records_cross_hierarchy_segments() {
+        let mut outer = node("outer");
+        outer.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut inner = node("inner");
+        inner.parent = Some("outer".to_string());
+        inner.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("inner".to_string());
+
+        let lgraph = import_graph(&graph(
+            vec![outer, inner, child, node("B")],
+            vec![edge("A-B", "A", "B")],
+        ))
+        .unwrap();
+
+        let outer = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "outer")
+            .unwrap();
+        let inner_graph = outer
+            .nested_graph
+            .as_ref()
+            .unwrap()
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "inner")
+            .unwrap()
+            .nested_graph
+            .as_ref()
+            .unwrap();
+        let outer_graph = outer.nested_graph.as_ref().unwrap();
+        assert_eq!(
+            inner_graph.cross_hierarchy_edges[0].segment,
+            CompoundEdgeSegment::Output { depth: 2 }
+        );
+        assert_eq!(
+            outer_graph.cross_hierarchy_edges[0].segment,
+            CompoundEdgeSegment::Output { depth: 1 }
+        );
+        assert_eq!(
+            lgraph.cross_hierarchy_edges[0].segment,
+            CompoundEdgeSegment::Output { depth: 0 }
+        );
     }
 
     #[test]

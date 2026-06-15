@@ -27,6 +27,7 @@ pub struct LGraph {
     pub parent_node_id: Option<String>,
     pub hidden_nodes: Vec<usize>,
     pub replaced_external_port_dummies: Vec<usize>,
+    pub cross_hierarchy_edges: Vec<CrossHierarchyEdge>,
 }
 
 impl LGraph {
@@ -47,6 +48,7 @@ impl LGraph {
             parent_node_id: None,
             hidden_nodes: Vec::new(),
             replaced_external_port_dummies: Vec::new(),
+            cross_hierarchy_edges: Vec::new(),
         }
     }
 
@@ -103,6 +105,7 @@ pub struct LNode {
     pub port_ratio_or_position: f64,
     pub replaced_external_port_dummy: Option<usize>,
     pub in_layer_successor_constraints: Vec<usize>,
+    pub origin_port: Option<GraphPortRef>,
     pub origin_edge: Option<usize>,
     pub long_edge_source: Option<PortRef>,
     pub long_edge_target: Option<PortRef>,
@@ -137,6 +140,7 @@ impl LNode {
             port_ratio_or_position: 0.0,
             replaced_external_port_dummy: None,
             in_layer_successor_constraints: Vec::new(),
+            origin_port: None,
             origin_edge: None,
             long_edge_source: None,
             long_edge_target: None,
@@ -185,6 +189,8 @@ pub struct LPort {
     pub border_offset: Option<f64>,
     pub ratio_or_position: f64,
     pub connected_to_external_nodes: bool,
+    pub port_dummy: Option<GraphNodeRef>,
+    pub inside_connections: bool,
     pub end_label_cell: Option<LabelCellLayout>,
     pub incoming_edges: Vec<usize>,
     pub outgoing_edges: Vec<usize>,
@@ -207,6 +213,8 @@ impl LPort {
             border_offset: None,
             ratio_or_position: 0.0,
             connected_to_external_nodes: true,
+            port_dummy: None,
+            inside_connections: false,
             end_label_cell: None,
             incoming_edges: Vec::new(),
             outgoing_edges: Vec::new(),
@@ -267,10 +275,30 @@ pub struct PortRef {
     pub port: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphNodeRef {
+    pub graph_id: String,
+    pub node: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphPortRef {
+    pub graph_id: String,
+    pub port: PortRef,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompoundEdgeSegment {
     Output { depth: usize },
     Input { depth: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossHierarchyEdge {
+    pub original_edge_id: String,
+    pub graph_id: String,
+    pub edge: usize,
+    pub segment: CompoundEdgeSegment,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -729,7 +757,14 @@ impl LGraph {
             }
         }
 
+        let graph_id = self.id.clone();
         for node in &mut self.layerless_nodes {
+            update_graph_port_ref_after_reorder(
+                &mut node.origin_port,
+                graph_id.as_str(),
+                node_index,
+                &old_to_new,
+            );
             if let Some(port) = node.long_edge_source.as_mut()
                 && port.node == node_index
             {
@@ -804,6 +839,20 @@ fn port_exists(graph: &LGraph, port_ref: PortRef) -> bool {
         .get(port_ref.node)
         .and_then(|node| node.ports.get(port_ref.port))
         .is_some()
+}
+
+fn update_graph_port_ref_after_reorder(
+    graph_ref: &mut Option<GraphPortRef>,
+    graph_id: &str,
+    node_index: usize,
+    old_to_new: &[usize],
+) {
+    if let Some(port_ref) = graph_ref.as_mut()
+        && port_ref.graph_id == graph_id
+        && port_ref.port.node == node_index
+    {
+        port_ref.port.port = old_to_new[port_ref.port.port];
+    }
 }
 
 fn remove_edge(edges: &mut Vec<usize>, edge_index: usize) {

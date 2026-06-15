@@ -4,7 +4,11 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPreprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CrossHierarchyEdgeComparator.java
 
-use crate::graph::{CompoundEdgeSegment, EdgeLabelPlacement};
+use crate::graph::{
+    CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphNodeRef, GraphPortRef,
+    LGraph, PortRef,
+};
+use crate::options::PortConstraints;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingCompoundSegment {
@@ -116,6 +120,63 @@ pub(crate) fn compound_label_segment_index(
             .and_then(|index| sorted.get(index).map(|(segment_index, _)| *segment_index))
             .unwrap_or(0),
     }
+}
+
+/// Mirror `CompoundGraphPreprocessor#setSidesOfPortsToSidesOfDummyNodes` for an exported
+/// compound port / external-port dummy pair.
+///
+/// The current importer still creates compatibility segments directly, but this keeps the ELK
+/// `ORIGIN`, `PORT_DUMMY`, and `INSIDE_CONNECTIONS` semantics represented in the graph model.
+pub(crate) fn link_external_port_dummy(
+    parent_graph: &mut LGraph,
+    parent_port: PortRef,
+    dummy_graph_id: impl Into<String>,
+    dummy_node: usize,
+) {
+    let dummy_graph_id = dummy_graph_id.into();
+    let Some(parent_node) = parent_graph.layerless_nodes.get_mut(parent_port.node) else {
+        return;
+    };
+    let Some(parent_port_data) = parent_node.ports.get_mut(parent_port.port) else {
+        return;
+    };
+
+    parent_port_data.port_dummy = Some(GraphNodeRef {
+        graph_id: dummy_graph_id,
+        node: dummy_node,
+    });
+    parent_port_data.inside_connections = true;
+    parent_node.port_constraints = PortConstraints::FixedSide;
+    parent_graph.graph_properties.non_free_ports = true;
+}
+
+pub(crate) fn set_external_dummy_origin(
+    dummy_graph: &mut LGraph,
+    dummy_node: usize,
+    origin_graph_id: impl Into<String>,
+    origin_port: PortRef,
+) {
+    let Some(dummy) = dummy_graph.layerless_nodes.get_mut(dummy_node) else {
+        return;
+    };
+    dummy.origin_port = Some(GraphPortRef {
+        graph_id: origin_graph_id.into(),
+        port: origin_port,
+    });
+}
+
+pub(crate) fn record_cross_hierarchy_edge_segment(
+    graph: &mut LGraph,
+    original_edge_id: impl Into<String>,
+    edge: usize,
+    segment: CompoundEdgeSegment,
+) {
+    graph.cross_hierarchy_edges.push(CrossHierarchyEdge {
+        original_edge_id: original_edge_id.into(),
+        graph_id: graph.id.clone(),
+        edge,
+        segment,
+    });
 }
 
 pub fn compare_compound_segments(

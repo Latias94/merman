@@ -310,7 +310,9 @@ fn append_source_graph_layout(
             labels: edge_labels(graph_origin, edge),
         };
 
-        if let Some(segment) = edge.compound_segment {
+        if let Some(segment) =
+            cross_hierarchy_segment_for_edge(graph, edge_index).or(edge.compound_segment)
+        {
             result
                 .compound_edges
                 .entry(edge.id.clone())
@@ -328,6 +330,16 @@ fn append_source_graph_layout(
             });
         }
     }
+}
+
+fn cross_hierarchy_segment_for_edge(
+    graph: &LGraph,
+    edge_index: usize,
+) -> Option<source_port::CompoundEdgeSegment> {
+    graph
+        .cross_hierarchy_edges
+        .iter()
+        .find_map(|segment| (segment.edge == edge_index).then_some(segment.segment))
 }
 
 #[derive(Debug, Clone)]

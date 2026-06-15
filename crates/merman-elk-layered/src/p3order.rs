@@ -198,12 +198,41 @@ fn process_node_port_sides(graph: &mut LGraph, node: usize) {
 }
 
 pub fn set_port_side(graph: &mut LGraph, port: PortRef) {
-    let side = if graph.layerless_nodes[port.node].ports[port.port].net_flow() < 0 {
+    let port_data = &graph.layerless_nodes[port.node].ports[port.port];
+    let side = if let Some(dummy) = port_data.port_dummy.as_ref() {
+        external_port_dummy_side(graph, port.node, dummy.graph_id.as_str(), dummy.node)
+    } else if port_data.net_flow() < 0 {
         PortSide::East
     } else {
         PortSide::West
     };
-    graph.layerless_nodes[port.node].ports[port.port].set_side(side);
+    if side != PortSide::Undefined {
+        graph.layerless_nodes[port.node].ports[port.port].set_side(side);
+    }
+}
+
+fn external_port_dummy_side(
+    graph: &LGraph,
+    port_node: usize,
+    dummy_graph_id: &str,
+    dummy_node: usize,
+) -> PortSide {
+    if dummy_graph_id == graph.id {
+        return graph
+            .layerless_nodes
+            .get(dummy_node)
+            .map(|node| node.external_port_side)
+            .unwrap_or(PortSide::Undefined);
+    }
+
+    graph
+        .layerless_nodes
+        .get(port_node)
+        .and_then(|node| node.nested_graph.as_deref())
+        .filter(|nested| nested.id == dummy_graph_id)
+        .and_then(|nested| nested.layerless_nodes.get(dummy_node))
+        .map(|node| node.external_port_side)
+        .unwrap_or(PortSide::Undefined)
 }
 
 pub fn sort_port_lists(graph: &mut LGraph) {
@@ -959,7 +988,7 @@ fn update_bigger_and_smaller_associations<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{LPoint, PortType};
+    use crate::graph::{GraphNodeRef, LNode, LNodeKind, LPoint, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::intermediate::split_long_edges;
     use crate::options::{ElkDirection, LayeredOptions};
@@ -1027,6 +1056,39 @@ mod tests {
         );
         assert_eq!(graph.layerless_nodes[a].ports[0].side, PortSide::East);
         assert_eq!(graph.layerless_nodes[b].ports[0].side, PortSide::West);
+    }
+
+    #[test]
+    fn port_side_processor_uses_external_port_dummy_side_before_net_flow() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let parent = graph.layerless_nodes.len();
+        graph
+            .layerless_nodes
+            .push(LNode::new("parent", 80.0, 40.0, None));
+        let dummy = graph.layerless_nodes.len();
+        let mut external = LNode::new("external:parent", 0.0, 0.0, None);
+        external.kind = LNodeKind::ExternalPort;
+        external.external_port_side = PortSide::North;
+        graph.layerless_nodes.push(external);
+        let port = graph
+            .add_port(
+                parent,
+                PortType::Output,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+        graph.layerless_nodes[parent].ports[port.port].port_dummy = Some(GraphNodeRef {
+            graph_id: "root".to_string(),
+            node: dummy,
+        });
+
+        set_port_side(&mut graph, port);
+
+        assert_eq!(
+            graph.layerless_nodes[parent].ports[port.port].side,
+            PortSide::North
+        );
     }
 
     #[test]
