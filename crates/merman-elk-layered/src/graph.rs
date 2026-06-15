@@ -185,6 +185,7 @@ pub struct LPort {
     pub border_offset: Option<f64>,
     pub ratio_or_position: f64,
     pub connected_to_external_nodes: bool,
+    pub end_label_cell: Option<LabelCellLayout>,
     pub incoming_edges: Vec<usize>,
     pub outgoing_edges: Vec<usize>,
 }
@@ -206,6 +207,7 @@ impl LPort {
             border_offset: None,
             ratio_or_position: 0.0,
             connected_to_external_nodes: true,
+            end_label_cell: None,
             incoming_edges: Vec::new(),
             outgoing_edges: Vec::new(),
         }
@@ -344,6 +346,31 @@ impl PortSide {
             Self::Undefined => Self::Undefined,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LabelCellLayout {
+    pub position: LPoint,
+    pub size: LSize,
+    pub horizontal_layout: bool,
+    pub horizontal_alignment: HorizontalLabelAlignment,
+    pub vertical_alignment: VerticalLabelAlignment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HorizontalLabelAlignment {
+    Left,
+    #[default]
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VerticalLabelAlignment {
+    Top,
+    #[default]
+    Center,
+    Bottom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

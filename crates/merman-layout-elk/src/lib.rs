@@ -25,8 +25,9 @@ use source_port::{
 
 pub use compat::{
     Algorithm, CycleBreakingStrategy, Direction, Edge, EdgeLabelLayout, EdgeLayout, EdgeRouting,
-    Error, Graph, HierarchyHandling, Label, LayeredOptions, LayoutOptions, LayoutResult, Node,
-    NodeKind, NodeLayout, Point, Result, Spacing,
+    Error, Graph, HierarchyHandling, Label, LayeredOptions, LayoutOptions, LayoutResult,
+    ModelOrderStrategy, Node, NodeKind, NodeLayout, NodePlacementStrategy, Point, Result,
+    SelfLoopDistributionStrategy, Spacing,
 };
 
 pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
@@ -117,13 +118,19 @@ fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
     options.edge_routing = edge_routing_to_source(graph.options.layered.edge_routing);
     options.cycle_breaking_strategy =
         cycle_breaking_to_source(graph.options.layered.cycle_breaking);
+    options.node_placement_strategy =
+        node_placement_to_source(graph.options.layered.node_placement);
     options.consider_model_order_strategy = if graph.options.layered.consider_model_order {
-        source_port::OrderingStrategy::NodesAndEdges
+        model_order_to_source(graph.options.layered.model_order)
     } else {
         source_port::OrderingStrategy::None
     };
     options.force_node_model_order = graph.options.layered.force_node_model_order;
     options.merge_edges = graph.options.layered.merge_edges;
+    options.merge_hierarchy_edges = graph.options.layered.merge_hierarchy_edges;
+    options.unnecessary_bendpoints = graph.options.layered.unnecessary_bendpoints;
+    options.self_loop_distribution =
+        self_loop_distribution_to_source(graph.options.layered.self_loop_distribution);
     options.greedy_switch_activation_threshold = 0;
     options.greedy_switch_hierarchical_type = GreedySwitchType::TwoSided;
     options
@@ -159,7 +166,41 @@ fn cycle_breaking_to_source(
 ) -> source_port::CycleBreakingStrategy {
     match cycle_breaking {
         CycleBreakingStrategy::Greedy => source_port::CycleBreakingStrategy::Greedy,
+        CycleBreakingStrategy::DepthFirst => source_port::CycleBreakingStrategy::DepthFirst,
+        CycleBreakingStrategy::Interactive => source_port::CycleBreakingStrategy::Interactive,
         CycleBreakingStrategy::ModelOrder => source_port::CycleBreakingStrategy::ModelOrder,
+        CycleBreakingStrategy::GreedyModelOrder => {
+            source_port::CycleBreakingStrategy::GreedyModelOrder
+        }
+    }
+}
+
+fn node_placement_to_source(
+    node_placement: NodePlacementStrategy,
+) -> source_port::NodePlacementStrategy {
+    match node_placement {
+        NodePlacementStrategy::Simple => source_port::NodePlacementStrategy::Simple,
+        NodePlacementStrategy::NetworkSimplex => source_port::NodePlacementStrategy::NetworkSimplex,
+        NodePlacementStrategy::LinearSegments => source_port::NodePlacementStrategy::LinearSegments,
+        NodePlacementStrategy::BrandesKoepf => source_port::NodePlacementStrategy::BrandesKoepf,
+    }
+}
+
+fn model_order_to_source(model_order: ModelOrderStrategy) -> source_port::OrderingStrategy {
+    match model_order {
+        ModelOrderStrategy::None => source_port::OrderingStrategy::None,
+        ModelOrderStrategy::NodesAndEdges => source_port::OrderingStrategy::NodesAndEdges,
+        ModelOrderStrategy::PreferEdges => source_port::OrderingStrategy::PreferEdges,
+        ModelOrderStrategy::PreferNodes => source_port::OrderingStrategy::PreferNodes,
+    }
+}
+
+fn self_loop_distribution_to_source(
+    self_loop_distribution: SelfLoopDistributionStrategy,
+) -> source_port::SelfLoopDistributionStrategy {
+    match self_loop_distribution {
+        SelfLoopDistributionStrategy::North => source_port::SelfLoopDistributionStrategy::North,
+        SelfLoopDistributionStrategy::Equally => source_port::SelfLoopDistributionStrategy::Equally,
     }
 }
 

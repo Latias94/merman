@@ -19,11 +19,12 @@ use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, insert_label_dummies,
-    join_long_edges, postprocess_layer_constraints, preprocess_layer_constraints,
-    process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
-    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
-    remove_label_dummies, restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints,
-    select_label_sides, split_long_edges, switch_label_dummies,
+    join_long_edges, postprocess_end_labels, postprocess_layer_constraints, preprocess_end_labels,
+    preprocess_layer_constraints, process_hierarchical_port_constraints,
+    process_hierarchical_port_dummy_sizes, process_hierarchical_port_orthogonal_edges,
+    process_hierarchical_port_positions, remove_label_dummies, restore_reversed_edges,
+    reverse_edges_for_edge_and_layer_constraints, select_label_sides, sort_end_labels,
+    split_long_edges, switch_label_dummies,
 };
 use crate::p1cycles::break_cycles_greedy;
 use crate::p2layers::layer_network_simplex;
@@ -650,6 +651,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::InnermostNodeMarginCalculator => calculate_innermost_node_margins(graph),
         ProcessorKind::LabelDummySwitcher => switch_label_dummies(graph),
         ProcessorKind::LabelSideSelector => select_label_sides(graph),
+        ProcessorKind::EndLabelPreprocessor => preprocess_end_labels(graph),
         ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
         ProcessorKind::LayerSizeAndGraphHeightCalculator => {
             calculate_layer_sizes_and_graph_height(graph);
@@ -666,8 +668,9 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         }
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
         ProcessorKind::LabelDummyRemover => remove_label_dummies(graph),
-        ProcessorKind::EndLabelSorter if !graph.options.graph_has_end_labels => {}
+        ProcessorKind::EndLabelSorter => sort_end_labels(graph),
         ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
+        ProcessorKind::EndLabelPostprocessor => postprocess_end_labels(graph),
         ProcessorKind::HierarchicalNodeResizer => resize_hierarchical_node_graph(graph),
         ProcessorKind::NoCrossingMinimizer => {}
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
@@ -1753,7 +1756,7 @@ mod tests {
     }
 
     #[test]
-    fn end_label_sorter_stays_unsupported_until_label_cells_are_ported() {
+    fn source_ported_end_label_flowchart_runs_through_end_label_lifecycle() {
         let mut head = ElkInputLabel::center("head", 20.0, 10.0);
         head.placement = crate::graph::EdgeLabelPlacement::Head;
         let mut labelled_edge = edge("A-B", "A", "B");
@@ -1770,13 +1773,30 @@ mod tests {
         })
         .unwrap();
 
-        let err = execute_processor(&mut graph, ProcessorKind::EndLabelSorter).unwrap_err();
+        let executed = execute_ported_processors(&mut graph).unwrap();
 
-        assert_eq!(
-            err,
-            PipelineError::UnsupportedProcessor {
-                kind: ProcessorKind::EndLabelSorter
-            }
+        assert!(executed.contains(&ProcessorKind::LabelSideSelector));
+        assert!(executed.contains(&ProcessorKind::EndLabelPreprocessor));
+        assert!(executed.contains(&ProcessorKind::EndLabelSorter));
+        assert!(executed.contains(&ProcessorKind::EndLabelPostprocessor));
+        let edge = graph.edges.iter().find(|edge| edge.id == "A-B").unwrap();
+        let label = edge
+            .labels
+            .iter()
+            .find(|label| label.placement == crate::graph::EdgeLabelPlacement::Head)
+            .expect("head label should be restored to its original edge");
+        assert_eq!(label.text, "head");
+        assert_eq!(label.size.width, 20.0);
+        assert_eq!(label.size.height, 10.0);
+        assert!(label.position.x.is_finite());
+        assert!(label.position.y.is_finite());
+        assert_eq!(label.end_label_edge, Some(0));
+        assert!(
+            graph
+                .layerless_nodes
+                .iter()
+                .flat_map(|node| node.ports.iter())
+                .all(|port| port.labels.is_empty() && port.end_label_cell.is_none())
         );
     }
 

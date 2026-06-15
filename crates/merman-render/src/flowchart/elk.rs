@@ -570,14 +570,34 @@ fn dir_to_elk_direction(dir: &str) -> elk::Direction {
 }
 
 fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOptions {
-    let consider_model_order = config_string(effective_config, &["elk", "considerModelOrder"])
-        .map(|strategy| !strategy.trim().eq_ignore_ascii_case("NONE"))
-        .unwrap_or(true);
+    let model_order = config_string(effective_config, &["elk", "considerModelOrder"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "NONE" => elk::ModelOrderStrategy::None,
+                "PREFER_EDGES" => elk::ModelOrderStrategy::PreferEdges,
+                "PREFER_NODES" => elk::ModelOrderStrategy::PreferNodes,
+                _ => elk::ModelOrderStrategy::NodesAndEdges,
+            },
+        )
+        .unwrap_or_default();
     let cycle_breaking = config_string(effective_config, &["elk", "cycleBreakingStrategy"])
         .map(
             |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
-                "GREEDY" | "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::Greedy,
-                _ => elk::CycleBreakingStrategy::ModelOrder,
+                "DEPTH_FIRST" => elk::CycleBreakingStrategy::DepthFirst,
+                "INTERACTIVE" => elk::CycleBreakingStrategy::Interactive,
+                "MODEL_ORDER" => elk::CycleBreakingStrategy::ModelOrder,
+                "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::GreedyModelOrder,
+                _ => elk::CycleBreakingStrategy::Greedy,
+            },
+        )
+        .unwrap_or_default();
+    let node_placement = config_string(effective_config, &["elk", "nodePlacementStrategy"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "SIMPLE" => elk::NodePlacementStrategy::Simple,
+                "NETWORK_SIMPLEX" => elk::NodePlacementStrategy::NetworkSimplex,
+                "LINEAR_SEGMENTS" => elk::NodePlacementStrategy::LinearSegments,
+                _ => elk::NodePlacementStrategy::BrandesKoepf,
             },
         )
         .unwrap_or_default();
@@ -585,10 +605,15 @@ fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOption
     elk::LayoutOptions {
         layered: elk::LayeredOptions {
             merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
+            merge_hierarchy_edges: true,
+            unnecessary_bendpoints: true,
+            self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
             force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
                 .unwrap_or(false),
-            consider_model_order,
+            consider_model_order: model_order != elk::ModelOrderStrategy::None,
+            model_order,
             cycle_breaking,
+            node_placement,
             ..Default::default()
         },
     }
@@ -970,9 +995,10 @@ mod tests {
         let config = MermaidConfig::from_value(json!({
             "elk": {
                 "mergeEdges": true,
+                "nodePlacementStrategy": "LINEAR_SEGMENTS",
                 "forceNodeModelOrder": true,
-                "considerModelOrder": "NONE",
-                "cycleBreakingStrategy": "GREEDY"
+                "considerModelOrder": "PREFER_EDGES",
+                "cycleBreakingStrategy": "GREEDY_MODEL_ORDER"
             }
         }));
 
@@ -986,10 +1012,64 @@ mod tests {
 
         assert!(graph.options.layered.merge_edges);
         assert!(graph.options.layered.force_node_model_order);
-        assert!(!graph.options.layered.consider_model_order);
+        assert!(graph.options.layered.consider_model_order);
+        assert_eq!(
+            graph.options.layered.model_order,
+            elk::ModelOrderStrategy::PreferEdges
+        );
         assert_eq!(
             graph.options.layered.cycle_breaking,
-            elk::CycleBreakingStrategy::Greedy
+            elk::CycleBreakingStrategy::GreedyModelOrder
+        );
+        assert_eq!(
+            graph.options.layered.node_placement,
+            elk::NodePlacementStrategy::LinearSegments
+        );
+        assert!(graph.options.layered.unnecessary_bendpoints);
+        assert!(graph.options.layered.merge_hierarchy_edges);
+        assert_eq!(
+            graph.options.layered.self_loop_distribution,
+            elk::SelfLoopDistributionStrategy::Equally
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_graph_adapter_maps_disabled_model_order() {
+        let model = model(
+            vec![
+                node("A", Some("Alpha"), None),
+                node("B", Some("Beta"), None),
+            ],
+            vec![edge("L-A-B", "A", "B", None)],
+        );
+        let config = MermaidConfig::from_value(json!({
+            "elk": {
+                "considerModelOrder": "NONE",
+                "cycleBreakingStrategy": "MODEL_ORDER",
+                "nodePlacementStrategy": "NETWORK_SIMPLEX"
+            }
+        }));
+
+        let graph = build_flowchart_elk_graph(
+            &model,
+            &config,
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+
+        assert!(!graph.options.layered.consider_model_order);
+        assert_eq!(
+            graph.options.layered.model_order,
+            elk::ModelOrderStrategy::None
+        );
+        assert_eq!(
+            graph.options.layered.cycle_breaking,
+            elk::CycleBreakingStrategy::ModelOrder
+        );
+        assert_eq!(
+            graph.options.layered.node_placement,
+            elk::NodePlacementStrategy::NetworkSimplex
         );
     }
 

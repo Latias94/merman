@@ -84,9 +84,14 @@ pub struct LayeredOptions {
     pub hierarchy_handling: HierarchyHandling,
     pub edge_routing: EdgeRouting,
     pub cycle_breaking: CycleBreakingStrategy,
+    pub node_placement: NodePlacementStrategy,
+    pub model_order: ModelOrderStrategy,
     pub consider_model_order: bool,
     pub force_node_model_order: bool,
     pub merge_edges: bool,
+    pub merge_hierarchy_edges: bool,
+    pub unnecessary_bendpoints: bool,
+    pub self_loop_distribution: SelfLoopDistributionStrategy,
 }
 
 impl Default for LayeredOptions {
@@ -95,9 +100,14 @@ impl Default for LayeredOptions {
             hierarchy_handling: HierarchyHandling::IncludeChildren,
             edge_routing: EdgeRouting::Orthogonal,
             cycle_breaking: CycleBreakingStrategy::Greedy,
+            node_placement: NodePlacementStrategy::BrandesKoepf,
+            model_order: ModelOrderStrategy::NodesAndEdges,
             consider_model_order: true,
             force_node_model_order: false,
             merge_edges: false,
+            merge_hierarchy_edges: true,
+            unnecessary_bendpoints: true,
+            self_loop_distribution: SelfLoopDistributionStrategy::Equally,
         }
     }
 }
@@ -121,6 +131,34 @@ pub enum CycleBreakingStrategy {
     ModelOrder,
     #[default]
     Greedy,
+    DepthFirst,
+    Interactive,
+    GreedyModelOrder,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NodePlacementStrategy {
+    Simple,
+    NetworkSimplex,
+    LinearSegments,
+    #[default]
+    BrandesKoepf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModelOrderStrategy {
+    None,
+    #[default]
+    NodesAndEdges,
+    PreferEdges,
+    PreferNodes,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelfLoopDistributionStrategy {
+    North,
+    #[default]
+    Equally,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -653,7 +691,7 @@ impl<'a> LayoutEngine<'a> {
 
     fn cycle_broken_rank_edges(&self, rank_edges: &[RankEdge<'a>]) -> Vec<RankEdge<'a>> {
         match self.graph.options.layered.cycle_breaking {
-            CycleBreakingStrategy::ModelOrder => rank_edges
+            CycleBreakingStrategy::ModelOrder | CycleBreakingStrategy::Interactive => rank_edges
                 .iter()
                 .copied()
                 .enumerate()
@@ -667,7 +705,9 @@ impl<'a> LayoutEngine<'a> {
                     .then_some(edge)
                 })
                 .collect(),
-            CycleBreakingStrategy::Greedy => {
+            CycleBreakingStrategy::Greedy
+            | CycleBreakingStrategy::DepthFirst
+            | CycleBreakingStrategy::GreedyModelOrder => {
                 let mut accepted_edges = Vec::new();
                 let mut accepted_indices = Vec::new();
                 for (edge_index, edge) in rank_edges.iter().copied().enumerate().rev() {
