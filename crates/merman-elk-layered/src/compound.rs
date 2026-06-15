@@ -6,9 +6,9 @@
 
 use crate::graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphNodeRef, GraphPortRef,
-    LGraph, PortRef,
+    LGraph, LNodeKind, PortRef, PortSide,
 };
-use crate::options::PortConstraints;
+use crate::options::{ElkDirection, PortConstraints};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingCompoundSegment {
@@ -177,6 +177,143 @@ pub(crate) fn record_cross_hierarchy_edge_segment(
         edge,
         segment,
     });
+}
+
+/// Compatibility entry point for the source-backed compound preprocessor boundary.
+///
+/// ELK runs `CompoundGraphPreprocessor` after import and before recursive layout. The current
+/// Rust importer still creates hierarchy-local edge segments directly; this hook attaches the
+/// source-backed cross-hierarchy contract to those imported segments at the correct pipeline stage.
+pub fn preprocess_source_ported_compound_graph(graph: &mut LGraph) {
+    preprocess_source_ported_compound_graph_inner(graph);
+}
+
+fn preprocess_source_ported_compound_graph_inner(graph: &mut LGraph) {
+    let edge_count = graph.edges.len();
+    for edge_index in 0..edge_count {
+        let Some(segment) = graph.edges[edge_index].compound_segment else {
+            continue;
+        };
+        ensure_cross_hierarchy_edge_record(graph, edge_index, segment);
+        apply_source_ported_compound_endpoint_metadata(graph, edge_index, segment);
+    }
+
+    for node in &mut graph.layerless_nodes {
+        if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
+            preprocess_source_ported_compound_graph_inner(nested_graph);
+        }
+    }
+}
+
+fn ensure_cross_hierarchy_edge_record(
+    graph: &mut LGraph,
+    edge_index: usize,
+    segment: CompoundEdgeSegment,
+) {
+    let edge_id = graph.edges[edge_index].id.clone();
+    if graph
+        .cross_hierarchy_edges
+        .iter()
+        .any(|candidate| candidate.edge == edge_index)
+    {
+        return;
+    }
+    record_cross_hierarchy_edge_segment(graph, edge_id, edge_index, segment);
+}
+
+fn apply_source_ported_compound_endpoint_metadata(
+    graph: &mut LGraph,
+    edge_index: usize,
+    segment: CompoundEdgeSegment,
+) {
+    let Some(edge) = graph.edges.get(edge_index) else {
+        return;
+    };
+    let edge_id = edge.id.clone();
+    let endpoint = match segment {
+        CompoundEdgeSegment::Output { .. } => edge.source,
+        CompoundEdgeSegment::Input { .. } => edge.target,
+    };
+    let Some(node) = graph
+        .layerless_nodes
+        .get(endpoint.node)
+        .filter(|node| node.compound)
+    else {
+        return;
+    };
+    let nested_dummy = node
+        .nested_graph
+        .as_deref()
+        .and_then(|nested| {
+            external_dummy_for_compound_edge(nested, edge_id.as_str(), node.id.as_str())
+        })
+        .map(|dummy| (node.nested_graph.as_ref().unwrap().id.clone(), dummy));
+
+    let Some(node) = graph.layerless_nodes.get_mut(endpoint.node) else {
+        return;
+    };
+    node.port_constraints = PortConstraints::FixedSide;
+    let port_side = match segment {
+        CompoundEdgeSegment::Output { .. } => port_side_from_direction(graph.options.direction),
+        CompoundEdgeSegment::Input { .. } => {
+            port_side_from_direction(graph.options.direction).opposed()
+        }
+    };
+
+    if let Some(port) = node.ports.get_mut(endpoint.port) {
+        port.set_side(port_side);
+    }
+
+    if let Some((dummy_graph_id, dummy_node)) = nested_dummy {
+        let origin_graph_id = graph.id.clone();
+        link_external_port_dummy(graph, endpoint, dummy_graph_id, dummy_node);
+        if let Some(nested_graph) = graph
+            .layerless_nodes
+            .get_mut(endpoint.node)
+            .and_then(|node| node.nested_graph.as_deref_mut())
+        {
+            set_external_dummy_origin(nested_graph, dummy_node, origin_graph_id, endpoint);
+        }
+    }
+
+    if graph.options.port_constraints.is_side_fixed() {
+        graph.options.port_constraints = PortConstraints::FixedSide;
+    } else {
+        graph.options.port_constraints = PortConstraints::Free;
+    }
+    graph.graph_properties.non_free_ports = true;
+}
+
+fn external_dummy_for_compound_edge(
+    nested_graph: &LGraph,
+    edge_id: &str,
+    compound_node_id: &str,
+) -> Option<usize> {
+    let dummy_id = format!("external:{compound_node_id}");
+    nested_graph
+        .layerless_nodes
+        .iter()
+        .enumerate()
+        .find_map(|(node_index, node)| {
+            (node.kind == LNodeKind::ExternalPort
+                && node.id == dummy_id
+                && node.ports.iter().any(|port| {
+                    port.incoming_edges
+                        .iter()
+                        .chain(port.outgoing_edges.iter())
+                        .any(|edge| nested_graph.edges[*edge].id == edge_id)
+                }))
+            .then_some(node_index)
+        })
+}
+
+fn port_side_from_direction(direction: ElkDirection) -> PortSide {
+    match direction {
+        ElkDirection::Right | ElkDirection::Undefined => PortSide::East,
+        ElkDirection::Left => PortSide::West,
+        ElkDirection::Down => PortSide::South,
+        ElkDirection::Up => PortSide::North,
+    }
 }
 
 pub fn compare_compound_segments(

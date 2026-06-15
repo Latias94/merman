@@ -15,6 +15,7 @@ use super::options::{
     GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
     WrappingStrategy,
 };
+use crate::compound::preprocess_source_ported_compound_graph;
 use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::LGraph;
 use crate::intermediate::{
@@ -436,6 +437,7 @@ pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<Proce
 pub fn execute_ported_compound_processors(
     graph: &mut LGraph,
 ) -> PipelineResult<Vec<GraphExecution>> {
+    preprocess_source_ported_compound_graph(graph);
     configure_graph_properties(graph);
     reject_unsupported_compound_graph(graph)?;
     review_and_correct_hierarchical_processors(graph)?;

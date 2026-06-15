@@ -7,10 +7,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::compound::{
-    PendingCompoundSegment, compound_label_segment_index, link_external_port_dummy,
-    record_cross_hierarchy_edge_segment, set_external_dummy_origin,
-};
+use crate::compound::compound_label_segment_index;
 use crate::graph::{
     CompoundEdgeSegment, EdgeLabelPlacement, LGraph, LLabel, LNode, LPort, LSize, LayeredEdge,
     PortRef, PortSide, PortType, create_external_port_dummy,
@@ -166,7 +163,7 @@ fn import_hierarchical_graph(
             let graph = graph_for_path(root, &source_path);
             transform_edge(edge, graph, edge_order)?;
         } else {
-            transform_cross_hierarchy_edge(input, edge, index, root, edge_order)?;
+            transform_cross_hierarchy_edge(edge, index, root, edge_order)?;
         }
     }
 
@@ -292,7 +289,6 @@ fn transform_edge_between(
 /// Source:
 /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPreprocessor.java
 fn transform_cross_hierarchy_edge(
-    input: &ElkInputGraph,
     edge: &ElkInputEdge,
     index: &InputIndex<'_>,
     root: &mut LGraph,
@@ -314,7 +310,7 @@ fn transform_cross_hierarchy_edge(
 
     for (segment_index, pending) in segments.into_iter().enumerate() {
         let graph = graph_for_parent(root, pending.graph_parent.as_deref());
-        let edge_index = transform_edge_between(
+        transform_edge_between(
             edge,
             graph,
             model_order,
@@ -327,8 +323,6 @@ fn transform_cross_hierarchy_edge(
                 .as_ref()
                 .filter(|_| label_segment == Some(segment_index)),
         )?;
-        record_cross_hierarchy_edge_segment(graph, edge.id.clone(), edge_index, pending.segment);
-        apply_source_ported_compound_endpoint_metadata(input, graph, &pending, edge_index);
     }
 
     Ok(())
@@ -370,102 +364,6 @@ fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> Option
     dummy.ports[0].node = node;
     graph.layerless_nodes.push(dummy);
     Some(PortRef { node, port: 0 })
-}
-
-fn apply_source_ported_compound_endpoint_metadata(
-    input: &ElkInputGraph,
-    graph: &mut LGraph,
-    pending: &PendingCompoundSegment,
-    edge_index: usize,
-) {
-    let Some(edge) = graph.edges.get(edge_index) else {
-        return;
-    };
-    let edge_id = edge.id.clone();
-    let endpoint = match pending.segment {
-        CompoundEdgeSegment::Output { .. } => edge.source,
-        CompoundEdgeSegment::Input { .. } => edge.target,
-    };
-    let Some(node) = graph
-        .layerless_nodes
-        .get(endpoint.node)
-        .filter(|node| node.compound)
-    else {
-        return;
-    };
-    let nested_dummy = node
-        .nested_graph
-        .as_deref()
-        .and_then(|nested| {
-            external_dummy_for_compound_edge(nested, edge_id.as_str(), node.id.as_str())
-        })
-        .map(|dummy| (node.nested_graph.as_ref().unwrap().id.clone(), dummy));
-
-    let Some(node) = graph.layerless_nodes.get_mut(endpoint.node) else {
-        return;
-    };
-    node.port_constraints = PortConstraints::FixedSide;
-    let port_side = match pending.segment {
-        CompoundEdgeSegment::Output { .. } => port_side_from_direction(graph.options.direction),
-        CompoundEdgeSegment::Input { .. } => {
-            port_side_from_direction(graph.options.direction).opposed()
-        }
-    };
-
-    if let Some(port) = node.ports.get_mut(endpoint.port) {
-        port.set_side(port_side);
-    }
-
-    if let Some((dummy_graph_id, dummy_node)) = nested_dummy {
-        let origin_graph_id = graph.id.clone();
-        link_external_port_dummy(graph, endpoint, dummy_graph_id, dummy_node);
-        if let Some(nested_graph) = graph
-            .layerless_nodes
-            .get_mut(endpoint.node)
-            .and_then(|node| node.nested_graph.as_deref_mut())
-        {
-            set_external_dummy_origin(nested_graph, dummy_node, origin_graph_id, endpoint);
-        }
-    }
-
-    if input.options.port_constraints.is_side_fixed() {
-        graph.options.port_constraints = PortConstraints::FixedSide;
-    } else {
-        graph.options.port_constraints = PortConstraints::Free;
-    }
-    graph.graph_properties.non_free_ports = true;
-}
-
-fn external_dummy_for_compound_edge(
-    nested_graph: &LGraph,
-    edge_id: &str,
-    compound_node_id: &str,
-) -> Option<usize> {
-    let dummy_id = format!("external:{compound_node_id}");
-    nested_graph
-        .layerless_nodes
-        .iter()
-        .enumerate()
-        .find_map(|(node_index, node)| {
-            (node.kind == crate::graph::LNodeKind::ExternalPort
-                && node.id == dummy_id
-                && node.ports.iter().any(|port| {
-                    port.incoming_edges
-                        .iter()
-                        .chain(port.outgoing_edges.iter())
-                        .any(|edge| nested_graph.edges[*edge].id == edge_id)
-                }))
-            .then_some(node_index)
-        })
-}
-
-fn port_side_from_direction(direction: ElkDirection) -> PortSide {
-    match direction {
-        ElkDirection::Right | ElkDirection::Undefined => PortSide::East,
-        ElkDirection::Left => PortSide::West,
-        ElkDirection::Down => PortSide::South,
-        ElkDirection::Up => PortSide::North,
-    }
 }
 
 fn has_parallel_port_edges(port: &LPort) -> bool {
@@ -640,6 +538,7 @@ fn detect_parent_cycles<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compound::preprocess_source_ported_compound_graph;
     use crate::graph::{InLayerConstraint, LNodeKind};
     use crate::options::OrderingStrategy;
 
@@ -799,11 +698,12 @@ mod tests {
         let mut child = node("A");
         child.parent = Some("cluster".to_string());
 
-        let lgraph = import_graph(&graph(
+        let mut lgraph = import_graph(&graph(
             vec![cluster, child, node("B")],
             vec![edge("A-B", "A", "B")],
         ))
         .unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
 
         let cluster_index = lgraph
             .layerless_nodes
@@ -840,11 +740,12 @@ mod tests {
         let mut child = node("A");
         child.parent = Some("inner".to_string());
 
-        let lgraph = import_graph(&graph(
+        let mut lgraph = import_graph(&graph(
             vec![outer, inner, child, node("B")],
             vec![edge("A-B", "A", "B")],
         ))
         .unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
 
         let outer = lgraph
             .layerless_nodes
