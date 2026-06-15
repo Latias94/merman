@@ -193,6 +193,7 @@ pub struct LPort {
     pub connected_to_external_nodes: bool,
     pub port_dummy: Option<GraphNodeRef>,
     pub inside_connections: bool,
+    pub collector_type: Option<PortType>,
     pub end_label_cell: Option<LabelCellLayout>,
     pub incoming_edges: Vec<usize>,
     pub outgoing_edges: Vec<usize>,
@@ -217,6 +218,7 @@ impl LPort {
             connected_to_external_nodes: true,
             port_dummy: None,
             inside_connections: false,
+            collector_type: None,
             end_label_cell: None,
             incoming_edges: Vec::new(),
             outgoing_edges: Vec::new(),
@@ -562,6 +564,44 @@ impl LGraph {
         })
     }
 
+    /// Return a collector port for an input or output edge endpoint, creating it if needed.
+    ///
+    /// Source:
+    /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LGraphUtil.java
+    pub fn provide_collector_port(
+        &mut self,
+        node_index: usize,
+        port_type: PortType,
+        side: PortSide,
+    ) -> Option<PortRef> {
+        let node = self.layerless_nodes.get_mut(node_index)?;
+        if let Some(port) = node
+            .ports
+            .iter()
+            .position(|port| port.collector_type == Some(port_type))
+        {
+            return Some(PortRef {
+                node: node_index,
+                port,
+            });
+        }
+
+        let port_index = node.ports.len();
+        let mut port = LPort::new(
+            format!("{}:collector:{port_type:?}", node.id),
+            node_index,
+            port_type,
+        );
+        port.collector_type = Some(port_type);
+        port.set_side(side);
+        port.position = centered_port_position(node.size, side);
+        node.ports.push(port);
+        Some(PortRef {
+            node: node_index,
+            port: port_index,
+        })
+    }
+
     pub fn set_edge_source(&mut self, edge_index: usize, source: PortRef) -> bool {
         if self.edges.get(edge_index).is_none() || !port_exists(self, source) {
             return false;
@@ -808,10 +848,10 @@ impl LGraph {
 /// Source:
 /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LEdge.java
 ///
-/// `adapt_ports` is accepted to keep the call sites aligned with ELK. The collector-port branch
-/// depends on `InternalProperties.INPUT_COLLECT` / `OUTPUT_COLLECT`, which are not represented by
-/// the current importer yet, so this currently performs the non-collector endpoint swap.
-pub fn reverse_edge(graph: &mut LGraph, edge_index: usize, _adapt_ports: bool) -> bool {
+/// `adapt_ports` follows ELK's collector-port handling: a reversed edge that previously targeted
+/// an input collector is moved to the same node's output collector, and a reversed edge that
+/// previously sourced an output collector is moved to the same node's input collector.
+pub fn reverse_edge(graph: &mut LGraph, edge_index: usize, adapt_ports: bool) -> bool {
     let Some(edge) = graph.edges.get(edge_index) else {
         return false;
     };
@@ -831,16 +871,38 @@ pub fn reverse_edge(graph: &mut LGraph, edge_index: usize, _adapt_ports: bool) -
         edge_index,
     );
 
-    graph.layerless_nodes[old_target.node].ports[old_target.port]
+    let new_source = if adapt_ports
+        && graph.layerless_nodes[old_target.node].ports[old_target.port].collector_type
+            == Some(PortType::Input)
+    {
+        graph
+            .provide_collector_port(old_target.node, PortType::Output, PortSide::East)
+            .unwrap_or(old_target)
+    } else {
+        old_target
+    };
+
+    let new_target = if adapt_ports
+        && graph.layerless_nodes[old_source.node].ports[old_source.port].collector_type
+            == Some(PortType::Output)
+    {
+        graph
+            .provide_collector_port(old_source.node, PortType::Input, PortSide::West)
+            .unwrap_or(old_source)
+    } else {
+        old_source
+    };
+
+    graph.layerless_nodes[new_source.node].ports[new_source.port]
         .outgoing_edges
         .push(edge_index);
-    graph.layerless_nodes[old_source.node].ports[old_source.port]
+    graph.layerless_nodes[new_target.node].ports[new_target.port]
         .incoming_edges
         .push(edge_index);
 
     let edge = &mut graph.edges[edge_index];
-    edge.source = old_target;
-    edge.target = old_source;
+    edge.source = new_source;
+    edge.target = new_target;
 
     for label in &mut edge.labels {
         label.placement = match label.placement {
@@ -861,6 +923,28 @@ fn port_exists(graph: &LGraph, port_ref: PortRef) -> bool {
         .get(port_ref.node)
         .and_then(|node| node.ports.get(port_ref.port))
         .is_some()
+}
+
+fn centered_port_position(node_size: LSize, side: PortSide) -> LPoint {
+    match side {
+        PortSide::North => LPoint {
+            x: node_size.width / 2.0,
+            y: 0.0,
+        },
+        PortSide::East => LPoint {
+            x: node_size.width,
+            y: node_size.height / 2.0,
+        },
+        PortSide::South => LPoint {
+            x: node_size.width / 2.0,
+            y: node_size.height,
+        },
+        PortSide::West => LPoint {
+            x: 0.0,
+            y: node_size.height / 2.0,
+        },
+        PortSide::Undefined => LPoint::default(),
+    }
 }
 
 fn update_graph_port_ref_after_reorder(

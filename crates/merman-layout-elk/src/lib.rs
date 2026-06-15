@@ -88,6 +88,7 @@ fn graph_to_source_input(graph: &Graph) -> ElkInputGraph {
                     NodeKind::Leaf => None,
                 },
                 layer_constraint: None,
+                port_constraints: None,
                 label: node
                     .label
                     .map(|label| ElkInputLabel::center("", label.width, label.height)),

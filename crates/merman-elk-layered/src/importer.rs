@@ -32,6 +32,7 @@ pub struct ElkInputNode {
     pub direction: Option<ElkDirection>,
     pub hierarchy_handling: Option<HierarchyHandling>,
     pub layer_constraint: Option<LayerConstraint>,
+    pub port_constraints: Option<PortConstraints>,
     pub label: Option<ElkInputLabel>,
 }
 
@@ -184,6 +185,7 @@ fn apply_graph_padding_from_options(graph: &mut LGraph) {
 
 fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<usize>) -> usize {
     let mut lnode = LNode::new(node.id.clone(), node.width, node.height, model_order);
+    lnode.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
     if let Some(layer_constraint) = node.layer_constraint {
         lnode.layer_constraint = layer_constraint;
         lnode.layer_constraint_explicit = true;
@@ -241,12 +243,6 @@ fn transform_edge_between(
         graph.graph_properties.self_loops = true;
     }
 
-    if has_parallel_port_edges(&graph.layerless_nodes[source.node].ports[source.port])
-        || has_parallel_port_edges(&graph.layerless_nodes[target.node].ports[target.port])
-    {
-        graph.graph_properties.hyperedges = true;
-    }
-
     let mut labels = Vec::new();
     if let Some(label) = label {
         match label.placement {
@@ -258,8 +254,7 @@ fn transform_edge_between(
         labels.push(label_to_lgraph(label));
     }
 
-    let edge_index = graph.edges.len();
-    graph
+    let edge_index = graph
         .add_edge(LayeredEdge {
             id: edge.id.clone(),
             source,
@@ -279,6 +274,12 @@ fn transform_edge_between(
             compound_segment,
         })
         .expect("ports were created before adding edge");
+
+    if has_parallel_port_edges(&graph.layerless_nodes[source.node].ports[source.port])
+        || has_parallel_port_edges(&graph.layerless_nodes[target.node].ports[target.port])
+    {
+        graph.graph_properties.hyperedges = true;
+    }
 
     Ok(edge_index)
 }
@@ -347,6 +348,17 @@ fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> Option
         .iter()
         .position(|candidate| candidate.id == node_id)
     {
+        if graph.options.merge_edges
+            && !graph.layerless_nodes[node].port_constraints.is_side_fixed()
+        {
+            let default_side = port_side_from_direction(graph.options.direction);
+            let side = match port_type {
+                PortType::Output => default_side,
+                PortType::Input => default_side.opposed(),
+            };
+            return graph.provide_collector_port(node, port_type, side);
+        }
+
         let port = graph.layerless_nodes[node].ports.len();
         graph.layerless_nodes[node].ports.push(LPort::new(
             format!("{node_id}:{port:?}"),
@@ -381,6 +393,15 @@ fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> Option
 
 fn has_parallel_port_edges(port: &LPort) -> bool {
     port.incoming_edges.len() + port.outgoing_edges.len() > 1
+}
+
+fn port_side_from_direction(direction: ElkDirection) -> PortSide {
+    match direction {
+        ElkDirection::Right | ElkDirection::Undefined => PortSide::East,
+        ElkDirection::Left => PortSide::West,
+        ElkDirection::Down => PortSide::South,
+        ElkDirection::Up => PortSide::North,
+    }
 }
 
 fn label_to_lgraph(label: &ElkInputLabel) -> LLabel {
@@ -564,6 +585,7 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_constraints: None,
             label: None,
         }
     }
@@ -977,6 +999,83 @@ mod tests {
             nested.edges.iter().all(
                 |edge| nested.layerless_nodes[edge.source.node].kind == LNodeKind::ExternalPort
             )
+        );
+    }
+
+    #[test]
+    fn importer_reuses_collector_ports_when_edges_are_merged() {
+        let mut input = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("A-B", "A", "B"), edge("A-C", "A", "C")],
+        );
+        input.options.merge_edges = true;
+
+        let lgraph = import_graph(&input).unwrap();
+
+        let a = lgraph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        assert_eq!(lgraph.layerless_nodes[a].ports.len(), 1);
+        assert_eq!(
+            lgraph.layerless_nodes[a].ports[0].collector_type,
+            Some(PortType::Output)
+        );
+        assert_eq!(
+            lgraph.layerless_nodes[a].ports[0].outgoing_edges,
+            vec![0, 1]
+        );
+        assert!(lgraph.graph_properties.hyperedges);
+        assert!(lgraph.options.graph_has_hyperedges);
+    }
+
+    #[test]
+    fn importer_keeps_dedicated_ports_when_edge_merge_is_disabled() {
+        let lgraph = import_graph(&graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("A-B", "A", "B"), edge("A-C", "A", "C")],
+        ))
+        .unwrap();
+
+        let a = lgraph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        assert_eq!(lgraph.layerless_nodes[a].ports.len(), 2);
+        assert!(
+            lgraph.layerless_nodes[a]
+                .ports
+                .iter()
+                .all(|port| port.collector_type.is_none())
+        );
+        assert!(!lgraph.graph_properties.hyperedges);
+    }
+
+    #[test]
+    fn importer_keeps_dedicated_ports_when_node_port_constraints_are_side_fixed() {
+        let mut a = node("A");
+        a.port_constraints = Some(PortConstraints::FixedSide);
+        let mut input = graph(
+            vec![a, node("B"), node("C")],
+            vec![edge("A-B", "A", "B"), edge("A-C", "A", "C")],
+        );
+        input.options.merge_edges = true;
+
+        let lgraph = import_graph(&input).unwrap();
+
+        let a = lgraph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        assert_eq!(lgraph.layerless_nodes[a].ports.len(), 2);
+        assert!(
+            lgraph.layerless_nodes[a]
+                .ports
+                .iter()
+                .all(|port| port.collector_type.is_none())
         );
     }
 

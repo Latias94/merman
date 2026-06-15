@@ -237,7 +237,7 @@ fn non_negative_priority_weight(priority: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{EdgeLabelPlacement, LPoint, Layer};
+    use crate::graph::{EdgeLabelPlacement, LPoint, Layer, PortSide, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::intermediate::restore_reversed_edges;
     use crate::options::{ElkDirection, LayeredOptions};
@@ -251,6 +251,7 @@ mod tests {
             direction: None,
             hierarchy_handling: None,
             layer_constraint: None,
+            port_constraints: None,
             label: None,
         }
     }
@@ -435,6 +436,72 @@ mod tests {
             vec![LPoint { x: 3.0, y: 4.0 }, LPoint { x: 1.0, y: 2.0 }]
         );
         assert!(graph.edges[0].reversed);
+    }
+
+    #[test]
+    fn reverse_edge_adapts_collector_ports_like_elk() {
+        let mut input = ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![node("A"), node("B")],
+            edges: vec![edge("A-B", "A", "B")],
+        };
+        input.options.merge_edges = true;
+        let mut graph = import_graph(&input).unwrap();
+        let old_source = graph.edges[0].source;
+        let old_target = graph.edges[0].target;
+
+        assert_eq!(
+            graph.layerless_nodes[old_source.node].ports[old_source.port].collector_type,
+            Some(PortType::Output)
+        );
+        assert_eq!(
+            graph.layerless_nodes[old_target.node].ports[old_target.port].collector_type,
+            Some(PortType::Input)
+        );
+
+        assert!(crate::graph::reverse_edge(&mut graph, 0, true));
+
+        let new_source = graph.edges[0].source;
+        let new_target = graph.edges[0].target;
+        assert_eq!(new_source.node, old_target.node);
+        assert_eq!(new_target.node, old_source.node);
+        assert_ne!(new_source.port, old_target.port);
+        assert_ne!(new_target.port, old_source.port);
+        assert_eq!(
+            graph.layerless_nodes[new_source.node].ports[new_source.port].collector_type,
+            Some(PortType::Output)
+        );
+        assert_eq!(
+            graph.layerless_nodes[new_source.node].ports[new_source.port].side,
+            PortSide::East
+        );
+        assert_eq!(
+            graph.layerless_nodes[new_target.node].ports[new_target.port].collector_type,
+            Some(PortType::Input)
+        );
+        assert_eq!(
+            graph.layerless_nodes[new_target.node].ports[new_target.port].side,
+            PortSide::West
+        );
+        assert!(
+            graph.layerless_nodes[old_source.node].ports[old_source.port]
+                .outgoing_edges
+                .is_empty()
+        );
+        assert!(
+            graph.layerless_nodes[old_target.node].ports[old_target.port]
+                .incoming_edges
+                .is_empty()
+        );
+        assert_eq!(
+            graph.layerless_nodes[new_source.node].ports[new_source.port].outgoing_edges,
+            vec![0]
+        );
+        assert_eq!(
+            graph.layerless_nodes[new_target.node].ports[new_target.port].incoming_edges,
+            vec![0]
+        );
     }
 
     fn has_directed_cycle(graph: &LGraph) -> bool {
