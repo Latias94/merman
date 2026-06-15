@@ -22,9 +22,9 @@ use crate::intermediate::{
     join_long_edges, postprocess_end_labels, postprocess_layer_constraints, preprocess_end_labels,
     preprocess_layer_constraints, process_hierarchical_port_constraints,
     process_hierarchical_port_dummy_sizes, process_hierarchical_port_orthogonal_edges,
-    process_hierarchical_port_positions, remove_label_dummies, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, select_label_sides, sort_end_labels,
-    split_long_edges, switch_label_dummies,
+    process_hierarchical_port_positions, process_inverted_ports, remove_label_dummies,
+    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, select_label_sides,
+    sort_end_labels, split_long_edges, switch_label_dummies,
 };
 use crate::p1cycles::{break_cycles_greedy, break_cycles_greedy_model_order};
 use crate::p2layers::layer_network_simplex;
@@ -636,6 +636,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         }
         ProcessorKind::LongEdgeSplitter => split_long_edges(graph),
         ProcessorKind::PortSideProcessor => process_port_sides(graph),
+        ProcessorKind::InvertedPortProcessor => process_inverted_ports(graph),
         ProcessorKind::PortListSorter => sort_port_lists(graph),
         ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph),
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {

@@ -16,6 +16,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortDummySizeProcessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortPositionProcessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HierarchicalPortOrthogonalEdgeRouter.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/InvertedPortProcessor.java
 
 use std::collections::VecDeque;
 
@@ -404,6 +405,195 @@ pub fn postprocess_layer_constraints(graph: &mut LGraph) -> IntermediateResult<(
     }
 
     Ok(())
+}
+
+pub fn process_inverted_ports(graph: &mut LGraph) {
+    let mut previous_layer = None;
+    let mut unassigned_nodes = Vec::new();
+
+    for layer_index in 0..graph.layers.len() {
+        if let Some(target_layer) = previous_layer {
+            assign_nodes_to_layer(graph, &mut unassigned_nodes, target_layer);
+        }
+        previous_layer = Some(layer_index);
+
+        let layer_nodes = graph.layers[layer_index].nodes.clone();
+        for node in layer_nodes {
+            if graph.layerless_nodes[node].kind != LNodeKind::Normal
+                || !graph.layerless_nodes[node].port_constraints.is_side_fixed()
+            {
+                continue;
+            }
+
+            let east_input_ports = ports_with_incidence(graph, node, PortSide::East, true);
+            for port in east_input_ports {
+                let incoming_edges = graph.layerless_nodes[node].ports[port]
+                    .incoming_edges
+                    .clone();
+                for edge in incoming_edges {
+                    create_east_port_side_dummy(
+                        graph,
+                        PortRef { node, port },
+                        edge,
+                        &mut unassigned_nodes,
+                    );
+                }
+            }
+
+            let west_output_ports = ports_with_incidence(graph, node, PortSide::West, false);
+            for port in west_output_ports {
+                let outgoing_edges = graph.layerless_nodes[node].ports[port]
+                    .outgoing_edges
+                    .clone();
+                for edge in outgoing_edges {
+                    create_west_port_side_dummy(
+                        graph,
+                        PortRef { node, port },
+                        edge,
+                        &mut unassigned_nodes,
+                    );
+                }
+            }
+        }
+    }
+
+    if let Some(target_layer) = previous_layer {
+        assign_nodes_to_layer(graph, &mut unassigned_nodes, target_layer);
+    }
+}
+
+fn ports_with_incidence(graph: &LGraph, node: usize, side: PortSide, incoming: bool) -> Vec<usize> {
+    graph.layerless_nodes[node]
+        .ports
+        .iter()
+        .enumerate()
+        .filter_map(|(port, data)| {
+            (data.side == side
+                && if incoming {
+                    !data.incoming_edges.is_empty()
+                } else {
+                    !data.outgoing_edges.is_empty()
+                })
+            .then_some(port)
+        })
+        .collect()
+}
+
+fn create_east_port_side_dummy(
+    graph: &mut LGraph,
+    eastward_port: PortRef,
+    edge_index: usize,
+    unassigned_nodes: &mut Vec<usize>,
+) {
+    if graph.edges[edge_index].source.node == eastward_port.node {
+        return;
+    }
+
+    let original_target = graph.edges[edge_index].target;
+    let dummy = create_inverted_port_dummy(graph, edge_index);
+    unassigned_nodes.push(dummy);
+    let dummy_input = add_inverted_dummy_port(graph, dummy, PortType::Input, PortSide::West);
+    let dummy_output = add_inverted_dummy_port(graph, dummy, PortType::Output, PortSide::East);
+
+    if !graph.set_edge_target(edge_index, dummy_input) {
+        return;
+    }
+
+    let dummy_edge = clone_inverted_dummy_edge(graph, edge_index, dummy_output, original_target);
+    let Some(dummy_edge_index) = graph.add_edge(dummy_edge) else {
+        return;
+    };
+
+    set_dummy_node_properties(graph, dummy, edge_index, dummy_edge_index);
+    move_head_labels(graph, edge_index, dummy_edge_index);
+}
+
+fn create_west_port_side_dummy(
+    graph: &mut LGraph,
+    westward_port: PortRef,
+    edge_index: usize,
+    unassigned_nodes: &mut Vec<usize>,
+) {
+    if graph.edges[edge_index].target.node == westward_port.node {
+        return;
+    }
+
+    let original_target = graph.edges[edge_index].target;
+    let dummy = create_inverted_port_dummy(graph, edge_index);
+    unassigned_nodes.push(dummy);
+    let dummy_input = add_inverted_dummy_port(graph, dummy, PortType::Input, PortSide::West);
+    let dummy_output = add_inverted_dummy_port(graph, dummy, PortType::Output, PortSide::East);
+
+    if !graph.set_edge_target(edge_index, dummy_input) {
+        return;
+    }
+
+    let dummy_edge = clone_inverted_dummy_edge(graph, edge_index, dummy_output, original_target);
+    let Some(dummy_edge_index) = graph.add_edge(dummy_edge) else {
+        return;
+    };
+
+    set_dummy_node_properties(graph, dummy, edge_index, dummy_edge_index);
+    move_head_labels(graph, edge_index, dummy_edge_index);
+}
+
+fn create_inverted_port_dummy(graph: &mut LGraph, edge_index: usize) -> usize {
+    let dummy_index = graph.layerless_nodes.len();
+    let mut dummy = LNode::new(
+        format!("invertedPort:{edge_index}:{dummy_index}"),
+        0.0,
+        0.0,
+        None,
+    );
+    dummy.kind = LNodeKind::LongEdge;
+    dummy.origin_edge = Some(edge_index);
+    dummy.port_constraints = PortConstraints::FixedPos;
+    graph.layerless_nodes.push(dummy);
+    dummy_index
+}
+
+fn add_inverted_dummy_port(
+    graph: &mut LGraph,
+    dummy: usize,
+    port_type: PortType,
+    side: PortSide,
+) -> PortRef {
+    graph
+        .add_port(dummy, port_type, side, LPoint::default())
+        .expect("inverted-port dummy was just inserted")
+}
+
+fn clone_inverted_dummy_edge(
+    graph: &LGraph,
+    edge_index: usize,
+    source: PortRef,
+    target: PortRef,
+) -> LayeredEdge {
+    let old_edge = &graph.edges[edge_index];
+    LayeredEdge {
+        id: old_edge.id.clone(),
+        source,
+        target,
+        source_node_id: old_edge.source_node_id.clone(),
+        target_node_id: old_edge.target_node_id.clone(),
+        labels: Vec::new(),
+        minlen: old_edge.minlen,
+        reversed: old_edge.reversed,
+        bend_points: Vec::new(),
+        model_order: old_edge.model_order,
+        priority_direction: old_edge.priority_direction,
+        priority_shortness: old_edge.priority_shortness,
+        priority_straightness: old_edge.priority_straightness,
+        thickness: old_edge.thickness,
+        original_opposite_port: old_edge.original_opposite_port,
+        compound_segment: old_edge.compound_segment,
+    }
+}
+
+fn assign_nodes_to_layer(graph: &mut LGraph, nodes: &mut Vec<usize>, layer_index: usize) {
+    for node in nodes.drain(..) {
+        graph.set_node_layer(node, layer_index);
+    }
 }
 
 fn move_first_and_last_nodes(graph: &mut LGraph) -> IntermediateResult<()> {
@@ -3274,6 +3464,97 @@ mod tests {
         assert_eq!(
             graph.edges[moved_label_edge].labels[0].end_label_edge,
             Some(long_edge)
+        );
+    }
+
+    #[test]
+    fn inverted_port_processor_splits_east_input_ports() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let source = push_normal_node(&mut graph, "A");
+        let target = push_normal_node(&mut graph, "B");
+        graph.layerless_nodes[target].port_constraints = PortConstraints::FixedSide;
+        graph.layerless_nodes[target].ports[0].set_side(PortSide::East);
+        graph.set_node_layer(source, 0);
+        graph.set_node_layer(target, 1);
+        let edge = add_test_edge(&mut graph, "A-B", source, 0, target, 0);
+        let mut head = LLabel::new("head", 10.0, 8.0);
+        head.placement = EdgeLabelPlacement::Head;
+        graph.edges[edge].labels.push(head);
+
+        process_inverted_ports(&mut graph);
+
+        let dummy = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.kind == LNodeKind::LongEdge)
+            .expect("inverted input should create a long-edge dummy");
+        assert_eq!(graph.layerless_nodes[dummy].layer_index, Some(1));
+        assert_eq!(graph.edges[edge].target.node, dummy);
+        assert_eq!(graph.edges[edge].target.port, 0);
+        assert!(graph.edges[edge].labels.is_empty());
+
+        let dummy_edge = graph
+            .edges
+            .iter()
+            .position(|candidate| candidate.source.node == dummy && candidate.target.node == target)
+            .expect("dummy should reconnect to original target port");
+        assert_eq!(graph.edges[dummy_edge].source.port, 1);
+        assert_eq!(graph.edges[dummy_edge].target.port, 0);
+        assert_eq!(graph.edges[dummy_edge].labels[0].text, "head");
+        assert_eq!(graph.edges[dummy_edge].labels[0].end_label_edge, Some(edge));
+        assert_eq!(
+            graph.layerless_nodes[dummy].long_edge_source,
+            Some(graph.edges[edge].source)
+        );
+        assert_eq!(
+            graph.layerless_nodes[dummy].long_edge_target,
+            Some(graph.edges[dummy_edge].target)
+        );
+    }
+
+    #[test]
+    fn inverted_port_processor_splits_west_output_ports() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let source = push_normal_node(&mut graph, "A");
+        let target = push_normal_node(&mut graph, "B");
+        graph.layerless_nodes[source].port_constraints = PortConstraints::FixedSide;
+        graph.layerless_nodes[source].ports[0].port_type = PortType::Output;
+        graph.layerless_nodes[source].ports[0].set_side(PortSide::West);
+        graph.set_node_layer(source, 0);
+        graph.set_node_layer(target, 1);
+        let edge = add_test_edge(&mut graph, "A-B", source, 0, target, 0);
+        let mut head = LLabel::new("head", 10.0, 8.0);
+        head.placement = EdgeLabelPlacement::Head;
+        graph.edges[edge].labels.push(head);
+
+        process_inverted_ports(&mut graph);
+
+        let dummy = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.kind == LNodeKind::LongEdge)
+            .expect("inverted output should create a long-edge dummy");
+        assert_eq!(graph.layerless_nodes[dummy].layer_index, Some(0));
+        assert_eq!(graph.edges[edge].source.node, source);
+        assert_eq!(graph.edges[edge].target.node, dummy);
+        assert_eq!(graph.edges[edge].target.port, 0);
+        assert!(graph.edges[edge].labels.is_empty());
+
+        let dummy_edge = graph
+            .edges
+            .iter()
+            .position(|candidate| candidate.source.node == dummy && candidate.target.node == target)
+            .expect("dummy should reconnect to original target port");
+        assert_eq!(graph.edges[dummy_edge].source.port, 1);
+        assert_eq!(graph.edges[dummy_edge].labels[0].text, "head");
+        assert_eq!(graph.edges[dummy_edge].labels[0].end_label_edge, Some(edge));
+        assert_eq!(
+            graph.layerless_nodes[dummy].long_edge_source,
+            Some(graph.edges[edge].source)
+        );
+        assert_eq!(
+            graph.layerless_nodes[dummy].long_edge_target,
+            Some(graph.edges[dummy_edge].target)
         );
     }
 
