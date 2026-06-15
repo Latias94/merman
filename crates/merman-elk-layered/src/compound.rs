@@ -318,9 +318,12 @@ fn ensure_segment_endpoint_port(
     port_type: PortType,
 ) -> PortRef {
     match endpoint {
-        PendingSegmentEndpoint::LocalNode(node_id)
-        | PendingSegmentEndpoint::ParentBoundary(node_id) => {
-            ensure_port(graph, node_id.as_str(), port_type)
+        PendingSegmentEndpoint::LocalNode(node_id) => {
+            ensure_local_node_port(graph, node_id.as_str(), port_type)
+                .expect("compound segment local endpoint should exist in the current graph")
+        }
+        PendingSegmentEndpoint::ParentBoundary(node_id) => {
+            create_parent_boundary_port(graph, node_id.as_str(), port_type)
         }
     }
 }
@@ -573,7 +576,11 @@ fn external_dummy_for_compound_edge(
         })
 }
 
-fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> PortRef {
+fn ensure_local_node_port(
+    graph: &mut LGraph,
+    node_id: &str,
+    port_type: PortType,
+) -> Option<PortRef> {
     if let Some(node) = graph
         .layerless_nodes
         .iter()
@@ -585,13 +592,20 @@ fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> PortRe
             node,
             port_type,
         ));
-        return PortRef { node, port };
+        return Some(PortRef { node, port });
     }
+    None
+}
 
+fn create_parent_boundary_port(
+    graph: &mut LGraph,
+    parent_node_id: &str,
+    port_type: PortType,
+) -> PortRef {
     graph.graph_properties.external_ports = true;
     let mut dummy = create_external_port_dummy(
-        format!("external:{node_id}"),
-        format!("external:{node_id}:0"),
+        format!("external:{parent_node_id}"),
+        format!("external:{parent_node_id}:0"),
         port_type,
         PortConstraints::Free,
         PortSide::Undefined,

@@ -523,6 +523,7 @@ fn detect_parent_cycles<'a>(
 mod tests {
     use super::*;
     use crate::compound::preprocess_source_ported_compound_graph;
+    use crate::graph::LNodeKind;
     use crate::options::OrderingStrategy;
 
     fn node(id: &str) -> ElkInputNode {
@@ -738,6 +739,38 @@ mod tests {
             .expect("external dummy should point back to parent port");
         assert_eq!(origin.graph_id, "root");
         assert_eq!(origin.port.node, cluster_index);
+    }
+
+    #[test]
+    fn source_ported_compound_parent_boundary_segments_use_external_port_dummies() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let mut lgraph = import_graph(&graph(
+            vec![cluster, child],
+            vec![edge("cluster-A", "cluster", "A")],
+        ))
+        .unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
+        let cluster = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap();
+        let nested = cluster.nested_graph.as_ref().unwrap();
+        let segment = nested
+            .edges
+            .iter()
+            .find(|edge| edge.id == "cluster-A")
+            .unwrap();
+
+        assert_eq!(
+            nested.layerless_nodes[segment.source.node].kind,
+            LNodeKind::ExternalPort
+        );
+        assert_eq!(nested.layerless_nodes[segment.target.node].id, "A");
     }
 
     #[test]
