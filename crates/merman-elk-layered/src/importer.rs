@@ -702,6 +702,45 @@ mod tests {
     }
 
     #[test]
+    fn source_ported_compound_metadata_links_parent_to_child_external_dummy() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let mut lgraph = import_graph(&graph(
+            vec![cluster, child],
+            vec![edge("cluster-A", "cluster", "A")],
+        ))
+        .unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
+
+        let cluster_index = lgraph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "cluster")
+            .unwrap();
+        let cluster = &lgraph.layerless_nodes[cluster_index];
+        let parent_port = cluster
+            .ports
+            .iter()
+            .find(|port| port.port_dummy.is_some())
+            .expect("parent-to-child edge should create a parent external port");
+        let port_dummy = parent_port.port_dummy.as_ref().unwrap();
+        assert!(parent_port.inside_connections);
+        assert_eq!(port_dummy.graph_id, "cluster");
+
+        let nested = cluster.nested_graph.as_ref().unwrap();
+        let external = &nested.layerless_nodes[port_dummy.node];
+        let origin = external
+            .origin_port
+            .as_ref()
+            .expect("external dummy should point back to parent port");
+        assert_eq!(origin.graph_id, "root");
+        assert_eq!(origin.port.node, cluster_index);
+    }
+
+    #[test]
     fn source_ported_compound_import_records_cross_hierarchy_segments() {
         let mut outer = node("outer");
         outer.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);

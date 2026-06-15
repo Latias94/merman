@@ -192,6 +192,7 @@ pub(crate) fn record_cross_hierarchy_edge_segment(
 pub fn preprocess_source_ported_compound_graph(graph: &mut LGraph) {
     introduce_source_ported_hierarchy_edge_segments(graph);
     preprocess_source_ported_compound_graph_inner(graph);
+    link_compound_external_dummy_metadata(graph);
 }
 
 fn introduce_source_ported_hierarchy_edge_segments(graph: &mut LGraph) {
@@ -405,6 +406,129 @@ fn apply_source_ported_compound_endpoint_metadata(
         graph.options.port_constraints = PortConstraints::Free;
     }
     graph.graph_properties.non_free_ports = true;
+}
+
+#[derive(Debug, Clone)]
+struct ExternalDummyInfo {
+    dummy_node: usize,
+    incident_edge_ids: Vec<String>,
+    port_type: PortType,
+}
+
+fn link_compound_external_dummy_metadata(graph: &mut LGraph) {
+    let graph_id = graph.id.clone();
+    let node_count = graph.layerless_nodes.len();
+
+    for node_index in 0..node_count {
+        let Some(nested_graph) = graph.layerless_nodes[node_index].nested_graph.as_deref() else {
+            continue;
+        };
+        let parent_node_id = graph.layerless_nodes[node_index].id.clone();
+        let nested_graph_id = nested_graph.id.clone();
+        let external_dummies =
+            external_dummies_for_parent_node(nested_graph, parent_node_id.as_str());
+
+        for external_dummy in external_dummies {
+            let parent_port = parent_port_for_external_dummy(graph, node_index, &external_dummy)
+                .unwrap_or_else(|| {
+                    create_parent_external_port(graph, node_index, external_dummy.port_type)
+                });
+            link_external_port_dummy(
+                graph,
+                parent_port,
+                nested_graph_id.clone(),
+                external_dummy.dummy_node,
+            );
+
+            if let Some(nested_graph) = graph.layerless_nodes[node_index]
+                .nested_graph
+                .as_deref_mut()
+            {
+                set_external_dummy_origin(
+                    nested_graph,
+                    external_dummy.dummy_node,
+                    graph_id.clone(),
+                    parent_port,
+                );
+            }
+        }
+
+        if let Some(nested_graph) = graph.layerless_nodes[node_index]
+            .nested_graph
+            .as_deref_mut()
+        {
+            link_compound_external_dummy_metadata(nested_graph);
+        }
+    }
+}
+
+fn external_dummies_for_parent_node(
+    nested_graph: &LGraph,
+    parent_node_id: &str,
+) -> Vec<ExternalDummyInfo> {
+    let dummy_id = format!("external:{parent_node_id}");
+    nested_graph
+        .layerless_nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node.kind == LNodeKind::ExternalPort && node.id == dummy_id)
+        .filter_map(|(dummy_node, node)| {
+            let port = node.ports.first()?;
+            let incident_edge_ids = port
+                .incoming_edges
+                .iter()
+                .chain(port.outgoing_edges.iter())
+                .map(|edge| nested_graph.edges[*edge].id.clone())
+                .collect::<Vec<_>>();
+            Some(ExternalDummyInfo {
+                dummy_node,
+                incident_edge_ids,
+                port_type: port.port_type,
+            })
+        })
+        .collect()
+}
+
+fn parent_port_for_external_dummy(
+    graph: &LGraph,
+    parent_node: usize,
+    external_dummy: &ExternalDummyInfo,
+) -> Option<PortRef> {
+    graph
+        .layerless_nodes
+        .get(parent_node)?
+        .ports
+        .iter()
+        .enumerate()
+        .find_map(|(port_index, port)| {
+            let matches_edge = port
+                .incoming_edges
+                .iter()
+                .chain(port.outgoing_edges.iter())
+                .any(|edge| {
+                    external_dummy
+                        .incident_edge_ids
+                        .contains(&graph.edges[*edge].id)
+                });
+            matches_edge.then_some(PortRef {
+                node: parent_node,
+                port: port_index,
+            })
+        })
+}
+
+fn create_parent_external_port(
+    graph: &mut LGraph,
+    parent_node: usize,
+    port_type: PortType,
+) -> PortRef {
+    let port_side = match port_type {
+        PortType::Output => port_side_from_direction(graph.options.direction),
+        PortType::Input => port_side_from_direction(graph.options.direction).opposed(),
+    };
+    graph
+        .add_port(parent_node, port_type, port_side, Default::default())
+        .expect("parent compound node should exist when linking external dummy")
 }
 
 fn external_dummy_for_compound_edge(
