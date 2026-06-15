@@ -14,9 +14,15 @@ use crate::options::{ElkDirection, PortConstraints};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingCompoundSegment {
     pub(crate) graph_parent: Option<String>,
-    pub(crate) source: String,
-    pub(crate) target: String,
+    pub(crate) source: PendingSegmentEndpoint,
+    pub(crate) target: PendingSegmentEndpoint,
     pub(crate) segment: CompoundEdgeSegment,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PendingSegmentEndpoint {
+    LocalNode(String),
+    ParentBoundary(String),
 }
 
 /// Build the graph-local segments for a hierarchy-crossing edge.
@@ -47,8 +53,8 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
         };
         segments.push(PendingCompoundSegment {
             graph_parent: Some(source_path[depth - 1].to_string()),
-            source: segment_source,
-            target: source_path[depth - 1].to_string(),
+            source: PendingSegmentEndpoint::LocalNode(segment_source),
+            target: PendingSegmentEndpoint::ParentBoundary(source_path[depth - 1].to_string()),
             segment: CompoundEdgeSegment::Output { depth },
         });
     }
@@ -77,8 +83,8 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
             graph_parent: common_depth
                 .checked_sub(1)
                 .map(|parent_depth| source_path[parent_depth].to_string()),
-            source: segment_source,
-            target: segment_target,
+            source: PendingSegmentEndpoint::LocalNode(segment_source),
+            target: PendingSegmentEndpoint::LocalNode(segment_target),
             segment,
         });
     }
@@ -91,8 +97,8 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
         };
         segments.push(PendingCompoundSegment {
             graph_parent: Some(target_path[depth - 1].to_string()),
-            source: target_path[depth - 1].to_string(),
-            target: segment_target,
+            source: PendingSegmentEndpoint::ParentBoundary(target_path[depth - 1].to_string()),
+            target: PendingSegmentEndpoint::LocalNode(segment_target),
             segment: CompoundEdgeSegment::Input { depth },
         });
     }
@@ -262,8 +268,8 @@ fn add_source_ported_hierarchy_edge_segment(
     pending: &PendingCompoundSegment,
     labels: Vec<LLabel>,
 ) -> usize {
-    let source = ensure_port(graph, pending.source.as_str(), PortType::Output);
-    let target = ensure_port(graph, pending.target.as_str(), PortType::Input);
+    let source = ensure_segment_endpoint_port(graph, &pending.source, PortType::Output);
+    let target = ensure_segment_endpoint_port(graph, &pending.target, PortType::Input);
 
     if source.node == target.node {
         graph.graph_properties.self_loops = true;
@@ -304,6 +310,19 @@ fn add_source_ported_hierarchy_edge_segment(
             compound_segment: Some(pending.segment),
         })
         .expect("ports were created before adding hierarchy edge segment")
+}
+
+fn ensure_segment_endpoint_port(
+    graph: &mut LGraph,
+    endpoint: &PendingSegmentEndpoint,
+    port_type: PortType,
+) -> PortRef {
+    match endpoint {
+        PendingSegmentEndpoint::LocalNode(node_id)
+        | PendingSegmentEndpoint::ParentBoundary(node_id) => {
+            ensure_port(graph, node_id.as_str(), port_type)
+        }
+    }
 }
 
 fn preprocess_source_ported_compound_graph_inner(graph: &mut LGraph) {
@@ -695,6 +714,25 @@ mod tests {
                 CompoundEdgeSegment::Output { depth: 0 },
                 CompoundEdgeSegment::Input { depth: 1 },
             ]
+        );
+    }
+
+    #[test]
+    fn source_ported_segments_mark_parent_boundary_endpoints() {
+        let segments =
+            source_ported_cross_hierarchy_segments("A", "B", &["outer", "inner"], &["sibling"]);
+
+        assert_eq!(
+            segments[0].target,
+            PendingSegmentEndpoint::ParentBoundary("inner".to_string())
+        );
+        assert_eq!(
+            segments[2].target,
+            PendingSegmentEndpoint::LocalNode("sibling".to_string())
+        );
+        assert_eq!(
+            segments[3].source,
+            PendingSegmentEndpoint::ParentBoundary("sibling".to_string())
         );
     }
 
