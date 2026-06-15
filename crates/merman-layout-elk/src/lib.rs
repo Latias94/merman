@@ -310,19 +310,22 @@ fn append_source_graph_layout(
             labels: edge_labels(graph_origin, edge),
         };
 
-        if let Some(segment) = compound_layout_segment_for_edge(graph, edge_index) {
-            let original_edge_id = segment.original_edge_id.clone();
-            result
-                .compound_edges
-                .entry(original_edge_id)
-                .or_default()
-                .push(CompoundEdgeLayoutSegment {
-                    original_edge_id: segment.original_edge_id,
-                    segment: segment.segment,
-                    graph_depth,
-                    model_order: edge.model_order,
-                    edge: edge_layout,
-                });
+        let compound_segments = compound_layout_segments_for_edge(graph, edge_index);
+        if !compound_segments.is_empty() {
+            for segment in compound_segments {
+                let original_edge_id = segment.original_edge_id.clone();
+                result
+                    .compound_edges
+                    .entry(original_edge_id)
+                    .or_default()
+                    .push(CompoundEdgeLayoutSegment {
+                        original_edge_id: segment.original_edge_id,
+                        segment: segment.segment,
+                        graph_depth,
+                        model_order: edge.model_order,
+                        edge: edge_layout.clone(),
+                    });
+            }
         } else {
             result.edges.push(OrderedEdgeLayout {
                 model_order: edge.model_order,
@@ -332,27 +335,34 @@ fn append_source_graph_layout(
     }
 }
 
-fn compound_layout_segment_for_edge(
+fn compound_layout_segments_for_edge(
     graph: &LGraph,
     edge_index: usize,
-) -> Option<CompoundLayoutSegment> {
-    graph
+) -> Vec<CompoundLayoutSegment> {
+    let segments = graph
         .cross_hierarchy_edges
         .iter()
-        .find_map(|segment| {
+        .filter_map(|segment| {
             (segment.edge == edge_index).then(|| CompoundLayoutSegment {
                 original_edge_id: segment.original_edge_id.clone(),
                 segment: segment.segment,
             })
         })
-        .or_else(|| {
-            graph.edges[edge_index]
-                .compound_segment
-                .map(|segment| CompoundLayoutSegment {
-                    original_edge_id: graph.edges[edge_index].id.clone(),
-                    segment,
-                })
+        .collect::<Vec<_>>();
+
+    if !segments.is_empty() {
+        return segments;
+    }
+
+    graph.edges[edge_index]
+        .compound_segment
+        .map(|segment| {
+            vec![CompoundLayoutSegment {
+                original_edge_id: graph.edges[edge_index].id.clone(),
+                segment,
+            }]
         })
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone)]
@@ -754,6 +764,72 @@ mod tests {
         let result = source_graph_to_layout_result(&graph);
 
         assert!(result.edges.iter().any(|edge| edge.id == "A-B"));
+        assert!(!result.edges.iter().any(|edge| edge.id == "merged-segment"));
+    }
+
+    #[test]
+    fn source_graph_export_all_original_edges_for_shared_compound_segment() {
+        let mut graph = LGraph::new("root", SourceLayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(source_port::LNode::new("A", 10.0, 20.0, None));
+        graph
+            .layerless_nodes
+            .push(source_port::LNode::new("B", 10.0, 20.0, None));
+
+        let source = graph
+            .add_port(
+                0,
+                source_port::PortType::Output,
+                source_port::PortSide::South,
+                LPoint { x: 5.0, y: 20.0 },
+            )
+            .unwrap();
+        let target = graph
+            .add_port(
+                1,
+                source_port::PortType::Input,
+                source_port::PortSide::North,
+                LPoint { x: 5.0, y: 0.0 },
+            )
+            .unwrap();
+
+        let segment_edge = graph
+            .add_edge(source_port::LayeredEdge {
+                id: "merged-segment".to_string(),
+                source,
+                target,
+                source_node_id: "A".to_string(),
+                target_node_id: "B".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+
+        for original_edge_id in ["A-B-1", "A-B-2"] {
+            graph
+                .cross_hierarchy_edges
+                .push(source_port::CrossHierarchyEdge {
+                    original_edge_id: original_edge_id.to_string(),
+                    graph_id: "root".to_string(),
+                    edge: segment_edge,
+                    segment: source_port::CompoundEdgeSegment::Output { depth: 0 },
+                });
+        }
+
+        let result = source_graph_to_layout_result(&graph);
+
+        assert!(result.edges.iter().any(|edge| edge.id == "A-B-1"));
+        assert!(result.edges.iter().any(|edge| edge.id == "A-B-2"));
         assert!(!result.edges.iter().any(|edge| edge.id == "merged-segment"));
     }
 
