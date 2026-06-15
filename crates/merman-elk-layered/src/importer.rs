@@ -295,10 +295,25 @@ fn transform_cross_hierarchy_edge(
 ) -> ImportResult<()> {
     let source_path = index.graph_path(edge.source.as_str());
     let target_path = index.graph_path(edge.target.as_str());
+    let merge_edges = root.options.merge_edges;
     root.hierarchy_edges.push(HierarchyEdge {
         id: edge.id.clone(),
         source_node_id: edge.source.clone(),
         target_node_id: edge.target.clone(),
+        source_port_key: hierarchy_port_key(
+            edge.source.as_str(),
+            model_order,
+            "source",
+            merge_edges,
+            PortType::Output,
+        ),
+        target_port_key: hierarchy_port_key(
+            edge.target.as_str(),
+            model_order,
+            "target",
+            merge_edges,
+            PortType::Input,
+        ),
         source_path: source_path.into_iter().map(str::to_string).collect(),
         target_path: target_path.into_iter().map(str::to_string).collect(),
         labels: edge.label.iter().map(label_to_lgraph).collect(),
@@ -310,6 +325,20 @@ fn transform_cross_hierarchy_edge(
     });
 
     Ok(())
+}
+
+fn hierarchy_port_key(
+    node_id: &str,
+    model_order: usize,
+    role: &str,
+    merge_edges: bool,
+    port_type: PortType,
+) -> String {
+    if merge_edges {
+        format!("{node_id}:collector:{port_type:?}")
+    } else {
+        format!("{node_id}:{model_order}:{role}")
+    }
 }
 
 fn ensure_port(graph: &mut LGraph, node_id: &str, port_type: PortType) -> Option<PortRef> {
@@ -818,6 +847,136 @@ mod tests {
         assert_eq!(
             lgraph.cross_hierarchy_edges[0].segment,
             CompoundEdgeSegment::Output { depth: 0 }
+        );
+    }
+
+    #[test]
+    fn source_ported_compound_reuses_exported_external_port_when_hierarchy_edges_merge() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut first = edge("A-B", "A", "B");
+        let mut first_label = ElkInputLabel::center("first", 12.0, 6.0);
+        first_label.placement = EdgeLabelPlacement::Tail;
+        first.label = Some(first_label);
+        let mut second = edge("A-C", "A", "C");
+        let mut second_label = ElkInputLabel::center("second", 18.0, 6.0);
+        second_label.placement = EdgeLabelPlacement::Tail;
+        second.label = Some(second_label);
+        let mut input = graph(
+            vec![cluster, child, node("B"), node("C")],
+            vec![first, second],
+        );
+        input.options.merge_edges = true;
+        input.options.merge_hierarchy_edges = true;
+
+        let mut lgraph = import_graph(&input).unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
+
+        let nested = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap()
+            .nested_graph
+            .as_ref()
+            .unwrap();
+        assert_eq!(nested.edges.len(), 1);
+        assert_eq!(nested.cross_hierarchy_edges.len(), 2);
+        assert!(
+            nested
+                .cross_hierarchy_edges
+                .iter()
+                .all(|segment| segment.edge == 0)
+        );
+        assert_eq!(nested.edges[0].labels.len(), 2);
+        assert_eq!(
+            nested.edges[0]
+                .labels
+                .iter()
+                .filter_map(|label| label.original_label_edge.as_deref())
+                .collect::<Vec<_>>(),
+            vec!["A-B", "A-C"]
+        );
+        assert!(nested.graph_properties.end_labels);
+    }
+
+    #[test]
+    fn source_ported_compound_keeps_external_ports_distinct_when_hierarchy_merge_is_disabled() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut input = graph(
+            vec![cluster, child, node("B"), node("C")],
+            vec![edge("A-B", "A", "B"), edge("A-C", "A", "C")],
+        );
+        input.options.merge_edges = true;
+        input.options.merge_hierarchy_edges = false;
+
+        let mut lgraph = import_graph(&input).unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
+
+        let nested = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap()
+            .nested_graph
+            .as_ref()
+            .unwrap();
+        assert_eq!(nested.edges.len(), 2);
+        assert_eq!(
+            nested
+                .cross_hierarchy_edges
+                .iter()
+                .map(|segment| segment.edge)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+    }
+
+    #[test]
+    fn source_ported_compound_parent_end_segments_are_not_reused() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut input = graph(
+            vec![cluster, child],
+            vec![
+                edge("cluster-A-1", "cluster", "A"),
+                edge("cluster-A-2", "cluster", "A"),
+            ],
+        );
+        input.options.merge_edges = true;
+        input.options.merge_hierarchy_edges = true;
+
+        let mut lgraph = import_graph(&input).unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
+
+        let nested = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap()
+            .nested_graph
+            .as_ref()
+            .unwrap();
+        assert_eq!(nested.edges.len(), 2);
+        assert_eq!(
+            nested
+                .cross_hierarchy_edges
+                .iter()
+                .map(|segment| segment.edge)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+        assert!(
+            nested.edges.iter().all(
+                |edge| nested.layerless_nodes[edge.source.node].kind == LNodeKind::ExternalPort
+            )
         );
     }
 

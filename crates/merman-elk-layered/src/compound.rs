@@ -4,6 +4,8 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPreprocessor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CrossHierarchyEdgeComparator.java
 
+use std::collections::HashMap;
+
 use crate::graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphNodeRef, GraphPortRef,
     HierarchyEdge, LGraph, LLabel, LNodeKind, LPort, LSize, LayeredEdge, PortRef, PortSide,
@@ -21,8 +23,15 @@ pub(crate) struct PendingCompoundSegment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PendingSegmentEndpoint {
-    LocalNode(String),
-    ParentBoundary(String),
+    LocalNode {
+        node_id: String,
+        port_key: String,
+    },
+    ParentBoundary {
+        node_id: String,
+        port_key: String,
+        connects_parent_node: bool,
+    },
 }
 
 /// Build the graph-local segments for a hierarchy-crossing edge.
@@ -34,6 +43,8 @@ pub(crate) enum PendingSegmentEndpoint {
 pub(crate) fn source_ported_cross_hierarchy_segments(
     source: &str,
     target: &str,
+    source_port_key: &str,
+    target_port_key: &str,
     source_path: &[&str],
     target_path: &[&str],
 ) -> Vec<PendingCompoundSegment> {
@@ -53,8 +64,15 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
         };
         segments.push(PendingCompoundSegment {
             graph_parent: Some(source_path[depth - 1].to_string()),
-            source: PendingSegmentEndpoint::LocalNode(segment_source),
-            target: PendingSegmentEndpoint::ParentBoundary(source_path[depth - 1].to_string()),
+            source: PendingSegmentEndpoint::LocalNode {
+                node_id: segment_source,
+                port_key: source_port_key.to_string(),
+            },
+            target: PendingSegmentEndpoint::ParentBoundary {
+                node_id: source_path[depth - 1].to_string(),
+                port_key: source_port_key.to_string(),
+                connects_parent_node: target == source_path[depth - 1],
+            },
             segment: CompoundEdgeSegment::Output { depth },
         });
     }
@@ -83,8 +101,14 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
             graph_parent: common_depth
                 .checked_sub(1)
                 .map(|parent_depth| source_path[parent_depth].to_string()),
-            source: PendingSegmentEndpoint::LocalNode(segment_source),
-            target: PendingSegmentEndpoint::LocalNode(segment_target),
+            source: PendingSegmentEndpoint::LocalNode {
+                node_id: segment_source,
+                port_key: source_port_key.to_string(),
+            },
+            target: PendingSegmentEndpoint::LocalNode {
+                node_id: segment_target,
+                port_key: target_port_key.to_string(),
+            },
             segment,
         });
     }
@@ -97,8 +121,15 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
         };
         segments.push(PendingCompoundSegment {
             graph_parent: Some(target_path[depth - 1].to_string()),
-            source: PendingSegmentEndpoint::ParentBoundary(target_path[depth - 1].to_string()),
-            target: PendingSegmentEndpoint::LocalNode(segment_target),
+            source: PendingSegmentEndpoint::ParentBoundary {
+                node_id: target_path[depth - 1].to_string(),
+                port_key: target_port_key.to_string(),
+                connects_parent_node: source == target_path[depth - 1],
+            },
+            target: PendingSegmentEndpoint::LocalNode {
+                node_id: segment_target,
+                port_key: target_port_key.to_string(),
+            },
             segment: CompoundEdgeSegment::Input { depth },
         });
     }
@@ -203,8 +234,9 @@ pub fn preprocess_source_ported_compound_graph(graph: &mut LGraph) {
 
 fn introduce_source_ported_hierarchy_edge_segments(graph: &mut LGraph) {
     let hierarchy_edges = std::mem::take(&mut graph.hierarchy_edges);
+    let mut external_ports = HashMap::new();
     for edge in hierarchy_edges {
-        introduce_source_ported_hierarchy_edge(graph, &edge);
+        introduce_source_ported_hierarchy_edge(graph, &edge, &mut external_ports);
     }
 
     for node in &mut graph.layerless_nodes {
@@ -214,7 +246,11 @@ fn introduce_source_ported_hierarchy_edge_segments(graph: &mut LGraph) {
     }
 }
 
-fn introduce_source_ported_hierarchy_edge(graph: &mut LGraph, edge: &HierarchyEdge) {
+fn introduce_source_ported_hierarchy_edge(
+    graph: &mut LGraph,
+    edge: &HierarchyEdge,
+    external_ports: &mut HashMap<ExternalPortKey, ExternalPort>,
+) {
     let source_path = edge
         .source_path
         .iter()
@@ -228,6 +264,8 @@ fn introduce_source_ported_hierarchy_edge(graph: &mut LGraph, edge: &HierarchyEd
     let segments = source_ported_cross_hierarchy_segments(
         edge.source_node_id.as_str(),
         edge.target_node_id.as_str(),
+        edge.source_port_key.as_str(),
+        edge.target_port_key.as_str(),
         &source_path,
         &target_path,
     );
@@ -251,7 +289,8 @@ fn introduce_source_ported_hierarchy_edge(graph: &mut LGraph, edge: &HierarchyEd
             })
             .collect::<Vec<_>>();
         let graph = graph_for_parent_mut(graph, pending.graph_parent.as_deref());
-        let edge_index = add_source_ported_hierarchy_edge_segment(graph, edge, &pending, labels);
+        let edge_index =
+            introduce_hierarchical_edge_segment(graph, edge, &pending, labels, external_ports);
         record_cross_hierarchy_edge_segment(
             graph,
             edge.id.clone(),
@@ -262,12 +301,70 @@ fn introduce_source_ported_hierarchy_edge(graph: &mut LGraph, edge: &HierarchyEd
     }
 }
 
-fn add_source_ported_hierarchy_edge_segment(
+#[derive(Debug, Clone)]
+struct ExternalPort {
+    original_edges: Vec<String>,
+    new_edge: usize,
+    dummy_node: usize,
+    dummy_port: PortRef,
+    port_type: PortType,
+    exported: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ExternalPortKey {
+    graph_id: String,
+    opposite_port_key: String,
+    port_type: PortType,
+}
+
+/// Source-backed equivalent of ELK's `introduceHierarchicalEdgeSegment(...)`.
+fn introduce_hierarchical_edge_segment(
     graph: &mut LGraph,
     edge: &HierarchyEdge,
     pending: &PendingCompoundSegment,
     labels: Vec<LLabel>,
+    external_ports: &mut HashMap<ExternalPortKey, ExternalPort>,
 ) -> usize {
+    let parent_boundary = match (&pending.source, &pending.target) {
+        (
+            PendingSegmentEndpoint::LocalNode { port_key, .. },
+            PendingSegmentEndpoint::ParentBoundary {
+                connects_parent_node,
+                ..
+            },
+        ) => Some((PortType::Output, port_key.as_str(), *connects_parent_node)),
+        (
+            PendingSegmentEndpoint::ParentBoundary {
+                connects_parent_node,
+                ..
+            },
+            PendingSegmentEndpoint::LocalNode { port_key, .. },
+        ) => Some((PortType::Input, port_key.as_str(), *connects_parent_node)),
+        _ => None,
+    };
+
+    if let Some((port_type, opposite_port_key, connects_parent_node)) = parent_boundary
+        && graph.options.merge_hierarchy_edges
+        && !connects_parent_node
+    {
+        let key = ExternalPortKey {
+            graph_id: graph.id.clone(),
+            opposite_port_key: opposite_port_key.to_string(),
+            port_type,
+        };
+        if let Some(external_port) = external_ports.get_mut(&key) {
+            debug_assert_eq!(external_port.port_type, port_type);
+            debug_assert!(external_port.exported);
+            debug_assert_eq!(external_port.dummy_port.node, external_port.dummy_node);
+            external_port.original_edges.push(edge.id.clone());
+            debug_assert_eq!(external_port.original_edges.last(), Some(&edge.id));
+            apply_label_graph_properties(graph, &labels);
+            graph.edges[external_port.new_edge].labels.extend(labels);
+            return external_port.new_edge;
+        }
+    }
+
     let source = ensure_segment_endpoint_port(graph, &pending.source, PortType::Output);
     let target = ensure_segment_endpoint_port(graph, &pending.target, PortType::Input);
 
@@ -275,22 +372,15 @@ fn add_source_ported_hierarchy_edge_segment(
         graph.graph_properties.self_loops = true;
     }
 
-    if has_parallel_port_edges(&graph.layerless_nodes[source.node].ports[source.port])
-        || has_parallel_port_edges(&graph.layerless_nodes[target.node].ports[target.port])
+    if has_incident_edges(&graph.layerless_nodes[source.node].ports[source.port])
+        || has_incident_edges(&graph.layerless_nodes[target.node].ports[target.port])
     {
         graph.graph_properties.hyperedges = true;
     }
 
-    for label in &labels {
-        match label.placement {
-            EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
-            EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
-                graph.graph_properties.end_labels = true;
-            }
-        }
-    }
+    apply_label_graph_properties(graph, &labels);
 
-    graph
+    let edge_index = graph
         .add_edge(LayeredEdge {
             id: edge.id.clone(),
             source,
@@ -309,7 +399,52 @@ fn add_source_ported_hierarchy_edge_segment(
             original_opposite_port: None,
             compound_segment: Some(pending.segment),
         })
-        .expect("ports were created before adding hierarchy edge segment")
+        .expect("ports were created before adding hierarchy edge segment");
+
+    if let Some((port_type, opposite_port_key, connects_parent_node)) = parent_boundary {
+        let dummy_port = match port_type {
+            PortType::Output => target,
+            PortType::Input => source,
+        };
+        if graph
+            .layerless_nodes
+            .get(dummy_port.node)
+            .is_some_and(|node| node.kind == LNodeKind::ExternalPort)
+        {
+            let exported = !connects_parent_node;
+            let external_port = ExternalPort {
+                original_edges: vec![edge.id.clone()],
+                new_edge: edge_index,
+                dummy_node: dummy_port.node,
+                dummy_port,
+                port_type,
+                exported,
+            };
+            if exported {
+                external_ports.insert(
+                    ExternalPortKey {
+                        graph_id: graph.id.clone(),
+                        opposite_port_key: opposite_port_key.to_string(),
+                        port_type,
+                    },
+                    external_port,
+                );
+            }
+        }
+    }
+
+    edge_index
+}
+
+fn apply_label_graph_properties(graph: &mut LGraph, labels: &[LLabel]) {
+    for label in labels {
+        match label.placement {
+            EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
+            EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
+                graph.graph_properties.end_labels = true;
+            }
+        }
+    }
 }
 
 fn ensure_segment_endpoint_port(
@@ -318,11 +453,11 @@ fn ensure_segment_endpoint_port(
     port_type: PortType,
 ) -> PortRef {
     match endpoint {
-        PendingSegmentEndpoint::LocalNode(node_id) => {
-            ensure_local_node_port(graph, node_id.as_str(), port_type)
+        PendingSegmentEndpoint::LocalNode { node_id, port_key } => {
+            ensure_local_node_port(graph, node_id.as_str(), port_key.as_str(), port_type)
                 .expect("compound segment local endpoint should exist in the current graph")
         }
-        PendingSegmentEndpoint::ParentBoundary(node_id) => {
+        PendingSegmentEndpoint::ParentBoundary { node_id, .. } => {
             create_parent_boundary_port(graph, node_id.as_str(), port_type)
         }
     }
@@ -579,6 +714,7 @@ fn external_dummy_for_compound_edge(
 fn ensure_local_node_port(
     graph: &mut LGraph,
     node_id: &str,
+    port_key: &str,
     port_type: PortType,
 ) -> Option<PortRef> {
     if let Some(node) = graph
@@ -586,12 +722,18 @@ fn ensure_local_node_port(
         .iter()
         .position(|candidate| candidate.id == node_id)
     {
+        if let Some(port) = graph.layerless_nodes[node]
+            .ports
+            .iter()
+            .position(|candidate| candidate.id == port_key && candidate.port_type == port_type)
+        {
+            return Some(PortRef { node, port });
+        }
+
         let port = graph.layerless_nodes[node].ports.len();
-        graph.layerless_nodes[node].ports.push(LPort::new(
-            format!("{node_id}:{port:?}"),
-            node,
-            port_type,
-        ));
+        graph.layerless_nodes[node]
+            .ports
+            .push(LPort::new(port_key.to_string(), node, port_type));
         return Some(PortRef { node, port });
     }
     None
@@ -625,8 +767,8 @@ fn create_parent_boundary_port(
     PortRef { node, port: 0 }
 }
 
-fn has_parallel_port_edges(port: &LPort) -> bool {
-    port.incoming_edges.len() + port.outgoing_edges.len() > 1
+fn has_incident_edges(port: &LPort) -> bool {
+    port.incoming_edges.len() + port.outgoing_edges.len() > 0
 }
 
 fn graph_for_parent_mut<'a>(graph: &'a mut LGraph, parent: Option<&str>) -> &'a mut LGraph {
@@ -711,8 +853,14 @@ mod tests {
 
     #[test]
     fn source_ported_segments_sort_like_cross_hierarchy_edge_comparator() {
-        let segments =
-            source_ported_cross_hierarchy_segments("A", "B", &["outer", "inner"], &["sibling"]);
+        let segments = source_ported_cross_hierarchy_segments(
+            "A",
+            "B",
+            "A:source",
+            "B:target",
+            &["outer", "inner"],
+            &["sibling"],
+        );
 
         let mut sorted = segments
             .iter()
@@ -733,27 +881,48 @@ mod tests {
 
     #[test]
     fn source_ported_segments_mark_parent_boundary_endpoints() {
-        let segments =
-            source_ported_cross_hierarchy_segments("A", "B", &["outer", "inner"], &["sibling"]);
+        let segments = source_ported_cross_hierarchy_segments(
+            "A",
+            "B",
+            "A:source",
+            "B:target",
+            &["outer", "inner"],
+            &["sibling"],
+        );
 
-        assert_eq!(
-            segments[0].target,
-            PendingSegmentEndpoint::ParentBoundary("inner".to_string())
-        );
-        assert_eq!(
-            segments[2].target,
-            PendingSegmentEndpoint::LocalNode("sibling".to_string())
-        );
-        assert_eq!(
-            segments[3].source,
-            PendingSegmentEndpoint::ParentBoundary("sibling".to_string())
-        );
+        assert!(matches!(
+            &segments[0].target,
+            PendingSegmentEndpoint::ParentBoundary {
+                node_id,
+                port_key,
+                connects_parent_node: false,
+            } if node_id == "inner" && port_key == "A:source"
+        ));
+        assert!(matches!(
+            &segments[2].target,
+            PendingSegmentEndpoint::LocalNode { node_id, port_key }
+                if node_id == "sibling" && port_key == "B:target"
+        ));
+        assert!(matches!(
+            &segments[3].source,
+            PendingSegmentEndpoint::ParentBoundary {
+                node_id,
+                port_key,
+                connects_parent_node: false,
+            } if node_id == "sibling" && port_key == "B:target"
+        ));
     }
 
     #[test]
     fn center_label_uses_shallowest_segment() {
-        let segments =
-            source_ported_cross_hierarchy_segments("A", "B", &["outer", "inner"], &["sibling"]);
+        let segments = source_ported_cross_hierarchy_segments(
+            "A",
+            "B",
+            "A:source",
+            "B:target",
+            &["outer", "inner"],
+            &["sibling"],
+        );
 
         let label_index = compound_label_segment_index(&segments, EdgeLabelPlacement::Center);
 

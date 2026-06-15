@@ -276,6 +276,8 @@ pub struct HierarchyEdge {
     pub id: String,
     pub source_node_id: String,
     pub target_node_id: String,
+    pub source_port_key: String,
+    pub target_port_key: String,
     pub source_path: Vec<String>,
     pub target_path: Vec<String>,
     pub labels: Vec<LLabel>,
@@ -374,7 +376,7 @@ pub struct LMargin {
     pub left: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PortType {
     #[default]
     Input,
