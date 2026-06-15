@@ -26,7 +26,7 @@ use crate::intermediate::{
     reverse_edges_for_edge_and_layer_constraints, select_label_sides, sort_end_labels,
     split_long_edges, switch_label_dummies,
 };
-use crate::p1cycles::break_cycles_greedy;
+use crate::p1cycles::{break_cycles_greedy, break_cycles_greedy_model_order};
 use crate::p2layers::layer_network_simplex;
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists,
@@ -626,6 +626,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
             reverse_edges_for_edge_and_layer_constraints(graph);
         }
         ProcessorKind::GreedyCycleBreaker => break_cycles_greedy(graph),
+        ProcessorKind::GreedyModelOrderCycleBreaker => break_cycles_greedy_model_order(graph),
         ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
         ProcessorKind::LabelDummyInserter => insert_label_dummies(graph),
         ProcessorKind::NetworkSimplexLayerer => layer_network_simplex(graph),
@@ -1169,6 +1170,15 @@ mod tests {
         assert!(!processors.contains(&ProcessorKind::BreakingPointInserter));
         assert!(!processors.contains(&ProcessorKind::BreakingPointProcessor));
         assert!(!processors.contains(&ProcessorKind::BreakingPointRemover));
+    }
+
+    #[test]
+    fn greedy_model_order_cycle_breaking_strategy_assembles_processor() {
+        let options = LayeredOptions {
+            cycle_breaking_strategy: CycleBreakingStrategy::GreedyModelOrder,
+            ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+        };
+        assert!(kinds(&options).contains(&ProcessorKind::GreedyModelOrderCycleBreaker));
     }
 
     #[test]

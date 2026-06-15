@@ -2,6 +2,7 @@
 //!
 //! Source references:
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GreedyCycleBreaker.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GreedyModelOrderCycleBreaker.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LEdge.java
 
 use std::collections::VecDeque;
@@ -9,6 +10,20 @@ use std::collections::VecDeque;
 use crate::graph::{LGraph, PortRef, reverse_edge};
 
 pub fn break_cycles_greedy(graph: &mut LGraph) {
+    break_cycles_greedy_with_choice(graph, GreedyNodeChoice::Random);
+}
+
+pub fn break_cycles_greedy_model_order(graph: &mut LGraph) {
+    break_cycles_greedy_with_choice(graph, GreedyNodeChoice::MinimumModelOrder);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GreedyNodeChoice {
+    Random,
+    MinimumModelOrder,
+}
+
+fn break_cycles_greedy_with_choice(graph: &mut LGraph, choice: GreedyNodeChoice) {
     let node_count = graph.layerless_nodes.len();
     let mut indeg = vec![0i32; node_count];
     let mut outdeg = vec![0i32; node_count];
@@ -94,7 +109,7 @@ pub fn break_cycles_greedy(graph: &mut LGraph) {
                 }
             }
 
-            if let Some(max_node) = choose_node_with_max_outflow(graph, &max_nodes) {
+            if let Some(max_node) = choose_node_with_max_outflow(graph, &max_nodes, choice) {
                 mark[max_node] = next_left;
                 next_left += 1;
                 update_neighbors(
@@ -136,7 +151,25 @@ pub fn break_cycles_greedy(graph: &mut LGraph) {
     }
 }
 
-fn choose_node_with_max_outflow(graph: &mut LGraph, nodes: &[usize]) -> Option<usize> {
+fn choose_node_with_max_outflow(
+    graph: &mut LGraph,
+    nodes: &[usize],
+    choice: GreedyNodeChoice,
+) -> Option<usize> {
+    if choice == GreedyNodeChoice::MinimumModelOrder
+        && let Some(node) = nodes
+            .iter()
+            .copied()
+            .filter(|node| graph.layerless_nodes[*node].model_order.is_some())
+            .min_by_key(|node| {
+                graph.layerless_nodes[*node]
+                    .model_order
+                    .unwrap_or(usize::MAX)
+            })
+    {
+        return Some(node);
+    }
+
     let random_index = graph.random.next_int(nodes.len())?;
     nodes.get(random_index).copied()
 }
@@ -275,6 +308,48 @@ mod tests {
 
         assert!(graph.cyclic);
         assert!(graph.edges.iter().any(|edge| edge.reversed));
+        assert!(!has_directed_cycle(&graph));
+    }
+
+    #[test]
+    fn greedy_model_order_cycle_breaker_chooses_lowest_model_order_tie() {
+        let mut graph = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![
+                edge("A-B", "A", "B"),
+                edge("B-C", "B", "C"),
+                edge("C-A", "C", "A"),
+            ],
+        );
+        let a = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        let b = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "B")
+            .unwrap();
+        let c = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "C")
+            .unwrap();
+        graph.layerless_nodes[a].model_order = Some(3);
+        graph.layerless_nodes[b].model_order = Some(1);
+        graph.layerless_nodes[c].model_order = Some(2);
+
+        break_cycles_greedy_model_order(&mut graph);
+
+        assert!(graph.cyclic);
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|edge| edge.id == "A-B" && edge.reversed),
+            "choosing B first makes the incoming A-B edge the feedback edge"
+        );
         assert!(!has_directed_cycle(&graph));
     }
 

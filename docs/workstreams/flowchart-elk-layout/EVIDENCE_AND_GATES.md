@@ -1,7 +1,7 @@
 # Flowchart ELK Layout - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 ## Current Evidence
 
@@ -25,18 +25,26 @@ Last updated: 2026-06-14
   `aria-roledescription` and marker prefix when rendering a layouted Flowchart ELK diagram.
 - Flowchart ELK SVG emission uses Mermaid's root-level group order: marker group, shadow `defs`,
   `subgraphs`, `nodes`, `edges edgePaths`, then `edgeLabels`.
-- `repo-ref/mermaid/cypress/integration/rendering/flowchart/flowchart-elk.spec.js` provides the
-  upstream fixture set to classify.
+- `crates/merman-elk-layered/src/p1cycles.rs` ports Eclipse ELK's greedy model-order cycle breaker
+  tie-break over the existing greedy cycle breaker and proves the lowest model-order candidate is
+  chosen before falling back to random selection.
+- `crates/merman-elk-layered/src/p3order/sweep.rs` ports Eclipse ELK's barycenter
+  `distributePortsWhileSweeping(...)` hook for source-backed P3 sweeps and proves both free-layer
+  and fixed-layer ports are redistributed during a sweep.
+- `https://github.com/mermaid-js/mermaid/blob/develop/cypress/integration/rendering/flowchart/flowchart-elk.spec.js`
+  provides the upstream fixture set to classify.
 
 ## Current Gates
 
 ```bash
 cargo nextest run -p merman-layout-elk
+cargo nextest run -p merman-elk-layered
 cargo nextest run -p merman-render --features elk-layout flowchart_elk
 cargo nextest run -p merman-render --features elk-layout render_layouted_svg_preserves_flowchart_elk_roledescription
 cargo nextest run -p merman-bindings-core render_svg_returns_svg_for_flowchart_elk
-cargo nextest run -p merman flowchart_elk_render
+cargo nextest run -p merman --features elk-layout --test flowchart_elk_render
 cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_elk_flowchart_elk_001 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/flowchart_elk_demo_default.md
+cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_elk_flowchart_elk_001 --include-elk-probes --flowchart-elk-backend source-ported --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/flowchart_elk_demo_probe_sourceported.md
 cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter upstream_html_demos_flowchart_elk_flowchart_elk_001 --check --dom-mode parity --dom-decimals 3
 cargo test -p xtask svg_xml_compare_skip_reason
 cargo fmt --check
@@ -54,12 +62,11 @@ cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowch
 Current result:
 
 - Default compare skips the fixture with the centralized local-policy reason and returns success.
-- Explicit probe now gets past the old Flowchart V2 wrapper mismatch. The first remaining DOM
-  mismatch is an edge path `d` geometry difference: upstream emits ELK-style orthogonal segments
-  with rounded `Q` turns while the local renderer still curves the current lightweight route.
-- The remaining geometry is a real layout gap. Upstream places `C`, `D/I/E`, `F/H/G`, and the
-  feedback edge across multiple columns with orthogonal routing; the lightweight backend still
-  stacks most nodes vertically for this probe.
+- Explicit source-backed probe gets past the earlier unsupported `GreedyModelOrderCycleBreaker`
+  processor. The first remaining DOM mismatch is now the edge path `d` at `svg/g[6]/path[1]`.
+- The remaining geometry is a real source-backed layout gap, not a default-renderer regression:
+  P3 ordering/port distribution now runs, and the next evidence should focus on the downstream
+  same-layer order/route-slot difference and P5 orthogonal edge router parity.
 
 ## Future Admission Gates
 

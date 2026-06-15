@@ -47,7 +47,11 @@ struct BarycenterState {
 #[derive(Debug, Clone)]
 struct BarycenterPortDistributor {
     kind: PortDistributorKind,
-    port_ranks: HashMap<PortRef, f64>,
+    port_ranks: HashMap<String, f64>,
+    port_barycenters: HashMap<String, f64>,
+    node_positions: HashMap<usize, usize>,
+    min_barycenter: f64,
+    max_barycenter: f64,
 }
 
 impl BarycenterPortDistributor {
@@ -55,6 +59,55 @@ impl BarycenterPortDistributor {
         Self {
             kind,
             port_ranks: HashMap::new(),
+            port_barycenters: HashMap::new(),
+            node_positions: HashMap::new(),
+            min_barycenter: 0.0,
+            max_barycenter: 0.0,
+        }
+    }
+
+    fn distribute_ports_while_sweeping(
+        &mut self,
+        graph: &mut LGraph,
+        order: &[Vec<usize>],
+        current_index: usize,
+        forward: bool,
+    ) {
+        if order.is_empty() || current_index >= order.len() {
+            return;
+        }
+
+        self.update_node_positions(order);
+        let free_layer = order[current_index].clone();
+        let side = if forward {
+            PortSide::West
+        } else {
+            PortSide::East
+        };
+
+        if !is_first_layer(order, current_index, forward) {
+            let fixed_layer_index = if forward {
+                current_index - 1
+            } else {
+                current_index + 1
+            };
+            let fixed_layer = order[fixed_layer_index].clone();
+
+            self.calculate_port_ranks(graph, &fixed_layer, port_type_for(forward));
+            for node in &free_layer {
+                self.distribute_ports(graph, *node, side, order);
+            }
+
+            self.calculate_port_ranks(graph, &free_layer, port_type_for(!forward));
+            for node in &fixed_layer {
+                if graph.layerless_nodes[*node].nested_graph.is_none() {
+                    self.distribute_ports(graph, *node, side.opposed(), order);
+                }
+            }
+        } else {
+            for node in &free_layer {
+                self.distribute_ports(graph, *node, side, order);
+            }
         }
     }
 
@@ -73,8 +126,188 @@ impl BarycenterPortDistributor {
         }
     }
 
-    fn rank_of(&self, port: PortRef) -> f64 {
-        self.port_ranks.get(&port).copied().unwrap_or(0.0)
+    fn rank_of(&self, graph: &LGraph, port: PortRef) -> f64 {
+        port_id(graph, port)
+            .and_then(|id| self.port_ranks.get(id).copied())
+            .unwrap_or(0.0)
+    }
+
+    fn distribute_ports(
+        &mut self,
+        graph: &mut LGraph,
+        node: usize,
+        side: PortSide,
+        order: &[Vec<usize>],
+    ) {
+        if graph.layerless_nodes[node]
+            .port_constraints
+            .is_order_fixed()
+        {
+            return;
+        }
+
+        for port_side in [side, PortSide::South, PortSide::North] {
+            let ports = ports_on_side(graph, node, port_side);
+            self.distribute_ports_on_side(graph, node, &ports, order);
+        }
+        self.sort_ports(graph, node);
+    }
+
+    fn distribute_ports_on_side(
+        &mut self,
+        graph: &LGraph,
+        node: usize,
+        ports: &[PortRef],
+        order: &[Vec<usize>],
+    ) {
+        let mut in_layer_ports = Vec::new();
+        self.min_barycenter = 0.0;
+        self.max_barycenter = 0.0;
+
+        'port_loop: for port in ports.iter().copied() {
+            let Some(port_data) = graph
+                .layerless_nodes
+                .get(port.node)
+                .and_then(|node| node.ports.get(port.port))
+            else {
+                continue;
+            };
+
+            let north_south_port = matches!(port_data.side, PortSide::North | PortSide::South);
+            let mut sum = 0.0;
+            if north_south_port {
+                // ELK skips north/south ports without the PORT_DUMMY origin property. The current
+                // Rust graph does not represent that property yet.
+                continue;
+            }
+
+            for outgoing_edge in &port_data.outgoing_edges {
+                let connected_port = graph.edges[*outgoing_edge].target;
+                if same_layer(graph, connected_port.node, node) {
+                    in_layer_ports.push(port);
+                    continue 'port_loop;
+                }
+                sum += self.rank_of(graph, connected_port);
+            }
+            for incoming_edge in &port_data.incoming_edges {
+                let connected_port = graph.edges[*incoming_edge].source;
+                if same_layer(graph, connected_port.node, node) {
+                    in_layer_ports.push(port);
+                    continue 'port_loop;
+                }
+                sum -= self.rank_of(graph, connected_port);
+            }
+
+            let degree = port_degree(graph, port);
+            if degree > 0 {
+                let barycenter = sum / degree as f64;
+                self.set_port_barycenter(graph, port, barycenter);
+                self.min_barycenter = self.min_barycenter.min(barycenter);
+                self.max_barycenter = self.max_barycenter.max(barycenter);
+            }
+        }
+
+        if !in_layer_ports.is_empty() {
+            self.calculate_in_layer_ports_barycenter_values(graph, node, &in_layer_ports, order);
+        }
+    }
+
+    fn calculate_in_layer_ports_barycenter_values(
+        &mut self,
+        graph: &LGraph,
+        node: usize,
+        in_layer_ports: &[PortRef],
+        order: &[Vec<usize>],
+    ) {
+        let Some(node_position) = self.node_positions.get(&node).copied() else {
+            return;
+        };
+        let node_index_in_layer = node_position + 1;
+        let layer_size = layer_node_count(graph, node, order) + 1;
+
+        for in_layer_port in in_layer_ports {
+            let mut sum = 0usize;
+            let mut in_layer_connections = 0usize;
+
+            for connected_port in connected_ports(graph, *in_layer_port) {
+                if same_layer(graph, connected_port.node, node)
+                    && let Some(position) = self.node_positions.get(&connected_port.node)
+                {
+                    sum += position + 1;
+                    in_layer_connections += 1;
+                }
+            }
+
+            if in_layer_connections == 0 {
+                continue;
+            }
+
+            let barycenter = sum as f64 / in_layer_connections as f64;
+            let port_side =
+                graph.layerless_nodes[in_layer_port.node].ports[in_layer_port.port].side;
+            let port_barycenter = match port_side {
+                PortSide::East if barycenter < node_index_in_layer as f64 => {
+                    self.min_barycenter - barycenter
+                }
+                PortSide::East => self.max_barycenter + (layer_size as f64 - barycenter),
+                PortSide::West if barycenter < node_index_in_layer as f64 => {
+                    self.max_barycenter + barycenter
+                }
+                PortSide::West => self.min_barycenter - (layer_size as f64 - barycenter),
+                _ => continue,
+            };
+            self.set_port_barycenter(graph, *in_layer_port, port_barycenter);
+        }
+    }
+
+    fn sort_ports(&self, graph: &mut LGraph, node: usize) {
+        let mut order = (0..graph.layerless_nodes[node].ports.len()).collect::<Vec<_>>();
+        order.sort_by(|left, right| {
+            let left_port = &graph.layerless_nodes[node].ports[*left];
+            let right_port = &graph.layerless_nodes[node].ports[*right];
+
+            let side_order = port_side_order(left_port.side).cmp(&port_side_order(right_port.side));
+            if side_order != std::cmp::Ordering::Equal {
+                return side_order;
+            }
+
+            let left_barycenter = self
+                .port_barycenters
+                .get(&left_port.id)
+                .copied()
+                .unwrap_or(0.0);
+            let right_barycenter = self
+                .port_barycenters
+                .get(&right_port.id)
+                .copied()
+                .unwrap_or(0.0);
+
+            if left_barycenter == 0.0 && right_barycenter == 0.0 {
+                std::cmp::Ordering::Equal
+            } else if left_barycenter == 0.0 {
+                std::cmp::Ordering::Less
+            } else if right_barycenter == 0.0 {
+                std::cmp::Ordering::Greater
+            } else {
+                left_barycenter.total_cmp(&right_barycenter)
+            }
+        });
+        graph.reorder_node_ports(node, order);
+    }
+
+    fn set_port_barycenter(&mut self, graph: &LGraph, port: PortRef, barycenter: f64) {
+        if let Some(id) = port_id(graph, port) {
+            self.port_barycenters.insert(id.to_string(), barycenter);
+        }
+    }
+
+    fn update_node_positions(&mut self, order: &[Vec<usize>]) {
+        self.node_positions.clear();
+        for layer in order {
+            for (position, node) in layer.iter().copied().enumerate() {
+                self.node_positions.insert(node, position);
+            }
+        }
     }
 
     fn calculate_node_relative_port_ranks(
@@ -104,10 +337,14 @@ impl BarycenterPortDistributor {
                         .side
                         .is_north()
                     {
-                        self.port_ranks.insert(port, north_position);
+                        if let Some(id) = port_id(graph, port) {
+                            self.port_ranks.insert(id.to_string(), north_position);
+                        }
                         north_position -= increment;
                     } else {
-                        self.port_ranks.insert(port, rest_position);
+                        if let Some(id) = port_id(graph, port) {
+                            self.port_ranks.insert(id.to_string(), rest_position);
+                        }
                         rest_position -= increment;
                     }
                 }
@@ -118,7 +355,9 @@ impl BarycenterPortDistributor {
                 let increment = 1.0 / (output_count + 1) as f64;
                 let mut position = rank_sum + increment;
                 for port in actual_ports_of_type(graph, node, PortType::Output) {
-                    self.port_ranks.insert(port, position);
+                    if let Some(id) = port_id(graph, port) {
+                        self.port_ranks.insert(id.to_string(), position);
+                    }
                     position += increment;
                 }
                 1.0
@@ -153,10 +392,14 @@ impl BarycenterPortDistributor {
                         .side
                         .is_north()
                     {
-                        self.port_ranks.insert(port, north_position);
+                        if let Some(id) = port_id(graph, port) {
+                            self.port_ranks.insert(id.to_string(), north_position);
+                        }
                         north_position -= 1.0;
                     } else {
-                        self.port_ranks.insert(port, rest_position);
+                        if let Some(id) = port_id(graph, port) {
+                            self.port_ranks.insert(id.to_string(), rest_position);
+                        }
                         rest_position -= 1.0;
                     }
                 }
@@ -166,7 +409,9 @@ impl BarycenterPortDistributor {
                 let mut position = 0.0;
                 for port in actual_ports_of_type(graph, node, PortType::Output) {
                     position += 1.0;
-                    self.port_ranks.insert(port, rank_sum + position);
+                    if let Some(id) = port_id(graph, port) {
+                        self.port_ranks.insert(id.to_string(), rank_sum + position);
+                    }
                 }
                 position
             }
@@ -320,7 +565,7 @@ impl BarycenterHeuristic {
                         state.summed_weight += fixed_state.summed_weight;
                     }
                 } else {
-                    let rank = self.port_distributor.rank_of(fixed_port);
+                    let rank = self.port_distributor.rank_of(graph, fixed_port);
                     let state = self.state_mut(node);
                     state.summed_weight += rank;
                     state.degree += 1;
@@ -1341,7 +1586,7 @@ fn minimize_one_sided_greedy_switch(graph: &mut LGraph) -> bool {
 }
 
 fn minimize_crossings_with_counter(
-    graph: &LGraph,
+    graph: &mut LGraph,
     graph_info: &mut GraphInfoHolder,
     heuristic: &mut BarycenterHeuristic,
     first_try_with_initial_order: bool,
@@ -1396,7 +1641,7 @@ fn minimize_crossings_with_counter(
 }
 
 fn sweep_reducing_crossings(
-    graph: &LGraph,
+    graph: &mut LGraph,
     graph_info: &mut GraphInfoHolder,
     heuristic: &mut BarycenterHeuristic,
     forward: bool,
@@ -1407,6 +1652,13 @@ fn sweep_reducing_crossings(
         return;
     }
 
+    heuristic.port_distributor.distribute_ports_while_sweeping(
+        graph,
+        &graph_info.current_node_order,
+        first_index(forward, length),
+        forward,
+    );
+
     let mut index = first_free(forward, length);
     while is_not_end(length, index, forward) {
         let free_layer_index = index as usize;
@@ -1416,6 +1668,12 @@ fn sweep_reducing_crossings(
             free_layer_index,
             forward,
             first_sweep,
+        );
+        heuristic.port_distributor.distribute_ports_while_sweeping(
+            graph,
+            &graph_info.current_node_order,
+            free_layer_index,
+            forward,
         );
         index = next_index(index, forward);
     }
@@ -1460,6 +1718,70 @@ fn actual_ports_of_type(graph: &LGraph, node: usize, port_type: PortType) -> Vec
             matches.then_some(PortRef { node, port })
         })
         .collect()
+}
+
+fn ports_on_side(graph: &LGraph, node: usize, side: PortSide) -> Vec<PortRef> {
+    graph.layerless_nodes[node]
+        .ports
+        .iter()
+        .enumerate()
+        .filter_map(|(port, port_data)| (port_data.side == side).then_some(PortRef { node, port }))
+        .collect()
+}
+
+fn port_id(graph: &LGraph, port: PortRef) -> Option<&str> {
+    graph
+        .layerless_nodes
+        .get(port.node)?
+        .ports
+        .get(port.port)
+        .map(|port| port.id.as_str())
+}
+
+fn port_degree(graph: &LGraph, port: PortRef) -> usize {
+    let Some(port) = graph
+        .layerless_nodes
+        .get(port.node)
+        .and_then(|node| node.ports.get(port.port))
+    else {
+        return 0;
+    };
+    port.incoming_edges.len() + port.outgoing_edges.len()
+}
+
+fn connected_ports(graph: &LGraph, port: PortRef) -> Vec<PortRef> {
+    connected_edges(graph, port)
+        .filter_map(|edge| other_end_of_edge(graph, edge, port))
+        .collect()
+}
+
+fn same_layer(graph: &LGraph, left: usize, right: usize) -> bool {
+    graph.layerless_nodes[left].layer_index == graph.layerless_nodes[right].layer_index
+}
+
+fn layer_node_count(graph: &LGraph, node: usize, order: &[Vec<usize>]) -> usize {
+    let Some(layer_index) = graph.layerless_nodes[node].layer_index else {
+        return 0;
+    };
+    order.get(layer_index).map_or(0, Vec::len)
+}
+
+fn port_type_for(forward: bool) -> PortType {
+    if forward {
+        PortType::Output
+    } else {
+        PortType::Input
+    }
+}
+
+fn port_side_order(side: PortSide) -> u8 {
+    match side {
+        PortSide::Undefined => 0,
+        PortSide::North => 1,
+        PortSide::East => 2,
+        PortSide::South => 3,
+        PortSide::West => 4,
+    }
 }
 
 fn build_adjacencies(
@@ -1881,6 +2203,87 @@ mod tests {
 
         assert_eq!(before, 1);
         assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn barycenter_sweep_distributes_free_and_fixed_layer_ports() {
+        let mut graph = prepared_graph(
+            vec![
+                node("Top"),
+                node("Bottom"),
+                node("Left"),
+                node("Right"),
+                node("Free"),
+                node("Fixed"),
+            ],
+            vec![
+                edge("Top-Free", "Top", "Free"),
+                edge("Bottom-Free", "Bottom", "Free"),
+                edge("Free-Right", "Free", "Right"),
+                edge("Free-Left", "Free", "Left"),
+                edge("Fixed-Right", "Fixed", "Right"),
+                edge("Fixed-Left", "Fixed", "Left"),
+            ],
+        );
+
+        let top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Top")
+            .unwrap();
+        let bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Bottom")
+            .unwrap();
+        let left = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Left")
+            .unwrap();
+        let right = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Right")
+            .unwrap();
+        let free = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Free")
+            .unwrap();
+        let fixed = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Fixed")
+            .unwrap();
+
+        graph.layers[0].nodes = vec![top, bottom, fixed];
+        graph.layers[1].nodes = vec![free, right, left];
+        for (layer_index, layer) in graph.layers.iter().enumerate() {
+            for node in &layer.nodes {
+                graph.layerless_nodes[*node].layer_index = Some(layer_index);
+            }
+        }
+
+        let mut graph_info = GraphInfoHolder::new(&graph);
+        let port_distributor = BarycenterPortDistributor::new(PortDistributorKind::NodeRelative);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+
+        sweep_reducing_crossings(&mut graph, &mut graph_info, &mut heuristic, true, false);
+
+        let free_ports = graph.layerless_nodes[free]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>();
+        let fixed_ports = graph.layerless_nodes[fixed]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(free_ports, vec!["Free:2", "Free:3", "Free:1", "Free:0"]);
+        assert_eq!(fixed_ports, vec!["Fixed:0", "Fixed:1"]);
     }
 
     #[test]
