@@ -208,11 +208,7 @@ fn flowchart_layout_from_elk(
     }
 
     let bounds = compute_bounds(&out_nodes, &out_edges);
-    let dom_node_order_by_root = std::iter::once((
-        String::new(),
-        graph.nodes.iter().map(|node| node.id.clone()).collect(),
-    ))
-    .collect();
+    let dom_node_order_by_root = flowchart_elk_dom_node_order_by_root(graph, backend);
 
     Ok(FlowchartV2Layout {
         nodes: out_nodes,
@@ -223,6 +219,41 @@ fn flowchart_layout_from_elk(
         source_backed_edge_label_bboxes: backend == FlowchartElkBackend::SourcePorted,
         source_ported_elk_rendering: backend == FlowchartElkBackend::SourcePorted,
     })
+}
+
+fn flowchart_elk_dom_node_order_by_root(
+    graph: &elk::Graph,
+    backend: FlowchartElkBackend,
+) -> HashMap<String, Vec<String>> {
+    let ids = match backend {
+        FlowchartElkBackend::Compat => graph.nodes.iter().map(|node| node.id.clone()).collect(),
+        FlowchartElkBackend::SourcePorted => source_ported_mermaid_add_vertices_dom_order(graph),
+    };
+    std::iter::once((String::new(), ids)).collect()
+}
+
+fn source_ported_mermaid_add_vertices_dom_order(graph: &elk::Graph) -> Vec<String> {
+    let mut out = Vec::new();
+    append_source_ported_mermaid_add_vertices_dom_order(graph, None, &mut out);
+    out
+}
+
+fn append_source_ported_mermaid_add_vertices_dom_order(
+    graph: &elk::Graph,
+    parent_id: Option<&str>,
+    out: &mut Vec<String>,
+) {
+    for node in graph
+        .nodes
+        .iter()
+        .filter(|node| node.parent.as_deref() == parent_id)
+    {
+        if node.kind == elk::NodeKind::Group {
+            append_source_ported_mermaid_add_vertices_dom_order(graph, Some(node.id.as_str()), out);
+        } else {
+            out.push(node.id.clone());
+        }
+    }
 }
 
 fn normalize_flow_direction(dir: &str) -> String {
@@ -308,7 +339,7 @@ pub fn build_flowchart_elk_graph(
     )
 }
 
-fn build_flowchart_elk_graph_for_backend(
+pub fn build_flowchart_elk_graph_for_backend(
     model: &FlowchartV2Model,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
@@ -1212,6 +1243,53 @@ mod tests {
                 "root-b"
             ]
         );
+    }
+
+    #[test]
+    fn flowchart_source_ported_elk_dom_order_matches_mermaid_add_vertices_recursion() {
+        let mut model = model(
+            vec![
+                node("A", Some("A"), None),
+                node("B", Some("B"), None),
+                node("C", Some("C"), None),
+                node("D", Some("D"), None),
+                node("E", Some("E"), None),
+                node("F", Some("F"), None),
+                node("G", Some("G"), None),
+            ],
+            vec![],
+        );
+        model.subgraphs.push(FlowSubgraph {
+            id: "foo".to_string(),
+            title: "Foo SubGraph".to_string(),
+            dir: None,
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["C".to_string(), "D".to_string()],
+        });
+        model.subgraphs.push(FlowSubgraph {
+            id: "bar".to_string(),
+            title: "Bar SubGraph".to_string(),
+            dir: None,
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["E".to_string(), "F".to_string()],
+        });
+
+        let graph = build_flowchart_elk_graph_with_mode(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+            FlowchartElkGraphBuildMode::SourcePorted,
+        )
+        .unwrap();
+
+        let ids = source_ported_mermaid_add_vertices_dom_order(&graph);
+        let actual: Vec<&str> = ids.iter().map(String::as_str).collect();
+        assert_eq!(actual, vec!["E", "F", "C", "D", "A", "B", "G"]);
     }
 
     #[test]

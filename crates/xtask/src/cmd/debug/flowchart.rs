@@ -1766,6 +1766,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
 pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixture: Option<PathBuf> = None;
     let mut phase = Some(merman_layout_elk::source_port::LayeredPhase::P3NodeOrdering);
+    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
 
     let mut i = 0;
     while i < args.len() {
@@ -1792,6 +1793,16 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
                     }
                     Some(value) if matches!(value.as_str(), "p5" | "p5-route" | "route") => {
                         Some(merman_layout_elk::source_port::LayeredPhase::P5EdgeRouting)
+                    }
+                    _ => return Err(XtaskError::Usage),
+                };
+            }
+            "--flowchart-elk-backend" => {
+                i += 1;
+                flowchart_elk_backend = match args.get(i).map(|s| s.trim()) {
+                    Some("compat") => merman_render::FlowchartElkBackend::Compat,
+                    Some("source-ported" | "source_ported" | "source") => {
+                        merman_render::FlowchartElkBackend::SourcePorted
                     }
                     _ => return Err(XtaskError::Usage),
                 };
@@ -1830,11 +1841,12 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
         serde_json::from_value(parsed.model.clone())?;
 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-    let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
+    let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph_for_backend(
         &model,
         &parsed.meta.effective_config,
         &measurer,
         None,
+        flowchart_elk_backend,
     )
     .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
     let source_input = merman_layout_elk::source_input_from_graph(&elk_graph);
@@ -1875,6 +1887,7 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
 
     println!("fixture: {}", fixture_path.display());
     println!("diagram_type: {}", parsed.meta.diagram_type);
+    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!(
         "phase: {:?}",
         phase.unwrap_or(merman_layout_elk::source_port::LayeredPhase::P5EdgeRouting)
@@ -1932,6 +1945,16 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
             node.margin.bottom,
             node.nested_graph.is_some()
         );
+        if node.kind == merman_layout_elk::source_port::LNodeKind::ExternalPort {
+            println!(
+                "{indent}  external side={:?} size=({}, {}) ratio_or_position={} replaced={:?}",
+                node.external_port_side,
+                node.external_port_size.width,
+                node.external_port_size.height,
+                node.port_ratio_or_position,
+                node.replaced_external_port_dummy
+            );
+        }
         for (port_index, port) in node.ports.iter().enumerate() {
             let incoming = port
                 .incoming_edges
