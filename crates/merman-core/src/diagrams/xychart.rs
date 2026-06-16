@@ -910,31 +910,32 @@ fn extract_bracket_inner(input: &str) -> Result<&str> {
     let mut in_md = false;
     let mut idx = 1usize;
     while idx < t.len() {
-        let ch = t.as_bytes()[idx] as char;
+        let rest = &t[idx..];
+        let ch = rest.chars().next().unwrap();
         if in_md {
-            if t[idx..].starts_with("`\"") {
+            if rest.starts_with("`\"") {
                 in_md = false;
                 idx += 2;
                 continue;
             }
-            idx += 1;
+            idx += ch.len_utf8();
             continue;
         }
         if in_quote {
             if ch == '"' {
                 in_quote = false;
             }
-            idx += 1;
+            idx += ch.len_utf8();
             continue;
         }
-        if t[idx..].starts_with("\"`") {
+        if rest.starts_with("\"`") {
             in_md = true;
             idx += 2;
             continue;
         }
         if ch == '"' {
             in_quote = true;
-            idx += 1;
+            idx += ch.len_utf8();
             continue;
         }
         if ch == '[' {
@@ -954,7 +955,7 @@ fn extract_bracket_inner(input: &str) -> Result<&str> {
             }
             return Ok(inner);
         }
-        idx += 1;
+        idx += ch.len_utf8();
     }
 
     Err(Error::DiagramParse {
@@ -968,43 +969,43 @@ fn split_top_level_commas(input: &str) -> Vec<&str> {
     let mut in_quote = false;
     let mut in_md = false;
     let mut start = 0usize;
-    let bytes = input.as_bytes();
     let mut i = 0usize;
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
+    while i < input.len() {
+        let rest = &input[i..];
+        let ch = rest.chars().next().unwrap();
         if in_md {
-            if input[i..].starts_with("`\"") {
+            if rest.starts_with("`\"") {
                 in_md = false;
                 i += 2;
                 continue;
             }
-            i += 1;
+            i += ch.len_utf8();
             continue;
         }
         if in_quote {
             if ch == '"' {
                 in_quote = false;
             }
-            i += 1;
+            i += ch.len_utf8();
             continue;
         }
-        if input[i..].starts_with("\"`") {
+        if rest.starts_with("\"`") {
             in_md = true;
             i += 2;
             continue;
         }
         if ch == '"' {
             in_quote = true;
-            i += 1;
+            i += ch.len_utf8();
             continue;
         }
         if ch == ',' {
             out.push(&input[start..i]);
-            start = i + 1;
-            i += 1;
+            i += ch.len_utf8();
+            start = i;
             continue;
         }
-        i += 1;
+        i += ch.len_utf8();
     }
     out.push(&input[start..]);
     out
@@ -1182,6 +1183,19 @@ line lineTitle1 [11, 45.5, 67, 23]
         assert_eq!(model["yAxis"]["min"], json!(10.0));
         assert_eq!(model["yAxis"]["max"], json!(150.0));
         assert_eq!(model["plots"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn xychart_unquoted_multibyte_categories_do_not_panic() {
+        let model = parse(
+            r#"xychart
+x-axis [東京, 大阪]
+y-axis "値" 0 --> 10
+bar [1, 2]
+"#,
+        );
+
+        assert_eq!(model["xAxis"]["categories"], json!(["東京", "大阪"]));
     }
 
     #[test]

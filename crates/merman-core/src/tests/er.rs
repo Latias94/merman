@@ -750,3 +750,15 @@ A ||--o{ B : has
     assert_eq!(res.model["accTitle"], json!("graph title"));
     assert_eq!(res.model["accDescr"], json!("this graph is\nabout\nstuff"));
 }
+
+#[test]
+fn parse_diagram_er_multibyte_attribute_does_not_panic() {
+    let engine = Engine::new();
+    let text = "erDiagram\n顧客 {\n  文字列 名前\n}\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let attr = &res.model["entities"]["顧客"]["attributes"][0];
+    assert_eq!(attr["type"], json!("文字列"));
+    assert_eq!(attr["name"], json!("名前"));
+}

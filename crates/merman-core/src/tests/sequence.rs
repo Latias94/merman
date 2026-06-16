@@ -36,6 +36,20 @@ Bob-->Alice: I am good thanks!"#;
 }
 
 #[test]
+fn parse_diagram_sequence_multibyte_actor_ids_do_not_panic() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+顧客->>サーバー:こんにちは
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.model["actorOrder"], json!(["顧客", "サーバー"]));
+    assert_eq!(res.model["messages"][0]["message"], json!("こんにちは"));
+}
+
+#[test]
 fn parse_diagram_sequence_central_connections_use_upstream_message_model() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram
