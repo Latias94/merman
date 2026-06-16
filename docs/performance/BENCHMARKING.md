@@ -14,6 +14,11 @@ For a one-step local workflow, use `python3 tools/bench/perf_runner.py --profile
 - Compare pipeline stages (parse vs layout vs SVG emission).
 - Keep results meaningful across machines and CI.
 
+The goal here is not to replace Mermaid.js in the browser. This work is mostly for native apps,
+text editors, CI pipelines, preview tools, and doc generators where embedding a JS engine just to
+draw a chart is heavy and awkward. Criterion stays in the toolbox for regression tracking, but
+parity and predictable headless output remain the top priorities.
+
 ## Running Criterion benches
 
 `merman` includes Criterion benchmarks for the headless pipeline.
