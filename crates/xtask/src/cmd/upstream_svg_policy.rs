@@ -20,6 +20,7 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_70_elk_handle_nested_subgraph_cases_tb_link_out_and_link_between_030",
     "upstream_cypress_flowchart_elk_spec_71_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_031",
     "upstream_cypress_flowchart_elk_spec_72_elk_handle_nested_subgraph_cases_bt_link_out_and_link_between_032",
+    "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034",
     "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063",
 ];
 
@@ -155,6 +156,9 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_72_elk_handle_nested_subgraph_cases_bt_link_out_and_link_between_032"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063"
