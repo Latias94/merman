@@ -3025,8 +3025,10 @@ fn process_north_south_hierarchical_port_constraints(graph: &mut LGraph) {
 
     let original_layer_count = graph.layers.len();
     let mut new_dummy_nodes = vec![Vec::<usize>::new(); original_layer_count + 2];
-    let mut prev_maps = vec![Vec::<(usize, usize)>::new(); original_layer_count + 2];
-    let mut next_maps = vec![Vec::<(usize, usize)>::new(); original_layer_count + 2];
+    let mut prev_maps =
+        vec![Vec::<(NorthSouthReplacementKey, usize)>::new(); original_layer_count + 2];
+    let mut next_maps =
+        vec![Vec::<(NorthSouthReplacementKey, usize)>::new(); original_layer_count + 2];
     let mut original_external_port_dummies = Vec::new();
 
     for layer_index in 0..original_layer_count {
@@ -3127,20 +3129,39 @@ fn replacement_dummy_for_original(
     graph: &mut LGraph,
     original_dummy: usize,
     virtual_layer: usize,
-    maps: &mut [Vec<(usize, usize)>],
+    maps: &mut [Vec<(NorthSouthReplacementKey, usize)>],
     new_dummy_nodes: &mut [Vec<usize>],
 ) -> usize {
+    let key = north_south_replacement_key(graph, original_dummy);
     if let Some((_, replacement)) = maps[virtual_layer]
         .iter()
-        .find(|(original, _)| *original == original_dummy)
+        .find(|(candidate, _)| *candidate == key)
     {
         return *replacement;
     }
 
     let replacement = create_hierarchical_port_replacement_dummy(graph, original_dummy);
-    maps[virtual_layer].push((original_dummy, replacement));
+    maps[virtual_layer].push((key, replacement));
     new_dummy_nodes[virtual_layer].push(replacement);
     replacement
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NorthSouthReplacementKey {
+    Origin { graph_id: String, port: PortRef },
+    Dummy(usize),
+}
+
+fn north_south_replacement_key(graph: &LGraph, original_dummy: usize) -> NorthSouthReplacementKey {
+    graph
+        .layerless_nodes
+        .get(original_dummy)
+        .and_then(|node| node.origin_port.as_ref())
+        .map(|origin| NorthSouthReplacementKey::Origin {
+            graph_id: origin.graph_id.clone(),
+            port: origin.port,
+        })
+        .unwrap_or(NorthSouthReplacementKey::Dummy(original_dummy))
 }
 
 fn create_hierarchical_port_replacement_dummy(graph: &mut LGraph, original_dummy: usize) -> usize {
@@ -4153,6 +4174,50 @@ mod tests {
             graph.layerless_nodes[replacements[0]].node_alignment,
             Alignment::Center
         );
+    }
+
+    #[test]
+    fn hierarchical_port_constraint_processor_reuses_north_south_replacements_by_origin_port() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedSide;
+        let first = push_external_dummy(&mut graph, "north-a", PortSide::North, 0.0);
+        let second = push_external_dummy(&mut graph, "north-b", PortSide::North, 0.0);
+        let a = push_normal_node(&mut graph, "A");
+        let b = push_normal_node(&mut graph, "B");
+
+        let origin_port = PortRef { node: 42, port: 7 };
+        graph.layerless_nodes[first].origin_port = Some(crate::graph::GraphPortRef {
+            graph_id: "parent".to_string(),
+            port: origin_port,
+        });
+        graph.layerless_nodes[second].origin_port = Some(crate::graph::GraphPortRef {
+            graph_id: "parent".to_string(),
+            port: origin_port,
+        });
+
+        graph.set_node_layer(first, 0);
+        graph.set_node_layer(second, 0);
+        graph.set_node_layer(a, 0);
+        graph.set_node_layer(b, 0);
+
+        let a_edge = add_test_edge(&mut graph, "north-a-A", first, 0, a, 0);
+        let b_edge = add_test_edge(&mut graph, "north-b-B", second, 0, b, 0);
+
+        process_hierarchical_port_constraints(&mut graph);
+
+        let replacements = graph
+            .layerless_nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                (node.replaced_external_port_dummy == Some(first)
+                    || node.replaced_external_port_dummy == Some(second))
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(replacements.len(), 1);
+        assert_eq!(graph.edges[a_edge].source.node, replacements[0]);
+        assert_eq!(graph.edges[b_edge].source.node, replacements[0]);
     }
 
     #[test]
