@@ -4,15 +4,17 @@ use crate::architecture_metrics::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
 
-use super::super::{escape_xml, fmt};
+use super::super::{escape_xml_into, fmt};
 use super::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
 };
 use super::geometry::{GroupRect, extend_bounds};
-use super::icons::{arch_icon_svg, arch_icon_svg_with_registry};
+use super::icons::{
+    arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
+};
 use super::labels::{
-    svg_line_plain_text, wrap_svg_words_to_lines, write_architecture_service_title,
-    write_svg_text_lines,
+    plain_ascii_words_single_line_width, svg_line_plain_text, wrap_svg_words_to_lines,
+    write_architecture_service_title, write_svg_plain_ascii_words_text_line, write_svg_text_lines,
 };
 use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
@@ -28,6 +30,18 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) singleton_icon_text_service_id: Option<&'a str>,
+}
+
+fn write_diagram_service_id(out: &mut String, diagram_id: &str, service_id: &str) {
+    escape_xml_into(out, diagram_id);
+    out.push_str("-service-");
+    escape_xml_into(out, service_id);
+}
+
+fn write_diagram_node_id(out: &mut String, diagram_id: &str, node_id: &str) {
+    escape_xml_into(out, diagram_id);
+    out.push_str("-node-");
+    escape_xml_into(out, node_id);
 }
 
 pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAccess>(
@@ -52,13 +66,12 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         for svc in model.services() {
             let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
             let y = y + singleton_icon_text_offset_y(singleton_icon_text_service_id, svc.id);
-            let service_id_esc = escape_xml(&format!("{diagram_id}-service-{}", svc.id));
-            let node_id_esc = escape_xml(&format!("{diagram_id}-node-{}", svc.id));
 
+            out.push_str(r#"<g id=""#);
+            write_diagram_service_id(out, diagram_id, svc.id);
             let _ = write!(
                 out,
-                r#"<g id="{id}" class="architecture-service" transform="translate({x},{y})">"#,
-                id = service_id_esc,
+                r#"" class="architecture-service" transform="translate({x},{y})">"#,
                 x = fmt(x),
                 y = fmt(y)
             );
@@ -78,22 +91,24 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             out.push_str("<g>");
             match (svc.icon, svc.icon_text) {
                 (Some(icon), _) => {
-                    let id_scope = format!("{diagram_id}-service-{}-icon", svc.id);
-                    let svg = arch_icon_svg_with_registry(
-                        icon,
-                        settings.icon_size_px,
-                        ctx.icon_registry,
-                        &id_scope,
-                    );
                     out.push_str("<g>");
-                    out.push_str(&svg);
+                    if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
+                        let id_scope = format!("{diagram_id}-service-{}-icon", svc.id);
+                        write_arch_icon_svg_with_registry(
+                            out,
+                            icon,
+                            settings.icon_size_px,
+                            ctx.icon_registry,
+                            &id_scope,
+                        );
+                    } else {
+                        write_arch_icon_svg(out, icon, settings.icon_size_px, "");
+                    }
                     out.push_str("</g>");
                 }
                 (None, Some(icon_text)) => {
-                    let id_scope = format!("{diagram_id}-service-{}-icon", svc.id);
-                    let svg = arch_icon_svg("blank", settings.icon_size_px, &id_scope);
                     out.push_str("<g>");
-                    out.push_str(&svg);
+                    write_arch_icon_svg(out, "blank", settings.icon_size_px, "");
                     out.push_str("</g>");
 
                     // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
@@ -117,10 +132,11 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     );
                 }
                 (None, None) => {
+                    out.push_str(r#"<path class="node-bkg" id=""#);
+                    write_diagram_node_id(out, diagram_id, svc.id);
                     let _ = write!(
                         out,
-                        r#"<path class="node-bkg" id="{id}" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
-                        id = node_id_esc,
+                        r#"" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
                         s = fmt(settings.icon_size_px),
                         inner_s = fmt(settings.icon_size_px - 5.0)
                     );
@@ -133,14 +149,17 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
 
         for junction in model.junctions() {
             let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
-            let id_esc = escape_xml(&format!("{diagram_id}-node-{}", junction.id));
 
             let _ = write!(
                 out,
-                r#"<g class="architecture-junction" transform="translate({x},{y})"><g><rect id="{id}" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
+                r#"<g class="architecture-junction" transform="translate({x},{y})"><g><rect id=""#,
                 x = fmt(x),
                 y = fmt(y),
-                id = id_esc,
+            );
+            write_diagram_node_id(out, diagram_id, junction.id);
+            let _ = write!(
+                out,
+                r#"" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
                 s = fmt(settings.icon_size_px)
             );
         }
@@ -163,7 +182,6 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
         out.push_str(r#"<g class="architecture-groups">"#);
 
         for grp in group_rects {
-            let group_id_esc = escape_xml(&format!("{}-group-{}", ctx.diagram_id, grp.id));
             let x = grp.x;
             let y = grp.y;
             let w = grp.w;
@@ -172,10 +190,13 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             let x1 = x - settings.half_icon;
             let y1 = y - settings.half_icon;
 
+            out.push_str(r#"<rect id=""#);
+            escape_xml_into(out, ctx.diagram_id);
+            out.push_str("-group-");
+            escape_xml_into(out, grp.id);
             let _ = write!(
                 out,
-                r#"<rect id="{id}" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg"/>"#,
-                id = group_id_esc,
+                r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg"/>"#,
                 x = fmt(x),
                 y = fmt(y),
                 w = fmt(w.max(1.0)),
@@ -187,20 +208,25 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             let mut shifted_x1 = x1;
             let mut shifted_y1 = y1;
             if let Some(icon) = grp.icon.map(str::trim).filter(|t| !t.is_empty()) {
-                let id_scope = format!("{}-group-{}-icon", ctx.diagram_id, grp.id);
-                let svg = arch_icon_svg_with_registry(
-                    icon,
-                    group_icon_size_px,
-                    ctx.icon_registry,
-                    &id_scope,
-                );
                 let _ = write!(
                     out,
-                    r#"<g transform="translate({x}, {y})"><g>{svg}</g></g>"#,
+                    r#"<g transform="translate({x}, {y})"><g>"#,
                     x = fmt(shifted_x1 + settings.half_icon + 1.0),
-                    y = fmt(shifted_y1 + settings.half_icon + 1.0),
-                    svg = svg
+                    y = fmt(shifted_y1 + settings.half_icon + 1.0)
                 );
+                if arch_icon_needs_id_scope(icon, ctx.icon_registry.is_some()) {
+                    let id_scope = format!("{}-group-{}-icon", ctx.diagram_id, grp.id);
+                    write_arch_icon_svg_with_registry(
+                        out,
+                        icon,
+                        group_icon_size_px,
+                        ctx.icon_registry,
+                        &id_scope,
+                    );
+                } else {
+                    write_arch_icon_svg(out, icon, group_icon_size_px, "");
+                }
+                out.push_str("</g></g>");
                 shifted_x1 += group_icon_size_px;
                 // Mermaid uses `architecture.fontSize` for this alignment tweak (not the global SVG
                 // font size used for label rendering).
@@ -208,31 +234,53 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             }
 
             if let Some(title) = grp.title.map(str::trim).filter(|t| !t.is_empty()) {
-                let lines = wrap_svg_words_to_lines(title, w, text_measurer, &settings.text_style);
+                let plain_title_width = plain_ascii_words_single_line_width(
+                    title,
+                    w,
+                    text_measurer,
+                    &settings.text_style,
+                );
+                let lines = if plain_title_width.is_some() {
+                    None
+                } else {
+                    Some(wrap_svg_words_to_lines(
+                        title,
+                        w,
+                        text_measurer,
+                        &settings.text_style,
+                    ))
+                };
+
                 // Group titles are SVG `<text>` (no explicit bbox geometry), so our SVG bbox pass
                 // cannot "see" their extents. Union a conservative horizontal bbox so
                 // `setupGraphViewbox(svg.getBBox() + padding)` matches upstream in parity-root.
-                let mut title_bbox_w = 0.0f64;
-                let has_multiline_title = lines.len() > 1;
-                for line in &lines {
-                    let s = svg_line_plain_text(line);
-                    let m = text_measurer.measure_wrapped(
-                        s.as_str(),
-                        &settings.text_style,
-                        None,
-                        WrapMode::SvgLike,
-                    );
-                    // Chromium's SVG `getBBox()` reports multi-`tspan` title rows on an integer
-                    // pixel boundary in upstream Architecture roots; keep this limited to wrapped
-                    // group titles so ordinary service labels and one-line group titles retain the
-                    // existing fractional text metric model.
-                    let width = if has_multiline_title {
-                        m.width.ceil()
-                    } else {
-                        m.width
-                    };
-                    title_bbox_w = title_bbox_w.max(width);
-                }
+                let title_bbox_w = if let Some(width) = plain_title_width {
+                    width
+                } else {
+                    let lines = lines.as_ref().expect("group title lines");
+                    let mut title_bbox_w = 0.0f64;
+                    let has_multiline_title = lines.len() > 1;
+                    for line in lines {
+                        let s = svg_line_plain_text(line);
+                        let m = text_measurer.measure_wrapped(
+                            s.as_str(),
+                            &settings.text_style,
+                            None,
+                            WrapMode::SvgLike,
+                        );
+                        // Chromium's SVG `getBBox()` reports multi-`tspan` title rows on an integer
+                        // pixel boundary in upstream Architecture roots; keep this limited to wrapped
+                        // group titles so ordinary service labels and one-line group titles retain the
+                        // existing fractional text metric model.
+                        let width = if has_multiline_title {
+                            m.width.ceil()
+                        } else {
+                            m.width
+                        };
+                        title_bbox_w = title_bbox_w.max(width);
+                    }
+                    title_bbox_w
+                };
                 if title_bbox_w.is_finite() && title_bbox_w > 0.0 {
                     let title_x = shifted_x1 + settings.half_icon + 4.0;
                     // Keep Y extents within the group rect; we only need this to expand X.
@@ -250,7 +298,11 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                     x = fmt(shifted_x1 + settings.half_icon + 4.0),
                     y = fmt(shifted_y1 + settings.half_icon + 2.0)
                 );
-                write_svg_text_lines(out, &lines);
+                if plain_title_width.is_some() {
+                    write_svg_plain_ascii_words_text_line(out, title);
+                } else if let Some(lines) = lines.as_ref() {
+                    write_svg_text_lines(out, lines);
+                }
                 out.push_str("</g></g>");
             }
 

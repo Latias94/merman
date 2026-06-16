@@ -5,12 +5,19 @@ for tracking regressions.
 
 For the optimization backlog (prioritized, correctness-first), see:
 `docs/performance/FEARLESS_REFACTORING.md`.
+For the execution order, see `docs/performance/RUNBOOK.md`.
+For a one-step local workflow, use `python3 tools/bench/perf_runner.py --profile canary`.
 
 ## Goals
 
 - Track performance changes over time (regression detection).
 - Compare pipeline stages (parse vs layout vs SVG emission).
 - Keep results meaningful across machines and CI.
+
+The goal here is not to replace Mermaid.js in the browser. This work is mostly for native apps,
+text editors, CI pipelines, preview tools, and doc generators where embedding a JS engine just to
+draw a chart is heavy and awkward. Criterion stays in the toolbox for regression tracking, but
+parity and predictable headless output remain the top priorities.
 
 ## Running Criterion benches
 
@@ -29,11 +36,20 @@ Notes:
 
 The `pipeline` bench measures:
 
-- `parse/*`: parsing Mermaid into a semantic model (no layout).
+- `parse/*`: parsing Mermaid into a semantic model (reused `Engine`, no layout).
+- `parse_cold_engine/*`: request-style parsing with a fresh `Engine` per iteration.
 - `parse_known_type/*`: parsing when the diagram type is already known (skips detection).
 - `layout/*`: computing layout (geometry + routes) from a parsed diagram.
 - `render/*`: SVG emission from an already-laid-out diagram.
 - `end_to_end/*`: full pipeline (parse + layout + SVG emission).
+
+The dedicated stress benches are separate on purpose:
+
+- `flowchart_stress`: render-only batching for flowchart fixed-cost work.
+- `architecture_layout_stress`: layout-only batching for architecture FCoSE/manatee work.
+- `architecture_stress`: render-only batching for architecture fixed-cost work.
+- `mindmap_layout_stress`: layout-only batching for mindmap COSE fixed-cost work.
+- `text_measure_stress`: text measurement batching for label/layout tuning.
 
 Bench fixtures live under `crates/merman/benches/fixtures/` and are intentionally small, focused
 inputs designed for regression tracking.
@@ -44,7 +60,7 @@ If you have a local checkout under `repo-ref/mermaid-rs-renderer`, you can gener
 comparison report:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py
+python3 tools/bench/compare_mermaid_renderers.py
 ```
 
 By default this runs the `quick` corpus suite, writes a Markdown report to
@@ -60,19 +76,27 @@ The helper script sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkou
 If you invoke `cargo bench --bench renderer` there by hand, set that env var yourself or the bench
 binary will only run its smoke validation path.
 
+For broader validation, prefer the named suites in `tools/bench/corpus.json`:
+
+- `standard`: routine cross-family validation.
+- `cross_family`: one medium fixture per supported family.
+- `flowchart`: flowchart-heavy routing and layout stress coverage.
+- `stress`: heavy fixtures when validating hotspot work.
+- `full`: every fixture in corpus order.
+
 Both comparison helpers add `--locked` when the target repo has `Cargo.lock`, so benchmark runs do
 not silently drift to newer registry dependencies. If the local `mermaid-rs-renderer` checkout needs
 a newer Rust toolchain than this workspace's `rust-toolchain.toml`, pass it explicitly, for example:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py --mmdr-toolchain 1.92.0
+python3 tools/bench/compare_mermaid_renderers.py --mmdr-toolchain 1.92.0
 ```
 
 If you prefer keeping comparison artifacts out of the docs tree, pass `--out` and `--json-out`
 explicitly, e.g.:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py \
+python3 tools/bench/compare_mermaid_renderers.py \
   --suite standard \
   --out target/bench/COMPARISON.latest.md \
   --json-out target/bench/COMPARISON.latest.json
@@ -81,20 +105,20 @@ python tools/bench/compare_mermaid_renderers.py \
 For lower-noise results (recommended when tracking canaries), use the `long` preset:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py --preset long
+python3 tools/bench/compare_mermaid_renderers.py --preset long
 ```
 
 If you want to avoid the optional upstream Mermaid JS (puppeteer) run (which can be noisy and slow),
 add `--skip-mermaid-js`:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js
+python3 tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js
 ```
 
 To see the available corpus suites:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py --list-suites
+python3 tools/bench/compare_mermaid_renderers.py --list-suites
 ```
 
 The main suites are:
@@ -110,7 +134,7 @@ The legacy `--filter` path is still available for ad-hoc exact selections. When 
 `--suite` is ignored:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py \
+python3 tools/bench/compare_mermaid_renderers.py \
   --filter 'end_to_end/(flowchart_medium|class_medium)' \
   --out target/bench/filter.md \
   --json-out target/bench/filter.json
@@ -163,7 +187,7 @@ Mermaid JS results without mixing unlike measurements.
 For interactive visual comparison rather than timed measurement, see
 `docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md`.
 
-See `docs/performance/PERF_PLAYBOOK.md` for the recommended default canary filter and report naming.
+See `docs/performance/PERF_PLAYBOOK.md` for the recommended default canary suite and report naming.
 
 ## Stage spot-check (recommended for triage)
 
@@ -171,7 +195,7 @@ When you want to attribute a performance change to a specific pipeline stage qui
 layout vs SVG emission), use the stage spot-check script:
 
 ```bash
-python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium --out target/bench/stage_spotcheck.md
+python3 tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium --out target/bench/stage_spotcheck.md
 ```
 
 This runs a small set of `--exact` Criterion benchmarks for both `merman` and
@@ -183,7 +207,7 @@ automatically.
 For lower-noise spotchecks, use the `long` preset:
 
 ```bash
-python tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium
+python3 tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium
 ```
 
 The stage spot-check helper accepts the same `--mmdr-toolchain` option when the reference checkout
@@ -203,7 +227,10 @@ stabilize A/B comparisons.
 
 ```bash
 cargo bench -p merman --features render --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features render --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
 cargo bench -p merman --features render --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features render --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features render --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
 ```
 
 ## Future work

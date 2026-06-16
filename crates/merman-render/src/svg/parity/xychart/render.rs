@@ -8,7 +8,8 @@ pub(crate) fn render_xychart_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    use std::collections::{HashMap, hash_map::Entry};
+    use rustc_hash::FxHashMap;
+    use std::collections::hash_map::Entry;
 
     struct Node {
         tag: &'static str,
@@ -26,9 +27,9 @@ pub(crate) fn render_xychart_diagram_svg(
     fn node(tag: &'static str) -> Node {
         Node {
             tag,
-            attrs: Vec::new(),
+            attrs: Vec::with_capacity(6),
             text: None,
-            children: Vec::new(),
+            children: Vec::with_capacity(2),
         }
     }
 
@@ -68,18 +69,19 @@ pub(crate) fn render_xychart_diagram_svg(
         }
     }
 
-    fn ensure_group_path(
+    fn ensure_group_path<'a>(
         arena: &mut Vec<Node>,
-        groups_by_path: &mut HashMap<(usize, String), usize>,
-        group_texts: &[String],
+        groups_by_path: &mut FxHashMap<(usize, &'a str), usize>,
+        group_texts: &'a [String],
     ) -> usize {
         let mut parent = 0usize;
         for seg in group_texts {
-            let gid = match groups_by_path.entry((parent, seg.clone())) {
+            let class = seg.as_str();
+            let gid = match groups_by_path.entry((parent, class)) {
                 Entry::Occupied(entry) => *entry.get(),
                 Entry::Vacant(entry) => {
                     let mut g = node("g");
-                    g.attr("class", seg.as_str());
+                    g.attr("class", class);
                     let id = push_child(arena, parent, g);
                     entry.insert(id);
                     id
@@ -119,9 +121,15 @@ pub(crate) fn render_xychart_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
-    let show_data_label_outside_bar =
-        config_bool(_effective_config, &["xyChart", "showDataLabelOutsideBar"]).unwrap_or(false);
-    let data_label_color = data_label_color(_effective_config);
+    let data_label_config = if layout.show_data_label {
+        Some((
+            config_bool(_effective_config, &["xyChart", "showDataLabelOutsideBar"])
+                .unwrap_or(false),
+            data_label_color(_effective_config),
+        ))
+    } else {
+        None
+    };
 
     let mut out = String::new();
     let w_attr = fmt(layout.width.max(1.0)).to_string();
@@ -148,7 +156,7 @@ pub(crate) fn render_xychart_diagram_svg(
     out.push_str(r#"<g/>"#);
 
     // Build the `.main` group as an ordered DOM tree, matching Mermaid's D3 `getGroup()` behavior.
-    let mut arena: Vec<Node> = Vec::new();
+    let mut arena: Vec<Node> = Vec::with_capacity(layout.drawables.len().saturating_mul(4) + 2);
     arena.push(node("g"));
     arena[0].attr("class", "main");
 
@@ -160,7 +168,10 @@ pub(crate) fn render_xychart_diagram_svg(
     bg.attr("fill", escape_xml(&layout.background_color));
     push_child(&mut arena, 0, bg);
 
-    let mut groups_by_path: HashMap<(usize, String), usize> = HashMap::new();
+    let mut groups_by_path: FxHashMap<(usize, &str), usize> = FxHashMap::with_capacity_and_hasher(
+        layout.drawables.len().saturating_mul(2) + 4,
+        Default::default(),
+    );
 
     for shape in &layout.drawables {
         match shape {
@@ -186,7 +197,7 @@ pub(crate) fn render_xychart_diagram_svg(
                 }
 
                 // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
-                if layout.show_data_label {
+                if let Some((show_data_label_outside_bar, data_label_color)) = &data_label_config {
                     let bar_data_label_scale_factor = 0.7;
                     let bar_data_label_inset_px = 10.0;
 
@@ -196,7 +207,7 @@ pub(crate) fn render_xychart_diagram_svg(
                         label: &'a str,
                     }
 
-                    let mut valid_items: Vec<BarItem<'_>> = Vec::new();
+                    let mut valid_items: Vec<BarItem<'_>> = Vec::with_capacity(data.len());
                     for (idx, r) in data.iter().enumerate() {
                         let Some(label) = layout.label_data.get(idx) else {
                             continue;
@@ -237,7 +248,7 @@ pub(crate) fn render_xychart_diagram_svg(
                             let uniform = min_font.floor().max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
-                                let x = if show_data_label_outside_bar {
+                                let x = if *show_data_label_outside_bar {
                                     item.rect.x + item.rect.width + bar_data_label_inset_px
                                 } else {
                                     item.rect.x + item.rect.width - bar_data_label_inset_px
@@ -246,14 +257,14 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("y", fmt_xy(item.rect.y + item.rect.height / 2.0));
                                 t.attr(
                                     "text-anchor",
-                                    if show_data_label_outside_bar {
+                                    if *show_data_label_outside_bar {
                                         "start"
                                     } else {
                                         "end"
                                     },
                                 );
                                 t.attr("dominant-baseline", "middle");
-                                t.attr("fill", escape_xml(&data_label_color));
+                                t.attr("fill", escape_xml(data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
@@ -299,7 +310,7 @@ pub(crate) fn render_xychart_diagram_svg(
                             for item in &valid_items {
                                 let mut t = node("text");
                                 t.attr("x", fmt_xy(item.rect.x + item.rect.width / 2.0));
-                                let y = if show_data_label_outside_bar {
+                                let y = if *show_data_label_outside_bar {
                                     item.rect.y - y_offset
                                 } else {
                                     item.rect.y + y_offset
@@ -308,13 +319,13 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("text-anchor", "middle");
                                 t.attr(
                                     "dominant-baseline",
-                                    if show_data_label_outside_bar {
+                                    if *show_data_label_outside_bar {
                                         "auto"
                                     } else {
                                         "hanging"
                                     },
                                 );
-                                t.attr("fill", escape_xml(&data_label_color));
+                                t.attr("fill", escape_xml(data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);

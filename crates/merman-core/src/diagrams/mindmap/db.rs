@@ -9,6 +9,21 @@ use super::{
     NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
 };
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct MindmapParseConfig {
+    padding: i64,
+    max_node_width: i64,
+}
+
+impl MindmapParseConfig {
+    pub(super) fn from_config(config: &MermaidConfig) -> Self {
+        Self {
+            padding: get_i64(config, "mindmap.padding").unwrap_or(10),
+            max_node_width: get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200),
+        }
+    }
+}
+
 fn mindmap_look(config: &MermaidConfig) -> String {
     config.get_str("look").unwrap_or("classic").to_string()
 }
@@ -240,6 +255,7 @@ impl MindmapDb {
         &mut self,
         input: MindmapNodeInput<'_>,
         config: &MermaidConfig,
+        parse_config: MindmapParseConfig,
     ) -> Result<()> {
         let mut level = input.indent_level;
         let is_root;
@@ -254,8 +270,8 @@ impl MindmapDb {
             is_root = false;
         }
 
-        let mut padding = get_i64(config, "mindmap.padding").unwrap_or(10);
-        let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
+        let mut padding = parse_config.padding;
+        let width = parse_config.max_node_width;
 
         match input.ty {
             NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON => {

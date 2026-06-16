@@ -176,9 +176,9 @@ impl<'a> ParsePipeline<'a> {
             return Err(Error::MalformedFrontMatter);
         }
 
-        let mut effective_config = self.engine.site_config.clone();
-        let effective_overrides = effective_config.secure_filtered_overrides(&pre.config);
-        effective_config.deep_merge(effective_overrides.as_value());
+        let has_config_overrides = !pre.config.is_empty_object();
+        let mut effective_config = self.effective_config_before_detect(&pre.config);
+        let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
 
         let diagram_type = match self
             .engine
@@ -193,7 +193,16 @@ impl<'a> ParsePipeline<'a> {
                 return Err(err);
             }
         };
-        theme::apply_theme_defaults(&mut effective_config);
+        if has_config_overrides {
+            theme::apply_theme_defaults(&mut effective_config);
+        } else if cached_effective_config
+            .as_ref()
+            .is_some_and(|cached| effective_config.ptr_eq(cached))
+        {
+            effective_config = self.engine.default_effective_config();
+        } else {
+            theme::apply_theme_defaults(&mut effective_config);
+        }
 
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
 
@@ -221,11 +230,20 @@ impl<'a> ParsePipeline<'a> {
             return Err(Error::MalformedFrontMatter);
         }
 
-        let mut effective_config = self.engine.site_config.clone();
-        let effective_overrides = effective_config.secure_filtered_overrides(&pre.config);
-        effective_config.deep_merge(effective_overrides.as_value());
+        let has_config_overrides = !pre.config.is_empty_object();
+        let mut effective_config = self.effective_config_before_detect(&pre.config);
+        let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
-        theme::apply_theme_defaults(&mut effective_config);
+        if has_config_overrides {
+            theme::apply_theme_defaults(&mut effective_config);
+        } else if cached_effective_config
+            .as_ref()
+            .is_some_and(|cached| effective_config.ptr_eq(cached))
+        {
+            effective_config = self.engine.default_effective_config();
+        } else {
+            theme::apply_theme_defaults(&mut effective_config);
+        }
 
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
 
@@ -244,6 +262,17 @@ impl<'a> ParsePipeline<'a> {
         runtime::with_fixed_today_local(self.engine.fixed_today_local, || {
             runtime::with_fixed_local_offset_minutes(self.engine.fixed_local_offset_minutes, f)
         })
+    }
+
+    fn effective_config_before_detect(&self, overrides: &MermaidConfig) -> MermaidConfig {
+        if overrides.is_empty_object() {
+            return self.engine.site_config.clone();
+        }
+
+        let mut effective_config = self.engine.site_config.clone();
+        let effective_overrides = effective_config.secure_filtered_overrides(overrides);
+        effective_config.deep_merge(effective_overrides.as_value());
+        effective_config
     }
 }
 

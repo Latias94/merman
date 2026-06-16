@@ -30,6 +30,11 @@ struct FcoseSpringTimings {
     collapse_start_positions: web_time::Duration,
     pre_constraints: web_time::Duration,
     constraint_rt: web_time::Duration,
+    repulsion_grid_build: web_time::Duration,
+    repulsion_surrounding: web_time::Duration,
+    repulsion_forces: web_time::Duration,
+    repulsion_overlap_force: web_time::Duration,
+    repulsion_non_overlapping_force: web_time::Duration,
     iterations: web_time::Duration,
 }
 
@@ -259,6 +264,7 @@ pub fn layout_indexed(
         .ok()
         .as_deref()
         == Some("1");
+    let mut owner_bounds = OwnerBounds::new(sim.nodes.len() + 1);
 
     for run_idx in 0..run_count {
         let rng_calls_before = rng.calls();
@@ -272,7 +278,7 @@ pub fn layout_indexed(
                 }
             }
         }
-        let _ = sim.update_bounds();
+        sim.update_bounds(&mut owner_bounds);
         if collect_debug_trace {
             sim.push_debug_stage(
                 &mut debug_stages,
@@ -316,6 +322,7 @@ pub fn layout_indexed(
             opts,
             &mut rng,
             run_idx,
+            &mut owner_bounds,
             collect_debug_trace.then_some(&mut debug_stages),
             if timing_enabled {
                 Some(&mut timings.spring)
@@ -338,7 +345,7 @@ pub fn layout_indexed(
 
         // Ensure compound node rectangles reflect the final child placements before we compute the
         // "current" component bounding box for relocation (`aux.relocateComponent(...)` parity).
-        let _ = sim.update_bounds();
+        sim.update_bounds(&mut owner_bounds);
 
         let new_center = sim.bounding_box_center_rects().unwrap_or((0.0, 0.0));
         let translate_start = timing_enabled.then(web_time::Instant::now);
@@ -390,7 +397,7 @@ pub fn layout_indexed(
         }
 
         if run_idx + 1 < run_count {
-            let _ = sim.update_bounds();
+            sim.update_bounds(&mut owner_bounds);
         }
     }
 
@@ -426,7 +433,7 @@ pub fn layout_indexed(
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[manatee-fcose-timing] total={:?} from_indexed={:?} constraints={:?} spring_total={:?} spring_opts_prep={:?} spring_spectral={:?} spring_root_compound={:?} spring_collapse_start={:?} spring_pre_constraints={:?} spring_constraint_rt={:?} spring_iterations={:?} translate={:?} output={:?} nodes={} edges={} compounds={} iterations={} spectral_applied={}",
+            "[manatee-fcose-timing] total={:?} from_indexed={:?} constraints={:?} spring_total={:?} spring_opts_prep={:?} spring_spectral={:?} spring_root_compound={:?} spring_collapse_start={:?} spring_pre_constraints={:?} spring_constraint_rt={:?} spring_repulsion_grid_build={:?} spring_repulsion_surrounding={:?} spring_repulsion_overlap_force={:?} spring_repulsion_non_overlapping_force={:?} spring_repulsion_forces={:?} spring_iterations={:?} translate={:?} output={:?} nodes={} edges={} compounds={} iterations={} spectral_applied={}",
             timings.total,
             timings.from_indexed,
             timings.constraints,
@@ -437,6 +444,11 @@ pub fn layout_indexed(
             timings.spring.collapse_start_positions,
             timings.spring.pre_constraints,
             timings.spring.constraint_rt,
+            timings.spring.repulsion_grid_build,
+            timings.spring.repulsion_surrounding,
+            timings.spring.repulsion_overlap_force,
+            timings.spring.repulsion_non_overlapping_force,
+            timings.spring.repulsion_forces,
             timings.spring.iterations,
             timings.translate,
             timings.output,
@@ -1151,6 +1163,8 @@ struct SimGraph {
     // Immediate children list for each owner graph (owner idx is a compound node idx, or
     // `root_owner_idx` for the root graph).
     children_by_owner: Vec<Vec<usize>>,
+    // Reusable mark array for repulsion grid neighborhood deduplication.
+    surrounding_seen: Vec<u32>,
     // Compound node indices in descending inclusion depth (deepest first), for updateBounds.
     compounds_deep_first: Vec<usize>,
     // Descendant leaf indices for each node (empty for leaves).
@@ -1167,6 +1181,31 @@ struct OwnerBounds {
     right: Vec<f64>,
     top: Vec<f64>,
     bottom: Vec<f64>,
+}
+
+impl OwnerBounds {
+    fn new(owner_count: usize) -> Self {
+        let mut bounds = Self {
+            left: Vec::new(),
+            right: Vec::new(),
+            top: Vec::new(),
+            bottom: Vec::new(),
+        };
+        bounds.reset(owner_count);
+        bounds
+    }
+
+    fn reset(&mut self, owner_count: usize) {
+        self.left.resize(owner_count, f64::INFINITY);
+        self.right.resize(owner_count, f64::NEG_INFINITY);
+        self.top.resize(owner_count, f64::INFINITY);
+        self.bottom.resize(owner_count, f64::NEG_INFINITY);
+
+        self.left.fill(f64::INFINITY);
+        self.right.fill(f64::NEG_INFINITY);
+        self.top.fill(f64::INFINITY);
+        self.bottom.fill(f64::NEG_INFINITY);
+    }
 }
 
 impl SimGraph {
@@ -1486,6 +1525,7 @@ impl SimGraph {
             leaf_count,
             root_owner_idx,
             children_by_owner,
+            surrounding_seen: vec![0; leaf_count + compound_count],
             compounds_deep_first,
             descendant_leaves,
             owner_estimated_size,
@@ -2010,14 +2050,15 @@ impl SimGraph {
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
     }
 
-    fn update_bounds(&mut self) -> OwnerBounds {
+    fn update_bounds(&mut self, bounds: &mut OwnerBounds) {
         debug_assert_eq!(self.root_owner_idx, self.nodes.len());
 
         let owner_count = self.nodes.len() + 1;
-        let mut left: Vec<f64> = vec![f64::INFINITY; owner_count];
-        let mut right: Vec<f64> = vec![f64::NEG_INFINITY; owner_count];
-        let mut top: Vec<f64> = vec![f64::INFINITY; owner_count];
-        let mut bottom: Vec<f64> = vec![f64::NEG_INFINITY; owner_count];
+        bounds.reset(owner_count);
+        let left = &mut bounds.left;
+        let right = &mut bounds.right;
+        let top = &mut bounds.top;
+        let bottom = &mut bounds.bottom;
 
         // Mirror layout-base `graphManager.updateBounds()`:
         // - update child compound bounds first
@@ -2087,13 +2128,6 @@ impl SimGraph {
                 bottom[self.root_owner_idx] = max_y + margin;
             }
         }
-
-        OwnerBounds {
-            left,
-            right,
-            top,
-            bottom,
-        }
     }
 
     fn all_nodes_layout_order(&self) -> Vec<usize> {
@@ -2143,6 +2177,7 @@ impl SimGraph {
         opts: &IndexedFcoseOptions,
         rng: &mut XorShift64Star,
         run_idx: usize,
+        owner_bounds: &mut OwnerBounds,
         mut debug_stages: Option<&mut Vec<IndexedFcoseDebugStage>>,
         mut timings: Option<&mut FcoseSpringTimings>,
     ) -> SpringStats {
@@ -2394,9 +2429,11 @@ impl SimGraph {
             == Some("1");
 
         let iterations_start = timing_enabled.then(web_time::Instant::now);
-        let mut processed: Vec<bool> = vec![false; self.nodes.len()];
+        let mut processed_generation: Vec<u32> = vec![0; self.nodes.len()];
         let mut disps: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len()];
         let all_nodes_in_layout_order = self.all_nodes_layout_order();
+        let mut current_processed_generation: u32 = 0;
+        let mut surrounding_seen_generation: u32 = 1;
         loop {
             total_iterations += 1;
             if total_iterations == max_iterations {
@@ -2426,7 +2463,7 @@ impl SimGraph {
             let mut total_displacement = 0.0f64;
 
             // Match `cose-base` tick order: update compound bounds (with padding) before forces.
-            let bounds = self.update_bounds();
+            self.update_bounds(owner_bounds);
             if Self::should_trace_iteration(total_iterations)
                 && let Some(stages) = debug_stages.as_deref_mut()
             {
@@ -2450,7 +2487,8 @@ impl SimGraph {
                 if rects_intersect(&self.nodes[a], &self.nodes[b]) {
                     continue;
                 }
-                let (ax, ay, bx, by) = rect_clip_points(&self.nodes[a], &self.nodes[b]);
+                let (ax, ay, bx, by) =
+                    rect_intersection_points_no_overlap_check(&self.nodes[a], &self.nodes[b]);
                 let mut lx = bx - ax;
                 let mut ly = by - ay;
                 let raw_lx = lx;
@@ -2513,14 +2551,21 @@ impl SimGraph {
             // Upstream refreshes the grid + surrounding lists when `totalIterations % 10 == 1`,
             // then reuses those "stale" surrounding lists for the next 9 iterations.
             let refresh_surrounding = (total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD) == 1;
+            current_processed_generation = current_processed_generation.wrapping_add(1);
+            if current_processed_generation == 0 {
+                processed_generation.fill(0);
+                current_processed_generation = 1;
+            }
             if refresh_surrounding {
+                let repulsion_grid_build_start = timing_enabled.then(web_time::Instant::now);
                 let (l, r, t, b) = (
-                    bounds.left[self.root_owner_idx],
-                    bounds.right[self.root_owner_idx],
-                    bounds.top[self.root_owner_idx],
-                    bounds.bottom[self.root_owner_idx],
+                    owner_bounds.left[self.root_owner_idx],
+                    owner_bounds.right[self.root_owner_idx],
+                    owner_bounds.top[self.root_owner_idx],
+                    owner_bounds.bottom[self.root_owner_idx],
                 );
-                repulsion_grid = RepulsionGrid::build(
+                repulsion_grid = RepulsionGrid::build_or_reuse(
+                    repulsion_grid,
                     l,
                     t,
                     r,
@@ -2529,44 +2574,62 @@ impl SimGraph {
                     repulsion_range,
                     &all_nodes_in_layout_order,
                 );
+                if let (Some(t), Some(s)) = (timings.as_deref_mut(), repulsion_grid_build_start) {
+                    t.repulsion_grid_build += s.elapsed();
+                }
             }
 
             if repulsion_range.is_finite() && repulsion_range > 0.0 {
-                processed.fill(false);
                 for &i in &all_nodes_in_layout_order {
-                    if i >= self.nodes.len() {
-                        continue;
-                    }
                     if refresh_surrounding {
+                        let repulsion_surrounding_start =
+                            timing_enabled.then(web_time::Instant::now);
                         if let Some(g) = &repulsion_grid {
                             g.refresh_node_surrounding(
                                 i,
                                 &mut self.nodes,
-                                &processed,
+                                &processed_generation,
+                                current_processed_generation,
                                 repulsion_range,
+                                &mut self.surrounding_seen,
+                                &mut surrounding_seen_generation,
                             );
                         } else {
                             self.nodes[i].surrounding.clear();
                         }
+                        if let (Some(t), Some(s)) =
+                            (timings.as_deref_mut(), repulsion_surrounding_start)
+                        {
+                            t.repulsion_surrounding += s.elapsed();
+                        }
                     }
 
+                    let repulsion_forces_start = timing_enabled.then(web_time::Instant::now);
                     let surrounding = std::mem::take(&mut self.nodes[i].surrounding);
+                    let node_i_center_x = self.nodes[i].center_x();
+                    let node_i_center_y = self.nodes[i].center_y();
                     for &j in &surrounding {
-                        if i == j {
-                            continue;
-                        }
-                        if j >= self.nodes.len() {
-                            continue;
-                        }
-                        if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
-                            continue;
-                        }
+                        let repulsion_force_start = timing_enabled.then(web_time::Instant::now);
+                        let node_j_center_x = self.nodes[j].center_x();
+                        let node_j_center_y = self.nodes[j].center_y();
                         let (rfx, rfy) = calc_repulsion_force(
                             &self.nodes[i],
                             &self.nodes[j],
                             min_repulsion_dist,
                             half_default_edge_length,
+                            node_i_center_x,
+                            node_i_center_y,
+                            node_j_center_x,
+                            node_j_center_y,
                         );
+                        if let (Some(t), Some(s)) = (timings.as_deref_mut(), repulsion_force_start)
+                        {
+                            if rects_intersect(&self.nodes[i], &self.nodes[j]) {
+                                t.repulsion_overlap_force += s.elapsed();
+                            } else {
+                                t.repulsion_non_overlapping_force += s.elapsed();
+                            }
+                        }
                         // Apply a symmetric pairwise force.
                         //
                         // Unlike `i < j` index-based deduping, upstream CoSE/FCoSE dedupes via a
@@ -2578,20 +2641,31 @@ impl SimGraph {
                         self.nodes[j].repulsion_fy -= rfy;
                     }
                     self.nodes[i].surrounding = surrounding;
-                    processed[i] = true;
+                    if let (Some(t), Some(s)) = (timings.as_deref_mut(), repulsion_forces_start) {
+                        t.repulsion_forces += s.elapsed();
+                    }
+                    processed_generation[i] = current_processed_generation;
                 }
             } else {
                 // Fallback: unbounded repulsion (all pairs).
                 for i in 0..self.nodes.len() {
+                    let node_i_center_x = self.nodes[i].center_x();
+                    let node_i_center_y = self.nodes[i].center_y();
                     for j in (i + 1)..self.nodes.len() {
                         if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
                             continue;
                         }
+                        let node_j_center_x = self.nodes[j].center_x();
+                        let node_j_center_y = self.nodes[j].center_y();
                         let (rfx, rfy) = calc_repulsion_force(
                             &self.nodes[i],
                             &self.nodes[j],
                             min_repulsion_dist,
                             half_default_edge_length,
+                            node_i_center_x,
+                            node_i_center_y,
+                            node_j_center_x,
+                            node_j_center_y,
                         );
                         self.nodes[i].repulsion_fx += rfx;
                         self.nodes[i].repulsion_fy += rfy;
@@ -2611,10 +2685,10 @@ impl SimGraph {
 
                 let owner = n.owner_idx;
                 let (l, r, t, b) = (
-                    bounds.left.get(owner).copied().unwrap_or(0.0),
-                    bounds.right.get(owner).copied().unwrap_or(0.0),
-                    bounds.top.get(owner).copied().unwrap_or(0.0),
-                    bounds.bottom.get(owner).copied().unwrap_or(0.0),
+                    owner_bounds.left.get(owner).copied().unwrap_or(0.0),
+                    owner_bounds.right.get(owner).copied().unwrap_or(0.0),
+                    owner_bounds.top.get(owner).copied().unwrap_or(0.0),
+                    owner_bounds.bottom.get(owner).copied().unwrap_or(0.0),
                 );
                 if !(l.is_finite() && r.is_finite() && t.is_finite() && b.is_finite()) {
                     continue;
@@ -2829,7 +2903,7 @@ impl SimGraph {
 
         // Ensure compound rectangles reflect the final leaf positions before callers compute
         // component bbox/centering (e.g. `aux.relocateComponent(...)` parity).
-        let _ = self.update_bounds();
+        self.update_bounds(owner_bounds);
         if let Some(stages) = debug_stages {
             self.push_debug_stage(
                 stages,
@@ -4643,7 +4717,8 @@ mod tests {
             bottom = bottom.max(n.top + n.height);
         }
         let node_order = [0usize, 1, 2];
-        let grid = RepulsionGrid::build(
+        let grid = RepulsionGrid::build_or_reuse(
+            None,
             left,
             top,
             right,
@@ -4654,12 +4729,31 @@ mod tests {
         )
         .expect("grid");
 
-        let mut processed = vec![false; nodes.len()];
-        grid.refresh_node_surrounding(0, &mut nodes, &processed, repulsion_range);
+        let mut processed_generation = vec![0u32; nodes.len()];
+        let current_processed_generation = 1u32;
+        let mut surrounding_seen = vec![0u32; nodes.len()];
+        let mut surrounding_seen_generation = 1u32;
+        grid.refresh_node_surrounding(
+            0,
+            &mut nodes,
+            &processed_generation,
+            current_processed_generation,
+            repulsion_range,
+            &mut surrounding_seen,
+            &mut surrounding_seen_generation,
+        );
         assert_eq!(nodes[0].surrounding, vec![1]);
 
-        processed[0] = true;
-        grid.refresh_node_surrounding(1, &mut nodes, &processed, repulsion_range);
+        processed_generation[0] = current_processed_generation;
+        grid.refresh_node_surrounding(
+            1,
+            &mut nodes,
+            &processed_generation,
+            current_processed_generation,
+            repulsion_range,
+            &mut surrounding_seen,
+            &mut surrounding_seen_generation,
+        );
         assert!(
             !nodes[1].surrounding.contains(&0),
             "node1 should not include already-processed node0"
@@ -4991,7 +5085,33 @@ fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
     }
 }
 
+#[cfg(test)]
 fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
+    let (ax, ay, bx, by, overlapped) = rect_intersection_points(a, b);
+    if overlapped {
+        return (a.center_x(), a.center_y(), b.center_x(), b.center_y());
+    }
+    (ax, ay, bx, by)
+}
+
+#[cfg(test)]
+#[inline]
+fn rect_intersection_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64, bool) {
+    let p1x = a.center_x();
+    let p1y = a.center_y();
+    let p2x = b.center_x();
+    let p2y = b.center_y();
+
+    if rects_intersect(a, b) {
+        return (p1x, p1y, p2x, p2y, true);
+    }
+
+    let (ax, ay, bx, by) = rect_intersection_points_no_overlap_check(a, b);
+    (ax, ay, bx, by, false)
+}
+
+#[inline]
+fn rect_intersection_points_no_overlap_check(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
     // Port of layout-base `IGeometry.getIntersection2(rectA, rectB, result)`.
     //
     // result[0-1] contains clip point on rectA; result[2-3] contains clip point on rectB.
@@ -5000,25 +5120,17 @@ fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
     let p2x = b.center_x();
     let p2y = b.center_y();
 
-    if rects_intersect(a, b) {
-        return (p1x, p1y, p2x, p2y);
-    }
-
-    let top_left_ax = a.left;
-    let top_left_ay = a.top;
-    let top_right_ax = a.right();
-    let bottom_left_ax = a.left;
-    let bottom_left_ay = a.bottom();
-    let bottom_right_ax = a.right();
+    let left_a = a.left;
+    let right_a = a.right();
+    let top_a = a.top;
+    let bottom_a = a.bottom();
     let half_width_a = a.half_w();
     let half_height_a = a.half_h();
 
-    let top_left_bx = b.left;
-    let top_left_by = b.top;
-    let top_right_bx = b.right();
-    let bottom_left_bx = b.left;
-    let bottom_left_by = b.bottom();
-    let bottom_right_bx = b.right();
+    let left_b = b.left;
+    let right_b = b.right();
+    let top_b = b.top;
+    let bottom_b = b.bottom();
     let half_width_b = b.half_w();
     let half_height_b = b.half_h();
 
@@ -5029,15 +5141,15 @@ fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
 
     if p1x == p2x {
         if p1y > p2y {
-            return (p1x, top_left_ay, p2x, bottom_left_by);
+            return (p1x, top_a, p2x, bottom_b);
         } else if p1y < p2y {
-            return (p1x, bottom_left_ay, p2x, top_left_by);
+            return (p1x, bottom_a, p2x, top_b);
         }
     } else if p1y == p2y {
         if p1x > p2x {
-            return (top_left_ax, p1y, top_right_bx, p2y);
+            return (left_a, p1y, right_b, p2y);
         } else if p1x < p2x {
-            return (top_right_ax, p1y, top_left_bx, p2y);
+            return (right_a, p1y, left_b, p2y);
         }
     } else {
         let slope_a = a.height / a.width;
@@ -5049,44 +5161,44 @@ fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
 
         if -slope_a == slope_prime {
             if p1x > p2x {
-                clip_ax = bottom_left_ax;
-                clip_ay = bottom_left_ay;
+                clip_ax = left_a;
+                clip_ay = bottom_a;
                 clip_a_found = true;
             } else {
-                clip_ax = top_right_ax;
-                clip_ay = top_left_ay;
+                clip_ax = right_a;
+                clip_ay = top_a;
                 clip_a_found = true;
             }
         } else if slope_a == slope_prime {
             if p1x > p2x {
-                clip_ax = top_left_ax;
-                clip_ay = top_left_ay;
+                clip_ax = left_a;
+                clip_ay = top_a;
                 clip_a_found = true;
             } else {
-                clip_ax = bottom_right_ax;
-                clip_ay = bottom_left_ay;
+                clip_ax = right_a;
+                clip_ay = bottom_a;
                 clip_a_found = true;
             }
         }
 
         if -slope_b == slope_prime {
             if p2x > p1x {
-                clip_bx = bottom_left_bx;
-                clip_by = bottom_left_by;
+                clip_bx = left_b;
+                clip_by = bottom_b;
                 clip_b_found = true;
             } else {
-                clip_bx = top_right_bx;
-                clip_by = top_left_by;
+                clip_bx = right_b;
+                clip_by = top_b;
                 clip_b_found = true;
             }
         } else if slope_b == slope_prime {
             if p2x > p1x {
-                clip_bx = top_left_bx;
-                clip_by = top_left_by;
+                clip_bx = left_b;
+                clip_by = top_b;
                 clip_b_found = true;
             } else {
-                clip_bx = bottom_right_bx;
-                clip_by = bottom_left_by;
+                clip_bx = right_b;
+                clip_by = bottom_b;
                 clip_b_found = true;
             }
         }
@@ -5119,19 +5231,19 @@ fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
             if !clip_a_found {
                 match card_a {
                     1 => {
-                        clip_ay = top_left_ay;
+                        clip_ay = top_a;
                         clip_ax = p1x + -half_height_a / slope_prime;
                     }
                     2 => {
-                        clip_ax = bottom_right_ax;
+                        clip_ax = right_a;
                         clip_ay = p1y + half_width_a * slope_prime;
                     }
                     3 => {
-                        clip_ay = bottom_left_ay;
+                        clip_ay = bottom_a;
                         clip_ax = p1x + half_height_a / slope_prime;
                     }
                     4 => {
-                        clip_ax = bottom_left_ax;
+                        clip_ax = left_a;
                         clip_ay = p1y + -half_width_a * slope_prime;
                     }
                     _ => {}
@@ -5141,19 +5253,19 @@ fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
             if !clip_b_found {
                 match card_b {
                     1 => {
-                        clip_by = top_left_by;
+                        clip_by = top_b;
                         clip_bx = p2x + -half_height_b / slope_prime;
                     }
                     2 => {
-                        clip_bx = bottom_right_bx;
+                        clip_bx = right_b;
                         clip_by = p2y + half_width_b * slope_prime;
                     }
                     3 => {
-                        clip_by = bottom_left_by;
+                        clip_by = bottom_b;
                         clip_bx = p2x + half_height_b / slope_prime;
                     }
                     4 => {
-                        clip_bx = bottom_left_bx;
+                        clip_bx = left_b;
                         clip_by = p2y + -half_width_b * slope_prime;
                     }
                     _ => {}
@@ -5165,55 +5277,131 @@ fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
     (clip_ax, clip_ay, clip_bx, clip_by)
 }
 
+#[inline]
+fn calc_repulsion_force_overlapping(
+    a: &SimNode,
+    b: &SimNode,
+    separation_buffer: f64,
+    a_center_x: f64,
+    a_center_y: f64,
+    b_center_x: f64,
+    b_center_y: f64,
+) -> (f64, f64) {
+    let (ox, oy) = calc_separation_amount_with_centers(
+        a,
+        b,
+        separation_buffer,
+        a_center_x,
+        a_center_y,
+        b_center_x,
+        b_center_y,
+    );
+    let repulsion_fx = 2.0 * ox;
+    let repulsion_fy = 2.0 * oy;
+
+    // layout-base: scale overlap separation by a children constant so large compounds move
+    // more slowly than leaves (and to reduce oscillation).
+    let denom = (a.no_of_children + b.no_of_children).max(1.0);
+    let children_constant = (a.no_of_children * b.no_of_children) / denom;
+
+    // Return a force delta to be applied as:
+    // - nodeA += rfx/rfy
+    // - nodeB -= rfx/rfy
+    (
+        -children_constant * repulsion_fx,
+        -children_constant * repulsion_fy,
+    )
+}
+
+#[inline]
+fn calc_repulsion_force_non_overlapping_from_points(
+    min_repulsion_dist: f64,
+    children_product: f64,
+    ax: f64,
+    ay: f64,
+    bx: f64,
+    by: f64,
+) -> (f64, f64) {
+    let mut dx = bx - ax;
+    let mut dy = by - ay;
+
+    if dx.abs() < min_repulsion_dist {
+        dx = imath_sign(dx) * min_repulsion_dist;
+    }
+    if dy.abs() < min_repulsion_dist {
+        dy = imath_sign(dy) * min_repulsion_dist;
+    }
+
+    let dist_sq = dx * dx + dy * dy;
+    let dist = dist_sq.sqrt();
+    if dist_sq == 0.0 {
+        return (0.0, 0.0);
+    }
+
+    // layout-base:
+    // `(nodeA.nodeRepulsion/2 + nodeB.nodeRepulsion/2) * noOfChildrenA * noOfChildrenB / dist^2`.
+    // Default node repulsion is 4500 for both nodes.
+    let repulsion_force = SimGraph::DEFAULT_REPULSION_STRENGTH * children_product / dist_sq;
+    let repulsion_fx = repulsion_force * dx / dist;
+    let repulsion_fy = repulsion_force * dy / dist;
+    (-repulsion_fx, -repulsion_fy)
+}
+
+#[inline]
 fn calc_repulsion_force(
     a: &SimNode,
     b: &SimNode,
     min_repulsion_dist: f64,
     separation_buffer: f64,
+    a_center_x: f64,
+    a_center_y: f64,
+    b_center_x: f64,
+    b_center_y: f64,
+) -> (f64, f64) {
+    calc_repulsion_force_with_centers(
+        a,
+        b,
+        min_repulsion_dist,
+        separation_buffer,
+        a_center_x,
+        a_center_y,
+        b_center_x,
+        b_center_y,
+    )
+}
+
+#[inline]
+fn calc_repulsion_force_with_centers(
+    a: &SimNode,
+    b: &SimNode,
+    min_repulsion_dist: f64,
+    separation_buffer: f64,
+    a_center_x: f64,
+    a_center_y: f64,
+    b_center_x: f64,
+    b_center_y: f64,
 ) -> (f64, f64) {
     if rects_intersect(a, b) {
-        let (ox, oy) = calc_separation_amount(a, b, separation_buffer);
-        let repulsion_fx = 2.0 * ox;
-        let repulsion_fy = 2.0 * oy;
-
-        // layout-base: scale overlap separation by a children constant so large compounds move
-        // more slowly than leaves (and to reduce oscillation).
-        let denom = (a.no_of_children + b.no_of_children).max(1.0);
-        let children_constant = (a.no_of_children * b.no_of_children) / denom;
-
-        // Return a force delta to be applied as:
-        // - nodeA += rfx/rfy
-        // - nodeB -= rfx/rfy
-        (
-            -children_constant * repulsion_fx,
-            -children_constant * repulsion_fy,
+        calc_repulsion_force_overlapping(
+            a,
+            b,
+            separation_buffer,
+            a_center_x,
+            a_center_y,
+            b_center_x,
+            b_center_y,
         )
     } else {
-        let (ax, ay, bx, by) = rect_clip_points(a, b);
-        let mut dx = bx - ax;
-        let mut dy = by - ay;
-
-        if dx.abs() < min_repulsion_dist {
-            dx = imath_sign(dx) * min_repulsion_dist;
-        }
-        if dy.abs() < min_repulsion_dist {
-            dy = imath_sign(dy) * min_repulsion_dist;
-        }
-
-        let dist_sq = dx * dx + dy * dy;
-        let dist = dist_sq.sqrt();
-        if dist_sq == 0.0 || dist == 0.0 {
-            return (0.0, 0.0);
-        }
-
-        // layout-base:
-        // `(nodeA.nodeRepulsion/2 + nodeB.nodeRepulsion/2) * noOfChildrenA * noOfChildrenB / dist^2`.
-        // Default node repulsion is 4500 for both nodes.
-        let repulsion_force =
-            SimGraph::DEFAULT_REPULSION_STRENGTH * a.no_of_children * b.no_of_children / dist_sq;
-        let repulsion_fx = repulsion_force * dx / dist;
-        let repulsion_fy = repulsion_force * dy / dist;
-        (-repulsion_fx, -repulsion_fy)
+        let children_product = a.no_of_children * b.no_of_children;
+        let (ax, ay, bx, by) = rect_intersection_points_no_overlap_check(a, b);
+        calc_repulsion_force_non_overlapping_from_points(
+            min_repulsion_dist,
+            children_product,
+            ax,
+            ay,
+            bx,
+            by,
+        )
     }
 }
 
@@ -5234,7 +5422,18 @@ impl RepulsionGrid {
         &self.cells[self.idx(x, y)]
     }
 
-    fn build(
+    fn reset(&mut self, size_x: i32, size_y: i32) {
+        self.size_x = size_x;
+        self.size_y = size_y;
+        let target = (size_x as usize) * (size_y as usize);
+        self.cells.resize_with(target, Vec::new);
+        for cell in &mut self.cells {
+            cell.clear();
+        }
+    }
+
+    fn build_or_reuse(
+        grid: Option<Self>,
         left: f64,
         top: f64,
         right: f64,
@@ -5262,7 +5461,12 @@ impl RepulsionGrid {
         // layout-base `FDLayout.calcGrid`: size = ceil((graph.right - graph.left) / repulsionRange).
         let size_x = ((w / repulsion_range).ceil() as i32).max(1);
         let size_y = ((h / repulsion_range).ceil() as i32).max(1);
-        let mut cells: Vec<Vec<usize>> = vec![Vec::new(); (size_x as usize) * (size_y as usize)];
+        let mut grid = grid.unwrap_or_else(|| Self {
+            size_x,
+            size_y,
+            cells: Vec::new(),
+        });
+        grid.reset(size_x, size_y);
 
         // Mirror layout-base `addNodeToGrid`: push the node into every cell that intersects the
         // node's rect, using top-left anchored coordinates.
@@ -5294,33 +5498,50 @@ impl RepulsionGrid {
                         continue;
                     }
                     let cell_idx = (gx as usize) * (size_y as usize) + (gy as usize);
-                    cells[cell_idx].push(idx);
+                    grid.cells[cell_idx].push(idx);
                 }
             }
         }
 
-        Some(Self {
-            size_x,
-            size_y,
-            cells,
-        })
+        Some(grid)
     }
 
     fn refresh_node_surrounding(
         &self,
         node_idx: usize,
         nodes: &mut [SimNode],
-        processed: &[bool],
+        processed_generation: &[u32],
+        current_processed_generation: u32,
         repulsion_range: f64,
+        surrounding_seen: &mut [u32],
+        surrounding_seen_generation: &mut u32,
     ) {
+        if node_idx >= nodes.len() {
+            return;
+        }
         let start_x = nodes[node_idx].grid_start_x;
         let finish_x = nodes[node_idx].grid_finish_x;
         let start_y = nodes[node_idx].grid_start_y;
         let finish_y = nodes[node_idx].grid_finish_y;
-
-        let mut seen: Vec<bool> = vec![false; nodes.len()];
-        let mut surrounding: Vec<usize> = Vec::new();
-
+        let node_owner_idx = nodes[node_idx].owner_idx;
+        let node_center_x = nodes[node_idx].center_x();
+        let node_center_y = nodes[node_idx].center_y();
+        let node_half_w = nodes[node_idx].half_w();
+        let node_half_h = nodes[node_idx].half_h();
+        let (left, rest) = nodes.split_at_mut(node_idx);
+        let (node, right) = rest
+            .split_first_mut()
+            .expect("node_idx checked against nodes len");
+        let left: &[SimNode] = left;
+        let right: &[SimNode] = right;
+        let surrounding = &mut node.surrounding;
+        surrounding.clear();
+        *surrounding_seen_generation = surrounding_seen_generation.wrapping_add(1);
+        if *surrounding_seen_generation == 0 {
+            surrounding_seen.fill(0);
+            *surrounding_seen_generation = 1;
+        }
+        let generation = *surrounding_seen_generation;
         for gx in (start_x - 1)..=(finish_x + 1) {
             if gx < 0 || gx >= self.size_x {
                 continue;
@@ -5333,33 +5554,61 @@ impl RepulsionGrid {
                     if other == node_idx {
                         continue;
                     }
-                    if processed.get(other).copied().unwrap_or(false) {
+                    if processed_generation[other] == current_processed_generation {
                         continue;
                     }
-                    if seen[other] {
+                    if surrounding_seen[other] == generation {
                         continue;
                     }
-                    if nodes[node_idx].owner_idx != nodes[other].owner_idx {
+                    let other_node = if other < node_idx {
+                        &left[other]
+                    } else {
+                        &right[other - node_idx - 1]
+                    };
+                    if node_owner_idx != other_node.owner_idx {
                         continue;
                     }
 
-                    let dx = (nodes[node_idx].center_x() - nodes[other].center_x()).abs()
-                        - (nodes[node_idx].half_w() + nodes[other].half_w());
-                    let dy = (nodes[node_idx].center_y() - nodes[other].center_y()).abs()
-                        - (nodes[node_idx].half_h() + nodes[other].half_h());
+                    let other_center_x = other_node.center_x();
+                    let other_center_y = other_node.center_y();
+                    let other_half_w = other_node.half_w();
+                    let other_half_h = other_node.half_h();
+
+                    let dx = (node_center_x - other_center_x).abs() - (node_half_w + other_half_w);
+                    let dy = (node_center_y - other_center_y).abs() - (node_half_h + other_half_h);
                     if dx <= repulsion_range && dy <= repulsion_range {
-                        seen[other] = true;
+                        surrounding_seen[other] = generation;
                         surrounding.push(other);
                     }
                 }
             }
         }
-
-        nodes[node_idx].surrounding = surrounding;
     }
 }
 
+#[cfg(test)]
 fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (f64, f64) {
+    calc_separation_amount_with_centers(
+        a,
+        b,
+        separation_buffer,
+        a.center_x(),
+        a.center_y(),
+        b.center_x(),
+        b.center_y(),
+    )
+}
+
+#[inline]
+fn calc_separation_amount_with_centers(
+    a: &SimNode,
+    b: &SimNode,
+    separation_buffer: f64,
+    a_center_x: f64,
+    a_center_y: f64,
+    b_center_x: f64,
+    b_center_y: f64,
+) -> (f64, f64) {
     debug_assert!(rects_intersect(a, b));
 
     let (dir_x, dir_y) = decide_directions_for_overlapping_nodes(a, b);
@@ -5379,8 +5628,8 @@ fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (
         overlap_y += (a.top - b.top).min(b.bottom() - a.bottom());
     }
 
-    let center_dx = b.center_x() - a.center_x();
-    let center_dy = b.center_y() - a.center_y();
+    let center_dx = b_center_x - a_center_x;
+    let center_dy = b_center_y - a_center_y;
     let mut slope = (center_dy / center_dx).abs();
     if nearly_equal(center_dy, 0.0) && nearly_equal(center_dx, 0.0) {
         slope = 1.0;

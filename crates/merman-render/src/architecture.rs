@@ -554,21 +554,11 @@ fn architecture_fcose_node_bounds_extras<'a>(
     } = input;
     let text_style = architecture_cytoscape_text_style(font_size_px, font_family);
 
-    let mut node_title: FxHashMap<&str, &str> = FxHashMap::default();
-    node_title.reserve(model.nodes.len().saturating_mul(2));
-
-    for n in &model.nodes {
-        if let Some(t) = n.title {
-            node_title.insert(n.id, t);
-        }
-    }
-
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
     for n in &model.nodes {
-        let title = node_title.get(n.id).copied();
         let bounds_extras = architecture_measure_cytoscape_node_bbox_extras(
-            title,
+            n.title,
             text_measurer,
             &text_style,
             icon_size,

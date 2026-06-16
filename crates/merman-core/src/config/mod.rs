@@ -34,6 +34,14 @@ impl MermaidConfig {
         self.0.as_ref()
     }
 
+    pub(crate) fn is_empty_object(&self) -> bool {
+        matches!(self.as_value(), Value::Object(map) if map.is_empty())
+    }
+
+    pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
     pub fn as_value_mut(&mut self) -> &mut Value {
         self.value_mut()
     }

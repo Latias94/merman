@@ -1,6 +1,7 @@
 use crate::svg::icon_registry::scope_svg_internal_ids;
 
-use super::super::fmt;
+use super::super::fmt_into;
+use std::borrow::Cow;
 
 pub(super) fn arch_icon_body(name: &str) -> &'static str {
     // Copied from Mermaid@11.12.2 `packages/mermaid/src/diagrams/architecture/architectureIcons.ts`.
@@ -33,33 +34,127 @@ pub(super) fn arch_icon_body(name: &str) -> &'static str {
     }
 }
 
-pub(super) fn arch_icon_svg(icon_name: &str, icon_size_px: f64, id_scope: &str) -> String {
-    let body = arch_icon_body(icon_name);
-    let body = scope_svg_internal_ids(body, id_scope);
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 80 80">{body}</svg>"#,
-        w = fmt(icon_size_px),
-        h = fmt(icon_size_px),
-        body = body
-    )
+fn arch_icon_body_has_internal_ids(name: &str) -> bool {
+    matches!(name, "database")
 }
 
-pub(super) fn arch_icon_svg_with_registry(
+pub(super) fn arch_icon_needs_id_scope(icon_name: &str, has_registry: bool) -> bool {
+    has_registry || arch_icon_body_has_internal_ids(icon_name)
+}
+
+pub(super) fn write_arch_icon_svg(
+    out: &mut String,
+    icon_name: &str,
+    icon_size_px: f64,
+    id_scope: &str,
+) {
+    let body = arch_icon_body(icon_name);
+    let body = if arch_icon_body_has_internal_ids(icon_name) {
+        Cow::Owned(scope_svg_internal_ids(body, id_scope))
+    } else {
+        Cow::Borrowed(body)
+    };
+    out.push_str(r#"<svg xmlns="http://www.w3.org/2000/svg" width=""#);
+    fmt_into(out, icon_size_px);
+    out.push_str(r#"" height=""#);
+    fmt_into(out, icon_size_px);
+    out.push_str(r#"" viewBox="0 0 80 80">"#);
+    out.push_str(body.as_ref());
+    out.push_str("</svg>");
+}
+
+pub(super) fn write_arch_icon_svg_with_registry(
+    out: &mut String,
     icon_name: &str,
     icon_size_px: f64,
     icon_registry: Option<&crate::svg::IconRegistry>,
     id_scope: &str,
-) -> String {
-    icon_registry
-        .and_then(|registry| {
-            registry.svg_for_scoped(
-                icon_name,
-                icon_size_px,
-                icon_size_px,
-                Some("architecture"),
-                None,
-                id_scope,
-            )
-        })
-        .unwrap_or_else(|| arch_icon_svg(icon_name, icon_size_px, id_scope))
+) {
+    if let Some(svg) = icon_registry.and_then(|registry| {
+        registry.svg_for_scoped(
+            icon_name,
+            icon_size_px,
+            icon_size_px,
+            Some("architecture"),
+            None,
+            id_scope,
+        )
+    }) {
+        out.push_str(&svg);
+    } else {
+        write_arch_icon_svg(out, icon_name, icon_size_px, id_scope);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::svg::{IconRegistry, IconSvg};
+
+    #[test]
+    fn write_arch_icon_svg_preserves_builtin_id_scoping_behavior() {
+        let mut server = String::new();
+        write_arch_icon_svg(&mut server, "server", 80.0, "scope-a");
+        assert!(server.starts_with(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">"#
+        ));
+        assert!(server.contains(r#"<rect x="17.5" y="17.5""#));
+        assert!(!server.contains("IconifyId"), "{server}");
+
+        let mut database = String::new();
+        write_arch_icon_svg(&mut database, "database", 80.0, "scope-b");
+        assert!(database.contains(r#"id="IconifyId"#), "{database}");
+        assert!(!database.contains(r#"id="b""#), "{database}");
+    }
+
+    #[test]
+    fn arch_icon_scope_requirement_tracks_registry_and_internal_ids() {
+        assert!(arch_icon_needs_id_scope("database", false));
+        assert!(arch_icon_needs_id_scope("server", true));
+        assert!(!arch_icon_needs_id_scope("server", false));
+        assert!(!arch_icon_needs_id_scope("blank", false));
+    }
+
+    #[test]
+    fn write_arch_icon_svg_with_registry_scopes_internal_ids_per_architecture_node() {
+        let mut registry = IconRegistry::new();
+        registry.insert(
+            "test:clip",
+            IconSvg::new(
+                r##"<defs><clipPath id="clip"><path id="shape" d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="fixture" clip-path="url(#clip)" d="M0 0H16V16H0z"/><use href="#shape" xlink:href="#shape"/>"##,
+                16.0,
+                16.0,
+            ),
+        );
+
+        let mut service = String::new();
+        write_arch_icon_svg_with_registry(
+            &mut service,
+            "test:clip",
+            80.0,
+            Some(&registry),
+            "diagram-service-a-icon",
+        );
+        let mut group = String::new();
+        write_arch_icon_svg_with_registry(
+            &mut group,
+            "test:clip",
+            60.0,
+            Some(&registry),
+            "diagram-group-app-icon",
+        );
+
+        for svg in [&service, &group] {
+            assert!(!svg.contains(r#"id="clip""#), "{svg}");
+            assert!(!svg.contains(r#"id="shape""#), "{svg}");
+            assert!(!svg.contains(r#"url(#clip)"#), "{svg}");
+            assert!(!svg.contains(r##"href="#shape""##), "{svg}");
+            assert_eq!(svg.matches(r#"data-icon="fixture""#).count(), 1, "{svg}");
+            assert_eq!(svg.matches(r#"id="IconifyId"#).count(), 2, "{svg}");
+        }
+
+        assert_ne!(service, group);
+        assert!(service.contains(r#"width="80" height="80""#), "{service}");
+        assert!(group.contains(r#"width="60" height="60""#), "{group}");
+    }
 }

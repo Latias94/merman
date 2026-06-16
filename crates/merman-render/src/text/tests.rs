@@ -725,6 +725,23 @@ fn flowchart_svg_cluster_title_precise_width_matches_upstream_wrapped_text() {
 }
 
 #[test]
+fn svg_wrapped_width_uses_widest_emitted_line_bbox() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let text = "A very long cluster title with punctuation: (a/b/c)";
+    let metrics = measurer.measure_wrapped(text, &style, Some(120.0), WrapMode::SvgLike);
+
+    assert_eq!(metrics.width, 91.9140625);
+    assert_eq!(metrics.height, 89.4);
+    assert_eq!(metrics.line_count, 5);
+}
+
+#[test]
 fn flowchart_html_subgraph_title_punctuation_wraps_at_spaces_like_upstream() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

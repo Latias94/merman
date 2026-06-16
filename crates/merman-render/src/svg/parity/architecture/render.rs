@@ -3,11 +3,12 @@ use crate::architecture_metrics::{
     ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, architecture_estimate_service_bounds,
     architecture_top_level_service_root_bounds,
 };
+use crate::model::ArchitectureCytoscapeServiceBounds;
 
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::labels::{svg_line_plain_text, wrap_svg_words_to_lines};
-use super::model::{ArchitectureModel, ArchitectureModelAccess};
+use super::model::{ArchitectureModel, ArchitectureModelAccess, ArchitectureServiceRef};
 use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_groups,
     push_architecture_services_and_junctions,
@@ -25,6 +26,49 @@ fn timing_section<'a>(
     dst: &'a mut web_time::Duration,
 ) -> Option<super::super::timing::TimingGuard<'a>> {
     enabled.then(|| super::super::timing::TimingGuard::new(dst))
+}
+
+fn architecture_bounds_match_icon_rect(bounds: &Bounds, x: f64, y: f64, icon_size_px: f64) -> bool {
+    const EPSILON: f64 = 1e-6;
+    (bounds.min_x - x).abs() <= EPSILON
+        && (bounds.min_y - y).abs() <= EPSILON
+        && (bounds.max_x - (x + icon_size_px)).abs() <= EPSILON
+        && (bounds.max_y - (y + icon_size_px)).abs() <= EPSILON
+}
+
+fn architecture_cached_service_child_bounds<'a>(
+    service_bounds_by_id: &'a rustc_hash::FxHashMap<&str, &'a ArchitectureCytoscapeServiceBounds>,
+    service: ArchitectureServiceRef<'_>,
+    x: f64,
+    y: f64,
+    icon_size_px: f64,
+) -> Option<&'a ArchitectureCytoscapeServiceBounds> {
+    let cached = service_bounds_by_id.get(service.id).copied()?;
+    if cached.in_group.as_deref() != service.in_group {
+        return None;
+    }
+    if !architecture_bounds_match_icon_rect(&cached.body_bounds, x, y, icon_size_px) {
+        return None;
+    }
+    Some(cached)
+}
+
+fn architecture_svg_output_capacity<M: ArchitectureModelAccess>(
+    model: &M,
+    css_len: usize,
+    a11y_len: usize,
+) -> usize {
+    let service_count = model.services().count();
+    let junction_count = model.junctions().count();
+    let group_count = model.groups_len();
+    let edge_count = model.edges_len();
+    1024usize
+        .saturating_add(css_len)
+        .saturating_add(a11y_len)
+        .saturating_add(service_count.saturating_mul(900))
+        .saturating_add(junction_count.saturating_mul(180))
+        .saturating_add(group_count.saturating_mul(700))
+        .saturating_add(edge_count.saturating_mul(650))
 }
 
 struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
@@ -153,17 +197,15 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let settings = ArchitectureRenderSettings::from_config(diagram_id, effective_config);
-    let ArchitectureRenderSettings {
-        css,
-        icon_size_px,
-        half_icon,
-        padding_px,
-        arch_font_size_px,
-        svg_font_size_px,
-        use_max_width,
-        text_style,
-        compound_text_style,
-    } = settings.clone();
+    let css = settings.css.as_str();
+    let icon_size_px = settings.icon_size_px;
+    let half_icon = settings.half_icon;
+    let padding_px = settings.padding_px;
+    let arch_font_size_px = settings.arch_font_size_px;
+    let svg_font_size_px = settings.svg_font_size_px;
+    let use_max_width = settings.use_max_width;
+    let text_style = &settings.text_style;
+    let compound_text_style = &settings.compound_text_style;
     let sanitize_config_owned: merman_core::MermaidConfig;
     let sanitize_config = match sanitize_config_opt {
         Some(cfg) => cfg,
@@ -246,10 +288,33 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         services_with_edges.insert(edge.rhs_id);
     }
 
+    let mut cached_service_bounds_by_id: rustc_hash::FxHashMap<
+        &str,
+        &ArchitectureCytoscapeServiceBounds,
+    > = rustc_hash::FxHashMap::default();
+    cached_service_bounds_by_id.reserve(layout.cytoscape_service_bounds.len());
+    for bounds in &layout.cytoscape_service_bounds {
+        cached_service_bounds_by_id.insert(bounds.id.as_str(), bounds);
+    }
+
     let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
     for svc in model.services() {
         let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
         let y = y + singleton_icon_text_offset_y(svc.id);
+        if svc.in_group.is_some()
+            && let Some(cached) = architecture_cached_service_child_bounds(
+                &cached_service_bounds_by_id,
+                svc,
+                x,
+                y,
+                icon_size_px,
+            )
+        {
+            service_bounds.insert(svc.id, cached.union_bounds.clone());
+            extend_bounds(&mut content_bounds, cached.body_bounds.clone());
+            continue;
+        }
+
         let estimate = architecture_estimate_service_bounds(
             x,
             y,
@@ -258,8 +323,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             svg_font_size_px,
             svc.title,
             &text_measurer,
-            &text_style,
-            &compound_text_style,
+            text_style,
+            compound_text_style,
             wrap_svg_words_to_lines,
             |line| svg_line_plain_text(line.as_slice()),
             |line, style| text_measurer.measure_svg_text_bbox_x(line, style),
@@ -374,11 +439,15 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         && model.groups_len() == 0
         && model.edges_len() == 0;
 
-    let mut out = String::new();
-    push_architecture_root_open(ArchitectureRootOpenContext {
+    let mut out = String::with_capacity(architecture_svg_output_capacity(
+        model,
+        settings.css.len(),
+        a11y.nodes.len(),
+    ));
+    let root_open = push_architecture_root_open(ArchitectureRootOpenContext {
         out: &mut out,
         diagram_id,
-        css: css.as_str(),
+        css,
         a11y: &a11y,
         is_empty,
         use_max_width,
@@ -426,11 +495,13 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             out,
             diagram_id,
             model,
+            root_open: root_open.expect("architecture root placeholders missing"),
             content_bounds,
             padding_px,
             icon_size_px,
             use_max_width,
             apply_root_overrides: options.apply_root_overrides,
+            trust_content_bounds: options.icon_registry.is_none(),
         });
     }
 

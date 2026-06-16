@@ -244,6 +244,12 @@ pub(super) fn fmt(v: f64) -> FmtDisplay {
     FmtDisplay(v)
 }
 
+const MAX_SAFE_INTEGER_F64: f64 = 9_007_199_254_740_991.0;
+
+fn fmt_fast_integer(v: f64) -> Option<i64> {
+    (v.fract() == 0.0 && v.abs() <= MAX_SAFE_INTEGER_F64).then_some(v as i64)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FmtDisplay(f64);
 
@@ -263,6 +269,9 @@ impl std::fmt::Display for FmtDisplay {
         }
         if v == -0.0 {
             v = 0.0;
+        }
+        if let Some(i) = fmt_fast_integer(v) {
+            return write!(f, "{i}");
         }
 
         write!(f, "{v}")
@@ -285,6 +294,10 @@ pub(super) fn fmt_into(out: &mut String, v: f64) {
     }
     if v == -0.0 {
         v = 0.0;
+    }
+    if let Some(i) = fmt_fast_integer(v) {
+        let _ = write!(out, "{i}");
+        return;
     }
 
     let _ = write!(out, "{v}");
@@ -415,19 +428,21 @@ pub(super) fn apply_root_viewport_override(
     max_width_style: &mut String,
     lookup: fn(&str) -> Option<(&'static str, &'static str)>,
 ) {
+    let Some((viewbox, max_w)) = lookup(diagram_id) else {
+        return;
+    };
+
     if std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_some() {
         return;
     }
 
-    if let Some((viewbox, max_w)) = lookup(diagram_id) {
-        *viewbox_attr = viewbox.to_string();
-        let mut it = viewbox.split_whitespace();
-        let _ = it.next(); // min-x
-        let _ = it.next(); // min-y
-        *width_attr = it.next().unwrap_or("0").to_string();
-        *height_attr = it.next().unwrap_or("0").to_string();
-        *max_width_style = max_w.to_string();
-    }
+    *viewbox_attr = viewbox.to_string();
+    let mut it = viewbox.split_whitespace();
+    let _ = it.next(); // min-x
+    let _ = it.next(); // min-y
+    *width_attr = it.next().unwrap_or("0").to_string();
+    *height_attr = it.next().unwrap_or("0").to_string();
+    *max_width_style = max_w.to_string();
 }
 
 pub(super) fn fmt_max_width_px_into(out: &mut String, v: f64) {
@@ -498,7 +513,17 @@ pub(super) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str
     merman_core::entities::decode_mermaid_entities_to_unicode(text)
 }
 
+fn xml_text_is_plain_ascii(text: &str) -> bool {
+    text.bytes()
+        .all(|b| matches!(b, 0x00..=0x7f) && !matches!(b, b'&' | b'<' | b'"' | b'\'' | b'#'))
+}
+
 pub(super) fn escape_xml_into(out: &mut String, text: &str) {
+    if xml_text_is_plain_ascii(text) {
+        out.push_str(text);
+        return;
+    }
+
     let decoded = decode_mermaid_entities_for_render_text(text);
     let text = decoded.as_ref();
     let bytes = text.as_bytes();
@@ -533,6 +558,10 @@ pub(super) struct EscapeXmlDisplay<'a>(&'a str);
 
 impl std::fmt::Display for EscapeXmlDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if xml_text_is_plain_ascii(self.0) {
+            return f.write_str(self.0);
+        }
+
         let decoded = decode_mermaid_entities_for_render_text(self.0);
         let text = decoded.as_ref();
         let bytes = text.as_bytes();
@@ -714,6 +743,32 @@ mod tests {
         for v in samples {
             assert_eq!(fmt_display(v).to_string(), fmt_string(v));
             assert_eq!(fmt(v).to_string(), fmt_string(v));
+        }
+    }
+
+    #[test]
+    fn escape_xml_into_fast_path_matches_display_and_preserves_slow_paths() {
+        fn escaped_into(text: &str) -> String {
+            let mut out = String::new();
+            escape_xml_into(&mut out, text);
+            out
+        }
+
+        let samples = [
+            ("plain-id_123", "plain-id_123"),
+            (
+                "x < y & \"z\" 'q'",
+                "x &lt; y &amp; &quot;z&quot; &#39;q&#39;",
+            ),
+            ("#quot;", "&quot;"),
+            ("ﬂ°quot¶ß", "&quot;"),
+            ("café", "café"),
+        ];
+
+        for (src, expected) in samples {
+            assert_eq!(escaped_into(src), expected);
+            assert_eq!(escape_xml_display(src).to_string(), expected);
+            assert_eq!(escape_xml(src), expected);
         }
     }
 

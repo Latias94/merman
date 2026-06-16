@@ -24,24 +24,19 @@ pub(super) fn measure_svg_like_with_html_br(
     if lines.len() <= 1 {
         // Mermaid's `calculateTextDimensions` draws one `<text>/<tspan>` run per line, rounds
         // that bbox width, and keeps height from the same single-run bbox path.
-        let width_metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
         let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
         let h = if metrics.height > 0.0 {
             metrics.height
         } else {
             default_line_height
         };
-        return (
-            width_metrics.width.round().max(0.0),
-            normalize_line_height(h),
-        );
+        return (metrics.width.round().max(0.0), normalize_line_height(h));
     }
     let mut max_w: f64 = 0.0;
     let mut line_h: f64 = 0.0;
     for line in &lines {
-        let width_metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLikeSingleRun);
-        max_w = max_w.max(width_metrics.width.round().max(0.0));
         let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLikeSingleRun);
+        max_w = max_w.max(metrics.width.round().max(0.0));
         let h = if metrics.height > 0.0 {
             metrics.height
         } else {

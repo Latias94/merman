@@ -1,18 +1,20 @@
 use crate::model::Bounds;
 
-use super::super::{apply_root_viewport_override, fmt, fmt_string, svg_emitted_bounds_from_svg};
+use super::super::{fmt, fmt_string, svg_emitted_bounds_from_svg};
 use super::model::ArchitectureModelAccess;
-use super::root::{MAX_WIDTH_PLACEHOLDER, VIEWBOX_PLACEHOLDER};
+use super::root::ArchitectureRootOpen;
 
 pub(super) struct ArchitectureRootViewportContext<'a, M: ArchitectureModelAccess> {
     pub(super) out: String,
     pub(super) diagram_id: &'a str,
     pub(super) model: &'a M,
+    pub(super) root_open: ArchitectureRootOpen,
     pub(super) content_bounds: Option<Bounds>,
     pub(super) padding_px: f64,
     pub(super) icon_size_px: f64,
     pub(super) use_max_width: bool,
     pub(super) apply_root_overrides: bool,
+    pub(super) trust_content_bounds: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -79,6 +81,7 @@ fn architecture_root_bbox_from_svg(
     out: &str,
     content_bounds: Option<Bounds>,
     icon_size_px: f64,
+    trust_content_bounds: bool,
 ) -> Bounds {
     let content_bounds_fallback = content_bounds.as_ref().cloned().unwrap_or(Bounds {
         min_x: 0.0,
@@ -86,6 +89,10 @@ fn architecture_root_bbox_from_svg(
         max_x: icon_size_px,
         max_y: icon_size_px,
     });
+
+    if trust_content_bounds && content_bounds.is_some() {
+        return content_bounds_fallback;
+    }
 
     let mut bounds = svg_emitted_bounds_from_svg(out).unwrap_or(content_bounds_fallback);
 
@@ -139,35 +146,46 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
         mut out,
         diagram_id,
         model,
+        root_open,
         content_bounds,
         padding_px,
         icon_size_px,
         use_max_width,
         apply_root_overrides,
+        trust_content_bounds,
     } = ctx;
 
-    let b = architecture_root_bbox_from_svg(&out, content_bounds, icon_size_px);
+    let b =
+        architecture_root_bbox_from_svg(&out, content_bounds, icon_size_px, trust_content_bounds);
     let profile = ArchitectureRootViewportProfile::from_model(model);
     let viewport = architecture_root_viewport_from_bbox(&b, padding_px, profile);
 
     let mut view_box_attr = viewport.view_box_attr();
     let mut max_w_attr = fmt_string(viewport.width);
-    let mut w_attr = fmt_string(viewport.width);
-    let mut h_attr = fmt_string(viewport.height);
     if apply_root_overrides {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut view_box_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override,
-        );
+        if let Some((override_viewbox, override_max_w)) = crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id) {
+            if std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_none() {
+                view_box_attr = override_viewbox.to_string();
+                max_w_attr = override_max_w.to_string();
+            }
+        }
     }
 
-    out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
+    let mut replacements: Vec<(usize, std::ops::Range<usize>, &str)> =
+        Vec::with_capacity(if use_max_width { 2 } else { 1 });
+    replacements.push((
+        root_open.viewbox_placeholder_range.start,
+        root_open.viewbox_placeholder_range,
+        view_box_attr.as_str(),
+    ));
     if use_max_width {
-        out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
+        if let Some(range) = root_open.max_width_placeholder_range {
+            replacements.push((range.start, range, max_w_attr.as_str()));
+        }
+    }
+    replacements.sort_by_key(|(start, _, _)| std::cmp::Reverse(*start));
+    for (_, range, replacement) in replacements {
+        out.replace_range(range, replacement);
     }
     out
 }
@@ -251,11 +269,37 @@ mod tests {
     fn architecture_root_bbox_uses_content_bounds_when_svg_bbox_is_unavailable() {
         let content = bounds(-10.0, -20.0, 30.0, 40.0);
 
-        let b = architecture_root_bbox_from_svg("<not-svg", Some(content.clone()), 80.0);
+        let b = architecture_root_bbox_from_svg("<not-svg", Some(content.clone()), 80.0, false);
 
         assert_eq!(b.min_x, content.min_x);
         assert_eq!(b.min_y, content.min_y);
         assert_eq!(b.max_x, content.max_x);
         assert_eq!(b.max_y, content.max_y);
+    }
+
+    #[test]
+    fn architecture_root_bbox_can_trust_accumulated_content_bounds() {
+        let content = bounds(1.0, 2.0, 3.0, 4.0);
+        let svg = r#"<svg><rect x="-100" y="-200" width="300" height="400"/></svg>"#;
+
+        let b = architecture_root_bbox_from_svg(svg, Some(content.clone()), 80.0, true);
+
+        assert_eq!(b.min_x, content.min_x);
+        assert_eq!(b.min_y, content.min_y);
+        assert_eq!(b.max_x, content.max_x);
+        assert_eq!(b.max_y, content.max_y);
+    }
+
+    #[test]
+    fn architecture_root_bbox_scans_svg_when_content_bounds_are_not_trusted() {
+        let content = bounds(1.0, 2.0, 3.0, 4.0);
+        let svg = r#"<svg><rect x="-100" y="-200" width="300" height="400"/></svg>"#;
+
+        let b = architecture_root_bbox_from_svg(svg, Some(content), 80.0, false);
+
+        assert_eq!(b.min_x, -100.0);
+        assert_eq!(b.min_y, -200.0);
+        assert_eq!(b.max_x, 200.0);
+        assert_eq!(b.max_y, 200.0);
     }
 }
