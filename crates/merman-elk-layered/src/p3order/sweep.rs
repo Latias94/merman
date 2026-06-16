@@ -254,6 +254,7 @@ impl BarycenterPortDistributor {
         let mut in_layer_ports = Vec::new();
         self.min_barycenter = 0.0;
         self.max_barycenter = 0.0;
+        let absurdly_large = 2.0 * layer_node_count(graph, node, order) as f64 + 1.0;
 
         'port_loop: for port in ports.iter().copied() {
             let Some(port_data) = graph
@@ -267,26 +268,33 @@ impl BarycenterPortDistributor {
             let north_south_port = matches!(port_data.side, PortSide::North | PortSide::South);
             let mut sum = 0.0;
             if north_south_port {
-                // ELK skips north/south ports without the PORT_DUMMY origin property. The current
-                // Rust graph does not represent that property yet.
-                continue;
-            }
-
-            for outgoing_edge in &port_data.outgoing_edges {
-                let connected_port = graph.edges[*outgoing_edge].target;
-                if same_layer(graph, connected_port.node, node) {
-                    in_layer_ports.push(port);
-                    continue 'port_loop;
+                let Some(dummy_node) = port_data
+                    .port_dummy
+                    .as_ref()
+                    .filter(|dummy| dummy.graph_id == graph.id)
+                    .map(|dummy| dummy.node)
+                else {
+                    continue;
+                };
+                sum += north_south_port_barycenter_sum(graph, port, dummy_node, absurdly_large)
+                    .unwrap_or(0.0);
+            } else {
+                for outgoing_edge in &port_data.outgoing_edges {
+                    let connected_port = graph.edges[*outgoing_edge].target;
+                    if same_layer(graph, connected_port.node, node) {
+                        in_layer_ports.push(port);
+                        continue 'port_loop;
+                    }
+                    sum += self.rank_of(graph, connected_port);
                 }
-                sum += self.rank_of(graph, connected_port);
-            }
-            for incoming_edge in &port_data.incoming_edges {
-                let connected_port = graph.edges[*incoming_edge].source;
-                if same_layer(graph, connected_port.node, node) {
-                    in_layer_ports.push(port);
-                    continue 'port_loop;
+                for incoming_edge in &port_data.incoming_edges {
+                    let connected_port = graph.edges[*incoming_edge].source;
+                    if same_layer(graph, connected_port.node, node) {
+                        in_layer_ports.push(port);
+                        continue 'port_loop;
+                    }
+                    sum -= self.rank_of(graph, connected_port);
                 }
-                sum -= self.rank_of(graph, connected_port);
             }
 
             let degree = port_degree(graph, port);
@@ -295,6 +303,8 @@ impl BarycenterPortDistributor {
                 self.set_port_barycenter(graph, port, barycenter);
                 self.min_barycenter = self.min_barycenter.min(barycenter);
                 self.max_barycenter = self.max_barycenter.max(barycenter);
+            } else if north_south_port {
+                self.set_port_barycenter(graph, port, sum);
             }
         }
 
@@ -2761,6 +2771,59 @@ fn same_layer(graph: &LGraph, left: usize, right: usize) -> bool {
     graph.layerless_nodes[left].layer_index == graph.layerless_nodes[right].layer_index
 }
 
+fn north_south_port_barycenter_sum(
+    graph: &LGraph,
+    port: PortRef,
+    dummy_node: usize,
+    absurdly_large: f64,
+) -> Option<f64> {
+    let dummy = graph.layerless_nodes.get(dummy_node)?;
+    let mut input = false;
+    let mut output = false;
+
+    for dummy_port in &dummy.ports {
+        if dummy_port.node != dummy_node {
+            continue;
+        }
+        if !dummy_port.outgoing_edges.is_empty() {
+            output = true;
+        } else if !dummy_port.incoming_edges.is_empty() {
+            input = true;
+        }
+    }
+
+    let position = graph.layerless_nodes[dummy_node]
+        .layer_index
+        .and_then(|layer| {
+            graph.layers.get(layer).and_then(|layer| {
+                layer
+                    .nodes
+                    .iter()
+                    .position(|candidate| *candidate == dummy_node)
+            })
+        })? as f64;
+    let side = graph.layerless_nodes[port.node].ports[port.port].side;
+
+    let sum = if input && !output {
+        if side == PortSide::North {
+            -position
+        } else {
+            absurdly_large - position
+        }
+    } else if output && !input {
+        position + 1.0
+    } else if input && output {
+        if side == PortSide::North {
+            0.0
+        } else {
+            absurdly_large / 2.0
+        }
+    } else {
+        0.0
+    };
+    Some(sum)
+}
+
 fn layer_node_count(graph: &LGraph, node: usize, order: &[Vec<usize>]) -> usize {
     let Some(layer_index) = graph.layerless_nodes[node].layer_index else {
         return 0;
@@ -3464,6 +3527,166 @@ mod tests {
                 PortSide::West,
                 PortSide::East
             ]
+        );
+    }
+
+    #[test]
+    fn north_south_hierarchical_ports_use_source_barycenter_keys() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("parent", 80.0, 40.0, None));
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("input_dummy", 0.0, 0.0, None));
+        graph.layerless_nodes[1].kind = LNodeKind::ExternalPort;
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("output_dummy", 0.0, 0.0, None));
+        graph.layerless_nodes[2].kind = LNodeKind::ExternalPort;
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("both_dummy", 0.0, 0.0, None));
+        graph.layerless_nodes[3].kind = LNodeKind::ExternalPort;
+        graph.set_node_layer(1, 0);
+        graph.set_node_layer(2, 0);
+        graph.set_node_layer(3, 0);
+        graph.layers[0].nodes = vec![1, 2, 3];
+
+        let north_input = graph
+            .add_port(0, PortType::Input, PortSide::North, Default::default())
+            .unwrap();
+        let south_input = graph
+            .add_port(0, PortType::Input, PortSide::South, Default::default())
+            .unwrap();
+        let north_output = graph
+            .add_port(0, PortType::Output, PortSide::North, Default::default())
+            .unwrap();
+        let south_both = graph
+            .add_port(0, PortType::Output, PortSide::South, Default::default())
+            .unwrap();
+        for (port, dummy) in [
+            (north_input, 1usize),
+            (south_input, 1usize),
+            (north_output, 2usize),
+            (south_both, 3usize),
+        ] {
+            graph.layerless_nodes[0].ports[port.port].port_dummy =
+                Some(crate::graph::GraphNodeRef {
+                    graph_id: "root".to_string(),
+                    node: dummy,
+                });
+        }
+
+        let in_dummy_port = graph
+            .add_port(1, PortType::Input, PortSide::South, Default::default())
+            .unwrap();
+        let out_dummy_port = graph
+            .add_port(2, PortType::Output, PortSide::South, Default::default())
+            .unwrap();
+        let both_in_dummy_port = graph
+            .add_port(3, PortType::Input, PortSide::South, Default::default())
+            .unwrap();
+        let both_out_dummy_port = graph
+            .add_port(3, PortType::Output, PortSide::South, Default::default())
+            .unwrap();
+
+        graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "north-in".to_string(),
+                source: north_input,
+                target: in_dummy_port,
+                source_node_id: "parent".to_string(),
+                target_node_id: "input_dummy".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+        graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "out".to_string(),
+                source: out_dummy_port,
+                target: north_output,
+                source_node_id: "output_dummy".to_string(),
+                target_node_id: "parent".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+        graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "both-in".to_string(),
+                source: south_both,
+                target: both_in_dummy_port,
+                source_node_id: "parent".to_string(),
+                target_node_id: "both_dummy".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+        graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "both-out".to_string(),
+                source: both_out_dummy_port,
+                target: south_both,
+                source_node_id: "both_dummy".to_string(),
+                target_node_id: "parent".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+
+        assert_eq!(
+            north_south_port_barycenter_sum(&graph, north_input, 1, 7.0),
+            Some(-0.0)
+        );
+        assert_eq!(
+            north_south_port_barycenter_sum(&graph, south_input, 1, 7.0),
+            Some(7.0)
+        );
+        assert_eq!(
+            north_south_port_barycenter_sum(&graph, north_output, 2, 7.0),
+            Some(2.0)
+        );
+        assert_eq!(
+            north_south_port_barycenter_sum(&graph, south_both, 3, 7.0),
+            Some(3.5)
         );
     }
 

@@ -436,24 +436,54 @@ fn transform_cross_hierarchy_edge(
     let source_path = index.graph_path(edge.source.as_str());
     let target_path = index.graph_path(edge.target.as_str());
     let merge_edges = root.options.merge_edges;
+    let source_port_key = hierarchy_port_key(
+        edge.source.as_str(),
+        edge_order,
+        "source",
+        merge_edges,
+        PortType::Output,
+    );
+    let target_port_key = hierarchy_port_key(
+        edge.target.as_str(),
+        edge_order,
+        "target",
+        merge_edges,
+        PortType::Input,
+    );
+
+    {
+        let source_graph = graph_for_path(root, &source_path);
+        ensure_hierarchy_endpoint_port(
+            source_graph,
+            edge.source.as_str(),
+            source_port_key.as_str(),
+            PortType::Output,
+        )
+        .ok_or_else(|| ImportError::MissingEndpoint {
+            edge_id: edge.id.clone(),
+            node_id: edge.source.clone(),
+        })?;
+    }
+    {
+        let target_graph = graph_for_path(root, &target_path);
+        ensure_hierarchy_endpoint_port(
+            target_graph,
+            edge.target.as_str(),
+            target_port_key.as_str(),
+            PortType::Input,
+        )
+        .ok_or_else(|| ImportError::MissingEndpoint {
+            edge_id: edge.id.clone(),
+            node_id: edge.target.clone(),
+        })?;
+    }
+
     root.hierarchy_edges.push(HierarchyEdge {
         id: edge.id.clone(),
         source_node_id: edge.source.clone(),
         target_node_id: edge.target.clone(),
-        source_port_key: hierarchy_port_key(
-            edge.source.as_str(),
-            edge_order,
-            "source",
-            merge_edges,
-            PortType::Output,
-        ),
-        target_port_key: hierarchy_port_key(
-            edge.target.as_str(),
-            edge_order,
-            "target",
-            merge_edges,
-            PortType::Input,
-        ),
+        source_port_key,
+        target_port_key,
         source_path: source_path.into_iter().map(str::to_string).collect(),
         target_path: target_path.into_iter().map(str::to_string).collect(),
         labels: edge.label.iter().map(label_to_lgraph).collect(),
@@ -465,6 +495,41 @@ fn transform_cross_hierarchy_edge(
     });
 
     Ok(())
+}
+
+fn ensure_hierarchy_endpoint_port(
+    graph: &mut LGraph,
+    node_id: &str,
+    port_key: &str,
+    port_type: PortType,
+) -> Option<PortRef> {
+    if graph.options.merge_edges
+        && graph
+            .layerless_nodes
+            .iter()
+            .find(|candidate| candidate.id == node_id)
+            .is_some_and(|node| !node.port_constraints.is_side_fixed())
+    {
+        return ensure_port(graph, node_id, port_type);
+    }
+
+    let node = graph
+        .layerless_nodes
+        .iter()
+        .position(|candidate| candidate.id == node_id)?;
+    if let Some(port) = graph.layerless_nodes[node]
+        .ports
+        .iter()
+        .position(|candidate| candidate.id == port_key && candidate.port_type == port_type)
+    {
+        return Some(PortRef { node, port });
+    }
+
+    let port = graph.layerless_nodes[node].ports.len();
+    graph.layerless_nodes[node]
+        .ports
+        .push(LPort::new(port_key.to_string(), node, port_type));
+    Some(PortRef { node, port })
 }
 
 fn hierarchy_port_key(
@@ -898,6 +963,47 @@ mod tests {
         assert_eq!(lgraph.hierarchy_edges[0].target_node_id, "A");
         assert_eq!(lgraph.hierarchy_edges[0].source_path, Vec::<String>::new());
         assert_eq!(lgraph.hierarchy_edges[0].target_path, vec!["cluster"]);
+    }
+
+    #[test]
+    fn cross_hierarchy_import_creates_endpoint_ports_in_input_order() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut sibling = node("C");
+        sibling.parent = Some("cluster".to_string());
+
+        let lgraph = import_graph(&graph(
+            vec![cluster, child, sibling, node("B")],
+            vec![edge("A-B", "A", "B"), edge("A-C", "A", "C")],
+        ))
+        .unwrap();
+
+        let nested = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap()
+            .nested_graph
+            .as_ref()
+            .unwrap();
+        let child = nested
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .unwrap();
+
+        assert_eq!(
+            child
+                .ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A:0:source", "A:1"]
+        );
+        assert_eq!(nested.edges[0].source.port, 1);
+        assert_eq!(lgraph.hierarchy_edges[0].source_port_key, "A:0:source");
     }
 
     #[test]
