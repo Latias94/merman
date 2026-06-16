@@ -1195,7 +1195,7 @@ impl HierarchySweep {
             != 0.0
             || graph
                 .options
-                .consider_model_order_crossing_counter_port_influence
+                .consider_model_order_crossing_counter_node_influence
                 != 0.0
     }
 
@@ -3304,7 +3304,7 @@ mod tests {
     }
 
     #[test]
-    fn hierarchical_sweep_uses_node_port_counter_when_port_influence_is_set() {
+    fn hierarchical_sweep_matches_source_node_port_counter_gate() {
         let mut graph = LGraph::new("root", LayeredOptions::default());
         graph
             .layerless_nodes
@@ -3318,6 +3318,12 @@ mod tests {
             .consider_model_order_crossing_counter_port_influence = 1.0;
 
         let sweep = HierarchySweep::new(&mut graph, CrossMinType::Barycenter);
+
+        assert!(!sweep.use_node_port_order_crossing_counter(&graph, 0));
+
+        graph
+            .options
+            .consider_model_order_crossing_counter_node_influence = 1.0;
 
         assert!(sweep.use_node_port_order_crossing_counter(&graph, 0));
     }

@@ -832,7 +832,7 @@ impl<'a> ModelOrderPortComparator<'a> {
             }
 
             let mut p1_order = self.outgoing_edge_order(p1);
-            let mut p2_order = self.outgoing_edge_order(p2);
+            let mut p2_order = self.source_outgoing_edge_order_for_second_port(p1, p2);
 
             if p1_target.is_some() && p1_target == p2_target {
                 let p1_reversed = self.outgoing_edge_reversed(p1);
@@ -922,6 +922,23 @@ impl<'a> ModelOrderPortComparator<'a> {
             .first()
             .and_then(|edge| self.graph.edges[*edge].model_order)
             .unwrap_or(0)
+    }
+
+    fn source_outgoing_edge_order_for_second_port(
+        &self,
+        first_port: usize,
+        second_port: usize,
+    ) -> usize {
+        if self.graph.layerless_nodes[self.node].ports[second_port]
+            .outgoing_edges
+            .first()
+            .and_then(|edge| self.graph.edges[*edge].model_order)
+            .is_some()
+        {
+            self.outgoing_edge_order(first_port)
+        } else {
+            0
+        }
     }
 
     fn outgoing_edge_reversed(&self, port: usize) -> bool {
@@ -1270,6 +1287,100 @@ mod tests {
         sort_by_input_model(&mut graph);
 
         assert_eq!(graph.layers[target_layer].nodes, vec![left, right]);
+    }
+
+    #[test]
+    fn sort_by_input_model_matches_source_outgoing_second_port_order() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        graph
+            .layerless_nodes
+            .push(LNode::new("A", 80.0, 40.0, Some(0)));
+        graph
+            .layerless_nodes
+            .push(LNode::new("dummy-1", 0.0, 0.0, None));
+        graph
+            .layerless_nodes
+            .push(LNode::new("dummy-2", 0.0, 0.0, None));
+        graph.layerless_nodes[1].kind = LNodeKind::LongEdge;
+        graph.layerless_nodes[2].kind = LNodeKind::LongEdge;
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 1);
+        graph.set_node_layer(2, 1);
+        let first = graph
+            .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let second = graph
+            .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let first_target = graph
+            .add_port(1, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        let second_target = graph
+            .add_port(2, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "A-dummy-1".to_string(),
+                source: first,
+                target: first_target,
+                source_node_id: "A".to_string(),
+                target_node_id: "dummy-1".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: Some(1),
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+        graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "A-dummy-2".to_string(),
+                source: second,
+                target: second_target,
+                source_node_id: "A".to_string(),
+                target_node_id: "dummy-2".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: Some(0),
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+
+        assert_eq!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A:0", "A:1"]
+        );
+
+        sort_by_input_model(&mut graph);
+
+        assert_eq!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A:0", "A:1"]
+        );
     }
 
     #[test]
