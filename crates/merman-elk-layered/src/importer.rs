@@ -1119,6 +1119,9 @@ mod tests {
             .iter()
             .find(|port| port.port_dummy.is_some())
             .expect("parent-to-child edge should create a parent external port");
+        assert_eq!(cluster.ports.len(), 1);
+        assert_eq!(parent_port.id, "cluster:0:source");
+        assert_eq!(parent_port.port_type, PortType::Output);
         let port_dummy = parent_port.port_dummy.as_ref().unwrap();
         assert!(parent_port.inside_connections);
         assert_eq!(port_dummy.graph_id, "cluster");
@@ -1131,6 +1134,7 @@ mod tests {
             .expect("external dummy should point back to parent port");
         assert_eq!(origin.graph_id, "root");
         assert_eq!(origin.port.node, cluster_index);
+        assert_eq!(origin.port.port, 0);
     }
 
     #[test]

@@ -31,6 +31,7 @@ pub(crate) enum PendingSegmentEndpoint {
         node_id: String,
         port_key: String,
         port_type: PortType,
+        parent_port_type: PortType,
         connects_parent_node: bool,
     },
 }
@@ -63,6 +64,7 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
         } else {
             source_path[depth].to_string()
         };
+        let connects_parent_node = target == source_path[depth - 1];
         segments.push(PendingCompoundSegment {
             graph_parent: Some(source_path[depth - 1].to_string()),
             source: PendingSegmentEndpoint::LocalNode {
@@ -71,9 +73,18 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
             },
             target: PendingSegmentEndpoint::ParentBoundary {
                 node_id: source_path[depth - 1].to_string(),
-                port_key: source_port_key.to_string(),
+                port_key: if connects_parent_node {
+                    target_port_key.to_string()
+                } else {
+                    source_port_key.to_string()
+                },
                 port_type: PortType::Output,
-                connects_parent_node: target == source_path[depth - 1],
+                parent_port_type: if connects_parent_node {
+                    PortType::Input
+                } else {
+                    PortType::Output
+                },
+                connects_parent_node,
             },
             segment: CompoundEdgeSegment::Output { depth },
         });
@@ -121,13 +132,23 @@ pub(crate) fn source_ported_cross_hierarchy_segments(
         } else {
             target_path[depth].to_string()
         };
+        let connects_parent_node = source == target_path[depth - 1];
         segments.push(PendingCompoundSegment {
             graph_parent: Some(target_path[depth - 1].to_string()),
             source: PendingSegmentEndpoint::ParentBoundary {
                 node_id: target_path[depth - 1].to_string(),
-                port_key: target_port_key.to_string(),
+                port_key: if connects_parent_node {
+                    source_port_key.to_string()
+                } else {
+                    target_port_key.to_string()
+                },
                 port_type: PortType::Input,
-                connects_parent_node: source == target_path[depth - 1],
+                parent_port_type: if connects_parent_node {
+                    PortType::Output
+                } else {
+                    PortType::Input
+                },
+                connects_parent_node,
             },
             target: PendingSegmentEndpoint::LocalNode {
                 node_id: segment_target,
@@ -473,6 +494,9 @@ fn ensure_segment_endpoint_port(
             graph,
             node_id.as_str(),
             endpoint_port_type(endpoint, port_type),
+            endpoint_parent_port_type(endpoint, port_type),
+            endpoint_port_key(endpoint).unwrap_or_default(),
+            endpoint_connects_parent_node(endpoint),
         ),
     }
 }
@@ -481,6 +505,32 @@ fn endpoint_port_type(endpoint: &PendingSegmentEndpoint, fallback: PortType) -> 
     match endpoint {
         PendingSegmentEndpoint::ParentBoundary { port_type, .. } => *port_type,
         PendingSegmentEndpoint::LocalNode { .. } => fallback,
+    }
+}
+
+fn endpoint_parent_port_type(endpoint: &PendingSegmentEndpoint, fallback: PortType) -> PortType {
+    match endpoint {
+        PendingSegmentEndpoint::ParentBoundary {
+            parent_port_type, ..
+        } => *parent_port_type,
+        PendingSegmentEndpoint::LocalNode { .. } => fallback,
+    }
+}
+
+fn endpoint_port_key(endpoint: &PendingSegmentEndpoint) -> Option<&str> {
+    match endpoint {
+        PendingSegmentEndpoint::ParentBoundary { port_key, .. }
+        | PendingSegmentEndpoint::LocalNode { port_key, .. } => Some(port_key.as_str()),
+    }
+}
+
+fn endpoint_connects_parent_node(endpoint: &PendingSegmentEndpoint) -> bool {
+    match endpoint {
+        PendingSegmentEndpoint::ParentBoundary {
+            connects_parent_node,
+            ..
+        } => *connects_parent_node,
+        PendingSegmentEndpoint::LocalNode { .. } => false,
     }
 }
 
@@ -699,6 +749,8 @@ struct ExternalDummyInfo {
     dummy_node: usize,
     incident_edge_ids: Vec<String>,
     port_type: PortType,
+    parent_port_key: String,
+    parent_port_type: PortType,
     external_port_side: PortSide,
     border_offset: Option<f64>,
     origin_port: Option<GraphPortRef>,
@@ -725,6 +777,7 @@ fn link_compound_external_dummy_metadata(graph: &mut LGraph) {
                         node_index,
                         external_dummy.port_type,
                         external_dummy.external_port_side,
+                        Some(external_dummy.parent_port_key.as_str()),
                     )
                 });
             link_external_port_dummy(
@@ -780,6 +833,11 @@ fn external_dummies_for_parent_node(
                 dummy_node,
                 incident_edge_ids,
                 port_type: port.port_type,
+                parent_port_key: node
+                    .parent_port_key
+                    .clone()
+                    .unwrap_or_else(|| port.id.clone()),
+                parent_port_type: node.parent_port_type.unwrap_or(port.port_type),
                 external_port_side: node.external_port_side,
                 border_offset: port.border_offset,
                 origin_port: node.origin_port.clone(),
@@ -803,6 +861,23 @@ fn parent_port_for_external_dummy(
             .is_some()
     {
         return Some(origin_port.port);
+    }
+
+    if !external_dummy.parent_port_key.is_empty()
+        && let Some(port) = graph
+            .layerless_nodes
+            .get(parent_node)?
+            .ports
+            .iter()
+            .position(|port| {
+                port.id == external_dummy.parent_port_key
+                    && port.port_type == external_dummy.parent_port_type
+            })
+    {
+        return Some(PortRef {
+            node: parent_node,
+            port,
+        });
     }
 
     graph
@@ -833,6 +908,7 @@ fn create_parent_external_port(
     parent_node: usize,
     port_type: PortType,
     port_side: PortSide,
+    port_key: Option<&str>,
 ) -> PortRef {
     let port_side = if port_side == PortSide::Undefined {
         match port_type {
@@ -844,6 +920,15 @@ fn create_parent_external_port(
     };
     graph
         .add_port(parent_node, port_type, port_side, Default::default())
+        .map(|port| {
+            if let Some(port_key) = port_key
+                && !port_key.is_empty()
+                && let Some(port_data) = graph.layerless_nodes[parent_node].ports.get_mut(port.port)
+            {
+                port_data.id = port_key.to_string();
+            }
+            port
+        })
         .expect("parent compound node should exist when linking external dummy")
 }
 
@@ -901,7 +986,10 @@ fn ensure_local_node_port(
 fn create_parent_boundary_port(
     graph: &mut LGraph,
     parent_node_id: &str,
-    port_type: PortType,
+    dummy_port_type: PortType,
+    parent_port_type: PortType,
+    parent_port_key: &str,
+    _connects_parent_node: bool,
 ) -> PortRef {
     graph.graph_properties.external_ports = true;
     graph.graph_properties.non_free_ports = true;
@@ -913,11 +1001,15 @@ fn create_parent_boundary_port(
     let border_offset = graph.options.spacing.edge_edge / 2.0;
     let mut dummy = create_external_port_dummy(
         format!("external:{parent_node_id}"),
-        format!("external:{parent_node_id}:0"),
-        port_type,
+        if parent_port_key.is_empty() {
+            format!("external:{parent_node_id}:0")
+        } else {
+            parent_port_key.to_string()
+        },
+        dummy_port_type,
         graph.options.port_constraints,
         PortSide::Undefined,
-        match port_type {
+        match dummy_port_type {
             PortType::Input => -1,
             PortType::Output => 1,
         },
@@ -928,6 +1020,8 @@ fn create_parent_boundary_port(
         graph.options.direction,
     );
     let node = graph.layerless_nodes.len();
+    dummy.parent_port_key = (!parent_port_key.is_empty()).then(|| parent_port_key.to_string());
+    dummy.parent_port_type = Some(parent_port_type);
     dummy.ports[0].node = node;
     graph.layerless_nodes.push(dummy);
     PortRef { node, port: 0 }
