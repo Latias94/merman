@@ -238,6 +238,24 @@ fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
     assert_eq!(unique.len(), ids.len(), "{svg}");
 }
 
+#[test]
+fn architecture_builtin_icons_without_internal_ids_skip_iconify_id_scoping() {
+    let svg = render_svg_from_text(
+        r#"architecture-beta
+  service a(server)[A]
+  service b(server)[B]
+  a:R --> L:b"#,
+        "m15-architecture-server-icons",
+    );
+
+    assert_eq!(internal_iconify_ids(&svg).len(), 0, "{svg}");
+    assert_eq!(
+        svg.matches(r#"<rect x="17.5" y="17.5""#).count(),
+        2,
+        "{svg}"
+    );
+}
+
 fn internal_iconify_ids(svg: &str) -> Vec<String> {
     let mut ids = Vec::new();
     let mut index = 0;

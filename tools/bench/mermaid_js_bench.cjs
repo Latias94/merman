@@ -98,6 +98,14 @@ async function main() {
     "dist",
     "mermaid.js"
   );
+  const zenumlIifePath = path.join(
+    cliRoot,
+    "node_modules",
+    "@mermaid-js",
+    "mermaid-zenuml",
+    "dist",
+    "mermaid-zenuml.js"
+  );
 
   try {
     meta.mermaid = require(path.join(cliRoot, "node_modules", "mermaid", "package.json")).version;
@@ -107,6 +115,13 @@ async function main() {
   try {
     meta.mermaid_cli = require(
       path.join(cliRoot, "node_modules", "@mermaid-js", "mermaid-cli", "package.json")
+    ).version;
+  } catch {
+    // ignore
+  }
+  try {
+    meta.mermaid_zenuml = require(
+      path.join(cliRoot, "node_modules", "@mermaid-js", "mermaid-zenuml", "package.json")
     ).version;
   } catch {
     // ignore
@@ -206,6 +221,17 @@ async function main() {
   });
   await page.goto("file://" + mermaidHtmlPath.replace(/\\/g, "/"));
   await page.addScriptTag({ path: mermaidIifePath });
+  if (Object.values(fixtures).some((code) => /^\s*zenuml\b/.test(String(code)))) {
+    await page.addScriptTag({ path: zenumlIifePath });
+    await page.evaluate(async () => {
+      const mermaid = globalThis.mermaid;
+      const zenuml = globalThis["mermaid-zenuml"];
+      if (!mermaid || !zenuml) {
+        throw new Error("Mermaid ZenUML plugin failed to load");
+      }
+      await mermaid.registerExternalDiagrams([zenuml], { lazyLoad: false });
+    });
+  }
 
   const results = {};
   for (const [name, code] of Object.entries(fixtures)) {

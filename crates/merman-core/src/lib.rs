@@ -75,6 +75,20 @@ pub fn selected_baseline_registry_profile() -> baseline::BaselineRegistryProfile
     family::selected_registry_profile()
 }
 
+fn build_default_effective_config(site_config: &MermaidConfig) -> MermaidConfig {
+    let mut effective_config = site_config.clone();
+    theme::apply_theme_defaults(&mut effective_config);
+    effective_config
+}
+
+fn generated_default_effective_config() -> MermaidConfig {
+    static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<MermaidConfig> =
+        std::sync::OnceLock::new();
+    DEFAULT_EFFECTIVE_CONFIG
+        .get_or_init(|| build_default_effective_config(&generated::default_site_config()))
+        .clone()
+}
+
 /// Parser behavior switches shared by metadata, semantic JSON, and typed render-model parsing.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ParseOptions {
@@ -122,6 +136,7 @@ pub struct Engine {
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
+    default_effective_config: MermaidConfig,
     fixed_today_local: Option<chrono::NaiveDate>,
     fixed_local_offset_minutes: Option<i32>,
 }
@@ -129,12 +144,14 @@ pub struct Engine {
 impl Default for Engine {
     fn default() -> Self {
         let site_config = generated::default_site_config();
+        let default_effective_config = generated_default_effective_config();
 
         Self {
             registry: DetectorRegistry::for_pinned_mermaid_baseline(),
             diagram_registry: DiagramRegistry::for_pinned_mermaid_baseline(),
             render_diagram_registry: RenderDiagramRegistry::for_pinned_mermaid_baseline(),
             site_config,
+            default_effective_config,
             fixed_today_local: None,
             fixed_local_offset_minutes: None,
         }
@@ -168,6 +185,10 @@ impl Engine {
         Self::default()
     }
 
+    pub(crate) fn default_effective_config(&self) -> MermaidConfig {
+        self.default_effective_config.clone()
+    }
+
     /// Overrides the "today" value used by diagrams that depend on local time (e.g. Gantt).
     ///
     /// This exists primarily to make fixture snapshots deterministic. By default, Mermaid uses the
@@ -192,6 +213,7 @@ impl Engine {
         // Merge overrides onto Mermaid schema defaults so detectors keep working.
         config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
         self.site_config.deep_merge(site_config.as_value());
+        self.default_effective_config = build_default_effective_config(&self.site_config);
         self
     }
 

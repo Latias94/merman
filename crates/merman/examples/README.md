@@ -20,6 +20,7 @@ cargo run -p merman --example example_08_deterministic_gantt
 cargo run -p merman --features render --example example_09_multiple_diagrams
 cargo run -p merman --features egui-example --example example_10_integration_egui
 cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg
+cargo run -p merman --features render --example profile_render -- --input crates/merman/benches/fixtures/architecture_medium.mmd --stage render --seconds 5
 ```
 
 ## Custom Input
@@ -55,3 +56,23 @@ printf "flowchart LR\nA --> B\n" | \
   after `--`.
 - `example_09` writes SVG files to `target/merman-multiple-diagrams/`.
 - `example_10` opens an egui desktop window.
+- `profile_render` writes a profiling summary to stderr and is intended for CPU profilers.
+
+## Profiling
+
+Use `profile_render` when a profiler needs a long, single-stage loop instead of a Criterion
+benchmark harness. The example parses and lays out the input once for `--stage render`, then keeps
+the CPU inside SVG rendering for the requested duration.
+
+```bash
+CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph \
+  --profile bench \
+  -p merman \
+  --features render \
+  --example profile_render \
+  -o target/bench/flamegraphs/profile_render_architecture_medium.svg \
+  -- \
+  --input crates/merman/benches/fixtures/architecture_medium.mmd \
+  --stage render \
+  --seconds 20
+```

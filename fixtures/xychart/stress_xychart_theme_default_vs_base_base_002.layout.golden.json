@@ -7,11 +7,7 @@
       "chartOrientation": "vertical",
       "showDataLabel": false,
       "backgroundColor": "#f4f4f4",
-      "labelData": [
-        "2",
-        "5",
-        "8"
-      ],
+      "labelData": [],
       "drawables": [
         {
           "type": "text",

@@ -12,6 +12,10 @@ fn parse_graph_defaults_to_flowchart_v2() {
         .unwrap();
     assert_eq!(res.diagram_type, "flowchart-v2");
     assert_eq!(res.config.as_value(), &json!({}));
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.mainBkg"),
+        Some("#ECECFF")
+    );
 }
 
 #[test]

@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a new capability or workflow improvement.
+title: "[feat]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for new capabilities, new diagram families, or workflow improvements.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      placeholder: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      placeholder: What should merman do?
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact on parity / performance
+      placeholder: Call out any SVG, parity, or benchmark consequences.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+

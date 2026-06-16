@@ -7,12 +7,7 @@
       "chartOrientation": "vertical",
       "showDataLabel": false,
       "backgroundColor": "white",
-      "labelData": [
-        "0",
-        "1",
-        "0",
-        "1"
-      ],
+      "labelData": [],
       "drawables": [
         {
           "type": "path",

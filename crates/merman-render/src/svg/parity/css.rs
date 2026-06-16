@@ -174,10 +174,17 @@ pub(super) fn info_css_with_config(
 }
 
 #[cfg(feature = "cytoscape-layout")]
-pub(super) fn architecture_css_with_config(
+pub(super) struct ArchitectureCssParts {
+    pub(super) css: String,
+    pub(super) font_family: String,
+    pub(super) font_size: f64,
+}
+
+#[cfg(feature = "cytoscape-layout")]
+pub(super) fn architecture_css_parts_with_config(
     diagram_id: &str,
     effective_config: &serde_json::Value,
-) -> String {
+) -> ArchitectureCssParts {
     // Architecture uses the same "info-like" base stylesheet as Mermaid, but should honor
     // user-configured `fontFamily` / `fontSize` and theme variable colors.
     let id = escape_xml(diagram_id);
@@ -254,7 +261,20 @@ pub(super) fn architecture_css_with_config(
 
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     out.push_str(&mermaid_base_css_root_rule(&id, &font_family));
-    out
+    ArchitectureCssParts {
+        css: out,
+        font_family,
+        font_size,
+    }
+}
+
+#[cfg(feature = "cytoscape-layout")]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn architecture_css_with_config(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> String {
+    architecture_css_parts_with_config(diagram_id, effective_config).css
 }
 
 pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {

@@ -1,0 +1,50 @@
+name: Performance regression
+description: Report a slowdown or hot path worth investigating.
+title: "[perf]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a benchmark, stage spotcheck, or comparison report regresses on the same machine.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: What got slower, and in which path?
+    validations:
+      required: true
+  - type: input
+    id: benchmark
+    attributes:
+      label: Benchmark / report
+      placeholder: e.g. xychart_medium, docs/performance/COMPARISON.md, or a stage spotcheck path
+    validations:
+      required: true
+  - type: input
+    id: baseline
+    attributes:
+      label: Baseline
+      placeholder: Commit, tag, or report name used as the baseline
+  - type: input
+    id: current
+    attributes:
+      label: Current
+      placeholder: Commit, tag, or report name showing the slowdown
+  - type: textarea
+    id: numbers
+    attributes:
+      label: Numbers
+      placeholder: Paste before/after timings, ratios, or geomean changes.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Measurement setup
+      placeholder: Same machine? Same preset? Warm or cold? Any environment differences?
+  - type: textarea
+    id: suspicion
+    attributes:
+      label: Suspected hotspot
+      placeholder: If you know the stage, module, or function, mention it here.
+

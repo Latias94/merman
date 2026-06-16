@@ -7,11 +7,7 @@
       "chartOrientation": "horizontal",
       "showDataLabel": false,
       "backgroundColor": "white",
-      "labelData": [
-        "23",
-        "45",
-        "56.6"
-      ],
+      "labelData": [],
       "drawables": [
         {
           "type": "text",

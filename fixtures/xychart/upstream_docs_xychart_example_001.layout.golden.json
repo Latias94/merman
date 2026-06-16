@@ -7,20 +7,7 @@
       "chartOrientation": "vertical",
       "showDataLabel": false,
       "backgroundColor": "white",
-      "labelData": [
-        "5000",
-        "6000",
-        "7500",
-        "8200",
-        "9500",
-        "10500",
-        "11000",
-        "10200",
-        "9200",
-        "8500",
-        "7000",
-        "6000"
-      ],
+      "labelData": [],
       "drawables": [
         {
           "type": "text",

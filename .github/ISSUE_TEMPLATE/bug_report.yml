@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a rendering, parity, or runtime bug.
+title: "[bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for reproducible bugs, parity gaps, crashes, and unexpected SVG changes.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: What is broken?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      placeholder: Include fixture name, input, command, and whether the issue is deterministic.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      placeholder: Paste logs, SVG snippets, screenshots, or benchmark links.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, Rust toolchain, browser, and diagram family if relevant.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+

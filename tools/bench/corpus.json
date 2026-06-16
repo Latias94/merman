@@ -2,6 +2,7 @@
   "schema_version": 1,
   "default_group": "end_to_end",
   "suites": {
+    "canary": "The four benchmark sentinels used for the default hotspot workflow.",
     "quick": "Small smoke set for local iteration; mirrors the historical comparison filter.",
     "standard": "Balanced cross-family set for routine comparison reports.",
     "cross_family": "One representative medium fixture per supported diagram family.",
@@ -36,7 +37,7 @@
       "size": "medium",
       "category": "standard",
       "source": "crates/merman/benches/fixtures/flowchart_medium.mmd",
-      "suites": ["quick", "standard", "cross_family", "flowchart"],
+      "suites": ["canary", "quick", "standard", "cross_family", "flowchart"],
       "features": ["nodes", "edges", "labels"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
     },
@@ -226,7 +227,7 @@
       "size": "medium",
       "category": "standard",
       "source": "crates/merman/benches/fixtures/class_medium.mmd",
-      "suites": ["quick", "standard", "cross_family"],
+      "suites": ["canary", "quick", "standard", "cross_family"],
       "features": ["classes", "relations", "members"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
     },
@@ -316,7 +317,7 @@
       "size": "medium",
       "category": "standard",
       "source": "crates/merman/benches/fixtures/mindmap_medium.mmd",
-      "suites": ["standard", "cross_family"],
+      "suites": ["canary", "standard", "cross_family"],
       "features": ["tree", "markdown_labels"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
     },
@@ -446,7 +447,7 @@
       "size": "medium",
       "category": "standard",
       "source": "crates/merman/benches/fixtures/architecture_medium.mmd",
-      "suites": ["standard", "cross_family"],
+      "suites": ["canary", "standard", "cross_family"],
       "features": ["groups", "services", "edges"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
     },

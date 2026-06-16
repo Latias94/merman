@@ -9,6 +9,15 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Improved `dugong` layered layout performance by avoiding repeated dummy-node ID scans during
   long-edge normalization and by using cached adjacency when removing graph nodes. Added a
   `layout_dagreish` benchmark covering the full layout pipeline and normalize run/undo costs.
+- Improved benchmark coverage and hotspot workflow for Mermaid parity work. Added a corpus-backed
+  perf runner, shared corpus helpers, contract tests, and a profiler-friendly `profile_render`
+  example; Mermaid JS benchmarking now loads ZenUML on demand. Updated the performance docs to use
+  the new canary/default execution order and the broader stage/stress suite naming.
+- Reduced architecture and XYChart hot-path overhead by trimming repeated string formatting,
+  avoiding extra text-measurement work, and shrinking SVG allocation churn in the parity renderers.
+  Against Mermaid JS, the latest cross-family geomean is `0.016x` of Mermaid JS time, which is
+  about `62x` faster overall. `xychart_medium` is `73.62 µs` end-to-end versus `3.00 ms` in
+  Mermaid JS, or about `41x` faster.
 
 ## [0.8.0-alpha.2] - 2026-06-13
 
