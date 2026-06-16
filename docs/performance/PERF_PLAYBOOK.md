@@ -3,6 +3,7 @@
 This doc is a practical checklist for continuing performance work on `merman` without losing context.
 It complements:
 
+- `docs/performance/RUNBOOK.md` (the default execution order)
 - `docs/performance/PERF_PLAN.md` (targets and prioritized backlog)
 - `docs/performance/PERF_MILESTONES.md` (what shipped)
 - `docs/performance/BENCHMARKING.md` (benchmark mechanics)
@@ -14,6 +15,17 @@ Performance changes are only accepted if:
 1) `cargo nextest run -p merman-render` stays green, and
 2) we can explain *which stage moved* and *why* (parse/layout/render/end_to_end), and
 3) results are recorded in a report under `docs/performance/`.
+
+## Default loop
+
+Follow `docs/performance/RUNBOOK.md` in this order:
+
+1. correctness gate,
+2. stage spotcheck on the four standard canaries,
+3. cross-repo comparison only when the checkpoint is meant to become durable,
+4. hot-vs-cold parse sanity when parse numbers are surprising,
+5. stress benches when the suspected hotspot is microsecond-scale,
+6. record the result in `docs/performance/`.
 
 ## Standard canaries
 
@@ -36,7 +48,7 @@ tracking canaries or making “did it improve?” calls.
 ### Stage spot-check (triage)
 
 ```bash
-python tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium,mindmap_medium,architecture_medium --out docs/performance/spotcheck_YYYY-MM-DD.md
+python3 tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium,mindmap_medium,architecture_medium --out docs/performance/spotcheck_YYYY-MM-DD.md
 ```
 
 Interpretation:
@@ -44,11 +56,12 @@ Interpretation:
 - Use `render/*` to guide “SVG emission” work.
 - Use `layout/*` to guide graph/layout work.
 - Use `end_to_end/*` as the “real” canary, but only after you’re confident the harness is fair.
+- Use `parse_cold_engine/*` to separate hot-engine cache wins from request-style parse wins.
 
 ### End-to-end comparison vs mmdr
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js --filter "end_to_end/(flowchart_medium|class_medium|mindmap_medium|architecture_medium)" --out docs/performance/COMPARISON.md
+python3 tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js --suite canary --out docs/performance/COMPARISON.md
 ```
 
 Notes:
@@ -82,7 +95,16 @@ Create one report per meaningful checkpoint:
 - `docs/performance/COMPARISON.md` (end-to-end canaries)
 
 When a checkpoint is “in the middle of refactoring” and not ready to become the new baseline, write
-to `target/bench/*.md` instead.
+to `target/bench/perf-runner/*.md` instead.
+
+For durable one-step checkpoints, prefer:
+
+```bash
+python3 tools/bench/perf_runner.py --profile full --write-docs
+```
+
+This writes Markdown reports under `docs/performance/` while keeping structured JSON artifacts
+under `target/bench/perf-runner/`.
 
 ## Current focus (as of 2026-02-17)
 
@@ -107,5 +129,6 @@ When starting a new optimization round:
    a meaningful checkpoint.
 3) Run end-to-end canaries vs mmdr (`--preset long --skip-mermaid-js`) and refresh
    `docs/performance/COMPARISON.md` only when you intend to update the baseline.
-4) If numbers look contradictory, re-run the same command once (noise happens) and prioritize the
+4) If parse looks suspicious, run `parse_cold_engine/*` before attributing the gain to parser work.
+5) If numbers look contradictory, re-run the same command once (noise happens) and prioritize the
    longer preset results.

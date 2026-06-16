@@ -6,6 +6,7 @@ import {
 import { normalizeThemeName } from "@mermanjs/web";
 
 export const MERMAID_JS_VERSION = "11.15.0";
+export const MERMAID_ZENUML_VERSION = "0.2.2";
 export const MERMAID_CDN_URL =
   import.meta.env.VITE_MERMAID_CDN_URL?.trim() ||
   `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_JS_VERSION}/dist/mermaid.esm.min.mjs`;
@@ -13,6 +14,12 @@ export const MERMAID_CDN_LOAD_ERROR = "__mermaid_cdn_load_failed__";
 const MERMAID_FALLBACK_CDN_URL =
   import.meta.env.VITE_MERMAID_FALLBACK_CDN_URL?.trim() ||
   `https://unpkg.com/mermaid@${MERMAID_JS_VERSION}/dist/mermaid.esm.min.mjs`;
+const MERMAID_ZENUML_CDN_URL =
+  import.meta.env.VITE_MERMAID_ZENUML_CDN_URL?.trim() ||
+  `https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@${MERMAID_ZENUML_VERSION}/dist/mermaid-zenuml.core.mjs`;
+const MERMAID_ZENUML_FALLBACK_CDN_URL =
+  import.meta.env.VITE_MERMAID_ZENUML_FALLBACK_CDN_URL?.trim() ||
+  `https://unpkg.com/@mermaid-js/mermaid-zenuml@${MERMAID_ZENUML_VERSION}/dist/mermaid-zenuml.core.mjs`;
 
 export interface MermaidRenderResult {
   svg: string | null;
@@ -24,6 +31,10 @@ export interface MermaidRenderResult {
 interface MermaidApi {
   initialize(config: MermaidConfig): void;
   render(id: string, source: string): Promise<{ svg: string }> | { svg: string };
+  registerExternalDiagrams?(
+    diagrams: unknown[],
+    options?: { lazyLoad?: boolean }
+  ): Promise<void>;
 }
 
 interface MermaidConfig {
@@ -40,6 +51,8 @@ let renderSerial = 0;
 let initializedConfigSignature: string | null = null;
 let warmupConfigSignature: string | null = null;
 let warmupPromise: Promise<void> | null = null;
+let zenumlPromise: Promise<unknown> | null = null;
+let zenumlRegisteredMermaid: MermaidApi | null = null;
 
 const WARMUP_SOURCE = "flowchart TD\n  warmupA[Warmup] --> warmupB[Ready]";
 const CDN_ENABLED = import.meta.env.VITE_MERMAID_CDN !== "false";
@@ -52,7 +65,10 @@ export async function renderMermaidSvg(
   const prepareStartTime = performance.now();
 
   try {
-    const prepared = await prepareMermaid(theme, configJson, { warmup: true });
+    const prepared = await prepareMermaid(theme, configJson, {
+      warmup: true,
+      zenuml: isZenUmlSource(source),
+    });
     const prepareTime = performance.now() - prepareStartTime;
     const preparedSource = sourceWithConfig(
       source,
@@ -152,13 +168,16 @@ async function loadMermaidModule(): Promise<MermaidApi> {
 async function prepareMermaid(
   theme: string,
   configJson: string,
-  options: { warmup: boolean }
+  options: { warmup: boolean; zenuml?: boolean }
 ): Promise<{
   mermaid: MermaidApi;
   normalizedTheme: string;
   configSignature: string;
 }> {
   const mermaid = await loadMermaid();
+  if (options.zenuml) {
+    await ensureZenUmlRegistered(mermaid);
+  }
   const normalizedTheme = normalizeThemeName(theme);
   const effectiveConfig = buildMermaidConfig(configJson, normalizedTheme);
   const runtimeConfig: MermaidConfig = {
@@ -182,6 +201,53 @@ async function prepareMermaid(
   }
 
   return { mermaid, normalizedTheme, configSignature };
+}
+
+async function ensureZenUmlRegistered(mermaid: MermaidApi): Promise<void> {
+  if (zenumlRegisteredMermaid === mermaid) return;
+  if (typeof mermaid.registerExternalDiagrams !== "function") {
+    throw new Error("Loaded Mermaid runtime does not support external diagrams.");
+  }
+
+  const zenuml = await loadZenUmlDiagram();
+  await mermaid.registerExternalDiagrams([zenuml], { lazyLoad: false });
+  zenumlRegisteredMermaid = mermaid;
+}
+
+async function loadZenUmlDiagram(): Promise<unknown> {
+  if (zenumlPromise) return zenumlPromise;
+
+  zenumlPromise = loadZenUmlModule().catch((error) => {
+    zenumlPromise = null;
+    throw error;
+  });
+  return zenumlPromise;
+}
+
+async function loadZenUmlModule(): Promise<unknown> {
+  const urls = Array.from(
+    new Set([MERMAID_ZENUML_CDN_URL, MERMAID_ZENUML_FALLBACK_CDN_URL])
+  );
+  let lastError: unknown = null;
+
+  for (const url of urls) {
+    try {
+      const module = await import(/* @vite-ignore */ url);
+      return module.default;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(
+    `${MERMAID_CDN_LOAD_ERROR}: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
+}
+
+function isZenUmlSource(source: string): boolean {
+  return /^\s*zenuml\b/i.test(source);
 }
 
 async function warmupMermaid(

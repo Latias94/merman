@@ -3,8 +3,8 @@
 This document is the actionable performance plan for `merman`.
 It is fixture-driven and stage-attributed (parse/layout/render/end-to-end).
 
-For the day-to-day workflow (commands, presets, and reporting conventions), see:
-`docs/performance/PERF_PLAYBOOK.md`.
+For the day-to-day workflow and execution order, see:
+`docs/performance/RUNBOOK.md` and `docs/performance/PERF_PLAYBOOK.md`.
 
 ## Baseline (2026-02-17)
 
@@ -12,7 +12,8 @@ We track two complementary views against `repo-ref/mermaid-rs-renderer` (mmdr):
 
 1) **End-to-end canaries** (throughput view)
 - Report: `docs/performance/COMPARISON.md`
-- Filter used in the latest report: `end_to_end/(flowchart_medium|class_medium|mindmap_medium|architecture_medium)`
+- Default corpus suite: `canary`
+  (`flowchart_medium`, `class_medium`, `mindmap_medium`, `architecture_medium`)
 - Observed ratios (`merman / mmdr`, mid estimate):
   - `end_to_end/flowchart_medium`: `0.9x` (faster)
   - `end_to_end/class_medium`: `0.4x` (faster)

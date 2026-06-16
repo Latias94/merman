@@ -44,7 +44,7 @@ and use the latest numbers in:
 
 For a quick local stage attribution spotcheck (mid estimates):
 
-- `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 1`
+- `python3 tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 1`
 
 Typical current interpretation on this fixture set:
 
