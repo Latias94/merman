@@ -14,6 +14,8 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_4_016",
     "upstream_cypress_flowchart_elk_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_018",
     "upstream_cypress_flowchart_elk_spec_58_elk_handle_styling_with_style_expressions_019",
+    "upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_020",
+    "upstream_cypress_flowchart_elk_spec_65_elk_text_color_from_classes_025",
     "upstream_cypress_flowchart_elk_spec_66_elk_more_nested_subgraph_cases_tb_026",
     "upstream_cypress_flowchart_elk_spec_67_elk_more_nested_subgraph_cases_rl_027",
     "upstream_cypress_flowchart_elk_spec_68_elk_more_nested_subgraph_cases_bt_028",
@@ -22,6 +24,9 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_71_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_031",
     "upstream_cypress_flowchart_elk_spec_72_elk_handle_nested_subgraph_cases_bt_link_out_and_link_between_032",
     "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034",
+    "upstream_cypress_flowchart_elk_spec_1433_elk_should_render_a_titled_flowchart_with_titletopmargin_se_039",
+    "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037",
+    "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038",
     "upstream_cypress_flowchart_elk_spec_6088_5_should_handle_diamond_shape_intersections_055",
     "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063",
 ];
@@ -142,6 +147,12 @@ mod tests {
             "upstream_cypress_flowchart_elk_spec_58_elk_handle_styling_with_style_expressions_019"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_020"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_65_elk_text_color_from_classes_025"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_66_elk_more_nested_subgraph_cases_tb_026"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
@@ -164,6 +175,15 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_1433_elk_should_render_a_titled_flowchart_with_titletopmargin_se_039"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_6088_5_should_handle_diamond_shape_intersections_055"
