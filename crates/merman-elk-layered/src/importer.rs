@@ -181,6 +181,7 @@ fn nested_graph_options(
     options.hierarchy_handling = node
         .hierarchy_handling
         .unwrap_or(input.options.hierarchy_handling);
+    options.merge_hierarchy_edges = input.options.merge_hierarchy_edges;
     if let Some(spacing_base) = node.nested_spacing_base {
         options.spacing = SpacingOptions::layered_base_value(spacing_base);
     }
@@ -802,6 +803,24 @@ mod tests {
     }
 
     #[test]
+    fn importer_inherits_nested_hierarchy_merge_without_cloning_parent_spacing() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        cluster.nested_spacing_base = Some(30.0);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut input = graph(vec![cluster, child], vec![]);
+        input.options.merge_hierarchy_edges = false;
+        input.options.spacing = SpacingOptions::layered_base_value(40.0);
+
+        let lgraph = import_graph(&input).unwrap();
+        let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+
+        assert!(!nested.options.merge_hierarchy_edges);
+        assert_eq!(nested.options.spacing.node_node, 30.0);
+    }
+
+    #[test]
     fn imports_include_children_hierarchy_into_nested_graphs() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
@@ -877,6 +896,11 @@ mod tests {
         let nested = cluster.nested_graph.as_ref().unwrap();
         let external = &nested.layerless_nodes[port_dummy.node];
         assert_eq!(external.external_port_side, PortSide::South);
+        assert_eq!(parent_port.border_offset, external.ports[0].border_offset);
+        assert_eq!(
+            parent_port.border_offset,
+            Some(nested.options.spacing.edge_edge / 2.0)
+        );
         let origin = external
             .origin_port
             .as_ref()

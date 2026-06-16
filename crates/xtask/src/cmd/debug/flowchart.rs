@@ -1277,6 +1277,7 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     let mut out: Option<PathBuf> = None;
     let mut upstream: Option<PathBuf> = None;
     let mut local: Option<PathBuf> = None;
+    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
 
     let mut i = 0;
     while i < args.len() {
@@ -1300,6 +1301,16 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
             "--local" => {
                 i += 1;
                 local = args.get(i).map(PathBuf::from);
+            }
+            "--flowchart-elk-backend" => {
+                i += 1;
+                flowchart_elk_backend = match args.get(i).map(|s| s.trim()) {
+                    Some("compat") => merman_render::FlowchartElkBackend::Compat,
+                    Some("source-ported" | "source_ported" | "source") => {
+                        merman_render::FlowchartElkBackend::SourcePorted
+                    }
+                    _ => return Err(XtaskError::Usage),
+                };
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1334,6 +1345,7 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
     let layout_opts = merman_render::LayoutOptions {
         text_measurer: std::sync::Arc::clone(&measurer),
+        flowchart_elk_backend,
         ..Default::default()
     };
 
@@ -1411,6 +1423,7 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     println!("trace:   {}", out.display());
     println!("fixture: {fixture_name}");
     println!("edge:    {edge_id}");
+    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!();
     println!("== Local edge trace (JSON) ==");
     println!("{trace_json}");
@@ -1922,10 +1935,17 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
                 .map(|edge| graph.edges[*edge].id.as_str())
                 .collect::<Vec<_>>();
             println!(
-                "{indent}  port #{port_index} {} type={:?} side={:?} inside={} dummy={:?} origin={:?} in=[{}] out=[{}]",
+                "{indent}  port #{port_index} {} type={:?} side={:?} pos=({}, {}) anchor=({}, {}) size=({}, {}) border={:?} inside={} dummy={:?} origin={:?} in=[{}] out=[{}]",
                 port.id,
                 port.port_type,
                 port.side,
+                port.position.x,
+                port.position.y,
+                port.anchor.x,
+                port.anchor.y,
+                port.size.width,
+                port.size.height,
+                port.border_offset,
                 port.inside_connections,
                 port.port_dummy,
                 node.origin_port,
