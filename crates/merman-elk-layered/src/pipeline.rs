@@ -17,7 +17,7 @@ use super::options::{
 };
 use crate::compound::preprocess_source_ported_compound_graph;
 use crate::configurator::{configure_graph_properties, configured_options};
-use crate::graph::{LGraph, LNodeKind, LPoint, LSize, PortSide};
+use crate::graph::{LGraph, LNode, LNodeKind, LPoint, LSize, PortSide};
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, insert_label_dummies,
     join_long_edges, postprocess_end_labels, postprocess_layer_constraints, preprocess_end_labels,
@@ -668,15 +668,18 @@ fn transfer_nested_graph_layout_to_parent_node(graph: &mut LGraph, path: &[usize
             *node_index,
             &mut node.ports,
         );
-
-        node.size.width = node.size.width.max(size.width);
-        node.size.height = node.size.height.max(size.height);
-
-        if nested_graph.graph_properties.external_ports {
-            node.port_constraints = PortConstraints::FixedPos;
-        }
         nested_graph.graph_properties.external_ports
     };
+
+    {
+        let node = &mut parent.layerless_nodes[*node_index];
+        if has_external_ports {
+            node.port_constraints = PortConstraints::FixedPos;
+            resize_layered_node(node, size, false, true);
+        } else {
+            resize_layered_node(node, size, true, true);
+        }
+    }
 
     if has_external_ports {
         parent.graph_properties.non_free_ports = true;
@@ -869,6 +872,82 @@ fn resize_graph_no_really_i_mean_it(graph: &mut LGraph, old_size: LSize, new_siz
 
     graph.size.width = new_size.width - graph.padding.left - graph.padding.right;
     graph.size.height = new_size.height - graph.padding.top - graph.padding.bottom;
+}
+
+fn resize_layered_node(node: &mut LNode, new_size: LSize, move_ports: bool, move_labels: bool) {
+    let old_size = node.size;
+    let width_ratio = ratio_or_one(new_size.width, old_size.width);
+    let height_ratio = ratio_or_one(new_size.height, old_size.height);
+    let width_diff = new_size.width - old_size.width;
+    let height_diff = new_size.height - old_size.height;
+
+    if move_ports {
+        let fixed_ports = node.port_constraints == PortConstraints::FixedPos;
+        for port in &mut node.ports {
+            match port.side {
+                PortSide::North => {
+                    if !fixed_ports {
+                        port.position.x *= width_ratio;
+                    }
+                }
+                PortSide::East => {
+                    port.position.x += width_diff;
+                    if !fixed_ports {
+                        port.position.y *= height_ratio;
+                    }
+                }
+                PortSide::South => {
+                    if !fixed_ports {
+                        port.position.x *= width_ratio;
+                    }
+                    port.position.y += height_diff;
+                }
+                PortSide::West => {
+                    if !fixed_ports {
+                        port.position.y *= height_ratio;
+                    }
+                }
+                PortSide::Undefined => {}
+            }
+        }
+    }
+
+    if move_labels {
+        for label in &mut node.labels {
+            let mid_x = label.position.x + label.size.width / 2.0;
+            let mid_y = label.position.y + label.size.height / 2.0;
+            let width_percent = ratio_or_zero(mid_x, old_size.width);
+            let height_percent = ratio_or_zero(mid_y, old_size.height);
+
+            if width_percent + height_percent >= 1.0 {
+                if width_percent - height_percent > 0.0 && mid_y >= 0.0 {
+                    label.position.x += width_diff;
+                    label.position.y += height_diff * height_percent;
+                } else if width_percent - height_percent < 0.0 && mid_x >= 0.0 {
+                    label.position.x += width_diff * width_percent;
+                    label.position.y += height_diff;
+                }
+            }
+        }
+    }
+
+    node.size = new_size;
+}
+
+fn ratio_or_one(numerator: f64, denominator: f64) -> f64 {
+    if denominator == 0.0 {
+        1.0
+    } else {
+        numerator / denominator
+    }
+}
+
+fn ratio_or_zero(numerator: f64, denominator: f64) -> f64 {
+    if denominator == 0.0 {
+        0.0
+    } else {
+        numerator / denominator
+    }
 }
 
 fn assemble_processors_with_graph_size(
@@ -2019,6 +2098,68 @@ mod tests {
         assert_eq!(graph.layerless_nodes[south].position.y, 65.0);
         assert_eq!(graph.size.width, 40.0);
         assert_eq!(graph.size.height, 60.0);
+    }
+
+    #[test]
+    fn layered_node_resize_moves_ports_when_compound_has_no_external_ports() {
+        let mut node = LNode::new("cluster", 100.0, 50.0, None);
+        node.port_constraints = PortConstraints::Free;
+        node.ports.push(crate::graph::LPort::new(
+            "east".to_string(),
+            0,
+            crate::graph::PortType::Output,
+        ));
+        node.ports[0].set_side(PortSide::East);
+        node.ports[0].position = LPoint { x: 100.0, y: 25.0 };
+        node.ports.push(crate::graph::LPort::new(
+            "south".to_string(),
+            0,
+            crate::graph::PortType::Output,
+        ));
+        node.ports[1].set_side(PortSide::South);
+        node.ports[1].position = LPoint { x: 50.0, y: 50.0 };
+
+        resize_layered_node(
+            &mut node,
+            LSize {
+                width: 150.0,
+                height: 100.0,
+            },
+            true,
+            true,
+        );
+
+        assert_eq!(node.size.width, 150.0);
+        assert_eq!(node.size.height, 100.0);
+        assert_eq!(node.ports[0].position, LPoint { x: 150.0, y: 50.0 });
+        assert_eq!(node.ports[1].position, LPoint { x: 75.0, y: 100.0 });
+    }
+
+    #[test]
+    fn layered_node_resize_keeps_external_port_positions_fixed() {
+        let mut node = LNode::new("cluster", 100.0, 50.0, None);
+        node.port_constraints = PortConstraints::FixedPos;
+        node.ports.push(crate::graph::LPort::new(
+            "external".to_string(),
+            0,
+            crate::graph::PortType::Input,
+        ));
+        node.ports[0].set_side(PortSide::West);
+        node.ports[0].position = LPoint { x: -2.0, y: 20.0 };
+
+        resize_layered_node(
+            &mut node,
+            LSize {
+                width: 150.0,
+                height: 100.0,
+            },
+            false,
+            true,
+        );
+
+        assert_eq!(node.size.width, 150.0);
+        assert_eq!(node.size.height, 100.0);
+        assert_eq!(node.ports[0].position, LPoint { x: -2.0, y: 20.0 });
     }
 
     #[test]
