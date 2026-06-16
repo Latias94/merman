@@ -1054,6 +1054,7 @@ pub fn create_external_port_dummy(
                 dummy.size.width = -border_offset;
             }
             position.x = 0.0;
+            position.x -= port_size.width;
         }
         PortSide::East => {
             dummy.layer_constraint = LayerConstraint::LastSeparate;
@@ -1071,6 +1072,7 @@ pub fn create_external_port_dummy(
                 dummy.size.height = -border_offset;
             }
             position.y = 0.0;
+            position.y -= port_size.height;
         }
         PortSide::South => {
             dummy.in_layer_constraint = InLayerConstraint::Bottom;
@@ -1192,7 +1194,7 @@ mod tests {
         assert_eq!(dummy.size.width, 3.0);
         assert_eq!(dummy.size.height, 6.0);
         assert_eq!(dummy.ports[0].side, PortSide::East);
-        assert_eq!(dummy.ports[0].position, LPoint { x: 0.0, y: 3.0 });
+        assert_eq!(dummy.ports[0].position, LPoint { x: -4.0, y: 3.0 });
         assert_eq!(dummy.ports[0].anchor, LPoint { x: 0.0, y: 0.0 });
         assert_eq!(dummy.ports[0].size, LSize::default());
         assert_eq!(
