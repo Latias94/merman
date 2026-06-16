@@ -185,6 +185,7 @@ pub enum InLayerConstraint {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LPort {
     pub id: String,
+    pub crossing_minimization_id: Option<usize>,
     pub node: usize,
     pub port_type: PortType,
     pub side: PortSide,
@@ -210,6 +211,7 @@ impl LPort {
     pub fn new(id: impl Into<String>, node: usize, port_type: PortType) -> Self {
         Self {
             id: id.into(),
+            crossing_minimization_id: None,
             node,
             port_type,
             side: PortSide::Undefined,

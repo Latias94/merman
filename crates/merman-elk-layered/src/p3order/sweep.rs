@@ -23,6 +23,7 @@ use crate::random::JavaRandom;
 
 use super::{
     GraphInfoHolder, SweepCopy, count_model_order_node_changes, count_model_order_port_changes,
+    initialize_crossing_minimization_port_ids, initialize_crossing_minimization_port_ids_hierarchy,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -138,8 +139,8 @@ struct BarycenterState {
 #[derive(Debug, Clone)]
 struct BarycenterPortDistributor {
     kind: PortDistributorKind,
-    port_ranks: HashMap<String, f64>,
-    port_barycenters: HashMap<String, f64>,
+    port_ranks: HashMap<usize, f64>,
+    port_barycenters: HashMap<usize, f64>,
     node_positions: HashMap<usize, usize>,
     min_barycenter: f64,
     max_barycenter: f64,
@@ -218,8 +219,8 @@ impl BarycenterPortDistributor {
     }
 
     fn rank_of(&self, graph: &LGraph, port: PortRef) -> f64 {
-        port_id(graph, port)
-            .and_then(|id| self.port_ranks.get(id).copied())
+        crossing_minimization_port_id(graph, port)
+            .and_then(|id| self.port_ranks.get(&id).copied())
             .unwrap_or(0.0)
     }
 
@@ -374,12 +375,12 @@ impl BarycenterPortDistributor {
 
             let left_barycenter = self
                 .port_barycenters
-                .get(&left_port.id)
+                .get(&left_port.crossing_minimization_id.unwrap_or(usize::MAX))
                 .copied()
                 .unwrap_or(0.0);
             let right_barycenter = self
                 .port_barycenters
-                .get(&right_port.id)
+                .get(&right_port.crossing_minimization_id.unwrap_or(usize::MAX))
                 .copied()
                 .unwrap_or(0.0);
 
@@ -397,8 +398,8 @@ impl BarycenterPortDistributor {
     }
 
     fn set_port_barycenter(&mut self, graph: &LGraph, port: PortRef, barycenter: f64) {
-        if let Some(id) = port_id(graph, port) {
-            self.port_barycenters.insert(id.to_string(), barycenter);
+        if let Some(id) = crossing_minimization_port_id(graph, port) {
+            self.port_barycenters.insert(id, barycenter);
         }
     }
 
@@ -438,13 +439,13 @@ impl BarycenterPortDistributor {
                         .side
                         .is_north()
                     {
-                        if let Some(id) = port_id(graph, port) {
-                            self.port_ranks.insert(id.to_string(), north_position);
+                        if let Some(id) = crossing_minimization_port_id(graph, port) {
+                            self.port_ranks.insert(id, north_position);
                         }
                         north_position -= increment;
                     } else {
-                        if let Some(id) = port_id(graph, port) {
-                            self.port_ranks.insert(id.to_string(), rest_position);
+                        if let Some(id) = crossing_minimization_port_id(graph, port) {
+                            self.port_ranks.insert(id, rest_position);
                         }
                         rest_position -= increment;
                     }
@@ -456,8 +457,8 @@ impl BarycenterPortDistributor {
                 let increment = 1.0 / (output_count + 1) as f64;
                 let mut position = rank_sum + increment;
                 for port in actual_ports_of_type(graph, node, PortType::Output) {
-                    if let Some(id) = port_id(graph, port) {
-                        self.port_ranks.insert(id.to_string(), position);
+                    if let Some(id) = crossing_minimization_port_id(graph, port) {
+                        self.port_ranks.insert(id, position);
                     }
                     position += increment;
                 }
@@ -493,13 +494,13 @@ impl BarycenterPortDistributor {
                         .side
                         .is_north()
                     {
-                        if let Some(id) = port_id(graph, port) {
-                            self.port_ranks.insert(id.to_string(), north_position);
+                        if let Some(id) = crossing_minimization_port_id(graph, port) {
+                            self.port_ranks.insert(id, north_position);
                         }
                         north_position -= 1.0;
                     } else {
-                        if let Some(id) = port_id(graph, port) {
-                            self.port_ranks.insert(id.to_string(), rest_position);
+                        if let Some(id) = crossing_minimization_port_id(graph, port) {
+                            self.port_ranks.insert(id, rest_position);
                         }
                         rest_position -= 1.0;
                     }
@@ -510,8 +511,8 @@ impl BarycenterPortDistributor {
                 let mut position = 0.0;
                 for port in actual_ports_of_type(graph, node, PortType::Output) {
                     position += 1.0;
-                    if let Some(id) = port_id(graph, port) {
-                        self.port_ranks.insert(id.to_string(), rank_sum + position);
+                    if let Some(id) = crossing_minimization_port_id(graph, port) {
+                        self.port_ranks.insert(id, rank_sum + position);
                     }
                 }
                 position
@@ -2453,6 +2454,7 @@ pub fn minimize_crossings_layer_sweep_with_type(
         return false;
     }
 
+    initialize_crossing_minimization_port_ids(graph);
     match cross_min_type {
         CrossMinType::Barycenter => minimize_barycenter(graph),
         CrossMinType::OneSidedGreedySwitch => minimize_one_sided_greedy_switch(graph),
@@ -2478,6 +2480,7 @@ pub fn minimize_crossings_layer_sweep_hierarchical_with_type(
         }
     }
 
+    initialize_crossing_minimization_port_ids_hierarchy(graph);
     let mut sweep = HierarchySweep::new(graph, cross_min_type);
     sweep.minimize(graph)
 }
@@ -2741,13 +2744,13 @@ fn ports_on_side(graph: &LGraph, node: usize, side: PortSide) -> Vec<PortRef> {
         .collect()
 }
 
-fn port_id(graph: &LGraph, port: PortRef) -> Option<&str> {
+fn crossing_minimization_port_id(graph: &LGraph, port: PortRef) -> Option<usize> {
     graph
         .layerless_nodes
         .get(port.node)?
         .ports
         .get(port.port)
-        .map(|port| port.id.as_str())
+        .and_then(|port_data| port_data.crossing_minimization_id)
 }
 
 fn port_degree(graph: &LGraph, port: PortRef) -> usize {
@@ -3422,6 +3425,7 @@ mod tests {
             .unwrap();
         graph.layers[0].nodes = vec![top, bottom];
         graph.layers[1].nodes = vec![left, right];
+        initialize_crossing_minimization_port_ids(&mut graph);
 
         let mut order = graph
             .layers
@@ -3434,6 +3438,61 @@ mod tests {
         heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
 
         assert_eq!(order[1], vec![right, left]);
+    }
+
+    #[test]
+    fn barycenter_port_ranks_keep_same_id_ports_distinct() {
+        let mut graph = prepared_graph(
+            vec![node("Top"), node("Bottom"), node("Free")],
+            vec![
+                edge("Top-Free", "Top", "Free"),
+                edge("Bottom-Free", "Bottom", "Free"),
+            ],
+        );
+        let top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Top")
+            .unwrap();
+        let bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Bottom")
+            .unwrap();
+        let free = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Free")
+            .unwrap();
+        graph.layers[0].nodes = vec![top, bottom];
+        graph.layers[1].nodes = vec![free];
+        for port in &mut graph.layerless_nodes[top].ports {
+            port.id = "shared".to_string();
+        }
+        for port in &mut graph.layerless_nodes[bottom].ports {
+            port.id = "shared".to_string();
+        }
+        initialize_crossing_minimization_port_ids(&mut graph);
+
+        let order = graph
+            .layers
+            .iter()
+            .map(|layer| layer.nodes.clone())
+            .collect::<Vec<_>>();
+        let mut distributor = BarycenterPortDistributor::new(PortDistributorKind::NodeRelative);
+        distributor.calculate_port_ranks(&graph, &order[0], PortType::Output);
+        distributor.distribute_ports(&mut graph, free, PortSide::West, &order);
+
+        let free_ports = graph.layerless_nodes[free]
+            .ports
+            .iter()
+            .map(|port| {
+                port.incoming_edges
+                    .first()
+                    .map(|edge| graph.edges[*edge].id.as_str())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(free_ports, vec![Some("Bottom-Free"), Some("Top-Free")]);
     }
 
     #[test]
@@ -3749,6 +3808,7 @@ mod tests {
                 graph.layerless_nodes[*node].layer_index = Some(layer_index);
             }
         }
+        initialize_crossing_minimization_port_ids(&mut graph);
 
         let mut graph_info = GraphInfoHolder::new(&graph);
         let port_distributor = BarycenterPortDistributor::new(PortDistributorKind::NodeRelative);

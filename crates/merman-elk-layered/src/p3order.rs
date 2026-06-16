@@ -16,10 +16,58 @@ use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
 pub mod counting;
 pub mod sweep;
 
+pub(crate) fn initialize_crossing_minimization_port_ids(graph: &mut LGraph) {
+    clear_crossing_minimization_port_ids(graph);
+    let order = graph
+        .layers
+        .iter()
+        .map(|layer| layer.nodes.clone())
+        .collect::<Vec<_>>();
+    assign_crossing_minimization_port_ids(graph, &order);
+}
+
+pub(crate) fn initialize_crossing_minimization_port_ids_hierarchy(graph: &mut LGraph) {
+    initialize_crossing_minimization_port_ids(graph);
+    for node in &mut graph.layerless_nodes {
+        if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
+            initialize_crossing_minimization_port_ids_hierarchy(nested_graph);
+        }
+    }
+}
+
+fn clear_crossing_minimization_port_ids(graph: &mut LGraph) {
+    for node in &mut graph.layerless_nodes {
+        for port in &mut node.ports {
+            port.crossing_minimization_id = None;
+        }
+    }
+}
+
+fn assign_crossing_minimization_port_ids(graph: &mut LGraph, order: &[Vec<usize>]) {
+    let mut next_port_id = 0usize;
+    for layer in order {
+        for node in layer {
+            let Some(node_data) = graph.layerless_nodes.get_mut(*node) else {
+                continue;
+            };
+            for port in &mut node_data.ports {
+                port.crossing_minimization_id = Some(next_port_id);
+                next_port_id += 1;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SweepCopy {
     pub node_order: Vec<Vec<usize>>,
-    pub port_orders: Vec<Vec<Vec<String>>>,
+    pub port_orders: Vec<Vec<Vec<PortOrderKey>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortOrderKey {
+    crossing_minimization_id: Option<usize>,
+    fallback_id: String,
 }
 
 impl SweepCopy {
@@ -35,7 +83,10 @@ impl SweepCopy {
                             graph.layerless_nodes[*node]
                                 .ports
                                 .iter()
-                                .map(|port| port.id.clone())
+                                .map(|port| PortOrderKey {
+                                    crossing_minimization_id: port.crossing_minimization_id,
+                                    fallback_id: port.id.clone(),
+                                })
                                 .collect()
                         })
                         .collect()
@@ -93,7 +144,7 @@ impl SweepCopy {
 fn port_order_indices_by_id(
     graph: &LGraph,
     node: usize,
-    port_ids: &[String],
+    port_ids: &[PortOrderKey],
 ) -> Option<Vec<usize>> {
     let ports = graph.layerless_nodes.get(node)?.ports.as_slice();
     if ports.len() != port_ids.len() {
@@ -102,11 +153,19 @@ fn port_order_indices_by_id(
 
     let mut order = Vec::with_capacity(port_ids.len());
     let mut used = vec![false; ports.len()];
-    for port_id in port_ids {
-        let index = ports
-            .iter()
-            .enumerate()
-            .find_map(|(index, port)| (!used[index] && port.id == *port_id).then_some(index))?;
+    for port_key in port_ids {
+        let index = ports.iter().enumerate().find_map(|(index, port)| {
+            if used[index] {
+                return None;
+            }
+            if port_key.crossing_minimization_id.is_some()
+                && port.crossing_minimization_id == port_key.crossing_minimization_id
+            {
+                return Some(index);
+            }
+            (port_key.crossing_minimization_id.is_none() && port.id == port_key.fallback_id)
+                .then_some(index)
+        })?;
         used[index] = true;
         order.push(index);
     }
@@ -1452,6 +1511,51 @@ mod tests {
                 .map(|port| port.id.as_str())
                 .collect::<Vec<_>>(),
             vec!["first", "second"]
+        );
+    }
+
+    #[test]
+    fn sweep_copy_restores_ports_by_crossing_minimization_id_when_external_ids_repeat() {
+        let mut graph = graph(vec![node("A")], vec![]);
+        let a = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        graph.layerless_nodes[a].ports.clear();
+        let first = graph
+            .add_port(
+                a,
+                PortType::Output,
+                PortSide::East,
+                LPoint { x: 0.0, y: 0.0 },
+            )
+            .unwrap();
+        let second = graph
+            .add_port(
+                a,
+                PortType::Output,
+                PortSide::East,
+                LPoint { x: 0.0, y: 0.0 },
+            )
+            .unwrap();
+        graph.layerless_nodes[a].ports[first.port].id = "shared".to_string();
+        graph.layerless_nodes[a].ports[first.port].crossing_minimization_id = Some(7);
+        graph.layerless_nodes[a].ports[second.port].id = "shared".to_string();
+        graph.layerless_nodes[a].ports[second.port].crossing_minimization_id = Some(8);
+        graph.set_node_layer(a, 0);
+
+        let copy = SweepCopy::new(&graph, &[vec![a]]);
+        graph.reorder_node_ports(a, [1, 0]);
+
+        assert!(copy.transfer_node_and_port_orders_to_graph(&mut graph, false));
+        assert_eq!(
+            graph.layerless_nodes[a]
+                .ports
+                .iter()
+                .map(|port| port.crossing_minimization_id)
+                .collect::<Vec<_>>(),
+            vec![Some(7), Some(8)]
         );
     }
 }
