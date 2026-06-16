@@ -913,6 +913,55 @@ A{A} --> B & C
         );
     }
 
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_layouted_svg_keeps_source_ported_elk_rect_edge_boundary_points() {
+        let parsed = Engine::new()
+            .parse_diagram_sync(
+                r#"---
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+  securityLevel: loose
+---
+flowchart-elk LR
+id1(Start)-->id2(Stop)
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        let layout_options = LayoutOptions {
+            text_measurer: Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default()),
+            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+            ..Default::default()
+        };
+        let layouted = layout_parsed(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layouted_svg(
+            &layouted,
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions::default(),
+        )
+        .unwrap();
+
+        let path = edge_path_chunk(&svg, "L_id1_id2_0");
+        let d = edge_path_d(path);
+        assert!(
+            !d.contains('Q'),
+            "straight ELK roundedRect edge should not gain a rounded corner: {d}"
+        );
+        let points = edge_data_points(path);
+        assert_eq!(
+            points.len(),
+            2,
+            "unexpected ELK edge data-points: {points:?}"
+        );
+        assert_eq!(points[0], (77.015625, 39.0));
+        assert_eq!(points[1], (117.015625, 39.0));
+    }
+
     #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
@@ -963,5 +1012,35 @@ A{A} --> B & C
         let d_start = path.find(r#"d=""#).expect("edge path d") + r#"d=""#.len();
         let d_end = path[d_start..].find('"').expect("edge path d end") + d_start;
         &path[d_start..d_end]
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    fn edge_attr_value<'a>(path: &'a str, attr: &str) -> &'a str {
+        let needle = format!(r#"{attr}=""#);
+        let start = path.find(&needle).expect("edge attr") + needle.len();
+        let end = path[start..].find('"').expect("edge attr end") + start;
+        &path[start..end]
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    fn edge_data_points(path: &str) -> Vec<(f64, f64)> {
+        use base64::Engine as _;
+
+        let b64 = edge_attr_value(path, "data-points");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64.as_bytes())
+            .expect("data-points base64");
+        let json: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("data-points JSON payload");
+        json.as_array()
+            .expect("data-points array")
+            .iter()
+            .map(|point| {
+                (
+                    point.get("x").and_then(serde_json::Value::as_f64).unwrap(),
+                    point.get("y").and_then(serde_json::Value::as_f64).unwrap(),
+                )
+            })
+            .collect()
     }
 }

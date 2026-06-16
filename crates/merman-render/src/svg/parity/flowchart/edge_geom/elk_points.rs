@@ -8,9 +8,7 @@
 //!   endpoint semantics.
 
 use super::super::*;
-use super::{
-    BoundaryNode, boundary_for_node, intersect_for_layout_shape, is_rounded_intersect_shift_shape,
-};
+use super::{BoundaryNode, boundary_for_node, intersect_for_layout_shape};
 
 pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
     ctx: &FlowchartRenderCtx<'_>,
@@ -130,12 +128,7 @@ fn node_intersection(
     bounds: &BoundaryNode,
     outside: &crate::model::LayoutPoint,
 ) -> crate::model::LayoutPoint {
-    let mut point = intersect_for_layout_shape(ctx, node_id, bounds, shape, outside);
-    if is_rounded_intersect_shift_shape(shape) {
-        point.x += 0.5;
-        point.y += 0.5;
-    }
-    point
+    intersect_for_layout_shape(ctx, node_id, bounds, shape, outside)
 }
 
 #[derive(Debug, Clone, Copy)]
