@@ -21,8 +21,8 @@ mod compat;
 pub use merman_elk_layered as source_port;
 
 use source_port::{
-    ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, GreedySwitchType,
-    LGraph, LNodeKind, LPoint, LayeredOptions as SourceLayeredOptions, NodeLabelPlacement, PortRef,
+    ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, LGraph, LNodeKind,
+    LPoint, LayeredOptions as SourceLayeredOptions, NodeLabelPlacement, PortRef,
 };
 
 pub use compat::{
@@ -153,8 +153,6 @@ fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
     options.unnecessary_bendpoints = graph.options.layered.unnecessary_bendpoints;
     options.self_loop_distribution =
         self_loop_distribution_to_source(graph.options.layered.self_loop_distribution);
-    options.greedy_switch_activation_threshold = 0;
-    options.greedy_switch_hierarchical_type = GreedySwitchType::TwoSided;
     options
 }
 
