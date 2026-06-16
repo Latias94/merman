@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Performance workflow
+    url: https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md
+    about: Read this before filing a slowdown or benchmark question.
+  - name: Project overview
+    url: https://github.com/Latias94/merman/blob/main/README.md
+    about: Start here for general usage and repository context.
+
