@@ -3025,9 +3025,7 @@ fn process_north_south_hierarchical_port_constraints(graph: &mut LGraph) {
 
     let original_layer_count = graph.layers.len();
     let mut new_dummy_nodes = vec![Vec::<usize>::new(); original_layer_count + 2];
-    let mut prev_maps =
-        vec![Vec::<(NorthSouthReplacementKey, usize)>::new(); original_layer_count + 2];
-    let mut next_maps =
+    let mut replacement_maps =
         vec![Vec::<(NorthSouthReplacementKey, usize)>::new(); original_layer_count + 2];
     let mut original_external_port_dummies = Vec::new();
 
@@ -3051,7 +3049,7 @@ fn process_north_south_hierarchical_port_constraints(graph: &mut LGraph) {
                     graph,
                     source_node,
                     layer_index,
-                    &mut prev_maps,
+                    &mut replacement_maps,
                     &mut new_dummy_nodes,
                 );
                 graph.set_edge_source(
@@ -3074,7 +3072,7 @@ fn process_north_south_hierarchical_port_constraints(graph: &mut LGraph) {
                     graph,
                     target_node,
                     layer_index + 2,
-                    &mut next_maps,
+                    &mut replacement_maps,
                     &mut new_dummy_nodes,
                 );
                 graph.set_edge_target(
@@ -3176,9 +3174,20 @@ fn create_hierarchical_port_replacement_dummy(graph: &mut LGraph, original_dummy
     replacement.kind = LNodeKind::ExternalPort;
     replacement.margin = original.margin;
     replacement.padding = original.padding;
+    replacement.node_label_placement = original.node_label_placement;
+    replacement.model_order = original.model_order;
+    replacement.layer_constraint = original.layer_constraint;
     replacement.external_port_side = original.external_port_side;
     replacement.external_port_size = original.external_port_size;
+    replacement.port_ratio_or_position = original.port_ratio_or_position;
     replacement.replaced_external_port_dummy = Some(original_dummy);
+    replacement.in_layer_successor_constraints = original.in_layer_successor_constraints;
+    replacement.origin_port = original.origin_port;
+    replacement.origin_edge = original.origin_edge;
+    replacement.label_side = original.label_side;
+    replacement.in_layer_constraint = original.in_layer_constraint;
+    replacement.layer_constraint_explicit = original.layer_constraint_explicit;
+    replacement.compound = original.compound;
     replacement.port_constraints = PortConstraints::FixedPos;
     replacement.node_alignment = Alignment::Center;
     graph.layerless_nodes.push(replacement);
@@ -3323,7 +3332,7 @@ fn move_head_labels(graph: &mut LGraph, old_edge: usize, new_edge: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{LLabel, LSize, PortType};
+    use crate::graph::{InLayerConstraint, LLabel, LSize, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayerConstraint, LayeredOptions};
     use crate::p2layers::layer_network_simplex;
@@ -4218,6 +4227,103 @@ mod tests {
         assert_eq!(replacements.len(), 1);
         assert_eq!(graph.edges[a_edge].source.node, replacements[0]);
         assert_eq!(graph.edges[b_edge].source.node, replacements[0]);
+    }
+
+    #[test]
+    fn hierarchical_port_constraint_processor_reuses_north_south_replacements_per_virtual_layer() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedSide;
+        let north_source = push_external_dummy(&mut graph, "north-source", PortSide::North, 0.0);
+        let north_target = push_external_dummy(&mut graph, "north-target", PortSide::North, 0.0);
+        let middle = push_normal_node(&mut graph, "middle");
+        let next = push_normal_node(&mut graph, "next");
+
+        let origin_port = PortRef { node: 13, port: 5 };
+        for dummy in [north_source, north_target] {
+            graph.layerless_nodes[dummy].origin_port = Some(crate::graph::GraphPortRef {
+                graph_id: "parent".to_string(),
+                port: origin_port,
+            });
+        }
+
+        graph.set_node_layer(next, 0);
+        graph.set_node_layer(north_target, 0);
+        graph.layers.push(crate::graph::Layer {
+            nodes: vec![],
+            size: Default::default(),
+        });
+        graph.set_node_layer(north_source, 2);
+        graph.set_node_layer(middle, 2);
+
+        let incoming_from_north = add_test_edge(
+            &mut graph,
+            "north-source-middle",
+            north_source,
+            0,
+            middle,
+            0,
+        );
+        let outgoing_to_north =
+            add_test_edge(&mut graph, "next-north-target", next, 0, north_target, 0);
+
+        process_hierarchical_port_constraints(&mut graph);
+
+        let replacements = graph
+            .layerless_nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                (node.replaced_external_port_dummy == Some(north_source)
+                    || node.replaced_external_port_dummy == Some(north_target))
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(replacements.len(), 1);
+        assert_eq!(
+            graph.edges[incoming_from_north].source.node,
+            replacements[0]
+        );
+        assert_eq!(graph.edges[incoming_from_north].source.port, 1);
+        assert_eq!(graph.edges[outgoing_to_north].target.node, replacements[0]);
+        assert_eq!(graph.edges[outgoing_to_north].target.port, 0);
+    }
+
+    #[test]
+    fn hierarchical_port_constraint_processor_copies_replacement_dummy_metadata() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedSide;
+        let north = push_external_dummy(&mut graph, "north", PortSide::North, 0.42);
+        let target = push_normal_node(&mut graph, "target");
+        let origin = crate::graph::GraphPortRef {
+            graph_id: "parent".to_string(),
+            port: PortRef { node: 9, port: 3 },
+        };
+        graph.layerless_nodes[north].origin_port = Some(origin.clone());
+        graph.layerless_nodes[north].model_order = Some(17);
+        graph.layerless_nodes[north].in_layer_constraint = InLayerConstraint::Top;
+
+        graph.set_node_layer(north, 0);
+        graph.set_node_layer(target, 0);
+        add_test_edge(&mut graph, "north-target", north, 0, target, 0);
+
+        process_hierarchical_port_constraints(&mut graph);
+
+        let replacement = graph
+            .layerless_nodes
+            .iter()
+            .enumerate()
+            .find_map(|(index, node)| {
+                (node.replaced_external_port_dummy == Some(north)).then_some(index)
+            })
+            .unwrap();
+        let node = &graph.layerless_nodes[replacement];
+        assert_eq!(node.port_ratio_or_position, 0.42);
+        assert_eq!(node.origin_port, Some(origin));
+        assert_eq!(node.model_order, Some(17));
+        assert_eq!(node.in_layer_constraint, InLayerConstraint::Top);
+        assert_eq!(node.port_constraints, PortConstraints::FixedPos);
+        assert_eq!(node.node_alignment, Alignment::Center);
+        assert_eq!(node.ports.len(), 2);
     }
 
     #[test]
