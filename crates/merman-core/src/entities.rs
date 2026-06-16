@@ -86,5 +86,35 @@ pub fn decode_mermaid_entities_to_unicode(input: &str) -> Cow<'_, str> {
     // Step 3: HTML entity decode (`&nbsp;`, `&#9829;`, `&infin;`, ...)
     //
     // Use a standards-based entity decoder so named entities match browser behavior.
-    Cow::Owned(htmlize::unescape(&s).into_owned())
+    Cow::Owned(decode_html_entities_to_unicode(&s).into_owned())
+}
+
+/// Decodes browser-facing HTML entities into Unicode without Mermaid shorthand handling.
+pub fn decode_html_entities_to_unicode(input: &str) -> Cow<'_, str> {
+    if !input.contains('&') {
+        return Cow::Borrowed(input);
+    }
+
+    htmlize::unescape(input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode_html_entities_to_unicode, decode_mermaid_entities_to_unicode};
+
+    #[test]
+    fn html_entity_decode_does_not_apply_mermaid_shorthand() {
+        assert_eq!(
+            decode_html_entities_to_unicode("Tom &amp; Jerry &lt;ok&gt; &#39;x&#39;"),
+            "Tom & Jerry <ok> 'x'"
+        );
+        assert_eq!(decode_html_entities_to_unicode("#quot;"), "#quot;");
+    }
+
+    #[test]
+    fn mermaid_entity_decode_keeps_shorthand_and_placeholder_semantics() {
+        assert_eq!(decode_mermaid_entities_to_unicode("#quot;"), "\"");
+        assert_eq!(decode_mermaid_entities_to_unicode("ﬂ°quot¶ß"), "\"");
+        assert_eq!(decode_mermaid_entities_to_unicode("ﬂ°°39¶ß"), "'");
+    }
 }

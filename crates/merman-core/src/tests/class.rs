@@ -25,6 +25,19 @@ cssClass "C1" styleClass
 }
 
 #[test]
+fn parse_diagram_class_multibyte_name_does_not_panic() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+class 顧客
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert!(res.model["classes"]["顧客"].is_object());
+}
+
+#[test]
 fn parse_diagram_class_css_class_shorthand() {
     let engine = Engine::new();
     let text = r#"classDiagram

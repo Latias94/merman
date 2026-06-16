@@ -846,8 +846,7 @@ impl<'input> Lexer<'input> {
             self.pos = self.pos + rel_end + 1;
             return Some(Ok((start, Tok::Comment(s), self.pos)));
         }
-        if self.input[self.pos..].len() >= 2 {
-            let two = &self.input[self.pos..self.pos + 2];
+        if let Some(two) = self.input[self.pos..].get(..2) {
             let two_upper = two.to_ascii_uppercase();
             if matches!(two_upper.as_str(), "PK" | "FK" | "UK") {
                 let prev_ok = self.pos == 0

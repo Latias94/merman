@@ -45,6 +45,24 @@ namedState1:Small State 1"#,
 }
 
 #[test]
+fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
+    let engine = Engine::new();
+
+    let res = block_on(engine.parse_diagram(
+        r#"stateDiagram-v2
+顧客 --> 完了: 送信
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(res.model["relations"][0]["id1"], json!("顧客"));
+    assert_eq!(res.model["relations"][0]["id2"], json!("完了"));
+    assert_eq!(res.model["edges"][0]["label"], json!("送信"));
+}
+
+#[test]
 fn parse_diagram_state_v2_groups_and_unsafe_ids() {
     let engine = Engine::new();
 
