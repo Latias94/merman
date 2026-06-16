@@ -320,7 +320,13 @@ fn append_source_graph_layout(
     }
 
     for (edge_index, edge) in graph.edges.iter().enumerate() {
-        if !edge_has_layout_endpoints(graph, result, edge_index, edge) {
+        let compound_segments = compound_layout_segments_for_edge(graph, edge_index);
+        if compound_segments.is_empty() {
+            if !edge_has_layout_endpoints(graph, result, edge_index, edge) {
+                continue;
+            }
+        } else if !graph.edge_source_attached(edge_index) || !graph.edge_target_attached(edge_index)
+        {
             continue;
         }
 
@@ -336,7 +342,6 @@ fn append_source_graph_layout(
             labels: edge_labels(graph_origin, edge),
         };
 
-        let compound_segments = compound_layout_segments_for_edge(graph, edge_index);
         if !compound_segments.is_empty() {
             for segment in compound_segments {
                 let original_edge_id = segment.original_edge_id.clone();

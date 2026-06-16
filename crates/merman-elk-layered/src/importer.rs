@@ -12,8 +12,9 @@ use crate::graph::{
     LayeredEdge, PortRef, PortSide, PortType, create_external_port_dummy,
 };
 use crate::options::{
-    ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint, LayeredOptions,
-    NodeLabelPlacement, PortConstraints, SpacingOptions,
+    CycleBreakingStrategy, ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint,
+    LayeredOptions, LayeringStrategy, NodeLabelPlacement, OrderingStrategy, PortConstraints,
+    SpacingOptions,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -113,15 +114,16 @@ fn import_flat_graph(
     graph: &mut LGraph,
     parent: Option<&str>,
 ) -> ImportResult<()> {
+    let needs_model_order = needs_model_order_based_on_parent(&graph.options);
     for (model_order, node) in index.children(parent).into_iter().enumerate() {
-        transform_node(node, graph, Some(model_order));
+        transform_node(node, graph, needs_model_order.then_some(model_order));
     }
 
     for (model_order, edge) in input.edges.iter().enumerate() {
         let source_parent = index.node_parent(edge.source.as_str());
         let target_parent = index.node_parent(edge.target.as_str());
         if source_parent == parent && target_parent == parent {
-            transform_edge(edge, graph, model_order)?;
+            transform_edge(edge, graph, needs_model_order.then_some(model_order))?;
         }
     }
 
@@ -139,8 +141,12 @@ fn import_hierarchical_graph(
     let mut model_order = 0usize;
     while let Some(node) = queue.pop_front() {
         let parent_graph = graph_for_parent(root, node.parent.as_deref());
-        let node_index = transform_node(node, parent_graph, Some(model_order));
-        model_order += 1;
+        let node_model_order = needs_model_order_for_child(parent_graph, node).then(|| {
+            let order = model_order;
+            model_order += 1;
+            order
+        });
+        let node_index = transform_node(node, parent_graph, node_model_order);
 
         if node_has_nested_graph(input, node) {
             let nested_options = nested_graph_options(input, &parent_graph.options, node);
@@ -160,15 +166,36 @@ fn import_hierarchical_graph(
     for (edge_order, edge) in input.edges.iter().enumerate() {
         let source_path = index.graph_path(edge.source.as_str());
         let target_path = index.graph_path(edge.target.as_str());
+        let edge_model_order =
+            needs_model_order_based_on_parent(&root.options).then_some(edge_order);
         if source_path == target_path {
             let graph = graph_for_path(root, &source_path);
-            transform_edge(edge, graph, edge_order)?;
+            transform_edge(edge, graph, edge_model_order)?;
         } else {
-            transform_cross_hierarchy_edge(edge, index, root, edge_order)?;
+            transform_cross_hierarchy_edge(edge, index, root, edge_order, edge_model_order)?;
         }
     }
 
     Ok(())
+}
+
+/// Mirrors `ElkGraphImporter#needsModelOrder(...)`.
+fn needs_model_order_for_child(parent_graph: &LGraph, _child: &ElkInputNode) -> bool {
+    needs_model_order_based_on_parent(&parent_graph.options)
+}
+
+/// Mirrors `ElkGraphImporter#needsModelOrderBasedOnParent(...)` for currently ported options.
+fn needs_model_order_based_on_parent(options: &LayeredOptions) -> bool {
+    options.consider_model_order_strategy != OrderingStrategy::None
+        || matches!(
+            options.cycle_breaking_strategy,
+            CycleBreakingStrategy::ModelOrder | CycleBreakingStrategy::GreedyModelOrder
+        )
+        || options.force_node_model_order
+        || matches!(
+            options.layering_strategy,
+            LayeringStrategy::BreadthFirstModelOrder | LayeringStrategy::DepthFirstModelOrder
+        )
 }
 
 fn nested_graph_options(
@@ -311,7 +338,7 @@ fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<u
 fn transform_edge(
     edge: &ElkInputEdge,
     graph: &mut LGraph,
-    model_order: usize,
+    model_order: Option<usize>,
 ) -> ImportResult<usize> {
     transform_edge_between(
         edge,
@@ -329,7 +356,7 @@ fn transform_edge(
 fn transform_edge_between(
     edge: &ElkInputEdge,
     graph: &mut LGraph,
-    model_order: usize,
+    model_order: Option<usize>,
     local_source: &str,
     local_target: &str,
     source_node_id: &str,
@@ -376,7 +403,7 @@ fn transform_edge_between(
             minlen: edge.minlen.max(1),
             reversed: false,
             bend_points: Vec::new(),
-            model_order: Some(model_order),
+            model_order,
             priority_direction: edge.priority_direction,
             priority_shortness: edge.priority_shortness,
             priority_straightness: edge.priority_straightness,
@@ -403,7 +430,8 @@ fn transform_cross_hierarchy_edge(
     edge: &ElkInputEdge,
     index: &InputIndex<'_>,
     root: &mut LGraph,
-    model_order: usize,
+    edge_order: usize,
+    model_order: Option<usize>,
 ) -> ImportResult<()> {
     let source_path = index.graph_path(edge.source.as_str());
     let target_path = index.graph_path(edge.target.as_str());
@@ -414,14 +442,14 @@ fn transform_cross_hierarchy_edge(
         target_node_id: edge.target.clone(),
         source_port_key: hierarchy_port_key(
             edge.source.as_str(),
-            model_order,
+            edge_order,
             "source",
             merge_edges,
             PortType::Output,
         ),
         target_port_key: hierarchy_port_key(
             edge.target.as_str(),
-            model_order,
+            edge_order,
             "target",
             merge_edges,
             PortType::Input,
@@ -430,7 +458,7 @@ fn transform_cross_hierarchy_edge(
         target_path: target_path.into_iter().map(str::to_string).collect(),
         labels: edge.label.iter().map(label_to_lgraph).collect(),
         minlen: edge.minlen.max(1),
-        model_order: Some(model_order),
+        model_order,
         priority_direction: edge.priority_direction,
         priority_shortness: edge.priority_shortness,
         priority_straightness: edge.priority_straightness,
@@ -441,7 +469,7 @@ fn transform_cross_hierarchy_edge(
 
 fn hierarchy_port_key(
     node_id: &str,
-    model_order: usize,
+    edge_order: usize,
     role: &str,
     merge_edges: bool,
     port_type: PortType,
@@ -449,7 +477,7 @@ fn hierarchy_port_key(
     if merge_edges {
         format!("{node_id}:collector:{port_type:?}")
     } else {
-        format!("{node_id}:{model_order}:{role}")
+        format!("{node_id}:{edge_order}:{role}")
     }
 }
 
@@ -803,7 +831,7 @@ mod tests {
     }
 
     #[test]
-    fn importer_inherits_nested_hierarchy_merge_without_cloning_parent_spacing() {
+    fn importer_applies_nested_hierarchy_merge_without_cloning_root_options() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
         cluster.nested_spacing_base = Some(30.0);
@@ -811,12 +839,19 @@ mod tests {
         child.parent = Some("cluster".to_string());
         let mut input = graph(vec![cluster, child], vec![]);
         input.options.merge_hierarchy_edges = false;
+        input.options.consider_model_order_strategy = OrderingStrategy::NodesAndEdges;
         input.options.spacing = SpacingOptions::layered_base_value(40.0);
 
         let lgraph = import_graph(&input).unwrap();
         let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
 
+        assert_eq!(lgraph.layerless_nodes[0].model_order, Some(0));
+        assert_eq!(nested.layerless_nodes[0].model_order, None);
         assert!(!nested.options.merge_hierarchy_edges);
+        assert_eq!(
+            nested.options.consider_model_order_strategy,
+            OrderingStrategy::None
+        );
         assert_eq!(nested.options.spacing.node_node, 30.0);
     }
 
@@ -908,6 +943,49 @@ mod tests {
         assert_eq!(origin.graph_id, "root");
         assert_eq!(origin.port.node, cluster_index);
         assert_eq!(origin.port.port, 0);
+    }
+
+    #[test]
+    fn source_ported_compound_does_not_duplicate_existing_parent_dummy() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let mut lgraph = import_graph(&graph(
+            vec![node("B"), cluster, child],
+            vec![edge("B-A", "B", "A")],
+        ))
+        .unwrap();
+        preprocess_source_ported_compound_graph(&mut lgraph);
+
+        let cluster = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap();
+        let nested = cluster.nested_graph.as_ref().unwrap();
+        let external_dummies = nested
+            .layerless_nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| {
+                node.kind == LNodeKind::ExternalPort && node.id == "external:cluster"
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(external_dummies.len(), 1);
+        let (dummy_node, external_dummy) = external_dummies[0];
+        let dummy_port = external_dummy.ports.first().unwrap();
+        assert_eq!(
+            dummy_port.incoming_edges.len() + dummy_port.outgoing_edges.len(),
+            1
+        );
+        assert_eq!(cluster.ports.len(), 1);
+        assert_eq!(
+            cluster.ports[0].port_dummy.as_ref().unwrap().node,
+            dummy_node
+        );
     }
 
     #[test]

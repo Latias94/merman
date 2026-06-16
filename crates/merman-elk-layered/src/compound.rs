@@ -238,8 +238,8 @@ pub(crate) fn record_cross_hierarchy_edge_segment(
 pub fn preprocess_source_ported_compound_graph(graph: &mut LGraph) {
     introduce_source_ported_hierarchy_edge_segments(graph);
     preprocess_source_ported_compound_graph_inner(graph);
-    ensure_nested_external_dummies_for_parent_ports(graph);
     link_compound_external_dummy_metadata(graph);
+    ensure_nested_external_dummies_for_parent_ports(graph);
 }
 
 fn introduce_source_ported_hierarchy_edge_segments(graph: &mut LGraph) {

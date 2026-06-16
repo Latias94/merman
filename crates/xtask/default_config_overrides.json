@@ -12,6 +12,11 @@
     "reason": "Normalize the deprecated nullable flowchart htmlLabels schema default to the effective Mermaid baseline used by local renderers."
   },
   {
+    "op": "remove",
+    "path": ["elk", "cycleBreakingStrategy"],
+    "reason": "Mermaid defaultConfig.ts replaces the schema elk object with runtime defaults that omit cycleBreakingStrategy, so elkjs uses ELK Layered's GREEDY default unless users set it explicitly."
+  },
+  {
     "op": "set",
     "path": ["sankey", "nodeColors"],
     "value": {},

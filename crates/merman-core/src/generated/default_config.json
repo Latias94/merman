@@ -154,7 +154,6 @@
   "deterministicIds": false,
   "elk": {
     "considerModelOrder": "NODES_AND_EDGES",
-    "cycleBreakingStrategy": "GREEDY_MODEL_ORDER",
     "forceNodeModelOrder": false,
     "mergeEdges": false,
     "nodePlacementStrategy": "BRANDES_KOEPF"

@@ -1080,7 +1080,12 @@ impl HierarchySweep {
             on_right_most_layer,
         );
         let parent_graph = graph_mut_at_path(root, &parent_path);
-        apply_parent_hierarchical_port_order(parent_graph, parent_node_index, &parent_order);
+        apply_parent_hierarchical_port_order_on_sweep_side(
+            parent_graph,
+            parent_node_index,
+            on_right_most_layer,
+            &parent_order,
+        );
     }
 
     fn set_port_order_on_parent_graph(&mut self, root: &mut LGraph, info_index: usize) {
@@ -1136,7 +1141,12 @@ impl HierarchySweep {
             on_right_most_layer,
         );
         let parent_graph = graph_mut_at_path(root, &parent_path);
-        apply_parent_hierarchical_port_order(parent_graph, parent_node_index, &parent_order);
+        apply_parent_hierarchical_port_order_on_sweep_side(
+            parent_graph,
+            parent_node_index,
+            on_right_most_layer,
+            &parent_order,
+        );
     }
 
     fn next_sweep_direction(&mut self, _info_index: usize) -> bool {
@@ -3121,9 +3131,10 @@ fn parent_port_order_by_dummy_layer(
     order
 }
 
-fn apply_parent_hierarchical_port_order(
+fn apply_parent_hierarchical_port_order_on_sweep_side(
     parent_graph: &mut LGraph,
     parent_node_index: usize,
+    on_right_most_layer: bool,
     ordered_ports: &[usize],
 ) {
     if ordered_ports.is_empty() {
@@ -3134,9 +3145,14 @@ fn apply_parent_hierarchical_port_order(
     let mut new_order = Vec::with_capacity(node.ports.len());
     let mut used = vec![false; node.ports.len()];
     let mut ordered_iter = ordered_ports.iter().copied();
+    let sweep_side = if on_right_most_layer {
+        PortSide::East
+    } else {
+        PortSide::West
+    };
 
     for (index, port) in node.ports.iter().enumerate() {
-        if port.inside_connections {
+        if port.side == sweep_side && port.inside_connections {
             if let Some(next) = ordered_iter.next()
                 && next < node.ports.len()
                 && !used[next]
@@ -3370,6 +3386,60 @@ mod tests {
 
         assert_eq!(before, 1);
         assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn parent_hierarchical_port_order_only_rewrites_sweep_side() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("parent", 80.0, 40.0, None));
+        let west_a = graph
+            .add_port(0, PortType::Input, PortSide::West, Default::default())
+            .unwrap()
+            .port;
+        let east_a = graph
+            .add_port(0, PortType::Output, PortSide::East, Default::default())
+            .unwrap()
+            .port;
+        let west_b = graph
+            .add_port(0, PortType::Input, PortSide::West, Default::default())
+            .unwrap()
+            .port;
+        let east_b = graph
+            .add_port(0, PortType::Output, PortSide::East, Default::default())
+            .unwrap()
+            .port;
+        graph.layerless_nodes[0].ports[west_a].id = "west_a".to_string();
+        graph.layerless_nodes[0].ports[east_a].id = "east_a".to_string();
+        graph.layerless_nodes[0].ports[west_b].id = "west_b".to_string();
+        graph.layerless_nodes[0].ports[east_b].id = "east_b".to_string();
+        for port in &mut graph.layerless_nodes[0].ports {
+            port.inside_connections = true;
+        }
+
+        apply_parent_hierarchical_port_order_on_sweep_side(&mut graph, 0, true, &[east_b, east_a]);
+
+        let port_ids = graph.layerless_nodes[0]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>();
+        let port_sides = graph.layerless_nodes[0]
+            .ports
+            .iter()
+            .map(|port| port.side)
+            .collect::<Vec<_>>();
+        assert_eq!(port_ids, vec!["west_a", "east_b", "west_b", "east_a"]);
+        assert_eq!(
+            port_sides,
+            vec![
+                PortSide::West,
+                PortSide::East,
+                PortSide::West,
+                PortSide::East
+            ]
+        );
     }
 
     #[test]

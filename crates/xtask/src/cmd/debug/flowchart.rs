@@ -1905,6 +1905,15 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
         graph.padding.top,
         graph.padding.bottom
     );
+    println!(
+        "{indent}options direction={:?} thoroughness={} hierarchical_sweepiness={} consider_model_order={:?} force_node_model_order={} port_model_order={}",
+        graph.options.direction,
+        graph.options.thoroughness,
+        graph.options.hierarchical_sweepiness,
+        graph.options.consider_model_order_strategy,
+        graph.options.force_node_model_order,
+        graph.options.consider_model_order_port_model_order
+    );
     println!("{indent}layerless:");
     for (index, node) in graph.layerless_nodes.iter().enumerate() {
         println!(
@@ -1935,10 +1944,12 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
                 .map(|edge| graph.edges[*edge].id.as_str())
                 .collect::<Vec<_>>();
             println!(
-                "{indent}  port #{port_index} {} type={:?} side={:?} pos=({}, {}) anchor=({}, {}) size=({}, {}) border={:?} inside={} dummy={:?} origin={:?} in=[{}] out=[{}]",
+                "{indent}  port #{port_index} {} type={:?} side={:?} order={:?} index={:?} pos=({}, {}) anchor=({}, {}) size=({}, {}) border={:?} inside={} dummy={:?} origin={:?} in=[{}] out=[{}]",
                 port.id,
                 port.port_type,
                 port.side,
+                port.model_order,
+                port.port_index,
                 port.position.x,
                 port.position.y,
                 port.anchor.x,
@@ -1957,15 +1968,18 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
     if !graph.edges.is_empty() {
         println!("{indent}edges:");
         for (edge_index, edge) in graph.edges.iter().enumerate() {
+            let source_attached = graph.edge_source_attached(edge_index);
+            let target_attached = graph.edge_target_attached(edge_index);
             println!(
-                "{indent}- #{edge_index} {} {}:{} -> {}:{} segment={:?} reversed={}",
+                "{indent}- #{edge_index} {} {}:{} -> {}:{} segment={:?} reversed={} attached=({source_attached},{target_attached}) bends={:?}",
                 edge.id,
                 edge.source.node,
                 edge.source.port,
                 edge.target.node,
                 edge.target.port,
                 edge.compound_segment,
-                edge.reversed
+                edge.reversed,
+                edge.bend_points
             );
         }
     }
