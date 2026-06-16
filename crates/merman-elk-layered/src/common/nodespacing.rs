@@ -191,13 +191,13 @@ fn placement_start_and_spacing(
         PortAlignment::Distributed => {
             let distributed_span = placement_span + 2.0 * port_spacing;
             let additional = (available_space - distributed_span) / (port_count + 1) as f64;
-            let spacing = (port_spacing + additional.max(0.0)).max(0.0);
+            let spacing = (port_spacing + additional).max(0.0);
             (spacing, spacing)
         }
         PortAlignment::Justified => {
             let spacing = if port_count > 1 {
-                port_spacing
-                    + ((available_space - placement_span) / (port_count - 1) as f64).max(0.0)
+                (port_spacing + (available_space - placement_span) / (port_count - 1) as f64)
+                    .max(0.0)
             } else {
                 port_spacing
             };
@@ -310,6 +310,41 @@ mod tests {
         assert_eq!(port.position.x, graph.layerless_nodes[node].size.width);
         assert!(port.position.y > 0.0);
         assert!(port.position.y < graph.layerless_nodes[node].size.height);
+    }
+
+    #[test]
+    fn label_and_node_size_calculation_crams_distributed_ports_when_overhang_disabled() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(LNode::new("C", 69.578125, 54.0, None));
+        let node = 0;
+        graph.set_node_layer(node, 0);
+
+        for _ in 0..5 {
+            let port = graph
+                .add_port(
+                    node,
+                    PortType::Output,
+                    PortSide::South,
+                    crate::graph::LPoint::default(),
+                )
+                .unwrap();
+            graph.layerless_nodes[node].ports[port.port].set_side(PortSide::South);
+        }
+
+        calculate_label_and_node_sizes(&mut graph, [node]);
+
+        let expected_spacing = graph.layerless_nodes[node].size.width / 6.0;
+        for (index, port) in graph.layerless_nodes[node].ports.iter().enumerate() {
+            let expected_x = expected_spacing * (index + 1) as f64;
+            assert!(
+                (port.position.x - expected_x).abs() < 1e-9,
+                "port {index} x: expected {expected_x}, got {}",
+                port.position.x
+            );
+            assert_eq!(port.position.y, 0.0);
+        }
     }
 
     #[test]

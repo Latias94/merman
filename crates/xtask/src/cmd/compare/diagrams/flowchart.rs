@@ -14,8 +14,23 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+fn resolve_compare_root(raw: Option<PathBuf>, default: PathBuf) -> PathBuf {
+    let Some(raw) = raw else {
+        return default;
+    };
+    if raw.is_absolute() {
+        return raw;
+    }
+    if raw.as_os_str().is_empty() {
+        return default;
+    }
+    crate::cmd::workspace_root().join(raw)
+}
+
 pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
+    let mut fixtures_root_arg: Option<PathBuf> = None;
+    let mut upstream_root_arg: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut check_dom: bool = false;
     let mut report_root: bool = false;
@@ -29,6 +44,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut text_measurer: String = "vendored".to_string();
     let mut apply_root_overrides: bool = true;
     let mut include_elk_probes: bool = false;
+    let mut force_elk_fixture: bool = false;
     let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
 
     let mut i = 0;
@@ -37,6 +53,14 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             "--out" => {
                 i += 1;
                 out_path = args.get(i).map(PathBuf::from);
+            }
+            "--fixtures-root" => {
+                i += 1;
+                fixtures_root_arg = args.get(i).map(PathBuf::from);
+            }
+            "--upstream-root" => {
+                i += 1;
+                upstream_root_arg = args.get(i).map(PathBuf::from);
             }
             "--filter" => {
                 i += 1;
@@ -97,15 +121,24 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             }
             "--no-root-overrides" => apply_root_overrides = false,
             "--include-elk-probes" => include_elk_probes = true,
+            "--force-elk-fixture" => force_elk_fixture = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
         i += 1;
     }
 
+    if force_elk_fixture
+        && flowchart_elk_backend != merman_render::FlowchartElkBackend::SourcePorted
+    {
+        return Err(XtaskError::SvgCompareFailed(
+            "`--force-elk-fixture` requires `--flowchart-elk-backend source-ported`".to_string(),
+        ));
+    }
+
     let compare_paths = crate::cmd::compare_diagram_paths("flowchart", out_path);
-    let fixtures_dir = compare_paths.fixtures_dir;
-    let upstream_dir = compare_paths.upstream_dir;
+    let fixtures_dir = resolve_compare_root(fixtures_root_arg, compare_paths.fixtures_dir);
+    let upstream_dir = resolve_compare_root(upstream_root_arg, compare_paths.upstream_dir);
     let out_path = compare_paths.out_path;
     let out_svg_dir = compare_paths.out_svg_dir;
     let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
@@ -153,7 +186,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Flowchart ELK backend: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
+        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Flowchart ELK backend: `{}`\n- Forced ELK fixtures: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
         dom_mode,
         dom_decimals,
         text_measurer,
@@ -168,6 +201,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             "disabled"
         },
         flowchart_elk_backend_name(flowchart_elk_backend),
+        if force_elk_fixture {
+            "enabled"
+        } else {
+            "disabled"
+        },
         if report_root_pins_only {
             "root-pins-only"
         } else {
@@ -282,6 +320,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 flowchart_elk_backend,
             );
             if !admitted
+                && !force_elk_fixture
                 && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
             {
                 skipped.push(format!("skipped {stem}: {reason}"));
@@ -552,5 +591,16 @@ mod tests {
 
         let report = std::fs::read_to_string(&out_path).expect("probe report should be written");
         assert!(report.contains("All fixtures matched."));
+    }
+
+    #[test]
+    fn forced_elk_fixtures_require_source_ported_backend() {
+        let err = compare_flowchart_svgs(vec!["--force-elk-fixture".to_string()])
+            .expect_err("forced ELK fixture diagnostics should not run on the compat backend");
+
+        assert!(
+            err.to_string()
+                .contains("`--force-elk-fixture` requires `--flowchart-elk-backend source-ported`")
+        );
     }
 }
