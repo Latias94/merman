@@ -6870,6 +6870,7 @@ dependencies = [
  "futures",
  "merman",
  "merman-core",
+ "merman-layout-elk",
  "merman-render",
  "regex",
  "roxmltree 0.20.0",

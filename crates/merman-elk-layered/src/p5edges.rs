@@ -5,6 +5,7 @@
 //! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p5edges/orthogonal
 
 use crate::graph::{LGraph, LNodeKind};
+use crate::options::Alignment;
 
 pub mod orthogonal;
 
@@ -83,9 +84,63 @@ pub fn route_edges_orthogonal(graph: &mut LGraph) {
 }
 
 fn place_nodes_horizontally(graph: &mut LGraph, nodes: &[usize], xoffset: f64) {
+    let max_left_margin = nodes
+        .iter()
+        .map(|node| graph.layerless_nodes[*node].margin.left)
+        .fold(0.0, f64::max);
+    let max_right_margin = nodes
+        .iter()
+        .map(|node| graph.layerless_nodes[*node].margin.right)
+        .fold(0.0, f64::max);
+    let layer_width = nodes
+        .iter()
+        .filter_map(|node| graph.layerless_nodes[*node].layer_index)
+        .next()
+        .and_then(|layer| graph.layers.get(layer))
+        .map(|layer| layer.size.width)
+        .unwrap_or(0.0);
+
     for node in nodes {
-        graph.layerless_nodes[*node].position.x =
-            xoffset + graph.layerless_nodes[*node].margin.left;
+        let lnode = &graph.layerless_nodes[*node];
+        let ratio = horizontal_alignment_ratio(graph, *node);
+
+        let node_width = lnode.size.width;
+        let mut xpos = (layer_width - node_width) * ratio;
+        if ratio > 0.5 {
+            xpos -= max_right_margin * 2.0 * (ratio - 0.5);
+        } else if ratio < 0.5 {
+            xpos += max_left_margin * 2.0 * (0.5 - ratio);
+        }
+
+        xpos = xpos.max(lnode.margin.left);
+        xpos = xpos.min(layer_width - lnode.margin.right - node_width);
+        graph.layerless_nodes[*node].position.x = xoffset + xpos;
+    }
+}
+
+fn horizontal_alignment_ratio(graph: &LGraph, node: usize) -> f64 {
+    let lnode = &graph.layerless_nodes[node];
+    match lnode.node_alignment {
+        Alignment::Left => 0.0,
+        Alignment::Right => 1.0,
+        Alignment::Center => 0.5,
+        Alignment::Automatic | Alignment::Top | Alignment::Bottom => {
+            let inports = lnode
+                .ports
+                .iter()
+                .filter(|port| !port.incoming_edges.is_empty())
+                .count();
+            let outports = lnode
+                .ports
+                .iter()
+                .filter(|port| !port.outgoing_edges.is_empty())
+                .count();
+            if inports + outports == 0 {
+                0.5
+            } else {
+                outports as f64 / (inports + outports) as f64
+            }
+        }
     }
 }
 
@@ -171,5 +226,29 @@ mod tests {
             graph.edges[0].bend_points,
             vec![LPoint { x: 50.0, y: 10.0 }, LPoint { x: 50.0, y: 50.0 }]
         );
+    }
+
+    #[test]
+    fn orthogonal_router_centers_unconnected_nodes_in_wide_layers() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let wide = graph.layerless_nodes.len();
+        graph
+            .layerless_nodes
+            .push(LNode::new("wide", 80.0, 20.0, Some(0)));
+        let narrow = graph.layerless_nodes.len();
+        graph
+            .layerless_nodes
+            .push(LNode::new("narrow", 20.0, 20.0, Some(1)));
+        graph.set_node_layer(wide, 0);
+        graph.set_node_layer(narrow, 1);
+        graph.layers[0].size.width = 80.0;
+        graph.layers[1].size.width = 80.0;
+
+        route_edges_orthogonal(&mut graph);
+
+        let expected_narrow_x =
+            80.0 + graph.options.spacing.node_node_between_layers + (80.0 - 20.0) / 2.0;
+        assert_eq!(graph.layerless_nodes[wide].position.x, 0.0);
+        assert_eq!(graph.layerless_nodes[narrow].position.x, expected_narrow_x);
     }
 }

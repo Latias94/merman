@@ -352,130 +352,74 @@ pub fn build_flowchart_elk_graph(
 
     let subgraph_ids: HashSet<&str> = model.subgraphs.iter().map(|sg| sg.id.as_str()).collect();
     let parent_by_id = parent_by_id(model)?;
+    let include_children_groups = include_children_groups(model, &parent_by_id);
 
-    for sg in model.subgraphs.iter().rev() {
-        if sg.nodes.is_empty() {
-            continue;
-        }
-        graph.nodes.push(elk::Node {
-            id: sg.id.clone(),
-            kind: elk::NodeKind::Group,
-            width: 0.0,
-            height: 0.0,
-            parent: parent_by_id.get(&sg.id).cloned(),
-            direction: sg.dir.as_deref().map(dir_to_elk_direction),
-            label: subgraph_label(
-                sg,
-                &ElkMeasureContext {
-                    model,
-                    effective_config,
-                    measurer,
-                    math_renderer,
-                    cluster_label_base_style,
-                    cluster_title_wrapping_width,
-                    cluster_wrap_mode,
-                },
-            ),
-        });
-    }
+    let cluster_measure_ctx = ElkMeasureContext {
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        cluster_label_base_style,
+        cluster_title_wrapping_width,
+        cluster_wrap_mode,
+    };
+    let node_measure_ctx = NodeMeasureContext {
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        node_label_base_style,
+        wrapping_width,
+        diagram_direction_text,
+        node_padding,
+        state_padding,
+        node_wrap_mode,
+        node_html_label_css_parity,
+    };
+    let empty_subgraph_measure_ctx = EmptySubgraphMeasureContext {
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        cluster_label_base_style,
+        cluster_title_wrapping_width,
+        node_wrap_mode,
+        node_html_label_css_parity,
+        cluster_padding,
+        state_padding,
+        diagram_direction_text,
+    };
 
-    let mut inserted_leaf_ids: HashSet<&str> = HashSet::new();
-    for node in &model.nodes {
-        if subgraph_ids.contains(node.id.as_str()) {
-            continue;
-        }
-        let (width, height, label) = node_dimensions_and_label(
-            node,
-            NodeMeasureContext {
-                model,
-                effective_config,
-                measurer,
-                math_renderer,
-                node_label_base_style,
-                wrapping_width,
-                diagram_direction_text,
-                node_padding,
-                state_padding,
-                node_wrap_mode,
-                node_html_label_css_parity,
-            },
-        );
-        graph.nodes.push(elk::Node {
-            id: node.id.clone(),
-            kind: elk::NodeKind::Leaf,
-            width,
-            height,
-            parent: parent_by_id.get(&node.id).cloned(),
-            direction: None,
-            label: Some(label),
-        });
-        inserted_leaf_ids.insert(node.id.as_str());
-    }
-
+    let mut inserted_ids: HashSet<&str> = HashSet::new();
     for sg in &model.subgraphs {
-        if !sg.nodes.is_empty() {
+        if !inserted_ids.insert(sg.id.as_str()) {
             continue;
         }
-        let (width, height, label) = empty_subgraph_dimensions_and_label(
-            sg,
-            EmptySubgraphMeasureContext {
-                model,
-                effective_config,
-                measurer,
-                math_renderer,
-                cluster_label_base_style,
-                cluster_title_wrapping_width,
-                node_wrap_mode,
-                node_html_label_css_parity,
-                cluster_padding,
-                state_padding,
-                diagram_direction_text,
-            },
-        );
-        graph.nodes.push(elk::Node {
-            id: sg.id.clone(),
-            kind: elk::NodeKind::Leaf,
-            width,
-            height,
-            parent: parent_by_id.get(&sg.id).cloned(),
-            direction: None,
-            label: Some(label),
-        });
-        inserted_leaf_ids.insert(sg.id.as_str());
+        if sg.nodes.is_empty() {
+            graph.nodes.push(empty_subgraph_to_elk_node(
+                sg,
+                parent_by_id.get(&sg.id).cloned(),
+                empty_subgraph_measure_ctx,
+            ));
+        } else {
+            graph.nodes.push(subgraph_to_elk_node(
+                sg,
+                parent_by_id.get(&sg.id).cloned(),
+                &include_children_groups,
+                &cluster_measure_ctx,
+            ));
+        }
     }
 
-    for id in &model.vertex_calls {
-        if inserted_leaf_ids.contains(id.as_str()) || subgraph_ids.contains(id.as_str()) {
+    for node in &model.nodes {
+        if subgraph_ids.contains(node.id.as_str()) || !inserted_ids.insert(node.id.as_str()) {
             continue;
         }
-        if let Some(node) = model.nodes.iter().find(|node| node.id == *id) {
-            let (width, height, label) = node_dimensions_and_label(
-                node,
-                NodeMeasureContext {
-                    model,
-                    effective_config,
-                    measurer,
-                    math_renderer,
-                    node_label_base_style,
-                    wrapping_width,
-                    diagram_direction_text,
-                    node_padding,
-                    state_padding,
-                    node_wrap_mode,
-                    node_html_label_css_parity,
-                },
-            );
-            graph.nodes.push(elk::Node {
-                id: node.id.clone(),
-                kind: elk::NodeKind::Leaf,
-                width,
-                height,
-                parent: parent_by_id.get(&node.id).cloned(),
-                direction: None,
-                label: Some(label),
-            });
-            inserted_leaf_ids.insert(node.id.as_str());
-        }
+        graph.nodes.push(flow_node_to_elk_node(
+            node,
+            parent_by_id.get(&node.id).cloned(),
+            node_measure_ctx,
+        ));
     }
 
     graph.edges = model
@@ -508,6 +452,7 @@ pub fn build_flowchart_elk_graph(
     Ok(graph)
 }
 
+#[derive(Clone, Copy)]
 struct ElkMeasureContext<'a> {
     model: &'a FlowchartV2Model,
     effective_config: &'a MermaidConfig,
@@ -640,6 +585,75 @@ fn parent_by_id(model: &FlowchartV2Model) -> Result<HashMap<String, String>> {
     Ok(parent_by_id)
 }
 
+fn include_children_groups(
+    model: &FlowchartV2Model,
+    parent_by_id: &HashMap<String, String>,
+) -> HashSet<String> {
+    let mut include_children = HashSet::new();
+    for edge in &model.edges {
+        if parent_by_id.get(&edge.from) == parent_by_id.get(&edge.to) {
+            continue;
+        }
+
+        let ancestor = common_ancestor(edge.from.as_str(), edge.to.as_str(), parent_by_id);
+        set_include_children_policy(
+            edge.from.as_str(),
+            ancestor.as_deref(),
+            parent_by_id,
+            &mut include_children,
+        );
+        set_include_children_policy(
+            edge.to.as_str(),
+            ancestor.as_deref(),
+            parent_by_id,
+            &mut include_children,
+        );
+    }
+    include_children
+}
+
+fn set_include_children_policy(
+    node_id: &str,
+    ancestor_id: Option<&str>,
+    parent_by_id: &HashMap<String, String>,
+    include_children: &mut HashSet<String>,
+) {
+    let mut current = Some(node_id);
+    while let Some(node) = current {
+        include_children.insert(node.to_string());
+        if Some(node) == ancestor_id {
+            break;
+        }
+        current = parent_by_id.get(node).map(String::as_str);
+    }
+}
+
+fn common_ancestor(
+    left: &str,
+    right: &str,
+    parent_by_id: &HashMap<String, String>,
+) -> Option<String> {
+    let left_path = ancestor_path(left, parent_by_id);
+    let right_path = ancestor_path(right, parent_by_id);
+    left_path
+        .into_iter()
+        .zip(right_path)
+        .take_while(|(left, right)| left == right)
+        .map(|(ancestor, _)| ancestor)
+        .last()
+}
+
+fn ancestor_path(node_id: &str, parent_by_id: &HashMap<String, String>) -> Vec<String> {
+    let mut path = Vec::new();
+    let mut current = parent_by_id.get(node_id).map(String::as_str);
+    while let Some(parent) = current {
+        path.push(parent.to_string());
+        current = parent_by_id.get(parent).map(String::as_str);
+    }
+    path.reverse();
+    path
+}
+
 fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let title_font_style =
@@ -658,7 +672,7 @@ fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk:
     });
     Some(elk::Label {
         width: metrics.width.max(1.0),
-        height: metrics.height.max(1.0),
+        height: (metrics.height - 2.0).max(1.0),
     })
 }
 
@@ -859,6 +873,66 @@ fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
         .unwrap_or(false)
 }
 
+fn flow_node_to_elk_node(
+    node: &FlowNode,
+    parent: Option<String>,
+    ctx: NodeMeasureContext<'_>,
+) -> elk::Node {
+    let (width, height, label) = node_dimensions_and_label(node, ctx);
+    elk::Node {
+        id: node.id.clone(),
+        kind: elk::NodeKind::Leaf,
+        width,
+        height,
+        parent,
+        direction: None,
+        hierarchy_handling: None,
+        label: Some(label),
+    }
+}
+
+fn subgraph_to_elk_node(
+    sg: &FlowSubgraph,
+    parent: Option<String>,
+    include_children_groups: &HashSet<String>,
+    ctx: &ElkMeasureContext<'_>,
+) -> elk::Node {
+    elk::Node {
+        id: sg.id.clone(),
+        kind: elk::NodeKind::Group,
+        width: 0.0,
+        height: 0.0,
+        parent,
+        direction: sg.dir.as_deref().map(dir_to_elk_direction),
+        hierarchy_handling: if include_children_groups.contains(sg.id.as_str()) {
+            Some(elk::HierarchyHandling::IncludeChildren)
+        } else if sg.dir.is_some() {
+            Some(elk::HierarchyHandling::SeparateChildren)
+        } else {
+            None
+        },
+        label: subgraph_label(sg, ctx),
+    }
+}
+
+fn empty_subgraph_to_elk_node(
+    sg: &FlowSubgraph,
+    parent: Option<String>,
+    ctx: EmptySubgraphMeasureContext<'_>,
+) -> elk::Node {
+    let (width, height, label) = empty_subgraph_dimensions_and_label(sg, ctx);
+    elk::Node {
+        id: sg.id.clone(),
+        kind: elk::NodeKind::Leaf,
+        width,
+        height,
+        parent,
+        direction: None,
+        hierarchy_handling: None,
+        label: Some(label),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -982,6 +1056,43 @@ mod tests {
         assert_eq!(cluster.direction, Some(elk::Direction::Right));
         assert_eq!(child.parent.as_deref(), Some("cluster"));
         assert_eq!(outside.parent, None);
+    }
+
+    #[test]
+    fn flowchart_elk_graph_adapter_matches_mermaid_get_data_node_order() {
+        let mut model = model(
+            vec![
+                node("root-a", Some("root-a"), None),
+                node("cluster", Some("cluster"), None),
+                node("cluster-a", Some("cluster-a"), None),
+                node("cluster-b", Some("cluster-b"), None),
+                node("root-b", Some("root-b"), None),
+            ],
+            vec![],
+        );
+        model.subgraphs.push(FlowSubgraph {
+            id: "cluster".to_string(),
+            title: "Cluster".to_string(),
+            dir: None,
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["cluster-a".to_string(), "cluster-b".to_string()],
+        });
+
+        let graph = build_flowchart_elk_graph(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+
+        let ids: Vec<&str> = graph.nodes.iter().map(|node| node.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["cluster", "root-a", "cluster-a", "cluster-b", "root-b"]
+        );
     }
 
     #[test]

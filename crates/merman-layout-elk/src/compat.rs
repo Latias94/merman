@@ -169,6 +169,7 @@ pub struct Node {
     pub height: f64,
     pub parent: Option<String>,
     pub direction: Option<Direction>,
+    pub hierarchy_handling: Option<HierarchyHandling>,
     pub label: Option<Label>,
 }
 
@@ -1569,6 +1570,7 @@ mod tests {
                     height: 40.0,
                     parent: None,
                     direction: None,
+                    hierarchy_handling: None,
                     label: None,
                 },
                 Node {
@@ -1578,6 +1580,7 @@ mod tests {
                     height: 40.0,
                     parent: None,
                     direction: None,
+                    hierarchy_handling: None,
                     label: None,
                 },
             ],
@@ -1627,6 +1630,7 @@ mod tests {
                 height: 0.0,
                 parent: None,
                 direction: Some(Direction::Down),
+                hierarchy_handling: None,
                 label: Some(Label {
                     width: 300.0,
                     height: 24.0,
@@ -1900,6 +1904,7 @@ mod tests {
             height: 40.0,
             parent: parent.map(str::to_string),
             direction: None,
+            hierarchy_handling: None,
             label: None,
         }
     }
@@ -1912,6 +1917,7 @@ mod tests {
             height: 0.0,
             parent: parent.map(str::to_string),
             direction,
+            hierarchy_handling: None,
             label: Some(Label {
                 width: 80.0,
                 height: 20.0,

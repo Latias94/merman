@@ -18,6 +18,7 @@ futures.workspace = true
 dugong = { path = "../dugong" }
 merman = { path = "../merman" }
 merman-core = { path = "../merman-core" }
+merman-layout-elk = { workspace = true, features = ["layered"] }
 merman-render = { path = "../merman-render", features = ["elk-layout"] }
 regex.workspace = true
 roxmltree.workspace = true

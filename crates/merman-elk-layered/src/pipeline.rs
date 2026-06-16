@@ -13,11 +13,11 @@
 use super::options::{
     CrossingMinimizationStrategy, CycleBreakingStrategy, EdgeRouting, ElkDirection,
     GreedySwitchType, LayeredOptions, LayeringStrategy, NodePlacementStrategy, OrderingStrategy,
-    WrappingStrategy,
+    PortConstraints, WrappingStrategy,
 };
 use crate::compound::preprocess_source_ported_compound_graph;
 use crate::configurator::{configure_graph_properties, configured_options};
-use crate::graph::LGraph;
+use crate::graph::{LGraph, LNodeKind, LPoint, LSize, PortSide};
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, insert_label_dummies,
     join_long_edges, postprocess_end_labels, postprocess_layer_constraints, preprocess_end_labels,
@@ -32,7 +32,9 @@ use crate::p2layers::layer_network_simplex;
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists,
     sweep::{
-        CrossMinType, minimize_crossings_layer_sweep, minimize_crossings_layer_sweep_with_type,
+        CrossMinType, minimize_crossings_layer_sweep,
+        minimize_crossings_layer_sweep_hierarchical_with_type,
+        minimize_crossings_layer_sweep_with_type,
     },
 };
 use crate::p4nodes::{
@@ -198,7 +200,7 @@ pub struct GraphExecution {
 struct GraphAlgorithm {
     path: Vec<usize>,
     next_processor: usize,
-    processors: Vec<ProcessorKind>,
+    processors: Vec<ProcessorSlot>,
     execution: GraphExecution,
 }
 
@@ -437,6 +439,25 @@ pub fn execute_ported_processors(graph: &mut LGraph) -> PipelineResult<Vec<Proce
 pub fn execute_ported_compound_processors(
     graph: &mut LGraph,
 ) -> PipelineResult<Vec<GraphExecution>> {
+    execute_ported_compound_processors_to(graph, None)
+}
+
+/// Execute the source-backed compound pipeline until the requested phase completes.
+///
+/// This is a diagnostic companion to [`execute_ported_compound_processors`]. It follows the same
+/// hierarchical schedule, but stops after every graph algorithm has advanced past the requested
+/// phase slot. It is useful for source-parity probes that need to inspect intermediate layer order.
+pub fn execute_ported_compound_processors_until(
+    graph: &mut LGraph,
+    target: LayeredPhase,
+) -> PipelineResult<Vec<GraphExecution>> {
+    execute_ported_compound_processors_to(graph, Some(target))
+}
+
+fn execute_ported_compound_processors_to(
+    graph: &mut LGraph,
+    target: Option<LayeredPhase>,
+) -> PipelineResult<Vec<GraphExecution>> {
     preprocess_source_ported_compound_graph(graph);
     configure_graph_properties(graph);
     reject_unsupported_compound_graph(graph)?;
@@ -451,10 +472,7 @@ pub fn execute_ported_compound_processors(
             GraphAlgorithm {
                 path,
                 next_processor: 0,
-                processors: assemble_processors_for_graph(current)
-                    .into_iter()
-                    .map(|slot| slot.kind)
-                    .collect(),
+                processors: assemble_processors_for_graph(current),
                 execution: GraphExecution {
                     graph_id: current.id.clone(),
                     parent_node_id: current.parent_node_id.clone(),
@@ -464,12 +482,17 @@ pub fn execute_ported_compound_processors(
         })
         .collect::<Vec<_>>();
 
-    while algorithms[root_index].next_processor < algorithms[root_index].processors.len() {
+    while algorithms[root_index].next_processor < algorithms[root_index].processors.len()
+        && target
+            .map(|target| !compound_algorithms_reached_phase(&algorithms, target))
+            .unwrap_or(true)
+    {
         for index in 0..algorithms.len() {
             execute_compound_algorithm_until_pause(
                 graph,
                 &mut algorithms[index],
                 index == root_index,
+                target,
             )?;
         }
     }
@@ -480,33 +503,48 @@ pub fn execute_ported_compound_processors(
         .collect())
 }
 
+fn compound_algorithms_reached_phase(algorithms: &[GraphAlgorithm], target: LayeredPhase) -> bool {
+    algorithms.iter().all(|algorithm| {
+        !algorithm
+            .processors
+            .iter()
+            .any(|slot| slot.phase == Some(target))
+            || algorithm.processors[..algorithm.next_processor]
+                .iter()
+                .any(|slot| slot.phase == Some(target))
+    })
+}
+
 fn execute_compound_algorithm_until_pause(
     graph: &mut LGraph,
     algorithm: &mut GraphAlgorithm,
     is_root: bool,
+    target: Option<LayeredPhase>,
 ) -> PipelineResult<()> {
     while algorithm.next_processor < algorithm.processors.len() {
-        let kind = algorithm.processors[algorithm.next_processor];
+        let slot = algorithm.processors[algorithm.next_processor];
+        let kind = slot.kind;
         algorithm.next_processor += 1;
 
-        if kind.is_hierarchy_aware() && !is_root {
+        let hierarchy_aware = kind.is_hierarchy_aware();
+        if hierarchy_aware && !is_root {
             break;
         }
 
-        let size = if kind.is_hierarchy_aware() {
+        let size = if hierarchy_aware {
             execute_hierarchy_aware_processor(graph, kind)?;
-            graph_at_path(graph, &algorithm.path).size
+            actual_graph_size(graph_at_path(graph, &algorithm.path))
         } else {
             let current = graph_mut_at_path(graph, &algorithm.path);
             execute_processor(current, kind)?;
-            current.size
+            actual_graph_size(current)
         };
         if kind == ProcessorKind::HierarchicalNodeResizer {
             transfer_nested_graph_layout_to_parent_node(graph, &algorithm.path, size);
         }
         algorithm.execution.processors.push(kind);
 
-        if kind.is_hierarchy_aware() {
+        if hierarchy_aware || target.is_some_and(|target| slot.phase == Some(target)) {
             break;
         }
     }
@@ -518,10 +556,23 @@ fn execute_hierarchy_aware_processor(
     graph: &mut LGraph,
     kind: ProcessorKind,
 ) -> PipelineResult<()> {
-    let paths = collect_graph_paths_bottom_up(graph);
-    for path in paths {
-        let current = graph_mut_at_path(graph, &path);
-        execute_processor(current, kind)?;
+    match kind {
+        ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
+            minimize_crossings_layer_sweep_hierarchical_with_type(graph, CrossMinType::Barycenter);
+        }
+        ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch => {
+            minimize_crossings_layer_sweep_hierarchical_with_type(
+                graph,
+                CrossMinType::OneSidedGreedySwitch,
+            );
+        }
+        ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch => {
+            minimize_crossings_layer_sweep_hierarchical_with_type(
+                graph,
+                CrossMinType::TwoSidedGreedySwitch,
+            );
+        }
+        _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
     Ok(())
 }
@@ -602,18 +653,117 @@ fn graph_mut_at_path<'a>(mut graph: &'a mut LGraph, path: &[usize]) -> &'a mut L
     graph
 }
 
-fn transfer_nested_graph_layout_to_parent_node(
-    graph: &mut LGraph,
-    path: &[usize],
-    size: crate::graph::LSize,
-) {
+fn transfer_nested_graph_layout_to_parent_node(graph: &mut LGraph, path: &[usize], size: LSize) {
     let Some((node_index, parent_path)) = path.split_last() else {
         return;
     };
     let parent = graph_mut_at_path(graph, parent_path);
-    let node = &mut parent.layerless_nodes[*node_index];
-    node.size.width = node.size.width.max(size.width);
-    node.size.height = node.size.height.max(size.height);
+    let has_external_ports = {
+        let node = &mut parent.layerless_nodes[*node_index];
+        let Some(nested_graph) = node.nested_graph.as_mut() else {
+            return;
+        };
+        transfer_external_port_dummy_layout_to_parent_node(
+            nested_graph,
+            *node_index,
+            &mut node.ports,
+        );
+
+        node.size.width = node.size.width.max(size.width);
+        node.size.height = node.size.height.max(size.height);
+
+        if nested_graph.graph_properties.external_ports {
+            node.port_constraints = PortConstraints::FixedPos;
+        }
+        nested_graph.graph_properties.external_ports
+    };
+
+    if has_external_ports {
+        parent.graph_properties.non_free_ports = true;
+    }
+}
+
+fn actual_graph_size(graph: &LGraph) -> LSize {
+    LSize {
+        width: graph.size.width + graph.padding.left + graph.padding.right,
+        height: graph.size.height + graph.padding.top + graph.padding.bottom,
+    }
+}
+
+fn transfer_external_port_dummy_layout_to_parent_node(
+    nested_graph: &mut LGraph,
+    parent_node_index: usize,
+    parent_ports: &mut [crate::graph::LPort],
+) {
+    for dummy_index in 0..nested_graph.layerless_nodes.len() {
+        if nested_graph.layerless_nodes[dummy_index].kind != LNodeKind::ExternalPort {
+            continue;
+        }
+        let Some(origin_port) = nested_graph.layerless_nodes[dummy_index]
+            .origin_port
+            .clone()
+        else {
+            continue;
+        };
+        if origin_port.port.node != parent_node_index {
+            continue;
+        }
+
+        let port_position = external_port_position(nested_graph, dummy_index);
+        let external_side = nested_graph.layerless_nodes[dummy_index].external_port_side;
+        if let Some(parent_port) = parent_ports.get_mut(origin_port.port.port) {
+            parent_port.position = port_position;
+            parent_port.set_side(external_side);
+        }
+    }
+}
+
+fn external_port_position(graph: &mut LGraph, dummy_index: usize) -> LPoint {
+    let dummy_size = graph.layerless_nodes[dummy_index].size;
+    let external_size = graph.layerless_nodes[dummy_index].external_port_size;
+    let external_side = graph.layerless_nodes[dummy_index].external_port_side;
+    let border_offset = graph.layerless_nodes[dummy_index]
+        .ports
+        .first()
+        .and_then(|port| port.border_offset)
+        .unwrap_or(0.0);
+
+    let mut port_position = LPoint {
+        x: graph.layerless_nodes[dummy_index].position.x + dummy_size.width / 2.0,
+        y: graph.layerless_nodes[dummy_index].position.y + dummy_size.height / 2.0,
+    };
+
+    match external_side {
+        PortSide::North => {
+            port_position.x += graph.padding.left + graph.offset.x - external_size.width / 2.0;
+            port_position.y = -external_size.height - border_offset;
+            graph.layerless_nodes[dummy_index].position.y =
+                -(graph.padding.top + border_offset + graph.offset.y);
+        }
+        PortSide::East => {
+            port_position.x =
+                graph.size.width + graph.padding.left + graph.padding.right + border_offset;
+            port_position.y += graph.padding.top + graph.offset.y - external_size.height / 2.0;
+            graph.layerless_nodes[dummy_index].position.x =
+                graph.size.width + graph.padding.right + border_offset - graph.offset.x;
+        }
+        PortSide::South => {
+            port_position.x += graph.padding.left + graph.offset.x - external_size.width / 2.0;
+            port_position.y =
+                graph.size.height + graph.padding.top + graph.padding.bottom + border_offset;
+            graph.layerless_nodes[dummy_index].position.y =
+                graph.size.height + graph.padding.bottom + border_offset - graph.offset.y;
+        }
+        PortSide::West => {
+            port_position.x = -external_size.width - border_offset;
+            port_position.y += graph.padding.top + graph.offset.y - external_size.height / 2.0;
+            graph.layerless_nodes[dummy_index].position.x =
+                -(graph.padding.left + border_offset + graph.offset.x);
+        }
+        PortSide::Undefined => {}
+    }
+
+    port_position
 }
 
 fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<()> {
@@ -693,8 +843,32 @@ fn resize_hierarchical_node_graph(graph: &mut LGraph) {
         graph.layerless_nodes[node].layer_index = None;
     }
     graph.layers.clear();
-    graph.size.width = graph.size.width.max(0.0);
-    graph.size.height = graph.size.height.max(0.0);
+    let old_size = actual_graph_size(graph);
+    let new_size = LSize {
+        width: old_size.width.max(0.0),
+        height: old_size.height.max(0.0),
+    };
+    resize_graph_no_really_i_mean_it(graph, old_size, new_size);
+}
+
+fn resize_graph_no_really_i_mean_it(graph: &mut LGraph, old_size: LSize, new_size: LSize) {
+    if graph.graph_properties.external_ports
+        && (new_size.width > old_size.width || new_size.height > old_size.height)
+    {
+        for node in &mut graph.layerless_nodes {
+            if node.kind != LNodeKind::ExternalPort {
+                continue;
+            }
+            match node.external_port_side {
+                PortSide::East => node.position.x += new_size.width - old_size.width,
+                PortSide::South => node.position.y += new_size.height - old_size.height,
+                PortSide::North | PortSide::West | PortSide::Undefined => {}
+            }
+        }
+    }
+
+    graph.size.width = new_size.width - graph.padding.left - graph.padding.right;
+    graph.size.height = new_size.height - graph.padding.top - graph.padding.bottom;
 }
 
 fn assemble_processors_with_graph_size(
@@ -1082,6 +1256,8 @@ mod tests {
             hierarchy_handling: None,
             layer_constraint: None,
             port_constraints: None,
+            node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+            nested_spacing_base: None,
             label: None,
         }
     }
@@ -1200,6 +1376,8 @@ mod tests {
                     hierarchy_handling: Some(crate::options::HierarchyHandling::IncludeChildren),
                     layer_constraint: None,
                     port_constraints: None,
+                    node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+                    nested_spacing_base: None,
                     label: None,
                 },
                 ElkInputNode {
@@ -1211,6 +1389,8 @@ mod tests {
                     hierarchy_handling: None,
                     layer_constraint: None,
                     port_constraints: None,
+                    node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+                    nested_spacing_base: None,
                     label: None,
                 },
             ],
@@ -1723,6 +1903,52 @@ mod tests {
     }
 
     #[test]
+    fn compound_runner_finishes_child_tail_between_root_hierarchy_aware_processors() {
+        let mut cluster = node("cluster");
+        cluster.width = 1.0;
+        cluster.height = 1.0;
+        cluster.hierarchy_handling = Some(crate::options::HierarchyHandling::IncludeChildren);
+        let mut child_a = node("A");
+        child_a.parent = Some("cluster".to_string());
+        let mut child_b = node("B");
+        child_b.parent = Some("cluster".to_string());
+        let mut options = LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down);
+        options.greedy_switch_hierarchical_type = GreedySwitchType::TwoSided;
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options,
+            nodes: vec![cluster, child_a, child_b, node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("cluster-C", "cluster", "C")],
+        })
+        .unwrap();
+
+        let executed = execute_ported_compound_processors(&mut graph).unwrap();
+
+        let child_execution = &executed[0].processors;
+        let root_execution = &executed[1].processors;
+        assert!(
+            root_execution
+                .iter()
+                .filter(|kind| kind.is_hierarchy_aware())
+                .count()
+                > 1
+        );
+        assert!(child_execution.contains(&ProcessorKind::HierarchicalNodeResizer));
+        assert_eq!(
+            child_execution.last(),
+            Some(&ProcessorKind::DirectionPostprocessor)
+        );
+        let cluster = graph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap();
+        assert!(cluster.size.width > 1.0);
+        assert!(cluster.size.height > 1.0);
+        assert!(cluster.nested_graph.as_ref().unwrap().layers.is_empty());
+    }
+
+    #[test]
     fn source_ported_compound_runner_routes_cross_hierarchy_edges() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(crate::options::HierarchyHandling::IncludeChildren);
@@ -1748,6 +1974,51 @@ mod tests {
         );
         assert!(graph.size.width > 0.0);
         assert!(graph.size.height > 0.0);
+    }
+
+    #[test]
+    fn hierarchical_resizer_moves_east_and_south_external_ports_when_graph_grows() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.graph_properties.external_ports = true;
+        graph.padding.left = 5.0;
+        graph.padding.right = 5.0;
+        graph.padding.top = 7.0;
+        graph.padding.bottom = 7.0;
+        graph.size = LSize {
+            width: 10.0,
+            height: 20.0,
+        };
+
+        let mut east_node = LNode::new("east", 0.0, 0.0, None);
+        east_node.kind = LNodeKind::ExternalPort;
+        east_node.external_port_side = PortSide::East;
+        east_node.position.x = 12.0;
+        let east = graph.layerless_nodes.len();
+        graph.layerless_nodes.push(east_node);
+
+        let mut south_node = LNode::new("south", 0.0, 0.0, None);
+        south_node.kind = LNodeKind::ExternalPort;
+        south_node.external_port_side = PortSide::South;
+        south_node.position.y = 25.0;
+        let south = graph.layerless_nodes.len();
+        graph.layerless_nodes.push(south_node);
+
+        resize_graph_no_really_i_mean_it(
+            &mut graph,
+            LSize {
+                width: 20.0,
+                height: 34.0,
+            },
+            LSize {
+                width: 50.0,
+                height: 74.0,
+            },
+        );
+
+        assert_eq!(graph.layerless_nodes[east].position.x, 42.0);
+        assert_eq!(graph.layerless_nodes[south].position.y, 65.0);
+        assert_eq!(graph.size.width, 40.0);
+        assert_eq!(graph.size.height, 60.0);
     }
 
     #[test]

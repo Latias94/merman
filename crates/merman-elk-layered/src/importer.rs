@@ -12,7 +12,8 @@ use crate::graph::{
     LayeredEdge, PortRef, PortSide, PortType, create_external_port_dummy,
 };
 use crate::options::{
-    ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint, LayeredOptions, PortConstraints,
+    ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint, LayeredOptions,
+    NodeLabelPlacement, PortConstraints, SpacingOptions,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +34,8 @@ pub struct ElkInputNode {
     pub hierarchy_handling: Option<HierarchyHandling>,
     pub layer_constraint: Option<LayerConstraint>,
     pub port_constraints: Option<PortConstraints>,
+    pub node_label_placement: NodeLabelPlacement,
+    pub nested_spacing_base: Option<f64>,
     pub label: Option<ElkInputLabel>,
 }
 
@@ -147,9 +150,16 @@ fn import_hierarchical_graph(
             if let Some(hierarchy_handling) = node.hierarchy_handling {
                 nested_options.hierarchy_handling = hierarchy_handling;
             }
+            if let Some(spacing_base) = node.nested_spacing_base {
+                nested_options.spacing = SpacingOptions::layered_base_value(spacing_base);
+            }
             let mut nested_graph = LGraph::new(node.id.clone(), nested_options);
             nested_graph.parent_node_id = Some(node.id.clone());
             apply_graph_padding_from_options(&mut nested_graph);
+            apply_inside_node_label_padding(
+                &mut nested_graph,
+                &parent_graph.layerless_nodes[node_index],
+            );
             parent_graph.layerless_nodes[node_index].compound = true;
             parent_graph.layerless_nodes[node_index].nested_graph = Some(Box::new(nested_graph));
             queue.extend(index.children(Some(node.id.as_str())));
@@ -183,6 +193,98 @@ fn apply_graph_padding_from_options(graph: &mut LGraph) {
     graph.padding.left += left;
 }
 
+fn apply_inside_node_label_padding(graph: &mut LGraph, parent_node: &LNode) {
+    let padding = compute_inside_node_label_padding(&graph.options, parent_node);
+    graph.padding.top += padding.top;
+    graph.padding.right += padding.right;
+    graph.padding.bottom += padding.bottom;
+    graph.padding.left += padding.left;
+}
+
+fn compute_inside_node_label_padding(options: &LayeredOptions, node: &LNode) -> ElkPadding {
+    let mut cells = [LabelCellSize::default(); 9];
+    for label in &node.labels {
+        let Some((row, col)) = inside_node_label_cell(node.node_label_placement) else {
+            continue;
+        };
+        cells[row * 3 + col].add_label(label, options.spacing.label_label);
+    }
+
+    let container_gap = 2.0 * options.spacing.label_label;
+    let mut padding = ElkPadding {
+        top: max_cell_height(&cells, [0, 1, 2]),
+        right: max_cell_width(&cells, [2, 5, 8]),
+        bottom: max_cell_height(&cells, [6, 7, 8]),
+        left: max_cell_width(&cells, [0, 3, 6]),
+    };
+    if padding.top > 0.0 {
+        padding.top += options.node_labels_padding.top + container_gap;
+    }
+    if padding.right > 0.0 {
+        padding.right += options.node_labels_padding.right + container_gap;
+    }
+    if padding.bottom > 0.0 {
+        padding.bottom += options.node_labels_padding.bottom + container_gap;
+    }
+    if padding.left > 0.0 {
+        padding.left += options.node_labels_padding.left + container_gap;
+    }
+    padding
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct LabelCellSize {
+    min_width: f64,
+    min_height: f64,
+    label_count: usize,
+}
+
+impl LabelCellSize {
+    fn add_label(&mut self, label: &LLabel, label_gap: f64) {
+        self.min_width = self.min_width.max(label.size.width);
+        if self.label_count > 0 {
+            self.min_height += label_gap;
+        }
+        self.min_height += label.size.height;
+        self.label_count += 1;
+    }
+}
+
+fn max_cell_height(cells: &[LabelCellSize; 9], indices: [usize; 3]) -> f64 {
+    indices
+        .into_iter()
+        .map(|index| cells[index].min_height)
+        .fold(0.0, f64::max)
+}
+
+fn max_cell_width(cells: &[LabelCellSize; 9], indices: [usize; 3]) -> f64 {
+    indices
+        .into_iter()
+        .map(|index| cells[index].min_width)
+        .fold(0.0, f64::max)
+}
+
+fn inside_node_label_cell(placement: NodeLabelPlacement) -> Option<(usize, usize)> {
+    match placement {
+        NodeLabelPlacement::InsideTopLeft => Some((0, 0)),
+        NodeLabelPlacement::InsideTopCenter => Some((0, 1)),
+        NodeLabelPlacement::InsideTopRight => Some((0, 2)),
+        NodeLabelPlacement::InsideCenterLeft => Some((1, 0)),
+        NodeLabelPlacement::InsideCenter => Some((1, 1)),
+        NodeLabelPlacement::InsideCenterRight => Some((1, 2)),
+        NodeLabelPlacement::InsideBottomLeft => Some((2, 0)),
+        NodeLabelPlacement::InsideBottomCenter => Some((2, 1)),
+        NodeLabelPlacement::InsideBottomRight => Some((2, 2)),
+        NodeLabelPlacement::Fixed
+        | NodeLabelPlacement::OutsideTopLeft
+        | NodeLabelPlacement::OutsideTopCenter
+        | NodeLabelPlacement::OutsideTopRight
+        | NodeLabelPlacement::OutsideBottomLeft
+        | NodeLabelPlacement::OutsideBottomCenter
+        | NodeLabelPlacement::OutsideBottomRight => None,
+    }
+}
+
 fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<usize>) -> usize {
     let mut lnode = LNode::new(node.id.clone(), node.width, node.height, model_order);
     lnode.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
@@ -193,6 +295,7 @@ fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<u
     if let Some(label) = node.label.as_ref() {
         lnode.labels.push(label_to_lgraph(label));
     }
+    lnode.node_label_placement = node.node_label_placement;
     graph.layerless_nodes.push(lnode);
     graph.layerless_nodes.len() - 1
 }
@@ -586,6 +689,8 @@ mod tests {
             hierarchy_handling: None,
             layer_constraint: None,
             port_constraints: None,
+            node_label_placement: NodeLabelPlacement::Fixed,
+            nested_spacing_base: None,
             label: None,
         }
     }
@@ -670,6 +775,26 @@ mod tests {
     }
 
     #[test]
+    fn importer_adds_inside_top_node_label_padding_to_nested_graphs() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        cluster.node_label_placement = NodeLabelPlacement::InsideTopCenter;
+        cluster.label = Some(ElkInputLabel::center("Cluster", 64.0, 22.0));
+        cluster.nested_spacing_base = Some(30.0);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let lgraph = import_graph(&graph(vec![cluster, child], vec![])).unwrap();
+        let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+
+        assert_eq!(nested.options.spacing.node_node, 30.0);
+        assert_eq!(nested.padding.top, 39.0);
+        assert_eq!(nested.padding.right, 12.0);
+        assert_eq!(nested.padding.bottom, 12.0);
+        assert_eq!(nested.padding.left, 12.0);
+    }
+
+    #[test]
     fn imports_include_children_hierarchy_into_nested_graphs() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
@@ -744,6 +869,7 @@ mod tests {
 
         let nested = cluster.nested_graph.as_ref().unwrap();
         let external = &nested.layerless_nodes[port_dummy.node];
+        assert_eq!(external.external_port_side, PortSide::South);
         let origin = external
             .origin_port
             .as_ref()

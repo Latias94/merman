@@ -498,6 +498,63 @@ pub fn target_node(graph: &LGraph, port: PortRef) -> Option<usize> {
     }
 }
 
+pub(super) fn count_model_order_node_changes(
+    graph: &LGraph,
+    layers: &[Vec<usize>],
+    strategy: OrderingStrategy,
+) -> usize {
+    let mut previous_layer_index = None;
+    let mut wrong_model_order = 0usize;
+    for layer in layers {
+        let previous_layer = previous_layer_index
+            .and_then(|index| layers.get(index))
+            .unwrap_or(&layers[0]);
+        let mut comparator = ModelOrderNodeComparator::new(graph, previous_layer, strategy);
+        for i in 0..layer.len() {
+            for j in (i + 1)..layer.len() {
+                if graph.layerless_nodes[layer[i]].model_order.is_some()
+                    && graph.layerless_nodes[layer[j]].model_order.is_some()
+                    && comparator.compare(layer[i], layer[j]) == Ordering::Greater
+                {
+                    wrong_model_order += 1;
+                }
+            }
+        }
+        previous_layer_index = Some(previous_layer_index.map_or(0, |index| index + 1));
+    }
+    wrong_model_order
+}
+
+pub(super) fn count_model_order_port_changes(graph: &LGraph, layers: &[Vec<usize>]) -> usize {
+    let mut previous_layer_index = None;
+    let mut wrong_model_order = 0usize;
+    for layer in layers {
+        let previous_layer = previous_layer_index
+            .and_then(|index| layers.get(index))
+            .unwrap_or(&layers[0]);
+        for node in layer {
+            let target_orders = long_edge_target_node_preprocessing(graph, *node);
+            let mut comparator = ModelOrderPortComparator::new(
+                graph,
+                *node,
+                previous_layer,
+                graph.options.consider_model_order_strategy,
+                &target_orders,
+                graph.options.consider_model_order_port_model_order,
+            );
+            for i in 0..graph.layerless_nodes[*node].ports.len() {
+                for j in (i + 1)..graph.layerless_nodes[*node].ports.len() {
+                    if comparator.compare(i, j) == Ordering::Greater {
+                        wrong_model_order += 1;
+                    }
+                }
+            }
+        }
+        previous_layer_index = Some(previous_layer_index.map_or(0, |index| index + 1));
+    }
+    wrong_model_order
+}
+
 struct ModelOrderNodeComparator<'a> {
     graph: &'a LGraph,
     previous_layer: &'a [usize],
@@ -1004,6 +1061,8 @@ mod tests {
             hierarchy_handling: None,
             layer_constraint: None,
             port_constraints: None,
+            node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+            nested_spacing_base: None,
             label: None,
         }
     }

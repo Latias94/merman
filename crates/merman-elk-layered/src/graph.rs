@@ -7,7 +7,8 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LPort.java
 
 use super::options::{
-    Alignment, ElkDirection, LayerConstraint, LayeredOptions, PortAlignment, PortConstraints,
+    Alignment, ElkDirection, LayerConstraint, LayeredOptions, NodeLabelPlacement, PortAlignment,
+    PortConstraints,
 };
 use crate::random::JavaRandom;
 
@@ -94,6 +95,7 @@ pub struct LNode {
     pub margin: LMargin,
     pub padding: LPadding,
     pub labels: Vec<LLabel>,
+    pub node_label_placement: NodeLabelPlacement,
     pub ports: Vec<LPort>,
     pub nested_graph: Option<Box<LGraph>>,
     pub model_order: Option<usize>,
@@ -129,6 +131,7 @@ impl LNode {
             margin: LMargin::default(),
             padding: LPadding::default(),
             labels: Vec::new(),
+            node_label_placement: NodeLabelPlacement::Fixed,
             ports: Vec::new(),
             nested_graph: None,
             model_order,
@@ -837,6 +840,14 @@ impl LGraph {
             {
                 port.port = old_to_new[port.port];
             }
+            if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
+                update_nested_graph_port_refs_after_reorder(
+                    nested_graph,
+                    graph_id.as_str(),
+                    node_index,
+                    &old_to_new,
+                );
+            }
         }
 
         true
@@ -961,6 +972,30 @@ fn update_graph_port_ref_after_reorder(
     }
 }
 
+fn update_nested_graph_port_refs_after_reorder(
+    graph: &mut LGraph,
+    graph_id: &str,
+    node_index: usize,
+    old_to_new: &[usize],
+) {
+    for node in &mut graph.layerless_nodes {
+        update_graph_port_ref_after_reorder(
+            &mut node.origin_port,
+            graph_id,
+            node_index,
+            old_to_new,
+        );
+        if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
+            update_nested_graph_port_refs_after_reorder(
+                nested_graph,
+                graph_id,
+                node_index,
+                old_to_new,
+            );
+        }
+    }
+}
+
 fn remove_edge(edges: &mut Vec<usize>, edge_index: usize) {
     if let Some(position) = edges.iter().position(|candidate| *candidate == edge_index) {
         edges.remove(position);
@@ -1004,7 +1039,7 @@ pub fn create_external_port_dummy(
     dummy.external_port_side = external_side;
     dummy.external_port_size = port_size;
 
-    let mut anchor = LPoint {
+    let mut position = LPoint {
         x: port_size.width / 2.0,
         y: port_size.height / 2.0,
     };
@@ -1018,7 +1053,7 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.width = -border_offset;
             }
-            anchor.x = 0.0;
+            position.x = 0.0;
         }
         PortSide::East => {
             dummy.layer_constraint = LayerConstraint::LastSeparate;
@@ -1027,7 +1062,7 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.width = -border_offset;
             }
-            anchor.x = 0.0;
+            position.x = 0.0;
         }
         PortSide::North => {
             dummy.in_layer_constraint = InLayerConstraint::Top;
@@ -1035,7 +1070,7 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.height = -border_offset;
             }
-            anchor.y = 0.0;
+            position.y = 0.0;
         }
         PortSide::South => {
             dummy.in_layer_constraint = InLayerConstraint::Bottom;
@@ -1043,7 +1078,7 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.height = -border_offset;
             }
-            anchor.y = 0.0;
+            position.y = 0.0;
         }
         PortSide::Undefined => {
             dummy_port_side = PortSide::Undefined;
@@ -1052,9 +1087,8 @@ pub fn create_external_port_dummy(
 
     let mut port = LPort::new(port_id, 0, port_type);
     port.side = dummy_port_side;
-    port.position = anchor;
-    port.anchor = LPoint::default();
-    port.size = port_size;
+    port.position = position;
+    port.set_side(dummy_port_side);
     port.border_offset = Some(border_offset);
     if port_constraints.is_order_fixed() {
         dummy.port_ratio_or_position = port_ratio_or_position(
@@ -1159,7 +1193,43 @@ mod tests {
         assert_eq!(dummy.size.height, 6.0);
         assert_eq!(dummy.ports[0].side, PortSide::East);
         assert_eq!(dummy.ports[0].position, LPoint { x: 0.0, y: 3.0 });
+        assert_eq!(dummy.ports[0].anchor, LPoint { x: 0.0, y: 0.0 });
+        assert_eq!(dummy.ports[0].size, LSize::default());
+        assert_eq!(
+            dummy.external_port_size,
+            LSize {
+                width: 4.0,
+                height: 6.0
+            }
+        );
         assert_eq!(dummy.ports[0].border_offset, Some(-3.0));
         assert_eq!(dummy.port_ratio_or_position, 0.5);
+    }
+
+    #[test]
+    fn reorder_node_ports_updates_nested_external_dummy_origin_refs() {
+        let mut parent = LGraph::new("root", LayeredOptions::default());
+        let mut compound = LNode::new("cluster", 10.0, 10.0, Some(0));
+        compound.ports.push(LPort::new("p0", 0, PortType::Output));
+        compound.ports.push(LPort::new("p1", 0, PortType::Output));
+
+        let mut nested = LGraph::new("cluster", LayeredOptions::default());
+        let mut dummy = LNode::new("external:cluster", 0.0, 0.0, None);
+        dummy.kind = LNodeKind::ExternalPort;
+        dummy.origin_port = Some(GraphPortRef {
+            graph_id: "root".to_string(),
+            port: PortRef { node: 0, port: 1 },
+        });
+        nested.layerless_nodes.push(dummy);
+        compound.nested_graph = Some(Box::new(nested));
+        parent.layerless_nodes.push(compound);
+
+        assert!(parent.reorder_node_ports(0, [1, 0]));
+
+        let nested = parent.layerless_nodes[0].nested_graph.as_ref().unwrap();
+        assert_eq!(
+            nested.layerless_nodes[0].origin_port.as_ref().unwrap().port,
+            PortRef { node: 0, port: 0 }
+        );
     }
 }

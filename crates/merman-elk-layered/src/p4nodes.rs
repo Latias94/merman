@@ -74,6 +74,8 @@ mod tests {
             hierarchy_handling: None,
             layer_constraint: None,
             port_constraints: None,
+            node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+            nested_spacing_base: None,
             label: None,
         }
     }

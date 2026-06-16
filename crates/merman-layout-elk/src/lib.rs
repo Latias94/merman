@@ -22,7 +22,7 @@ pub use merman_elk_layered as source_port;
 
 use source_port::{
     ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, GreedySwitchType,
-    LGraph, LNodeKind, LPoint, LayeredOptions as SourceLayeredOptions, PortRef,
+    LGraph, LNodeKind, LPoint, LayeredOptions as SourceLayeredOptions, NodeLabelPlacement, PortRef,
 };
 
 pub use compat::{
@@ -45,6 +45,14 @@ pub fn layout_source_ported(graph: &Graph, algorithm: Algorithm) -> Result<Layou
     match algorithm {
         Algorithm::Layered => layout_layered_source_ported(graph),
     }
+}
+
+/// Build the source-backed layered input graph used by `layout_source_ported`.
+///
+/// This is intentionally narrow and primarily exists for parity diagnostics that need to inspect
+/// Eclipse ELK processor phases without duplicating Mermaid adapter semantics.
+pub fn source_input_from_graph(graph: &Graph) -> source_port::ElkInputGraph {
+    graph_to_source_input(graph)
 }
 
 fn layout_layered_source_ported(graph: &Graph) -> Result<LayoutResult> {
@@ -81,14 +89,25 @@ fn graph_to_source_input(graph: &Graph) -> ElkInputGraph {
                 height: node.height,
                 parent: node.parent.clone(),
                 direction: node.direction.map(direction_to_source),
-                hierarchy_handling: match node.kind {
-                    NodeKind::Group => Some(hierarchy_handling_to_source(
+                hierarchy_handling: match (node.kind, node.hierarchy_handling) {
+                    (NodeKind::Group, Some(hierarchy_handling)) => {
+                        Some(hierarchy_handling_to_source(hierarchy_handling))
+                    }
+                    (NodeKind::Group, None) => Some(hierarchy_handling_to_source(
                         graph.options.layered.hierarchy_handling,
                     )),
-                    NodeKind::Leaf => None,
+                    (NodeKind::Leaf, _) => None,
                 },
                 layer_constraint: None,
                 port_constraints: None,
+                node_label_placement: match node.kind {
+                    NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
+                    NodeKind::Leaf => NodeLabelPlacement::Fixed,
+                },
+                nested_spacing_base: match node.kind {
+                    NodeKind::Group => Some(30.0),
+                    NodeKind::Leaf => None,
+                },
                 label: node
                     .label
                     .map(|label| ElkInputLabel::center("", label.width, label.height)),
@@ -208,7 +227,10 @@ fn self_loop_distribution_to_source(
 }
 
 fn source_graph_to_layout_result(graph: &LGraph) -> LayoutResult {
-    let mut result = SourceLayoutAccumulator::default();
+    let mut result = SourceLayoutAccumulator {
+        add_unnecessary_bendpoints: graph.options.unnecessary_bendpoints,
+        ..Default::default()
+    };
     append_source_graph_layout(graph, LPoint::default(), 0, &mut result);
     result.into_layout_result()
 }
@@ -218,13 +240,16 @@ struct SourceLayoutAccumulator {
     nodes: Vec<NodeLayout>,
     edges: Vec<OrderedEdgeLayout>,
     compound_edges: HashMap<String, Vec<CompoundEdgeLayoutSegment>>,
+    add_unnecessary_bendpoints: bool,
 }
 
 impl SourceLayoutAccumulator {
     fn into_layout_result(mut self) -> LayoutResult {
         for segments in self.compound_edges.values_mut() {
             segments.sort_by(compare_compound_layout_segments);
-            if let Some(edge) = merge_compound_edge_segments(segments) {
+            if let Some(edge) =
+                merge_compound_edge_segments(segments, self.add_unnecessary_bendpoints)
+            {
                 self.edges.push(OrderedEdgeLayout {
                     model_order: segments
                         .iter()
@@ -429,11 +454,18 @@ struct CompoundEdgeLayoutSegment {
 ///
 /// Source:
 /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/compound/CompoundGraphPostprocessor.java
-fn merge_compound_edge_segments(segments: &[CompoundEdgeLayoutSegment]) -> Option<EdgeLayout> {
+fn merge_compound_edge_segments(
+    segments: &[CompoundEdgeLayoutSegment],
+    add_unnecessary_bendpoints: bool,
+) -> Option<EdgeLayout> {
     let first = segments.first()?;
     let mut points = Vec::new();
     let mut labels = Vec::new();
     let mut last_point = None;
+
+    if let Some(source) = first.edge.points.first().copied() {
+        push_distinct_point(&mut points, source);
+    }
 
     for segment in segments {
         let segment_points = &segment.edge.points;
@@ -441,22 +473,37 @@ fn merge_compound_edge_segments(segments: &[CompoundEdgeLayoutSegment]) -> Optio
             continue;
         }
 
-        if let (Some(previous), Some(next)) =
-            (last_point, segment_points.get(1).or(segment_points.last()))
-            && compound_boundary_needs_bendpoint(previous, *next)
+        let bend_points = if segment_points.len() > 2 {
+            &segment_points[1..segment_points.len() - 1]
+        } else {
+            &[][..]
+        };
+
+        if let (Some(previous), Some(next)) = (
+            last_point,
+            bend_points.first().or_else(|| segment_points.last()),
+        ) && compound_boundary_needs_bendpoint(previous, *next, add_unnecessary_bendpoints)
             && let Some(source) = segment_points.first()
         {
             push_distinct_point(&mut points, *source);
         }
 
-        for point in segment_points {
+        for point in bend_points {
             push_distinct_point(&mut points, *point);
         }
         labels.extend(segment.edge.labels.iter().cloned());
-        last_point = segment_points
-            .get(segment_points.len().saturating_sub(2))
+        last_point = bend_points
+            .last()
             .copied()
             .or_else(|| segment_points.first().copied());
+    }
+
+    if let Some(target) = segments
+        .last()
+        .and_then(|segment| segment.edge.points.last())
+        .copied()
+    {
+        push_distinct_point(&mut points, target);
     }
 
     Some(EdgeLayout {
@@ -466,10 +513,19 @@ fn merge_compound_edge_segments(segments: &[CompoundEdgeLayoutSegment]) -> Optio
     })
 }
 
-fn compound_boundary_needs_bendpoint(previous: Point, next: Point) -> bool {
+fn compound_boundary_needs_bendpoint(
+    previous: Point,
+    next: Point,
+    add_unnecessary_bendpoints: bool,
+) -> bool {
     const ORTHOGONAL_TOLERANCE: f64 = 0.001;
-    (previous.x - next.x).abs() > ORTHOGONAL_TOLERANCE
-        || (previous.y - next.y).abs() > ORTHOGONAL_TOLERANCE
+    let x_diff_enough = (previous.x - next.x).abs() > ORTHOGONAL_TOLERANCE;
+    let y_diff_enough = (previous.y - next.y).abs() > ORTHOGONAL_TOLERANCE;
+    if add_unnecessary_bendpoints {
+        x_diff_enough || y_diff_enough
+    } else {
+        x_diff_enough && y_diff_enough
+    }
 }
 
 fn push_distinct_point(points: &mut Vec<Point>, point: Point) {
@@ -579,6 +635,7 @@ mod tests {
             height: 40.0,
             parent: None,
             direction: None,
+            hierarchy_handling: None,
             label: None,
         }
     }
@@ -969,6 +1026,7 @@ mod tests {
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Down),
+                    hierarchy_handling: None,
                     label: None,
                 },
                 child,
@@ -1011,6 +1069,7 @@ mod tests {
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Down),
+                    hierarchy_handling: None,
                     label: None,
                 },
                 child,
@@ -1054,6 +1113,7 @@ mod tests {
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Down),
+                    hierarchy_handling: None,
                     label: None,
                 },
                 child,
@@ -1092,6 +1152,7 @@ mod tests {
                     height: 0.0,
                     parent: None,
                     direction: Some(Direction::Down),
+                    hierarchy_handling: None,
                     label: None,
                 },
                 child,

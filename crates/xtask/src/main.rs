@@ -212,6 +212,7 @@ fn main() -> Result<(), XtaskError> {
             cmd::check_flowchart_elk_source_backed_probes(args.collect())
         }
         "debug-flowchart-layout" => cmd::debug_flowchart_layout(args.collect()),
+        "debug-flowchart-elk-source-phase" => cmd::debug_flowchart_elk_source_phase(args.collect()),
         "debug-flowchart-svg-roots" => cmd::debug_flowchart_svg_roots(args.collect()),
         "debug-flowchart-svg-positions" => cmd::debug_flowchart_svg_positions(args.collect()),
         "debug-flowchart-svg-diff" => cmd::debug_flowchart_svg_diff(args.collect()),

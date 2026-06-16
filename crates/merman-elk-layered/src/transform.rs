@@ -95,6 +95,7 @@ fn mirror_node_x(node: &mut LNode, offset: f64) {
     }
     if node.kind == LNodeKind::ExternalPort {
         node.layer_constraint = mirror_layer_constraint_x(node.layer_constraint);
+        node.external_port_side = mirror_port_side_x(node.external_port_side);
     }
     for label in &mut node.labels {
         mirror_label_x_within_node(label, node.size.width);
@@ -136,6 +137,9 @@ fn mirror_node_y(node: &mut LNode, offset: f64) {
         InLayerConstraint::Bottom => InLayerConstraint::Top,
         InLayerConstraint::None => InLayerConstraint::None,
     };
+    if node.kind == LNodeKind::ExternalPort {
+        node.external_port_side = mirror_port_side_y(node.external_port_side);
+    }
     for port in &mut node.ports {
         mirror_port_y(port, node.size.height);
     }
@@ -182,6 +186,7 @@ fn transpose_node(node: &mut LNode) {
     }
     if node.kind == LNodeKind::ExternalPort {
         transpose_layer_constraint_for_external_port(node);
+        node.external_port_side = transpose_port_side(node.external_port_side);
     }
     for label in &mut node.labels {
         transpose_label(label);
@@ -463,6 +468,7 @@ mod tests {
         let mut node = LNode::new("external", 0.0, 0.0, None);
         node.kind = LNodeKind::ExternalPort;
         node.layer_constraint = LayerConstraint::FirstSeparate;
+        node.external_port_side = PortSide::West;
         let node = graph.add_node_for_test(node);
 
         transform_graph_direction(&mut graph, GraphTransformMode::ToInputDirection);
@@ -470,6 +476,10 @@ mod tests {
         assert_eq!(
             graph.layerless_nodes[node].layer_constraint,
             LayerConstraint::LastSeparate
+        );
+        assert_eq!(
+            graph.layerless_nodes[node].external_port_side,
+            PortSide::East
         );
     }
 
@@ -479,6 +489,7 @@ mod tests {
         let mut node = LNode::new("external", 0.0, 0.0, None);
         node.kind = LNodeKind::ExternalPort;
         node.layer_constraint = LayerConstraint::FirstSeparate;
+        node.external_port_side = PortSide::South;
         let node = graph.add_node_for_test(node);
 
         transform_graph_direction(&mut graph, GraphTransformMode::ToInputDirection);
@@ -491,6 +502,10 @@ mod tests {
             graph.layerless_nodes[node].in_layer_constraint,
             InLayerConstraint::Top
         );
+        assert_eq!(
+            graph.layerless_nodes[node].external_port_side,
+            PortSide::East
+        );
 
         transform_graph_direction(&mut graph, GraphTransformMode::ToInternalLeftToRight);
 
@@ -501,6 +516,10 @@ mod tests {
         assert_eq!(
             graph.layerless_nodes[node].in_layer_constraint,
             InLayerConstraint::None
+        );
+        assert_eq!(
+            graph.layerless_nodes[node].external_port_side,
+            PortSide::South
         );
     }
 
