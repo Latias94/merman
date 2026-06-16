@@ -1,4 +1,5 @@
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode};
+use std::borrow::Cow;
 use std::collections::VecDeque;
 
 use super::attr::{parse_attr_f64, parse_attr_str};
@@ -18,62 +19,29 @@ fn strip_html_tags(s: &str) -> String {
     out
 }
 
-fn decode_html_entities_once(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-
-    while let Some(amp) = rest.find('&') {
-        out.push_str(&rest[..amp]);
-        let after_amp = &rest[amp + 1..];
-        let Some(semi) = after_amp.find(';') else {
-            out.push('&');
-            rest = after_amp;
-            continue;
-        };
-
-        let entity = &after_amp[..semi];
-        let decoded = match entity {
-            "amp" => Some('&'),
-            "lt" => Some('<'),
-            "gt" => Some('>'),
-            "quot" => Some('"'),
-            "apos" => Some('\''),
-            "nbsp" => Some(' '),
-            _ => {
-                if let Some(hex) = entity
-                    .strip_prefix("#x")
-                    .or_else(|| entity.strip_prefix("#X"))
-                {
-                    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
-                } else if let Some(decimal) = entity.strip_prefix('#') {
-                    decimal.parse::<u32>().ok().and_then(char::from_u32)
-                } else {
-                    None
-                }
-            }
-        };
-
-        if let Some(ch) = decoded {
-            out.push(ch);
-        } else {
-            out.push('&');
-            out.push_str(entity);
-            out.push(';');
-        }
-        rest = &after_amp[semi + 1..];
+fn decode_mermaid_entity_placeholders(text: &str) -> Cow<'_, str> {
+    if !text.contains('ﬂ') && !text.contains('¶') {
+        return Cow::Borrowed(text);
     }
 
-    out.push_str(rest);
-    out
+    Cow::Owned(
+        text.replace("ﬂ°°", "&#")
+            .replace("ﬂ°", "&")
+            .replace("¶ß", ";"),
+    )
 }
 
 fn decode_html_entities(text: &str) -> String {
     let mut current = text.to_string();
     for _ in 0..3 {
-        if !current.contains('&') {
+        if !current.contains('&') && !current.contains('ﬂ') && !current.contains('¶') {
             break;
         }
-        let next = decode_html_entities_once(&current);
+        // Mermaid's placeholders are not HTML entities. Restore that wrapper first,
+        // then let the shared HTML entity decoder handle the browser-facing syntax.
+        let restored = decode_mermaid_entity_placeholders(&current);
+        let next =
+            merman_core::entities::decode_html_entities_to_unicode(restored.as_ref()).into_owned();
         if next == current {
             break;
         }

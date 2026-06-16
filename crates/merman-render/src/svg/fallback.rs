@@ -434,11 +434,11 @@ mod tests {
 
     #[test]
     fn foreign_object_overlay_decodes_double_escaped_html_entities_for_fallback_text() {
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>List&amp;lt;Animal&amp;gt; &amp;amp; friends</p></div></foreignObject></g></svg>"#;
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="220" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>List&amp;lt;Animal&amp;gt; &amp;amp; friends &amp;apos;x&amp;apos; &amp;quot;y&amp;quot; &amp;#39;z&amp;#39; &amp;#x2F;</p></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
 
         assert!(
-            out.contains(">List&lt;Animal&gt; &amp; friends<"),
+            out.contains(">List&lt;Animal&gt; &amp; friends 'x' \"y\" 'z' /<"),
             "expected fallback text to avoid double-escaped entities: {out}"
         );
         let fallback = &out[out
@@ -446,6 +446,10 @@ mod tests {
             .expect("fallback group")..];
         assert!(!fallback.contains("&amp;lt;"), "got: {fallback}");
         assert!(!fallback.contains("&amp;gt;"), "got: {fallback}");
+        assert!(!fallback.contains("&amp;amp;"), "got: {fallback}");
+        assert!(!fallback.contains("&amp;apos;"), "got: {fallback}");
+        assert!(!fallback.contains("&amp;quot;"), "got: {fallback}");
+        assert!(!fallback.contains("&amp;#"), "got: {fallback}");
     }
 
     #[test]

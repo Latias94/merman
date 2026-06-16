@@ -267,3 +267,36 @@ fn zed_like_pipeline_keeps_class_generics_readable_without_double_escaping() {
         "class generic fallback text should not be double-escaped: {svg}"
     );
 }
+
+#[test]
+fn zed_like_pipeline_decodes_double_escaped_entities_in_fallback_text() {
+    let svg = render_zed_safe(
+        "zed-contract-entities",
+        r#"flowchart TD
+    A["Tom &amp; Jerry"]
+    B["List&amp;lt;Animal&amp;gt; &amp;amp; friends"]
+    A --> B"#,
+    );
+
+    assert_zed_safe_svg("zed-contract-entities", &svg);
+    assert!(
+        !svg.contains("&amp;amp;") && !svg.contains("&amp;lt;") && !svg.contains("&amp;gt;"),
+        "fallback text should not double-escape XML entities: {svg}"
+    );
+
+    let doc = roxmltree::Document::parse(&svg).expect("valid SVG");
+    let fallback_text = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .filter(|node| {
+            node.ancestors()
+                .any(|ancestor| ancestor.attribute("data-merman-foreignobject") == Some("fallback"))
+        })
+        .filter_map(|node| node.text())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        fallback_text.contains("Tom & Jerry") && fallback_text.contains("List<Animal> & friends"),
+        "expected decoded fallback text for XML predefined entities: {fallback_text:?}"
+    );
+}
