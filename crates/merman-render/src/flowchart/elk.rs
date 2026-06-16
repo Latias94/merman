@@ -41,7 +41,13 @@ pub fn layout_flowchart_elk_typed(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     backend: FlowchartElkBackend,
 ) -> Result<FlowchartV2Layout> {
-    let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
+    let graph = build_flowchart_elk_graph_for_backend(
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        backend,
+    )?;
     let layout = layout_elk_graph(&graph, backend).map_err(|err| Error::InvalidModel {
         message: format!("ELK layout failed: {err}"),
     })?;
@@ -112,7 +118,7 @@ fn flowchart_layout_from_elk(
     let diagram_direction = model.direction.as_deref().unwrap_or("TB");
     let mut clusters = Vec::new();
     for sg in &model.subgraphs {
-        if sg.nodes.is_empty() {
+        if sg.nodes.is_empty() && backend != FlowchartElkBackend::SourcePorted {
             continue;
         }
         let Some(node) = layout_node_by_id.get(sg.id.as_str()).copied() else {
@@ -293,6 +299,42 @@ pub fn build_flowchart_elk_graph(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
+    build_flowchart_elk_graph_with_mode(
+        model,
+        effective_config,
+        measurer,
+        math_renderer,
+        FlowchartElkGraphBuildMode::Compat,
+    )
+}
+
+fn build_flowchart_elk_graph_for_backend(
+    model: &FlowchartV2Model,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    backend: FlowchartElkBackend,
+) -> Result<elk::Graph> {
+    let mode = match backend {
+        FlowchartElkBackend::Compat => FlowchartElkGraphBuildMode::Compat,
+        FlowchartElkBackend::SourcePorted => FlowchartElkGraphBuildMode::SourcePorted,
+    };
+    build_flowchart_elk_graph_with_mode(model, effective_config, measurer, math_renderer, mode)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlowchartElkGraphBuildMode {
+    Compat,
+    SourcePorted,
+}
+
+fn build_flowchart_elk_graph_with_mode(
+    model: &FlowchartV2Model,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    mode: FlowchartElkGraphBuildMode,
+) -> Result<elk::Graph> {
     let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
         node_padding,
@@ -395,7 +437,7 @@ pub fn build_flowchart_elk_graph(
         if !inserted_ids.insert(sg.id.as_str()) {
             continue;
         }
-        if sg.nodes.is_empty() {
+        if sg.nodes.is_empty() && mode == FlowchartElkGraphBuildMode::Compat {
             graph.nodes.push(empty_subgraph_to_elk_node(
                 sg,
                 parent_by_id.get(&sg.id).cloned(),
@@ -1056,6 +1098,64 @@ mod tests {
         assert_eq!(cluster.direction, Some(elk::Direction::Right));
         assert_eq!(child.parent.as_deref(), Some("cluster"));
         assert_eq!(outside.parent, None);
+    }
+
+    #[test]
+    fn flowchart_elk_source_ported_adapter_keeps_empty_subgraphs_as_groups() {
+        let mut model = model(
+            vec![node("a", Some("a"), None), node("b", Some("b"), None)],
+            vec![edge("L-a-b", "a", "b", None)],
+        );
+        model.direction = Some("LR".to_string());
+        model.subgraphs.push(FlowSubgraph {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            dir: None,
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["a".to_string(), "b".to_string()],
+        });
+        model.subgraphs.push(FlowSubgraph {
+            id: "B".to_string(),
+            title: "B".to_string(),
+            dir: None,
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: Vec::new(),
+        });
+
+        let compat_graph = build_flowchart_elk_graph(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+        let source_graph = build_flowchart_elk_graph_with_mode(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+            FlowchartElkGraphBuildMode::SourcePorted,
+        )
+        .unwrap();
+
+        let compat_empty = compat_graph
+            .nodes
+            .iter()
+            .find(|node| node.id == "B")
+            .unwrap();
+        let source_empty = source_graph
+            .nodes
+            .iter()
+            .find(|node| node.id == "B")
+            .unwrap();
+
+        assert_eq!(compat_empty.kind, elk::NodeKind::Leaf);
+        assert_eq!(source_empty.kind, elk::NodeKind::Group);
+        assert_eq!(source_empty.label.map(|label| label.height), Some(22.0));
     }
 
     #[test]

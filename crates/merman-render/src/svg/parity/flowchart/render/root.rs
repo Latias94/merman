@@ -2,6 +2,12 @@
 
 use super::super::*;
 
+pub(in crate::svg::parity::flowchart) fn flowchart_elk_renders_empty_subgraph_as_cluster(
+    ctx: &FlowchartRenderCtx<'_>,
+) -> bool {
+    ctx.source_ported_elk_rendering && ctx.diagram_type == "flowchart-elk"
+}
+
 pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details, 'cache> {
     pub(in crate::svg::parity::flowchart) timing_enabled: bool,
     pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
@@ -178,7 +184,7 @@ fn render_flowchart_elk_subgraphs(
         .iter()
         .filter_map(|id| {
             let sg = ctx.subgraphs_by_id.get(*id)?;
-            if sg.nodes.is_empty() {
+            if sg.nodes.is_empty() && !flowchart_elk_renders_empty_subgraph_as_cluster(ctx) {
                 return None;
             }
             ctx.layout_clusters_by_id.get(*id).copied()
@@ -234,11 +240,9 @@ fn render_flowchart_elk_nodes(
     drop(_g_dom_order);
 
     for id in dom_order {
-        if ctx
-            .subgraphs_by_id
-            .get(id)
-            .is_some_and(|sg| !sg.nodes.is_empty())
-        {
+        if ctx.subgraphs_by_id.get(id).is_some_and(|sg| {
+            !sg.nodes.is_empty() || flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
+        }) {
             continue;
         }
 
