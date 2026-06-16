@@ -826,6 +826,67 @@ A-->B
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
+    fn render_layouted_svg_uses_elk_adapter_dom_for_flowchart_layout_elk() {
+        let parsed = Engine::new()
+            .parse_diagram_sync(
+                r#"---
+config:
+  layout: elk
+---
+flowchart LR
+A{A} --> B & C
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        let layout_options = LayoutOptions {
+            text_measurer: Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default()),
+            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+            ..Default::default()
+        };
+        let layouted = layout_parsed(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layouted_svg(
+            &layouted,
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions {
+                diagram_id: Some("elk-layout-smoke".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"aria-roledescription="flowchart-v2""#));
+        assert!(svg.contains("elk-layout-smoke_flowchart-v2-pointEnd"));
+        assert!(!svg.contains(r#"<g class="root""#));
+
+        let marker_pos = svg
+            .find(r#"<g><marker id="elk-layout-smoke_flowchart-v2-pointEnd""#)
+            .expect("ELK marker group");
+        let defs_pos = svg
+            .find(r#"<defs><filter id="elk-layout-smoke-drop-shadow""#)
+            .expect("ELK shadow defs");
+        let subgraphs_pos = svg
+            .find(r#"<g class="subgraphs"/>"#)
+            .expect("ELK subgraphs group");
+        let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
+        let edges_pos = svg
+            .find(r#"<g class="edges edgePaths">"#)
+            .expect("ELK edge paths group");
+        let labels_pos = svg
+            .find(r#"<g class="edgeLabels">"#)
+            .expect("ELK edge labels group");
+
+        assert!(marker_pos < defs_pos);
+        assert!(defs_pos < subgraphs_pos);
+        assert!(subgraphs_pos < nodes_pos);
+        assert!(nodes_pos < edges_pos);
+        assert!(edges_pos < labels_pos);
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
     fn render_layouted_svg_uses_rounded_edges_for_flowchart_elk() {
         let parsed = Engine::new()
             .parse_diagram_sync("flowchart-elk LR\nA --> B\nA --> C", ParseOptions::strict())

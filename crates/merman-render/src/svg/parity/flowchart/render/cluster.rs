@@ -28,7 +28,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
     let label_top = top + cluster.title_margin_top.max(0.0);
-    let cluster_dom_id = if ctx.source_ported_elk_rendering && ctx.diagram_type == "flowchart-elk" {
+    let cluster_dom_id = if ctx.source_ported_elk_rendering {
         Cow::Borrowed("[object Object]")
     } else {
         Cow::Owned(format!("{}-{}", ctx.diagram_id, cluster.id))

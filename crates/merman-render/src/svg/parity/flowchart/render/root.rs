@@ -5,7 +5,7 @@ use super::super::*;
 pub(in crate::svg::parity::flowchart) fn flowchart_elk_renders_empty_subgraph_as_cluster(
     ctx: &FlowchartRenderCtx<'_>,
 ) -> bool {
-    ctx.source_ported_elk_rendering && ctx.diagram_type == "flowchart-elk"
+    ctx.source_ported_elk_rendering
 }
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details, 'cache> {

@@ -155,15 +155,14 @@ fn render_flowchart_v2_svg_with_config_inner(
         let _ = nodes_by_id.entry(n.id.as_str()).or_insert(n);
     }
 
-    let edge_order: Vec<&str> =
-        if layout.source_ported_elk_rendering && diagram_type == "flowchart-elk" {
-            layout.edges.iter().map(|e| e.id.as_str()).collect()
-        } else {
-            render_edges
-                .iter()
-                .map(|e| e.as_ref().id.as_str())
-                .collect()
-        };
+    let edge_order: Vec<&str> = if layout.source_ported_elk_rendering {
+        layout.edges.iter().map(|e| e.id.as_str()).collect()
+    } else {
+        render_edges
+            .iter()
+            .map(|e| e.as_ref().id.as_str())
+            .collect()
+    };
     let mut edges_by_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
         FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {
@@ -404,7 +403,8 @@ fn render_flowchart_v2_svg_with_config_inner(
         details: &mut detail,
         edge_cache: Some(&edge_path_cache),
     };
-    if diagram_type == "flowchart-elk" {
+    let use_elk_adapter_dom = diagram_type == "flowchart-elk" || layout.source_ported_elk_rendering;
+    if use_elk_adapter_dom {
         out.push_str("<g>");
         defs.push_base_markers(&mut out);
         defs.push_extra_markers(&mut out);
