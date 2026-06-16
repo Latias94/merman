@@ -1,4 +1,4 @@
-use super::super::{Bounds, fmt};
+use super::super::Bounds;
 use crate::architecture_metrics::architecture_svg_group_bbox_padding_px;
 
 pub(super) fn is_arch_dir_x(dir: char) -> bool {
@@ -9,32 +9,6 @@ pub(super) fn is_arch_dir_y(dir: char) -> bool {
     matches!(dir, 'T' | 'B')
 }
 
-pub(super) fn arrow_points(dir: char, arrow_size: f64) -> String {
-    match dir {
-        'L' => format!(
-            "{s},{hs} 0,{s} 0,0",
-            s = fmt(arrow_size),
-            hs = fmt(arrow_size / 2.0)
-        ),
-        'R' => format!(
-            "0,{hs} {s},0 {s},{s}",
-            s = fmt(arrow_size),
-            hs = fmt(arrow_size / 2.0)
-        ),
-        'T' => format!(
-            "0,0 {s},0 {hs},{s}",
-            s = fmt(arrow_size),
-            hs = fmt(arrow_size / 2.0)
-        ),
-        'B' => format!(
-            "{hs},0 {s},{s} 0,{s}",
-            s = fmt(arrow_size),
-            hs = fmt(arrow_size / 2.0)
-        ),
-        _ => arrow_points('R', arrow_size),
-    }
-}
-
 pub(super) fn arrow_shift(dir: char, orig: f64, arrow_size: f64) -> f64 {
     // Mermaid@11.12.2 `ArchitectureDirectionArrowShift`.
     match dir {
@@ -42,11 +16,6 @@ pub(super) fn arrow_shift(dir: char, orig: f64, arrow_size: f64) -> f64 {
         'R' | 'B' => orig - 2.0,
         _ => orig,
     }
-}
-
-pub(super) fn edge_id(prefix: &str, from: &str, to: &str, counter: usize) -> String {
-    // Mirrors Mermaid `getEdgeId(from, to, { prefix })` (counter defaults to 0).
-    format!("{prefix}_{from}_{to}_{counter}")
 }
 
 pub(super) fn extend_bounds(bounds: &mut Option<Bounds>, other: Bounds) {

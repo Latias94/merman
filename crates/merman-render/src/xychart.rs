@@ -10,6 +10,7 @@ use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotType,
 };
 use serde_json::Value;
+use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -189,6 +190,20 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
     }
 }
 
+fn single_text_height(text: &str, font_size: f64, measurer: &dyn TextMeasurer) -> f64 {
+    if text.trim().is_empty() {
+        return 0.0;
+    }
+    if text.contains('\n') || text.contains("<br") {
+        return max_text_dimension(&[text.to_string()], font_size, measurer).height;
+    }
+    let style = TextStyle {
+        font_size,
+        ..Default::default()
+    };
+    measurer.measure_svg_simple_text_bbox_height_px(text, &style)
+}
+
 fn d3_ticks(start: f64, stop: f64, count: usize) -> Vec<f64> {
     fn tick_spec(start: f64, stop: f64, count: f64) -> Option<(i64, i64, f64)> {
         if count <= 0.0 {
@@ -349,13 +364,12 @@ impl Axis {
         axis_theme: AxisThemeConfig,
         title: String,
     ) -> Self {
-        let tick_values = build_tick_values(&kind, AxisPosition::Left);
         Self {
             kind,
             axis_config,
             axis_theme,
             axis_position: AxisPosition::Left,
-            tick_values,
+            tick_values: Vec::new(),
             bounding_rect: BoundingRect {
                 x: 0.0,
                 y: 0.0,
@@ -450,6 +464,31 @@ impl Axis {
         }
     }
 
+    fn get_scale_number(&self, value: Option<f64>) -> f64 {
+        let Some(value) = value else {
+            return self.get_scale_value("NaN");
+        };
+
+        match &self.kind {
+            AxisKind::Linear { domain } => {
+                if value.is_nan() {
+                    return f64::NAN;
+                }
+                let (mut d0, mut d1) = *domain;
+                if matches!(self.axis_position, AxisPosition::Left) {
+                    std::mem::swap(&mut d0, &mut d1);
+                }
+                let (r0, r1) = self.get_range();
+                if d0 == d1 {
+                    return r0 + (r1 - r0) * 0.5;
+                }
+                let t = (value - d0) / (d1 - d0);
+                r0 + t * (r1 - r0)
+            }
+            AxisKind::Band { .. } => self.get_scale_value(&format!("{value}")),
+        }
+    }
+
     fn recalculate_outer_padding_to_draw_bar(&mut self) {
         const BAR_WIDTH_TO_TICK_WIDTH_RATIO: f64 = 0.7;
         let target = BAR_WIDTH_TO_TICK_WIDTH_RATIO * self.tick_distance();
@@ -493,13 +532,10 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let dim = max_text_dimension(
-                    std::slice::from_ref(&self.title),
-                    self.axis_config.title_font_size,
-                    measurer,
-                );
-                let width_required = dim.height + self.axis_config.title_padding * 2.0;
-                self.title_text_height = dim.height;
+                let title_height =
+                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let width_required = title_height + self.axis_config.title_padding * 2.0;
+                self.title_text_height = title_height;
                 if width_required <= available_width {
                     available_width -= width_required;
                     self.show_title = true;
@@ -540,13 +576,10 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let dim = max_text_dimension(
-                    std::slice::from_ref(&self.title),
-                    self.axis_config.title_font_size,
-                    measurer,
-                );
-                let height_required = dim.height + self.axis_config.title_padding * 2.0;
-                self.title_text_height = dim.height;
+                let title_height =
+                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let height_required = title_height + self.axis_config.title_padding * 2.0;
+                self.title_text_height = title_height;
                 if height_required <= available_height {
                     available_height -= height_required;
                     self.show_title = true;
@@ -855,12 +888,14 @@ impl Axis {
 
 fn line_path(points: &[(f64, f64)]) -> Option<String> {
     let (first, rest) = points.split_first()?;
+    let mut out = String::with_capacity(points.len().saturating_mul(24).max(24));
+    let _ = write!(&mut out, "M{},{}", first.0, first.1);
     if rest.is_empty() {
-        return Some(format!("M{},{}Z", first.0, first.1));
+        out.push('Z');
+        return Some(out);
     }
-    let mut out = format!("M{},{}", first.0, first.1);
     for p in rest {
-        out.push_str(&format!("L{},{}", p.0, p.1));
+        let _ = write!(&mut out, "L{},{}", p.0, p.1);
     }
     Some(out)
 }
@@ -896,16 +931,13 @@ pub(crate) fn layout_xychart_diagram_typed(
     let theme_cfg = PresentationTheme::new(effective_config).xychart();
 
     let title = model.title.clone().unwrap_or_default();
-    let title_dim = max_text_dimension(
-        std::slice::from_ref(&title),
-        chart_cfg.title_font_size,
-        text_measurer,
-    );
-    let title_height = title_dim.height + 2.0 * chart_cfg.title_padding;
+    let title_height = single_text_height(&title, chart_cfg.title_font_size, text_measurer)
+        + 2.0 * chart_cfg.title_padding;
     let show_chart_title =
         chart_cfg.show_title && !title.is_empty() && title_height <= chart_cfg.height;
 
-    let mut drawables: Vec<XyChartDrawableElem> = Vec::new();
+    let mut drawables: Vec<XyChartDrawableElem> =
+        Vec::with_capacity(model.plots.len().saturating_mul(2).saturating_add(4));
     if show_chart_title {
         drawables.push(XyChartDrawableElem::Text {
             group_texts: vec!["chart-title".to_string()],
@@ -1093,13 +1125,10 @@ pub(crate) fn layout_xychart_diagram_typed(
                     * (1.0 - bar_padding_percent);
                 let bar_width_half = bar_width / 2.0;
 
-                let mut rects: Vec<XyChartRectData> = Vec::new();
+                let mut rects: Vec<XyChartRectData> = Vec::with_capacity(plot.data.len());
                 for (cat, value) in &plot.data {
                     let x = x_axis.get_scale_value(cat);
-                    let y = match value {
-                        Some(v) => y_axis.get_scale_value(&format!("{v}")),
-                        None => y_axis.get_scale_value("NaN"),
-                    };
+                    let y = y_axis.get_scale_number(*value);
                     if chart_cfg.chart_orientation == "horizontal" {
                         rects.push(XyChartRectData {
                             x: plot_rect.x,
@@ -1129,13 +1158,10 @@ pub(crate) fn layout_xychart_diagram_typed(
                 });
             }
             XyChartPlotType::Line => {
-                let mut points: Vec<(f64, f64)> = Vec::new();
+                let mut points: Vec<(f64, f64)> = Vec::with_capacity(plot.data.len());
                 for (cat, value) in &plot.data {
                     let x = x_axis.get_scale_value(cat);
-                    let y = match value {
-                        Some(v) => y_axis.get_scale_value(&format!("{v}")),
-                        None => y_axis.get_scale_value("NaN"),
-                    };
+                    let y = y_axis.get_scale_number(*value);
                     points.push(if chart_cfg.chart_orientation == "horizontal" {
                         (y, x)
                     } else {
@@ -1160,19 +1186,23 @@ pub(crate) fn layout_xychart_diagram_typed(
     drawables.extend(x_axis.drawable_elements());
     drawables.extend(y_axis.drawable_elements());
 
-    let label_data = model
-        .plots
-        .first()
-        .map(|p| {
-            p.data
-                .iter()
-                .map(|(_, y)| {
-                    y.map(|v| format!("{v}"))
-                        .unwrap_or_else(|| "null".to_string())
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let label_data = if chart_cfg.show_data_label {
+        model
+            .plots
+            .first()
+            .map(|p| {
+                p.data
+                    .iter()
+                    .map(|(_, y)| {
+                        y.map(|v| format!("{v}"))
+                            .unwrap_or_else(|| "null".to_string())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
 
     Ok(XyChartDiagramLayout {
         width: chart_cfg.width,

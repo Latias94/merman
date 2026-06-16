@@ -1,6 +1,6 @@
 use crate::text::TextStyle;
 
-use super::super::{SvgTheme, config_f64};
+use super::super::config_f64;
 
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
@@ -17,7 +17,8 @@ pub(super) struct ArchitectureRenderSettings {
 
 impl ArchitectureRenderSettings {
     pub(super) fn from_config(diagram_id: &str, effective_config: &serde_json::Value) -> Self {
-        let css = super::super::css::architecture_css_with_config(diagram_id, effective_config);
+        let css_parts =
+            super::super::css::architecture_css_parts_with_config(diagram_id, effective_config);
 
         let icon_size_px = config_f64(effective_config, &["architecture", "iconSize"])
             .unwrap_or(80.0)
@@ -42,10 +43,9 @@ impl ArchitectureRenderSettings {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let font_family = SvgTheme::new(effective_config).font_family_css();
         let text_style = TextStyle {
-            font_family: Some(font_family),
-            font_size: svg_font_size_px,
+            font_family: Some(css_parts.font_family),
+            font_size: css_parts.font_size,
             font_weight: None,
         };
         let compound_text_style = TextStyle {
@@ -55,7 +55,7 @@ impl ArchitectureRenderSettings {
         };
 
         Self {
-            css,
+            css: css_parts.css,
             icon_size_px,
             half_icon,
             padding_px,

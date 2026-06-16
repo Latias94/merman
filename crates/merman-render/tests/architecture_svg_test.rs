@@ -1,4 +1,5 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 use regex::Regex;
@@ -395,6 +396,57 @@ fn architecture_long_title_group_rect_uses_narrower_long_label_canvas_approximat
         "unexpected pipeline group width regression for long-title architecture fixture after the narrower long-label canvas approximation: {}",
         pipeline.2
     );
+}
+
+#[test]
+fn architecture_cached_service_child_bounds_preserve_svg_output() {
+    let text = r#"architecture-beta
+  group app(cloud)[Application]
+  service gateway(server)[A very long gateway label for group sizing] in app
+  service cache(server)[Cache] in app
+  gateway:R -- L:cache
+"#;
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let layout_options = LayoutOptions::headless_svg_defaults();
+    let layout = layout_parsed_render_layout_only(&parsed, &layout_options).expect("layout ok");
+    let mut layout_without_cached_bounds = layout.clone();
+    let LayoutDiagram::ArchitectureDiagram(arch_layout) = &mut layout_without_cached_bounds else {
+        panic!("expected architecture layout");
+    };
+    assert!(
+        !arch_layout.cytoscape_service_bounds.is_empty(),
+        "expected layout to expose Architecture service child bounds"
+    );
+    arch_layout.cytoscape_service_bounds.clear();
+
+    let options = SvgRenderOptions {
+        diagram_id: Some("architecture-cache-parity".to_string()),
+        ..Default::default()
+    };
+    let with_cached_bounds = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &options,
+    )
+    .expect("render SVG with cached service child bounds");
+    let without_cached_bounds = render_layout_svg_parts_for_render_model_with_config(
+        &layout_without_cached_bounds,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &options,
+    )
+    .expect("render SVG without cached service child bounds");
+
+    assert_eq!(with_cached_bounds, without_cached_bounds);
 }
 
 #[test]

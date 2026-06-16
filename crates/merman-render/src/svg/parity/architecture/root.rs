@@ -1,9 +1,15 @@
 use std::fmt::Write as _;
+use std::ops::Range;
 
 use super::super::{escape_xml_display, fmt, root_svg};
 
 pub(super) const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
 pub(super) const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
+
+pub(super) struct ArchitectureRootOpen {
+    pub(super) viewbox_placeholder_range: Range<usize>,
+    pub(super) max_width_placeholder_range: Option<Range<usize>>,
+}
 
 pub(super) struct ArchitectureA11y {
     pub(super) aria_labelledby: Option<String>,
@@ -62,7 +68,9 @@ pub(super) struct ArchitectureRootOpenContext<'a> {
     pub(super) icon_size_px: f64,
 }
 
-pub(super) fn push_architecture_root_open(ctx: ArchitectureRootOpenContext<'_>) {
+pub(super) fn push_architecture_root_open(
+    ctx: ArchitectureRootOpenContext<'_>,
+) -> Option<ArchitectureRootOpen> {
     let ArchitectureRootOpenContext {
         out,
         diagram_id,
@@ -139,4 +147,26 @@ pub(super) fn push_architecture_root_open(ctx: ArchitectureRootOpenContext<'_>) 
     out.push_str(a11y.nodes.as_str());
     let _ = write!(out, "<style>{}</style>", css);
     out.push_str("<g/><g class=\"architecture-edges\">");
+
+    if is_empty {
+        return None;
+    }
+
+    let viewbox_pos = out
+        .find(VIEWBOX_PLACEHOLDER)
+        .expect("architecture svg root missing viewBox placeholder");
+    let viewbox_placeholder_range = viewbox_pos..(viewbox_pos + VIEWBOX_PLACEHOLDER.len());
+    let max_width_placeholder_range = if use_max_width {
+        let max_width_pos = out
+            .find(MAX_WIDTH_PLACEHOLDER)
+            .expect("architecture svg root missing max-width placeholder");
+        Some(max_width_pos..(max_width_pos + MAX_WIDTH_PLACEHOLDER.len()))
+    } else {
+        None
+    };
+
+    Some(ArchitectureRootOpen {
+        viewbox_placeholder_range,
+        max_width_placeholder_range,
+    })
 }
