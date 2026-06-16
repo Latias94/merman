@@ -1910,6 +1910,44 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
             node.margin.bottom,
             node.nested_graph.is_some()
         );
+        for (port_index, port) in node.ports.iter().enumerate() {
+            let incoming = port
+                .incoming_edges
+                .iter()
+                .map(|edge| graph.edges[*edge].id.as_str())
+                .collect::<Vec<_>>();
+            let outgoing = port
+                .outgoing_edges
+                .iter()
+                .map(|edge| graph.edges[*edge].id.as_str())
+                .collect::<Vec<_>>();
+            println!(
+                "{indent}  port #{port_index} {} type={:?} side={:?} inside={} dummy={:?} origin={:?} in=[{}] out=[{}]",
+                port.id,
+                port.port_type,
+                port.side,
+                port.inside_connections,
+                port.port_dummy,
+                node.origin_port,
+                incoming.join(","),
+                outgoing.join(",")
+            );
+        }
+    }
+    if !graph.edges.is_empty() {
+        println!("{indent}edges:");
+        for (edge_index, edge) in graph.edges.iter().enumerate() {
+            println!(
+                "{indent}- #{edge_index} {} {}:{} -> {}:{} segment={:?} reversed={}",
+                edge.id,
+                edge.source.node,
+                edge.source.port,
+                edge.target.node,
+                edge.target.port,
+                edge.compound_segment,
+                edge.reversed
+            );
+        }
     }
     println!("{indent}layers:");
     for (index, layer) in graph.layers.iter().enumerate() {

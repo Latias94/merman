@@ -1139,14 +1139,8 @@ impl HierarchySweep {
         apply_parent_hierarchical_port_order(parent_graph, parent_node_index, &parent_order);
     }
 
-    fn next_sweep_direction(&mut self, info_index: usize) -> bool {
-        if self.infos[info_index].path.0.is_empty() {
-            let value = self.random.next_bool();
-            self.infos[info_index].random = self.random.clone();
-            value
-        } else {
-            self.infos[info_index].random.next_bool()
-        }
+    fn next_sweep_direction(&mut self, _info_index: usize) -> bool {
+        self.random.next_bool()
     }
 
     fn barycenter_random(&self, info_index: usize) -> JavaRandom {
@@ -3206,7 +3200,7 @@ mod tests {
     use super::*;
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::intermediate::split_long_edges;
-    use crate::options::{ElkDirection, LayeredOptions};
+    use crate::options::{ElkDirection, HierarchyHandling, LayeredOptions};
     use crate::p2layers::layer_network_simplex;
     use crate::p3order::{process_port_sides, sort_port_lists};
 
@@ -3239,6 +3233,38 @@ mod tests {
         }
     }
 
+    fn nested_node(id: &str, parent: Option<&str>) -> ElkInputNode {
+        ElkInputNode {
+            id: id.to_string(),
+            width: 54.0,
+            height: 68.0,
+            parent: parent.map(str::to_string),
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            port_constraints: None,
+            node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+            nested_spacing_base: None,
+            label: None,
+        }
+    }
+
+    fn nested_group(id: &str, parent: Option<&str>) -> ElkInputNode {
+        ElkInputNode {
+            id: id.to_string(),
+            width: 0.0,
+            height: 0.0,
+            parent: parent.map(str::to_string),
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            port_constraints: None,
+            node_label_placement: crate::options::NodeLabelPlacement::InsideTopCenter,
+            nested_spacing_base: Some(30.0),
+            label: None,
+        }
+    }
+
     fn prepared_graph(nodes: Vec<ElkInputNode>, edges: Vec<ElkInputEdge>) -> LGraph {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
@@ -3252,6 +3278,13 @@ mod tests {
         process_port_sides(&mut graph);
         sort_port_lists(&mut graph);
         graph
+    }
+
+    fn node_order_by_id(graph: &LGraph, layer: &[usize]) -> Vec<String> {
+        layer
+            .iter()
+            .map(|node| graph.layerless_nodes[*node].id.clone())
+            .collect()
     }
 
     #[test]
@@ -3418,6 +3451,37 @@ mod tests {
 
         assert_eq!(free_ports, vec!["Free:2", "Free:3", "Free:1", "Free:0"]);
         assert_eq!(fixed_ports, vec!["Fixed:0", "Fixed:1"]);
+    }
+
+    #[test]
+    fn hierarchical_sweep_orders_nested_sources_by_child_boundary_ports() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![
+                nested_group("O", None),
+                nested_group("A", Some("O")),
+                nested_group("B", Some("A")),
+                nested_node("b", Some("A")),
+                nested_node("a", Some("A")),
+                nested_node("c", Some("B")),
+            ],
+            edges: vec![edge("L_b_B_0", "b", "B"), edge("L_a_c_0", "a", "c")],
+        })
+        .unwrap();
+        graph.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
+
+        crate::compound::preprocess_source_ported_compound_graph(&mut graph);
+        crate::configurator::configure_graph_properties(&mut graph);
+        crate::pipeline::execute_ported_compound_processors_until(
+            &mut graph,
+            crate::pipeline::LayeredPhase::P3NodeOrdering,
+        )
+        .unwrap();
+
+        let o = graph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+        let a = o.layerless_nodes[0].nested_graph.as_ref().unwrap();
+        assert_eq!(node_order_by_id(a, &a.layers[0].nodes), vec!["a", "b"]);
     }
 
     #[test]

@@ -391,7 +391,7 @@ pub fn build_flowchart_elk_graph(
     };
 
     let mut inserted_ids: HashSet<&str> = HashSet::new();
-    for sg in &model.subgraphs {
+    for sg in model.subgraphs.iter().rev() {
         if !inserted_ids.insert(sg.id.as_str()) {
             continue;
         }
@@ -1066,6 +1066,8 @@ mod tests {
                 node("cluster", Some("cluster"), None),
                 node("cluster-a", Some("cluster-a"), None),
                 node("cluster-b", Some("cluster-b"), None),
+                node("later-cluster", Some("later-cluster"), None),
+                node("later-a", Some("later-a"), None),
                 node("root-b", Some("root-b"), None),
             ],
             vec![],
@@ -1079,6 +1081,15 @@ mod tests {
             styles: Vec::new(),
             nodes: vec!["cluster-a".to_string(), "cluster-b".to_string()],
         });
+        model.subgraphs.push(FlowSubgraph {
+            id: "later-cluster".to_string(),
+            title: "Later Cluster".to_string(),
+            dir: None,
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["later-a".to_string()],
+        });
 
         let graph = build_flowchart_elk_graph(
             &model,
@@ -1091,7 +1102,15 @@ mod tests {
         let ids: Vec<&str> = graph.nodes.iter().map(|node| node.id.as_str()).collect();
         assert_eq!(
             ids,
-            vec!["cluster", "root-a", "cluster-a", "cluster-b", "root-b"]
+            vec![
+                "later-cluster",
+                "cluster",
+                "root-a",
+                "cluster-a",
+                "cluster-b",
+                "later-a",
+                "root-b"
+            ]
         );
     }
 

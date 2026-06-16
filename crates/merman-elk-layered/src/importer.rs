@@ -143,16 +143,7 @@ fn import_hierarchical_graph(
         model_order += 1;
 
         if node_has_nested_graph(input, node) {
-            let mut nested_options = parent_graph.options.clone();
-            if let Some(direction) = node.direction {
-                nested_options.direction = direction;
-            }
-            if let Some(hierarchy_handling) = node.hierarchy_handling {
-                nested_options.hierarchy_handling = hierarchy_handling;
-            }
-            if let Some(spacing_base) = node.nested_spacing_base {
-                nested_options.spacing = SpacingOptions::layered_base_value(spacing_base);
-            }
+            let nested_options = nested_graph_options(input, &parent_graph.options, node);
             let mut nested_graph = LGraph::new(node.id.clone(), nested_options);
             nested_graph.parent_node_id = Some(node.id.clone());
             apply_graph_padding_from_options(&mut nested_graph);
@@ -178,6 +169,22 @@ fn import_hierarchical_graph(
     }
 
     Ok(())
+}
+
+fn nested_graph_options(
+    input: &ElkInputGraph,
+    parent_options: &LayeredOptions,
+    node: &ElkInputNode,
+) -> LayeredOptions {
+    let mut options = LayeredOptions::default();
+    options.direction = node.direction.unwrap_or(parent_options.direction);
+    options.hierarchy_handling = node
+        .hierarchy_handling
+        .unwrap_or(input.options.hierarchy_handling);
+    if let Some(spacing_base) = node.nested_spacing_base {
+        options.spacing = SpacingOptions::layered_base_value(spacing_base);
+    }
+    options
 }
 
 fn apply_graph_padding_from_options(graph: &mut LGraph) {
