@@ -168,7 +168,7 @@ graph TD;A-->B;"#;
 }
 
 #[test]
-fn parse_theme_variables_are_retained_but_default_secure_filters_effective_config() {
+fn parse_theme_variables_drive_effective_config_like_upstream() {
     let engine = Engine::new();
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
 graph TD;A-->B;"##;
@@ -185,11 +185,11 @@ graph TD;A-->B;"##;
     assert_eq!(res.config.get_str("themeVariables.mainBkg"), None);
     assert_eq!(
         res.effective_config.get_str("themeVariables.primaryColor"),
-        Some("#cde498")
+        Some("#123456")
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#cde498")
+        Some("#123456")
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
@@ -198,9 +198,13 @@ graph TD;A-->B;"##;
 }
 
 #[test]
-fn site_secure_policy_can_opt_into_legacy_theme_variable_init_compatibility() {
+fn site_secure_policy_can_lock_theme_variable_init_overrides() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-        "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
+        "theme": "forest",
+        "themeVariables": {
+            "primaryColor": "#abcdef"
+        },
+        "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges", "themeVariables"]
     })));
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
 graph TD;A-->B;"##;
@@ -211,11 +215,11 @@ graph TD;A-->B;"##;
 
     assert_eq!(
         res.effective_config.get_str("themeVariables.primaryColor"),
-        Some("#123456")
+        Some("#abcdef")
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#123456")
+        Some("#abcdef")
     );
 }
 
@@ -375,7 +379,7 @@ Alice->Bob: Hi
 }
 
 #[test]
-fn parse_init_font_family_mirrors_retained_config_but_default_secure_filters_effective_config() {
+fn parse_init_font_family_mirrors_legacy_theme_variable_like_upstream() {
     let engine = Engine::new();
     let text = r#"%%{init: { "fontFamily": "Courier" } }%%
 graph TD;A-->B;
@@ -390,18 +394,15 @@ graph TD;A-->B;
         res.config.get_str("themeVariables.fontFamily"),
         Some("Courier")
     );
-    assert_eq!(
-        res.effective_config.get_str("fontFamily"),
-        Some("\"trebuchet ms\", verdana, arial, sans-serif;")
-    );
+    assert_eq!(res.effective_config.get_str("fontFamily"), Some("Courier"));
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
-        Some("\"trebuchet ms\", verdana, arial, sans-serif")
+        Some("Courier")
     );
 }
 
 #[test]
-fn parse_init_theme_variable_font_family_is_retained_but_default_secure_filters_effective_config() {
+fn parse_init_theme_variable_font_family_overrides_legacy_root() {
     let engine = Engine::new();
     let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
 graph TD;A-->B;
@@ -416,20 +417,21 @@ graph TD;A-->B;
         res.config.get_str("themeVariables.fontFamily"),
         Some("Inter")
     );
-    assert_eq!(
-        res.effective_config.get_str("fontFamily"),
-        Some("\"trebuchet ms\", verdana, arial, sans-serif;")
-    );
+    assert_eq!(res.effective_config.get_str("fontFamily"), Some("Courier"));
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
-        Some("\"trebuchet ms\", verdana, arial, sans-serif")
+        Some("Inter")
     );
 }
 
 #[test]
-fn site_secure_policy_can_opt_into_legacy_font_family_init_compatibility() {
+fn site_secure_policy_can_lock_font_family_init_overrides() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
-        "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
+        "fontFamily": "site-font",
+        "themeVariables": {
+            "fontFamily": "site-font"
+        },
+        "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges", "fontFamily", "themeVariables"]
     })));
     let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
 graph TD;A-->B;
@@ -439,10 +441,13 @@ graph TD;A-->B;
         .unwrap()
         .unwrap();
 
-    assert_eq!(res.effective_config.get_str("fontFamily"), Some("Courier"));
+    assert_eq!(
+        res.effective_config.get_str("fontFamily"),
+        Some("site-font")
+    );
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
-        Some("Inter")
+        Some("site-font")
     );
 }
 
@@ -598,7 +603,7 @@ flowchart TD
 }
 
 #[test]
-fn default_secure_keys_protect_effective_config_from_diagram_config() {
+fn default_secure_keys_protect_only_upstream_default_secure_fields() {
     let engine = Engine::new();
     let text = r#"%%{init: {"theme": "dark", "securityLevel": "loose", "fontFamily": "x;a{b} :not(&){background:green !important} c{d}", "altFontFamily": "Injected", "themeCSS": ".node rect { fill: red; }", "themeVariables": {"fontFamily": "Injected Theme"}}}%%
 flowchart TD
@@ -623,13 +628,19 @@ flowchart TD
     );
     assert_eq!(
         meta.effective_config.get_str("fontFamily"),
-        Some("\"trebuchet ms\", verdana, arial, sans-serif;")
+        Some("x;a{b} :not(&){background:green !important} c{d}")
     );
-    assert!(meta.effective_config.get_str("altFontFamily").is_none());
-    assert!(meta.effective_config.get_str("themeCSS").is_none());
+    assert_eq!(
+        meta.effective_config.get_str("altFontFamily"),
+        Some("Injected")
+    );
+    assert_eq!(
+        meta.effective_config.get_str("themeCSS"),
+        Some(".node rect { fill: red; }")
+    );
     assert_eq!(
         meta.effective_config.get_str("themeVariables.fontFamily"),
-        Some("\"trebuchet ms\", verdana, arial, sans-serif")
+        Some("Injected Theme")
     );
 }
 

@@ -20,6 +20,7 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_58_elk_handle_styling_with_style_expressions_019",
     "upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_020",
     "upstream_cypress_flowchart_elk_spec_62_elk_should_render_styled_subgraphs_023",
+    "upstream_cypress_flowchart_elk_spec_63_elk_title_on_subgraphs_should_be_themeable_024",
     "upstream_cypress_flowchart_elk_spec_65_elk_text_color_from_classes_025",
     "upstream_cypress_flowchart_elk_spec_66_elk_more_nested_subgraph_cases_tb_026",
     "upstream_cypress_flowchart_elk_spec_67_elk_more_nested_subgraph_cases_rl_027",
@@ -179,6 +180,9 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_62_elk_should_render_styled_subgraphs_023"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_63_elk_title_on_subgraphs_should_be_themeable_024"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_65_elk_text_color_from_classes_025"

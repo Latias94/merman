@@ -1,23 +1,6 @@
 [
   {
     "op": "set",
-    "path": ["secure"],
-    "value": [
-      "secure",
-      "securityLevel",
-      "startOnLoad",
-      "maxTextSize",
-      "suppressErrorRendering",
-      "maxEdges",
-      "fontFamily",
-      "altFontFamily",
-      "themeCSS",
-      "themeVariables"
-    ],
-    "reason": "Mermaid security advisories GHSA-87f9-hvmw-gh4p and GHSA-x3vm-38hw-55wf require diagram-level config to be unable to override CSS-bearing theme keys."
-  },
-  {
-    "op": "set",
     "path": ["class", "padding"],
     "value": 12,
     "reason": "Local Class parity uses Mermaid's observed class node padding baseline; upstream schema still lists 5."

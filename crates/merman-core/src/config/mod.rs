@@ -10,10 +10,6 @@ const DEFAULT_SECURE_KEYS: &[&str] = &[
     "maxTextSize",
     "suppressErrorRendering",
     "maxEdges",
-    "fontFamily",
-    "altFontFamily",
-    "themeCSS",
-    "themeVariables",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -420,7 +416,7 @@ mod tests {
 
         let filtered = site_config.secure_filtered_overrides(&overrides);
 
-        assert!(filtered.get_str("fontFamily").is_none());
+        assert_eq!(filtered.get_str("fontFamily"), Some("diagram-font"));
         assert_eq!(filtered.get_bool("flowchart.htmlLabels"), Some(false));
         assert_eq!(
             filtered.as_value()["flowchart"]["nested"][0]["shape"],
