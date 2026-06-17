@@ -265,9 +265,18 @@ fn assign_hidden_ports_to_north_or_south(graph: &mut LGraph, holder: &SelfLoopHo
 }
 
 fn assign_hidden_ports_equally(graph: &mut LGraph, holder: &SelfLoopHolder) {
-    for (loop_index, hyper_loop) in holder.hyper_loops.iter().enumerate() {
-        let target =
-            EqualDistributionTarget::VALUES[loop_index % EqualDistributionTarget::VALUES.len()];
+    let mut sorted_loop_indices = (0..holder.hyper_loops.len()).collect::<Vec<_>>();
+    sorted_loop_indices.sort_by_key(|loop_index| {
+        (
+            std::cmp::Reverse(holder.hyper_loops[*loop_index].ports.len()),
+            *loop_index,
+        )
+    });
+
+    for (assignment_index, loop_index) in sorted_loop_indices.into_iter().enumerate() {
+        let hyper_loop = &holder.hyper_loops[loop_index];
+        let target = EqualDistributionTarget::VALUES
+            [assignment_index % EqualDistributionTarget::VALUES.len()];
         let mut hidden_ports = hyper_loop
             .ports
             .iter()
@@ -802,6 +811,7 @@ fn offset_edge_bend_points(graph: &mut LGraph, edge: usize, offset: LPoint) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{LNode, LayeredEdge, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayeredOptions};
 
@@ -831,6 +841,27 @@ mod tests {
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,
+        }
+    }
+
+    fn self_loop_edge(id: &str, node_id: &str, source: PortRef, target: PortRef) -> LayeredEdge {
+        LayeredEdge {
+            id: id.to_string(),
+            source,
+            target,
+            source_node_id: node_id.to_string(),
+            target_node_id: node_id.to_string(),
+            labels: Vec::new(),
+            minlen: 1,
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order: None,
+            priority_direction: 0,
+            priority_shortness: 0,
+            priority_straightness: 0,
+            thickness: 0.0,
+            original_opposite_port: None,
+            compound_segment: None,
         }
     }
 
@@ -874,6 +905,64 @@ mod tests {
         assert_eq!(
             graph.self_loop_holders[0].hyper_loops[0].self_loop_type,
             Some(SelfLoopType::OneSide)
+        );
+    }
+
+    #[test]
+    fn restorer_assigns_equal_distribution_targets_by_descending_loop_port_count() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        graph
+            .layerless_nodes
+            .push(LNode::new("A", 80.0, 40.0, None));
+        let node = 0;
+        let single_port = graph
+            .add_port(
+                node,
+                PortType::Output,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+        let double_source = graph
+            .add_port(
+                node,
+                PortType::Output,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+        let double_target = graph
+            .add_port(
+                node,
+                PortType::Input,
+                PortSide::Undefined,
+                LPoint::default(),
+            )
+            .unwrap();
+
+        graph.add_edge(self_loop_edge("single", "A", single_port, single_port));
+        graph.add_edge(self_loop_edge("double", "A", double_source, double_target));
+
+        preprocess_self_loops(&mut graph);
+        assert_eq!(graph.self_loop_holders[0].hyper_loops[0].ports.len(), 1);
+        assert_eq!(graph.self_loop_holders[0].hyper_loops[1].ports.len(), 2);
+
+        restore_self_loop_ports(&mut graph);
+
+        assert_eq!(
+            graph.layerless_nodes[node].ports[single_port.port].side,
+            PortSide::South
+        );
+        assert_eq!(
+            graph.layerless_nodes[node].ports[double_source.port].side,
+            PortSide::North
+        );
+        assert_eq!(
+            graph.layerless_nodes[node].ports[double_target.port].side,
+            PortSide::North
         );
     }
 }
