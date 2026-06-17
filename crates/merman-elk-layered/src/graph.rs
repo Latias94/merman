@@ -30,6 +30,7 @@ pub struct LGraph {
     pub replaced_external_port_dummies: Vec<usize>,
     pub hierarchy_edges: Vec<HierarchyEdge>,
     pub cross_hierarchy_edges: Vec<CrossHierarchyEdge>,
+    pub in_layer_successor_constraints_between_non_dummies: bool,
 }
 
 impl LGraph {
@@ -52,6 +53,7 @@ impl LGraph {
             replaced_external_port_dummies: Vec::new(),
             hierarchy_edges: Vec::new(),
             cross_hierarchy_edges: Vec::new(),
+            in_layer_successor_constraints_between_non_dummies: false,
         }
     }
 
@@ -109,6 +111,8 @@ pub struct LNode {
     pub port_ratio_or_position: f64,
     pub replaced_external_port_dummy: Option<usize>,
     pub in_layer_successor_constraints: Vec<usize>,
+    pub in_layer_layout_unit: Option<usize>,
+    pub barycenter_associates: Vec<usize>,
     pub origin_port: Option<GraphPortRef>,
     pub origin_edge: Option<usize>,
     pub parent_port_key: Option<String>,
@@ -147,6 +151,8 @@ impl LNode {
             port_ratio_or_position: 0.0,
             replaced_external_port_dummy: None,
             in_layer_successor_constraints: Vec::new(),
+            in_layer_layout_unit: None,
+            barycenter_associates: Vec::new(),
             origin_port: None,
             origin_edge: None,
             parent_port_key: None,

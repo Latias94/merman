@@ -6,13 +6,14 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/AbstractBarycenterPortDistributor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/NodeRelativePortDistributor.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/LayerTotalPortDistributor.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p3order/ForsterConstraintResolver.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/GreedySwitchHeuristic.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/SwitchDecider.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/CrossingMatrixFiller.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/BetweenLayerEdgeTwoNodeCrossingsCounter.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/greedyswitch/NorthSouthEdgeNeighbouringNodeCrossingsCounter.java
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::graph::{LGraph, LNode, LNodeKind, PortRef, PortSide, PortType};
 use crate::options::{OrderingStrategy, PortConstraints};
@@ -29,13 +30,13 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct GraphPath(Vec<usize>);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct HierarchyGraphInfo {
     path: GraphPath,
     current_node_order: Vec<Vec<usize>>,
     currently_best_node_and_port_order: Option<SweepCopy>,
     best_node_and_port_order: Option<SweepCopy>,
-    port_distributor_kind: PortDistributorKind,
+    barycenter_heuristic: Option<BarycenterHeuristic>,
     random: JavaRandom,
     child_paths: Vec<GraphPath>,
     parent_path: Option<GraphPath>,
@@ -48,16 +49,24 @@ impl HierarchyGraphInfo {
     fn new(graph: &LGraph, path: GraphPath, cross_min_type: CrossMinType) -> Self {
         let mut random = graph.random.clone();
         let port_distributor_kind = create_port_distributor_kind(cross_min_type, &mut random);
+        let current_node_order = graph
+            .layers
+            .iter()
+            .map(|layer| layer.nodes.clone())
+            .collect::<Vec<_>>();
+        let barycenter_heuristic = (cross_min_type == CrossMinType::Barycenter).then(|| {
+            BarycenterHeuristic::new(
+                graph,
+                random.clone(),
+                BarycenterPortDistributor::new(port_distributor_kind, &current_node_order),
+            )
+        });
         Self {
             path,
-            current_node_order: graph
-                .layers
-                .iter()
-                .map(|layer| layer.nodes.clone())
-                .collect(),
+            current_node_order,
             currently_best_node_and_port_order: None,
             best_node_and_port_order: None,
-            port_distributor_kind,
+            barycenter_heuristic,
             random,
             child_paths: Vec::new(),
             parent_path: None,
@@ -147,12 +156,22 @@ struct BarycenterPortDistributor {
 }
 
 impl BarycenterPortDistributor {
-    fn new(kind: PortDistributorKind) -> Self {
+    fn new(kind: PortDistributorKind, order: &[Vec<usize>]) -> Self {
+        let node_positions = order
+            .iter()
+            .flat_map(|layer| {
+                layer
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(|(position, node)| (node, position))
+            })
+            .collect::<HashMap<_, _>>();
         Self {
             kind,
             port_ranks: HashMap::new(),
             port_barycenters: HashMap::new(),
-            node_positions: HashMap::new(),
+            node_positions,
             min_barycenter: 0.0,
             max_barycenter: 0.0,
         }
@@ -169,7 +188,7 @@ impl BarycenterPortDistributor {
             return;
         }
 
-        self.update_node_positions(order);
+        self.update_node_positions(order, current_index);
         let free_layer = order[current_index].clone();
         let side = if forward {
             PortSide::West
@@ -403,9 +422,8 @@ impl BarycenterPortDistributor {
         }
     }
 
-    fn update_node_positions(&mut self, order: &[Vec<usize>]) {
-        self.node_positions.clear();
-        for layer in order {
+    fn update_node_positions(&mut self, order: &[Vec<usize>], current_index: usize) {
+        if let Some(layer) = order.get(current_index) {
             for (position, node) in layer.iter().copied().enumerate() {
                 self.node_positions.insert(node, position);
             }
@@ -727,8 +745,6 @@ impl HierarchySweep {
             .options
             .thoroughness
             .max(1);
-        let distributor_kind = self.infos[info_index].port_distributor_kind;
-
         let use_node_port_order_counter =
             self.use_node_port_order_crossing_counter(root, info_index);
         let mut best_crossings = f64::MAX;
@@ -736,7 +752,6 @@ impl HierarchySweep {
             let crossings = self.minimize_barycenter_with_counter(
                 root,
                 info_index,
-                distributor_kind,
                 first_try_with_initial_order && run_index == 0,
                 first_try_with_initial_order && run_index == 1,
                 use_node_port_order_counter,
@@ -755,7 +770,6 @@ impl HierarchySweep {
         &mut self,
         root: &mut LGraph,
         info_index: usize,
-        distributor_kind: PortDistributorKind,
         first_try_with_initial_order: bool,
         second_try_with_initial_order: bool,
         use_node_port_order_counter: bool,
@@ -768,29 +782,22 @@ impl HierarchySweep {
             return 0.0;
         }
 
-        let graph = graph_at_path(root, &self.infos[info_index].path);
-        let mut heuristic = BarycenterHeuristic::new(
-            graph,
-            self.barycenter_random(info_index),
-            BarycenterPortDistributor::new(distributor_kind),
-        );
-        if (!first_try_with_initial_order && !second_try_with_initial_order)
-            || graph.options.consider_model_order_strategy == OrderingStrategy::None
-        {
-            heuristic.set_first_layer_order(
-                graph,
-                &mut self.infos[info_index].current_node_order,
-                is_forward_sweep,
-            );
+        let should_set_first_layer_order = {
+            let graph = graph_at_path(root, &self.infos[info_index].path);
+            (!first_try_with_initial_order && !second_try_with_initial_order)
+                || graph.options.consider_model_order_strategy == OrderingStrategy::None
+        };
+        if should_set_first_layer_order {
+            self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
+                heuristic.set_first_layer_order(graph, order, is_forward_sweep);
+            });
         } else {
             is_forward_sweep = first_try_with_initial_order;
         }
-        self.set_barycenter_random(info_index, heuristic.random.clone());
 
         self.sweep_reducing_crossings_barycenter(
             root,
             info_index,
-            distributor_kind,
             is_forward_sweep,
             true,
             first_try_with_initial_order || second_try_with_initial_order,
@@ -809,7 +816,6 @@ impl HierarchySweep {
             self.sweep_reducing_crossings_barycenter(
                 root,
                 info_index,
-                distributor_kind,
                 is_forward_sweep,
                 false,
                 false,
@@ -826,7 +832,6 @@ impl HierarchySweep {
         &mut self,
         root: &mut LGraph,
         info_index: usize,
-        distributor_kind: PortDistributorKind,
         forward: bool,
         first_sweep: bool,
         try_with_initial_order: bool,
@@ -836,21 +841,14 @@ impl HierarchySweep {
             return false;
         }
 
-        {
-            let graph = graph_mut_at_path(root, &self.infos[info_index].path);
-            let mut heuristic = BarycenterHeuristic::new(
-                graph,
-                self.barycenter_random(info_index),
-                BarycenterPortDistributor::new(distributor_kind),
-            );
+        self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
             heuristic.port_distributor.distribute_ports_while_sweeping(
                 graph,
-                &self.infos[info_index].current_node_order,
+                order,
                 first_index(forward, length),
                 forward,
             );
-            self.set_barycenter_random(info_index, heuristic.random.clone());
-        }
+        });
 
         let first_layer =
             self.infos[info_index].current_node_order[first_index(forward, length)].clone();
@@ -859,28 +857,21 @@ impl HierarchySweep {
         let mut index = first_free(forward, length);
         while is_not_end(length, index, forward) {
             let free_layer_index = index as usize;
-            {
-                let graph = graph_mut_at_path(root, &self.infos[info_index].path);
-                let mut heuristic = BarycenterHeuristic::new(
-                    graph,
-                    self.barycenter_random(info_index),
-                    BarycenterPortDistributor::new(distributor_kind),
-                );
+            self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
                 heuristic.minimize_crossings(
                     graph,
-                    &mut self.infos[info_index].current_node_order,
+                    order,
                     free_layer_index,
                     forward,
                     first_sweep && !try_with_initial_order,
                 );
                 heuristic.port_distributor.distribute_ports_while_sweeping(
                     graph,
-                    &self.infos[info_index].current_node_order,
+                    order,
                     free_layer_index,
                     forward,
                 );
-                self.set_barycenter_random(info_index, heuristic.random.clone());
-            }
+            });
             let layer = self.infos[info_index].current_node_order[free_layer_index].clone();
             improved |=
                 self.sweep_in_hierarchical_nodes(root, info_index, &layer, forward, first_sweep);
@@ -997,19 +988,13 @@ impl HierarchySweep {
                 let child_graph = graph_at_path(root, &self.infos[child_info_index].path);
                 match self.cross_min_type {
                     CrossMinType::Barycenter => {
-                        let child_distributor_kind =
-                            self.infos[child_info_index].port_distributor_kind;
-                        let mut heuristic = BarycenterHeuristic::new(
-                            child_graph,
-                            self.barycenter_random(child_info_index),
-                            BarycenterPortDistributor::new(child_distributor_kind),
+                        self.with_barycenter_heuristic(
+                            root,
+                            child_info_index,
+                            |heuristic, graph, order| {
+                                heuristic.set_first_layer_order(graph, order, forward);
+                            },
                         );
-                        heuristic.set_first_layer_order(
-                            child_graph,
-                            &mut self.infos[child_info_index].current_node_order,
-                            forward,
-                        );
-                        self.set_barycenter_random(child_info_index, heuristic.random.clone());
                     }
                     CrossMinType::OneSidedGreedySwitch | CrossMinType::TwoSidedGreedySwitch => {
                         let mut heuristic = GreedySwitchHeuristic::new(self.cross_min_type);
@@ -1027,7 +1012,6 @@ impl HierarchySweep {
             CrossMinType::Barycenter => self.sweep_reducing_crossings_barycenter(
                 root,
                 child_info_index,
-                self.infos[child_info_index].port_distributor_kind,
                 forward,
                 first_sweep,
                 false,
@@ -1153,6 +1137,30 @@ impl HierarchySweep {
             on_right_most_layer,
             &parent_order,
         );
+    }
+
+    fn with_barycenter_heuristic<R>(
+        &mut self,
+        root: &mut LGraph,
+        info_index: usize,
+        action: impl FnOnce(&mut BarycenterHeuristic, &mut LGraph, &mut [Vec<usize>]) -> R,
+    ) -> R {
+        let path = self.infos[info_index].path.clone();
+        let mut heuristic = self.infos[info_index]
+            .barycenter_heuristic
+            .take()
+            .expect("barycenter graph info should own a heuristic");
+        heuristic.random = self.barycenter_random(info_index);
+
+        let result = {
+            let graph = graph_mut_at_path(root, &path);
+            let order = &mut self.infos[info_index].current_node_order;
+            action(&mut heuristic, graph, order)
+        };
+
+        self.set_barycenter_random(info_index, heuristic.random.clone());
+        self.infos[info_index].barycenter_heuristic = Some(heuristic);
+        result
     }
 
     fn next_sweep_direction(&mut self, _info_index: usize) -> bool {
@@ -1498,6 +1506,7 @@ impl BarycenterHeuristic {
                     (None, None) => std::cmp::Ordering::Equal,
                 }
             });
+            resolve_forster_constraints(graph, layer, &mut self.states);
         }
     }
 
@@ -1559,6 +1568,18 @@ impl BarycenterHeuristic {
             }
         }
 
+        for associate in graph.layerless_nodes[node].barycenter_associates.clone() {
+            if graph.layerless_nodes[associate].layer_index
+                == graph.layerless_nodes[node].layer_index
+            {
+                self.calculate_barycenter(graph, associate, forward);
+                let associate_state = self.state(associate).clone();
+                let state = self.state_mut(node);
+                state.degree += associate_state.degree;
+                state.summed_weight += associate_state.summed_weight;
+            }
+        }
+
         let degree = self.state(node).degree;
         if degree > 0 {
             let perturbation =
@@ -1614,6 +1635,340 @@ impl BarycenterHeuristic {
 
     fn state_mut(&mut self, node: usize) -> &mut BarycenterState {
         self.states.entry(node).or_default()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ConstraintGroup {
+    nodes: Vec<usize>,
+    outgoing: Vec<usize>,
+    incoming: Vec<usize>,
+    incoming_count: usize,
+}
+
+impl ConstraintGroup {
+    fn new(node: usize) -> Self {
+        Self {
+            nodes: vec![node],
+            outgoing: Vec::new(),
+            incoming: Vec::new(),
+            incoming_count: 0,
+        }
+    }
+
+    fn barycenter(&self, states: &HashMap<usize, BarycenterState>) -> Option<f64> {
+        self.nodes
+            .first()
+            .and_then(|node| states.get(node))
+            .and_then(|state| state.barycenter)
+    }
+
+    fn set_barycenter(&self, states: &mut HashMap<usize, BarycenterState>, value: f64) {
+        for node in &self.nodes {
+            states.entry(*node).or_default().barycenter = Some(value);
+        }
+    }
+
+    fn reset_edges(&mut self) {
+        self.outgoing.clear();
+        self.incoming.clear();
+        self.incoming_count = 0;
+    }
+
+    fn has_outgoing(&self) -> bool {
+        !self.outgoing.is_empty()
+    }
+
+    fn has_incoming(&self) -> bool {
+        !self.incoming.is_empty()
+    }
+}
+
+fn resolve_forster_constraints(
+    graph: &LGraph,
+    layer: &mut [usize],
+    states: &mut HashMap<usize, BarycenterState>,
+) {
+    if layer.len() < 2 {
+        return;
+    }
+
+    let mut groups = layer
+        .iter()
+        .copied()
+        .map(ConstraintGroup::new)
+        .collect::<Vec<_>>();
+    if graph.in_layer_successor_constraints_between_non_dummies {
+        process_forster_constraints(graph, states, &mut groups, true);
+        apply_forster_group_order(layer, states, &groups);
+        groups = layer
+            .iter()
+            .copied()
+            .map(ConstraintGroup::new)
+            .collect::<Vec<_>>();
+    }
+    process_forster_constraints(graph, states, &mut groups, false);
+
+    apply_forster_group_order(layer, states, &groups);
+}
+
+fn apply_forster_group_order(
+    layer: &mut [usize],
+    states: &mut HashMap<usize, BarycenterState>,
+    groups: &[ConstraintGroup],
+) {
+    let mut index = 0usize;
+    for group in groups {
+        for node in &group.nodes {
+            if index < layer.len() {
+                layer[index] = *node;
+                index += 1;
+            }
+            if let Some(barycenter) = group.barycenter(states) {
+                states.entry(*node).or_default().barycenter = Some(barycenter);
+            }
+        }
+    }
+}
+
+fn process_forster_constraints(
+    graph: &LGraph,
+    states: &mut HashMap<usize, BarycenterState>,
+    groups: &mut Vec<ConstraintGroup>,
+    only_between_normal_nodes: bool,
+) {
+    build_forster_constraints_graph(graph, groups, only_between_normal_nodes);
+    while let Some((predecessor, successor)) = find_violated_forster_constraint(states, groups) {
+        handle_violated_forster_constraint(states, groups, predecessor, successor);
+    }
+}
+
+fn build_forster_constraints_graph(
+    graph: &LGraph,
+    groups: &mut [ConstraintGroup],
+    only_between_normal_nodes: bool,
+) {
+    for group in groups.iter_mut() {
+        group.reset_edges();
+    }
+
+    let index_by_node = groups
+        .iter()
+        .enumerate()
+        .flat_map(|(index, group)| group.nodes.iter().map(move |node| (*node, index)))
+        .collect::<HashMap<_, _>>();
+
+    let mut last_non_dummy_node: Option<usize> = None;
+    let mut edges = Vec::<(usize, usize)>::new();
+    for (group_index, group) in groups.iter().enumerate() {
+        let Some(node) = group.nodes.first().copied() else {
+            continue;
+        };
+
+        if only_between_normal_nodes && graph.layerless_nodes[node].kind != LNodeKind::Normal {
+            continue;
+        }
+
+        for successor in &graph.layerless_nodes[node].in_layer_successor_constraints {
+            if only_between_normal_nodes
+                && graph.layerless_nodes[*successor].kind != LNodeKind::Normal
+            {
+                continue;
+            }
+            if let Some(successor_group) = index_by_node.get(successor).copied() {
+                edges.push((group_index, successor_group));
+            }
+        }
+
+        if !only_between_normal_nodes && graph.layerless_nodes[node].kind == LNodeKind::Normal {
+            if let Some(previous) = last_non_dummy_node {
+                let previous_unit_nodes = layout_unit_nodes(graph, previous, groups);
+                let current_unit_nodes = layout_unit_nodes(graph, node, groups);
+                for previous_unit in &previous_unit_nodes {
+                    for current_unit in &current_unit_nodes {
+                        if let (Some(left), Some(right)) = (
+                            index_by_node.get(previous_unit).copied(),
+                            index_by_node.get(current_unit).copied(),
+                        ) {
+                            edges.push((left, right));
+                        }
+                    }
+                }
+            }
+            last_non_dummy_node = Some(node);
+        }
+    }
+
+    for (from, to) in edges {
+        add_forster_constraint(groups, from, to);
+    }
+}
+
+fn layout_unit_nodes(graph: &LGraph, unit: usize, groups: &[ConstraintGroup]) -> Vec<usize> {
+    groups
+        .iter()
+        .flat_map(|group| group.nodes.iter().copied())
+        .filter(|node| graph.layerless_nodes[*node].in_layer_layout_unit == Some(unit))
+        .collect::<Vec<_>>()
+}
+
+fn add_forster_constraint(groups: &mut [ConstraintGroup], from: usize, to: usize) {
+    if from == to {
+        return;
+    }
+    if !groups[from].outgoing.contains(&to) {
+        groups[from].outgoing.push(to);
+        groups[to].incoming_count += 1;
+    }
+}
+
+fn find_violated_forster_constraint(
+    states: &HashMap<usize, BarycenterState>,
+    groups: &mut [ConstraintGroup],
+) -> Option<(usize, usize)> {
+    let mut active_groups = VecDeque::new();
+    for (index, group) in groups.iter_mut().enumerate() {
+        group.incoming.clear();
+        if group.has_outgoing() && group.incoming_count == 0 {
+            active_groups.push_back(index);
+        }
+    }
+
+    while let Some(group_index) = active_groups.pop_front() {
+        if groups[group_index].has_incoming() {
+            for predecessor in groups[group_index].incoming.clone() {
+                let predecessor_barycenter = groups[predecessor].barycenter(states).unwrap_or(0.0);
+                let group_barycenter = groups[group_index].barycenter(states).unwrap_or(0.0);
+                if predecessor_barycenter as f32 == group_barycenter as f32 {
+                    if predecessor > group_index {
+                        return Some((predecessor, group_index));
+                    }
+                } else if predecessor_barycenter > group_barycenter {
+                    return Some((predecessor, group_index));
+                }
+            }
+        }
+
+        let outgoing = groups[group_index].outgoing.clone();
+        for successor in outgoing {
+            groups[successor].incoming.insert(0, group_index);
+            if groups[successor].incoming_count == groups[successor].incoming.len() {
+                active_groups.push_back(successor);
+            }
+        }
+    }
+
+    None
+}
+
+fn handle_violated_forster_constraint(
+    states: &mut HashMap<usize, BarycenterState>,
+    groups: &mut Vec<ConstraintGroup>,
+    first_group: usize,
+    second_group: usize,
+) {
+    let merged = merge_constraint_groups(states, &groups[first_group], &groups[second_group]);
+    let merged_barycenter = merged.barycenter(states);
+    let mut next = Vec::<ConstraintGroup>::with_capacity(groups.len().saturating_sub(1));
+    let mut old_to_new = vec![usize::MAX; groups.len()];
+    let mut merged_index = None;
+    let mut inserted = false;
+
+    for (index, group) in groups.iter().enumerate() {
+        if index == first_group || index == second_group {
+            continue;
+        }
+        if !inserted
+            && let (Some(group_barycenter), Some(merged_barycenter)) =
+                (group.barycenter(states), merged_barycenter)
+            && group_barycenter > merged_barycenter
+        {
+            merged_index = Some(next.len());
+            next.push(merged.clone());
+            inserted = true;
+        }
+        old_to_new[index] = next.len();
+        next.push(group.clone());
+    }
+
+    if !inserted {
+        merged_index = Some(next.len());
+        next.push(merged);
+    }
+    let merged_index = merged_index.expect("merged group should be inserted");
+    old_to_new[first_group] = merged_index;
+    old_to_new[second_group] = merged_index;
+    remap_forster_constraints(&mut next, &old_to_new);
+
+    *groups = next;
+}
+
+fn merge_constraint_groups(
+    states: &mut HashMap<usize, BarycenterState>,
+    first: &ConstraintGroup,
+    second: &ConstraintGroup,
+) -> ConstraintGroup {
+    let mut nodes = first.nodes.clone();
+    nodes.extend(second.nodes.iter().copied());
+
+    let merged = ConstraintGroup {
+        nodes,
+        outgoing: merged_outgoing_constraints(first, second),
+        incoming: Vec::new(),
+        incoming_count: 0,
+    };
+
+    let barycenter = match (first.barycenter(states), second.barycenter(states)) {
+        (Some(first), Some(second)) => Some((first + second) / 2.0),
+        (Some(first), None) => Some(first),
+        (None, Some(second)) => Some(second),
+        (None, None) => None,
+    };
+    if let Some(barycenter) = barycenter {
+        merged.set_barycenter(states, barycenter);
+    }
+
+    merged
+}
+
+fn merged_outgoing_constraints(first: &ConstraintGroup, second: &ConstraintGroup) -> Vec<usize> {
+    first
+        .outgoing
+        .iter()
+        .chain(second.outgoing.iter())
+        .copied()
+        .collect::<Vec<_>>()
+}
+
+fn remap_forster_constraints(groups: &mut [ConstraintGroup], old_to_new: &[usize]) {
+    for group in groups.iter_mut() {
+        group.outgoing = group
+            .outgoing
+            .iter()
+            .filter_map(|old_index| old_to_new.get(*old_index).copied())
+            .filter(|new_index| *new_index != usize::MAX)
+            .collect::<Vec<_>>();
+    }
+
+    for group_index in 0..groups.len() {
+        groups[group_index]
+            .outgoing
+            .retain(|successor| *successor != group_index);
+        let mut seen = HashSet::new();
+        groups[group_index]
+            .outgoing
+            .retain(|successor| seen.insert(*successor));
+        groups[group_index].incoming.clear();
+        groups[group_index].incoming_count = 0;
+    }
+
+    let edges = groups
+        .iter()
+        .enumerate()
+        .flat_map(|(from, group)| group.outgoing.iter().copied().map(move |to| (from, to)))
+        .collect::<Vec<_>>();
+    for (_, to) in edges {
+        groups[to].incoming_count += 1;
     }
 }
 
@@ -2498,7 +2853,8 @@ fn minimize_barycenter(graph: &mut LGraph) -> bool {
         graph.options.consider_model_order_strategy != OrderingStrategy::None;
 
     for run_index in 0..thoroughness {
-        let port_distributor = BarycenterPortDistributor::new(distributor_kind);
+        let port_distributor =
+            BarycenterPortDistributor::new(distributor_kind, &graph_info.current_node_order);
         let mut heuristic = BarycenterHeuristic::new(graph, random.clone(), port_distributor);
         let crossings = minimize_crossings_with_counter(
             graph,
@@ -3422,7 +3778,8 @@ mod tests {
             .iter()
             .map(|layer| layer.nodes.clone())
             .collect::<Vec<_>>();
-        let port_distributor = BarycenterPortDistributor::new(PortDistributorKind::NodeRelative);
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &order);
         let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
 
         heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
@@ -3469,7 +3826,8 @@ mod tests {
             .iter()
             .map(|layer| layer.nodes.clone())
             .collect::<Vec<_>>();
-        let mut distributor = BarycenterPortDistributor::new(PortDistributorKind::NodeRelative);
+        let mut distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &order);
         distributor.calculate_port_ranks(&graph, &order[0], PortType::Output);
         distributor.distribute_ports(&mut graph, free, PortSide::West, &order);
 
@@ -3801,7 +4159,10 @@ mod tests {
         initialize_crossing_minimization_port_ids(&mut graph);
 
         let mut graph_info = GraphInfoHolder::new(&graph);
-        let port_distributor = BarycenterPortDistributor::new(PortDistributorKind::NodeRelative);
+        let port_distributor = BarycenterPortDistributor::new(
+            PortDistributorKind::NodeRelative,
+            &graph_info.current_node_order,
+        );
         let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
 
         sweep_reducing_crossings(&mut graph, &mut graph_info, &mut heuristic, true, false);
@@ -3900,6 +4261,47 @@ mod tests {
         assert!(first_layer_order[2].starts_with("invertedPort:"));
         assert_eq!(last_layer_order[0], "foo");
         assert!(last_layer_order[1].starts_with("invertedPort:"));
+    }
+
+    #[test]
+    fn forster_constraints_restore_successor_order_after_barycenter_sort() {
+        let mut graph = prepared_graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("A-C", "A", "C"), edge("B-C", "B", "C")],
+        );
+        let a = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        let b = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "B")
+            .unwrap();
+        let c = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "C")
+            .unwrap();
+        graph.layers[0].nodes = vec![c];
+        graph.layers[1].nodes = vec![b, a];
+        graph.layerless_nodes[a]
+            .in_layer_successor_constraints
+            .push(b);
+
+        let mut order = graph
+            .layers
+            .iter()
+            .map(|layer| layer.nodes.clone())
+            .collect::<Vec<_>>();
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &order);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+
+        heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
+
+        assert_eq!(order[1], vec![a, b]);
     }
 
     #[test]
