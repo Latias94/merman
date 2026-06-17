@@ -5,7 +5,7 @@
   "status": "active",
   "updated": "2026-06-18",
   "scope_kind": "execution",
-  "problem": "Flowchart ELK now defaults to the source-backed Mermaid ELK adapter / Eclipse ELK layered port and the dedicated probe lane covers the upstream exact-call set, while broad main-matrix admission and future source-port hardening still need a separate lane.",
+  "problem": "Flowchart ELK now defaults to the source-backed Mermaid ELK adapter / Eclipse ELK layered port, the dedicated probe lane covers the upstream exact-call set, and broad SVG parity admits those probes under the source-backed backend while future source-port hardening continues.",
   "authoritative_docs": [
     {
       "role": "design",
@@ -32,7 +32,7 @@
   "gates": [
     "cargo nextest run -p merman-bindings-core render_svg_returns_svg_for_flowchart_elk",
     "cargo nextest run -p merman flowchart_elk_render",
-    "cargo nextest run -p xtask source_backed_elk_probe_matches_html_demo_fixture",
+    "cargo nextest run -p xtask source_backed_elk_admission_matches_html_demo_fixture",
     "cargo run -p xtask -- check-flowchart-elk-source-backed-probes",
     "cargo test -p xtask svg_xml_compare_skip_reason",
     "cargo fmt --check",
@@ -68,6 +68,6 @@
   "parent_workstream": "docs/workstreams/flowchart-11-15-svg-convergence/DESIGN.md",
   "continue_policy": {
     "default_action": "continue",
-    "notes": "Keep the source-backed ELK backend as the default implementation boundary. Use targeted probes and the coverage audit before broad main-matrix admission; preserve compat as an explicit alpha fallback."
+    "notes": "Keep the source-backed ELK backend as the default implementation boundary. Use targeted probes, the coverage audit, and broad Flowchart SVG parity as regression gates; preserve compat as an explicit alpha fallback outside parity admission."
   }
 }

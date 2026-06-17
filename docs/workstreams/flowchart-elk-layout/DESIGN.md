@@ -6,22 +6,23 @@ Last updated: 2026-06-17
 ## Problem
 
 `merman` now renders `flowchart-elk` and Flowchart `layout: elk` through the source-backed Mermaid
-ELK adapter / Eclipse ELK layered port by default. The upstream Mermaid ELK surface still needs a
-separate lane because broad Flowchart main-matrix admission and future upstream/user cases should be
-handled without weakening the non-ELK Flowchart parity gate.
+ELK adapter / Eclipse ELK layered port by default. The current upstream Mermaid ELK surface is
+admitted to the Flowchart SVG parity matrix under the source-backed backend, while the dedicated
+probe lane remains the focused regression gate for future upstream/user cases.
 
 ## Intent
 
 Keep the default path source-backed and deterministic. Use Mermaid and Eclipse ELK source as the
-specification, preserve the explicit compatibility fallback for alpha diagnostics, and treat broad
-main-matrix admission as a separate policy decision from the dedicated ELK probe gate.
+specification, preserve the explicit compatibility fallback for alpha diagnostics, and keep ELK
+admission centralized so `compat` is never mistaken for the mature parity path.
 
 ## Target State
 
 - Public render entry points default to the source-backed Flowchart ELK backend.
 - The dedicated ELK probe gate covers every upstream `flowchart-elk.spec.js` exact render call.
 - Duplicate layout bodies are retained as exact-call fixtures for traceability.
-- ELK fixture probes run explicitly without weakening the default non-ELK Flowchart parity matrix.
+- Admitted ELK fixtures participate in the default Flowchart parity matrix only under the
+  source-backed backend.
 - New ELK behavior is ported from Mermaid / Eclipse ELK source rather than fixture fitting.
 
 ## Scope
@@ -53,7 +54,7 @@ main-matrix admission as a separate policy decision from the dedicated ELK probe
 | Default source-backed path | `LayoutOptions::default`, headless defaults, CLI, bindings | Source-backed backend is selected by default; `compat` remains explicit fallback. |
 | Dedicated probe gate | 63 admitted fixtures from the ELK spec plus the HTML demo | `cargo run -p xtask -- check-flowchart-elk-source-backed-probes` must stay green. |
 | Coverage audit | 63 upstream exact calls / 57 unique layout bodies | `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` tracks exact-call and unique-body coverage. |
-| Broad matrix policy | Flowchart `compare-all-svgs` default path | Decide separately when ELK probe fixtures should move into the broad main matrix. |
+| Broad matrix policy | Flowchart `compare-all-svgs` default path | Source-backed ELK probes are admitted by default; explicit `compat` runs remain outside parity admission. |
 
 ## Starting Assumptions
 
@@ -69,7 +70,7 @@ Prefer explicit, source-backed growth:
 
 1. carry Flowchart direction and label data through the Mermaid adapter boundary;
 2. keep the compatibility fallback explicit and out of the default path;
-3. use targeted probes before broad main-matrix admission;
+3. keep targeted probes as the focused regression gate after broad matrix admission;
 4. port missing semantics from Mermaid / Eclipse ELK source.
 
 ## Closeout Condition
@@ -77,6 +78,6 @@ Prefer explicit, source-backed growth:
 This lane can close when:
 
 - the dedicated probe gate and coverage audit stay green,
-- broad main-matrix admission policy is decided,
+- broad main-matrix admission stays source-backed and green,
 - duplicate exact-call fixtures remain traceable without being mistaken for unique layout gaps,
 - and future ELK regressions have source-backed diagnostics.

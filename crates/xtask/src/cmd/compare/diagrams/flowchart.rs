@@ -322,7 +322,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             );
             if !admitted
                 && !force_elk_fixture
-                && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                && let Some(reason) = crate::cmd::flowchart_elk_svg_compare_skip_reason(
+                    stem,
+                    include_elk_probes,
+                    flowchart_elk_backend,
+                )
             {
                 skipped.push(format!("skipped {stem}: {reason}"));
                 continue;
@@ -1184,7 +1188,7 @@ mod tests {
     };
 
     #[test]
-    fn source_backed_elk_probe_matches_html_demo_fixture() {
+    fn source_backed_elk_admission_matches_html_demo_fixture() {
         let out_path = crate::cmd::target_root()
             .join("compare")
             .join("xtask-tests")
@@ -1193,7 +1197,6 @@ mod tests {
         compare_flowchart_svgs(vec![
             "--filter".to_string(),
             "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
-            "--include-elk-probes".to_string(),
             "--flowchart-elk-backend".to_string(),
             "source-ported".to_string(),
             "--check-dom".to_string(),
@@ -1204,7 +1207,7 @@ mod tests {
             "--out".to_string(),
             out_path.display().to_string(),
         ])
-        .expect("source-backed ELK probe should match the pinned HTML demo fixture");
+        .expect("source-backed ELK admission should match the pinned HTML demo fixture");
 
         let report = std::fs::read_to_string(&out_path).expect("probe report should be written");
         assert!(report.contains("All fixtures matched."));

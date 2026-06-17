@@ -115,8 +115,8 @@ Legend:
 7. **Flowchart `layout=elk` parity**
    - Source-backed Flowchart ELK is the default public render path and the dedicated probe gate
      covers every exact upstream `flowchart-elk.spec.js` render call and all 57 unique layout
-     bodies. Remaining work is broad main-matrix admission policy and continued hardening from new
-     upstream or user-reported cases.
+     bodies; broad SVG parity admits those probes under the source-backed backend. Remaining work
+     is continued hardening from new upstream or user-reported cases.
    - Risk: M/H (large surface area, but the current Mermaid spec body coverage is source-backed).
 
 8. **ZenUML “practical” compatibility expansion**

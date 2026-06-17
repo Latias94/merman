@@ -46,8 +46,8 @@ Notes:
   `svg/g[6]/path[1]`.
 - 2026-06-15: The source-backed P5 router now matches Eclipse ELK's actual `PortType.OUTPUT`
   semantics by treating ports with outgoing edges as output ports, independent of the stored
-  imported port marker. The explicit HTML ELK demo probe now matches in the source-backed lane;
-  explicit admission still keeps probe fixtures out of the broad parity matrix by policy.
+  imported port marker. At the time, the explicit HTML ELK demo probe matched in the source-backed
+  lane while broad parity admission was still held back by policy.
 - 2026-06-17: Public render paths and xtask diagnostics now default Flowchart ELK to the
   source-backed backend.
 - 2026-06-18: The dedicated probe gate now covers all 63 upstream exact render calls from 57 unique
@@ -65,7 +65,7 @@ Notes:
 - [x] Import and probe the upstream ELK body set against the source-backed lane before broad parity
   admission.
 - [x] Import the six duplicate exact-call fixtures for traceability.
-- [ ] Decide broad Flowchart matrix admission for the 63 source-backed probe fixtures.
+- [x] Admit the 63 source-backed probe fixtures to the broad Flowchart SVG parity matrix.
 
 Notes:
 
@@ -77,3 +77,5 @@ Notes:
 - 2026-06-18: Duplicate exact-call fixtures are imported and admitted to the source-backed probe
   lane; coverage audit reports 63 dedicated fixtures, 63 upstream SVGs, and 0 duplicate-covered
   gaps.
+- 2026-06-18: Broad Flowchart SVG parity now admits the registered ELK probes by default when the
+  active backend is source-backed. Explicit `compat` runs remain outside parity admission.

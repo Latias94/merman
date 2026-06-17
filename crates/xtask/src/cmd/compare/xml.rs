@@ -430,7 +430,11 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                         flowchart_elk_backend,
                     );
                     if !admitted
-                        && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                        && let Some(reason) = crate::cmd::flowchart_elk_svg_compare_skip_reason(
+                            stem,
+                            include_elk_probes,
+                            flowchart_elk_backend,
+                        )
                     {
                         skipped.push((format!("{diagram}/{stem}"), reason));
                         continue;
@@ -691,17 +695,13 @@ mod tests {
             crate::cmd::flowchart_elk_svg_parity_skip_reason(
                 "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
             ),
-            Some(
-                "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes"
-            )
+            None
         );
         assert_eq!(
             crate::cmd::flowchart_elk_svg_parity_skip_reason(
                 "upstream_html_demos_flowchart_elk_flowchart_elk_001",
             ),
-            Some(
-                "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes"
-            )
+            None
         );
         assert_eq!(
             svg_xml_compare_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
@@ -750,7 +750,6 @@ mod tests {
             "flowchart".to_string(),
             "--filter".to_string(),
             "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
-            "--include-elk-probes".to_string(),
             "--check".to_string(),
             "--dom-mode".to_string(),
             "parity".to_string(),

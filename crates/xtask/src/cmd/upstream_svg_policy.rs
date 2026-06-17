@@ -77,8 +77,7 @@ fn normalized_fixture_stem(name_or_stem: &str) -> &str {
 }
 
 pub(crate) fn flowchart_elk_svg_parity_admitted(name_or_stem: &str) -> bool {
-    let _ = normalized_fixture_stem(name_or_stem);
-    false
+    flowchart_elk_svg_source_backed_probe_admitted(name_or_stem)
 }
 
 pub(crate) fn flowchart_elk_svg_source_backed_probe_stems() -> &'static [&'static str] {
@@ -119,10 +118,9 @@ pub(crate) fn flowchart_elk_svg_compare_admitted(
     include_elk_probes: bool,
     backend: merman_render::FlowchartElkBackend,
 ) -> bool {
-    flowchart_elk_svg_parity_admitted(name_or_stem)
-        || (include_elk_probes
-            && backend == merman_render::FlowchartElkBackend::SourcePorted
-            && flowchart_elk_svg_source_backed_probe_admitted(name_or_stem))
+    let admitted = flowchart_elk_svg_parity_admitted(name_or_stem)
+        || (include_elk_probes && flowchart_elk_svg_source_backed_probe_admitted(name_or_stem));
+    admitted && backend == merman_render::FlowchartElkBackend::SourcePorted
 }
 
 pub(crate) fn flowchart_elk_svg_parity_skip_reason(name_or_stem: &str) -> Option<&'static str> {
@@ -133,6 +131,26 @@ pub(crate) fn flowchart_elk_svg_parity_skip_reason(name_or_stem: &str) -> Option
             "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes",
         )
     }
+}
+
+pub(crate) fn flowchart_elk_svg_compare_skip_reason(
+    name_or_stem: &str,
+    include_elk_probes: bool,
+    backend: merman_render::FlowchartElkBackend,
+) -> Option<&'static str> {
+    if flowchart_elk_svg_compare_admitted(name_or_stem, include_elk_probes, backend) {
+        return None;
+    }
+
+    let admitted_under_source_backed = flowchart_elk_svg_parity_admitted(name_or_stem)
+        || (include_elk_probes && flowchart_elk_svg_source_backed_probe_admitted(name_or_stem));
+    if admitted_under_source_backed && backend != merman_render::FlowchartElkBackend::SourcePorted {
+        return Some(
+            "Flowchart ELK SVG parity admission requires the source-backed ELK backend; use `--flowchart-elk-backend source-ported` or omit the compat override",
+        );
+    }
+
+    flowchart_elk_svg_parity_skip_reason(name_or_stem)
 }
 
 pub(crate) fn upstream_svg_baseline_skip_reason(
@@ -158,9 +176,10 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
 mod tests {
     use super::{
         default_flowchart_elk_backend, flowchart_elk_backend_name,
-        flowchart_elk_svg_compare_admitted, flowchart_elk_svg_parity_admitted,
-        flowchart_elk_svg_parity_skip_reason, flowchart_elk_svg_source_backed_probe_admitted,
-        parse_flowchart_elk_backend, upstream_svg_baseline_skip_reason,
+        flowchart_elk_svg_compare_admitted, flowchart_elk_svg_compare_skip_reason,
+        flowchart_elk_svg_parity_admitted, flowchart_elk_svg_parity_skip_reason,
+        flowchart_elk_svg_source_backed_probe_admitted, parse_flowchart_elk_backend,
+        upstream_svg_baseline_skip_reason,
     };
 
     #[test]
@@ -360,32 +379,28 @@ mod tests {
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063"
         ));
-        assert!(!flowchart_elk_svg_parity_admitted(
+        assert!(flowchart_elk_svg_parity_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001"
         ));
         assert_eq!(
             flowchart_elk_svg_parity_skip_reason(
                 "upstream_html_demos_flowchart_elk_flowchart_elk_001"
             ),
-            Some(
-                "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes"
-            )
+            None
         );
         assert_eq!(
             flowchart_elk_svg_parity_skip_reason(
                 "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001"
             ),
-            Some(
-                "Flowchart ELK fixture is not admitted to SVG parity yet; add it to the dedicated ELK layout lane after a targeted probe passes"
-            )
+            None
         );
     }
 
     #[test]
-    fn flowchart_elk_svg_probe_admission_requires_source_ported_backend() {
+    fn flowchart_elk_svg_compare_admission_requires_source_ported_backend() {
         let stem = "upstream_html_demos_flowchart_elk_flowchart_elk_001";
 
-        assert!(!flowchart_elk_svg_compare_admitted(
+        assert!(flowchart_elk_svg_compare_admitted(
             stem,
             false,
             merman_render::FlowchartElkBackend::SourcePorted
@@ -400,6 +415,16 @@ mod tests {
             true,
             merman_render::FlowchartElkBackend::SourcePorted
         ));
+        assert_eq!(
+            flowchart_elk_svg_compare_skip_reason(
+                stem,
+                false,
+                merman_render::FlowchartElkBackend::Compat
+            ),
+            Some(
+                "Flowchart ELK SVG parity admission requires the source-backed ELK backend; use `--flowchart-elk-backend source-ported` or omit the compat override"
+            )
+        );
     }
 
     #[test]
