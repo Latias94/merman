@@ -249,6 +249,7 @@ fn append_source_ported_mermaid_add_vertices_dom_order(
         .filter(|node| node.parent.as_deref() == parent_id)
     {
         if node.kind == elk::NodeKind::Group {
+            out.push(node.id.clone());
             append_source_ported_mermaid_add_vertices_dom_order(graph, Some(node.id.as_str()), out);
         } else {
             out.push(node.id.clone());
@@ -1289,7 +1290,10 @@ mod tests {
 
         let ids = source_ported_mermaid_add_vertices_dom_order(&graph);
         let actual: Vec<&str> = ids.iter().map(String::as_str).collect();
-        assert_eq!(actual, vec!["E", "F", "C", "D", "A", "B", "G"]);
+        assert_eq!(
+            actual,
+            vec!["bar", "E", "F", "foo", "C", "D", "A", "B", "G"]
+        );
     }
 
     #[test]

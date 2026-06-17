@@ -36,6 +36,15 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_76_elk_handle_unicode_encoded_character_with_html_labels_true_035",
     "upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036",
     "upstream_cypress_flowchart_elk_spec_1433_elk_should_render_a_titled_flowchart_with_titletopmargin_se_039",
+    "upstream_cypress_flowchart_elk_spec_with_styling_and_classes_040",
+    "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_041",
+    "upstream_cypress_flowchart_elk_spec_new_line_in_node_and_formatted_edge_label_042",
+    "upstream_cypress_flowchart_elk_spec_sub_graphs_and_markdown_strings_043",
+    "upstream_cypress_flowchart_elk_spec_with_styling_and_classes_044",
+    "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_045",
+    "upstream_cypress_flowchart_elk_spec_new_line_in_node_and_formatted_edge_label_046",
+    "upstream_cypress_flowchart_elk_spec_wrapping_long_text_with_a_new_line_047",
+    "upstream_cypress_flowchart_elk_spec_sub_graphs_and_markdown_strings_048",
     "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037",
     "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038",
     "upstream_cypress_flowchart_elk_spec_6080_should_handle_diamond_shape_intersections_050",
@@ -229,6 +238,33 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_1433_elk_should_render_a_titled_flowchart_with_titletopmargin_se_039"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_with_styling_and_classes_040"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_041"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_new_line_in_node_and_formatted_edge_label_042"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_sub_graphs_and_markdown_strings_043"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_with_styling_and_classes_044"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_045"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_new_line_in_node_and_formatted_edge_label_046"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_wrapping_long_text_with_a_new_line_047"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_sub_graphs_and_markdown_strings_048"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037"

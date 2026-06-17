@@ -187,32 +187,48 @@ fn render_flowchart_elk_subgraphs(
     let _g_clusters = detail_guard(session.timing_enabled, &mut session.details.clusters);
 
     let mut clusters_to_draw: Vec<&LayoutCluster> = ctx
-        .subgraph_order
-        .iter()
+        .dom_node_order_by_root
+        .get("")
+        .into_iter()
+        .flat_map(|ids| ids.iter().map(String::as_str))
         .filter_map(|id| {
-            let sg = ctx.subgraphs_by_id.get(*id)?;
+            let sg = ctx.subgraphs_by_id.get(id)?;
             if sg.nodes.is_empty() && !flowchart_elk_renders_empty_subgraph_as_cluster(ctx) {
                 return None;
             }
-            ctx.layout_clusters_by_id.get(*id).copied()
+            ctx.layout_clusters_by_id.get(id).copied()
         })
         .collect();
 
-    clusters_to_draw.sort_by(|a, b| {
-        let a_idx = ctx
+    if clusters_to_draw.is_empty() {
+        clusters_to_draw = ctx
             .subgraph_order
             .iter()
-            .position(|id| *id == a.id.as_str())
-            .unwrap_or(usize::MAX);
-        let b_idx = ctx
-            .subgraph_order
-            .iter()
-            .position(|id| *id == b.id.as_str())
-            .unwrap_or(usize::MAX);
-        a_idx
-            .cmp(&b_idx)
-            .then_with(|| a.id.as_str().cmp(b.id.as_str()))
-    });
+            .filter_map(|id| {
+                let sg = ctx.subgraphs_by_id.get(*id)?;
+                if sg.nodes.is_empty() && !flowchart_elk_renders_empty_subgraph_as_cluster(ctx) {
+                    return None;
+                }
+                ctx.layout_clusters_by_id.get(*id).copied()
+            })
+            .collect();
+
+        clusters_to_draw.sort_by(|a, b| {
+            let a_idx = ctx
+                .subgraph_order
+                .iter()
+                .position(|id| *id == a.id.as_str())
+                .unwrap_or(usize::MAX);
+            let b_idx = ctx
+                .subgraph_order
+                .iter()
+                .position(|id| *id == b.id.as_str())
+                .unwrap_or(usize::MAX);
+            a_idx
+                .cmp(&b_idx)
+                .then_with(|| a.id.as_str().cmp(b.id.as_str()))
+        });
+    }
 
     if clusters_to_draw.is_empty() {
         out.push_str(r#"<g class="subgraphs"/>"#);
