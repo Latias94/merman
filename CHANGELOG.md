@@ -35,6 +35,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Fixed WASM size-budget builds after the `rand 0.10` upgrade by enabling the `getrandom 0.4`
   `wasm_js` backend for RoughJS host-random builds, and made the xtask WASM budget tooling respect
   `CARGO_TARGET_DIR` when locating build artifacts.
+- Fixed SVG parity CI after secure config hardening by making xtask compare commands share the
+  trusted upstream-baseline site config that keeps legacy `themeVariables` init/frontmatter
+  overrides available without changing production defaults.
 
 ### Security
 

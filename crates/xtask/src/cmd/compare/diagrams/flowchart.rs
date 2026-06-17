@@ -5,7 +5,7 @@ use crate::cmd::compare::{
     DEFAULT_LABEL_DELTA_REPORT_LIMIT, DEFAULT_ROOT_DELTA_REPORT_LIMIT, LabelDeltaReportLimit,
     LabelMetricDelta, RootDelta, RootDeltaReportLimit, collect_label_metric_deltas,
     parse_label_delta_report_limit, parse_root_attrs, parse_root_delta_report_limit,
-    write_label_deltas_report, write_root_deltas_report,
+    svg_compare_engine_with_site_config, write_label_deltas_report, write_root_deltas_report,
 };
 use crate::svgdom;
 use regex::Regex;
@@ -117,9 +117,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mode = svgdom::DomMode::parse(&dom_mode);
     let should_report_root = report_root || mode == svgdom::DomMode::ParityRoot;
 
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
+    let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let mut layout_opts = merman_render::LayoutOptions::default();
     if matches!(
         text_measurer.as_str(),

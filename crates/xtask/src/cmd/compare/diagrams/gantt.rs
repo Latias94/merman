@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
-use super::super::svg_compare_layout_opts;
+use super::super::{svg_compare_engine, svg_compare_layout_opts};
 
 pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -92,7 +92,7 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             .unwrap_or(480);
 
     let engine =
-        merman::Engine::new().with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes));
+        svg_compare_engine().with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes));
 
     let mut report = String::new();
     let _ = writeln!(
