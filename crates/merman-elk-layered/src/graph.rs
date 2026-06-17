@@ -354,11 +354,37 @@ pub struct SelfLoopHolder {
 pub struct SelfHyperLoop {
     pub ports: Vec<SelfLoopPort>,
     pub edges: Vec<SelfLoopEdge>,
+    pub labels: Option<SelfHyperLoopLabels>,
     pub self_loop_type: Option<SelfLoopType>,
     pub leftmost_port: Option<usize>,
     pub rightmost_port: Option<usize>,
     pub occupied_sides: Vec<PortSide>,
     pub routing_slots: [usize; 5],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelfHyperLoopLabels {
+    pub id: Option<usize>,
+    pub label_refs: Vec<SelfLoopLabelRef>,
+    pub size: LSize,
+    pub position: LPoint,
+    pub side: Option<PortSide>,
+    pub alignment: Option<SelfLoopLabelAlignment>,
+    pub alignment_reference_port: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelfLoopLabelRef {
+    pub edge: usize,
+    pub label: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfLoopLabelAlignment {
+    Center,
+    Left,
+    Right,
+    Top,
 }
 
 #[derive(Debug, Clone, PartialEq)]

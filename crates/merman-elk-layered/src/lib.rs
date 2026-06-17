@@ -28,8 +28,9 @@ pub use configurator::{LayeredSpacings, configure_graph_properties, configured_o
 pub use graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphProperties, LGraph, LLabel,
     LMargin, LNode, LNodeKind, LPadding, LPoint, LPort, LSize, LabelSide, Layer, LayeredEdge,
-    PortRef, PortSide, PortType, SelfHyperLoop, SelfLoopEdge, SelfLoopHolder, SelfLoopPort,
-    SelfLoopType, create_external_port_dummy, reverse_edge,
+    PortRef, PortSide, PortType, SelfHyperLoop, SelfHyperLoopLabels, SelfLoopEdge, SelfLoopHolder,
+    SelfLoopLabelAlignment, SelfLoopLabelRef, SelfLoopPort, SelfLoopType,
+    create_external_port_dummy, reverse_edge,
 };
 pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,

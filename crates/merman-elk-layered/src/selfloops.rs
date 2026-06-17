@@ -10,8 +10,9 @@
 use std::collections::VecDeque;
 
 use crate::graph::{
-    LGraph, LMargin, LNodeKind, LPoint, PortRef, PortSide, SelfHyperLoop, SelfLoopEdge,
-    SelfLoopHolder, SelfLoopPort, SelfLoopType,
+    LGraph, LMargin, LNodeKind, LPoint, LSize, PortRef, PortSide, SelfHyperLoop,
+    SelfHyperLoopLabels, SelfLoopEdge, SelfLoopHolder, SelfLoopLabelAlignment, SelfLoopLabelRef,
+    SelfLoopPort, SelfLoopType,
 };
 use crate::options::SelfLoopDistributionStrategy;
 use crate::p5edges::orthogonal::{HyperEdgeGraph, HyperEdgeSegment, break_non_critical_cycles};
@@ -46,17 +47,19 @@ pub fn restore_self_loop_ports(graph: &mut LGraph) {
         if holder.ports_hidden {
             restore_hidden_ports(graph, holder);
         }
-        determine_loop_routes(graph, holder);
-        assign_routing_slots(graph, holder);
     }
     graph.self_loop_holders = holders;
 }
 
 pub fn route_self_loops(graph: &mut LGraph) {
-    let holders = graph.self_loop_holders.clone();
-    for holder in &holders {
+    let mut holders = std::mem::take(&mut graph.self_loop_holders);
+    for holder in &mut holders {
+        determine_loop_routes(graph, holder);
+        place_self_loop_labels(graph, holder);
+        assign_routing_slots(graph, holder);
         route_self_loop_holder(graph, holder);
     }
+    graph.self_loop_holders = holders;
 }
 
 pub fn postprocess_self_loops(graph: &mut LGraph) {
@@ -67,6 +70,9 @@ pub fn postprocess_self_loops(graph: &mut LGraph) {
             for sl_edge in &hyper_loop.edges {
                 reattach_self_loop_edge(graph, holder.node, sl_edge);
                 offset_edge_bend_points(graph, sl_edge.edge, node_position);
+            }
+            if let Some(labels) = &hyper_loop.labels {
+                offset_self_loop_label_positions(graph, labels, node_position);
             }
         }
     }
@@ -103,7 +109,7 @@ fn install_self_loop_holder(graph: &LGraph, node: usize) -> SelfLoopHolder {
         });
     }
 
-    let hyper_loops = initialize_hyper_loops(ports, edges);
+    let hyper_loops = initialize_hyper_loops(graph, ports, edges);
 
     SelfLoopHolder {
         node,
@@ -135,6 +141,7 @@ fn port_had_only_self_loops(graph: &LGraph, node: usize, port: usize) -> bool {
 }
 
 fn initialize_hyper_loops(
+    graph: &LGraph,
     ports: Vec<SelfLoopPort>,
     edges: Vec<SelfLoopEdge>,
 ) -> Vec<SelfHyperLoop> {
@@ -189,6 +196,7 @@ fn initialize_hyper_loops(
         hyper_loops.push(SelfHyperLoop {
             ports: hyper_ports,
             edges: hyper_edges,
+            labels: None,
             self_loop_type: None,
             leftmost_port: None,
             rightmost_port: None,
@@ -197,7 +205,68 @@ fn initialize_hyper_loops(
         });
     }
 
+    for hyper_loop in &mut hyper_loops {
+        initialize_self_hyper_loop_labels(graph, hyper_loop);
+    }
+
     hyper_loops
+}
+
+fn initialize_self_hyper_loop_labels(graph: &LGraph, hyper_loop: &mut SelfHyperLoop) {
+    let mut label_refs = Vec::new();
+    let mut size = LSize::default();
+    let label_spacing = graph.options.spacing.label_label;
+    let horizontal_layout = !graph.options.direction.is_vertical();
+
+    for sl_edge in &hyper_loop.edges {
+        for (label_index, label) in graph.edges[sl_edge.edge].labels.iter().enumerate() {
+            label_refs.push(SelfLoopLabelRef {
+                edge: sl_edge.edge,
+                label: label_index,
+            });
+            update_self_hyper_loop_label_size(
+                &mut size,
+                label.size,
+                label_refs.len(),
+                label_spacing,
+                horizontal_layout,
+            );
+        }
+    }
+
+    if !label_refs.is_empty() {
+        hyper_loop.labels = Some(SelfHyperLoopLabels {
+            id: None,
+            label_refs,
+            size,
+            position: LPoint::default(),
+            side: None,
+            alignment: None,
+            alignment_reference_port: None,
+        });
+    }
+}
+
+fn update_self_hyper_loop_label_size(
+    size: &mut LSize,
+    label_size: LSize,
+    label_count: usize,
+    label_spacing: f64,
+    horizontal_layout: bool,
+) {
+    if horizontal_layout {
+        size.width = size.width.max(label_size.width);
+        size.height += label_size.height;
+        if label_count > 1 {
+            size.height += label_spacing;
+        }
+    } else {
+        size.width += label_size.width;
+        size.height = size.height.max(label_size.height);
+        if label_count > 1 {
+            size.width += label_spacing;
+        }
+    }
 }
 
 fn hide_self_loop_edges(graph: &mut LGraph, holder: &SelfLoopHolder) {
@@ -983,6 +1052,241 @@ fn self_loop_type_from_sides(sides: &[PortSide]) -> Option<SelfLoopType> {
     }
 }
 
+fn place_self_loop_labels(graph: &mut LGraph, holder: &mut SelfLoopHolder) {
+    assign_label_side_and_alignment(graph, holder);
+    for hyper_loop in &mut holder.hyper_loops {
+        compute_label_coordinates(graph, holder.node, hyper_loop);
+    }
+}
+
+fn assign_label_side_and_alignment(graph: &LGraph, holder: &mut SelfLoopHolder) {
+    for hyper_loop in &mut holder.hyper_loops {
+        if hyper_loop.labels.is_none() {
+            continue;
+        }
+
+        let Some(loop_type) = hyper_loop.self_loop_type else {
+            continue;
+        };
+
+        match loop_type {
+            SelfLoopType::OneSide => {
+                let Some(loop_side) = hyper_loop.occupied_sides.first().copied().or_else(|| {
+                    hyper_loop
+                        .ports
+                        .first()
+                        .map(|port| graph.layerless_nodes[holder.node].ports[port.port].side)
+                }) else {
+                    continue;
+                };
+                assign_one_sided_label_side_and_alignment(
+                    graph,
+                    holder.node,
+                    hyper_loop,
+                    loop_side,
+                );
+            }
+            SelfLoopType::TwoSidesCorner => {
+                assign_two_sides_corner_label_side_and_alignment(graph, holder.node, hyper_loop);
+            }
+            SelfLoopType::TwoSidesOpposing | SelfLoopType::ThreeSides => {
+                assign_two_sides_opposing_and_three_sides_label_side_and_alignment(hyper_loop);
+            }
+            SelfLoopType::FourSides => {
+                assign_four_sides_label_side_and_alignment(graph, holder.node, hyper_loop);
+            }
+        }
+    }
+}
+
+fn assign_one_sided_label_side_and_alignment(
+    graph: &LGraph,
+    node: usize,
+    hyper_loop: &mut SelfHyperLoop,
+    loop_side: PortSide,
+) {
+    match loop_side {
+        PortSide::East | PortSide::West => {
+            let mut topmost_port = hyper_loop.leftmost_port;
+            if let (Some(left), Some(right)) = (hyper_loop.leftmost_port, hyper_loop.rightmost_port)
+                && graph.layerless_nodes[node].ports[right].position.y
+                    < graph.layerless_nodes[node].ports[left].position.y
+            {
+                topmost_port = Some(right);
+            }
+            assign_label_side_and_alignment_to_loop(
+                hyper_loop,
+                loop_side,
+                SelfLoopLabelAlignment::Top,
+                topmost_port,
+            );
+        }
+        PortSide::North | PortSide::South => {
+            assign_label_side_and_alignment_to_loop(
+                hyper_loop,
+                loop_side,
+                SelfLoopLabelAlignment::Center,
+                None,
+            );
+        }
+        PortSide::Undefined => {}
+    }
+}
+
+fn assign_two_sides_corner_label_side_and_alignment(
+    graph: &LGraph,
+    node: usize,
+    hyper_loop: &mut SelfHyperLoop,
+) {
+    let (Some(leftmost_port), Some(rightmost_port)) =
+        (hyper_loop.leftmost_port, hyper_loop.rightmost_port)
+    else {
+        return;
+    };
+    let leftmost_side = graph.layerless_nodes[node].ports[leftmost_port].side;
+    let rightmost_side = graph.layerless_nodes[node].ports[rightmost_port].side;
+
+    if leftmost_side == PortSide::North {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::North,
+            SelfLoopLabelAlignment::Left,
+            Some(leftmost_port),
+        );
+    } else if rightmost_side == PortSide::North {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::North,
+            SelfLoopLabelAlignment::Right,
+            Some(rightmost_port),
+        );
+    } else if leftmost_side == PortSide::South {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::South,
+            SelfLoopLabelAlignment::Right,
+            Some(leftmost_port),
+        );
+    } else if rightmost_side == PortSide::South {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::South,
+            SelfLoopLabelAlignment::Left,
+            Some(rightmost_port),
+        );
+    }
+}
+
+fn assign_two_sides_opposing_and_three_sides_label_side_and_alignment(
+    hyper_loop: &mut SelfHyperLoop,
+) {
+    if !hyper_loop.occupied_sides.contains(&PortSide::North) {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::South,
+            SelfLoopLabelAlignment::Center,
+            None,
+        );
+    } else if !hyper_loop.occupied_sides.contains(&PortSide::South) {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::North,
+            SelfLoopLabelAlignment::Center,
+            None,
+        );
+    } else if !hyper_loop.occupied_sides.contains(&PortSide::West) {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::North,
+            SelfLoopLabelAlignment::Left,
+            hyper_loop.leftmost_port,
+        );
+    } else if !hyper_loop.occupied_sides.contains(&PortSide::East) {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::North,
+            SelfLoopLabelAlignment::Right,
+            hyper_loop.rightmost_port,
+        );
+    }
+}
+
+fn assign_four_sides_label_side_and_alignment(
+    graph: &LGraph,
+    node: usize,
+    hyper_loop: &mut SelfHyperLoop,
+) {
+    let (Some(leftmost_port), Some(rightmost_port)) =
+        (hyper_loop.leftmost_port, hyper_loop.rightmost_port)
+    else {
+        return;
+    };
+    let leftmost_side = graph.layerless_nodes[node].ports[leftmost_port].side;
+    let rightmost_side = graph.layerless_nodes[node].ports[rightmost_port].side;
+
+    if leftmost_side == PortSide::North || rightmost_side == PortSide::North {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::South,
+            SelfLoopLabelAlignment::Center,
+            None,
+        );
+    } else {
+        assign_label_side_and_alignment_to_loop(
+            hyper_loop,
+            PortSide::North,
+            SelfLoopLabelAlignment::Center,
+            None,
+        );
+    }
+}
+
+fn assign_label_side_and_alignment_to_loop(
+    hyper_loop: &mut SelfHyperLoop,
+    side: PortSide,
+    alignment: SelfLoopLabelAlignment,
+    alignment_reference_port: Option<usize>,
+) {
+    if let Some(labels) = &mut hyper_loop.labels {
+        labels.side = Some(side);
+        labels.alignment = Some(alignment);
+        labels.alignment_reference_port = alignment_reference_port;
+    }
+}
+
+fn compute_label_coordinates(graph: &LGraph, node: usize, hyper_loop: &mut SelfHyperLoop) {
+    let Some(labels) = &mut hyper_loop.labels else {
+        return;
+    };
+    let Some(alignment) = labels.alignment else {
+        return;
+    };
+
+    match alignment {
+        SelfLoopLabelAlignment::Center => {
+            labels.position.x = (graph.layerless_nodes[node].size.width - labels.size.width) / 2.0;
+        }
+        SelfLoopLabelAlignment::Left => {
+            if let Some(port) = labels.alignment_reference_port {
+                let port_data = &graph.layerless_nodes[node].ports[port];
+                labels.position.x = port_data.position.x + port_data.anchor.x;
+            }
+        }
+        SelfLoopLabelAlignment::Right => {
+            if let Some(port) = labels.alignment_reference_port {
+                let port_data = &graph.layerless_nodes[node].ports[port];
+                labels.position.x = port_data.position.x + port_data.anchor.x - labels.size.width;
+            }
+        }
+        SelfLoopLabelAlignment::Top => {
+            if let Some(port) = labels.alignment_reference_port {
+                let port_data = &graph.layerless_nodes[node].ports[port];
+                labels.position.y = port_data.position.y + port_data.anchor.y;
+            }
+        }
+    }
+}
+
 fn determine_loop_routes(graph: &LGraph, holder: &mut SelfLoopHolder) {
     let port_penalties = compute_port_penalties(graph, holder.node);
 
@@ -1294,31 +1598,101 @@ fn compute_occupied_sides(graph: &LGraph, node: usize, hyper_loop: &mut SelfHype
 }
 
 fn assign_routing_slots(graph: &mut LGraph, holder: &mut SelfLoopHolder) {
-    let mut slot_graph = create_self_loop_crossing_graph(holder);
+    let label_crossing_matrix = compute_self_loop_label_crossing_matrix(holder);
     let activity_over_ports = compute_loop_activity(graph, holder);
+    let mut slot_graph =
+        create_self_loop_crossing_graph(holder, &activity_over_ports, &label_crossing_matrix);
 
     break_non_critical_cycles(&mut slot_graph, &mut graph.random);
     assign_raw_routing_slots_to_segments(&mut slot_graph);
     assign_raw_routing_slots_to_loops(holder, &slot_graph);
-    shift_slots_towards_node(graph, holder, &activity_over_ports);
+    shift_slots_towards_node(graph, holder, &activity_over_ports, &label_crossing_matrix);
 }
 
-fn create_self_loop_crossing_graph(holder: &SelfLoopHolder) -> HyperEdgeGraph {
-    let port_count = holder
-        .hyper_loops
-        .iter()
-        .flat_map(|hyper_loop| {
-            hyper_loop
-                .ports
-                .iter()
-                .map(|port| port.port)
-                .chain(hyper_loop.leftmost_port)
-                .chain(hyper_loop.rightmost_port)
-        })
-        .max()
-        .map(|port| port + 1)
-        .unwrap_or(0);
-    let activity_over_ports = compute_loop_activity_for_port_count(holder, port_count);
+fn compute_self_loop_label_crossing_matrix(holder: &mut SelfLoopHolder) -> Vec<Vec<bool>> {
+    let mut label_id = 0usize;
+    for hyper_loop in &mut holder.hyper_loops {
+        if let Some(labels) = &mut hyper_loop.labels {
+            labels.id = Some(label_id);
+            label_id += 1;
+        }
+    }
+
+    let mut matrix = vec![vec![false; label_id]; label_id];
+    for first in 0..holder.hyper_loops.len().saturating_sub(1) {
+        for second in (first + 1)..holder.hyper_loops.len() {
+            if self_loop_labels_overlap(&holder.hyper_loops[first], &holder.hyper_loops[second])
+                && let (Some(first_id), Some(second_id)) = (
+                    holder.hyper_loops[first]
+                        .labels
+                        .as_ref()
+                        .and_then(|labels| labels.id),
+                    holder.hyper_loops[second]
+                        .labels
+                        .as_ref()
+                        .and_then(|labels| labels.id),
+                )
+            {
+                matrix[first_id][second_id] = true;
+                matrix[second_id][first_id] = true;
+            }
+        }
+    }
+
+    matrix
+}
+
+fn self_loop_labels_overlap(first: &SelfHyperLoop, second: &SelfHyperLoop) -> bool {
+    let (Some(first_labels), Some(second_labels)) = (&first.labels, &second.labels) else {
+        return false;
+    };
+    let (Some(first_side), Some(second_side)) = (first_labels.side, second_labels.side) else {
+        return false;
+    };
+    if first_side != second_side || matches!(first_side, PortSide::East | PortSide::West) {
+        return false;
+    }
+
+    let first_start = first_labels.position.x;
+    let first_end = first_start + first_labels.size.width;
+    let second_start = second_labels.position.x;
+    let second_end = second_start + second_labels.size.width;
+
+    first_start <= second_end && first_end >= second_start
+}
+
+fn self_loop_label_ids(
+    holder: &SelfLoopHolder,
+    first: usize,
+    second: usize,
+) -> Option<(usize, usize)> {
+    Some((
+        holder.hyper_loops.get(first)?.labels.as_ref()?.id?,
+        holder.hyper_loops.get(second)?.labels.as_ref()?.id?,
+    ))
+}
+
+fn self_loop_label_matrix_overlaps(
+    holder: &SelfLoopHolder,
+    label_crossing_matrix: &[Vec<bool>],
+    first: usize,
+    second: usize,
+) -> bool {
+    let Some((first_id, second_id)) = self_loop_label_ids(holder, first, second) else {
+        return false;
+    };
+    label_crossing_matrix
+        .get(first_id)
+        .and_then(|row| row.get(second_id))
+        .copied()
+        .unwrap_or(false)
+}
+
+fn create_self_loop_crossing_graph(
+    holder: &SelfLoopHolder,
+    activity_over_ports: &[Vec<bool>],
+    label_crossing_matrix: &[Vec<bool>],
+) -> HyperEdgeGraph {
     let mut graph = HyperEdgeGraph::default();
     for _ in &holder.hyper_loops {
         graph.add_segment(HyperEdgeSegment::new());
@@ -1329,6 +1703,7 @@ fn create_self_loop_crossing_graph(holder: &SelfLoopHolder) -> HyperEdgeGraph {
             create_self_loop_slot_dependencies(
                 holder,
                 &activity_over_ports,
+                label_crossing_matrix,
                 &mut graph,
                 first,
                 second,
@@ -1379,6 +1754,7 @@ fn compute_loop_activity_for_port_count(
 fn create_self_loop_slot_dependencies(
     holder: &SelfLoopHolder,
     activity_over_ports: &[Vec<bool>],
+    label_crossing_matrix: &[Vec<bool>],
     graph: &mut HyperEdgeGraph,
     first: usize,
     second: usize,
@@ -1400,7 +1776,9 @@ fn create_self_loop_slot_dependencies(
             first,
             (first_above_second - second_above_first) as i32,
         );
-    } else if first_above_second != 0 {
+    } else if first_above_second != 0
+        || self_loop_label_matrix_overlaps(holder, label_crossing_matrix, first, second)
+    {
         graph.add_regular_dependency(first, second, 0);
         graph.add_regular_dependency(second, first, 0);
     }
@@ -1470,6 +1848,7 @@ fn shift_slots_towards_node(
     graph: &LGraph,
     holder: &mut SelfLoopHolder,
     activity_over_ports: &[Vec<bool>],
+    label_crossing_matrix: &[Vec<bool>],
 ) {
     let port_count = activity_over_ports.iter().map(Vec::len).max().unwrap_or(0);
     let mut next_free_routing_slot_at_port = vec![0usize; port_count];
@@ -1486,6 +1865,7 @@ fn shift_slots_towards_node(
             activity_over_ports,
             side,
             &mut next_free_routing_slot_at_port,
+            label_crossing_matrix,
         );
     }
 }
@@ -1496,6 +1876,7 @@ fn shift_slots_towards_node_on_side(
     activity_over_ports: &[Vec<bool>],
     side: PortSide,
     next_free_routing_slot_at_port: &mut [usize],
+    label_crossing_matrix: &[Vec<bool>],
 ) {
     let mut loops = holder
         .hyper_loops
@@ -1513,6 +1894,7 @@ fn shift_slots_towards_node_on_side(
         return;
     };
 
+    let mut slot_assigned_to_label = vec![None; label_crossing_matrix.len()];
     for (loop_index, _) in loops {
         let active_at_port = &activity_over_ports[loop_index];
         let mut lowest_available_slot = 0usize;
@@ -1523,11 +1905,38 @@ fn shift_slots_towards_node_on_side(
             }
         }
 
+        if let Some(label_id) = holder.hyper_loops[loop_index]
+            .labels
+            .as_ref()
+            .and_then(|labels| labels.id)
+        {
+            while label_crossing_matrix.get(label_id).is_some_and(|row| {
+                row.iter().enumerate().any(|(other_label_id, overlaps)| {
+                    *overlaps
+                        && slot_assigned_to_label
+                            .get(other_label_id)
+                            .copied()
+                            .flatten()
+                            == Some(lowest_available_slot)
+                })
+            }) {
+                lowest_available_slot += 1;
+            }
+        }
+
         holder.hyper_loops[loop_index].routing_slots[side.ordinal()] = lowest_available_slot;
         for port in min_port..=max_port {
             if active_at_port.get(port).copied().unwrap_or(false) {
                 next_free_routing_slot_at_port[port] = lowest_available_slot + 1;
             }
+        }
+        if let Some(label_id) = holder.hyper_loops[loop_index]
+            .labels
+            .as_ref()
+            .and_then(|labels| labels.id)
+            && let Some(slot) = slot_assigned_to_label.get_mut(label_id)
+        {
+            *slot = Some(lowest_available_slot);
         }
     }
 }
@@ -1565,6 +1974,11 @@ fn route_self_loop_holder(graph: &mut LGraph, holder: &SelfLoopHolder) {
             for point in graph.edges[sl_edge.edge].bend_points.iter().copied() {
                 update_node_margins_for_bend_point(graph, holder.node, &mut new_margins, point);
             }
+        }
+        if let Some(mut labels) = hyper_loop.labels.clone() {
+            place_labels_on_routing_slot(graph, hyper_loop, &mut labels, &routing_slot_positions);
+            update_node_margins_for_label(graph, holder.node, &mut new_margins, &labels);
+            write_self_loop_label_positions(graph, &labels);
         }
     }
 
@@ -1612,12 +2026,33 @@ fn compute_routing_slot_positions(graph: &LGraph, holder: &SelfLoopHolder) -> [V
         }
     }
 
-    std::array::from_fn(|side_index| {
-        let Some(side) = side_from_ordinal(side_index) else {
+    let mut positions: [Vec<f64>; 5] = std::array::from_fn(|side_index| {
+        let Some(_side) = side_from_ordinal(side_index) else {
             return Vec::new();
         };
 
-        let mut positions = Vec::with_capacity(slot_count[side_index]);
+        Vec::with_capacity(slot_count[side_index])
+    });
+
+    initialize_routing_slot_positions_with_max_label_height(
+        &mut positions,
+        holder,
+        PortSide::North,
+    );
+    initialize_routing_slot_positions_with_max_label_height(
+        &mut positions,
+        holder,
+        PortSide::South,
+    );
+
+    for side in [
+        PortSide::North,
+        PortSide::East,
+        PortSide::South,
+        PortSide::West,
+    ] {
+        let side_index = side.ordinal();
+        let mut side_positions = std::mem::take(&mut positions[side_index]);
         let mut current = compute_baseline_position(graph, holder.node, side);
         let factor = if matches!(side, PortSide::North | PortSide::West) {
             -1.0
@@ -1625,13 +2060,44 @@ fn compute_routing_slot_positions(graph: &LGraph, holder: &SelfLoopHolder) -> [V
             1.0
         };
 
-        for _ in 0..slot_count[side_index] {
-            positions.push(current);
-            current += factor * graph.options.spacing.edge_edge;
+        for slot in 0..slot_count[side_index] {
+            let mut largest_label_size = side_positions.get(slot).copied().unwrap_or(0.0);
+            if largest_label_size > 0.0 {
+                largest_label_size += graph.options.spacing.edge_label;
+            }
+            if slot < side_positions.len() {
+                side_positions[slot] = current;
+            } else {
+                side_positions.push(current);
+            }
+            current += factor * (largest_label_size + graph.options.spacing.edge_edge);
         }
 
-        positions
-    })
+        positions[side_index] = side_positions;
+    }
+
+    positions
+}
+
+fn initialize_routing_slot_positions_with_max_label_height(
+    positions: &mut [Vec<f64>; 5],
+    holder: &SelfLoopHolder,
+    side: PortSide,
+) {
+    for hyper_loop in &holder.hyper_loops {
+        let Some(labels) = &hyper_loop.labels else {
+            continue;
+        };
+        if labels.side != Some(side) {
+            continue;
+        }
+        let slot = hyper_loop.routing_slots[side.ordinal()];
+        let side_positions = &mut positions[side.ordinal()];
+        while side_positions.len() <= slot {
+            side_positions.push(0.0);
+        }
+        side_positions[slot] = side_positions[slot].max(labels.size.height);
+    }
 }
 
 fn side_from_ordinal(ordinal: usize) -> Option<PortSide> {
@@ -1796,6 +2262,121 @@ fn update_node_margins_for_bend_point(
     margins.bottom = margins.bottom.max(point.y - size.height);
 }
 
+fn place_labels_on_routing_slot(
+    graph: &LGraph,
+    hyper_loop: &SelfHyperLoop,
+    labels: &mut SelfHyperLoopLabels,
+    routing_slot_positions: &[Vec<f64>; 5],
+) {
+    let Some(side) = labels.side else {
+        return;
+    };
+    let slot = hyper_loop.routing_slots[side.ordinal()];
+    let Some(mut label_position) = routing_slot_positions[side.ordinal()].get(slot).copied() else {
+        return;
+    };
+
+    match side {
+        PortSide::North => {
+            label_position -= graph.options.spacing.edge_label + labels.size.height;
+            labels.position.y = label_position;
+        }
+        PortSide::South => {
+            label_position += graph.options.spacing.edge_label;
+            labels.position.y = label_position;
+        }
+        PortSide::West => {
+            label_position -= graph.options.spacing.edge_label + labels.size.width;
+            labels.position.x = label_position;
+        }
+        PortSide::East => {
+            label_position += graph.options.spacing.edge_label;
+            labels.position.x = label_position;
+        }
+        PortSide::Undefined => {}
+    }
+}
+
+fn update_node_margins_for_label(
+    graph: &LGraph,
+    node: usize,
+    margins: &mut LMargin,
+    labels: &SelfHyperLoopLabels,
+) {
+    update_node_margins_for_bend_point(graph, node, margins, labels.position);
+    update_node_margins_for_bend_point(
+        graph,
+        node,
+        margins,
+        LPoint {
+            x: labels.position.x + labels.size.width,
+            y: labels.position.y + labels.size.height,
+        },
+    );
+}
+
+fn write_self_loop_label_positions(graph: &mut LGraph, labels: &SelfHyperLoopLabels) {
+    if graph.options.direction.is_vertical() {
+        write_self_loop_label_positions_for_vertical_layout(graph, labels);
+    } else {
+        write_self_loop_label_positions_for_horizontal_layout(graph, labels);
+    }
+}
+
+fn write_self_loop_label_positions_for_horizontal_layout(
+    graph: &mut LGraph,
+    labels: &SelfHyperLoopLabels,
+) {
+    let mut y = labels.position.y;
+    for label_ref in &labels.label_refs {
+        let Some(label) = graph
+            .edges
+            .get_mut(label_ref.edge)
+            .and_then(|edge| edge.labels.get_mut(label_ref.label))
+        else {
+            continue;
+        };
+
+        label.position.x = if labels.alignment == Some(SelfLoopLabelAlignment::Left)
+            || labels.side == Some(PortSide::East)
+        {
+            labels.position.x
+        } else if labels.alignment == Some(SelfLoopLabelAlignment::Right)
+            || labels.side == Some(PortSide::West)
+        {
+            labels.position.x + labels.size.width - label.size.width
+        } else {
+            labels.position.x + (labels.size.width - label.size.width) / 2.0
+        };
+        label.position.y = y;
+        y += label.size.height + graph.options.spacing.label_label;
+    }
+}
+
+fn write_self_loop_label_positions_for_vertical_layout(
+    graph: &mut LGraph,
+    labels: &SelfHyperLoopLabels,
+) {
+    let mut x = labels.position.x;
+    for label_ref in &labels.label_refs {
+        let Some(label) = graph
+            .edges
+            .get_mut(label_ref.edge)
+            .and_then(|edge| edge.labels.get_mut(label_ref.label))
+        else {
+            continue;
+        };
+
+        label.position.x = x;
+        label.position.y = if labels.side == Some(PortSide::North) {
+            labels.position.y + labels.size.height - label.size.height
+        } else {
+            labels.position.y
+        };
+        x += label.size.width + graph.options.spacing.label_label;
+    }
+}
+
 fn reattach_self_loop_edge(graph: &mut LGraph, node: usize, sl_edge: &SelfLoopEdge) {
     let source = PortRef {
         node,
@@ -1828,10 +2409,27 @@ fn offset_edge_bend_points(graph: &mut LGraph, edge: usize, offset: LPoint) {
     }
 }
 
+fn offset_self_loop_label_positions(
+    graph: &mut LGraph,
+    labels: &SelfHyperLoopLabels,
+    offset: LPoint,
+) {
+    for label_ref in &labels.label_refs {
+        if let Some(label) = graph
+            .edges
+            .get_mut(label_ref.edge)
+            .and_then(|edge| edge.labels.get_mut(label_ref.label))
+        {
+            label.position.x += offset.x;
+            label.position.y += offset.y;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{LNode, LayeredEdge, PortType};
+    use crate::graph::{LLabel, LNode, LayeredEdge, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayeredOptions, PortConstraints};
 
@@ -1916,6 +2514,7 @@ mod tests {
         SelfHyperLoop {
             ports: ports.iter().copied().map(self_loop_port).collect(),
             edges: Vec::new(),
+            labels: None,
             self_loop_type: Some(self_loop_type),
             leftmost_port: None,
             rightmost_port: None,
@@ -2189,5 +2788,89 @@ mod tests {
             holder.hyper_loops[1].routing_slots[PortSide::North.ordinal()],
             0
         );
+    }
+
+    #[test]
+    fn routing_slot_assigner_separates_overlapping_self_loop_labels() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        let node = add_node(&mut graph, "A");
+        let p0 = add_port(&mut graph, node, PortSide::North);
+        let p1 = add_port(&mut graph, node, PortSide::North);
+        let p2 = add_port(&mut graph, node, PortSide::North);
+        let p3 = add_port(&mut graph, node, PortSide::North);
+
+        let mut left = hyper_loop_with_ports(&[p0, p1], SelfLoopType::OneSide);
+        left.leftmost_port = Some(p0.port);
+        left.rightmost_port = Some(p1.port);
+        left.occupied_sides = vec![PortSide::North];
+        left.labels = Some(SelfHyperLoopLabels {
+            id: None,
+            label_refs: Vec::new(),
+            size: LSize {
+                width: 90.0,
+                height: 12.0,
+            },
+            position: LPoint { x: 0.0, y: 0.0 },
+            side: Some(PortSide::North),
+            alignment: Some(SelfLoopLabelAlignment::Center),
+            alignment_reference_port: None,
+        });
+
+        let mut right = hyper_loop_with_ports(&[p2, p3], SelfLoopType::OneSide);
+        right.leftmost_port = Some(p2.port);
+        right.rightmost_port = Some(p3.port);
+        right.occupied_sides = vec![PortSide::North];
+        right.labels = Some(SelfHyperLoopLabels {
+            id: None,
+            label_refs: Vec::new(),
+            size: LSize {
+                width: 90.0,
+                height: 12.0,
+            },
+            position: LPoint { x: 10.0, y: 0.0 },
+            side: Some(PortSide::North),
+            alignment: Some(SelfLoopLabelAlignment::Center),
+            alignment_reference_port: None,
+        });
+
+        let mut holder = SelfLoopHolder {
+            node,
+            hyper_loops: vec![left, right],
+            ports_hidden: false,
+            original_port_constraints: PortConstraints::FixedSide,
+        };
+
+        assign_routing_slots(&mut graph, &mut holder);
+
+        assert_ne!(
+            holder.hyper_loops[0].routing_slots[PortSide::North.ordinal()],
+            holder.hyper_loops[1].routing_slots[PortSide::North.ordinal()]
+        );
+    }
+
+    #[test]
+    fn route_self_loops_writes_label_positions_and_expands_margins() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        let node = add_node(&mut graph, "A");
+        let source = add_port(&mut graph, node, PortSide::North);
+        let target = add_port(&mut graph, node, PortSide::North);
+        let mut edge = self_loop_edge("loop", "A", source, target);
+        edge.labels.push(LLabel::new("loop label", 60.0, 12.0));
+        graph.add_edge(edge);
+
+        preprocess_self_loops(&mut graph);
+        restore_self_loop_ports(&mut graph);
+        route_self_loops(&mut graph);
+
+        let label = &graph.edges[0].labels[0];
+        assert_eq!(label.position.x, 10.0);
+        assert_eq!(label.position.y, -36.0);
+        assert!(graph.layerless_nodes[node].margin.top >= 36.0);
     }
 }
