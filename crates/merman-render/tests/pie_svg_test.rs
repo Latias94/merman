@@ -1,10 +1,13 @@
-use merman_core::{Engine, ParseOptions};
+mod common;
+
+use common::legacy_init_theme_compat_engine;
+use merman_core::ParseOptions;
 use merman_render::model::{LayoutDiagram, PieDiagramLayout};
 use merman_render::svg::{SvgRenderOptions, render_pie_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
-    let engine = Engine::new();
+    let engine = legacy_init_theme_compat_engine();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -16,7 +19,7 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
 }
 
 fn render_pie_from_text(text: &str) -> String {
-    let engine = Engine::new();
+    let engine = legacy_init_theme_compat_engine();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");

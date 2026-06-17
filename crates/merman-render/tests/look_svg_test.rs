@@ -1,10 +1,13 @@
 use futures::executor::block_on;
-use merman_core::{Engine, ParseOptions};
+mod common;
+
+use common::legacy_init_theme_compat_engine;
+use merman_core::ParseOptions;
 use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
-    let engine = Engine::new();
+    let engine = legacy_init_theme_compat_engine();
     let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");

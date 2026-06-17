@@ -1,4 +1,7 @@
 use chrono::NaiveDate;
+mod common;
+
+use common::legacy_init_theme_compat_config;
 use merman_core::{Engine, ParseOptions};
 use merman_render::{LayoutOptions, layout_parsed};
 use regex::Regex;
@@ -158,6 +161,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
 
         // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
         let engine = Engine::new()
+            .with_site_config(legacy_init_theme_compat_config())
             .with_fixed_today(Some(
                 NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
             ))

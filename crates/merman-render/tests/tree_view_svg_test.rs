@@ -1,3 +1,6 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
 use merman_render::model::LayoutDiagram;
@@ -25,7 +28,7 @@ treeView-beta
         "parser"
 "##;
 
-    let parsed = Engine::new()
+    let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();

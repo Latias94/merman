@@ -1,3 +1,6 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_block_diagram_svg};
@@ -5,6 +8,10 @@ use merman_render::{LayoutOptions, layout_parsed};
 
 fn render_block_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
+    render_block_svg_from_text_with_engine(&engine, text)
+}
+
+fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String {
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -70,7 +77,9 @@ fn block_public_svg_render_handles_deep_chain() {
 
 #[test]
 fn block_svg_honors_visible_edge_stroke_width_theme() {
-    let svg = render_block_svg_from_text(
+    let engine = legacy_init_theme_compat_engine();
+    let svg = render_block_svg_from_text_with_engine(
+        &engine,
         r##"%%{init: {"themeVariables": {"strokeWidth": 4, "lineColor": "#112233"}}}%%
 block
   A --> B
@@ -125,7 +134,9 @@ fn block_svg_keeps_blank_placeholder_label_paragraph() {
 
 #[test]
 fn block_svg_honors_configured_node_text_color() {
-    let svg = render_block_svg_from_text(
+    let engine = legacy_init_theme_compat_engine();
+    let svg = render_block_svg_from_text_with_engine(
+        &engine,
         r##"%%{init: {"themeVariables": {"nodeTextColor": "#123456"}}}%%
 block
   A["Alpha"]
@@ -140,7 +151,9 @@ block
 
 #[test]
 fn block_svg_fades_cluster_theme_colors() {
-    let svg = render_block_svg_from_text(
+    let engine = legacy_init_theme_compat_engine();
+    let svg = render_block_svg_from_text_with_engine(
+        &engine,
         r##"%%{init: {"themeVariables": {"clusterBkg": "#112233", "clusterBorder": "#445566"}}}%%
 block
   block
