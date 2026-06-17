@@ -14,6 +14,7 @@ use crate::graph::{
     SelfLoopHolder, SelfLoopPort, SelfLoopType,
 };
 use crate::options::SelfLoopDistributionStrategy;
+use crate::p5edges::orthogonal::{HyperEdgeGraph, HyperEdgeSegment, break_non_critical_cycles};
 
 const UNCONNECTED_PORT_PENALTY: usize = 1;
 const CONNECTED_PORT_PENALTY: usize = 3;
@@ -46,7 +47,7 @@ pub fn restore_self_loop_ports(graph: &mut LGraph) {
             restore_hidden_ports(graph, holder);
         }
         determine_loop_routes(graph, holder);
-        assign_routing_slots(holder);
+        assign_routing_slots(graph, holder);
     }
     graph.self_loop_holders = holders;
 }
@@ -1292,15 +1293,257 @@ fn compute_occupied_sides(graph: &LGraph, node: usize, hyper_loop: &mut SelfHype
     }
 }
 
-fn assign_routing_slots(holder: &mut SelfLoopHolder) {
-    let mut next_slot = [0usize; 5];
-    for hyper_loop in &mut holder.hyper_loops {
-        for side in hyper_loop.occupied_sides.clone() {
-            let ordinal = side.ordinal();
-            hyper_loop.routing_slots[ordinal] = next_slot[ordinal];
-            next_slot[ordinal] += 1;
+fn assign_routing_slots(graph: &mut LGraph, holder: &mut SelfLoopHolder) {
+    let mut slot_graph = create_self_loop_crossing_graph(holder);
+    let activity_over_ports = compute_loop_activity(graph, holder);
+
+    break_non_critical_cycles(&mut slot_graph, &mut graph.random);
+    assign_raw_routing_slots_to_segments(&mut slot_graph);
+    assign_raw_routing_slots_to_loops(holder, &slot_graph);
+    shift_slots_towards_node(graph, holder, &activity_over_ports);
+}
+
+fn create_self_loop_crossing_graph(holder: &SelfLoopHolder) -> HyperEdgeGraph {
+    let port_count = holder
+        .hyper_loops
+        .iter()
+        .flat_map(|hyper_loop| {
+            hyper_loop
+                .ports
+                .iter()
+                .map(|port| port.port)
+                .chain(hyper_loop.leftmost_port)
+                .chain(hyper_loop.rightmost_port)
+        })
+        .max()
+        .map(|port| port + 1)
+        .unwrap_or(0);
+    let activity_over_ports = compute_loop_activity_for_port_count(holder, port_count);
+    let mut graph = HyperEdgeGraph::default();
+    for _ in &holder.hyper_loops {
+        graph.add_segment(HyperEdgeSegment::new());
+    }
+
+    for first in 0..holder.hyper_loops.len().saturating_sub(1) {
+        for second in (first + 1)..holder.hyper_loops.len() {
+            create_self_loop_slot_dependencies(
+                holder,
+                &activity_over_ports,
+                &mut graph,
+                first,
+                second,
+            );
         }
     }
+
+    graph
+}
+
+fn compute_loop_activity(graph: &LGraph, holder: &SelfLoopHolder) -> Vec<Vec<bool>> {
+    let port_count = graph
+        .layerless_nodes
+        .get(holder.node)
+        .map(|node| node.ports.len())
+        .unwrap_or(0);
+    compute_loop_activity_for_port_count(holder, port_count)
+}
+
+fn compute_loop_activity_for_port_count(
+    holder: &SelfLoopHolder,
+    port_count: usize,
+) -> Vec<Vec<bool>> {
+    holder
+        .hyper_loops
+        .iter()
+        .map(|hyper_loop| {
+            let mut activity = vec![false; port_count];
+            let (Some(leftmost_port), Some(rightmost_port)) =
+                (hyper_loop.leftmost_port, hyper_loop.rightmost_port)
+            else {
+                return activity;
+            };
+            if port_count == 0 {
+                return activity;
+            }
+
+            let mut port = leftmost_port as isize - 1;
+            while port != rightmost_port as isize {
+                port = (port + 1).rem_euclid(port_count as isize);
+                activity[port as usize] = true;
+            }
+            activity
+        })
+        .collect()
+}
+
+fn create_self_loop_slot_dependencies(
+    holder: &SelfLoopHolder,
+    activity_over_ports: &[Vec<bool>],
+    graph: &mut HyperEdgeGraph,
+    first: usize,
+    second: usize,
+) {
+    let first_above_second =
+        count_self_loop_slot_crossings(&holder.hyper_loops[first], &activity_over_ports[second]);
+    let second_above_first =
+        count_self_loop_slot_crossings(&holder.hyper_loops[second], &activity_over_ports[first]);
+
+    if first_above_second < second_above_first {
+        graph.add_regular_dependency(
+            first,
+            second,
+            (second_above_first - first_above_second) as i32,
+        );
+    } else if second_above_first < first_above_second {
+        graph.add_regular_dependency(
+            second,
+            first,
+            (first_above_second - second_above_first) as i32,
+        );
+    } else if first_above_second != 0 {
+        graph.add_regular_dependency(first, second, 0);
+        graph.add_regular_dependency(second, first, 0);
+    }
+}
+
+fn count_self_loop_slot_crossings(
+    upper_loop: &SelfHyperLoop,
+    lower_loop_activity: &[bool],
+) -> usize {
+    upper_loop
+        .ports
+        .iter()
+        .filter(|port| lower_loop_activity.get(port.port).copied().unwrap_or(false))
+        .count()
+}
+
+fn assign_raw_routing_slots_to_segments(graph: &mut HyperEdgeGraph) {
+    let mut sinks = VecDeque::new();
+
+    for segment in 0..graph.segments.len() {
+        graph.segments[segment].in_dep_weight = graph.segments[segment]
+            .incoming_segment_dependencies
+            .iter()
+            .filter(|dependency| graph.dependencies[**dependency].source.is_some())
+            .count() as i32;
+        graph.segments[segment].out_dep_weight = graph.segments[segment]
+            .outgoing_segment_dependencies
+            .iter()
+            .filter(|dependency| graph.dependencies[**dependency].target.is_some())
+            .count() as i32;
+
+        if graph.segments[segment].out_dep_weight == 0 {
+            graph.segments[segment].routing_slot = 0;
+            sinks.push_back(segment);
+        }
+    }
+
+    while let Some(segment) = sinks.pop_front() {
+        let next_routing_slot = graph.segments[segment].routing_slot + 1;
+        for dependency in graph.segments[segment]
+            .incoming_segment_dependencies
+            .clone()
+        {
+            let Some(source) = graph.dependencies[dependency].source else {
+                continue;
+            };
+            graph.segments[source].routing_slot =
+                graph.segments[source].routing_slot.max(next_routing_slot);
+            graph.segments[source].out_dep_weight -= 1;
+            if graph.segments[source].out_dep_weight == 0 {
+                sinks.push_back(source);
+            }
+        }
+    }
+}
+
+fn assign_raw_routing_slots_to_loops(holder: &mut SelfLoopHolder, graph: &HyperEdgeGraph) {
+    for (loop_index, hyper_loop) in holder.hyper_loops.iter_mut().enumerate() {
+        let slot = graph.segments[loop_index].routing_slot.max(0) as usize;
+        for side in hyper_loop.occupied_sides.clone() {
+            hyper_loop.routing_slots[side.ordinal()] = slot;
+        }
+    }
+}
+
+fn shift_slots_towards_node(
+    graph: &LGraph,
+    holder: &mut SelfLoopHolder,
+    activity_over_ports: &[Vec<bool>],
+) {
+    let port_count = activity_over_ports.iter().map(Vec::len).max().unwrap_or(0);
+    let mut next_free_routing_slot_at_port = vec![0usize; port_count];
+
+    for side in [
+        PortSide::North,
+        PortSide::East,
+        PortSide::South,
+        PortSide::West,
+    ] {
+        shift_slots_towards_node_on_side(
+            graph,
+            holder,
+            activity_over_ports,
+            side,
+            &mut next_free_routing_slot_at_port,
+        );
+    }
+}
+
+fn shift_slots_towards_node_on_side(
+    graph: &LGraph,
+    holder: &mut SelfLoopHolder,
+    activity_over_ports: &[Vec<bool>],
+    side: PortSide,
+    next_free_routing_slot_at_port: &mut [usize],
+) {
+    let mut loops = holder
+        .hyper_loops
+        .iter()
+        .enumerate()
+        .filter(|(_, hyper_loop)| hyper_loop.occupied_sides.contains(&side))
+        .map(|(index, hyper_loop)| (index, hyper_loop.routing_slots[side.ordinal()]))
+        .collect::<Vec<_>>();
+    loops.sort_by_key(|(_, slot)| *slot);
+
+    let Some((min_port, max_port)) = port_range_on_side(graph, holder.node, side) else {
+        for (slot, (loop_index, _)) in loops.into_iter().enumerate() {
+            holder.hyper_loops[loop_index].routing_slots[side.ordinal()] = slot;
+        }
+        return;
+    };
+
+    for (loop_index, _) in loops {
+        let active_at_port = &activity_over_ports[loop_index];
+        let mut lowest_available_slot = 0usize;
+        for port in min_port..=max_port {
+            if active_at_port.get(port).copied().unwrap_or(false) {
+                lowest_available_slot =
+                    lowest_available_slot.max(next_free_routing_slot_at_port[port]);
+            }
+        }
+
+        holder.hyper_loops[loop_index].routing_slots[side.ordinal()] = lowest_available_slot;
+        for port in min_port..=max_port {
+            if active_at_port.get(port).copied().unwrap_or(false) {
+                next_free_routing_slot_at_port[port] = lowest_available_slot + 1;
+            }
+        }
+    }
+}
+
+fn port_range_on_side(graph: &LGraph, node: usize, side: PortSide) -> Option<(usize, usize)> {
+    graph
+        .layerless_nodes
+        .get(node)?
+        .ports
+        .iter()
+        .enumerate()
+        .filter_map(|(port, port_data)| (port_data.side == side).then_some(port))
+        .fold(None, |range, port| match range {
+            Some((min, max)) => Some((min.min(port), max.max(port))),
+            None => Some((port, port)),
+        })
 }
 
 fn route_self_loop_holder(graph: &mut LGraph, holder: &SelfLoopHolder) {
@@ -1721,6 +1964,21 @@ mod tests {
     }
 
     #[test]
+    fn loop_activity_includes_zero_leftmost_port() {
+        let hyper_loop = hyper_loop_with_ports(
+            &[PortRef { node: 0, port: 0 }, PortRef { node: 0, port: 2 }],
+            SelfLoopType::OneSide,
+        );
+        let mut holder = empty_self_loop_holder(0, hyper_loop);
+        holder.hyper_loops[0].leftmost_port = Some(0);
+        holder.hyper_loops[0].rightmost_port = Some(2);
+
+        let activity = compute_loop_activity_for_port_count(&holder, 4);
+
+        assert_eq!(activity[0], vec![true, true, true, false]);
+    }
+
+    #[test]
     fn preprocess_detaches_self_loop_edges_from_ports() {
         let mut graph = import_graph(&ElkInputGraph {
             id: "root".to_string(),
@@ -1891,6 +2149,45 @@ mod tests {
                 PortSide::West,
                 PortSide::North
             ]
+        );
+    }
+
+    #[test]
+    fn routing_slot_assigner_uses_crossing_graph_dependencies() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        let node = add_node(&mut graph, "A");
+        let p0 = add_port(&mut graph, node, PortSide::North);
+        let p1 = add_port(&mut graph, node, PortSide::North);
+        let p2 = add_port(&mut graph, node, PortSide::North);
+        let p3 = add_port(&mut graph, node, PortSide::North);
+
+        let mut outer = hyper_loop_with_ports(&[p0, p3], SelfLoopType::OneSide);
+        outer.leftmost_port = Some(p0.port);
+        outer.rightmost_port = Some(p3.port);
+        outer.occupied_sides = vec![PortSide::North];
+        let mut inner = hyper_loop_with_ports(&[p1, p2], SelfLoopType::OneSide);
+        inner.leftmost_port = Some(p1.port);
+        inner.rightmost_port = Some(p2.port);
+        inner.occupied_sides = vec![PortSide::North];
+        let mut holder = SelfLoopHolder {
+            node,
+            hyper_loops: vec![outer, inner],
+            ports_hidden: false,
+            original_port_constraints: PortConstraints::FixedSide,
+        };
+
+        assign_routing_slots(&mut graph, &mut holder);
+
+        assert_eq!(
+            holder.hyper_loops[0].routing_slots[PortSide::North.ordinal()],
+            1
+        );
+        assert_eq!(
+            holder.hyper_loops[1].routing_slots[PortSide::North.ordinal()],
+            0
         );
     }
 }
