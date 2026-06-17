@@ -78,6 +78,48 @@ renderSvgToElement(document.querySelector("#preview")!, "sequenceDiagram\nA->>B:
 Framework integrations can use `renderSvg()` and mount the returned SVG string with their normal
 HTML/SVG insertion path.
 
+## Browser text measurement
+
+Headless rendering cannot know the exact browser font fallback that will display the final SVG.
+This can show up as clipped trailing characters or slightly different wrapping when a browser,
+WebView, or user font stack resolves text differently from merman's built-in headless metrics.
+
+For browser previews where label geometry must match the displayed font stack, provide a host text
+measurer. The helper below measures text with an offscreen DOM probe and falls back to merman's
+vendored measurer when the DOM is unavailable or a request is not handled:
+
+```ts
+import {
+  createBrowserTextMeasurer,
+  initMerman,
+  renderSvgWithTextMeasurer,
+} from "@mermanjs/web";
+
+await initMerman();
+
+const measureText = createBrowserTextMeasurer();
+const svg = renderSvgWithTextMeasurer(
+  "flowchart TD\nA[Start] --> B{Condition?}",
+  measureText,
+  {
+    site_config: {
+      fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
+      themeVariables: {
+        fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
+      },
+    },
+  }
+);
+```
+
+Use the same font family in both the binding options and your surrounding UI/CSS. If rendering in a
+Web Worker, keep using `renderSvg()` with the headless measurer, or send measurement requests to the
+main thread through your own worker protocol.
+
+`createBrowserTextMeasurer()` measures the natural no-wrap width for HTML-like labels before it
+applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
+label can make the diagram wider than Mermaid would make it in the browser.
+
 ## Custom wasm loading
 
 By default, `initMerman()` dynamically imports `../pkg/merman_wasm.js`. If a bundler or CDN setup
@@ -174,13 +216,13 @@ initialization is usually simpler.
 ## API surface
 
 - `initMerman()`, `getMerman()`, `isMermanInitialized()`
-- `renderSvg()`, `renderSvgElement()`, `renderSvgToElement()`
+- `renderSvg()`, `renderSvgWithTextMeasurer()`, `renderSvgElement()`, `renderSvgToElement()`
 - `renderAscii()`
 - `parseJson()`, `parseObject()`
-- `layoutJson()`, `layoutObject()`
+- `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
 - `validate()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
-- `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`
+- `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.

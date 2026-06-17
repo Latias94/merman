@@ -48,9 +48,9 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The first C ABI release candidate exposes SVG, ASCII text, semantic JSON, layout JSON, validation
-JSON, and binding metadata. Native raster byte outputs are intentionally split into a later ABI
-lane.
+The C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, binding metadata,
+and an optional host text-measurement callback for reusable engines. Native raster byte outputs are
+intentionally split into a later ABI lane.
 
 Hosts that need SVG for strict renderers can still request the export-safe SVG pipeline through
 `options_json`, for example `{ "svg": { "pipeline": "resvg-safe" } }`. `NULL/0` options keep the
@@ -92,12 +92,60 @@ merman_buffer_free(result.data);
 merman_engine_free(engine.engine);
 ```
 
+Hosts that already own a font stack can install a text measurement callback on a reusable engine:
+
+```c
+MermanResult set_result =
+    merman_engine_set_text_measure_callback(engine.engine, measure_text, user_data);
+merman_buffer_free(set_result.data);
+```
+
+Return `handled=0` for measurement requests your host does not support. `merman` will fall back
+to its vendored Mermaid-compatible measurer for that request. The callback may be invoked from any
+thread that renders with the engine, so shared host font state must be thread-safe.
+
+## Headless Font Measurement
+
+Mermaid normally measures labels in a browser after CSS and font fallback have been resolved. A
+headless renderer has to estimate those metrics before there is a DOM. That means browser and host
+differences can show up as slightly wider labels, clipped `foreignObject` content, or layout drift
+when the final display font differs from merman's vendored compatibility profile.
+
+`merman` keeps Flowchart HTML labels non-clipping by default, which avoids losing trailing
+characters when a browser chooses a wider fallback font. For hosts that need accurate geometry,
+install `merman_engine_set_text_measure_callback` and measure with the same text stack that will
+display the SVG:
+
+- Browser/WebView hosts can use their DOM or canvas text measurement path.
+- Native editors can use their own shaping and font fallback system.
+- Android native previews should use `TextPaint` and `StaticLayout`.
+- Apple native previews should use Core Text or matching `NSAttributedString` layout.
+- Flutter/Dart previews should keep the measured reusable engine on the same isolate and use the
+  same Flutter paragraph/text layout, WebView cache, or SVG widget measurement path as the final
+  display surface.
+- Unsupported requests can return `handled=0` and let merman fall back per request.
+
+Treat the callback as a fidelity opt-in, not a required dependency. CLIs, documentation builds, CI,
+and server-side batch renderers should usually keep the default vendored metrics because they are
+deterministic and do not require host UI APIs. Editors, preview panes, design tools, and WebView
+integrations should consider the callback when clipping or host-specific font fallback matters.
+If a request would require async UI-thread work that is not already cached, return `handled=0`
+instead of blocking the render thread.
+
+The callback request includes the UTF-8 text, font family, size, weight, style, line height,
+spacing, wrap mode, direction, white-space mode, and optional max width. See
+[`include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h)
+and
+[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md#host-text-measurement)
+for the exact ABI contract.
+
 ## Example
 
 [`examples/render_svg.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg.c)
 is a small C consumer that renders a flowchart to SVG through the C ABI.
 [`examples/render_svg_engine.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg_engine.c)
-shows the reusable engine/context API for repeated calls with shared options.
+shows the reusable engine/context API and a minimal text measurement callback for repeated calls
+with shared options.
 
 On macOS or Linux:
 
@@ -121,8 +169,11 @@ same command.
 - `merman_buffer_struct_size`
 - `merman_result_struct_size`
 - `merman_engine_result_struct_size`
+- `merman_host_text_measure_request_struct_size`
+- `merman_host_text_measure_result_struct_size`
 - `merman_engine_new`
 - `merman_engine_free`
+- `merman_engine_set_text_measure_callback`
 - `merman_engine_render_svg`
 - `merman_engine_render_ascii`
 - `merman_engine_parse_json`

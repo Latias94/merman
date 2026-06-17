@@ -54,6 +54,18 @@ version is read from the linked native library.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
+For repeated calls or host font measurement, use `MermanReusableEngine` and install a
+`MermanTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
+back to merman's vendored metrics for that request.
+
+For accurate Apple preview geometry, measure with the same text stack that will display the SVG.
+Use Core Text for native previews, or a prepared WKWebView DOM/canvas measurement cache when the SVG
+will be shown in WebKit. The callback is synchronous; return `handled = 0` for unsupported requests
+and keep any `userData` alive until the callback is cleared or the engine is closed. See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift).
+For HTML-like labels, measure the natural no-wrap width before applying `maxWidth`; otherwise short
+condition labels can expand to the available wrapping width.
+
 ## Local Package Use
 
 1. Build `platforms/apple/Merman.xcframework`.

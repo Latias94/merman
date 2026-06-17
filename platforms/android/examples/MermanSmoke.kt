@@ -1,6 +1,8 @@
 package io.merman.examples
 
 import io.merman.MermanEngine
+import io.merman.MermanReusableEngine
+import io.merman.MermanTextMeasureResult
 
 fun runMermanSmoke() {
     val source = "flowchart TD\nA[Hello] --> B[World]"
@@ -44,5 +46,27 @@ fun runMermanSmoke() {
     }
     check(MermanEngine.supportedHostThemePresetsJson().contains("one-dark")) {
         "host theme presets smoke failed"
+    }
+
+    val engine = MermanReusableEngine()
+    try {
+        engine.setTextMeasurer { request ->
+            if (request.text == "Hello") {
+                MermanTextMeasureResult(
+                    width = 42.0,
+                    height = request.lineHeight,
+                    lineCount = 1,
+                )
+            } else {
+                null
+            }
+        }
+        val reusableSvg = engine.renderSvg(source)
+        check(reusableSvg.contains("<svg") && reusableSvg.contains("Hello")) {
+            "reusable engine SVG smoke failed"
+        }
+        engine.setTextMeasurer(null)
+    } finally {
+        engine.close()
     }
 }

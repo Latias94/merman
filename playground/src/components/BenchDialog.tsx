@@ -32,7 +32,14 @@ const DEFAULT_MEASURE = 30;
 
 export function BenchDialog() {
   const { t } = useTranslation();
-  const { code, diagramTheme, mermaidConfig } = useAppStore();
+  const {
+    code,
+    diagramTheme,
+    hostThemePreset,
+    mermaidConfig,
+    textMeasurementMode,
+    diagramFont,
+  } = useAppStore();
   const { ready, loading, render } = useMerman();
   const [open, setOpen] = useState(false);
   const [includeMerman, setIncludeMerman] = useState(true);
@@ -58,6 +65,14 @@ export function BenchDialog() {
     if (engines.length === 0) return t("bench.noEngine");
     return null;
   }, [code, engines.length, loading, ready, running, t]);
+  const renderOptions = useMemo(
+    () => ({
+      hostThemePreset: hostThemePreset === "none" ? undefined : hostThemePreset,
+      textMeasurementMode,
+      diagramFont,
+    }),
+    [diagramFont, hostThemePreset, textMeasurementMode]
+  );
 
   const handleRun = useCallback(async () => {
     if (disabledReason || running) return;
@@ -73,11 +88,12 @@ export function BenchDialog() {
         source: code,
         theme: diagramTheme,
         configJson: mermaidConfig,
+        diagramFont,
         engines,
         warmupIterations,
         measureIterations,
         renderMerman: (source, theme, configJson) =>
-          render(source, theme, configJson),
+          render(source, theme, configJson, renderOptions),
         signal: controller.signal,
       });
       setResult(nextResult);
@@ -101,6 +117,7 @@ export function BenchDialog() {
     engines,
     measureIterations,
     render,
+    renderOptions,
     running,
     t,
     warmupIterations,

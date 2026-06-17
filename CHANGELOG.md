@@ -6,6 +6,20 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+- Added a host text-measurement callback to the C FFI reusable engine API and bumped the C ABI to
+  version 2, while keeping the default headless path dependency-light and deterministic for
+  CLI/CI/docs/server rendering.
+- Added browser/WASM host text-measurement entry points for `@mermanjs/web`, including
+  `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. The
+  playground now demonstrates this best-practice path by default and adds text-measurement plus
+  font-stack switches for reproducing headless font-metric drift such as
+  [#9](https://github.com/Latias94/merman/issues/9), where a Flowchart label rendered fully in
+  Chrome but clipped trailing punctuation in Zen Browser.
+- Extended the Android JNI, Apple Swift, and Flutter/Dart FFI wrappers to expose reusable engines
+  and host text-measurement callbacks on top of the C ABI v2 contract.
+- Documented host text-measurement best practices in the C ABI protocol, package READMEs, and
+  platform guides, covering Android JNI, Apple Swift, Flutter/Dart FFI, browser/WebView
+  measurement, callback lifetime, regression testing, and the current Python/UniFFI limitation.
 - Improved `dugong` layered layout performance by avoiding repeated dummy-node ID scans during
   long-edge normalization and by using cached adjacency when removing graph nodes. Added a
   `layout_dagreish` benchmark covering the full layout pipeline and normalize run/undo costs.
@@ -18,6 +32,17 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Against Mermaid JS, the latest cross-family geomean is `0.016x` of Mermaid JS time, which is
   about `62x` faster overall. `xychart_medium` is `73.62 µs` end-to-end versus `3.00 ms` in
   Mermaid JS, or about `41x` faster.
+
+### Security
+
+- Hardened diagram-level config handling against CSS injection in generated SVG output by treating
+  `fontFamily`, `altFontFamily`, `themeCSS`, and `themeVariables` as secure keys by default, while
+  preserving trusted site-level config and explicit opt-in compatibility.
+- Hardened Mermaid style declaration parsing and configured font-family normalization so malformed
+  CSS fragments cannot break out into extra SVG style rules.
+- Fixed Gantt `excludes` handling so diagrams that exclude every weekday, or otherwise produce a
+  long run of excluded dates, fail with a parse error instead of looping during task date
+  adjustment.
 
 ## [0.8.0-alpha.2] - 2026-06-13
 

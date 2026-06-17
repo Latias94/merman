@@ -1,6 +1,10 @@
 import Foundation
 import MermanFFI
 
+public typealias MermanTextMeasureRequest = MermanHostTextMeasureRequest
+public typealias MermanTextMeasureResult = MermanHostTextMeasureResult
+public typealias MermanTextMeasureCallback = MermanHostTextMeasureCallback
+
 public enum MermanError: Error, LocalizedError {
     case abiMismatch(expected: UInt32, actual: UInt32)
     case structSizeMismatch(name: String, expected: Int, actual: Int)
@@ -53,7 +57,7 @@ public struct MermanDiagramFamilyCapability: Decodable {
 }
 
 public final class MermanEngine {
-    public static let abiVersion: UInt32 = 1
+    public static let abiVersion: UInt32 = 2
     private static let okCode: Int32 = 0
 
     public let packageVersion: String
@@ -139,7 +143,11 @@ public final class MermanEngine {
         return values
     }
 
-    private static func checkAbi() throws {
+    public func reusableEngine(optionsJson: String? = nil) throws -> MermanReusableEngine {
+        try MermanReusableEngine(optionsJson: optionsJson)
+    }
+
+    fileprivate static func checkAbi() throws {
         let actualAbi = merman_abi_version()
         guard actualAbi == abiVersion else {
             throw MermanError.abiMismatch(expected: abiVersion, actual: actualAbi)
@@ -162,6 +170,36 @@ public final class MermanEngine {
                 name: "MermanResult",
                 expected: expectedResultSize,
                 actual: actualResultSize
+            )
+        }
+
+        let expectedEngineResultSize = MemoryLayout<MermanEngineResult>.size
+        let actualEngineResultSize = merman_engine_result_struct_size()
+        guard actualEngineResultSize == expectedEngineResultSize else {
+            throw MermanError.structSizeMismatch(
+                name: "MermanEngineResult",
+                expected: expectedEngineResultSize,
+                actual: actualEngineResultSize
+            )
+        }
+
+        let expectedTextRequestSize = MemoryLayout<MermanHostTextMeasureRequest>.size
+        let actualTextRequestSize = merman_host_text_measure_request_struct_size()
+        guard actualTextRequestSize == expectedTextRequestSize else {
+            throw MermanError.structSizeMismatch(
+                name: "MermanHostTextMeasureRequest",
+                expected: expectedTextRequestSize,
+                actual: actualTextRequestSize
+            )
+        }
+
+        let expectedTextResultSize = MemoryLayout<MermanHostTextMeasureResult>.size
+        let actualTextResultSize = merman_host_text_measure_result_struct_size()
+        guard actualTextResultSize == expectedTextResultSize else {
+            throw MermanError.structSizeMismatch(
+                name: "MermanHostTextMeasureResult",
+                expected: expectedTextResultSize,
+                actual: actualTextResultSize
             )
         }
     }
@@ -194,7 +232,7 @@ public final class MermanEngine {
         }
     }
 
-    private func decode(_ result: MermanResult) throws -> String {
+    fileprivate static func decode(_ result: MermanResult) throws -> String {
         defer { merman_buffer_free(result.data) }
 
         let payload: Data
@@ -208,7 +246,7 @@ public final class MermanEngine {
             throw MermanError.utf8Output
         }
 
-        if result.code == Self.okCode {
+        if result.code == okCode {
             return text
         }
 
@@ -227,8 +265,12 @@ public final class MermanEngine {
         )
     }
 
+    private func decode(_ result: MermanResult) throws -> String {
+        try Self.decode(result)
+    }
+
     private func metadata(_ function: () -> MermanResult) throws -> [String] {
-        let text = try decode(function())
+        let text = try Self.decode(function())
         return try decodeJson([String].self, from: Data(text.utf8))
     }
 
@@ -238,6 +280,139 @@ public final class MermanEngine {
         } catch {
             throw MermanError.jsonDecode(message: "Merman JSON decode failed: \(error)")
         }
+    }
+}
+
+public final class MermanReusableEngine {
+    private var engine: OpaquePointer?
+
+    public init(optionsJson: String? = nil) throws {
+        try MermanEngine.checkAbi()
+
+        let optionBytes = Array((optionsJson ?? "").utf8)
+        let result = optionBytes.withUnsafeBufferPointer { optionBuffer in
+            merman_engine_new(
+                optionBytes.isEmpty ? nil : optionBuffer.baseAddress,
+                optionBytes.count
+            )
+        }
+
+        if result.code == 0, let engine = result.engine {
+            self.engine = engine
+            merman_buffer_free(result.data)
+            return
+        }
+
+        _ = result.engine.map(merman_engine_free)
+        throw try Self.decodeEngineError(result)
+    }
+
+    deinit {
+        close()
+    }
+
+    public func setTextMeasureCallback(
+        _ callback: MermanTextMeasureCallback?,
+        userData: UnsafeMutableRawPointer? = nil
+    ) throws {
+        let engine = try requireEngine()
+        _ = try MermanEngine.decode(
+            merman_engine_set_text_measure_callback(engine, callback, userData)
+        )
+    }
+
+    public func renderSvg(_ source: String) throws -> String {
+        try call(merman_engine_render_svg, source: source)
+    }
+
+    public func renderAscii(_ source: String) throws -> String {
+        try call(merman_engine_render_ascii, source: source)
+    }
+
+    public func parseJsonRaw(_ source: String) throws -> String {
+        try call(merman_engine_parse_json, source: source)
+    }
+
+    public func layoutJsonRaw(_ source: String) throws -> String {
+        try call(merman_engine_layout_json, source: source)
+    }
+
+    public func validateJsonRaw(_ source: String) throws -> String {
+        try call(merman_engine_validate_json, source: source)
+    }
+
+    public func validate(_ source: String) throws -> MermanValidationResult {
+        let data = try Data(validateJsonRaw(source).utf8)
+        do {
+            return try JSONDecoder().decode(MermanValidationResult.self, from: data)
+        } catch {
+            throw MermanError.jsonDecode(message: "Merman JSON decode failed: \(error)")
+        }
+    }
+
+    public func close() {
+        guard let engine else {
+            return
+        }
+        merman_engine_free(engine)
+        self.engine = nil
+    }
+
+    private func call(
+        _ function: (OpaquePointer?, UnsafePointer<UInt8>?, Int) -> MermanResult,
+        source: String
+    ) throws -> String {
+        let engine = try requireEngine()
+        let sourceBytes = Array(source.utf8)
+        return try sourceBytes.withUnsafeBufferPointer { sourceBuffer in
+            try MermanEngine.decode(
+                function(
+                    engine,
+                    sourceBytes.isEmpty ? nil : sourceBuffer.baseAddress,
+                    sourceBytes.count
+                )
+            )
+        }
+    }
+
+    private func requireEngine() throws -> OpaquePointer {
+        guard let engine else {
+            throw MermanError.binding(
+                code: -1,
+                codeName: "SWIFT_ENGINE_CLOSED",
+                message: "Merman reusable engine is closed"
+            )
+        }
+        return engine
+    }
+
+    private static func decodeEngineError(_ result: MermanEngineResult) throws -> MermanError {
+        defer { merman_buffer_free(result.data) }
+
+        let payload: Data
+        if let pointer = result.data.data, result.data.len > 0 {
+            payload = Data(bytes: pointer, count: result.data.len)
+        } else {
+            payload = Data()
+        }
+
+        guard let text = String(data: payload, encoding: .utf8) else {
+            return .utf8Output
+        }
+
+        if let errorPayload = try? JSONDecoder().decode(NativeErrorPayload.self, from: payload) {
+            return .binding(
+                code: result.code,
+                codeName: errorPayload.codeName,
+                message: errorPayload.message
+            )
+        }
+
+        return .binding(
+            code: result.code,
+            codeName: "MERMAN_ERROR",
+            message: text
+        )
     }
 }
 

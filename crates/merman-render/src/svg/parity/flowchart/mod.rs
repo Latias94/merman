@@ -33,7 +33,7 @@ use render::{
 };
 pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};
 use types::*;
-use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
+use util::{HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleAttr, OptionalStyleXmlAttr};
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 

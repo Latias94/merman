@@ -3,7 +3,8 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::{
-    escape_attr, flowchart_label_html, flowchart_label_plain_text,
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, escape_attr, flowchart_label_html,
+    flowchart_label_plain_text,
 };
 use crate::svg::parity::fmt;
 
@@ -117,11 +118,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
         };
         let _ = write!(
             out,
-            r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
+            r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="{}">{}</span></div></foreignObject></g>"#,
             fmt(-label_bbox_w / 2.0),
             fmt(label_y),
             fmt(label_bbox_w),
             fmt(label_bbox_h),
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
             fmt(ctx.wrapping_width),
             super::super::helpers::flowchart_node_label_span_class(label.label_type),
             label_html

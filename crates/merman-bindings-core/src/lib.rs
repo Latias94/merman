@@ -30,6 +30,10 @@ pub use metadata::{
 #[cfg(feature = "ascii")]
 pub use ascii::render_ascii;
 #[cfg(feature = "render")]
+pub use merman::render::{
+    TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+};
+#[cfg(feature = "render")]
 pub use render::{layout_json, parse_json, render_svg, validate_json};
 
 #[cfg(not(feature = "ascii"))]

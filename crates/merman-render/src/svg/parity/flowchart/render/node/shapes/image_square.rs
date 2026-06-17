@@ -3,7 +3,9 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
-use crate::svg::parity::flowchart::{flowchart_label_html, flowchart_label_plain_text};
+use crate::svg::parity::flowchart::{
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, flowchart_label_html, flowchart_label_plain_text,
+};
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
 use super::super::roughjs::roughjs_stroke_path_for_svg_path;
@@ -169,7 +171,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             concat!(
                 r#"<g class="label" style="" transform="translate({},{})">"#,
                 r#"<rect/>"#,
-                r#"<foreignObject width="{}" height="{}">"#,
+                r#"<foreignObject width="{}" height="{}"{}>"#,
                 r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
                 r#"style="display: table-cell; white-space: nowrap; line-height: 1.5; "#,
                 r#"max-width: {}px; text-align: center;"><span class="{}">{}</span></div>"#,
@@ -179,6 +181,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             fmt_display(label_dy),
             fmt_display(label_bbox_w),
             fmt_display(label_bbox_h),
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
             fmt_display(ctx.wrapping_width),
             super::super::helpers::flowchart_node_label_span_class(label.label_type),
             label_html

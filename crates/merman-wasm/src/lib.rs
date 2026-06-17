@@ -9,6 +9,13 @@ use merman_bindings_core::BindingError;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+use merman_bindings_core::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+use serde::Deserialize;
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+use std::{cell::RefCell, sync::Arc};
+
 const WASM_ABI_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize)]
@@ -41,6 +48,38 @@ pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, 
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
     ))
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = renderSvgWithTextMeasurer)]
+pub fn render_svg_with_text_measurer(
+    source: &str,
+    options_json: Option<String>,
+    callback: js_sys::Function,
+) -> Result<String, JsValue> {
+    with_host_text_measure_callback(callback, || {
+        let engine =
+            merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
+                .map_err(binding_error_to_js)?;
+        let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
+        string_result(engine.render_svg(source.as_bytes()))
+    })
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = layoutJsonWithTextMeasurer)]
+pub fn layout_json_with_text_measurer(
+    source: &str,
+    options_json: Option<String>,
+    callback: js_sys::Function,
+) -> Result<String, JsValue> {
+    with_host_text_measure_callback(callback, || {
+        let engine =
+            merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
+                .map_err(binding_error_to_js)?;
+        let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
+        string_result(engine.layout_json(source.as_bytes()))
+    })
 }
 
 #[wasm_bindgen(js_name = parseJson)]
@@ -150,6 +189,210 @@ fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {
         code: err.status().code(),
         code_name: err.status().code_name(),
         message: err.message(),
+    }
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+thread_local! {
+    static HOST_TEXT_MEASURE_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[derive(Debug, Serialize)]
+struct WasmHostTextMeasureRequest<'a> {
+    text: &'a str,
+    font_family: Option<&'a str>,
+    font_size: f64,
+    font_weight: Option<&'a str>,
+    font_style: &'static str,
+    max_width: Option<f64>,
+    has_max_width: bool,
+    line_height: f64,
+    letter_spacing: f64,
+    word_spacing: f64,
+    wrap_mode: &'static str,
+    direction: &'static str,
+    white_space: &'static str,
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[derive(Debug, Deserialize)]
+struct WasmHostTextMeasureResult {
+    handled: Option<bool>,
+    width: f64,
+    height: f64,
+    line_count: Option<usize>,
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+#[derive(Default)]
+struct WasmHostTextMeasurer {
+    fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer,
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+impl WasmHostTextMeasurer {
+    fn call_host(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> Option<TextMetrics> {
+        let request = WasmHostTextMeasureRequest {
+            text,
+            font_family: style.font_family.as_deref(),
+            font_size: style.font_size,
+            font_weight: style.font_weight.as_deref(),
+            font_style: "normal",
+            max_width,
+            has_max_width: max_width.is_some(),
+            line_height: wasm_line_height(style, wrap_mode),
+            letter_spacing: 0.0,
+            word_spacing: 0.0,
+            wrap_mode: wasm_wrap_mode(wrap_mode),
+            direction: "auto",
+            white_space: wasm_white_space(max_width, wrap_mode),
+        };
+        let request = serde_wasm_bindgen::to_value(&request).ok()?;
+
+        HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
+            let callback = slot.borrow().clone()?;
+            let value = callback.call1(&JsValue::NULL, &request).ok()?;
+            if value.is_null() || value.is_undefined() {
+                return None;
+            }
+
+            let result: WasmHostTextMeasureResult = serde_wasm_bindgen::from_value(value).ok()?;
+            if result.handled == Some(false)
+                || !result.width.is_finite()
+                || !result.height.is_finite()
+                || result.width < 0.0
+                || result.height < 0.0
+            {
+                return None;
+            }
+
+            let line_count = result.line_count.unwrap_or(1);
+            if line_count == 0 {
+                return None;
+            }
+
+            Some(TextMetrics {
+                width: result.width,
+                height: result.height,
+                line_count,
+            })
+        })
+    }
+
+    fn measure_with_fallback(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.call_host(text, style, max_width, wrap_mode)
+            .unwrap_or_else(|| {
+                self.fallback
+                    .measure_wrapped(text, style, max_width, wrap_mode)
+            })
+    }
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+impl TextMeasurer for WasmHostTextMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.call_host(text, style, None, WrapMode::SvgLike)
+            .unwrap_or_else(|| self.fallback.measure(text, style))
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.measure_with_fallback(text, style, max_width, wrap_mode)
+    }
+
+    fn measure_wrapped_with_raw_width(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> (TextMetrics, Option<f64>) {
+        if let Some(metrics) = self.call_host(text, style, max_width, wrap_mode) {
+            let raw_width = max_width
+                .and_then(|_| self.call_host(text, style, None, wrap_mode))
+                .map(|raw| raw.width);
+            return (metrics, raw_width);
+        }
+        self.fallback
+            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode)
+    }
+
+    fn measure_wrapped_raw(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.call_host(text, style, max_width, wrap_mode)
+            .unwrap_or_else(|| {
+                self.fallback
+                    .measure_wrapped_raw(text, style, max_width, wrap_mode)
+            })
+    }
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+struct HostTextMeasureCallbackGuard(Option<js_sys::Function>);
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+impl Drop for HostTextMeasureCallbackGuard {
+    fn drop(&mut self) {
+        HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
+            slot.replace(self.0.take());
+        });
+    }
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn with_host_text_measure_callback<R>(callback: js_sys::Function, f: impl FnOnce() -> R) -> R {
+    let previous = HOST_TEXT_MEASURE_CALLBACK.with(|slot| slot.replace(Some(callback)));
+    let _guard = HostTextMeasureCallbackGuard(previous);
+    f()
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn wasm_wrap_mode(wrap_mode: WrapMode) -> &'static str {
+    match wrap_mode {
+        WrapMode::SvgLike => "svg-like",
+        WrapMode::SvgLikeSingleRun => "svg-like-single-run",
+        WrapMode::HtmlLike => "html-like",
+    }
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn wasm_line_height(style: &TextStyle, wrap_mode: WrapMode) -> f64 {
+    let factor = match wrap_mode {
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
+        WrapMode::HtmlLike => 1.5,
+    };
+    style.font_size.max(1.0) * factor
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str {
+    match wrap_mode {
+        WrapMode::HtmlLike if max_width.is_some() => "break-spaces",
+        WrapMode::HtmlLike => "nowrap",
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => "normal",
     }
 }
 

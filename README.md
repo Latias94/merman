@@ -389,14 +389,15 @@ cargo run -p merman --features render --example example_11_custom_output_environ
 
 The [`merman-ffi`](https://crates.io/crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The current
 FFI surface supports SVG rendering, ASCII text rendering, semantic JSON, layout JSON, validation
-JSON, binding metadata, and explicit Rust-owned buffer release.
+JSON, binding metadata, host text-measurement callbacks for reusable engines, and explicit
+Rust-owned buffer release.
 
 Start with the surface that matches your host:
 
 | Host | Package or source | Notes |
 | --- | --- | --- |
 | C / C++ / other native FFI | [`merman-ffi`](https://crates.io/crates/merman-ffi), [`crates/merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi), [`merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h) | Stable C ABI used by the higher-level wrappers. |
-| Python | [`merman` on PyPI](https://pypi.org/project/merman/), [`platforms/python/merman`](https://github.com/Latias94/merman/tree/main/platforms/python/merman) | Experimental UniFFI wheels. |
+| Python | [`merman` on PyPI](https://pypi.org/project/merman/), [`platforms/python/merman`](https://github.com/Latias94/merman/tree/main/platforms/python/merman) | Experimental UniFFI wheels. This surface does not expose host text-measurement callbacks yet; use the C ABI when a Python host needs its own font stack. |
 | Flutter / Dart | [`merman` on pub.dev](https://pub.dev/packages/merman), [`platforms/flutter`](https://github.com/Latias94/merman/tree/main/platforms/flutter) | Flutter package backed by Dart FFI and bundled native libraries. |
 | Android / Kotlin | [`platforms/android`](https://github.com/Latias94/merman/tree/main/platforms/android) | AAR/JNI package source for Android hosts. |
 | Apple / SwiftPM | [`Package.swift`](https://github.com/Latias94/merman/blob/main/Package.swift), [`platforms/apple`](https://github.com/Latias94/merman/tree/main/platforms/apple) | Swift wrapper and binary XCFramework package layout. |
@@ -417,12 +418,40 @@ Every non-empty `MermanResult.data` buffer must be released with `merman_buffer_
 [`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md) for result codes, options JSON,
 threading, and compatibility rules.
 
+Headless rendering cannot know the exact browser or native UI font fallback that will display the
+final SVG. If precise label geometry matters, native hosts should install the FFI text-measurement
+callback and measure with their own DOM/canvas/WebView/native text stack. Unsupported requests can
+return `handled=0`, and merman will fall back to its vendored Mermaid-compatible measurer.
+See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md)
+for platform guidance covering Android JNI, Apple Swift, Flutter/Dart FFI, browser/WebView
+measurement, callback lifetime, and testing.
+
+Use this rule of thumb:
+
+| Host scenario | Recommended measurement path |
+| --- | --- |
+| CLI, CI, docs generation, server-side batch rendering | Use the default vendored metrics. They are deterministic and dependency-light. |
+| Editor or preview rendered in a browser/WebView | Use DOM/canvas measurement from the same browser/WebView after fonts are ready, preferably through a cache that the synchronous callback can read. |
+| Android native preview | Use `TextPaint` and `StaticLayout` with the same font registration and paragraph settings as the preview. |
+| Apple native preview | Use Core Text or matching `NSAttributedString` layout with the same fonts and paragraph attributes as the final view. |
+| Flutter native preview | Use the same Flutter paragraph/text layout and font registration as the widget that will display the SVG, and keep the FFI callback on the same isolate. |
+| Any unsupported font, wrap mode, or async-only surface | Return unsupported (`handled=0` / `null`) for that request and let merman fall back. |
+
+The web package exposes the same idea for browser integrations through
+`renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. The
+playground uses this as its default preview path and lets maintainers switch between browser and
+headless measurement plus several font stacks, which is the recommended way to reproduce
+browser/font-specific clipping reports such as missing trailing punctuation in Flowchart condition
+labels.
+
 Detailed platform notes:
 
 - Android/Kotlin: [`docs/bindings/ANDROID_JNI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
 - Apple Swift Package: [`docs/bindings/APPLE_SWIFT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
 - Flutter/Dart FFI: [`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
 - Python UniFFI package: [`docs/bindings/PYTHON_UNIFFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
+- Browser/WebAssembly: [`platforms/web/README.md`](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
 
 ### Binary size
 
@@ -728,6 +757,10 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 ## Limitations
 
 - SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_resvg_safe_sync()` or the explicit `SvgPipeline::resvg_safe()` preset.
+- Text measurement is inherently host-sensitive. Merman uses vendored compatibility metrics by
+  default and keeps Flowchart HTML labels non-clipping, but browser and native font fallback,
+  shaping, hinting, and subpixel rounding can still differ. Hosts that need exact geometry should
+  provide a `TextMeasurer` in Rust or the C FFI text-measurement callback.
 - PNG/JPG export is constrained by a default pixmap budget. This protects headless hosts from
   oversized allocations, but it also means extremely large diagrams are downscaled unless callers
   choose a target fit box or explicitly opt into unbounded raster output.

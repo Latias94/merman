@@ -2,6 +2,7 @@
 
 use super::super::*;
 use super::root::flowchart_wrap_svg_text_lines;
+use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 
 pub(in crate::svg::parity) fn render_flowchart_edge_label(
     out: &mut String,
@@ -464,7 +465,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
@@ -472,6 +473,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(-h / 2.0),
                 fmt_display(render_w),
                 fmt_display(h),
+                HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
                 escape_xml_display(&div_style),
                 span_style_attr,
                 label_html
@@ -530,7 +532,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
@@ -538,6 +540,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(-h / 2.0),
                 fmt_display(render_w),
                 fmt_display(h.max(0.0)),
+                HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
                 escape_xml_display(&div_style),
                 span_style_attr,
                 label_html

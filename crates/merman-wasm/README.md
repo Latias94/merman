@@ -19,6 +19,10 @@ crate directly:
 npm install @mermanjs/web
 ```
 
+For browser font fidelity, use the web wrapper's `renderSvgWithTextMeasurer`,
+`layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer` APIs. The wrapper owns the
+TypeScript request/response shape and DOM helper for browser text measurement.
+
 Use this crate directly when you need to rebuild the wasm-bindgen package from source or integrate
 the generated wasm artifacts into a custom packaging flow.
 

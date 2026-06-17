@@ -168,7 +168,7 @@ graph TD;A-->B;"#;
 }
 
 #[test]
-fn parse_theme_expands_theme_variables_only_in_effective_config() {
+fn parse_theme_variables_are_retained_but_default_secure_filters_effective_config() {
     let engine = Engine::new();
     let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
 graph TD;A-->B;"##;
@@ -185,15 +185,37 @@ graph TD;A-->B;"##;
     assert_eq!(res.config.get_str("themeVariables.mainBkg"), None);
     assert_eq!(
         res.effective_config.get_str("themeVariables.primaryColor"),
+        Some("#cde498")
+    );
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.mainBkg"),
+        Some("#cde498")
+    );
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.fontFamily"),
+        Some("\"trebuchet ms\", verdana, arial, sans-serif")
+    );
+}
+
+#[test]
+fn site_secure_policy_can_opt_into_legacy_theme_variable_init_compatibility() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
+    })));
+    let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
+graph TD;A-->B;"##;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.primaryColor"),
         Some("#123456")
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
         Some("#123456")
-    );
-    assert_eq!(
-        res.effective_config.get_str("themeVariables.fontFamily"),
-        Some("\"trebuchet ms\", verdana, arial, sans-serif")
     );
 }
 
@@ -353,7 +375,7 @@ Alice->Bob: Hi
 }
 
 #[test]
-fn parse_init_font_family_mirrors_legacy_theme_variable_like_upstream() {
+fn parse_init_font_family_mirrors_retained_config_but_default_secure_filters_effective_config() {
     let engine = Engine::new();
     let text = r#"%%{init: { "fontFamily": "Courier" } }%%
 graph TD;A-->B;
@@ -369,13 +391,17 @@ graph TD;A-->B;
         Some("Courier")
     );
     assert_eq!(
+        res.effective_config.get_str("fontFamily"),
+        Some("\"trebuchet ms\", verdana, arial, sans-serif;")
+    );
+    assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
-        Some("Courier")
+        Some("\"trebuchet ms\", verdana, arial, sans-serif")
     );
 }
 
 #[test]
-fn parse_init_theme_variable_font_family_overrides_legacy_root() {
+fn parse_init_theme_variable_font_family_is_retained_but_default_secure_filters_effective_config() {
     let engine = Engine::new();
     let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
 graph TD;A-->B;
@@ -390,6 +416,30 @@ graph TD;A-->B;
         res.config.get_str("themeVariables.fontFamily"),
         Some("Inter")
     );
+    assert_eq!(
+        res.effective_config.get_str("fontFamily"),
+        Some("\"trebuchet ms\", verdana, arial, sans-serif;")
+    );
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.fontFamily"),
+        Some("\"trebuchet ms\", verdana, arial, sans-serif")
+    );
+}
+
+#[test]
+fn site_secure_policy_can_opt_into_legacy_font_family_init_compatibility() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
+    })));
+    let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
+graph TD;A-->B;
+"#;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.effective_config.get_str("fontFamily"), Some("Courier"));
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
         Some("Inter")
@@ -508,9 +558,10 @@ fn site_config_secure_keys_protect_effective_config_from_diagram_config() {
         "fontFamily": "site-font",
         "fontSize": 16,
         "securityLevel": "strict",
-        "secure": ["secure", "fontSize", "securityLevel", "customLockedKey"]
+        "themeCSS": ".node rect { fill: #123456; }",
+        "secure": ["secure", "fontFamily", "fontSize", "securityLevel", "themeCSS", "themeVariables", "customLockedKey"]
     })));
-    let text = r#"%%{init: {"fontFamily": "diagram-font", "fontSize": 99, "securityLevel": "loose"}}%%
+    let text = r#"%%{init: {"fontFamily": "diagram-font", "fontSize": 99, "securityLevel": "loose", "themeCSS": ".node rect { fill: red; }", "themeVariables": {"fontFamily": "diagram-theme-font"}}}%%
 flowchart TD
     A --> B
 "#;
@@ -524,8 +575,20 @@ flowchart TD
     assert_eq!(meta.config.as_value()["fontSize"], json!(99));
     assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
     assert_eq!(
+        meta.config.get_str("themeCSS"),
+        Some(".node rect { fill: red; }")
+    );
+    assert_eq!(
         meta.effective_config.get_str("fontFamily"),
-        Some("diagram-font")
+        Some("site-font")
+    );
+    assert_eq!(
+        meta.effective_config.get_str("themeCSS"),
+        Some(".node rect { fill: #123456; }")
+    );
+    assert_eq!(
+        meta.effective_config.get_str("themeVariables.fontFamily"),
+        Some("site-font")
     );
     assert_eq!(meta.effective_config.as_value()["fontSize"], json!(16));
     assert_eq!(
@@ -537,7 +600,7 @@ flowchart TD
 #[test]
 fn default_secure_keys_protect_effective_config_from_diagram_config() {
     let engine = Engine::new();
-    let text = r#"%%{init: {"theme": "dark", "securityLevel": "loose"}}%%
+    let text = r#"%%{init: {"theme": "dark", "securityLevel": "loose", "fontFamily": "x;a{b} :not(&){background:green !important} c{d}", "altFontFamily": "Injected", "themeCSS": ".node rect { fill: red; }", "themeVariables": {"fontFamily": "Injected Theme"}}}%%
 flowchart TD
     A --> B
 "#;
@@ -549,10 +612,24 @@ flowchart TD
 
     assert_eq!(meta.config.get_str("theme"), Some("dark"));
     assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
+    assert_eq!(
+        meta.config.get_str("fontFamily"),
+        Some("x;a{b} :not(&){background:green !important} c{d}")
+    );
     assert_eq!(meta.effective_config.get_str("theme"), Some("dark"));
     assert_eq!(
         meta.effective_config.get_str("securityLevel"),
         Some("strict")
+    );
+    assert_eq!(
+        meta.effective_config.get_str("fontFamily"),
+        Some("\"trebuchet ms\", verdana, arial, sans-serif;")
+    );
+    assert!(meta.effective_config.get_str("altFontFamily").is_none());
+    assert!(meta.effective_config.get_str("themeCSS").is_none());
+    assert_eq!(
+        meta.effective_config.get_str("themeVariables.fontFamily"),
+        Some("\"trebuchet ms\", verdana, arial, sans-serif")
     );
 }
 

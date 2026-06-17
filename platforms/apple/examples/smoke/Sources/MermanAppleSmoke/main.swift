@@ -32,6 +32,28 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("validation smoke failed")
         }
 
+        let reusable = try engine.reusableEngine()
+        let callback: MermanTextMeasureCallback = { request, _ in
+            let text = request.text.map {
+                String(decoding: UnsafeBufferPointer(start: $0, count: request.text_len), as: UTF8.self)
+            } ?? ""
+            if text == "Hello" {
+                return MermanTextMeasureResult(
+                    handled: 1,
+                    width: 42.0,
+                    height: request.line_height,
+                    line_count: 1
+                )
+            }
+            return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
+        }
+        try reusable.setTextMeasureCallback(callback)
+        let reusableSvg = try reusable.renderSvg(source)
+        guard reusableSvg.contains("<svg"), reusableSvg.contains("Hello") else {
+            throw SmokeError.failed("reusable renderSvg smoke failed")
+        }
+        reusable.close()
+
         guard try engine.supportedDiagrams().contains("flowchart") else {
             throw SmokeError.failed("supported diagrams smoke failed")
         }

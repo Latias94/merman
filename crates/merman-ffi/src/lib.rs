@@ -5,17 +5,34 @@
 //! This crate is the only place where the public FFI boundary owns unsafe code. The core
 //! parser/render crates and shared binding facade remain safe Rust APIs.
 
+#[cfg(feature = "render")]
+use merman_bindings_core::TextMeasurer;
 use merman_bindings_core::{BindingEngine, BindingError, BindingStatus, error_payload_json_bytes};
 use std::ffi::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+#[cfg(feature = "render")]
+use std::sync::Arc;
 
 #[cfg(target_os = "android")]
 mod android_jni;
 
-pub const MERMAN_ABI_VERSION: u32 = 1;
+pub const MERMAN_ABI_VERSION: u32 = 2;
 
 const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
+
+pub const MERMAN_WRAP_MODE_SVG_LIKE: i32 = 0;
+pub const MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN: i32 = 1;
+pub const MERMAN_WRAP_MODE_HTML_LIKE: i32 = 2;
+
+pub const MERMAN_TEXT_DIRECTION_AUTO: i32 = 0;
+pub const MERMAN_TEXT_DIRECTION_LTR: i32 = 1;
+pub const MERMAN_TEXT_DIRECTION_RTL: i32 = 2;
+
+pub const MERMAN_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
+pub const MERMAN_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
+pub const MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
+pub const MERMAN_TEXT_WHITE_SPACE_PRE_WRAP: i32 = 3;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +58,8 @@ pub struct MermanResult {
 }
 
 pub struct MermanEngine {
+    #[cfg(feature = "render")]
+    base: BindingEngine,
     inner: BindingEngine,
 }
 
@@ -50,6 +69,221 @@ pub struct MermanEngineResult {
     pub code: i32,
     pub engine: *mut MermanEngine,
     pub data: MermanBuffer,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct MermanHostTextMeasureRequest {
+    pub text: *const u8,
+    pub text_len: usize,
+    pub font_family: *const u8,
+    pub font_family_len: usize,
+    pub font_size: f64,
+    pub font_weight: *const u8,
+    pub font_weight_len: usize,
+    pub font_style: *const u8,
+    pub font_style_len: usize,
+    pub max_width: f64,
+    pub line_height: f64,
+    pub letter_spacing: f64,
+    pub word_spacing: f64,
+    pub wrap_mode: i32,
+    pub direction: i32,
+    pub white_space: i32,
+    pub has_max_width: u8,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct MermanHostTextMeasureResult {
+    pub handled: u8,
+    pub width: f64,
+    pub height: f64,
+    pub line_count: usize,
+}
+
+pub type MermanHostTextMeasureCallback = unsafe extern "C" fn(
+    request: MermanHostTextMeasureRequest,
+    user_data: *mut std::ffi::c_void,
+) -> MermanHostTextMeasureResult;
+
+#[cfg(feature = "render")]
+#[derive(Clone)]
+struct FfiHostTextMeasurer {
+    callback: MermanHostTextMeasureCallback,
+    user_data: usize,
+    fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer,
+}
+
+#[cfg(feature = "render")]
+impl FfiHostTextMeasurer {
+    const DEFAULT_FONT_STYLE: &'static [u8] = b"normal";
+    const DEFAULT_FONT_WEIGHT: &'static [u8] = b"normal";
+
+    fn new(callback: MermanHostTextMeasureCallback, user_data: *mut std::ffi::c_void) -> Self {
+        Self {
+            callback,
+            user_data: user_data as usize,
+            fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer::default(),
+        }
+    }
+
+    fn call_host(
+        &self,
+        text: &str,
+        style: &merman_bindings_core::TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: merman_bindings_core::WrapMode,
+    ) -> Option<merman_bindings_core::TextMetrics> {
+        let font_family = style.font_family.as_deref().unwrap_or_default().as_bytes();
+        let font_weight = style
+            .font_weight
+            .as_deref()
+            .map(str::as_bytes)
+            .unwrap_or(Self::DEFAULT_FONT_WEIGHT);
+        let font_style = Self::DEFAULT_FONT_STYLE;
+        let result = unsafe {
+            (self.callback)(
+                MermanHostTextMeasureRequest {
+                    text: text.as_ptr(),
+                    text_len: text.len(),
+                    font_family: font_family.as_ptr(),
+                    font_family_len: font_family.len(),
+                    font_size: style.font_size,
+                    font_weight: font_weight.as_ptr(),
+                    font_weight_len: font_weight.len(),
+                    font_style: font_style.as_ptr(),
+                    font_style_len: font_style.len(),
+                    max_width: max_width.unwrap_or(0.0),
+                    line_height: ffi_line_height(style, wrap_mode),
+                    letter_spacing: 0.0,
+                    word_spacing: 0.0,
+                    wrap_mode: ffi_wrap_mode(wrap_mode),
+                    direction: MERMAN_TEXT_DIRECTION_AUTO,
+                    white_space: ffi_white_space(max_width, wrap_mode),
+                    has_max_width: u8::from(max_width.is_some()),
+                },
+                self.user_data as *mut std::ffi::c_void,
+            )
+        };
+
+        if result.handled == 0
+            || !result.width.is_finite()
+            || !result.height.is_finite()
+            || result.width < 0.0
+            || result.height < 0.0
+            || result.line_count == 0
+        {
+            return None;
+        }
+
+        Some(merman_bindings_core::TextMetrics {
+            width: result.width,
+            height: result.height,
+            line_count: result.line_count,
+        })
+    }
+
+    fn measure_with_fallback(
+        &self,
+        text: &str,
+        style: &merman_bindings_core::TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: merman_bindings_core::WrapMode,
+    ) -> merman_bindings_core::TextMetrics {
+        self.call_host(text, style, max_width, wrap_mode)
+            .unwrap_or_else(|| {
+                self.fallback
+                    .measure_wrapped(text, style, max_width, wrap_mode)
+            })
+    }
+}
+
+#[cfg(feature = "render")]
+impl merman_bindings_core::TextMeasurer for FfiHostTextMeasurer {
+    fn measure(
+        &self,
+        text: &str,
+        style: &merman_bindings_core::TextStyle,
+    ) -> merman_bindings_core::TextMetrics {
+        self.call_host(text, style, None, merman_bindings_core::WrapMode::SvgLike)
+            .unwrap_or_else(|| self.fallback.measure(text, style))
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &merman_bindings_core::TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: merman_bindings_core::WrapMode,
+    ) -> merman_bindings_core::TextMetrics {
+        self.measure_with_fallback(text, style, max_width, wrap_mode)
+    }
+
+    fn measure_wrapped_with_raw_width(
+        &self,
+        text: &str,
+        style: &merman_bindings_core::TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: merman_bindings_core::WrapMode,
+    ) -> (merman_bindings_core::TextMetrics, Option<f64>) {
+        if let Some(metrics) = self.call_host(text, style, max_width, wrap_mode) {
+            let raw_width = max_width
+                .and_then(|_| self.call_host(text, style, None, wrap_mode))
+                .map(|raw| raw.width);
+            return (metrics, raw_width);
+        }
+        self.fallback
+            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode)
+    }
+
+    fn measure_wrapped_raw(
+        &self,
+        text: &str,
+        style: &merman_bindings_core::TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: merman_bindings_core::WrapMode,
+    ) -> merman_bindings_core::TextMetrics {
+        self.call_host(text, style, max_width, wrap_mode)
+            .unwrap_or_else(|| {
+                self.fallback
+                    .measure_wrapped_raw(text, style, max_width, wrap_mode)
+            })
+    }
+}
+
+#[cfg(feature = "render")]
+fn ffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> i32 {
+    match wrap_mode {
+        merman_bindings_core::WrapMode::SvgLike => MERMAN_WRAP_MODE_SVG_LIKE,
+        merman_bindings_core::WrapMode::SvgLikeSingleRun => MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN,
+        merman_bindings_core::WrapMode::HtmlLike => MERMAN_WRAP_MODE_HTML_LIKE,
+    }
+}
+
+#[cfg(feature = "render")]
+fn ffi_line_height(
+    style: &merman_bindings_core::TextStyle,
+    wrap_mode: merman_bindings_core::WrapMode,
+) -> f64 {
+    let factor = match wrap_mode {
+        merman_bindings_core::WrapMode::SvgLike
+        | merman_bindings_core::WrapMode::SvgLikeSingleRun => 1.1,
+        merman_bindings_core::WrapMode::HtmlLike => 1.5,
+    };
+    style.font_size.max(1.0) * factor
+}
+
+#[cfg(feature = "render")]
+fn ffi_white_space(max_width: Option<f64>, wrap_mode: merman_bindings_core::WrapMode) -> i32 {
+    match wrap_mode {
+        merman_bindings_core::WrapMode::HtmlLike if max_width.is_some() => {
+            MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES
+        }
+        merman_bindings_core::WrapMode::HtmlLike => MERMAN_TEXT_WHITE_SPACE_NOWRAP,
+        merman_bindings_core::WrapMode::SvgLike
+        | merman_bindings_core::WrapMode::SvgLikeSingleRun => MERMAN_TEXT_WHITE_SPACE_NORMAL,
+    }
 }
 
 /// Return the C ABI protocol version implemented by this library.
@@ -80,6 +314,18 @@ pub extern "C" fn merman_result_struct_size() -> usize {
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_engine_result_struct_size() -> usize {
     std::mem::size_of::<MermanEngineResult>()
+}
+
+/// Return the Rust-side size of `MermanHostTextMeasureRequest`.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_host_text_measure_request_struct_size() -> usize {
+    std::mem::size_of::<MermanHostTextMeasureRequest>()
+}
+
+/// Return the Rust-side size of `MermanHostTextMeasureResult`.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_host_text_measure_result_struct_size() -> usize {
+    std::mem::size_of::<MermanHostTextMeasureResult>()
 }
 
 /// Create a reusable engine for repeated calls with the same options.
@@ -113,6 +359,26 @@ pub unsafe extern "C" fn merman_engine_free(engine: *mut MermanEngine) {
     unsafe {
         drop(Box::from_raw(engine));
     }
+}
+
+/// Install a host-provided text measurer on a reusable engine.
+///
+/// The callback is used for future layout/render calls made through this engine. Passing a null
+/// callback resets the engine to the measurer configured by `merman_engine_new`.
+///
+/// # Safety
+///
+/// - `engine` must be a live pointer returned by `merman_engine_new`.
+/// - `callback`, when non-null, must remain callable for as long as the engine can call it.
+/// - `user_data` is never dereferenced by merman; it is passed back unchanged.
+/// - Callers must not mutate an engine while another thread is using it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_set_text_measure_callback(
+    engine: *mut MermanEngine,
+    callback: Option<MermanHostTextMeasureCallback>,
+    user_data: *mut std::ffi::c_void,
+) -> MermanResult {
+    ffi_result(|| unsafe { engine_set_text_measure_callback_impl(engine, callback, user_data) })
 }
 
 /// Render Mermaid source to SVG bytes using a reusable engine.
@@ -398,7 +664,11 @@ where
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(inner)) => MermanEngineResult {
             code: BindingStatus::Ok.code(),
-            engine: Box::into_raw(Box::new(MermanEngine { inner })),
+            engine: Box::into_raw(Box::new(MermanEngine {
+                #[cfg(feature = "render")]
+                base: inner.clone(),
+                inner,
+            })),
             data: MermanBuffer::empty(),
         },
         Ok(Err(err)) => MermanEngineResult {
@@ -425,6 +695,17 @@ unsafe fn engine_new_impl(
     BindingEngine::new(options_bytes)
 }
 
+#[cfg(feature = "render")]
+unsafe fn engine_mut<'a>(engine: *mut MermanEngine) -> Result<&'a mut MermanEngine, BindingError> {
+    if engine.is_null() {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "engine pointer is null",
+        ));
+    }
+    Ok(unsafe { &mut *engine })
+}
+
 unsafe fn engine_ref<'a>(engine: *const MermanEngine) -> Result<&'a MermanEngine, BindingError> {
     if engine.is_null() {
         return Err(BindingError::new(
@@ -433,6 +714,33 @@ unsafe fn engine_ref<'a>(engine: *const MermanEngine) -> Result<&'a MermanEngine
         ));
     }
     Ok(unsafe { &*engine })
+}
+
+unsafe fn engine_set_text_measure_callback_impl(
+    engine: *mut MermanEngine,
+    callback: Option<MermanHostTextMeasureCallback>,
+    user_data: *mut std::ffi::c_void,
+) -> Result<Vec<u8>, BindingError> {
+    #[cfg(not(feature = "render"))]
+    {
+        let _ = (engine, callback, user_data);
+        return Err(BindingError::new(
+            BindingStatus::UnsupportedFormat,
+            "host text measurement requires the render feature",
+        ));
+    }
+
+    #[cfg(feature = "render")]
+    {
+        let engine = unsafe { engine_mut(engine)? };
+        if let Some(callback) = callback {
+            let measurer = FfiHostTextMeasurer::new(callback, user_data);
+            engine.inner = engine.inner.with_text_measurer(Arc::new(measurer));
+        } else {
+            engine.inner = engine.base.clone();
+        }
+        Ok(Vec::new())
+    }
 }
 
 unsafe fn ffi_engine_source_call<F>(
@@ -614,6 +922,23 @@ mod tests {
         serde_json::from_str(&take_text(result.data)).expect("error payload should be JSON")
     }
 
+    fn foreign_object_width_before_label(svg: &str, label: &str) -> f64 {
+        let label_start = svg.find(label).expect("label text");
+        let before_label = &svg[..label_start];
+        let width_marker = r#"<foreignObject width=""#;
+        let width_start = before_label
+            .rfind(width_marker)
+            .map(|idx| idx + width_marker.len())
+            .expect("foreignObject width marker");
+        let width_end = svg[width_start..]
+            .find('"')
+            .map(|idx| width_start + idx)
+            .expect("foreignObject width end");
+        svg[width_start..width_end]
+            .parse::<f64>()
+            .expect("foreignObject width number")
+    }
+
     fn expect_render_feature_error(result: MermanResult) {
         assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
         let error = take_error(result);
@@ -639,6 +964,14 @@ mod tests {
         assert_eq!(
             merman_result_struct_size(),
             std::mem::size_of::<MermanResult>()
+        );
+        assert_eq!(
+            merman_host_text_measure_request_struct_size(),
+            std::mem::size_of::<MermanHostTextMeasureRequest>()
+        );
+        assert_eq!(
+            merman_host_text_measure_result_struct_size(),
+            std::mem::size_of::<MermanHostTextMeasureResult>()
         );
 
         let version = unsafe { CStr::from_ptr(merman_package_version()) };
@@ -927,8 +1260,11 @@ mod tests {
 
     #[test]
     fn ffi_engine_source_call_decodes_engine_and_source() {
+        let base = BindingEngine::new(b"").unwrap();
         let engine = MermanEngine {
-            inner: BindingEngine::new(b"").unwrap(),
+            #[cfg(feature = "render")]
+            base: base.clone(),
+            inner: base,
         };
         let source = b"flowchart TD\nA[Hello]";
         let output = unsafe {
@@ -961,6 +1297,119 @@ mod tests {
         } else {
             expect_render_feature_error(result);
         }
+
+        unsafe { merman_engine_free(engine.engine) };
+    }
+
+    #[test]
+    fn reusable_engine_can_use_host_text_measure_callback() {
+        #[derive(Default)]
+        struct CallbackProbe {
+            saw_condition: bool,
+            saw_nowrap: bool,
+            saw_break_spaces: bool,
+            saw_font_style: bool,
+            saw_spacing_defaults: bool,
+        }
+
+        unsafe extern "C" fn measure_condition(
+            request: MermanHostTextMeasureRequest,
+            user_data: *mut std::ffi::c_void,
+        ) -> MermanHostTextMeasureResult {
+            if user_data.is_null() {
+                return MermanHostTextMeasureResult {
+                    handled: 0,
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                };
+            }
+            let text = unsafe { std::slice::from_raw_parts(request.text, request.text_len) };
+            if text == b"Condition?" && request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE {
+                let probe = unsafe { &mut *(user_data.cast::<CallbackProbe>()) };
+                probe.saw_condition = true;
+                let font_style = unsafe {
+                    std::slice::from_raw_parts(request.font_style, request.font_style_len)
+                };
+                probe.saw_font_style |= font_style == b"normal"
+                    && request.direction == MERMAN_TEXT_DIRECTION_AUTO
+                    && request.line_height > request.font_size;
+                probe.saw_spacing_defaults |=
+                    request.letter_spacing == 0.0 && request.word_spacing == 0.0;
+                if request.has_max_width == 0 {
+                    probe.saw_nowrap |= request.white_space == MERMAN_TEXT_WHITE_SPACE_NOWRAP;
+                } else {
+                    probe.saw_break_spaces |=
+                        request.white_space == MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES;
+                }
+                return MermanHostTextMeasureResult {
+                    handled: 1,
+                    width: 140.0,
+                    height: 24.0,
+                    line_count: 1,
+                };
+            }
+            MermanHostTextMeasureResult {
+                handled: 0,
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            }
+        }
+
+        let engine = call_engine(b"");
+        assert_eq!(engine.code, BindingStatus::Ok.code());
+        assert!(!engine.engine.is_null());
+        let source = b"flowchart TD\nA[Start] --> B{Condition?}";
+
+        let baseline = call_engine_render(engine.engine, source);
+        if !cfg!(feature = "render") {
+            expect_render_feature_error(baseline);
+            unsafe { merman_engine_free(engine.engine) };
+            return;
+        }
+        assert_eq!(baseline.code, BindingStatus::Ok.code());
+        let baseline_svg = take_text(baseline.data);
+        let baseline_width = foreign_object_width_before_label(&baseline_svg, "Condition?");
+
+        let mut callback_probe = CallbackProbe::default();
+        let set_result = unsafe {
+            merman_engine_set_text_measure_callback(
+                engine.engine,
+                Some(measure_condition),
+                (&mut callback_probe as *mut CallbackProbe).cast(),
+            )
+        };
+        assert_eq!(set_result.code, BindingStatus::Ok.code());
+        assert!(set_result.data.data.is_null());
+
+        let measured = call_engine_render(engine.engine, source);
+        assert_eq!(measured.code, BindingStatus::Ok.code());
+        let measured_svg = take_text(measured.data);
+        let measured_width = foreign_object_width_before_label(&measured_svg, "Condition?");
+        assert!(
+            measured_width > baseline_width + 40.0,
+            "expected host callback width to affect layout; baseline={baseline_width}, measured={measured_width}"
+        );
+        assert!(callback_probe.saw_condition);
+        assert!(callback_probe.saw_nowrap);
+        assert!(callback_probe.saw_break_spaces);
+        assert!(callback_probe.saw_font_style);
+        assert!(callback_probe.saw_spacing_defaults);
+
+        let reset = unsafe {
+            merman_engine_set_text_measure_callback(engine.engine, None, ptr::null_mut())
+        };
+        assert_eq!(reset.code, BindingStatus::Ok.code());
+
+        let reset_result = call_engine_render(engine.engine, source);
+        assert_eq!(reset_result.code, BindingStatus::Ok.code());
+        let reset_svg = take_text(reset_result.data);
+        let reset_width = foreign_object_width_before_label(&reset_svg, "Condition?");
+        assert!(
+            (reset_width - baseline_width).abs() < 0.001,
+            "expected null callback to restore base text measurer; baseline={baseline_width}, reset={reset_width}"
+        );
 
         unsafe { merman_engine_free(engine.engine) };
     }

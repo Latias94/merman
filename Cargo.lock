@@ -2856,6 +2856,7 @@ name = "merman-wasm"
 version = "0.8.0-alpha.2"
 dependencies = [
  "console_error_panic_hook",
+ "js-sys",
  "merman-bindings-core",
  "serde",
  "serde-wasm-bindgen",

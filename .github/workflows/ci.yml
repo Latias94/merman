@@ -178,6 +178,60 @@ jobs:
       - name: Check shell scripts
         run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
 
+  platform-bindings:
+    name: platform-bindings
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      KOTLIN_VERSION: "1.9.24"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Setup JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Kotlin compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L \
+            -o "$RUNNER_TEMP/kotlin-compiler.zip" \
+            "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          unzip -q "$RUNNER_TEMP/kotlin-compiler.zip" -d "$RUNNER_TEMP/kotlin"
+          echo "$RUNNER_TEMP/kotlin/kotlinc/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/kotlin/kotlinc/bin/kotlinc" -version
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.3"
+          channel: stable
+          cache: true
+
+      - name: Precache Flutter Android artifacts
+        run: flutter precache --android
+
+      - name: Verify platform bindings
+        run: python3 scripts/verify-platform-bindings.py
+
   python-uniffi-wheel:
     name: python-uniffi-wheel
     runs-on: ubuntu-24.04

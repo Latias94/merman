@@ -28,6 +28,7 @@ ratex-math = ["render", "merman-bindings-core/ratex-math"]
 
 [dependencies]
 console_error_panic_hook.workspace = true
+js-sys.workspace = true
 merman-bindings-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true

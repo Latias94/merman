@@ -3,9 +3,15 @@ import { useTranslation } from "react-i18next";
 import {
   useAppStore,
   type HostThemePreset,
+  type TextMeasurementMode,
   type Theme,
   type UITheme,
 } from "@/src/store";
+import {
+  DIAGRAM_FONT_VALUES,
+  isDiagramFont,
+  type DiagramFont,
+} from "@/src/lib/diagram-font";
 import { useShare } from "@/src/hooks/useShare";
 import {
   exportSVG,
@@ -62,6 +68,7 @@ import {
   FileText,
   Code,
   ExternalLink,
+  Type,
 } from "lucide-react";
 
 const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
@@ -69,6 +76,11 @@ const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
   dark: <Moon className="size-4" />,
   system: <Monitor className="size-4" />,
 };
+
+const TEXT_MEASUREMENT_VALUES: readonly TextMeasurementMode[] = [
+  "browser",
+  "headless",
+];
 
 export function Toolbar() {
   const { t } = useTranslation();
@@ -79,6 +91,10 @@ export function Toolbar() {
     mermaidConfig,
     setDiagramTheme,
     setHostThemePreset,
+    textMeasurementMode,
+    setTextMeasurementMode,
+    diagramFont,
+    setDiagramFont,
     uiTheme,
     setUITheme,
     toggleExamples,
@@ -119,10 +135,19 @@ export function Toolbar() {
 
   const activeHostThemePreset: HostThemePresetName | undefined =
     hostThemePreset === "none" ? undefined : hostThemePreset;
+  const renderOptions = useMemo(
+    () => ({
+      hostThemePreset: activeHostThemePreset,
+      textMeasurementMode,
+      diagramFont,
+    }),
+    [activeHostThemePreset, diagramFont, textMeasurementMode]
+  );
   const renderThemeLabel =
     hostThemePreset === "none"
       ? t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })
       : t(`hostThemes.${hostThemePreset}`, { defaultValue: hostThemePreset });
+  const renderSettingsLabel = t("toolbar.renderSettings");
 
   const UI_THEME_OPTIONS: { value: UITheme; label: string }[] = [
     { value: "light", label: t("uiThemes.light") },
@@ -130,56 +155,39 @@ export function Toolbar() {
     { value: "system", label: t("uiThemes.system") },
   ];
 
-  // 获取当前 SVG
-  const currentSvg = useMemo(() => {
+  const renderCurrentSvg = useCallback((pipeline?: "resvg-safe") => {
     const result = render(code, diagramTheme, mermaidConfig, {
-      hostThemePreset: activeHostThemePreset,
+      ...renderOptions,
+      ...(pipeline ? { pipeline } : {}),
     });
+    if (!result.svg) {
+      throw new Error(result.error ?? "Failed to render SVG");
+    }
     return result.svg;
-  }, [activeHostThemePreset, code, diagramTheme, mermaidConfig, render]);
+  }, [code, diagramTheme, mermaidConfig, render, renderOptions]);
 
   // 导出 SVG
   const handleExportSVG = useCallback(() => {
-    if (!currentSvg) {
+    try {
+      exportSVG(renderCurrentSvg(), "merman-diagram");
+      toast.success(t("export.svgSuccess"));
+    } catch {
       toast.error(t("export.failed"));
-      return;
     }
-    exportSVG(currentSvg, "merman-diagram");
-    toast.success(t("export.svgSuccess"));
-  }, [currentSvg, t]);
+  }, [renderCurrentSvg, t]);
 
   // 导出 PNG
   const handleExportPNG = useCallback(async () => {
-    if (!currentSvg) {
-      toast.error(t("export.failed"));
-      return;
-    }
     setIsExporting(true);
     try {
-      const pngResult = render(code, diagramTheme, mermaidConfig, {
-        pipeline: "resvg-safe",
-        hostThemePreset: activeHostThemePreset,
-      });
-      if (!pngResult.svg) {
-        throw new Error(pngResult.error ?? "Failed to render PNG SVG");
-      }
-
-      await exportPNG(pngResult.svg, "merman-diagram", 2);
+      await exportPNG(renderCurrentSvg("resvg-safe"), "merman-diagram", 2);
       toast.success(t("export.pngSuccess"));
     } catch {
       toast.error(t("export.failed"));
     } finally {
       setIsExporting(false);
     }
-  }, [
-    activeHostThemePreset,
-    code,
-    currentSvg,
-    diagramTheme,
-    mermaidConfig,
-    render,
-    t,
-  ]);
+  }, [renderCurrentSvg, t]);
 
   // 导出 ASCII
   const handleExportASCII = useCallback(() => {
@@ -227,17 +235,13 @@ export function Toolbar() {
 
   // 复制 SVG
   const handleCopySVG = useCallback(async () => {
-    if (!currentSvg) {
-      toast.error(t("share.copyFailed"));
-      return;
-    }
     try {
-      await copySVGToClipboard(currentSvg);
+      await copySVGToClipboard(renderCurrentSvg());
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [currentSvg, t]);
+  }, [renderCurrentSvg, t]);
 
   // 分享
   const handleShare = useCallback(async () => {
@@ -246,12 +250,28 @@ export function Toolbar() {
       return;
     }
     try {
-      await copyShareUrl(code, diagramTheme, mermaidConfig, activeHostThemePreset);
+      await copyShareUrl(
+        code,
+        diagramTheme,
+        mermaidConfig,
+        hostThemePreset,
+        textMeasurementMode,
+        diagramFont
+      );
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [activeHostThemePreset, code, diagramTheme, mermaidConfig, copyShareUrl, t]);
+  }, [
+    code,
+    copyShareUrl,
+    diagramFont,
+    diagramTheme,
+    hostThemePreset,
+    mermaidConfig,
+    t,
+    textMeasurementMode,
+  ]);
 
   const handleOpenMermaidLive = useCallback(() => {
     if (!code.trim()) {
@@ -269,6 +289,16 @@ export function Toolbar() {
     if (value === "none") return "none";
     return normalizeHostThemePresetName(value) ?? "none";
   }, []);
+  const normalizeTextMeasurementValue = useCallback(
+    (value: string): TextMeasurementMode =>
+      value === "headless" ? "headless" : "browser",
+    []
+  );
+  const normalizeDiagramFontValue = useCallback(
+    (value: string): DiagramFont =>
+      isDiagramFont(value) ? value : "trebuchet",
+    []
+  );
 
   // 应用 UI 主题到 HTML
   const handleUIThemeChange = useCallback(
@@ -320,6 +350,38 @@ export function Toolbar() {
         {hostThemeOptions.map((option) => (
           <DropdownMenuRadioItem key={option.value} value={option.value}>
             {option.label}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+    </DropdownMenuContent>
+  );
+
+  const renderRenderSettingsMenuContent = () => (
+    <DropdownMenuContent align="end">
+      <DropdownMenuLabel>{renderSettingsLabel}</DropdownMenuLabel>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.font")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={diagramFont}
+        onValueChange={(v) => setDiagramFont(normalizeDiagramFontValue(v))}
+      >
+        {DIAGRAM_FONT_VALUES.map((font) => (
+          <DropdownMenuRadioItem key={font} value={font}>
+            {t(`diagramFonts.${font}`)}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.textMeasurement")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={textMeasurementMode}
+        onValueChange={(v) =>
+          setTextMeasurementMode(normalizeTextMeasurementValue(v))
+        }
+      >
+        {TEXT_MEASUREMENT_VALUES.map((mode) => (
+          <DropdownMenuRadioItem key={mode} value={mode}>
+            {t(`textMeasurement.${mode}`)}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
@@ -379,6 +441,20 @@ export function Toolbar() {
               <TooltipContent>{t("toolbar.theme")}</TooltipContent>
             </Tooltip>
             {renderThemeMenuContent()}
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon-sm">
+                    <Type className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{renderSettingsLabel}</TooltipContent>
+            </Tooltip>
+            {renderRenderSettingsMenuContent()}
           </DropdownMenu>
 
           <DropdownMenu>
@@ -466,6 +542,27 @@ export function Toolbar() {
               <TooltipContent>{t("toolbar.theme")}</TooltipContent>
             </Tooltip>
             {renderThemeMenuContent()}
+          </DropdownMenu>
+
+          {/* 渲染设置 */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-8 px-0 sm:w-auto sm:px-2.5"
+                  >
+                    <Type className="size-4" />
+                    <span className="hidden sm:inline">{renderSettingsLabel}</span>
+                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{renderSettingsLabel}</TooltipContent>
+            </Tooltip>
+            {renderRenderSettingsMenuContent()}
           </DropdownMenu>
 
           {/* 导出 */}

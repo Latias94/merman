@@ -8,7 +8,8 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import { useAppStore } from "./store";
+import { useAppStore, type TextMeasurementMode } from "./store";
+import { isDiagramFont } from "./lib/diagram-font";
 import { useShare } from "./hooks/useShare";
 import { prewarmWasmRenderer } from "./lib/wasm-loader";
 import { normalizeHostThemePresetName, normalizeThemeName } from "@mermanjs/web";
@@ -36,6 +37,10 @@ const ExampleGallery = lazy(() =>
   }))
 );
 
+const TEXT_MEASUREMENT_VALUES = new Set<TextMeasurementMode>([
+  "browser",
+  "headless",
+]);
 export default function App() {
   const { t, i18n } = useTranslation();
   const {
@@ -44,6 +49,10 @@ export default function App() {
     diagramTheme,
     hostThemePreset,
     setHostThemePreset,
+    textMeasurementMode,
+    setTextMeasurementMode,
+    diagramFont,
+    setDiagramFont,
     setMermaidConfig,
     mermaidConfig,
     editorMode,
@@ -72,16 +81,34 @@ export default function App() {
         setDiagramTheme(normalizeThemeName(initialData.theme));
       }
       if (initialData.hostThemePreset) {
-        const preset = normalizeHostThemePresetName(initialData.hostThemePreset);
-        if (preset) {
-          setHostThemePreset(preset);
+        if (initialData.hostThemePreset === "none") {
+          setHostThemePreset("none");
+        } else {
+          const preset = normalizeHostThemePresetName(initialData.hostThemePreset);
+          if (preset) {
+            setHostThemePreset(preset);
+          }
         }
       }
       if (initialData.config !== undefined) {
         setMermaidConfig(initialData.config);
       }
+      if (isTextMeasurementMode(initialData.textMeasurementMode)) {
+        setTextMeasurementMode(initialData.textMeasurementMode);
+      }
+      if (isDiagramFont(initialData.diagramFont)) {
+        setDiagramFont(initialData.diagramFont);
+      }
     }
-  }, [initialData, setCode, setDiagramTheme, setHostThemePreset, setMermaidConfig]);
+  }, [
+    initialData,
+    setCode,
+    setDiagramFont,
+    setDiagramTheme,
+    setHostThemePreset,
+    setMermaidConfig,
+    setTextMeasurementMode,
+  ]);
 
   // 应用 UI 主题
   useEffect(() => {
@@ -112,12 +139,16 @@ export default function App() {
       void prewarmWasmRenderer(
         diagramTheme,
         mermaidConfig,
-        hostThemePreset === "none" ? undefined : { hostThemePreset }
+        {
+          hostThemePreset: hostThemePreset === "none" ? undefined : hostThemePreset,
+          textMeasurementMode,
+          diagramFont,
+        }
       ).catch(() => undefined);
     }, 120);
 
     return () => window.clearTimeout(timeout);
-  }, [diagramTheme, hostThemePreset, mermaidConfig]);
+  }, [diagramFont, diagramTheme, hostThemePreset, mermaidConfig, textMeasurementMode]);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -195,6 +226,12 @@ export default function App() {
       </div>
     </TooltipProvider>
   );
+}
+
+function isTextMeasurementMode(
+  value: string | undefined
+): value is TextMeasurementMode {
+  return Boolean(value && TEXT_MEASUREMENT_VALUES.has(value as TextMeasurementMode));
 }
 
 function EditorPanel({

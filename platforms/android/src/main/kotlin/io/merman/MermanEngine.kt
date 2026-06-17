@@ -1,7 +1,7 @@
 package io.merman
 
 object MermanEngine {
-    const val ABI_VERSION: Int = 1
+    const val ABI_VERSION: Int = 2
 
     init {
         System.loadLibrary("merman_ffi")

@@ -40,6 +40,18 @@ package version through `packageVersion`.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
+For repeated calls or host font measurement, use `MermanReusableEngine` and install a
+`MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
+vendored metrics for that request.
+
+For accurate Android preview geometry, measure with the same text stack that will display the SVG:
+`TextPaint`/`StaticLayout` for native Android UI, or a cached DOM/canvas measurement path for
+WebView display. The callback is synchronous, so keep it fast, cache repeated requests, and return
+`null` when the host cannot measure a request faithfully. See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#android-jni).
+For HTML-like labels, measure the natural no-wrap width first and only apply `maxWidth` when the
+natural width is larger; returning `maxWidth` for short labels can make diagrams unnecessarily wide.
+
 ## Example
 
 [`examples/MermanSmoke.kt`](examples/MermanSmoke.kt) shows the smallest Android-side smoke call
@@ -49,7 +61,7 @@ sequence. Use it from an Android app or instrumentation test after packaging
 ## Local Verification
 
 ```bash
-kotlinc src/main/kotlin/io/merman/MermanException.kt src/main/kotlin/io/merman/MermanEngine.kt -d ../../target/platforms/android/merman-android.jar
+kotlinc src/main/kotlin/io/merman/*.kt -d ../../target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
 ```

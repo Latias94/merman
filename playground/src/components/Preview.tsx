@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -90,6 +91,8 @@ export function Preview({ className }: PreviewProps) {
     diagramTheme,
     hostThemePreset,
     mermaidConfig,
+    textMeasurementMode,
+    diagramFont,
     setLastRenderTime,
     setDiagramType,
     isDarkMode,
@@ -135,6 +138,14 @@ export function Preview({ className }: PreviewProps) {
   });
   const activeHostThemePreset =
     hostThemePreset === "none" ? undefined : hostThemePreset;
+  const renderOptions = useMemo(
+    () => ({
+      hostThemePreset: activeHostThemePreset,
+      textMeasurementMode,
+      diagramFont,
+    }),
+    [activeHostThemePreset, diagramFont, textMeasurementMode]
+  );
 
   const detectDiagramType = useCallback((source: string): string => {
     const firstLine = source.trim().split("\n")[0]?.toLowerCase() || "";
@@ -184,8 +195,10 @@ export function Preview({ className }: PreviewProps) {
     [t]
   );
   const warmCompareRenderer = useCallback(() => {
-    void prewarmMermaidRenderer(diagramTheme, mermaidConfig);
-  }, [diagramTheme, mermaidConfig]);
+    void prewarmMermaidRenderer(diagramTheme, mermaidConfig, {
+      diagramFont,
+    });
+  }, [diagramFont, diagramTheme, mermaidConfig]);
   useEffect(() => {
     let cancelled = false;
 
@@ -210,13 +223,11 @@ export function Preview({ className }: PreviewProps) {
           await prewarmWasmRenderer(
             diagramTheme,
             mermaidConfig,
-            activeHostThemePreset ? { hostThemePreset: activeHostThemePreset } : undefined
+            renderOptions
           ).catch(() => undefined);
           if (cancelled) return;
 
-          const result = render(code, diagramTheme, mermaidConfig, {
-            hostThemePreset: activeHostThemePreset,
-          });
+          const result = render(code, diagramTheme, mermaidConfig, renderOptions);
           if (cancelled) return;
 
           setSvg(result.svg);
@@ -254,6 +265,7 @@ export function Preview({ className }: PreviewProps) {
     ready,
     refreshNonce,
     render,
+    renderOptions,
     renderAscii,
     setDiagramType,
     setLastRenderTime,
@@ -279,10 +291,14 @@ export function Preview({ className }: PreviewProps) {
     setMermaidStatus(isMermaidLoaded() ? "rendering" : "preparing");
     const timeout = setTimeout(() => {
       void (async () => {
-        await prewarmMermaidRenderer(diagramTheme, mermaidConfig);
+        await prewarmMermaidRenderer(diagramTheme, mermaidConfig, {
+          diagramFont,
+        });
         if (cancelled) return;
         setMermaidStatus("rendering");
-        const result = await renderMermaidSvg(code, diagramTheme, mermaidConfig);
+        const result = await renderMermaidSvg(code, diagramTheme, mermaidConfig, {
+          diagramFont,
+        });
         if (cancelled) return;
         setMermaidSvg(result.svg);
         setMermaidError(localizeMermaidError(result.error));
@@ -297,6 +313,7 @@ export function Preview({ className }: PreviewProps) {
     };
   }, [
     code,
+    diagramFont,
     diagramTheme,
     localizeMermaidError,
     mermaidConfig,
@@ -341,7 +358,7 @@ export function Preview({ className }: PreviewProps) {
               code,
               diagramTheme,
               mermaidConfig,
-              activeHostThemePreset ? { hostThemePreset: activeHostThemePreset } : undefined
+              renderOptions
             ),
           localizeMermanError
         ),
@@ -351,7 +368,7 @@ export function Preview({ className }: PreviewProps) {
               code,
               diagramTheme,
               mermaidConfig,
-              activeHostThemePreset ? { hostThemePreset: activeHostThemePreset } : undefined
+              renderOptions
             ),
           localizeMermanError
         ),
@@ -366,7 +383,6 @@ export function Preview({ className }: PreviewProps) {
     };
   }, [
     code,
-    activeHostThemePreset,
     diagramTheme,
     layoutJson,
     loading,
@@ -375,6 +391,7 @@ export function Preview({ className }: PreviewProps) {
     parseJson,
     previewMode,
     ready,
+    renderOptions,
     t,
   ]);
 
@@ -448,8 +465,8 @@ export function Preview({ className }: PreviewProps) {
       let exportSvg = value;
       if (engine === "merman") {
         const pngResult = render(code, diagramTheme, mermaidConfig, {
+          ...renderOptions,
           pipeline: "resvg-safe",
-          hostThemePreset: activeHostThemePreset,
         });
         if (!pngResult.svg) {
           throw new Error(pngResult.error ?? "Failed to render PNG SVG");
@@ -463,7 +480,7 @@ export function Preview({ className }: PreviewProps) {
     } finally {
       setExportingEngine(null);
     }
-  }, [activeHostThemePreset, code, diagramTheme, mermaidConfig, render]);
+  }, [code, diagramTheme, mermaidConfig, render, renderOptions]);
 
   const handleRefreshCompare = useCallback(() => {
     setRefreshNonce((value) => value + 1);

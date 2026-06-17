@@ -97,6 +97,19 @@ final resvgSafeSvg = merman.renderSvg(
 Use the default parity output for WebView/browser display, `readable` when a renderer needs text
 fallbacks for labels, and `resvg-safe` for stricter SVG consumers or raster/PDF export paths.
 
+For repeated calls or host font measurement, use `MermanReusableEngine` and install a
+`MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
+vendored metrics for that request.
+
+For accurate preview geometry, measure with the same surface that will display the SVG: a WebView
+DOM/canvas cache for `webview_flutter`, or Flutter paragraph/text layout APIs for Flutter-native
+text. The current Dart callback is isolate-local, so create the reusable engine, set the measurer,
+render, and close it on the same isolate. See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi).
+For HTML-like labels, cache the natural no-wrap width first and only apply `maxWidth` when wrapping
+is actually needed. If a WebView or platform text API cannot answer synchronously from the current
+isolate, return `null` for that request and let merman's vendored metrics handle it.
+
 ## Local Dart Smoke
 
 Raw `dart run` does not execute Flutter's platform packaging step, so the smoke example accepts an

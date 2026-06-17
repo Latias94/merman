@@ -48,7 +48,25 @@ let familyCapabilities = try engine.diagramFamilyCapabilities()
 ```
 
 The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are
-mapped to `MermanError.binding`.
+mapped to `MermanError.binding`. `MermanReusableEngine` exposes repeated
+render/parse/layout/validation calls and `MermanTextMeasureCallback` aliases for hosts that need
+font-aware text measurement.
+
+## Text Measurement Guidance
+
+Use `MermanReusableEngine.setTextMeasureCallback(...)` with `MermanTextMeasureCallback` when Swift
+hosts need label geometry to match the final Apple display surface. Core Text is the preferred
+low-level path for native previews:
+`CTLine`/typographic bounds for simple labels and `CTFramesetterSuggestFrameSizeWithConstraints` for
+wrapped attributed strings. `NSAttributedString.boundingRect(...)` is acceptable when it matches the
+AppKit/UIKit display configuration.
+
+Return `handled=0` for unsupported requests. Retain any `userData` context for as long as the
+callback is installed, and decode request strings during the callback instead of storing their
+pointers. Measure natural HTML-like label width before constraining to `maxWidth`; otherwise short
+labels can be overestimated and make the diagram wider than the final AppKit/UIKit/WebKit surface.
+See [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#apple-swift) for the full platform
+checklist.
 
 ## Smoke Example
 

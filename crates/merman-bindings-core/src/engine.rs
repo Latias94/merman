@@ -1,4 +1,6 @@
 use crate::{BindingError, common};
+#[cfg(feature = "render")]
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct BindingEngine {
@@ -38,6 +40,15 @@ impl BindingEngine {
         {
             let _ = source;
             Err(common::feature_required_error("SVG rendering", "render"))
+        }
+    }
+
+    #[cfg(feature = "render")]
+    pub fn with_text_measurer(&self, measurer: Arc<dyn crate::TextMeasurer + Send + Sync>) -> Self {
+        Self {
+            render: self.render.with_text_measurer(measurer),
+            #[cfg(feature = "ascii")]
+            ascii: self.ascii.clone(),
         }
     }
 

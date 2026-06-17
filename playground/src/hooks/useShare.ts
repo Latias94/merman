@@ -5,6 +5,8 @@ interface ShareData {
   theme: string;
   config?: string;
   hostThemePreset?: string;
+  textMeasurementMode?: string;
+  diagramFont?: string;
 }
 
 /**
@@ -49,9 +51,18 @@ export function useShare() {
     code: string,
     theme: string,
     config?: string,
-    hostThemePreset?: string
+    hostThemePreset?: string,
+    textMeasurementMode?: string,
+    diagramFont?: string
   ): string => {
-    const encoded = encode({ code, theme, config, hostThemePreset });
+    const encoded = encode({
+      code,
+      theme,
+      config,
+      hostThemePreset,
+      textMeasurementMode,
+      diagramFont,
+    });
     const baseUrl = `${window.location.origin}${window.location.pathname}`;
     return `${baseUrl}#${encoded}`;
   }, []);
@@ -61,9 +72,18 @@ export function useShare() {
       code: string,
       theme: string,
       config?: string,
-      hostThemePreset?: string
+      hostThemePreset?: string,
+      textMeasurementMode?: string,
+      diagramFont?: string
     ): Promise<void> => {
-      const url = createShareUrl(code, theme, config, hostThemePreset);
+      const url = createShareUrl(
+        code,
+        theme,
+        config,
+        hostThemePreset,
+        textMeasurementMode,
+        diagramFont
+      );
       await navigator.clipboard.writeText(url);
       // 更新 URL 但不刷新页面
       window.history.replaceState(null, "", url);

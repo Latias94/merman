@@ -36,7 +36,22 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanException`
 
 The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
-initialization.
+initialization. `MermanReusableEngine` exposes repeated render/parse/layout/validation calls and a
+`MermanTextMeasurer` callback for hosts that need font-aware text measurement.
+
+## Text Measurement Guidance
+
+Use `MermanReusableEngine.setTextMeasurer(...)` when Android needs label geometry to match the
+surface that will display the SVG. Native Android previews should measure with the same
+`TextPaint`/`StaticLayout` configuration used for display. WebView previews should use a DOM/canvas
+measurement cache from that WebView when practical, because the synchronous JNI callback should not
+block an arbitrary render thread on WebView UI work.
+
+Return `null` for requests the host cannot measure faithfully; merman falls back per request. Keep
+the measurer thread-safe if the reusable engine is rendered concurrently. Measure natural HTML-like
+label width before constraining to `maxWidth`; otherwise short labels can be overestimated and make
+the diagram wider than the final Android/WebView surface. See
+[`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#android-jni) for the full platform checklist.
 
 ## Example
 
@@ -46,7 +61,7 @@ semantic JSON, layout JSON, validation JSON, and metadata from Android/Kotlin.
 ## Verification
 
 ```bash
-kotlinc platforms/android/src/main/kotlin/io/merman/MermanException.kt platforms/android/src/main/kotlin/io/merman/MermanEngine.kt -d target/platforms/android/merman-android.jar
+kotlinc platforms/android/src/main/kotlin/io/merman/*.kt -d target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
 cargo clippy -p merman-ffi --target aarch64-linux-android -- -D warnings

@@ -86,6 +86,44 @@ export interface SvgBindingOptions extends CommonBindingOptions {
 
 export type BindingOptions = SvgBindingOptions;
 
+export type HostTextWrapMode =
+  | "svg-like"
+  | "svg-like-single-run"
+  | "html-like";
+
+export type HostTextWhiteSpace =
+  | "normal"
+  | "nowrap"
+  | "break-spaces"
+  | "pre-wrap";
+
+export interface HostTextMeasureRequest {
+  text: string;
+  font_family?: string | null;
+  font_size: number;
+  font_weight?: string | null;
+  font_style: string;
+  max_width?: number | null;
+  has_max_width: boolean;
+  line_height: number;
+  letter_spacing: number;
+  word_spacing: number;
+  wrap_mode: HostTextWrapMode;
+  direction: "auto" | "ltr" | "rtl";
+  white_space: HostTextWhiteSpace;
+}
+
+export interface HostTextMeasureResult {
+  handled?: boolean;
+  width: number;
+  height: number;
+  line_count?: number;
+}
+
+export type HostTextMeasurer = (
+  request: HostTextMeasureRequest
+) => HostTextMeasureResult | null | undefined;
+
 export const SUPPORTED_THEMES = [
   "default",
   "base",
@@ -248,9 +286,19 @@ export interface MermanWasmModule {
   abiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
+  renderSvgWithTextMeasurer?: (
+    source: string,
+    optionsJson: string | null | undefined,
+    measurer: HostTextMeasurer
+  ) => string;
   renderAscii: (source: string, optionsJson?: string | null) => string;
   parseJson: (source: string, optionsJson?: string | null) => string;
   layoutJson: (source: string, optionsJson?: string | null) => string;
+  layoutJsonWithTextMeasurer?: (
+    source: string,
+    optionsJson: string | null | undefined,
+    measurer: HostTextMeasurer
+  ) => string;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   asciiSupportedDiagrams: () => string[];
   bindingCapabilities?: () => BindingCapabilities;
@@ -318,6 +366,156 @@ export function isMermanInitialized(): boolean {
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
+}
+
+export function renderSvgWithTextMeasurer(
+  source: string,
+  measurer: HostTextMeasurer,
+  options?: SvgBindingOptions | string
+): string {
+  const renderWithMeasurer = getMerman().renderSvgWithTextMeasurer;
+  if (!renderWithMeasurer) {
+    throw new Error(
+      "Merman WASM does not expose renderSvgWithTextMeasurer(). Rebuild @mermanjs/web."
+    );
+  }
+  return renderWithMeasurer(source, encodeOptions(options), measurer);
+}
+
+export function layoutJsonWithTextMeasurer(
+  source: string,
+  measurer: HostTextMeasurer,
+  options?: SvgBindingOptions | string
+): string {
+  const layoutWithMeasurer = getMerman().layoutJsonWithTextMeasurer;
+  if (!layoutWithMeasurer) {
+    throw new Error(
+      "Merman WASM does not expose layoutJsonWithTextMeasurer(). Rebuild @mermanjs/web."
+    );
+  }
+  return layoutWithMeasurer(source, encodeOptions(options), measurer);
+}
+
+export function createBrowserTextMeasurer(): HostTextMeasurer {
+  let probe: HTMLDivElement | null = null;
+
+  return (request) => {
+    probe ??= createTextMeasureProbe();
+    if (!probe) {
+      return undefined;
+    }
+
+    if (!request.text) {
+      return {
+        width: 0,
+        height: request.line_height || request.font_size,
+        line_count: 1,
+      };
+    }
+
+    applyTextMeasureStyle(probe, request);
+    const maxWidth = normalizeMeasureMaxWidth(request);
+    if (request.wrap_mode === "html-like" && maxWidth !== null) {
+      const natural = measureProbeText(probe, request.text, {
+        display: "inline-block",
+        width: "auto",
+        maxWidth: "none",
+        whiteSpace: "nowrap",
+      });
+      if (natural.width <= maxWidth) {
+        return natural;
+      }
+
+      return measureProbeText(probe, request.text, {
+        display: "table",
+        width: `${maxWidth}px`,
+        maxWidth: `${maxWidth}px`,
+        whiteSpace: "break-spaces",
+      });
+    }
+
+    return measureProbeText(probe, request.text, {
+      display: "inline-block",
+      width: "auto",
+      maxWidth: maxWidth === null ? "none" : `${maxWidth}px`,
+      whiteSpace: request.white_space,
+    });
+  };
+}
+
+function applyTextMeasureStyle(
+  probe: HTMLDivElement,
+  request: HostTextMeasureRequest
+) {
+    const style = probe.style;
+    style.fontFamily = request.font_family || "sans-serif";
+    style.fontSize = `${Math.max(1, request.font_size)}px`;
+    style.fontWeight = request.font_weight || "normal";
+    style.fontStyle = request.font_style || "normal";
+    style.lineHeight = `${Math.max(1, request.line_height || request.font_size)}px`;
+    style.letterSpacing = `${request.letter_spacing || 0}px`;
+    style.wordSpacing = `${request.word_spacing || 0}px`;
+    style.direction = request.direction === "rtl" ? "rtl" : "ltr";
+}
+
+function measureProbeText(
+  probe: HTMLDivElement,
+  text: string,
+  styleOverride: Pick<
+    CSSStyleDeclaration,
+    "display" | "width" | "maxWidth" | "whiteSpace"
+  >
+): HostTextMeasureResult {
+    probe.style.display = styleOverride.display;
+    probe.style.width = styleOverride.width;
+    probe.style.maxWidth = styleOverride.maxWidth;
+    probe.style.whiteSpace = styleOverride.whiteSpace;
+    probe.textContent = text;
+    const rect = probe.getBoundingClientRect();
+    const lineHeight = Math.max(1, parseFloat(probe.style.lineHeight) || 1);
+    const height = Math.max(lineHeight, rect.height);
+    return {
+      width: Math.max(0, rect.width),
+      height,
+      line_count: Math.max(1, Math.round(height / lineHeight)),
+    };
+}
+
+function normalizeMeasureMaxWidth(
+  request: HostTextMeasureRequest
+): number | null {
+  if (
+    !request.has_max_width ||
+    typeof request.max_width !== "number" ||
+    !Number.isFinite(request.max_width) ||
+    request.max_width <= 0
+  ) {
+    return null;
+  }
+  return request.max_width;
+}
+
+function createTextMeasureProbe(): HTMLDivElement | null {
+  if (typeof document === "undefined" || !document.body) {
+    return null;
+  }
+
+  const probe = document.createElement("div");
+  probe.setAttribute("aria-hidden", "true");
+  Object.assign(probe.style, {
+    position: "fixed",
+    left: "-10000px",
+    top: "-10000px",
+    visibility: "hidden",
+    contain: "layout style paint",
+    boxSizing: "border-box",
+    padding: "0",
+    margin: "0",
+    border: "0",
+    display: "block",
+  });
+  document.body.appendChild(probe);
+  return probe;
 }
 
 export function renderSvgElement(

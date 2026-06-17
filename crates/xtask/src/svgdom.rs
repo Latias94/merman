@@ -663,6 +663,17 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             let key = a.name().to_string();
             let mut val = a.value().to_string();
 
+            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && n.tag_name().name() == "foreignObject"
+                && key == "overflow"
+                && val.trim().eq_ignore_ascii_case("visible")
+            {
+                // Merman keeps headless HTML label boxes non-clipping to absorb host font
+                // fallback drift. Treat that explicit browser-safety marker as non-semantic in
+                // parity DOM gates while preserving it in strict signatures.
+                continue;
+            }
+
             if let Some(normalized) =
                 normalize_quadrantchart_default_point_color(&key, &val, n, mode)
             {
@@ -1569,6 +1580,26 @@ mod tests {
             Some("font-size:18px")
         );
         assert_ne!(dom_a, dom_b);
+    }
+
+    #[test]
+    fn parity_ignores_foreign_object_visible_overflow() {
+        let upstream =
+            r#"<svg><foreignObject width="10" height="20"><div>Hi</div></foreignObject></svg>"#;
+        let local = r#"<svg><foreignObject width="10" height="20" overflow="visible" style="overflow: visible;"><div>Hi</div></foreignObject></svg>"#;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+        assert_eq!(upstream_dom, local_dom);
+
+        let strict_dom = dom_signature(local, DomMode::Strict, 3).unwrap();
+        assert_eq!(
+            strict_dom.children[0]
+                .attrs
+                .get("overflow")
+                .map(String::as_str),
+            Some("visible")
+        );
     }
 
     #[test]

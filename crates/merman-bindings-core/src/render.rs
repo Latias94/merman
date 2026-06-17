@@ -4,6 +4,7 @@ use crate::common::{
     BindingError, BindingOptions, parse_options, source_text, validation_payload_json,
 };
 use request::RenderRequestPlan;
+use std::sync::Arc;
 
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
@@ -39,6 +40,15 @@ impl CachedRenderEngine {
     pub(crate) fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.render_svg(source)
+    }
+
+    pub(crate) fn with_text_measurer(
+        &self,
+        measurer: Arc<dyn crate::TextMeasurer + Send + Sync>,
+    ) -> Self {
+        Self {
+            plan: self.plan.with_text_measurer(measurer),
+        }
     }
 
     pub(crate) fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {

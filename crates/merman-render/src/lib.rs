@@ -128,7 +128,9 @@ impl LayoutOptions {
     /// Returns layout defaults suitable for headless SVG rendering in UI integrations.
     ///
     /// Compared to `Default`, this uses a Mermaid-like text measurer backed by vendored font
-    /// metrics (instead of deterministic placeholder metrics).
+    /// metrics (instead of deterministic placeholder metrics). The vendored measurer is
+    /// intentionally lightweight and fixture-oriented; hosts that need exact platform font behavior
+    /// should provide their own [`TextMeasurer`] with [`LayoutOptions::with_text_measurer`].
     pub fn headless_svg_defaults() -> Self {
         Self {
             text_measurer: Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default()),

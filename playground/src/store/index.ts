@@ -1,11 +1,14 @@
 import { create } from "zustand";
 import type { HostThemePresetName, ThemeName } from "@mermanjs/web";
+import type { DiagramFont } from "@/src/lib/diagram-font";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 
 export type Theme = ThemeName;
 export type HostThemePreset = "none" | HostThemePresetName;
 export type UITheme = "light" | "dark" | "system";
 export type EditorMode = "code" | "config";
+export type TextMeasurementMode = "browser" | "headless";
+export type { DiagramFont };
 
 interface AppState {
   // 编辑器状态
@@ -25,6 +28,10 @@ interface AppState {
   setDiagramTheme: (theme: Theme) => void;
   hostThemePreset: HostThemePreset;
   setHostThemePreset: (preset: HostThemePreset) => void;
+  textMeasurementMode: TextMeasurementMode;
+  setTextMeasurementMode: (mode: TextMeasurementMode) => void;
+  diagramFont: DiagramFont;
+  setDiagramFont: (font: DiagramFont) => void;
 
   // UI 主题
   uiTheme: UITheme;
@@ -89,6 +96,10 @@ export const useAppStore = create<AppState>((set) => ({
       hostThemePreset,
       diagramTheme: hostThemePreset === "none" ? state.diagramTheme : "default",
     })),
+  textMeasurementMode: "browser",
+  setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
+  diagramFont: "trebuchet",
+  setDiagramFont: (diagramFont) => set({ diagramFont }),
 
   // UI 主题
   uiTheme: getInitialUITheme(),
