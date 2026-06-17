@@ -113,10 +113,11 @@ Legend:
    - Risk: H (shape/path output diverges substantially).
 
 7. **Flowchart `layout=elk` parity**
-   - Lightweight `elk.layered` integration exists; remaining parity work is fixture admission,
-     subgraph-local direction, hierarchy/cross-cluster edges, order/crossing heuristics, and
-     ELK-style orthogonal edge routing.
-   - Risk: H (different layout semantics, large surface area).
+   - Source-backed Flowchart ELK is the default public render path and the dedicated probe gate
+     covers every unique upstream `flowchart-elk.spec.js` layout body. Remaining work is broad
+     main-matrix admission policy, exact duplicate-call fixture import if desired, and continued
+     hardening from new upstream or user-reported cases.
+   - Risk: M/H (large surface area, but the current Mermaid spec body coverage is source-backed).
 
 8. **ZenUML “practical” compatibility expansion**
    - Snapshot-gated only (no upstream SVG baselines).

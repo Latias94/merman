@@ -4,5 +4,5 @@
 {"role":"handoff","path":"docs/workstreams/flowchart-elk-layout/HANDOFF.md","why":"Summarizes the current decision and the next recommended action."}
 {"role":"upstream_reference","path":"https://github.com/mermaid-js/mermaid/blob/develop/cypress/integration/rendering/flowchart/flowchart-elk.spec.js","why":"Upstream ELK fixture source used for tiering."}
 {"role":"upstream_reference","path":"https://github.com/mermaid-js/mermaid/blob/develop/packages/mermaid-layout-elk/src/render.ts","why":"Upstream ELK adapter source for option and hierarchy semantics."}
-{"role":"local_backend","path":"crates/merman-layout-elk/src/lib.rs","why":"Current lightweight local ELK subset backend."}
+{"role":"local_backend","path":"crates/merman-layout-elk/src/lib.rs","why":"Source-backed Flowchart ELK integration boundary plus explicit compat fallback."}
 {"role":"local_adapter","path":"crates/merman-render/src/flowchart/elk.rs","why":"Local Flowchart -> ELK adapter and layout bridge."}

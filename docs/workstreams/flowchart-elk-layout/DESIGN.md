@@ -1,28 +1,29 @@
 # Flowchart ELK Layout - Design
 
 Status: Active
-Last updated: 2026-06-14
+Last updated: 2026-06-17
 
 ## Problem
 
-`merman` already renders `flowchart-elk` through a lightweight local ELK subset, but the upstream
-Mermaid surface is wider than the current smoke cases. We need a separate lane to decide which
-fixtures can be admitted with incremental subset work and which ones actually justify a full ELK
-port.
+`merman` now renders `flowchart-elk` and Flowchart `layout: elk` through the source-backed Mermaid
+ELK adapter / Eclipse ELK layered port by default. The upstream Mermaid ELK surface still needs a
+separate lane because broad Flowchart main-matrix admission, exact duplicate-call fixture import,
+and future upstream/user cases should be handled without weakening the non-ELK Flowchart parity
+gate.
 
 ## Intent
 
-Keep the default path small and deterministic. Admit the low-risk ELK cases first, extend the
-subset where it clearly buys parity, and only consider a full ELK port if the remaining fixtures
-are dominated by hierarchy/order/section semantics that the subset cannot represent cleanly.
+Keep the default path source-backed and deterministic. Use Mermaid and Eclipse ELK source as the
+specification, preserve the explicit compatibility fallback for alpha diagnostics, and treat broad
+main-matrix admission as a separate policy decision from the dedicated ELK probe gate.
 
 ## Target State
 
-- The current smoke fixtures remain renderable.
-- ELK fixtures are classified by difficulty instead of being treated as one undifferentiated block.
-- ELK fixture probes can run explicitly without weakening the default Flowchart parity matrix.
-- The lane can answer, with evidence, whether any remaining fixture class truly needs a full port.
-- If a deeper port is ever chosen, it stays isolated from the default MIT/Apache workspace surface.
+- Public render entry points default to the source-backed Flowchart ELK backend.
+- The dedicated ELK probe gate covers every unique upstream `flowchart-elk.spec.js` layout body.
+- Exact duplicate-call fixture gaps are tracked separately from unique layout gaps.
+- ELK fixture probes run explicitly without weakening the default non-ELK Flowchart parity matrix.
+- New ELK behavior is ported from Mermaid / Eclipse ELK source rather than fixture fitting.
 
 ## Scope
 
@@ -34,54 +35,49 @@ are dominated by hierarchy/order/section semantics that the subset cannot repres
 
 ## Non-goals
 
-- Do not clone the full upstream ELK workspace into the default build just to chase parity.
-- Do not promise pixel-for-pixel ELK parity before the fixture classes are split and measured.
+- Do not fit ELK geometry from fixture output; port from source.
+- Do not treat duplicate exact-call fixture gaps as unique layout gaps.
 - Do not regress the non-ELK Flowchart lane while ELK is being expanded.
 
 ## ELK Fixture Tiers
 
 | Tier | Upstream cases | Why it belongs here |
 | --- | --- | --- |
-| Tier A | `1-8`, `V2 elk - 16`, `1433`, `2388`, `2824`, `6647`, `7213` | Simple smoke cases, basic labels, `diagramPadding`, `useMaxWidth`, title margin, default-node names, clipping, node order, and right-angle edges. These are the right first admission candidates for the lightweight subset. |
-| Tier B | `50-76`, `2050`, `58-65`, markdown string cases, `74` multi-edge labels, `6080-6088` | Nested subgraphs, subgraph direction, outgoing links, style/class coverage, multi-edge labeling, and diamond clipping/intersections. These should be solved by subset growth first. |
-| Tier C | Any remaining case that depends on `elk.hierarchyHandling`, cross-cluster rewrite/backfill, edge sections/ports, or exact order/crossing semantics | This is where a full port starts to make sense. If the fixture only fails because the subset cannot express the needed hierarchy model, it belongs here. |
+| Tier A | `1-8`, `V2 elk - 16`, `1433`, `2388`, `2824`, `6647`, `7213` | Covered by admitted source-backed probes or duplicate layout bodies. |
+| Tier B | `50-76`, `2050`, `58-65`, markdown string cases, `74` multi-edge labels, `6080-6088` | Covered by admitted source-backed probes or duplicate layout bodies. |
+| Tier C | Future upstream/user cases outside the current Mermaid `flowchart-elk.spec.js` body set | Port from Mermaid / Eclipse ELK source and classify only after a targeted probe fails. |
 
 ## Fixture Admission Map
 
 | Batch | Candidate fixtures | Expected work |
 | --- | --- | --- |
-| A0 - current smoke | `render_svg_returns_svg_for_flowchart_elk`, `headless_renderer_renders_flowchart_elk_svg`, and the already active non-ELK fixture `upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063` | Keep default renderability and avoid confusing spec-file provenance with actual `layout: elk` coverage. |
-| A0.5 - explicit probes | `upstream_html_demos_flowchart_elk_flowchart_elk_001` and later selected Tier A imports | Run with `--include-elk-probes`; do not admit to default parity until DOM shape and layout geometry pass. |
-| A1 - simple ELK | Upstream `1-elk` through `8-elk`, `1433-elk`, `2388-elk` | Import/probe simple `flowchart-elk` and `layout: elk` cases, then admit only the fixtures whose DOM and geometry drift is understood and closed. |
-| A2 - routing basics | `4-elk`, `2824-elk`, `7213` | Tighten edge length, clipping, and right-angle orthogonal routing without introducing full ELK sections. |
-| B1 - hierarchy basics | `50-57.x`, `66-74` nested/outgoing subgraph cases | Improve parent/cluster handling and cross-subgraph edges. |
-| B2 - local direction | `2050-elk`, direction-specific nested cases `66-72` | Make `Node.direction` affect nested layout instead of only using the graph direction. |
-| B3 - labels/style pressure | `58-65`, `74` multi-edge labels, markdown string cases, `76` unicode HTML labels | Verify the ELK adapter preserves label measurement and SVG surfaces already covered by the normal Flowchart renderer. |
-| B4 - shape intersections | `6080`, `6088-1` through `6088-6` | Decide whether diamond/cluster clipping can remain a local geometry improvement. |
-| C - port decision | Residuals that require ELK hierarchy handling, edge sections/ports, or exact crossing minimization | Use this batch to justify, or reject, a full-port experiment. |
+| Default source-backed path | `LayoutOptions::default`, headless defaults, CLI, bindings | Source-backed backend is selected by default; `compat` remains explicit fallback. |
+| Dedicated probe gate | 57 admitted fixtures from the ELK spec plus the HTML demo | `cargo run -p xtask -- check-flowchart-elk-source-backed-probes` must stay green. |
+| Coverage audit | 63 upstream exact calls / 57 unique layout bodies | `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` tracks duplicate-body gaps. |
+| Broad matrix policy | Flowchart `compare-all-svgs` default path | Decide separately when ELK probe fixtures should move into the broad main matrix. |
 
 ## Starting Assumptions
 
 | Assumption | Confidence | Evidence | Consequence if wrong |
 | --- | --- | --- | --- |
-| The current lightweight backend is enough for the first smoke batch. | High | `render_svg_returns_svg_for_flowchart_elk`, `headless_renderer_renders_flowchart_elk_svg`. | Reclassify the smoke fixtures before widening the lane. |
-| Nested subgraph direction and hierarchy are the main non-smoke pressure points. | High | `flowchart-elk.spec.js` cases `50-76`, `2050`, `6080-6088`. | If they collapse cleanly into the subset, a full port is not needed yet. |
-| A full port is only justified if the remaining fixture classes need ELK hierarchy semantics we cannot model locally. | High | `https://github.com/mermaid-js/mermaid/blob/develop/packages/mermaid-layout-elk/src/render.ts` and the upstream ELK spec surface. | Keep the lane subset-first and isolate any deeper port as a separate decision. |
+| The current Mermaid ELK spec body set is covered by source-backed probes. | High | `check-flowchart-elk-source-backed-probes` and `audit-flowchart-elk-source-backed-coverage`. | Treat failures as regressions or newly discovered source-port gaps. |
+| The six uncovered exact calls are duplicate layout bodies, not unique layout gaps. | High | Coverage audit maps each to an admitted representative. | Import duplicate fixtures only if exact-call traceability becomes worth the corpus noise. |
+| Future hardening must remain source-backed. | High | Project parity policy and the current ELK port history. | Reject heuristic tuning that only makes one fixture pass. |
 
 ## Architecture Direction
 
-Prefer explicit, typed subset growth:
+Prefer explicit, source-backed growth:
 
-1. carry Flowchart direction and label data through the adapter;
-2. keep the local graph model small and deterministic;
-3. admit fixtures in batches that prove real benefit;
-4. only introduce a deeper ELK port boundary if the fixture evidence says the subset has hit a wall.
+1. carry Flowchart direction and label data through the Mermaid adapter boundary;
+2. keep the compatibility fallback explicit and out of the default path;
+3. use targeted probes before broad main-matrix admission;
+4. port missing semantics from Mermaid / Eclipse ELK source.
 
 ## Closeout Condition
 
 This lane can close when:
 
-- the fixture tiers are documented and stable,
-- the smoke batch is covered by the lightweight backend,
-- the remaining cases are either admitted by subset growth or explicitly parked as full-port territory,
-- and the repository has a clear answer on whether a full ELK port is actually warranted.
+- the dedicated probe gate and coverage audit stay green,
+- broad main-matrix admission policy is decided,
+- duplicate exact-call fixture gaps are either intentionally left as duplicate-covered or imported,
+- and future ELK regressions have source-backed diagnostics.

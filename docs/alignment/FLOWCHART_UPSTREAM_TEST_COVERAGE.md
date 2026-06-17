@@ -182,13 +182,17 @@ upstream SVG baselines (rendered via `mmdc` with our pinned CLI config):
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_should_render_a_rounded_rectangle_and_a_normal_rectangle_070.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_6617_per_link_curve_styling_using_edge_ids_071.mmd`
 
-Deferred (not parity-gated yet):
+Dedicated Flowchart ELK lane:
 
-- Flowchart ELK fixtures remain outside the parity-gated corpus until the dedicated
-  `flowchart-elk` layout lane admits them. The current lightweight backend is renderable but does
-  not claim upstream ELK SVG parity. Note that
-  `fixtures/flowchart/upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063.mmd`
-  is sourced from the ELK spec file but does not encode `layout: elk` in the fixture text.
+- Flowchart ELK fixtures are covered by the dedicated source-backed ELK probe gate rather than the
+  broad Flowchart main matrix. The gate uses the source-backed Mermaid ELK adapter / Eclipse ELK
+  layered port and currently covers all 57 unique layout bodies extracted from Mermaid's
+  `flowchart-elk.spec.js`.
+- The upstream spec has 63 exact render calls. Six calls are duplicate layout bodies already covered
+  by admitted probes, so they remain exact-call fixture gaps rather than unique layout gaps. Use
+  `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` for the current mapping.
+- `fixtures/flowchart/upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063.mmd` is
+  sourced from the ELK spec file but does not encode `layout: elk` in the fixture text.
 
 ## Cypress platform HTML fixtures
 

@@ -626,23 +626,39 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
 
     println!("Flowchart ELK source-backed coverage");
     println!("spec: {}", spec_path.display());
+    let duplicate_covered_count = duplicate_covered.len();
     println!("ELK render calls: {}", cases.len());
-    println!("fixtures present: {fixture_count}");
-    println!("upstream SVGs present: {upstream_svg_count}");
-    println!("source-backed admitted: {admitted_count}");
-    println!("missing fixtures: {}", missing.len());
-    println!("missing upstream SVGs: {}", no_upstream_svg.len());
-    println!("not admitted: {}", not_admitted.len());
+    println!(
+        "exact render calls covered by admitted probes or duplicate layout bodies: {}",
+        admitted_count + duplicate_covered_count
+    );
+    println!("dedicated fixtures present: {fixture_count}");
+    println!("dedicated upstream SVGs present: {upstream_svg_count}");
+    println!("source-backed admitted fixtures: {admitted_count}");
+    println!(
+        "dedicated fixture gaps covered by duplicate layout body: {}",
+        missing
+            .iter()
+            .filter(|case| admitted_layout_body_keys.contains_key(&case.layout_body_key))
+            .count()
+    );
+    println!(
+        "dedicated upstream SVG gaps covered by duplicate layout body: {}",
+        no_upstream_svg
+            .iter()
+            .filter(|case| admitted_layout_body_keys.contains_key(&case.layout_body_key))
+            .count()
+    );
+    println!(
+        "unadmitted exact calls covered by duplicate layout body: {}",
+        duplicate_covered_count
+    );
     println!("unique layout bodies: {}", unique_layout_body_keys.len());
     println!(
         "unique layout bodies covered by admitted probes: {}",
         covered_layout_body_keys.len()
     );
     println!("uncovered unique layout bodies: {uncovered_layout_body_count}");
-    println!(
-        "not admitted but covered by duplicate layout body: {}",
-        duplicate_covered.len()
-    );
 
     if !duplicate_covered.is_empty() {
         println!();
@@ -693,7 +709,7 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
 
     if !missing.is_empty() {
         println!();
-        println!("Missing fixtures:");
+        println!("Dedicated fixture gaps:");
         for case in &missing {
             println!(
                 "- {} {} [{}{}]",
@@ -703,12 +719,15 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
                 if case.snapshot { ", snapshot" } else { "" }
             );
             println!("  stem: {}", case.stem);
+            if let Some(representative) = admitted_layout_body_keys.get(&case.layout_body_key) {
+                println!("  covered_by: {representative}");
+            }
         }
     }
 
     if !not_admitted.is_empty() {
         println!();
-        println!("Not admitted:");
+        println!("Unadmitted exact calls:");
         for case in &not_admitted {
             println!(
                 "- {} {} [{}{}]",
@@ -718,12 +737,15 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
                 if case.snapshot { ", snapshot" } else { "" }
             );
             println!("  stem: {}", case.stem);
+            if let Some(representative) = admitted_layout_body_keys.get(&case.layout_body_key) {
+                println!("  covered_by: {representative}");
+            }
         }
     }
 
     if !no_upstream_svg.is_empty() {
         println!();
-        println!("Missing upstream SVGs:");
+        println!("Dedicated upstream SVG gaps:");
         for case in &no_upstream_svg {
             println!(
                 "- {} {} [{}{}]",
@@ -733,6 +755,9 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
                 if case.snapshot { ", snapshot" } else { "" }
             );
             println!("  stem: {}", case.stem);
+            if let Some(representative) = admitted_layout_body_keys.get(&case.layout_body_key) {
+                println!("  covered_by: {representative}");
+            }
         }
     }
 
