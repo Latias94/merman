@@ -154,6 +154,13 @@ fn flowchart_elk_edges<'a>(ctx: &'a FlowchartRenderCtx<'a>) -> Vec<&'a crate::fl
     out
 }
 
+fn edge_label_is_empty(ctx: &FlowchartRenderCtx<'_>, edge: &crate::flowchart::FlowEdge) -> bool {
+    let label_text = edge.label.as_deref().unwrap_or_default();
+    let label_type = edge.label_type.as_deref().unwrap_or("text");
+    let label_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
+    label_plain.trim().is_empty() && label_text.trim().is_empty()
+}
+
 pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -297,6 +304,13 @@ fn render_flowchart_elk_edge_labels(
     }
 
     out.push_str(r#"<g class="edgeLabels">"#);
+    if !ctx.edge_html_labels {
+        for e in edges {
+            if edge_label_is_empty(ctx, e) {
+                out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+            }
+        }
+    }
     for e in edges {
         render_flowchart_edge_label(out, ctx, e, 0.0, 0.0, session.edge_cache);
     }
@@ -470,17 +484,6 @@ fn initialize_flowchart_root_frame<'a>(
     if edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
-        fn edge_label_is_empty(
-            ctx: &FlowchartRenderCtx<'_>,
-            edge: &crate::flowchart::FlowEdge,
-        ) -> bool {
-            let label_text = edge.label.as_deref().unwrap_or_default();
-            let label_type = edge.label_type.as_deref().unwrap_or("text");
-            let label_plain =
-                flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
-            label_plain.trim().is_empty() && label_text.trim().is_empty()
-        }
-
         out.push_str(r#"<g class="edgeLabels">"#);
         if !ctx.edge_html_labels {
             // Mermaid's `createText(..., useHtmlLabels=false)` always creates a background `<rect>`,
