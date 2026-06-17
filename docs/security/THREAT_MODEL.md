@@ -36,9 +36,9 @@ flowchart LR
 | Diagram-level config | Untrusted by default | Default `secure` keys prevent diagrams from changing high-risk config such as `securityLevel`, `fontFamily`, `themeCSS`, and `themeVariables`. |
 | Site config | Trusted | Supplied by the embedding application. Use it for host policy, theme, and trusted CSS only. |
 | Host theme and custom SVG pipeline | Trusted | Custom postprocessors can inject or preserve arbitrary SVG/CSS. |
-| Icon registry | Trusted | `IconSvg` bodies are injected as SVG fragments after ID scoping. Do not register user-supplied SVG without an external sanitizer. |
+| Icon registry | Trusted | `IconSvg` bodies are injected as SVG fragments after ID scoping. `resvg_safe` cleans active output content, but parity/custom pipelines can preserve arbitrary icon SVG. Do not register user-supplied SVG without a trusted output path or external sanitizer. |
 | Parity SVG output | Not a browser sanitizer | It preserves Mermaid-like DOM shape and may contain CSS or `<foreignObject>` needed for parity. |
-| `resvg_safe` output | Consumer-oriented cleanup | It removes known raster/SVG consumer hazards, but it is not a complete browser XSS sanitizer. |
+| `resvg_safe` output | Consumer-oriented cleanup | It removes known raster/SVG consumer hazards and common active SVG constructs, but it is not a complete browser XSS sanitizer. |
 
 ## Current Mitigations
 
@@ -47,7 +47,7 @@ flowchart LR
 | Diagram config downgrades `securityLevel` or injects CSS through config | Default secure keys filter diagram-level overrides before effective config is used. | Core parse metadata and public render API tests. |
 | Script or data URLs in labels and links | Mermaid-compatible `format_url` and `sanitize_url` logic, strict by default. | Core URL tests plus SVG integration tests. |
 | HTML/script in labels | DOMPurify-inspired text sanitizer backed by generated allowlists when full sanitization is enabled. | Core sanitizer tests. |
-| `<foreignObject>` and unsupported CSS in raster paths | `SvgPipeline::readable()` adds text fallbacks; `SvgPipeline::resvg_safe()` strips foreignObject and unsupported CSS patterns. | Pipeline tests and public API regression tests. |
+| `<foreignObject>`, active SVG content, and unsupported CSS in raster paths | `SvgPipeline::readable()` adds text fallbacks; `SvgPipeline::resvg_safe()` strips foreignObject, active SVG elements, event attributes, unsafe URL attributes, unsafe style/presentation URL values, and unsupported CSS patterns. | Pipeline tests and public API regression tests. |
 | Huge or malformed raster/PDF output | Raster options include default pixmap limits, fit/scale controls, and intrinsic-size checks before PNG/JPG/PDF conversion. | Raster tests, public API regression tests, and CLI behavior. |
 | Parser/layout denial of service | Diagram-specific guards such as text-size, edge-count, nesting, and Gantt exclude expansion limits. | Core/render unit tests. |
 | Raw style declaration breakouts | SVG style declaration helpers reject or escape known declaration and selector breakouts. | Render CSS tests. |
@@ -58,7 +58,7 @@ flowchart LR
 | --- | --- | --- |
 | Inline parity SVG in a browser with untrusted source | Browser SVG/HTML/CSS interpretation may create XSS or UI-redress risk if a future renderer path leaks active content. | Prefer `render_svg_resvg_safe_sync` for untrusted inline previews, enforce CSP, and run a browser-grade SVG sanitizer when the SVG crosses a web trust boundary. |
 | Trusted site CSS is malicious or compromised | Host CSS can affect rendered output and may include browser-sensitive CSS. | Treat site config and host themes as code. Do not accept them from untrusted users. |
-| Custom icon SVG is untrusted | Icon bodies are inserted as SVG fragments. Event attributes, external references, or active SVG elements can survive unless a host sanitizer removes them. | Only load curated icon packs or sanitize icons before registration. |
+| Custom icon SVG is untrusted | Icon bodies are inserted as SVG fragments. `resvg_safe` strips common active content at the final output boundary, but parity SVG and custom host pipelines may preserve it. | Only load curated icon packs, force a trusted cleanup pipeline, or sanitize icons before registration. |
 | `securityLevel = loose` in site config | Loose mode intentionally preserves more Mermaid behavior, including custom links. | Do not enable loose mode for untrusted diagrams unless the embedding context is already sandboxed. |
 | `resvg_safe` is mistaken for a complete sanitizer | It targets renderer compatibility, not every browser XSS vector. | Use defense in depth for web embedding: CSP, sandboxing, and a dedicated sanitizer. |
 | Dependency vulnerabilities | Parser, XML/HTML, image, and raster dependencies may receive future advisories. | `Security Audit` CI runs `cargo audit` on dependency changes and weekly; triage RustSec and upstream Mermaid advisories against this document. |
@@ -102,7 +102,8 @@ without consumer demand and sanitizer validation.
 - Strict-mode click URLs do not emit `javascript:` or other unsafe hrefs.
 - Loose HTML labels rendered through `resvg_safe` do not retain `<foreignObject>` or active HTML.
 - `resvg_safe` strips unsupported CSS patterns such as `@keyframes`, `:root`, and animation
-  declarations.
+  declarations, plus active SVG elements, event attributes, unsafe URL attributes, and unsafe
+  style/presentation URL values in raw SVG and rendered icon fragments.
 - Raster tests keep enforcing size limits for unusually large `viewBox` values before PNG/JPG
   pixmap allocation and PDF vector conversion.
 - New diagram families identify label, URL, style, and config merge points during admission.

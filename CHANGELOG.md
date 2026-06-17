@@ -35,6 +35,13 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Security
 
+- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG
+  elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation
+  `url(...)` values while preserving local paint/reference URLs and raster data images.
+- Reduced dependency advisory exposure by upgrading `htmlize`, `nalgebra`, `ratex-*`, and
+  `roughr`'s direct `rand` usage. This removes the `paste` advisory path and avoids a direct
+  `rand 0.8` dependency in `roughr`; the remaining `rand 0.8` audit warning is transitive through
+  upstream `phf 0.11` users.
 - Documented the SVG rendering trust boundaries, residual risks, recommended output paths, and
   upstream advisory triage checklist in `docs/security/THREAT_MODEL.md`; added public render API
   regression tests for secure config filtering, strict URL handling, loose HTML label cleanup, and

@@ -38,17 +38,17 @@ base64 = "0.22.1"
 brotli = "8.0.3"
 euclid = "0.22"
 flate2 = "1.1.9"
-htmlize = { version = "1.0.6", features = ["unescape"] }
+htmlize = { version = "1.1.0", features = ["unescape"] }
 indexmap = { version = "2.2.6", features = ["serde"] }
 lalrpop = "0.20.2"
 lalrpop-util = "0.20.2"
 logos = "0.14.4"
-nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
+nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
 pulldown-cmark = "0.12.2"
-ratex-layout = "0.1.10"
-ratex-parser = "0.1.10"
-ratex-svg = { version = "0.1.10", default-features = false }
-ratex-types = "0.1.10"
+ratex-layout = "0.1.11"
+ratex-parser = "0.1.11"
+ratex-svg = { version = "0.1.11", default-features = false }
+ratex-types = "0.1.11"
 regex = "1.11.1"
 reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "rustls-tls"] }
 rayon = "1.10.0"

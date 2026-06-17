@@ -59,7 +59,7 @@ version = "0.7"
 version = "0.7.0"
 
 [dependencies.rand]
-version = "0.8"
+version = "0.10"
 optional = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]

@@ -2,6 +2,7 @@
 
 use merman::MermaidConfig;
 use merman::render::HeadlessRenderer;
+use std::sync::Arc;
 
 fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
     renderer
@@ -97,6 +98,64 @@ fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
 }
 
 #[test]
+fn raw_resvg_safe_pipeline_strips_active_svg_content() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16">
+<script>alert(1)</script>
+<a href="#safe"><use href="#shape" xlink:href="#shape"/></a>
+<a href="javascript&colon;alert(1)" onclick="alert(1)"><text>bad</text></a>
+<image href="data:image/png;base64,AAAA"/>
+<image href="data:text/html;base64,PHNjcmlwdD4="/>
+<image href="file:///etc/passwd"/>
+<defs><path id="shape" d="M0 0H16V16H0z"/></defs>
+<rect width="16" height="16" fill="black"/>
+</svg>"##;
+
+    let out = merman::render::svg_resvg_safe(svg).unwrap();
+
+    assert_xml_parseable("raw-resvg-safe-active-content", &out);
+    let lower = out.to_ascii_lowercase();
+    assert!(!lower.contains("<script"), "{out}");
+    assert!(!lower.contains("onclick"), "{out}");
+    assert!(!lower.contains("javascript"), "{out}");
+    assert!(!lower.contains("data:text/html"), "{out}");
+    assert!(!lower.contains("file:///"), "{out}");
+    assert!(out.contains(r##"href="#safe""##), "{out}");
+    assert!(out.contains(r##"href="#shape""##), "{out}");
+    assert!(out.contains(r##"xlink:href="#shape""##), "{out}");
+    assert!(out.contains("data:image/png"), "{out}");
+}
+
+#[test]
+fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
+    let mut registry = merman::render::IconRegistry::new();
+    registry.insert(
+        "test:active",
+        merman::render::IconSvg::new(
+            r##"<script>alert(1)</script><path id="shape" d="M0 0H16V16H0z"/><use href="#shape" onclick="alert(1)"/><a href="javascript:alert(1)"><path d="M1 1H2V2H1z"/></a>"##,
+            16.0,
+            16.0,
+        ),
+    );
+    let renderer = HeadlessRenderer::new().with_svg_options(merman::render::SvgRenderOptions {
+        diagram_id: Some("security-icon".to_string()),
+        icon_registry: Some(Arc::new(registry)),
+        ..Default::default()
+    });
+    let source = r#"flowchart TD
+    A@{ icon: "test:active", label: "A" }
+"#;
+
+    let svg = render_resvg_safe(&renderer, "security-custom-icon", source);
+
+    assert_xml_parseable("security-custom-icon", &svg);
+    let lower = svg.to_ascii_lowercase();
+    assert!(!lower.contains("<script"), "{svg}");
+    assert!(!lower.contains("onclick"), "{svg}");
+    assert!(!lower.contains("javascript:"), "{svg}");
+    assert!(svg.contains("IconifyId"), "{svg}");
+}
+
+#[test]
 #[cfg(feature = "raster")]
 fn default_raster_plan_caps_large_viewbox_before_pixmap_allocation() {
     use merman::render::raster::{
@@ -116,6 +175,27 @@ fn default_raster_plan_caps_large_viewbox_before_pixmap_allocation() {
     assert!(
         u64::from(plan.width_px) * u64::from(plan.height_px) <= DEFAULT_MAX_RASTER_PIXELS,
         "{plan:?}"
+    );
+}
+
+#[test]
+#[cfg(feature = "raster")]
+fn raster_size_limit_rejects_zero_budget_before_pixmap_allocation() {
+    use merman::render::raster::{RasterOptions, RasterSizeLimit, svg_raster_plan};
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="black"/></svg>"#;
+    let options = RasterOptions::default().with_size_limit(RasterSizeLimit::new(
+        Some(0),
+        Some(128),
+        Some(16_384),
+    ));
+
+    let err = svg_raster_plan(svg, &options).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("size_limit max_width and max_height must be positive"),
+        "{err}"
     );
 }
 
