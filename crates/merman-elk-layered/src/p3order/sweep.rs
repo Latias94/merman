@@ -719,7 +719,6 @@ impl HierarchySweep {
         }
         self.changed.clear();
 
-        let initial_order = self.infos[info_index].current_node_order.clone();
         let first_try_with_initial_order = graph_at_path(root, &self.infos[info_index].path)
             .options
             .consider_model_order_strategy
@@ -734,10 +733,6 @@ impl HierarchySweep {
             self.use_node_port_order_crossing_counter(root, info_index);
         let mut best_crossings = f64::MAX;
         for run_index in 0..thoroughness {
-            if first_try_with_initial_order && run_index <= 1 {
-                self.infos[info_index].current_node_order = initial_order.clone();
-            }
-
             let crossings = self.minimize_barycenter_with_counter(
                 root,
                 info_index,
@@ -2487,7 +2482,6 @@ pub fn minimize_crossings_layer_sweep_hierarchical_with_type(
 
 fn minimize_barycenter(graph: &mut LGraph) -> bool {
     let mut graph_info = GraphInfoHolder::new(graph);
-    let initial_order = graph_info.current_node_order.clone();
 
     let mut random = graph.random.clone();
     let random_seed = random.next_long();
@@ -2504,10 +2498,6 @@ fn minimize_barycenter(graph: &mut LGraph) -> bool {
         graph.options.consider_model_order_strategy != OrderingStrategy::None;
 
     for run_index in 0..thoroughness {
-        if first_try_with_initial_order && run_index <= 1 {
-            graph_info.current_node_order = initial_order.clone();
-        }
-
         let port_distributor = BarycenterPortDistributor::new(distributor_kind);
         let mut heuristic = BarycenterHeuristic::new(graph, random.clone(), port_distributor);
         let crossings = minimize_crossings_with_counter(
@@ -3860,6 +3850,56 @@ mod tests {
         let o = graph.layerless_nodes[0].nested_graph.as_ref().unwrap();
         let a = o.layerless_nodes[0].nested_graph.as_ref().unwrap();
         assert_eq!(node_order_by_id(a, &a.layers[0].nodes), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn hierarchical_barycenter_keeps_current_order_between_randomized_tries() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![
+                nested_group("bar", None),
+                nested_group("foo", None),
+                nested_node("A", None),
+                nested_node("B", None),
+                nested_node("G", None),
+                nested_node("E", Some("bar")),
+                nested_node("F", Some("bar")),
+                nested_node("C", Some("foo")),
+                nested_node("D", Some("foo")),
+            ],
+            edges: vec![
+                edge("L_A_B_0", "A", "B"),
+                edge("L_B_C_0", "B", "C"),
+                edge("L_C_D_0", "C", "D"),
+                edge("L_B_D_0", "B", "D"),
+                edge("L_D_E_0", "D", "E"),
+                edge("L_E_A_0", "E", "A"),
+                edge("L_E_F_0", "E", "F"),
+                edge("L_F_D_0", "F", "D"),
+                edge("L_F_G_0", "F", "G"),
+                edge("L_B_G_0", "B", "G"),
+                edge("L_G_D_0", "G", "D"),
+            ],
+        })
+        .unwrap();
+        graph.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
+
+        crate::compound::preprocess_source_ported_compound_graph(&mut graph);
+        crate::configurator::configure_graph_properties(&mut graph);
+        crate::pipeline::execute_ported_compound_processors_until(
+            &mut graph,
+            crate::pipeline::LayeredPhase::P3NodeOrdering,
+        )
+        .unwrap();
+
+        let first_layer_order = node_order_by_id(&graph, &graph.layers[0].nodes);
+        let last_layer_order = node_order_by_id(&graph, &graph.layers[2].nodes);
+        assert_eq!(first_layer_order[0], "bar");
+        assert_eq!(first_layer_order[1], "B");
+        assert!(first_layer_order[2].starts_with("invertedPort:"));
+        assert_eq!(last_layer_order[0], "foo");
+        assert!(last_layer_order[1].starts_with("invertedPort:"));
     }
 
     #[test]
