@@ -2776,13 +2776,15 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
             }
             "flowchart" => {
+                let admitted_flowchart_elk_source_probe =
+                    crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem);
                 // Flowchart ELK has a lightweight renderer path, but full SVG parity is tracked in
                 // a dedicated layout lane. Keep unadmitted upstream SVG baselines traceable under
                 // `_deferred`.
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
                 {
-                    if !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem)
+                    if !admitted_flowchart_elk_source_probe
                         && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
                     {
                         return Some(reason);
@@ -2805,7 +2807,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     .lines()
                     .any(|l| l.trim_start().starts_with("flowchart-elk"))
                 {
-                    if !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem)
+                    if !admitted_flowchart_elk_source_probe
                         && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
                     {
                         return Some(reason);
@@ -2815,18 +2817,22 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 // Mermaid supports flowchart nodes with an `@{ icon: ... }` modifier. merman does
                 // not implement icon rendering yet, so keep the upstream SVG for traceability but
                 // move the fixture under `_deferred` to keep `verify` green.
-                if fixture_text.contains("@{") && fixture_text.contains("icon:") {
+                if !admitted_flowchart_elk_source_probe
+                    && fixture_text.contains("@{")
+                    && fixture_text.contains("icon:")
+                {
                     return Some("flowchart icon nodes (deferred)");
                 }
 
                 // Mermaid also supports icon shorthands inside node labels, e.g.
                 // `A(\"fab:fa-twitter Twitter\")` / `B(\"fa:fa-coffee Coffee\")`.
-                if fixture_text.contains("fa:fa-")
+                if !admitted_flowchart_elk_source_probe
+                    && (fixture_text.contains("fa:fa-")
                     || fixture_text.contains("fab:fa-")
                     || fixture_text.contains("far:fa-")
                     || fixture_text.contains("fas:fa-")
                     || fixture_text.contains("fal:fa-")
-                    || fixture_text.contains("fad:fa-")
+                    || fixture_text.contains("fad:fa-"))
                 {
                     return Some("flowchart icon labels (deferred)");
                 }
