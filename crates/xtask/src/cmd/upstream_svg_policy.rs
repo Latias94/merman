@@ -24,6 +24,7 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_71_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_031",
     "upstream_cypress_flowchart_elk_spec_72_elk_handle_nested_subgraph_cases_bt_link_out_and_link_between_032",
     "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034",
+    "upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036",
     "upstream_cypress_flowchart_elk_spec_1433_elk_should_render_a_titled_flowchart_with_titletopmargin_se_039",
     "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037",
     "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038",

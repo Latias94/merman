@@ -2639,10 +2639,20 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
     fn deferred_keep_fixture_only_reason(
         diagram_dir: &str,
+        fixture_stem: &str,
         fixture_text: &str,
+        flowchart_elk_source_backed_probes: bool,
     ) -> Option<&'static str> {
         match diagram_dir {
             "flowchart" => {
+                if flowchart_elk_source_backed_probes
+                    && super::super::upstream_svg_policy::flowchart_elk_svg_source_backed_probe_admitted(
+                        fixture_stem,
+                    )
+                {
+                    return None;
+                }
+
                 // Mermaid's Cypress flowchart suite includes cases that Mermaid itself can render
                 // in-browser, but that our pinned upstream baseline renderer (`mmdc`) currently
                 // fails to parse (Langium grammar). One known example is setting a nested
@@ -2937,7 +2947,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
-        if let Some(reason) = deferred_keep_fixture_only_reason(&f.diagram_dir, &fixture_text) {
+        if let Some(reason) = deferred_keep_fixture_only_reason(
+            &f.diagram_dir,
+            &f.stem,
+            &fixture_text,
+            flowchart_elk_source_backed_probes,
+        ) {
             report_lines.push(format!(
                 "DEFERRED_NO_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
                 f.diagram_dir,
@@ -2975,8 +2990,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n == "errorDiagram.spec.js");
 
-                let fixture_only_reason =
-                    deferred_keep_fixture_only_reason(&f.diagram_dir, &fixture_text);
+                let fixture_only_reason = deferred_keep_fixture_only_reason(
+                    &f.diagram_dir,
+                    &f.stem,
+                    &fixture_text,
+                    flowchart_elk_source_backed_probes,
+                );
                 let is_half_arrow_parse_error = f.diagram_dir == "sequence"
                     && msg.contains("Parse error")
                     && looks_like_sequence_half_arrows(&fixture_text);

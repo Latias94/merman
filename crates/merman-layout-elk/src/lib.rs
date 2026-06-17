@@ -56,30 +56,65 @@ pub fn source_input_from_graph(graph: &Graph) -> source_port::ElkInputGraph {
 }
 
 fn layout_layered_source_ported(graph: &Graph) -> Result<LayoutResult> {
-    let has_parent_nodes = graph.nodes.iter().any(|node| node.parent.is_some());
-    if has_parent_nodes
-        && graph.options.layered.hierarchy_handling != HierarchyHandling::IncludeChildren
-    {
-        return Err(Error::UnsupportedSourceGraph {
-            reason: "source-backed ELK separate hierarchy handling is not ported yet",
-        });
-    }
+    Ok(layout_layered_source_ported_recursive(graph, None, None)?.layout)
+}
 
-    let input = graph_to_source_input(graph);
+#[derive(Debug, Clone)]
+struct RecursiveSourceLayout {
+    layout: LayoutResult,
+    size: source_port::LSize,
+}
+
+/// Execute the source-backed layered layout with ELK core's recursive hierarchy wrapper.
+///
+/// Source:
+/// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/RecursiveGraphLayoutEngine.java
+fn layout_layered_source_ported_recursive(
+    graph: &Graph,
+    root_spacing_base: Option<f64>,
+    root_label: Option<Label>,
+) -> Result<RecursiveSourceLayout> {
+    let mut layout_graph = graph.clone();
+    let nested_layouts = prelayout_separate_children(&mut layout_graph)?;
+
+    let input =
+        graph_to_source_input_with_root_context(&layout_graph, root_spacing_base, root_label);
     let mut lgraph = source_port::import_graph(&input).map_err(Error::SourceImport)?;
-    if has_parent_nodes {
+    if source_graph_has_nested_graphs(&lgraph) {
         source_port::execute_ported_compound_processors(&mut lgraph)
             .map_err(Error::SourcePipeline)?;
     } else {
         source_port::execute_ported_processors(&mut lgraph).map_err(Error::SourcePipeline)?;
     }
-    Ok(source_graph_to_layout_result(&lgraph))
+    let mut layout = source_graph_to_layout_result(&lgraph);
+    merge_nested_source_layouts(&mut layout, &nested_layouts);
+
+    Ok(RecursiveSourceLayout {
+        layout,
+        size: actual_source_graph_size(&lgraph),
+    })
 }
 
 fn graph_to_source_input(graph: &Graph) -> ElkInputGraph {
+    graph_to_source_input_with_root_context(graph, None, None)
+}
+
+fn graph_to_source_input_with_root_context(
+    graph: &Graph,
+    root_spacing_base: Option<f64>,
+    root_label: Option<Label>,
+) -> ElkInputGraph {
+    let mut options = layered_options_to_source(graph);
+    if let Some(base) = root_spacing_base {
+        options.spacing = source_port::SpacingOptions::layered_base_value(base);
+    }
+    if let Some(label) = root_label {
+        apply_root_inside_top_center_label_padding(&mut options, label);
+    }
+
     ElkInputGraph {
         id: graph.id.clone(),
-        options: layered_options_to_source(graph),
+        options,
         nodes: graph
             .nodes
             .iter()
@@ -129,6 +164,225 @@ fn graph_to_source_input(graph: &Graph) -> ElkInputGraph {
                 priority_straightness: 0,
             })
             .collect(),
+    }
+}
+
+fn prelayout_separate_children(
+    graph: &mut Graph,
+) -> Result<HashMap<String, RecursiveSourceLayout>> {
+    let mut nested_layouts = HashMap::new();
+    let root_handling = graph.options.layered.hierarchy_handling;
+    let root_direction = graph.direction;
+    prelayout_separate_children_under(
+        graph,
+        None,
+        root_handling,
+        root_direction,
+        &mut nested_layouts,
+    )?;
+    Ok(nested_layouts)
+}
+
+fn prelayout_separate_children_under(
+    graph: &mut Graph,
+    parent: Option<&str>,
+    parent_handling: HierarchyHandling,
+    parent_direction: Direction,
+    nested_layouts: &mut HashMap<String, RecursiveSourceLayout>,
+) -> Result<()> {
+    let child_ids = direct_child_group_ids_with_children(graph, parent);
+    for child_id in child_ids {
+        let Some(child) = graph.nodes.iter().find(|node| node.id == child_id).cloned() else {
+            continue;
+        };
+        let child_handling = child.hierarchy_handling.unwrap_or(parent_handling);
+        let child_direction = child.direction.unwrap_or(parent_direction);
+        let parent_separates_children = parent_handling == HierarchyHandling::SeparateChildren;
+        let child_stops_hierarchy = child_handling == HierarchyHandling::SeparateChildren;
+
+        if parent_separates_children || child_stops_hierarchy {
+            let child_graph =
+                graph_for_recursive_child(graph, &child, child_handling, child_direction);
+            let child_layout =
+                layout_layered_source_ported_recursive(&child_graph, Some(30.0), child.label)?;
+            if let Some(node) = graph.nodes.iter_mut().find(|node| node.id == child.id) {
+                node.width = node.width.max(child_layout.size.width);
+                node.height = node.height.max(child_layout.size.height);
+            }
+            nested_layouts.insert(child.id, child_layout);
+        } else {
+            prelayout_separate_children_under(
+                graph,
+                Some(child.id.as_str()),
+                child_handling,
+                child_direction,
+                nested_layouts,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_root_inside_top_center_label_padding(options: &mut SourceLayeredOptions, label: Label) {
+    if label.height > 0.0 {
+        options.padding.top += label.height + options.node_labels_padding.top;
+    }
+}
+
+fn direct_child_group_ids_with_children(graph: &Graph, parent: Option<&str>) -> Vec<String> {
+    graph
+        .nodes
+        .iter()
+        .filter(|node| {
+            node.kind == NodeKind::Group
+                && node.parent.as_deref() == parent
+                && graph
+                    .nodes
+                    .iter()
+                    .any(|candidate| candidate.parent.as_deref() == Some(node.id.as_str()))
+        })
+        .map(|node| node.id.clone())
+        .collect()
+}
+
+fn graph_for_recursive_child(
+    graph: &Graph,
+    child: &Node,
+    hierarchy_handling: HierarchyHandling,
+    direction: Direction,
+) -> Graph {
+    let descendant_ids = descendant_node_ids(graph, child.id.as_str());
+    let nodes = graph
+        .nodes
+        .iter()
+        .filter(|node| descendant_ids.contains(node.id.as_str()))
+        .cloned()
+        .map(|mut node| {
+            if node.parent.as_deref() == Some(child.id.as_str()) {
+                node.parent = None;
+            }
+            node
+        })
+        .collect();
+    let edges = graph
+        .edges
+        .iter()
+        .filter(|edge| {
+            descendant_ids.contains(edge.source.as_str())
+                && descendant_ids.contains(edge.target.as_str())
+        })
+        .cloned()
+        .collect();
+    let mut options = graph.options.clone();
+    options.layered.hierarchy_handling = hierarchy_handling;
+
+    Graph {
+        id: child.id.clone(),
+        direction,
+        nodes,
+        edges,
+        spacing: graph.spacing,
+        options,
+    }
+}
+
+fn descendant_node_ids(graph: &Graph, root: &str) -> std::collections::HashSet<String> {
+    let mut descendants = std::collections::HashSet::new();
+    let mut stack = graph
+        .nodes
+        .iter()
+        .filter(|node| node.parent.as_deref() == Some(root))
+        .map(|node| node.id.clone())
+        .collect::<Vec<_>>();
+
+    while let Some(id) = stack.pop() {
+        if !descendants.insert(id.clone()) {
+            continue;
+        }
+        stack.extend(
+            graph
+                .nodes
+                .iter()
+                .filter(|node| node.parent.as_deref() == Some(id.as_str()))
+                .map(|node| node.id.clone()),
+        );
+    }
+
+    descendants
+}
+
+fn merge_nested_source_layouts(
+    layout: &mut LayoutResult,
+    nested_layouts: &HashMap<String, RecursiveSourceLayout>,
+) {
+    let parent_nodes = layout
+        .nodes
+        .iter()
+        .filter(|node| nested_layouts.contains_key(node.id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for parent in parent_nodes {
+        let Some(nested) = nested_layouts.get(parent.id.as_str()) else {
+            continue;
+        };
+        let offset = Point {
+            x: parent.x - parent.width / 2.0,
+            y: parent.y - parent.height / 2.0,
+        };
+        append_translated_layout(layout, &nested.layout, offset);
+    }
+}
+
+fn append_translated_layout(layout: &mut LayoutResult, nested: &LayoutResult, offset: Point) {
+    layout
+        .nodes
+        .extend(nested.nodes.iter().map(|node| NodeLayout {
+            id: node.id.clone(),
+            x: node.x + offset.x,
+            y: node.y + offset.y,
+            width: node.width,
+            height: node.height,
+        }));
+
+    layout.edges.extend(nested.edges.iter().map(|edge| {
+        EdgeLayout {
+            id: edge.id.clone(),
+            points: edge
+                .points
+                .iter()
+                .map(|point| Point {
+                    x: point.x + offset.x,
+                    y: point.y + offset.y,
+                })
+                .collect(),
+            labels: edge
+                .labels
+                .iter()
+                .map(|label| EdgeLabelLayout {
+                    x: label.x + offset.x,
+                    y: label.y + offset.y,
+                    width: label.width,
+                    height: label.height,
+                })
+                .collect(),
+        }
+    }));
+}
+
+fn source_graph_has_nested_graphs(graph: &LGraph) -> bool {
+    graph.layerless_nodes.iter().any(|node| {
+        node.nested_graph.as_deref().is_some_and(|nested| {
+            !nested.layerless_nodes.is_empty() || source_graph_has_nested_graphs(nested)
+        })
+    })
+}
+
+fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
+    source_port::LSize {
+        width: graph.size.width + graph.padding.left + graph.padding.right,
+        height: graph.size.height + graph.padding.top + graph.padding.bottom,
     }
 }
 
@@ -1143,9 +1397,11 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_rejects_separate_hierarchy_until_ported() {
+    fn source_ported_layout_recursively_lays_out_separate_children() {
         let mut child = leaf("A");
         child.parent = Some("cluster".to_string());
+        let mut second_child = leaf("B");
+        second_child.parent = Some("cluster".to_string());
         let mut graph = flat_graph(
             vec![
                 Node {
@@ -1154,18 +1410,48 @@ mod tests {
                     width: 0.0,
                     height: 0.0,
                     parent: None,
-                    direction: Some(Direction::Down),
-                    hierarchy_handling: None,
-                    label: None,
+                    direction: Some(Direction::Right),
+                    hierarchy_handling: Some(HierarchyHandling::SeparateChildren),
+                    label: Some(Label {
+                        width: 42.0,
+                        height: 18.0,
+                    }),
                 },
                 child,
+                second_child,
+                leaf("outer"),
             ],
-            Vec::new(),
+            vec![
+                edge("A-B", "A", "B"),
+                edge("cluster-outer", "cluster", "outer"),
+            ],
         );
-        graph.options.layered.hierarchy_handling = HierarchyHandling::SeparateChildren;
+        graph.direction = Direction::Down;
+        graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
-        let err = layout_source_ported(&graph, Algorithm::Layered).unwrap_err();
+        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
 
-        assert!(matches!(err, Error::UnsupportedSourceGraph { .. }));
+        let cluster = result
+            .nodes
+            .iter()
+            .find(|node| node.id == "cluster")
+            .unwrap();
+        let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let outer = result.nodes.iter().find(|node| node.id == "outer").unwrap();
+        let inner_edge = result.edges.iter().find(|edge| edge.id == "A-B").unwrap();
+        let outer_edge = result
+            .edges
+            .iter()
+            .find(|edge| edge.id == "cluster-outer")
+            .unwrap();
+
+        assert!(cluster.width >= b.x + b.width / 2.0 - (a.x - a.width / 2.0));
+        assert!(cluster.height >= 18.0);
+        assert!(a.x < b.x);
+        assert!(outer.y > cluster.y);
+        assert_eq!(inner_edge.points.first().unwrap().y, a.y);
+        assert_eq!(inner_edge.points.last().unwrap().y, b.y);
+        assert_eq!(outer_edge.points.first().unwrap().x, cluster.x);
     }
 }

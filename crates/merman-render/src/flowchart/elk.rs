@@ -1517,4 +1517,95 @@ mod tests {
         assert!(b.x > a.x);
         assert!(c.y > b.y);
     }
+
+    #[test]
+    #[cfg(feature = "elk-layout")]
+    fn flowchart_source_ported_elk_recursively_lays_out_directed_subgraphs() {
+        let mut model = model(
+            vec![
+                node("A", Some("A"), None),
+                node("B", Some("B"), None),
+                node("i1", Some("i1"), None),
+                node("f1", Some("f1"), None),
+                node("i2", Some("i2"), None),
+                node("f2", Some("f2"), None),
+            ],
+            vec![
+                edge("L-i1-f1", "i1", "f1", None),
+                edge("L-i2-f2", "i2", "f2", None),
+                edge("L-A-TOP", "A", "TOP", None),
+                edge("L-TOP-B", "TOP", "B", None),
+                edge("L-B1-B2", "B1", "B2", None),
+            ],
+        );
+        model.direction = Some("LR".to_string());
+        model.subgraphs.push(FlowSubgraph {
+            id: "TOP".to_string(),
+            title: "TOP".to_string(),
+            dir: Some("TB".to_string()),
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["B1".to_string(), "B2".to_string()],
+        });
+        model.subgraphs.push(FlowSubgraph {
+            id: "B1".to_string(),
+            title: "B1".to_string(),
+            dir: Some("RL".to_string()),
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["i1".to_string(), "f1".to_string()],
+        });
+        model.subgraphs.push(FlowSubgraph {
+            id: "B2".to_string(),
+            title: "B2".to_string(),
+            dir: Some("BT".to_string()),
+            label_type: Some("text".to_string()),
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["i2".to_string(), "f2".to_string()],
+        });
+
+        let layout = layout_flowchart_elk_typed(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+            FlowchartElkBackend::SourcePorted,
+        )
+        .unwrap();
+
+        assert_eq!(layout.clusters.len(), 3);
+        for id in ["TOP", "B1", "B2"] {
+            assert!(layout.clusters.iter().any(|cluster| cluster.id == id));
+        }
+        let top = layout
+            .clusters
+            .iter()
+            .find(|cluster| cluster.id == "TOP")
+            .unwrap();
+        let b1 = layout
+            .clusters
+            .iter()
+            .find(|cluster| cluster.id == "B1")
+            .unwrap();
+        let b2 = layout
+            .clusters
+            .iter()
+            .find(|cluster| cluster.id == "B2")
+            .unwrap();
+        let i1 = layout.nodes.iter().find(|node| node.id == "i1").unwrap();
+        let f1 = layout.nodes.iter().find(|node| node.id == "f1").unwrap();
+        let i2 = layout.nodes.iter().find(|node| node.id == "i2").unwrap();
+        let f2 = layout.nodes.iter().find(|node| node.id == "f2").unwrap();
+        let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+
+        assert!(a.x < top.x);
+        assert!(b.x > top.x);
+        assert!(b2.y > b1.y);
+        assert!(f1.x < i1.x);
+        assert!(f2.y < i2.y);
+    }
 }
