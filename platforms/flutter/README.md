@@ -97,6 +97,10 @@ final resvgSafeSvg = merman.renderSvg(
 Use the default parity output for WebView/browser display, `readable` when a renderer needs text
 fallbacks for labels, and `resvg-safe` for stricter SVG consumers or raster/PDF export paths.
 
+For repeated calls or host font measurement, use `MermanReusableEngine` and install a
+`MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
+vendored metrics for that request.
+
 ## Local Dart Smoke
 
 Raw `dart run` does not execute Flutter's platform packaging step, so the smoke example accepts an

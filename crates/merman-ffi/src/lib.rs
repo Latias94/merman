@@ -25,6 +25,15 @@ pub const MERMAN_WRAP_MODE_SVG_LIKE: i32 = 0;
 pub const MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN: i32 = 1;
 pub const MERMAN_WRAP_MODE_HTML_LIKE: i32 = 2;
 
+pub const MERMAN_TEXT_DIRECTION_AUTO: i32 = 0;
+pub const MERMAN_TEXT_DIRECTION_LTR: i32 = 1;
+pub const MERMAN_TEXT_DIRECTION_RTL: i32 = 2;
+
+pub const MERMAN_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
+pub const MERMAN_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
+pub const MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
+pub const MERMAN_TEXT_WHITE_SPACE_PRE_WRAP: i32 = 3;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct MermanBuffer {
@@ -72,9 +81,16 @@ pub struct MermanHostTextMeasureRequest {
     pub font_size: f64,
     pub font_weight: *const u8,
     pub font_weight_len: usize,
+    pub font_style: *const u8,
+    pub font_style_len: usize,
     pub max_width: f64,
-    pub has_max_width: u8,
+    pub line_height: f64,
+    pub letter_spacing: f64,
+    pub word_spacing: f64,
     pub wrap_mode: i32,
+    pub direction: i32,
+    pub white_space: i32,
+    pub has_max_width: u8,
 }
 
 #[repr(C)]
@@ -101,6 +117,9 @@ struct FfiHostTextMeasurer {
 
 #[cfg(feature = "render")]
 impl FfiHostTextMeasurer {
+    const DEFAULT_FONT_STYLE: &'static [u8] = b"normal";
+    const DEFAULT_FONT_WEIGHT: &'static [u8] = b"normal";
+
     fn new(callback: MermanHostTextMeasureCallback, user_data: *mut std::ffi::c_void) -> Self {
         Self {
             callback,
@@ -117,7 +136,12 @@ impl FfiHostTextMeasurer {
         wrap_mode: merman_bindings_core::WrapMode,
     ) -> Option<merman_bindings_core::TextMetrics> {
         let font_family = style.font_family.as_deref().unwrap_or_default().as_bytes();
-        let font_weight = style.font_weight.as_deref().unwrap_or_default().as_bytes();
+        let font_weight = style
+            .font_weight
+            .as_deref()
+            .map(str::as_bytes)
+            .unwrap_or(Self::DEFAULT_FONT_WEIGHT);
+        let font_style = Self::DEFAULT_FONT_STYLE;
         let result = unsafe {
             (self.callback)(
                 MermanHostTextMeasureRequest {
@@ -128,9 +152,16 @@ impl FfiHostTextMeasurer {
                     font_size: style.font_size,
                     font_weight: font_weight.as_ptr(),
                     font_weight_len: font_weight.len(),
+                    font_style: font_style.as_ptr(),
+                    font_style_len: font_style.len(),
                     max_width: max_width.unwrap_or(0.0),
-                    has_max_width: u8::from(max_width.is_some()),
+                    line_height: ffi_line_height(style, wrap_mode),
+                    letter_spacing: 0.0,
+                    word_spacing: 0.0,
                     wrap_mode: ffi_wrap_mode(wrap_mode),
+                    direction: MERMAN_TEXT_DIRECTION_AUTO,
+                    white_space: ffi_white_space(max_width, wrap_mode),
+                    has_max_width: u8::from(max_width.is_some()),
                 },
                 self.user_data as *mut std::ffi::c_void,
             )
@@ -227,6 +258,31 @@ fn ffi_wrap_mode(wrap_mode: merman_bindings_core::WrapMode) -> i32 {
         merman_bindings_core::WrapMode::SvgLike => MERMAN_WRAP_MODE_SVG_LIKE,
         merman_bindings_core::WrapMode::SvgLikeSingleRun => MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN,
         merman_bindings_core::WrapMode::HtmlLike => MERMAN_WRAP_MODE_HTML_LIKE,
+    }
+}
+
+#[cfg(feature = "render")]
+fn ffi_line_height(
+    style: &merman_bindings_core::TextStyle,
+    wrap_mode: merman_bindings_core::WrapMode,
+) -> f64 {
+    let factor = match wrap_mode {
+        merman_bindings_core::WrapMode::SvgLike
+        | merman_bindings_core::WrapMode::SvgLikeSingleRun => 1.1,
+        merman_bindings_core::WrapMode::HtmlLike => 1.5,
+    };
+    style.font_size.max(1.0) * factor
+}
+
+#[cfg(feature = "render")]
+fn ffi_white_space(max_width: Option<f64>, wrap_mode: merman_bindings_core::WrapMode) -> i32 {
+    match wrap_mode {
+        merman_bindings_core::WrapMode::HtmlLike if max_width.is_some() => {
+            MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES
+        }
+        merman_bindings_core::WrapMode::HtmlLike => MERMAN_TEXT_WHITE_SPACE_NOWRAP,
+        merman_bindings_core::WrapMode::SvgLike
+        | merman_bindings_core::WrapMode::SvgLikeSingleRun => MERMAN_TEXT_WHITE_SPACE_NORMAL,
     }
 }
 
@@ -1231,13 +1287,45 @@ mod tests {
 
     #[test]
     fn reusable_engine_can_use_host_text_measure_callback() {
+        #[derive(Default)]
+        struct CallbackProbe {
+            saw_condition: bool,
+            saw_nowrap: bool,
+            saw_break_spaces: bool,
+            saw_font_style: bool,
+            saw_spacing_defaults: bool,
+        }
+
         unsafe extern "C" fn measure_condition(
             request: MermanHostTextMeasureRequest,
             user_data: *mut std::ffi::c_void,
         ) -> MermanHostTextMeasureResult {
-            assert!(!user_data.is_null());
+            if user_data.is_null() {
+                return MermanHostTextMeasureResult {
+                    handled: 0,
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                };
+            }
             let text = unsafe { std::slice::from_raw_parts(request.text, request.text_len) };
             if text == b"Condition?" && request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE {
+                let probe = unsafe { &mut *(user_data.cast::<CallbackProbe>()) };
+                probe.saw_condition = true;
+                let font_style = unsafe {
+                    std::slice::from_raw_parts(request.font_style, request.font_style_len)
+                };
+                probe.saw_font_style |= font_style == b"normal"
+                    && request.direction == MERMAN_TEXT_DIRECTION_AUTO
+                    && request.line_height > request.font_size;
+                probe.saw_spacing_defaults |=
+                    request.letter_spacing == 0.0 && request.word_spacing == 0.0;
+                if request.has_max_width == 0 {
+                    probe.saw_nowrap |= request.white_space == MERMAN_TEXT_WHITE_SPACE_NOWRAP;
+                } else {
+                    probe.saw_break_spaces |=
+                        request.white_space == MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES;
+                }
                 return MermanHostTextMeasureResult {
                     handled: 1,
                     width: 140.0,
@@ -1268,12 +1356,12 @@ mod tests {
         let baseline_svg = take_text(baseline.data);
         let baseline_width = foreign_object_width_before_label(&baseline_svg, "Condition?");
 
-        let mut callback_marker = 7_u8;
+        let mut callback_probe = CallbackProbe::default();
         let set_result = unsafe {
             merman_engine_set_text_measure_callback(
                 engine.engine,
                 Some(measure_condition),
-                (&mut callback_marker as *mut u8).cast(),
+                (&mut callback_probe as *mut CallbackProbe).cast(),
             )
         };
         assert_eq!(set_result.code, BindingStatus::Ok.code());
@@ -1287,6 +1375,11 @@ mod tests {
             measured_width > baseline_width + 40.0,
             "expected host callback width to affect layout; baseline={baseline_width}, measured={measured_width}"
         );
+        assert!(callback_probe.saw_condition);
+        assert!(callback_probe.saw_nowrap);
+        assert!(callback_probe.saw_break_spaces);
+        assert!(callback_probe.saw_font_style);
+        assert!(callback_probe.saw_spacing_defaults);
 
         let reset = unsafe {
             merman_engine_set_text_measure_callback(engine.engine, None, ptr::null_mut())

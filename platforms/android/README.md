@@ -40,6 +40,10 @@ package version through `packageVersion`.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
+For repeated calls or host font measurement, use `MermanReusableEngine` and install a
+`MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
+vendored metrics for that request.
+
 ## Example
 
 [`examples/MermanSmoke.kt`](examples/MermanSmoke.kt) shows the smallest Android-side smoke call
@@ -49,7 +53,7 @@ sequence. Use it from an Android app or instrumentation test after packaging
 ## Local Verification
 
 ```bash
-kotlinc src/main/kotlin/io/merman/MermanException.kt src/main/kotlin/io/merman/MermanEngine.kt -d ../../target/platforms/android/merman-android.jar
+kotlinc src/main/kotlin/io/merman/*.kt -d ../../target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
 ```

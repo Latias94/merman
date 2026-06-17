@@ -82,6 +82,19 @@ enum {
     MERMAN_WRAP_MODE_HTML_LIKE = 2
 };
 
+enum {
+    MERMAN_TEXT_DIRECTION_AUTO = 0,
+    MERMAN_TEXT_DIRECTION_LTR = 1,
+    MERMAN_TEXT_DIRECTION_RTL = 2
+};
+
+enum {
+    MERMAN_TEXT_WHITE_SPACE_NORMAL = 0,
+    MERMAN_TEXT_WHITE_SPACE_NOWRAP = 1,
+    MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES = 2,
+    MERMAN_TEXT_WHITE_SPACE_PRE_WRAP = 3
+};
+
 typedef struct MermanHostTextMeasureRequest {
     const uint8_t* text;
     size_t text_len;
@@ -90,9 +103,16 @@ typedef struct MermanHostTextMeasureRequest {
     double font_size;
     const uint8_t* font_weight;
     size_t font_weight_len;
+    const uint8_t* font_style;
+    size_t font_style_len;
     double max_width;
-    uint8_t has_max_width;
+    double line_height;
+    double letter_spacing;
+    double word_spacing;
     int32_t wrap_mode;
+    int32_t direction;
+    int32_t white_space;
+    uint8_t has_max_width;
 } MermanHostTextMeasureRequest;
 
 typedef struct MermanHostTextMeasureResult {
@@ -230,11 +250,19 @@ The callback applies to future render/layout calls made through that engine. Pas
 
 `MermanHostTextMeasureRequest` string pointers are UTF-8 byte slices valid only for the duration of
 the callback. The callback must not store them. `max_width` is meaningful only when
-`has_max_width != 0`; `wrap_mode` is one of the `MERMAN_WRAP_MODE_*` constants.
+`has_max_width != 0`; `wrap_mode`, `direction`, and `white_space` are the corresponding
+`MERMAN_*` constants. `line_height`, `letter_spacing`, and `word_spacing` are CSS-pixel values.
 
 Return `handled=0` for measurement requests the host does not support. `merman` then falls back
 to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently,
 the callback and `user_data` must be thread-safe.
+
+This callback is the recommended accuracy path for native and embedded hosts. Headless rendering
+cannot know the exact browser or UI toolkit font fallback chain, glyph shaping, hinting, and
+subpixel rounding that will be used when the SVG is displayed. Hosts that need exact label layout
+should measure with the same browser canvas/DOM, WebView, or native text system used for display,
+then return those metrics through this callback. The C ABI only transports measurement requests and
+fallbacks; it does not embed a system font engine.
 
 ## SVG Rendering
 

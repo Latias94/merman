@@ -47,7 +47,9 @@ let diagrams = try engine.supportedDiagrams()
 ```
 
 The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are
-mapped to `MermanError.binding`.
+mapped to `MermanError.binding`. `MermanReusableEngine` exposes repeated
+render/parse/layout/validation calls and the raw C `MermanHostTextMeasureCallback` seam for hosts
+that need font-aware text measurement.
 
 ## Smoke Example
 

@@ -35,7 +35,8 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanException`
 
 The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
-initialization.
+initialization. `MermanReusableEngine` exposes repeated render/parse/layout/validation calls and a
+`MermanTextMeasurer` callback for hosts that need font-aware text measurement.
 
 ## Example
 
@@ -45,7 +46,7 @@ semantic JSON, layout JSON, validation JSON, and metadata from Android/Kotlin.
 ## Verification
 
 ```bash
-kotlinc platforms/android/src/main/kotlin/io/merman/MermanException.kt platforms/android/src/main/kotlin/io/merman/MermanEngine.kt -d target/platforms/android/merman-android.jar
+kotlinc platforms/android/src/main/kotlin/io/merman/*.kt -d target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
 cargo clippy -p merman-ffi --target aarch64-linux-android -- -D warnings

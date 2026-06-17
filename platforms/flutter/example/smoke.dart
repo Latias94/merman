@@ -44,6 +44,28 @@ void main(List<String> args) {
     throw StateError('host theme presets smoke failed');
   }
 
+  final engine = merman.reusableEngine();
+  try {
+    engine.setTextMeasurer((request) {
+      if (request.text == 'Hello' &&
+          request.wrapMode == MermanTextWrapMode.htmlLike) {
+        return const MermanTextMeasureResult(
+          width: 42,
+          height: 24,
+          lineCount: 1,
+        );
+      }
+      return null;
+    });
+    final measuredSvg = engine.renderSvg(source);
+    if (!measuredSvg.contains('<svg') || !measuredSvg.contains('Hello')) {
+      throw StateError('reusable engine SVG smoke failed');
+    }
+    engine.setTextMeasurer(null);
+  } finally {
+    engine.close();
+  }
+
   try {
     merman.renderSvg(source, optionsJson: '{');
   } on MermanException catch (error) {

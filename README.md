@@ -384,7 +384,8 @@ cargo run -p merman --features render --example example_11_custom_output_environ
 
 The [`merman-ffi`](https://crates.io/crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The current
 FFI surface supports SVG rendering, ASCII text rendering, semantic JSON, layout JSON, validation
-JSON, binding metadata, and explicit Rust-owned buffer release.
+JSON, binding metadata, host text-measurement callbacks for reusable engines, and explicit
+Rust-owned buffer release.
 
 Start with the surface that matches your host:
 
@@ -411,6 +412,11 @@ merman_buffer_free(result.data);
 Every non-empty `MermanResult.data` buffer must be released with `merman_buffer_free`. See
 [`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md) for result codes, options JSON,
 threading, and compatibility rules.
+
+Headless rendering cannot know the exact browser or native UI font fallback that will display the
+final SVG. If precise label geometry matters, native hosts should install the FFI text-measurement
+callback and measure with their own DOM/canvas/WebView/native text stack. Unsupported requests can
+return `handled=0`, and merman will fall back to its vendored Mermaid-compatible measurer.
 
 Detailed platform notes:
 
@@ -723,6 +729,10 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 ## Limitations
 
 - SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_resvg_safe_sync()` or the explicit `SvgPipeline::resvg_safe()` preset.
+- Text measurement is inherently host-sensitive. Merman uses vendored compatibility metrics by
+  default and keeps Flowchart HTML labels non-clipping, but browser and native font fallback,
+  shaping, hinting, and subpixel rounding can still differ. Hosts that need exact geometry should
+  provide a `TextMeasurer` in Rust or the C FFI text-measurement callback.
 - PNG/JPG export is constrained by a default pixmap budget. This protects headless hosts from
   oversized allocations, but it also means extremely large diagrams are downscaled unless callers
   choose a target fit box or explicitly opt into unbounded raster output.

@@ -96,12 +96,36 @@ Return `handled=0` for measurement requests your host does not support. `merman`
 to its vendored Mermaid-compatible measurer for that request. The callback may be invoked from any
 thread that renders with the engine, so shared host font state must be thread-safe.
 
+## Headless Font Measurement
+
+Mermaid normally measures labels in a browser after CSS and font fallback have been resolved. A
+headless renderer has to estimate those metrics before there is a DOM. That means browser and host
+differences can show up as slightly wider labels, clipped `foreignObject` content, or layout drift
+when the final display font differs from merman's vendored compatibility profile.
+
+`merman` keeps Flowchart HTML labels non-clipping by default, which avoids losing trailing
+characters when a browser chooses a wider fallback font. For hosts that need accurate geometry,
+install `merman_engine_set_text_measure_callback` and measure with the same text stack that will
+display the SVG:
+
+- Browser/WebView hosts can use their DOM or canvas text measurement path.
+- Native editors can use their own shaping and font fallback system.
+- Unsupported requests can return `handled=0` and let merman fall back per request.
+
+The callback request includes the UTF-8 text, font family, size, weight, style, line height,
+spacing, wrap mode, direction, white-space mode, and optional max width. See
+[`include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h)
+and
+[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md#host-text-measurement)
+for the exact ABI contract.
+
 ## Example
 
 [`examples/render_svg.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg.c)
 is a small C consumer that renders a flowchart to SVG through the C ABI.
 [`examples/render_svg_engine.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg_engine.c)
-shows the reusable engine/context API for repeated calls with shared options.
+shows the reusable engine/context API and a minimal text measurement callback for repeated calls
+with shared options.
 
 On macOS or Linux:
 

@@ -54,6 +54,10 @@ version is read from the linked native library.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
+For repeated calls or host font measurement, use `MermanReusableEngine` and install a raw
+`MermanHostTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
+back to merman's vendored metrics for that request.
+
 ## Local Package Use
 
 1. Build `platforms/apple/Merman.xcframework`.

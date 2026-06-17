@@ -6,6 +6,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+- Added a host text-measurement callback to the C FFI reusable engine API and bumped the C ABI to
+  version 2. This addresses a class of headless rendering issues where the browser or native host
+  chooses a different font fallback than merman can know ahead of time, such as Flowchart labels
+  clipping trailing characters in some browser/font combinations. Merman now keeps Flowchart HTML
+  labels non-clipping by default and lets precise hosts supply their own DOM/canvas/native text
+  measurements through the callback.
+- Extended the Android JNI, Apple Swift, and Flutter/Dart FFI wrappers to expose reusable engines
+  and host text-measurement callbacks on top of the C ABI v2 contract.
 - Improved `dugong` layered layout performance by avoiding repeated dummy-node ID scans during
   long-edge normalization and by using cached adjacency when removing graph nodes. Added a
   `layout_dagreish` benchmark covering the full layout pipeline and normalize run/undo costs.

@@ -156,7 +156,11 @@ def main() -> int:
             [
                 kotlinc,
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanException.kt"),
+                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasureRequest.kt"),
+                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasureResult.kt"),
+                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasurer.kt"),
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanEngine.kt"),
+                str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanReusableEngine.kt"),
                 "-d",
                 str(ANDROID_JAR_OUT),
             ]

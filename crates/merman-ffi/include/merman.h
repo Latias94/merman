@@ -55,6 +55,19 @@ enum {
     MERMAN_WRAP_MODE_HTML_LIKE = 2
 };
 
+enum {
+    MERMAN_TEXT_DIRECTION_AUTO = 0,
+    MERMAN_TEXT_DIRECTION_LTR = 1,
+    MERMAN_TEXT_DIRECTION_RTL = 2
+};
+
+enum {
+    MERMAN_TEXT_WHITE_SPACE_NORMAL = 0,
+    MERMAN_TEXT_WHITE_SPACE_NOWRAP = 1,
+    MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES = 2,
+    MERMAN_TEXT_WHITE_SPACE_PRE_WRAP = 3
+};
+
 typedef struct MermanHostTextMeasureRequest {
     const uint8_t* text;
     size_t text_len;
@@ -63,9 +76,16 @@ typedef struct MermanHostTextMeasureRequest {
     double font_size;
     const uint8_t* font_weight;
     size_t font_weight_len;
+    const uint8_t* font_style;
+    size_t font_style_len;
     double max_width;
-    uint8_t has_max_width;
+    double line_height;
+    double letter_spacing;
+    double word_spacing;
     int32_t wrap_mode;
+    int32_t direction;
+    int32_t white_space;
+    uint8_t has_max_width;
 } MermanHostTextMeasureRequest;
 
 typedef struct MermanHostTextMeasureResult {

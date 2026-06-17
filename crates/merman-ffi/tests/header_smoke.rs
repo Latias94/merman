@@ -49,6 +49,22 @@ int merman_header_smoke(void) {
     MermanResult (*supported_themes_json)(void) = &merman_supported_themes_json;
     MermanResult (*supported_host_theme_presets_json)(void) = &merman_supported_host_theme_presets_json;
     void (*free_buffer)(MermanBuffer) = &merman_buffer_free;
+    measure_request.font_style = (const uint8_t*)"normal";
+    measure_request.font_style_len = 6;
+    measure_request.line_height = 24.0;
+    measure_request.letter_spacing = 0.0;
+    measure_request.word_spacing = 0.0;
+    measure_request.direction = MERMAN_TEXT_DIRECTION_AUTO;
+    measure_request.white_space = MERMAN_TEXT_WHITE_SPACE_NOWRAP;
+    if (MERMAN_WRAP_MODE_HTML_LIKE != 2) {
+        return 10;
+    }
+    if (MERMAN_TEXT_DIRECTION_RTL != 2) {
+        return 11;
+    }
+    if (MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES != 2) {
+        return 12;
+    }
     (void)abi_version;
     (void)package_version;
     (void)buffer_struct_size;

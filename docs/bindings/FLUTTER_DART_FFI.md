@@ -35,6 +35,8 @@ for current Mermaid parity.
 - Converts non-OK C ABI results into `MermanException`.
 - Provides `Merman.openPath(path)` only for local Dart CLI smoke tests and other development
   diagnostics where Flutter platform packaging is not running.
+- Exposes `MermanReusableEngine` and `MermanTextMeasurer` for repeated calls and host text
+  measurement through the C reusable-engine API.
 
 ## Platform Packaging
 

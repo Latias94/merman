@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 /// C ABI version expected by this Dart binding.
-const int mermanAbiVersion = 1;
+const int mermanAbiVersion = 2;
 
 /// Result status codes returned by the native `merman-ffi` ABI.
 enum MermanStatus {
@@ -83,6 +83,251 @@ final class NativeMermanResult extends Struct {
   external NativeMermanBuffer data;
 }
 
+/// Opaque reusable native engine handle.
+///
+/// Handles are created by `merman_engine_new` and must be freed with
+/// `merman_engine_free`.
+final class NativeMermanEngine extends Opaque {}
+
+/// Native layout of `MermanEngineResult`.
+final class NativeMermanEngineResult extends Struct {
+  /// Numeric [MermanStatus] code returned by the native call.
+  @Int32()
+  external int code;
+
+  /// Native reusable engine handle, or null when [code] is not OK.
+  external Pointer<NativeMermanEngine> engine;
+
+  /// Error payload when [code] is not OK.
+  external NativeMermanBuffer data;
+}
+
+/// Native layout of `MermanHostTextMeasureRequest`.
+final class NativeMermanHostTextMeasureRequest extends Struct {
+  external Pointer<Uint8> text;
+
+  @UintPtr()
+  external int textLen;
+
+  external Pointer<Uint8> fontFamily;
+
+  @UintPtr()
+  external int fontFamilyLen;
+
+  @Double()
+  external double fontSize;
+
+  external Pointer<Uint8> fontWeight;
+
+  @UintPtr()
+  external int fontWeightLen;
+
+  external Pointer<Uint8> fontStyle;
+
+  @UintPtr()
+  external int fontStyleLen;
+
+  @Double()
+  external double maxWidth;
+
+  @Double()
+  external double lineHeight;
+
+  @Double()
+  external double letterSpacing;
+
+  @Double()
+  external double wordSpacing;
+
+  @Int32()
+  external int wrapMode;
+
+  @Int32()
+  external int direction;
+
+  @Int32()
+  external int whiteSpace;
+
+  @Uint8()
+  external int hasMaxWidth;
+}
+
+/// Native layout of `MermanHostTextMeasureResult`.
+final class NativeMermanHostTextMeasureResult extends Struct {
+  @Uint8()
+  external int handled;
+
+  @Double()
+  external double width;
+
+  @Double()
+  external double height;
+
+  @UintPtr()
+  external int lineCount;
+}
+
+/// Text wrapping mode requested by the native renderer.
+enum MermanTextWrapMode {
+  /// SVG-like text measurement.
+  svgLike(0),
+
+  /// SVG-like single-run text measurement.
+  svgLikeSingleRun(1),
+
+  /// HTML-label-like text measurement.
+  htmlLike(2);
+
+  const MermanTextWrapMode(this.code);
+
+  /// Numeric C ABI value.
+  final int code;
+
+  static MermanTextWrapMode? fromCode(int code) {
+    for (final value in values) {
+      if (value.code == code) {
+        return value;
+      }
+    }
+    return null;
+  }
+}
+
+/// Text direction requested by the native renderer.
+enum MermanTextDirection {
+  /// Let the host decide from content and context.
+  auto(0),
+
+  /// Left-to-right text.
+  ltr(1),
+
+  /// Right-to-left text.
+  rtl(2);
+
+  const MermanTextDirection(this.code);
+
+  /// Numeric C ABI value.
+  final int code;
+
+  static MermanTextDirection? fromCode(int code) {
+    for (final value in values) {
+      if (value.code == code) {
+        return value;
+      }
+    }
+    return null;
+  }
+}
+
+/// CSS-like white-space mode requested by the native renderer.
+enum MermanTextWhiteSpace {
+  /// CSS `normal` behavior.
+  normal(0),
+
+  /// CSS `nowrap` behavior.
+  nowrap(1),
+
+  /// CSS `break-spaces` behavior.
+  breakSpaces(2),
+
+  /// CSS `pre-wrap` behavior.
+  preWrap(3);
+
+  const MermanTextWhiteSpace(this.code);
+
+  /// Numeric C ABI value.
+  final int code;
+
+  static MermanTextWhiteSpace? fromCode(int code) {
+    for (final value in values) {
+      if (value.code == code) {
+        return value;
+      }
+    }
+    return null;
+  }
+}
+
+/// Dart representation of a native host text-measurement request.
+class MermanTextMeasureRequest {
+  MermanTextMeasureRequest._(NativeMermanHostTextMeasureRequest native)
+      : text = _utf8Slice(native.text, native.textLen),
+        fontFamily = _utf8Slice(native.fontFamily, native.fontFamilyLen),
+        fontSize = native.fontSize,
+        fontWeight = _utf8Slice(native.fontWeight, native.fontWeightLen),
+        fontStyle = _utf8Slice(native.fontStyle, native.fontStyleLen),
+        maxWidth = native.hasMaxWidth == 0 ? null : native.maxWidth,
+        lineHeight = native.lineHeight,
+        letterSpacing = native.letterSpacing,
+        wordSpacing = native.wordSpacing,
+        wrapMode = MermanTextWrapMode.fromCode(native.wrapMode),
+        direction = MermanTextDirection.fromCode(native.direction),
+        whiteSpace = MermanTextWhiteSpace.fromCode(native.whiteSpace);
+
+  /// UTF-8 text to measure.
+  final String text;
+
+  /// CSS font-family string, or empty when unspecified.
+  final String fontFamily;
+
+  /// CSS font-size in pixels.
+  final double fontSize;
+
+  /// CSS font-weight string.
+  final String fontWeight;
+
+  /// CSS font-style string.
+  final String fontStyle;
+
+  /// Optional wrapping width in CSS pixels.
+  final double? maxWidth;
+
+  /// CSS line-height in pixels.
+  final double lineHeight;
+
+  /// CSS letter-spacing in pixels.
+  final double letterSpacing;
+
+  /// CSS word-spacing in pixels.
+  final double wordSpacing;
+
+  /// Requested wrapping behavior.
+  final MermanTextWrapMode? wrapMode;
+
+  /// Requested text direction.
+  final MermanTextDirection? direction;
+
+  /// Requested white-space behavior.
+  final MermanTextWhiteSpace? whiteSpace;
+}
+
+/// Dart result for a handled text-measurement request.
+class MermanTextMeasureResult {
+  /// Creates a handled text-measurement result.
+  const MermanTextMeasureResult({
+    required this.width,
+    required this.height,
+    required this.lineCount,
+  });
+
+  /// Measured width in CSS pixels.
+  final double width;
+
+  /// Measured height in CSS pixels.
+  final double height;
+
+  /// Number of laid-out lines.
+  final int lineCount;
+}
+
+/// Host text-measurement callback.
+///
+/// Return `null` for requests the host does not support; the native engine will
+/// fall back to its vendored compatibility metrics for that request.
+typedef MermanTextMeasurer = MermanTextMeasureResult? Function(
+  MermanTextMeasureRequest request,
+);
+
 typedef _AbiVersionC = Uint32 Function();
 typedef _AbiVersionDart = int Function();
 
@@ -91,6 +336,36 @@ typedef _PackageVersionDart = Pointer<Utf8> Function();
 
 typedef _StructSizeC = UintPtr Function();
 typedef _StructSizeDart = int Function();
+
+typedef _EngineNewC = NativeMermanEngineResult Function(
+    Pointer<Uint8>, UintPtr);
+typedef _EngineNewDart = NativeMermanEngineResult Function(Pointer<Uint8>, int);
+
+typedef _EngineFreeC = Void Function(Pointer<NativeMermanEngine>);
+typedef _EngineFreeDart = void Function(Pointer<NativeMermanEngine>);
+
+typedef _EngineCallC = NativeMermanResult Function(
+  Pointer<NativeMermanEngine>,
+  Pointer<Uint8>,
+  UintPtr,
+);
+typedef _EngineCallDart = NativeMermanResult Function(
+    Pointer<NativeMermanEngine>, Pointer<Uint8>, int);
+
+typedef _HostTextMeasureCallbackC = NativeMermanHostTextMeasureResult Function(
+  NativeMermanHostTextMeasureRequest,
+  Pointer<Void>,
+);
+
+typedef _EngineSetTextMeasureCallbackC = NativeMermanResult Function(
+  Pointer<NativeMermanEngine>,
+  Pointer<NativeFunction<_HostTextMeasureCallbackC>>,
+  Pointer<Void>,
+);
+typedef _EngineSetTextMeasureCallbackDart = NativeMermanResult Function(
+    Pointer<NativeMermanEngine>,
+    Pointer<NativeFunction<_HostTextMeasureCallbackC>>,
+    Pointer<Void>);
 
 typedef _MermanCallC = NativeMermanResult Function(
   Pointer<Uint8>,
@@ -198,6 +473,183 @@ class MermanValidationResult {
   }
 }
 
+/// Reusable engine wrapper around the native `merman_engine_*` ABI.
+class MermanReusableEngine {
+  MermanReusableEngine._(this._bindings, this._engine);
+
+  /// Creates a reusable engine from an already-opened [DynamicLibrary].
+  factory MermanReusableEngine.fromDynamicLibrary(
+    DynamicLibrary library, {
+    String? optionsJson,
+  }) {
+    final bindings = _MermanBindings(library)..checkAbi();
+    return bindings.newReusableEngine(optionsJson);
+  }
+
+  /// Opens the bundled native library and creates a reusable engine.
+  factory MermanReusableEngine.open({String? optionsJson}) =>
+      MermanReusableEngine.fromDynamicLibrary(
+        openMermanLibrary(),
+        optionsJson: optionsJson,
+      );
+
+  /// Opens a native library from [path] and creates a reusable engine.
+  factory MermanReusableEngine.openPath(String path, {String? optionsJson}) =>
+      MermanReusableEngine.fromDynamicLibrary(
+        openMermanLibraryFromPath(path),
+        optionsJson: optionsJson,
+      );
+
+  final _MermanBindings _bindings;
+  Pointer<NativeMermanEngine> _engine;
+  NativeCallable<_HostTextMeasureCallbackC>? _textMeasureCallback;
+  MermanTextMeasurer? _textMeasurer;
+
+  bool get _isClosed => _engine.address == 0;
+
+  /// Installs or clears a host text-measurement callback.
+  ///
+  /// Pass `null` to restore the native fallback measurer configured by the
+  /// engine options. The callback must be fast and must not call back into the
+  /// same [MermanReusableEngine].
+  void setTextMeasurer(MermanTextMeasurer? measurer) {
+    _ensureOpen();
+    _closeTextMeasureCallback();
+    _textMeasurer = measurer;
+
+    if (measurer == null) {
+      _bindings.checkResult(
+        _bindings.engineSetTextMeasureCallback(
+          _engine,
+          nullptr,
+          nullptr,
+        ),
+      );
+      return;
+    }
+
+    final nativeCallback =
+        NativeCallable<_HostTextMeasureCallbackC>.isolateLocal(
+      _measureText,
+    );
+    _textMeasureCallback = nativeCallback;
+    try {
+      _bindings.checkResult(
+        _bindings.engineSetTextMeasureCallback(
+          _engine,
+          nativeCallback.nativeFunction,
+          nullptr,
+        ),
+      );
+    } catch (_) {
+      _closeTextMeasureCallback();
+      rethrow;
+    }
+  }
+
+  /// Renders Mermaid [source] to SVG text.
+  String renderSvg(String source) {
+    return _decodeText(
+        _bindings.engineCall(_bindings.engineRenderSvg, _engine, source));
+  }
+
+  /// Renders Mermaid [source] to Unicode ASCII-art text.
+  String renderAscii(String source) {
+    return _decodeText(
+        _bindings.engineCall(_bindings.engineRenderAscii, _engine, source));
+  }
+
+  /// Parses Mermaid [source] and returns raw semantic JSON text.
+  String parseJsonRaw(String source) {
+    return _decodeText(
+        _bindings.engineCall(_bindings.engineParseJson, _engine, source));
+  }
+
+  /// Parses Mermaid [source] and returns the semantic JSON object.
+  Map<String, Object?> parseJson(String source) {
+    return Merman._decodeJsonMap(parseJsonRaw(source));
+  }
+
+  /// Lays out Mermaid [source] and returns raw layout JSON text.
+  String layoutJsonRaw(String source) {
+    return _decodeText(
+        _bindings.engineCall(_bindings.engineLayoutJson, _engine, source));
+  }
+
+  /// Lays out Mermaid [source] and returns the layout JSON object.
+  Map<String, Object?> layoutJson(String source) {
+    return Merman._decodeJsonMap(layoutJsonRaw(source));
+  }
+
+  /// Validates Mermaid [source] and returns raw validation JSON text.
+  String validateJsonRaw(String source) {
+    return _decodeText(
+        _bindings.engineCall(_bindings.engineValidateJson, _engine, source));
+  }
+
+  /// Validates Mermaid [source] without throwing for ordinary parse errors.
+  MermanValidationResult validate(String source) {
+    return MermanValidationResult.fromJson(
+      Merman._decodeJsonMap(validateJsonRaw(source)),
+    );
+  }
+
+  /// Frees the native reusable engine.
+  void close() {
+    if (_isClosed) {
+      return;
+    }
+    _closeTextMeasureCallback();
+    _bindings.engineFree(_engine);
+    _engine = nullptr;
+  }
+
+  NativeMermanHostTextMeasureResult _measureText(
+    NativeMermanHostTextMeasureRequest request,
+    Pointer<Void> userData,
+  ) {
+    final nativeResult = Struct.create<NativeMermanHostTextMeasureResult>();
+    final measurer = _textMeasurer;
+    if (measurer == null) {
+      return nativeResult;
+    }
+
+    final result = measurer(MermanTextMeasureRequest._(request));
+    if (result == null ||
+        !result.width.isFinite ||
+        !result.height.isFinite ||
+        result.width < 0 ||
+        result.height < 0 ||
+        result.lineCount <= 0) {
+      return nativeResult;
+    }
+
+    nativeResult.handled = 1;
+    nativeResult.width = result.width;
+    nativeResult.height = result.height;
+    nativeResult.lineCount = result.lineCount;
+    return nativeResult;
+  }
+
+  void _closeTextMeasureCallback() {
+    _textMeasureCallback?.close();
+    _textMeasureCallback = null;
+    _textMeasurer = null;
+  }
+
+  void _ensureOpen() {
+    if (_isClosed) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_ENGINE_CLOSED',
+        message: 'Merman reusable engine is closed',
+      );
+    }
+  }
+
+  static String _decodeText(Uint8List bytes) => utf8.decode(bytes);
+}
+
 /// High-level Dart wrapper around the native `merman-ffi` ABI.
 class Merman {
   /// Creates an engine wrapper from an already-opened [DynamicLibrary].
@@ -225,6 +677,11 @@ class Merman {
 
   /// Native `merman-ffi` package version.
   String get packageVersion => _bindings.packageVersion();
+
+  /// Creates a reusable engine using the same native library.
+  MermanReusableEngine reusableEngine({String? optionsJson}) {
+    return _bindings.newReusableEngine(optionsJson);
+  }
 
   /// Renders Mermaid [source] to SVG text.
   ///
@@ -362,6 +819,46 @@ class _MermanBindings {
             library.lookupFunction<_StructSizeC, _StructSizeDart>(
           'merman_result_struct_size',
         ),
+        _engineResultStructSize =
+            library.lookupFunction<_StructSizeC, _StructSizeDart>(
+          'merman_engine_result_struct_size',
+        ),
+        _hostTextMeasureRequestStructSize =
+            library.lookupFunction<_StructSizeC, _StructSizeDart>(
+          'merman_host_text_measure_request_struct_size',
+        ),
+        _hostTextMeasureResultStructSize =
+            library.lookupFunction<_StructSizeC, _StructSizeDart>(
+          'merman_host_text_measure_result_struct_size',
+        ),
+        _engineNew = library.lookupFunction<_EngineNewC, _EngineNewDart>(
+          'merman_engine_new',
+        ),
+        engineFree = library.lookupFunction<_EngineFreeC, _EngineFreeDart>(
+          'merman_engine_free',
+        ),
+        engineSetTextMeasureCallback = library.lookupFunction<
+            _EngineSetTextMeasureCallbackC, _EngineSetTextMeasureCallbackDart>(
+          'merman_engine_set_text_measure_callback',
+        ),
+        engineRenderSvg = library.lookupFunction<_EngineCallC, _EngineCallDart>(
+          'merman_engine_render_svg',
+        ),
+        engineRenderAscii =
+            library.lookupFunction<_EngineCallC, _EngineCallDart>(
+          'merman_engine_render_ascii',
+        ),
+        engineParseJson = library.lookupFunction<_EngineCallC, _EngineCallDart>(
+          'merman_engine_parse_json',
+        ),
+        engineLayoutJson =
+            library.lookupFunction<_EngineCallC, _EngineCallDart>(
+          'merman_engine_layout_json',
+        ),
+        engineValidateJson =
+            library.lookupFunction<_EngineCallC, _EngineCallDart>(
+          'merman_engine_validate_json',
+        ),
         renderSvg = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_render_svg',
         ),
@@ -401,6 +898,17 @@ class _MermanBindings {
   final _PackageVersionDart _packageVersion;
   final _StructSizeDart _bufferStructSize;
   final _StructSizeDart _resultStructSize;
+  final _StructSizeDart _engineResultStructSize;
+  final _StructSizeDart _hostTextMeasureRequestStructSize;
+  final _StructSizeDart _hostTextMeasureResultStructSize;
+  final _EngineNewDart _engineNew;
+  final _EngineFreeDart engineFree;
+  final _EngineSetTextMeasureCallbackDart engineSetTextMeasureCallback;
+  final _EngineCallDart engineRenderSvg;
+  final _EngineCallDart engineRenderAscii;
+  final _EngineCallDart engineParseJson;
+  final _EngineCallDart engineLayoutJson;
+  final _EngineCallDart engineValidateJson;
   final _BufferFreeDart _bufferFree;
   final _MermanCallDart renderSvg;
   final _MermanCallDart renderAscii;
@@ -424,6 +932,9 @@ class _MermanBindings {
 
     final bufferSize = _bufferStructSize();
     final resultSize = _resultStructSize();
+    final engineResultSize = _engineResultStructSize();
+    final hostTextMeasureRequestSize = _hostTextMeasureRequestStructSize();
+    final hostTextMeasureResultSize = _hostTextMeasureResultStructSize();
     if (bufferSize != sizeOf<NativeMermanBuffer>()) {
       throw MermanException(
         code: -1,
@@ -438,9 +949,52 @@ class _MermanBindings {
         message: 'expected ${sizeOf<NativeMermanResult>()}, got $resultSize',
       );
     }
+    if (engineResultSize != sizeOf<NativeMermanEngineResult>()) {
+      throw MermanException(
+        code: -1,
+        codeName: 'DART_ENGINE_RESULT_SIZE_MISMATCH',
+        message:
+            'expected ${sizeOf<NativeMermanEngineResult>()}, got $engineResultSize',
+      );
+    }
+    if (hostTextMeasureRequestSize !=
+        sizeOf<NativeMermanHostTextMeasureRequest>()) {
+      throw MermanException(
+        code: -1,
+        codeName: 'DART_TEXT_MEASURE_REQUEST_SIZE_MISMATCH',
+        message:
+            'expected ${sizeOf<NativeMermanHostTextMeasureRequest>()}, got $hostTextMeasureRequestSize',
+      );
+    }
+    if (hostTextMeasureResultSize !=
+        sizeOf<NativeMermanHostTextMeasureResult>()) {
+      throw MermanException(
+        code: -1,
+        codeName: 'DART_TEXT_MEASURE_RESULT_SIZE_MISMATCH',
+        message:
+            'expected ${sizeOf<NativeMermanHostTextMeasureResult>()}, got $hostTextMeasureResultSize',
+      );
+    }
   }
 
   String packageVersion() => _packageVersion().toDartString();
+
+  MermanReusableEngine newReusableEngine(String? optionsJson) {
+    final optionsBytes = optionsJson == null ? null : utf8.encode(optionsJson);
+    final optionsPtr =
+        optionsBytes == null ? nullptr : _copyBytes(optionsBytes);
+
+    try {
+      final result = _engineNew(optionsPtr, optionsBytes?.length ?? 0);
+      final payload = _takeBuffer(result.data);
+      if (result.code == MermanStatus.ok.code && result.engine.address != 0) {
+        return MermanReusableEngine._(this, result.engine);
+      }
+      throw _exceptionFromPayload(result.code, payload);
+    } finally {
+      _freeIfAllocated(optionsPtr);
+    }
+  }
 
   Uint8List call(_MermanCallDart function, String source, String? optionsJson) {
     final sourceBytes = utf8.encode(source);
@@ -472,6 +1026,42 @@ class _MermanBindings {
     final payload = _takeBuffer(result.data);
     if (result.code == MermanStatus.ok.code) {
       return payload;
+    }
+    throw _exceptionFromPayload(result.code, payload);
+  }
+
+  Uint8List engineCall(
+    _EngineCallDart function,
+    Pointer<NativeMermanEngine> engine,
+    String source,
+  ) {
+    if (engine.address == 0) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_ENGINE_CLOSED',
+        message: 'Merman reusable engine is closed',
+      );
+    }
+
+    final sourceBytes = utf8.encode(source);
+    final sourcePtr = _copyBytes(sourceBytes);
+
+    try {
+      final result = function(engine, sourcePtr, sourceBytes.length);
+      final payload = _takeBuffer(result.data);
+      if (result.code == MermanStatus.ok.code) {
+        return payload;
+      }
+      throw _exceptionFromPayload(result.code, payload);
+    } finally {
+      _freeIfAllocated(sourcePtr);
+    }
+  }
+
+  void checkResult(NativeMermanResult result) {
+    final payload = _takeBuffer(result.data);
+    if (result.code == MermanStatus.ok.code) {
+      return;
     }
     throw _exceptionFromPayload(result.code, payload);
   }
@@ -524,4 +1114,11 @@ class _MermanBindings {
       calloc.free(pointer);
     }
   }
+}
+
+String _utf8Slice(Pointer<Uint8> pointer, int length) {
+  if (pointer.address == 0 || length == 0) {
+    return '';
+  }
+  return utf8.decode(pointer.asTypedList(length));
 }
