@@ -29,6 +29,9 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037",
     "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038",
     "upstream_cypress_flowchart_elk_spec_6080_should_handle_diamond_shape_intersections_050",
+    "upstream_cypress_flowchart_elk_spec_6088_1_should_handle_diamond_shape_intersections_051",
+    "upstream_cypress_flowchart_elk_spec_6088_2_should_handle_diamond_shape_intersections_052",
+    "upstream_cypress_flowchart_elk_spec_6088_3_should_handle_diamond_shape_intersections_053",
     "upstream_cypress_flowchart_elk_spec_6088_5_should_handle_diamond_shape_intersections_055",
     "upstream_cypress_flowchart_elk_spec_6088_6_should_handle_diamond_shape_intersections_056",
     "upstream_cypress_flowchart_elk_spec_6647_elk_should_keep_node_order_when_using_elk_layout_unless_it_057",
@@ -194,6 +197,15 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_6080_should_handle_diamond_shape_intersections_050"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_6088_1_should_handle_diamond_shape_intersections_051"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_6088_2_should_handle_diamond_shape_intersections_052"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_6088_3_should_handle_diamond_shape_intersections_053"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_6088_5_should_handle_diamond_shape_intersections_055"
