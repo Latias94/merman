@@ -9,6 +9,7 @@
     "theme": "Theme",
     "mermaidTheme": "Mermaid themes",
     "hostTheme": "Host presets",
+    "renderSettings": "Render settings",
     "textMeasurement": "Text measurement",
     "font": "Font",
     "export": "Export",

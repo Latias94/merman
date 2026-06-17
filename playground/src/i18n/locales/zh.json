@@ -9,6 +9,7 @@
     "theme": "主题",
     "mermaidTheme": "Mermaid 原生主题",
     "hostTheme": "宿主预设",
+    "renderSettings": "渲染设置",
     "textMeasurement": "文本测量",
     "font": "字体",
     "export": "导出",

@@ -68,6 +68,7 @@ import {
   FileText,
   Code,
   ExternalLink,
+  Type,
 } from "lucide-react";
 
 const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
@@ -146,6 +147,7 @@ export function Toolbar() {
     hostThemePreset === "none"
       ? t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })
       : t(`hostThemes.${hostThemePreset}`, { defaultValue: hostThemePreset });
+  const renderSettingsLabel = t("toolbar.renderSettings");
 
   const UI_THEME_OPTIONS: { value: UITheme; label: string }[] = [
     { value: "light", label: t("uiThemes.light") },
@@ -252,7 +254,7 @@ export function Toolbar() {
         code,
         diagramTheme,
         mermaidConfig,
-        activeHostThemePreset,
+        hostThemePreset,
         textMeasurementMode,
         diagramFont
       );
@@ -261,11 +263,11 @@ export function Toolbar() {
       toast.error(t("share.copyFailed"));
     }
   }, [
-    activeHostThemePreset,
     code,
     copyShareUrl,
     diagramFont,
     diagramTheme,
+    hostThemePreset,
     mermaidConfig,
     t,
     textMeasurementMode,
@@ -351,6 +353,24 @@ export function Toolbar() {
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
+    </DropdownMenuContent>
+  );
+
+  const renderRenderSettingsMenuContent = () => (
+    <DropdownMenuContent align="end">
+      <DropdownMenuLabel>{renderSettingsLabel}</DropdownMenuLabel>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.font")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={diagramFont}
+        onValueChange={(v) => setDiagramFont(normalizeDiagramFontValue(v))}
+      >
+        {DIAGRAM_FONT_VALUES.map((font) => (
+          <DropdownMenuRadioItem key={font} value={font}>
+            {t(`diagramFonts.${font}`)}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
       <DropdownMenuLabel>{t("toolbar.textMeasurement")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
@@ -362,18 +382,6 @@ export function Toolbar() {
         {TEXT_MEASUREMENT_VALUES.map((mode) => (
           <DropdownMenuRadioItem key={mode} value={mode}>
             {t(`textMeasurement.${mode}`)}
-          </DropdownMenuRadioItem>
-        ))}
-      </DropdownMenuRadioGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel>{t("toolbar.font")}</DropdownMenuLabel>
-      <DropdownMenuRadioGroup
-        value={diagramFont}
-        onValueChange={(v) => setDiagramFont(normalizeDiagramFontValue(v))}
-      >
-        {DIAGRAM_FONT_VALUES.map((font) => (
-          <DropdownMenuRadioItem key={font} value={font}>
-            {t(`diagramFonts.${font}`)}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
@@ -433,6 +441,20 @@ export function Toolbar() {
               <TooltipContent>{t("toolbar.theme")}</TooltipContent>
             </Tooltip>
             {renderThemeMenuContent()}
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon-sm">
+                    <Type className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{renderSettingsLabel}</TooltipContent>
+            </Tooltip>
+            {renderRenderSettingsMenuContent()}
           </DropdownMenu>
 
           <DropdownMenu>
@@ -520,6 +542,27 @@ export function Toolbar() {
               <TooltipContent>{t("toolbar.theme")}</TooltipContent>
             </Tooltip>
             {renderThemeMenuContent()}
+          </DropdownMenu>
+
+          {/* 渲染设置 */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-8 px-0 sm:w-auto sm:px-2.5"
+                  >
+                    <Type className="size-4" />
+                    <span className="hidden sm:inline">{renderSettingsLabel}</span>
+                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{renderSettingsLabel}</TooltipContent>
+            </Tooltip>
+            {renderRenderSettingsMenuContent()}
           </DropdownMenu>
 
           {/* 导出 */}

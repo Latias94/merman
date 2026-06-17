@@ -81,9 +81,13 @@ export default function App() {
         setDiagramTheme(normalizeThemeName(initialData.theme));
       }
       if (initialData.hostThemePreset) {
-        const preset = normalizeHostThemePresetName(initialData.hostThemePreset);
-        if (preset) {
-          setHostThemePreset(preset);
+        if (initialData.hostThemePreset === "none") {
+          setHostThemePreset("none");
+        } else {
+          const preset = normalizeHostThemePresetName(initialData.hostThemePreset);
+          if (preset) {
+            setHostThemePreset(preset);
+          }
         }
       }
       if (initialData.config !== undefined) {
