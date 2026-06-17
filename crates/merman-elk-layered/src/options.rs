@@ -160,6 +160,7 @@ pub enum SelfLoopDistributionStrategy {
     #[default]
     North,
     Equally,
+    NorthSouth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

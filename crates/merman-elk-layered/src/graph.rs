@@ -30,6 +30,7 @@ pub struct LGraph {
     pub replaced_external_port_dummies: Vec<usize>,
     pub hierarchy_edges: Vec<HierarchyEdge>,
     pub cross_hierarchy_edges: Vec<CrossHierarchyEdge>,
+    pub self_loop_holders: Vec<SelfLoopHolder>,
     pub in_layer_successor_constraints_between_non_dummies: bool,
 }
 
@@ -53,6 +54,7 @@ impl LGraph {
             replaced_external_port_dummies: Vec::new(),
             hierarchy_edges: Vec::new(),
             cross_hierarchy_edges: Vec::new(),
+            self_loop_holders: Vec::new(),
             in_layer_successor_constraints_between_non_dummies: false,
         }
     }
@@ -341,6 +343,48 @@ pub struct CrossHierarchyEdge {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SelfLoopHolder {
+    pub node: usize,
+    pub hyper_loops: Vec<SelfHyperLoop>,
+    pub ports_hidden: bool,
+    pub original_port_constraints: PortConstraints,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelfHyperLoop {
+    pub ports: Vec<SelfLoopPort>,
+    pub edges: Vec<SelfLoopEdge>,
+    pub self_loop_type: Option<SelfLoopType>,
+    pub leftmost_port: Option<usize>,
+    pub rightmost_port: Option<usize>,
+    pub occupied_sides: Vec<PortSide>,
+    pub routing_slots: [usize; 5],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelfLoopPort {
+    pub port: usize,
+    pub had_only_self_loops: bool,
+    pub hidden: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelfLoopEdge {
+    pub edge: usize,
+    pub source_port: usize,
+    pub target_port: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfLoopType {
+    OneSide,
+    TwoSidesCorner,
+    TwoSidesOpposing,
+    ThreeSides,
+    FourSides,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct LLabel {
     pub text: String,
     pub size: LSize,
@@ -420,6 +464,36 @@ impl PortSide {
             Self::South => Self::North,
             Self::West => Self::East,
             Self::Undefined => Self::Undefined,
+        }
+    }
+
+    pub fn right(self) -> Self {
+        match self {
+            Self::North => Self::East,
+            Self::East => Self::South,
+            Self::South => Self::West,
+            Self::West => Self::North,
+            Self::Undefined => Self::Undefined,
+        }
+    }
+
+    pub fn left(self) -> Self {
+        match self {
+            Self::North => Self::West,
+            Self::East => Self::North,
+            Self::South => Self::East,
+            Self::West => Self::South,
+            Self::Undefined => Self::Undefined,
+        }
+    }
+
+    pub fn ordinal(self) -> usize {
+        match self {
+            Self::Undefined => 0,
+            Self::North => 1,
+            Self::East => 2,
+            Self::South => 3,
+            Self::West => 4,
         }
     }
 }
@@ -833,6 +907,21 @@ impl LGraph {
                 && port.node == node_index
             {
                 port.port = old_to_new[port.port];
+            }
+        }
+
+        for holder in &mut self.self_loop_holders {
+            if holder.node != node_index {
+                continue;
+            }
+            for hyper_loop in &mut holder.hyper_loops {
+                for port in &mut hyper_loop.ports {
+                    port.port = old_to_new[port.port];
+                }
+                for edge in &mut hyper_loop.edges {
+                    edge.source_port = old_to_new[edge.source_port];
+                    edge.target_port = old_to_new[edge.target_port];
+                }
             }
         }
 

@@ -476,6 +476,9 @@ fn self_loop_distribution_to_source(
     match self_loop_distribution {
         SelfLoopDistributionStrategy::North => source_port::SelfLoopDistributionStrategy::North,
         SelfLoopDistributionStrategy::Equally => source_port::SelfLoopDistributionStrategy::Equally,
+        SelfLoopDistributionStrategy::NorthSouth => {
+            source_port::SelfLoopDistributionStrategy::NorthSouth
+        }
     }
 }
 

@@ -42,6 +42,9 @@ use crate::p4nodes::{
     process_in_layer_constraints,
 };
 use crate::p5edges::route_edges_orthogonal;
+use crate::selfloops::{
+    postprocess_self_loops, preprocess_self_loops, restore_self_loop_ports, route_self_loops,
+};
 use crate::transform::{GraphTransformMode, transform_graph_direction};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -842,6 +845,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::EdgeAndLayerConstraintEdgeReverser => {
             reverse_edges_for_edge_and_layer_constraints(graph);
         }
+        ProcessorKind::SelfLoopPreProcessor => preprocess_self_loops(graph),
         ProcessorKind::GreedyCycleBreaker => break_cycles_greedy(graph),
         ProcessorKind::GreedyModelOrderCycleBreaker => break_cycles_greedy_model_order(graph),
         ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
@@ -865,9 +869,11 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch => {
             minimize_crossings_layer_sweep_with_type(graph, CrossMinType::TwoSidedGreedySwitch);
         }
+        ProcessorKind::SelfLoopPortRestorer => restore_self_loop_ports(graph),
         ProcessorKind::InLayerConstraintProcessor => process_in_layer_constraints(graph),
         ProcessorKind::LabelAndNodeSizeProcessor => calculate_label_and_node_sizes(graph),
         ProcessorKind::InnermostNodeMarginCalculator => calculate_innermost_node_margins(graph),
+        ProcessorKind::SelfLoopRouter => route_self_loops(graph),
         ProcessorKind::LabelDummySwitcher => switch_label_dummies(graph),
         ProcessorKind::LabelSideSelector => select_label_sides(graph),
         ProcessorKind::EndLabelPreprocessor => preprocess_end_labels(graph),
@@ -886,6 +892,7 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
             process_hierarchical_port_orthogonal_edges(graph);
         }
         ProcessorKind::LongEdgeJoiner => join_long_edges(graph),
+        ProcessorKind::SelfLoopPostProcessor => postprocess_self_loops(graph),
         ProcessorKind::LabelDummyRemover => remove_label_dummies(graph),
         ProcessorKind::EndLabelSorter => sort_end_labels(graph),
         ProcessorKind::ReversedEdgeRestorer => restore_reversed_edges(graph),
@@ -1839,6 +1846,35 @@ mod tests {
                 .iter()
                 .all(|point| point.x.is_finite() && point.y.is_finite())
         }));
+    }
+
+    #[test]
+    fn source_ported_self_loop_runs_through_self_loop_lifecycle() {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![node("A")],
+            edges: vec![edge("A-A", "A", "A")],
+        })
+        .unwrap();
+
+        let executed = execute_ported_processors(&mut graph).unwrap();
+
+        assert!(executed.contains(&ProcessorKind::SelfLoopPreProcessor));
+        assert!(executed.contains(&ProcessorKind::SelfLoopPortRestorer));
+        assert!(executed.contains(&ProcessorKind::SelfLoopRouter));
+        assert!(executed.contains(&ProcessorKind::SelfLoopPostProcessor));
+        assert!(graph.edge_source_attached(0));
+        assert!(graph.edge_target_attached(0));
+        assert_eq!(graph.edges[0].source.node, graph.edges[0].target.node);
+        assert!(graph.edges[0].bend_points.len() >= 2);
+        assert!(
+            graph.edges[0]
+                .bend_points
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
+        );
+        assert!(graph.layerless_nodes[0].margin.top > 0.0);
     }
 
     #[test]

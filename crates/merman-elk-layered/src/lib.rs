@@ -20,6 +20,7 @@ pub mod p4nodes;
 pub mod p5edges;
 pub mod pipeline;
 pub mod random;
+pub mod selfloops;
 pub mod transform;
 
 pub use compound::compare_compound_segments;
@@ -27,7 +28,8 @@ pub use configurator::{LayeredSpacings, configure_graph_properties, configured_o
 pub use graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphProperties, LGraph, LLabel,
     LMargin, LNode, LNodeKind, LPadding, LPoint, LPort, LSize, LabelSide, Layer, LayeredEdge,
-    PortRef, PortSide, PortType, create_external_port_dummy, reverse_edge,
+    PortRef, PortSide, PortType, SelfHyperLoop, SelfLoopEdge, SelfLoopHolder, SelfLoopPort,
+    SelfLoopType, create_external_port_dummy, reverse_edge,
 };
 pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
@@ -69,4 +71,7 @@ pub use pipeline::{
     execute_ported_processors, execute_processors_until, execute_processors_until_processor,
 };
 pub use random::JavaRandom;
+pub use selfloops::{
+    postprocess_self_loops, preprocess_self_loops, restore_self_loop_ports, route_self_loops,
+};
 pub use transform::{GraphTransformMode, transform_graph_direction};
