@@ -2,21 +2,16 @@ use crate::text::TextStyle;
 use indexmap::IndexMap;
 
 fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
-    let s = s.trim().trim_end_matches(';').trim();
-    if s.is_empty() {
-        return None;
-    }
-    let (k, v) = s.split_once(':')?;
-    let k = k.trim();
-    let v = v.trim();
-    if k.is_empty() || v.is_empty() {
-        return None;
-    }
-    Some((k, v))
+    crate::mermaid_style::parse_safe_style_decl(s)
 }
 
 fn normalize_css_font_family(font_family: &str) -> String {
-    font_family.trim().trim_end_matches(';').trim().to_string()
+    let font_family = font_family.trim().trim_end_matches(';').trim();
+    if crate::mermaid_style::is_safe_css_font_family_value(font_family) {
+        font_family.to_string()
+    } else {
+        String::new()
+    }
 }
 
 fn split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {

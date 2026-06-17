@@ -33,6 +33,17 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   about `62x` faster overall. `xychart_medium` is `73.62 µs` end-to-end versus `3.00 ms` in
   Mermaid JS, or about `41x` faster.
 
+### Security
+
+- Hardened diagram-level config handling against CSS injection in generated SVG output by treating
+  `fontFamily`, `altFontFamily`, `themeCSS`, and `themeVariables` as secure keys by default, while
+  preserving trusted site-level config and explicit opt-in compatibility.
+- Hardened Mermaid style declaration parsing and configured font-family normalization so malformed
+  CSS fragments cannot break out into extra SVG style rules.
+- Fixed Gantt `excludes` handling so diagrams that exclude every weekday, or otherwise produce a
+  long run of excluded dates, fail with a parse error instead of looping during task date
+  adjustment.
+
 ## [0.8.0-alpha.2] - 2026-06-13
 
 This alpha continues Merman for the next stable release by tightening headless rendering

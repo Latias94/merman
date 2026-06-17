@@ -382,7 +382,11 @@
     "startOnLoad",
     "maxTextSize",
     "suppressErrorRendering",
-    "maxEdges"
+    "maxEdges",
+    "fontFamily",
+    "altFontFamily",
+    "themeCSS",
+    "themeVariables"
   ],
   "securityLevel": "strict",
   "sequence": {

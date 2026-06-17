@@ -511,10 +511,13 @@ mod svg_pipeline_tests {
     }
 
     #[test]
-    fn render_svg_sync_applies_scoped_theme_css_once() {
-        let renderer = HeadlessRenderer::new().with_diagram_id("theme-css");
-        let source = r##"%%{init: {"themeCSS": ".node rect { fill: #123456; } @media (max-width: 600px) { text { fill: #654321; } }"}}%%
-flowchart TD
+    fn render_svg_sync_applies_site_config_scoped_theme_css_once() {
+        let renderer = HeadlessRenderer::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "themeCSS": ".node rect { fill: #123456; } @media (max-width: 600px) { text { fill: #654321; } }"
+            })))
+            .with_diagram_id("theme-css");
+        let source = r##"flowchart TD
   A[Hello] --> B[World]
 "##;
 
@@ -528,6 +531,38 @@ flowchart TD
         assert!(svg.contains("#theme-css .node rect { fill: #123456; }"));
         assert!(svg.contains("@media (max-width: 600px) {"));
         assert!(svg.contains("#theme-css text { fill: #654321; }"));
+    }
+
+    #[test]
+    fn render_svg_sync_filters_diagram_level_theme_css() {
+        let renderer = HeadlessRenderer::new().with_diagram_id("theme-css-filter");
+        let source = r##"%%{init: {"themeCSS": ".node rect { outline: 13px solid rgb(1, 2, 3); }"}}%%
+flowchart TD
+  A[Hello] --> B[World]
+"##;
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert!(!svg.contains("outline: 13px"), "{svg}");
+        assert!(
+            !svg.contains("data-merman-postprocess=\"scoped-css\""),
+            "{svg}"
+        );
+    }
+
+    #[test]
+    fn render_svg_sync_filters_diagram_level_font_family_css_injection() {
+        let renderer = HeadlessRenderer::new().with_diagram_id("font-css-injection");
+        let source = r##"%%{init: {"fontFamily": "x;a{b} :not(&){background:green !important} c{d}"}}%%
+flowchart TD
+  A[Hello] --> B[World]
+"##;
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert!(!svg.contains("background:green"), "{svg}");
+        assert!(!svg.contains(":not(&)"), "{svg}");
+        assert!(svg.contains(r#"font-family:"trebuchet ms",verdana,arial,sans-serif"#));
     }
 
     #[test]

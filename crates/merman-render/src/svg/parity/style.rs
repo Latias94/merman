@@ -1,17 +1,7 @@
 // Style parsing helpers (split from parity.rs).
 
 pub(super) fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
-    let s = s.trim().trim_end_matches(';').trim();
-    if s.is_empty() {
-        return None;
-    }
-    let (k, v) = s.split_once(':')?;
-    let k = k.trim();
-    let v = v.trim();
-    if k.is_empty() || v.is_empty() {
-        return None;
-    }
-    Some((k, v))
+    crate::mermaid_style::parse_safe_style_decl(s)
 }
 
 pub(super) fn is_rect_style_key(key: &str) -> bool {

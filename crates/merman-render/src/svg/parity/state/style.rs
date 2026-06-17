@@ -121,13 +121,9 @@ pub(super) fn state_css(
     effective_config: &serde_json::Value,
 ) -> String {
     fn normalize_decl(s: &str) -> Option<(String, String)> {
-        let s = s.trim().trim_end_matches(';').trim();
-        if s.is_empty() {
-            return None;
-        }
-        let (k, v) = s.split_once(':')?;
-        let key = k.trim().to_string();
-        let mut val = v.trim().to_string();
+        let (k, v) = crate::mermaid_style::parse_safe_style_decl(s)?;
+        let key = k.to_string();
+        let mut val = v.to_string();
         // Mermaid emits class styles with `!important` (no spaces).
         if !val.to_lowercase().contains("!important") {
             val.push_str("!important");

@@ -135,7 +135,12 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
         parts.push(p.to_string());
     }
 
-    parts.join(",")
+    let normalized = parts.join(",");
+    if crate::mermaid_style::is_safe_css_font_family_value(&normalized) {
+        normalized
+    } else {
+        String::new()
+    }
 }
 
 pub(crate) fn config_font_family_css(cfg: &Value) -> String {

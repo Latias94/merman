@@ -546,6 +546,50 @@ test1: id1,2019-02-07,2d
 }
 
 #[test]
+fn gantt_rejects_excludes_that_cover_every_weekday() {
+    let engine = Engine::new();
+    let err = block_on(engine.parse_diagram(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+excludes weekends,monday,tuesday,wednesday,thursday,friday
+section A
+task :a, 2025-01-01, 1d
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("excludes every weekday"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn gantt_rejects_long_exclude_runs_instead_of_looping() {
+    let engine = Engine::new();
+    let err = block_on(engine.parse_diagram(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+excludes weekends,monday,tuesday,wednesday,thursday,friday,2025-01-08
+includes 2026-01-09
+section A
+task :a, 2025-01-01, 1d
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("no includable date found within one year"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn gantt_click_call_is_ignored_unless_security_level_loose() {
     let model = parse(
         r#"
