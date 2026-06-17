@@ -67,6 +67,7 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_should_render_a_flowchart_with_title_062",
     "upstream_cypress_flowchart_elk_spec_sub_graphs_049",
     "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063",
+    "upstream_cypress_flowchart_v2_spec_should_render_self_loops_elk_064",
 ];
 
 fn normalized_fixture_stem(name_or_stem: &str) -> &str {
@@ -378,6 +379,9 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_v2_spec_should_render_self_loops_elk_064"
         ));
         assert!(flowchart_elk_svg_parity_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001"

@@ -121,7 +121,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     let FlowchartRenderInputs {
         render_edges,
         extra_nodes,
-    } = prepare_flowchart_render_inputs(model);
+    } = prepare_flowchart_render_inputs(model, layout.source_ported_elk_rendering);
 
     let FlowchartRenderConfig {
         font_family,

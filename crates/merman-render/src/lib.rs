@@ -963,6 +963,46 @@ id1(Start)-->id2(Stop)
         assert_eq!(points[1], (117.015625, 39.0));
     }
 
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_layouted_svg_keeps_source_ported_elk_self_loop_edges() {
+        let parsed = Engine::new()
+            .parse_diagram_sync("flowchart-elk TD\nA --> A", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        let layout_options = LayoutOptions {
+            text_measurer: Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default()),
+            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+            ..Default::default()
+        };
+        let layouted = layout_parsed(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layouted_svg(
+            &layouted,
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions::default(),
+        )
+        .unwrap();
+
+        let path = edge_path_chunk(&svg, "L_A_A_0");
+        let d = edge_path_d(path);
+        assert!(
+            d.contains('Q'),
+            "ELK self-loop path should be rendered from the source-backed edge: {d}"
+        );
+        let points = edge_data_points(path);
+        assert_eq!(
+            points.len(),
+            4,
+            "unexpected ELK self-loop data-points: {points:?}"
+        );
+        assert!(
+            !svg.contains("A---A---1") && !svg.contains("cyclic-special"),
+            "ELK renderer must not reuse Dagre self-loop helper nodes: {svg}"
+        );
+        assert!(svg.contains(r#"data-id="L_A_A_0" transform="translate(0,0)""#));
+    }
+
     #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {

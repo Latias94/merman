@@ -12,7 +12,15 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartV2Model,
+    source_ported_elk_rendering: bool,
 ) -> FlowchartRenderInputs<'a> {
+    if source_ported_elk_rendering {
+        return FlowchartRenderInputs {
+            render_edges: model.edges.iter().map(Cow::Borrowed).collect(),
+            extra_nodes: Vec::new(),
+        };
+    }
+
     // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
     // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
     let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
