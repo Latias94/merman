@@ -392,7 +392,7 @@ Start with the surface that matches your host:
 | Host | Package or source | Notes |
 | --- | --- | --- |
 | C / C++ / other native FFI | [`merman-ffi`](https://crates.io/crates/merman-ffi), [`crates/merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi), [`merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h) | Stable C ABI used by the higher-level wrappers. |
-| Python | [`merman` on PyPI](https://pypi.org/project/merman/), [`platforms/python/merman`](https://github.com/Latias94/merman/tree/main/platforms/python/merman) | Experimental UniFFI wheels. |
+| Python | [`merman` on PyPI](https://pypi.org/project/merman/), [`platforms/python/merman`](https://github.com/Latias94/merman/tree/main/platforms/python/merman) | Experimental UniFFI wheels. This surface does not expose host text-measurement callbacks yet; use the C ABI when a Python host needs its own font stack. |
 | Flutter / Dart | [`merman` on pub.dev](https://pub.dev/packages/merman), [`platforms/flutter`](https://github.com/Latias94/merman/tree/main/platforms/flutter) | Flutter package backed by Dart FFI and bundled native libraries. |
 | Android / Kotlin | [`platforms/android`](https://github.com/Latias94/merman/tree/main/platforms/android) | AAR/JNI package source for Android hosts. |
 | Apple / SwiftPM | [`Package.swift`](https://github.com/Latias94/merman/blob/main/Package.swift), [`platforms/apple`](https://github.com/Latias94/merman/tree/main/platforms/apple) | Swift wrapper and binary XCFramework package layout. |
@@ -421,6 +421,17 @@ See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md)
 for platform guidance covering Android JNI, Apple Swift, Flutter/Dart FFI, browser/WebView
 measurement, callback lifetime, and testing.
+
+Use this rule of thumb:
+
+| Host scenario | Recommended measurement path |
+| --- | --- |
+| CLI, CI, docs generation, server-side batch rendering | Use the default vendored metrics. They are deterministic and dependency-light. |
+| Editor or preview rendered in a browser/WebView | Use DOM/canvas measurement from the same browser/WebView after fonts are ready, preferably through a cache that the synchronous callback can read. |
+| Android native preview | Use `TextPaint` and `StaticLayout` with the same font registration and paragraph settings as the preview. |
+| Apple native preview | Use Core Text or matching `NSAttributedString` layout with the same fonts and paragraph attributes as the final view. |
+| Flutter native preview | Use the same Flutter paragraph/text layout and font registration as the widget that will display the SVG, and keep the FFI callback on the same isolate. |
+| Any unsupported font, wrap mode, or async-only surface | Return unsupported (`handled=0` / `null`) for that request and let merman fall back. |
 
 The web package exposes the same idea for browser integrations through
 `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. The

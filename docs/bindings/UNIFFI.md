@@ -23,6 +23,11 @@ Swift, Kotlin, Python, and Ruby package lanes.
 The optional `options_json` argument uses the shared contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
+The current UniFFI surface does not expose host text-measurement callbacks. Generated bindings use
+Merman's built-in headless measurer. Hosts that need DOM, WebView, Core Text, Android, Flutter, or
+another platform font stack should use the C ABI reusable-engine callback until a deliberate UniFFI
+callback API is designed.
+
 ## Bindgen Smoke
 
 Run:

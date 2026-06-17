@@ -110,7 +110,19 @@ display the SVG:
 
 - Browser/WebView hosts can use their DOM or canvas text measurement path.
 - Native editors can use their own shaping and font fallback system.
+- Android native previews should use `TextPaint` and `StaticLayout`.
+- Apple native previews should use Core Text or matching `NSAttributedString` layout.
+- Flutter/Dart previews should keep the measured reusable engine on the same isolate and use the
+  same Flutter paragraph/text layout, WebView cache, or SVG widget measurement path as the final
+  display surface.
 - Unsupported requests can return `handled=0` and let merman fall back per request.
+
+Treat the callback as a fidelity opt-in, not a required dependency. CLIs, documentation builds, CI,
+and server-side batch renderers should usually keep the default vendored metrics because they are
+deterministic and do not require host UI APIs. Editors, preview panes, design tools, and WebView
+integrations should consider the callback when clipping or host-specific font fallback matters.
+If a request would require async UI-thread work that is not already cached, return `handled=0`
+instead of blocking the render thread.
 
 The callback request includes the UTF-8 text, font family, size, weight, style, line height,
 spacing, wrap mode, direction, white-space mode, and optional max width. See

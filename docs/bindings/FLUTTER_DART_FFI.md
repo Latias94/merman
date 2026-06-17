@@ -95,7 +95,9 @@ engine, install the measurer, render, and close the engine on the same Dart isol
 For WebView display, measure with a DOM/canvas service from that WebView after fonts are loaded and
 feed cached values into the synchronous measurer. For Flutter-native display, measure with the same
 paragraph/text layout stack and font registration used by the preview. Return `null` for
-unsupported requests so merman can fall back per request. See
+unsupported requests so merman can fall back per request. Measure natural HTML-like label width
+before constraining to `maxWidth`; otherwise short labels can be overestimated and make the diagram
+wider than the final Flutter/WebView surface. See
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for the full platform
 checklist.
 

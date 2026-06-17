@@ -49,6 +49,8 @@ For accurate Android preview geometry, measure with the same text stack that wil
 WebView display. The callback is synchronous, so keep it fast, cache repeated requests, and return
 `null` when the host cannot measure a request faithfully. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#android-jni).
+For HTML-like labels, measure the natural no-wrap width first and only apply `maxWidth` when the
+natural width is larger; returning `maxWidth` for short labels can make diagrams unnecessarily wide.
 
 ## Example
 

@@ -257,6 +257,15 @@ Return `handled=0` for measurement requests the host does not support. `merman` 
 to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently,
 the callback and `user_data` must be thread-safe.
 
+The callback is synchronous and runs on the render/layout call path. Do not block it on UI-thread
+work, font loading, WebView JavaScript, platform channels, or another isolate. If the host cannot
+answer from already-loaded font state or a prepared cache, return `handled=0` for that request.
+
+For `MERMAN_WRAP_MODE_HTML_LIKE` requests with `has_max_width != 0`, hosts should measure the
+natural no-wrap width first and only apply `max_width` when that natural width is larger. Returning
+`max_width` for short labels can make diagrams wider than the browser or native preview surface
+would make them.
+
 This callback is the recommended accuracy path for native and embedded hosts. Headless rendering
 cannot know the exact browser or UI toolkit font fallback chain, glyph shaping, hinting, and
 subpixel rounding that will be used when the SVG is displayed. Hosts that need exact label layout

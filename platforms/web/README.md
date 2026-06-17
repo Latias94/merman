@@ -116,6 +116,10 @@ Use the same font family in both the binding options and your surrounding UI/CSS
 Web Worker, keep using `renderSvg()` with the headless measurer, or send measurement requests to the
 main thread through your own worker protocol.
 
+`createBrowserTextMeasurer()` measures the natural no-wrap width for HTML-like labels before it
+applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
+label can make the diagram wider than Mermaid would make it in the browser.
+
 ## Custom wasm loading
 
 By default, `initMerman()` dynamically imports `../pkg/merman_wasm.js`. If a bundler or CDN setup

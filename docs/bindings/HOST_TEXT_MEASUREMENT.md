@@ -45,6 +45,26 @@ sequenceDiagram
 Use the callback when exact host geometry matters. Use the default vendored metrics when you need
 small dependency footprint, deterministic headless output, or CI-friendly rendering.
 
+## Quick Decision Checklist
+
+You probably do not need a host measurer when the SVG is generated for a CLI, static docs, CI
+snapshots, batch server rendering, or another pipeline where deterministic output matters more than
+matching a live UI font stack.
+
+You should consider a host measurer when the SVG is displayed in an editor, preview pane, design
+tool, WebView, or native app surface where clipped labels or host-specific font fallback are user
+visible. Start with one or two fixtures that reproduce the problem, then expand only if the callback
+improves those cases.
+
+For each platform, answer these questions before installing a callback:
+
+1. Which surface will display the SVG: browser/WebView, native text, Flutter widget, rasterizer, or
+   a mix?
+2. Can that same surface measure synchronously during render, or do you need a precomputed cache?
+3. Are the exact fonts registered and loaded before measurement starts?
+4. Does the measurement API support the requested wrapping and white-space mode?
+5. What should return unsupported so Merman can fall back safely?
+
 ## Options
 
 | Option | When to use | Pros | Cons |
@@ -117,6 +137,12 @@ Recommended Android implementation choices:
 - Use Android text APIs when the final preview is native Android UI: `TextPaint` for style, `Paint`
   or `TextPaint` width metrics for simple single-line labels, and `StaticLayout.Builder` for
   wrapped labels.
+- Set `TextPaint.textSize`, `typeface`, `letterSpacing`, locale, and text direction from the
+  request where the host supports them. Apply font fallback through the same font registration or
+  `Typeface` resolution used by the view that will display the SVG.
+- For `MERMAN_WRAP_MODE_HTML_LIKE`, first measure the natural single-line width. Only constrain to
+  `maxWidth` when the natural width exceeds the request's `maxWidth`; short labels should keep
+  their natural width.
 - Match `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `letterSpacing`, `lineHeight`,
   `direction`, `whiteSpace`, and `maxWidth` as closely as the host API allows.
 - Cache measurements by the full request shape. Flowchart layouts can ask for the same label more
@@ -158,6 +184,11 @@ Recommended Apple implementation choices:
   strings.
 - `NSAttributedString.boundingRect(with:options:context:)` is acceptable for AppKit/UIKit hosts
   when it uses the same fonts and paragraph attributes as the display path.
+- Build attributed strings from the request's font family, size, weight, style, paragraph direction,
+  line height, kern/letter spacing, and wrapping constraint. Resolve missing fonts through the same
+  fallback policy used by the final view.
+- For HTML-like wrapped labels, do the same two-phase check as browsers: measure natural width
+  first, then use the constrained frame only when it exceeds `maxWidth`.
 - If the final surface is `WKWebView`, the closest measurement is DOM/canvas in that WebView after
   fonts have loaded. Keep the synchronous callback boundary in mind; prefer a prepared measurement
   service or cache over blocking arbitrary render threads on WebKit.
@@ -205,6 +236,11 @@ Recommended Flutter implementation choices:
   exposes one. Otherwise prefer the vendored fallback plus non-clipping output.
 - If rendering in pure Dart UI, use Flutter paragraph/text layout APIs in the same isolate and with
   the same font registration as the preview.
+- Include the full request shape in cache keys: text, font family, size, weight, style, line
+  height, spacing, wrap mode, white-space mode, direction, and `maxWidth`.
+- Do not wait for WebView JavaScript, font loading, platform channels, or another isolate from
+  inside the synchronous callback. Pre-measure and cache instead; return `null` when the cache does
+  not have a faithful value yet.
 
 Relevant platform references:
 
@@ -225,6 +261,11 @@ For browser-like hosts, the usual measurement adapter is:
 
 Canvas is useful for advances, but wrapped HTML labels often need DOM measurement because line
 breaking, white-space, and inline layout are part of the browser's layout engine.
+
+For HTML-like labels, avoid setting `width=maxWidth` up front. Measure natural width first with a
+nowrap inline/table-cell style; only switch to the wrapped `width=maxWidth` table/block style when
+the natural width exceeds `maxWidth`. Otherwise short labels will be reported too wide and can make
+the whole diagram expand.
 
 Relevant web references:
 

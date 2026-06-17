@@ -151,6 +151,11 @@ void merman_engine_free(MermanEngine* engine);
  * Request strings are UTF-8 byte slices valid only for the duration of the callback. The callback
  * must not store those pointers. If the same engine is used concurrently, the callback and
  * user_data must be thread-safe.
+ *
+ * The callback is synchronous. Return handled=0 instead of blocking on async UI-thread, WebView,
+ * platform-channel, font-loading, or cross-isolate work that is not already cached. For
+ * MERMAN_WRAP_MODE_HTML_LIKE requests with has_max_width set, measure natural no-wrap width first
+ * and only apply max_width when wrapping is actually needed.
  */
 MermanResult merman_engine_set_text_measure_callback(
     MermanEngine* engine,

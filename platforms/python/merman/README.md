@@ -38,6 +38,17 @@ except merman.MermanError.Binding as error:
 `svg` options. The shared schema is documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 
+## Text Measurement Limit
+
+The current Python package is generated through UniFFI and uses merman's built-in headless text
+measurer. It does not expose host text-measurement callbacks yet. This is suitable for CLI tools,
+documentation builds, tests, and server-side batch rendering.
+
+If a Python GUI, browser automation host, or WebView application needs geometry that matches its
+own font stack, use the `merman-ffi` C ABI and install `merman_engine_set_text_measure_callback`
+until the UniFFI surface grows a callback API. See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
+
 ## Generate Locally
 
 This directory intentionally does not commit generated binding source or native libraries. Generate

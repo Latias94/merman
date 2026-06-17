@@ -66,6 +66,19 @@ name, and message still come from `merman-bindings-core`.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 
+## Text Measurement Limit
+
+The Python UniFFI package currently uses Merman's built-in headless text measurer and does not expose
+the C ABI host text-measurement callback. This is the right default for CLI tools, documentation
+generation, tests, and server-side batch rendering because it is deterministic and does not require
+GUI or browser dependencies.
+
+Python GUI or WebView hosts that need label geometry to match their own font stack should use the C
+ABI directly for now, install `merman_engine_set_text_measure_callback`, and follow
+[`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md). Adding an equivalent UniFFI callback surface
+would be a separate API design because callback lifetime, threading, and Python GIL behavior need
+to be explicit.
+
 ## Verification
 
 ```bash

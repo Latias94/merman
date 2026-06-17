@@ -47,7 +47,9 @@ measurement cache from that WebView when practical, because the synchronous JNI 
 block an arbitrary render thread on WebView UI work.
 
 Return `null` for requests the host cannot measure faithfully; merman falls back per request. Keep
-the measurer thread-safe if the reusable engine is rendered concurrently. See
+the measurer thread-safe if the reusable engine is rendered concurrently. Measure natural HTML-like
+label width before constraining to `maxWidth`; otherwise short labels can be overestimated and make
+the diagram wider than the final Android/WebView surface. See
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#android-jni) for the full platform checklist.
 
 ## Example

@@ -106,6 +106,9 @@ DOM/canvas cache for `webview_flutter`, or Flutter paragraph/text layout APIs fo
 text. The current Dart callback is isolate-local, so create the reusable engine, set the measurer,
 render, and close it on the same isolate. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi).
+For HTML-like labels, cache the natural no-wrap width first and only apply `maxWidth` when wrapping
+is actually needed. If a WebView or platform text API cannot answer synchronously from the current
+isolate, return `null` for that request and let merman's vendored metrics handle it.
 
 ## Local Dart Smoke
 

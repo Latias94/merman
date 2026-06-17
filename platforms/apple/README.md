@@ -63,6 +63,8 @@ Use Core Text for native previews, or a prepared WKWebView DOM/canvas measuremen
 will be shown in WebKit. The callback is synchronous; return `handled = 0` for unsupported requests
 and keep any `userData` alive until the callback is cleared or the engine is closed. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift).
+For HTML-like labels, measure the natural no-wrap width before applying `maxWidth`; otherwise short
+condition labels can expand to the available wrapping width.
 
 ## Local Package Use
 
