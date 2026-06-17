@@ -22,6 +22,14 @@ struct DeferredParseOk {
 }
 
 #[derive(Debug, Clone)]
+struct AbsorbedDeferredDuplicate {
+    path: PathBuf,
+    expected_group: String,
+    active_path: PathBuf,
+    reason: &'static str,
+}
+
+#[derive(Debug, Clone)]
 struct DeferredParseErr {
     path: PathBuf,
     expected_group: String,
@@ -103,6 +111,42 @@ fn detect_out_of_scope(meta: &merman::ParseMetadata) -> Vec<String> {
     }
 
     out
+}
+
+fn absorbed_deferred_duplicate(
+    fixtures_root: &Path,
+    deferred_root: &Path,
+    path: &Path,
+    expected_group: &str,
+    meta: &merman::ParseMetadata,
+) -> Option<AbsorbedDeferredDuplicate> {
+    if expected_group != "flowchart" {
+        return None;
+    }
+    if !(meta.diagram_type == "flowchart-elk"
+        || meta.config.get_str("layout") == Some("elk")
+        || meta.config.get_str("flowchart.defaultRenderer") == Some("elk"))
+    {
+        return None;
+    }
+
+    let stem = path.file_stem()?.to_str()?;
+    if !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem) {
+        return None;
+    }
+
+    let rel = path.strip_prefix(deferred_root).ok()?;
+    let active_path = fixtures_root.join(rel);
+    if !active_path.exists() {
+        return None;
+    }
+
+    Some(AbsorbedDeferredDuplicate {
+        path: path.to_path_buf(),
+        expected_group: expected_group.to_string(),
+        active_path,
+        reason: "active source-backed Flowchart ELK parity fixture already exists",
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -386,6 +430,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     // 2) Deferred fixtures (mostly expected errors / out-of-scope configs).
+    let mut absorbed_deferred_duplicates: Vec<AbsorbedDeferredDuplicate> = Vec::new();
     let mut deferred_ok: Vec<DeferredParseOk> = Vec::new();
     let mut deferred_err: Vec<DeferredParseErr> = Vec::new();
     if deferred_root.exists() {
@@ -416,6 +461,16 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 engine.parse_diagram(&text, merman::ParseOptions::default()),
             ) {
                 Ok(Some(parsed)) => {
+                    if let Some(absorbed) = absorbed_deferred_duplicate(
+                        &fixtures_root,
+                        &deferred_root,
+                        &p,
+                        &expected_group,
+                        &parsed.meta,
+                    ) {
+                        absorbed_deferred_duplicates.push(absorbed);
+                        continue;
+                    }
                     deferred_ok.push(DeferredParseOk {
                         path: p,
                         expected_group,
@@ -443,6 +498,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
+    absorbed_deferred_duplicates.sort_by(|a, b| a.path.cmp(&b.path));
     deferred_ok.sort_by(|a, b| a.path.cmp(&b.path));
     deferred_err.sort_by(|a, b| a.path.cmp(&b.path));
 
@@ -639,10 +695,52 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
     let _ = writeln!(
         &mut report,
-        "## Deferred fixtures\n\n- Root: `fixtures/_deferred`\n- Parse OK: **{}**\n- Parse ERR: **{}**\n",
+        "## Deferred fixtures\n\n- Root: `fixtures/_deferred`\n- Absorbed duplicate fixtures: **{}**\n- Parse OK: **{}**\n- Parse ERR: **{}**\n",
+        absorbed_deferred_duplicates.len(),
         deferred_ok.len(),
         deferred_err.len()
     );
+
+    if !absorbed_deferred_duplicates.is_empty() {
+        let mut absorbed_by_group: BTreeMap<String, Vec<&AbsorbedDeferredDuplicate>> =
+            BTreeMap::new();
+        for absorbed in &absorbed_deferred_duplicates {
+            absorbed_by_group
+                .entry(absorbed.expected_group.clone())
+                .or_default()
+                .push(absorbed);
+        }
+
+        let _ = writeln!(
+            &mut report,
+            "### Absorbed deferred duplicates\n\nThese deferred files have matching active fixtures and are not counted as current gaps.\n"
+        );
+        for (group, absorbed) in &absorbed_by_group {
+            let _ = writeln!(&mut report, "#### `{group}` ({})\n", absorbed.len());
+            for row in absorbed.iter().take(limit.min(20)) {
+                let rel = row.path.strip_prefix(&workspace_root).unwrap_or(&row.path);
+                let active_rel = row
+                    .active_path
+                    .strip_prefix(&workspace_root)
+                    .unwrap_or(&row.active_path);
+                let _ = writeln!(
+                    &mut report,
+                    "- `{}` -> `{}` ({})",
+                    rel.display(),
+                    active_rel.display(),
+                    row.reason
+                );
+            }
+            if absorbed.len() > limit.min(20) {
+                let _ = writeln!(
+                    &mut report,
+                    "- _... {} more omitted (use `--limit` or `--filter`)_",
+                    absorbed.len() - limit.min(20)
+                );
+            }
+            let _ = writeln!(&mut report);
+        }
+    }
 
     if !deferred_err.is_empty() {
         let mut err_by_group: BTreeMap<String, Vec<&DeferredParseErr>> = BTreeMap::new();
@@ -874,4 +972,68 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
     println!("Wrote audit report: {}", out_path.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn parse_meta(text: &str) -> merman::ParseMetadata {
+        let parsed = futures::executor::block_on(
+            merman::Engine::new().parse_diagram(text, merman::ParseOptions::default()),
+        )
+        .expect("parse should succeed")
+        .expect("diagram should be detected");
+        parsed.meta
+    }
+
+    #[test]
+    fn absorbed_deferred_duplicate_recognizes_admitted_flowchart_elk_copy() {
+        let root = crate::cmd::target_root()
+            .join("xtask-tests")
+            .join("audit_absorbed_deferred_duplicate");
+        let fixtures_root = root.join("fixtures");
+        let deferred_root = fixtures_root.join("_deferred");
+        let stem = "upstream_html_demos_flowchart_elk_flowchart_elk_001";
+        let active_path = fixtures_root.join("flowchart").join(format!("{stem}.mmd"));
+        let deferred_path = deferred_root.join("flowchart").join(format!("{stem}.mmd"));
+
+        fs::create_dir_all(active_path.parent().expect("active parent")).expect("active dir");
+        fs::create_dir_all(deferred_path.parent().expect("deferred parent")).expect("deferred dir");
+        fs::write(&active_path, "flowchart-elk\n  A-->B\n").expect("active fixture");
+        fs::write(&deferred_path, "flowchart-elk\n  A-->B\n").expect("deferred fixture");
+
+        let meta = parse_meta("flowchart-elk\n  A-->B\n");
+
+        let absorbed = absorbed_deferred_duplicate(
+            &fixtures_root,
+            &deferred_root,
+            &deferred_path,
+            "flowchart",
+            &meta,
+        )
+        .expect("admitted Flowchart ELK duplicate should be absorbed");
+
+        assert_eq!(absorbed.active_path, active_path);
+        assert_eq!(
+            absorbed.reason,
+            "active source-backed Flowchart ELK parity fixture already exists"
+        );
+    }
+
+    #[test]
+    fn absorbed_deferred_duplicate_rejects_unknown_flowchart_elk_copy() {
+        let fixtures_root = Path::new("fixtures");
+        let deferred_root = fixtures_root.join("_deferred");
+        let path = deferred_root
+            .join("flowchart")
+            .join("not_admitted_flowchart_elk.mmd");
+        let meta = parse_meta("flowchart-elk\n  A-->B\n");
+
+        assert!(
+            absorbed_deferred_duplicate(&fixtures_root, &deferred_root, &path, "flowchart", &meta)
+                .is_none()
+        );
+    }
 }
