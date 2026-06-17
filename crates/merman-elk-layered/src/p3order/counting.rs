@@ -368,6 +368,7 @@ fn other_end_of(graph: &LGraph, edge: usize, port: PortRef) -> Option<PortRef> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{LGraph, LNode, LPoint, LayeredEdge, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayeredOptions};
     use crate::p2layers::layer_network_simplex;
@@ -414,6 +415,27 @@ mod tests {
         process_port_sides(&mut graph);
         sort_port_lists(&mut graph);
         graph
+    }
+
+    fn layered_edge(id: &str, source: PortRef, target: PortRef) -> LayeredEdge {
+        LayeredEdge {
+            id: id.to_string(),
+            source,
+            target,
+            source_node_id: String::new(),
+            target_node_id: String::new(),
+            labels: Vec::new(),
+            minlen: 1,
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order: None,
+            priority_direction: 0,
+            priority_shortness: 0,
+            priority_straightness: 0,
+            thickness: 1.0,
+            original_opposite_port: None,
+            compound_segment: None,
+        }
     }
 
     #[test]
@@ -545,5 +567,38 @@ mod tests {
 
         assert_eq!(crossing_order, 1);
         assert_eq!(improved_order, 0);
+    }
+
+    #[test]
+    fn crossing_counter_counts_crossing_ports_between_same_two_nodes() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(LNode::new("source", 10.0, 10.0, None));
+        graph
+            .layerless_nodes
+            .push(LNode::new("target", 10.0, 10.0, None));
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 1);
+
+        let source_top = graph
+            .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let source_bottom = graph
+            .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        let target_bottom = graph
+            .add_port(1, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        let target_top = graph
+            .add_port(1, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+
+        graph.add_edge(layered_edge("top-to-bottom", source_top, target_bottom));
+        graph.add_edge(layered_edge("bottom-to-top", source_bottom, target_top));
+
+        let crossings = CrossingsCounter::new().count_all_crossings(&graph);
+
+        assert_eq!(crossings, 1);
     }
 }

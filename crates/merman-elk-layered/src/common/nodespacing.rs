@@ -225,12 +225,16 @@ fn vertical_port_x(port: &LPort, node_width: f64) -> f64 {
 }
 
 fn ports_on_side(graph: &LGraph, node: usize, side: PortSide) -> Vec<usize> {
-    graph.layerless_nodes[node]
+    let mut ports = graph.layerless_nodes[node]
         .ports
         .iter()
         .enumerate()
         .filter_map(|(port, port_data)| (port_data.side == side).then_some(port))
-        .collect()
+        .collect::<Vec<_>>();
+    if matches!(side, PortSide::South | PortSide::West) {
+        ports.reverse();
+    }
+    ports
 }
 
 fn process_node_margin(graph: &mut LGraph, node: usize) {
@@ -337,7 +341,7 @@ mod tests {
 
         let expected_spacing = graph.layerless_nodes[node].size.width / 6.0;
         for (index, port) in graph.layerless_nodes[node].ports.iter().enumerate() {
-            let expected_x = expected_spacing * (index + 1) as f64;
+            let expected_x = expected_spacing * (5 - index) as f64;
             assert!(
                 (port.position.x - expected_x).abs() < 1e-9,
                 "port {index} x: expected {expected_x}, got {}",
@@ -345,6 +349,39 @@ mod tests {
             );
             assert_eq!(port.position.y, 0.0);
         }
+    }
+
+    #[test]
+    fn label_and_node_size_calculation_places_west_ports_top_to_bottom() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(LNode::new("A", 80.0, 70.0, None));
+        let node = 0;
+        graph.set_node_layer(node, 0);
+
+        for id in ["bottom", "middle", "top"] {
+            let port = graph
+                .add_port(
+                    node,
+                    PortType::Input,
+                    PortSide::West,
+                    crate::graph::LPoint::default(),
+                )
+                .unwrap();
+            graph.layerless_nodes[node].ports[port.port].id = id.to_string();
+            graph.layerless_nodes[node].ports[port.port].set_side(PortSide::West);
+        }
+
+        calculate_label_and_node_sizes(&mut graph, [node]);
+
+        let y_positions = graph.layerless_nodes[node]
+            .ports
+            .iter()
+            .map(|port| (port.id.as_str(), port.position.y))
+            .collect::<Vec<_>>();
+        assert!(y_positions[2].1 < y_positions[1].1);
+        assert!(y_positions[1].1 < y_positions[0].1);
     }
 
     #[test]

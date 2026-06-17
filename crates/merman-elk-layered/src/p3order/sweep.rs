@@ -43,6 +43,61 @@ struct HierarchyGraphInfo {
     parent_node_index: Option<usize>,
     has_external_ports: bool,
     use_bottom_up: bool,
+    layer_sweep_decision: LayerSweepDecision,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HierarchySweepDebugTrace {
+    pub graphs: Vec<HierarchySweepGraphDebug>,
+    pub runs: Vec<HierarchySweepRunDebug>,
+    pub layer_sweeps: Vec<HierarchySweepLayerDebug>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HierarchySweepGraphDebug {
+    pub graph_id: String,
+    pub parent_node_id: Option<String>,
+    pub path: Vec<usize>,
+    pub child_paths: Vec<Vec<usize>>,
+    pub port_distributor: &'static str,
+    pub use_bottom_up: bool,
+    pub layer_sweep_paths_to_random: usize,
+    pub layer_sweep_paths_to_hierarchical: usize,
+    pub layer_sweep_normalized: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HierarchySweepRunDebug {
+    pub graph_id: String,
+    pub run_index: usize,
+    pub first_try_with_initial_order: bool,
+    pub second_try_with_initial_order: bool,
+    pub initial_crossings: f64,
+    pub early_returned: bool,
+    pub crossings: f64,
+    pub best_crossings_before: f64,
+    pub improved_best: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HierarchySweepLayerDebug {
+    pub graph_id: String,
+    pub layer_index: usize,
+    pub forward: bool,
+    pub is_first_sweep: bool,
+    pub first_sweep_for_heuristic: bool,
+    pub pre_ordered: bool,
+    pub before: Vec<HierarchySweepNodeDebug>,
+    pub after: Vec<HierarchySweepNodeDebug>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HierarchySweepNodeDebug {
+    pub node_id: String,
+    pub node_index: usize,
+    pub barycenter: Option<f64>,
+    pub summed_weight: f64,
+    pub degree: usize,
 }
 
 impl HierarchyGraphInfo {
@@ -73,6 +128,7 @@ impl HierarchyGraphInfo {
             parent_node_index: None,
             has_external_ports: graph.graph_properties.external_ports,
             use_bottom_up: true,
+            layer_sweep_decision: LayerSweepDecision::default(),
         }
     }
 
@@ -101,6 +157,21 @@ struct HierarchySweep {
     random: JavaRandom,
     random_seed: i64,
     cross_min_type: CrossMinType,
+    debug_trace: Option<HierarchySweepDebugTrace>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct LayerSweepDecision {
+    paths_to_random: usize,
+    paths_to_hierarchical: usize,
+    normalized: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct BarycenterRunResult {
+    crossings: f64,
+    initial_crossings: f64,
+    early_returned: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +195,15 @@ impl CrossMinType {
 enum PortDistributorKind {
     NodeRelative,
     LayerTotal,
+}
+
+impl PortDistributorKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NodeRelative => "NodeRelative",
+            Self::LayerTotal => "LayerTotal",
+        }
+    }
 }
 
 fn create_port_distributor_kind(
@@ -223,7 +303,6 @@ impl BarycenterPortDistributor {
     }
 
     fn calculate_port_ranks(&mut self, graph: &LGraph, layer: &[usize], port_type: PortType) {
-        self.port_ranks.clear();
         let mut consumed_rank = 0.0;
         for node in layer {
             consumed_rank += match self.kind {
@@ -296,8 +375,14 @@ impl BarycenterPortDistributor {
                 else {
                     continue;
                 };
-                sum += north_south_port_barycenter_sum(graph, port, dummy_node, absurdly_large)
-                    .unwrap_or(0.0);
+                sum += north_south_port_barycenter_sum(
+                    graph,
+                    &self.node_positions,
+                    port,
+                    dummy_node,
+                    absurdly_large,
+                )
+                .unwrap_or(0.0);
             } else {
                 for outgoing_edge in &port_data.outgoing_edges {
                     let connected_port = graph.edges[*outgoing_edge].target;
@@ -552,6 +637,7 @@ impl HierarchySweep {
             random,
             random_seed,
             cross_min_type,
+            debug_trace: None,
         };
         sweep.initialize_graphs(root);
         sweep
@@ -570,15 +656,18 @@ impl HierarchySweep {
                 self.random = info.random.clone();
             }
             let child_paths = graph
-                .layerless_nodes
+                .layers
                 .iter()
-                .enumerate()
-                .filter_map(|(node_index, node)| {
-                    node.nested_graph.as_ref().map(|_| {
-                        let mut child_path = path.0.clone();
-                        child_path.push(node_index);
-                        GraphPath(child_path)
-                    })
+                .flat_map(|layer| layer.nodes.iter().copied())
+                .filter_map(|node_index| {
+                    graph.layerless_nodes[node_index]
+                        .nested_graph
+                        .as_ref()
+                        .map(|_| {
+                            let mut child_path = path.0.clone();
+                            child_path.push(node_index);
+                            GraphPath(child_path)
+                        })
                 })
                 .collect::<Vec<_>>();
             info.child_paths = child_paths.clone();
@@ -597,19 +686,47 @@ impl HierarchySweep {
         }
 
         for index in 0..self.infos.len() {
-            let use_bottom_up = self.decide_use_bottom_up(root, index);
+            let (use_bottom_up, decision) = self.decide_use_bottom_up(root, index);
             self.infos[index].use_bottom_up = use_bottom_up;
+            self.infos[index].layer_sweep_decision = decision;
         }
     }
 
-    fn decide_use_bottom_up(&self, root: &LGraph, info_index: usize) -> bool {
+    fn collect_debug_graphs(&self, root: &LGraph) -> Vec<HierarchySweepGraphDebug> {
+        self.infos
+            .iter()
+            .map(|info| {
+                let graph = graph_at_path(root, &info.path);
+                let port_distributor = info
+                    .barycenter_heuristic
+                    .as_ref()
+                    .map(|heuristic| heuristic.port_distributor.kind.as_str())
+                    .unwrap_or("None");
+                HierarchySweepGraphDebug {
+                    graph_id: graph.id.clone(),
+                    parent_node_id: graph.parent_node_id.clone(),
+                    path: info.path.0.clone(),
+                    child_paths: info.child_paths.iter().map(|path| path.0.clone()).collect(),
+                    port_distributor,
+                    use_bottom_up: info.use_bottom_up,
+                    layer_sweep_paths_to_random: info.layer_sweep_decision.paths_to_random,
+                    layer_sweep_paths_to_hierarchical: info
+                        .layer_sweep_decision
+                        .paths_to_hierarchical,
+                    layer_sweep_normalized: info.layer_sweep_decision.normalized,
+                }
+            })
+            .collect()
+    }
+
+    fn decide_use_bottom_up(&self, root: &LGraph, info_index: usize) -> (bool, LayerSweepDecision) {
         let info = &self.infos[info_index];
         let Some(parent_path) = info.parent_path.as_ref() else {
-            return true;
+            return (true, LayerSweepDecision::default());
         };
         let parent_graph = graph_at_path(root, parent_path);
         let Some(parent_node_index) = info.parent_node_index else {
-            return true;
+            return (true, LayerSweepDecision::default());
         };
         let parent_node = &parent_graph.layerless_nodes[parent_node_index];
         let boundary = graph_at_path(root, &info.path)
@@ -620,15 +737,19 @@ impl HierarchySweep {
             || parent_node.port_constraints.is_order_fixed()
             || fewer_than_two_in_out_parent_ports(parent_node)
         {
-            return true;
+            return (true, LayerSweepDecision::default());
         }
 
         if self.cross_min_type.is_deterministic() {
-            return false;
+            return (false, LayerSweepDecision::default());
         }
 
         let mut decider = LayerSweepTypeDecider::default();
-        decider.use_bottom_up(graph_at_path(root, &info.path), boundary)
+        decider.decide(
+            graph_at_path(root, &info.path),
+            Some(parent_graph),
+            boundary,
+        )
     }
 
     fn graphs_to_sweep_on(&self) -> Vec<usize> {
@@ -749,14 +870,30 @@ impl HierarchySweep {
             self.use_node_port_order_crossing_counter(root, info_index);
         let mut best_crossings = f64::MAX;
         for run_index in 0..thoroughness {
-            let crossings = self.minimize_barycenter_with_counter(
+            let result = self.minimize_barycenter_with_counter(
                 root,
                 info_index,
                 first_try_with_initial_order && run_index == 0,
                 first_try_with_initial_order && run_index == 1,
                 use_node_port_order_counter,
             );
-            if crossings < best_crossings {
+            let crossings = result.crossings;
+            let improved_best = crossings < best_crossings;
+            if let Some(trace) = self.debug_trace.as_mut() {
+                let graph_id = graph_at_path(root, &self.infos[info_index].path).id.clone();
+                trace.runs.push(HierarchySweepRunDebug {
+                    graph_id,
+                    run_index,
+                    first_try_with_initial_order: first_try_with_initial_order && run_index == 0,
+                    second_try_with_initial_order: first_try_with_initial_order && run_index == 1,
+                    initial_crossings: result.initial_crossings,
+                    early_returned: result.early_returned,
+                    crossings,
+                    best_crossings_before: best_crossings,
+                    improved_best,
+                });
+            }
+            if improved_best {
                 best_crossings = crossings;
                 self.save_all_node_orders_of_changed_graphs(root);
                 if best_crossings == 0.0 {
@@ -773,13 +910,17 @@ impl HierarchySweep {
         first_try_with_initial_order: bool,
         second_try_with_initial_order: bool,
         use_node_port_order_counter: bool,
-    ) -> f64 {
+    ) -> BarycenterRunResult {
         let mut is_forward_sweep = self.next_sweep_direction(info_index);
         let initial_crossings =
             self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
         if initial_crossings == 0.0 && first_try_with_initial_order {
             self.set_currently_best_node_orders(root);
-            return 0.0;
+            return BarycenterRunResult {
+                crossings: 0.0,
+                initial_crossings,
+                early_returned: true,
+            };
         }
 
         let should_set_first_layer_order = {
@@ -808,7 +949,11 @@ impl HierarchySweep {
         loop {
             self.set_currently_best_node_orders(root);
             if crossings_in_graph == 0.0 {
-                return 0.0;
+                return BarycenterRunResult {
+                    crossings: 0.0,
+                    initial_crossings,
+                    early_returned: false,
+                };
             }
 
             is_forward_sweep = !is_forward_sweep;
@@ -823,7 +968,11 @@ impl HierarchySweep {
             crossings_in_graph =
                 self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
             if old_number_of_crossings <= crossings_in_graph {
-                return old_number_of_crossings;
+                return BarycenterRunResult {
+                    crossings: old_number_of_crossings,
+                    initial_crossings,
+                    early_returned: false,
+                };
             }
         }
     }
@@ -857,21 +1006,63 @@ impl HierarchySweep {
         let mut index = first_free(forward, length);
         while is_not_end(length, index, forward) {
             let free_layer_index = index as usize;
-            self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
-                heuristic.minimize_crossings(
-                    graph,
-                    order,
-                    free_layer_index,
-                    forward,
-                    first_sweep && !try_with_initial_order,
-                );
-                heuristic.port_distributor.distribute_ports_while_sweeping(
-                    graph,
-                    order,
-                    free_layer_index,
-                    forward,
-                );
-            });
+            let first_sweep_for_heuristic = first_sweep && !try_with_initial_order;
+            let should_debug = self.debug_trace.is_some();
+            let layer_debug =
+                self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
+                    let graph_id = graph.id.clone();
+                    let before = if should_debug {
+                        Some(debug_barycenter_layer(
+                            graph,
+                            heuristic,
+                            &order[free_layer_index],
+                        ))
+                    } else {
+                        None
+                    };
+                    heuristic.minimize_crossings(
+                        graph,
+                        order,
+                        free_layer_index,
+                        forward,
+                        first_sweep_for_heuristic,
+                    );
+                    let after = if before.is_some() {
+                        Some(debug_barycenter_layer(
+                            graph,
+                            heuristic,
+                            &order[free_layer_index],
+                        ))
+                    } else {
+                        None
+                    };
+                    heuristic.port_distributor.distribute_ports_while_sweeping(
+                        graph,
+                        order,
+                        free_layer_index,
+                        forward,
+                    );
+                    before
+                        .zip(after)
+                        .map(|(before, after)| HierarchySweepLayerDebug {
+                            graph_id,
+                            layer_index: free_layer_index,
+                            forward,
+                            is_first_sweep: first_sweep,
+                            first_sweep_for_heuristic,
+                            pre_ordered: !first_sweep_for_heuristic
+                                || order[free_layer_index].first().is_some_and(|node| {
+                                    graph.layerless_nodes[*node].kind == LNodeKind::ExternalPort
+                                }),
+                            before,
+                            after,
+                        })
+                });
+            if let Some(layer_debug) = layer_debug
+                && let Some(trace) = self.debug_trace.as_mut()
+            {
+                trace.layer_sweeps.push(layer_debug);
+            }
             let layer = self.infos[info_index].current_node_order[free_layer_index].clone();
             improved |=
                 self.sweep_in_hierarchical_nodes(root, info_index, &layer, forward, first_sweep);
@@ -1061,11 +1252,11 @@ impl HierarchySweep {
         let Some(parent_node_index) = self.infos[child_info_index].parent_node_index else {
             return;
         };
-        let parent_graph_id = graph_at_path(root, &parent_path).id.clone();
+        let parent_graph = graph_at_path(root, &parent_path);
         let parent_order = parent_port_order_by_dummy_layer(
             child_graph,
+            parent_graph,
             &last_layer,
-            parent_graph_id.as_str(),
             parent_node_index,
             on_right_most_layer,
         );
@@ -1116,17 +1307,25 @@ impl HierarchySweep {
             return;
         }
         let child_graph = graph_at_path(root, &self.infos[info_index].path);
+        let first = if on_right_most_layer {
+            0
+        } else {
+            last_layer.len() - 1
+        };
+        if child_graph.layerless_nodes[last_layer[first]].kind != LNodeKind::ExternalPort {
+            return;
+        }
         let Some(parent_path) = self.infos[info_index].parent_path.clone() else {
             return;
         };
         let Some(parent_node_index) = self.infos[info_index].parent_node_index else {
             return;
         };
-        let parent_graph_id = graph_at_path(root, &parent_path).id.clone();
+        let parent_graph = graph_at_path(root, &parent_path);
         let parent_order = parent_port_order_by_dummy_layer(
             child_graph,
+            parent_graph,
             &last_layer,
-            parent_graph_id.as_str(),
             parent_node_index,
             on_right_most_layer,
         );
@@ -1274,12 +1473,12 @@ impl HierarchySweep {
         }
     }
 
-    fn save_all_node_orders_of_changed_graphs(&mut self, root: &LGraph) {
+    fn save_all_node_orders_of_changed_graphs(&mut self, _root: &LGraph) {
         let changed = self.changed.iter().copied().collect::<Vec<_>>();
         for index in changed {
-            let graph = graph_at_path(root, &self.infos[index].path);
-            let copy = SweepCopy::new(graph, &self.infos[index].current_node_order);
-            self.infos[index].set_best_node_and_port_order(copy);
+            if let Some(copy) = self.infos[index].currently_best_node_and_port_order.clone() {
+                self.infos[index].set_best_node_and_port_order(copy);
+            }
         }
     }
 
@@ -1330,7 +1529,12 @@ impl NodeInfluence {
 }
 
 impl LayerSweepTypeDecider {
-    fn use_bottom_up(&mut self, graph: &LGraph, boundary: f64) -> bool {
+    fn decide(
+        &mut self,
+        graph: &LGraph,
+        parent_graph: Option<&LGraph>,
+        boundary: f64,
+    ) -> (bool, LayerSweepDecision) {
         let mut paths_to_random = 0usize;
         let mut paths_to_hierarchical = 0usize;
         let mut north_south_dummies = Vec::new();
@@ -1345,7 +1549,7 @@ impl LayerSweepTypeDecider {
                 let mut current = self.node_info_for(*node);
                 if graph.layerless_nodes[*node].kind == LNodeKind::ExternalPort {
                     current.hierarchical_influence = 1;
-                    if graph.layerless_nodes[*node].external_port_side == PortSide::East {
+                    if external_dummy_origin_side(graph, parent_graph, *node) == PortSide::East {
                         paths_to_hierarchical += current.connected_edges;
                     }
                 } else if !has_connected_ports_on_side(graph, *node, PortSide::West) {
@@ -1399,7 +1603,14 @@ impl LayerSweepTypeDecider {
         } else {
             (paths_to_random as f64 - paths_to_hierarchical as f64) / all_paths as f64
         };
-        normalized >= boundary
+        (
+            normalized >= boundary,
+            LayerSweepDecision {
+                paths_to_random,
+                paths_to_hierarchical,
+                normalized,
+            },
+        )
     }
 
     fn node_info_for(&mut self, node: usize) -> NodeInfluence {
@@ -1644,6 +1855,8 @@ struct ConstraintGroup {
     outgoing: Vec<usize>,
     incoming: Vec<usize>,
     incoming_count: usize,
+    summed_weight: f64,
+    degree: usize,
 }
 
 impl ConstraintGroup {
@@ -1653,6 +1866,8 @@ impl ConstraintGroup {
             outgoing: Vec::new(),
             incoming: Vec::new(),
             incoming_count: 0,
+            summed_weight: 0.0,
+            degree: 0,
         }
     }
 
@@ -1916,13 +2131,19 @@ fn merge_constraint_groups(
         outgoing: merged_outgoing_constraints(first, second),
         incoming: Vec::new(),
         incoming_count: 0,
+        summed_weight: first.summed_weight + second.summed_weight,
+        degree: first.degree + second.degree,
     };
 
-    let barycenter = match (first.barycenter(states), second.barycenter(states)) {
-        (Some(first), Some(second)) => Some((first + second) / 2.0),
-        (Some(first), None) => Some(first),
-        (None, Some(second)) => Some(second),
-        (None, None) => None,
+    let barycenter = if merged.degree > 0 {
+        Some(merged.summed_weight / merged.degree as f64)
+    } else {
+        match (first.barycenter(states), second.barycenter(states)) {
+            (Some(first), Some(second)) => Some((first + second) / 2.0),
+            (Some(first), None) => Some(first),
+            (None, Some(second)) => Some(second),
+            (None, None) => None,
+        }
     };
     if let Some(barycenter) = barycenter {
         merged.set_barycenter(states, barycenter);
@@ -2835,6 +3056,57 @@ pub fn minimize_crossings_layer_sweep_hierarchical_with_type(
     sweep.minimize(graph)
 }
 
+pub fn debug_crossings_layer_sweep_hierarchical_with_type(
+    graph: &mut LGraph,
+    cross_min_type: CrossMinType,
+) -> Option<HierarchySweepDebugTrace> {
+    if graph.layers.is_empty() || graph.layers.iter().all(|layer| layer.nodes.is_empty()) {
+        let hierarchical_graphs = graph
+            .layerless_nodes
+            .iter()
+            .filter_map(|node| node.nested_graph.as_deref())
+            .any(|nested| {
+                !nested.layers.is_empty()
+                    && nested.layers.iter().any(|layer| !layer.nodes.is_empty())
+            });
+        if !hierarchical_graphs {
+            return None;
+        }
+    }
+
+    initialize_crossing_minimization_port_ids_hierarchy(graph);
+    let mut sweep = HierarchySweep::new(graph, cross_min_type);
+    let graphs = sweep.collect_debug_graphs(graph);
+    sweep.debug_trace = Some(HierarchySweepDebugTrace {
+        graphs,
+        runs: Vec::new(),
+        layer_sweeps: Vec::new(),
+    });
+    sweep.minimize(graph);
+    sweep.debug_trace
+}
+
+fn debug_barycenter_layer(
+    graph: &LGraph,
+    heuristic: &BarycenterHeuristic,
+    layer: &[usize],
+) -> Vec<HierarchySweepNodeDebug> {
+    layer
+        .iter()
+        .copied()
+        .map(|node| {
+            let state = heuristic.states.get(&node).cloned().unwrap_or_default();
+            HierarchySweepNodeDebug {
+                node_id: graph.layerless_nodes[node].id.clone(),
+                node_index: node,
+                barycenter: state.barycenter,
+                summed_weight: state.summed_weight,
+                degree: state.degree,
+            }
+        })
+        .collect()
+}
+
 fn minimize_barycenter(graph: &mut LGraph) -> bool {
     let mut graph_info = GraphInfoHolder::new(graph);
 
@@ -3122,6 +3394,7 @@ fn same_layer(graph: &LGraph, left: usize, right: usize) -> bool {
 
 fn north_south_port_barycenter_sum(
     graph: &LGraph,
+    node_positions: &HashMap<usize, usize>,
     port: PortRef,
     dummy_node: usize,
     absurdly_large: f64,
@@ -3141,16 +3414,7 @@ fn north_south_port_barycenter_sum(
         }
     }
 
-    let position = graph.layerless_nodes[dummy_node]
-        .layer_index
-        .and_then(|layer| {
-            graph.layers.get(layer).and_then(|layer| {
-                layer
-                    .nodes
-                    .iter()
-                    .position(|candidate| *candidate == dummy_node)
-            })
-        })? as f64;
+    let position = node_positions.get(&dummy_node).copied()? as f64;
     let side = graph.layerless_nodes[port.node].ports[port.port].side;
 
     let sum = if input && !output {
@@ -3490,6 +3754,38 @@ fn has_connected_ports_on_side(graph: &LGraph, node: usize, side: PortSide) -> b
         .any(|port| connected_edges(graph, port).next().is_some())
 }
 
+fn external_dummy_origin_side(
+    graph: &LGraph,
+    parent_graph: Option<&LGraph>,
+    node: usize,
+) -> PortSide {
+    let Some(dummy) = graph.layerless_nodes.get(node) else {
+        return PortSide::Undefined;
+    };
+    if let Some(origin) = dummy.origin_port.as_ref() {
+        if origin.graph_id == graph.id
+            && let Some(side) = port_side_at(graph, origin.port)
+        {
+            return side;
+        }
+        if let Some(parent_graph) = parent_graph
+            && origin.graph_id == parent_graph.id
+            && let Some(side) = port_side_at(parent_graph, origin.port)
+        {
+            return side;
+        }
+    }
+    dummy.external_port_side
+}
+
+fn port_side_at(graph: &LGraph, port: PortRef) -> Option<PortSide> {
+    graph
+        .layerless_nodes
+        .get(port.node)
+        .and_then(|node| node.ports.get(port.port))
+        .map(|port| port.side)
+}
+
 fn sort_port_dummies_by_port_positions(
     parent_graph: &LGraph,
     child_graph: &LGraph,
@@ -3520,8 +3816,8 @@ fn sort_port_dummies_by_port_positions(
 
 fn parent_port_order_by_dummy_layer(
     child_graph: &LGraph,
+    parent_graph: &LGraph,
     dummy_layer: &[usize],
-    parent_graph_id: &str,
     parent_node_index: usize,
     on_right_most_layer: bool,
 ) -> Vec<usize> {
@@ -3533,14 +3829,41 @@ fn parent_port_order_by_dummy_layer(
     };
 
     for dummy_node in iter {
+        if let Some(port) = parent_port_for_dummy_node(
+            parent_graph,
+            parent_node_index,
+            child_graph.id.as_str(),
+            dummy_node,
+        ) {
+            order.push(port);
+            continue;
+        }
         let Some(origin) = child_graph.layerless_nodes[dummy_node].origin_port.as_ref() else {
             continue;
         };
-        if origin.graph_id == parent_graph_id && origin.port.node == parent_node_index {
+        if origin.graph_id == parent_graph.id && origin.port.node == parent_node_index {
             order.push(origin.port.port);
         }
     }
     order
+}
+
+fn parent_port_for_dummy_node(
+    parent_graph: &LGraph,
+    parent_node_index: usize,
+    child_graph_id: &str,
+    dummy_node: usize,
+) -> Option<usize> {
+    parent_graph
+        .layerless_nodes
+        .get(parent_node_index)?
+        .ports
+        .iter()
+        .enumerate()
+        .find_map(|(port_index, port)| {
+            let dummy = port.port_dummy.as_ref()?;
+            (dummy.graph_id == child_graph_id && dummy.node == dummy_node).then_some(port_index)
+        })
 }
 
 fn apply_parent_hierarchical_port_order_on_sweep_side(
@@ -3741,6 +4064,88 @@ mod tests {
     }
 
     #[test]
+    fn hierarchical_sweep_discovers_child_graphs_in_current_node_order() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut second = LNode::new("second", 10.0, 10.0, None);
+        second.nested_graph = Some(Box::new(LGraph::new(
+            "second:nested",
+            LayeredOptions::default(),
+        )));
+        let mut first = LNode::new("first", 10.0, 10.0, None);
+        first.nested_graph = Some(Box::new(LGraph::new(
+            "first:nested",
+            LayeredOptions::default(),
+        )));
+        graph.layerless_nodes.push(second);
+        graph.layerless_nodes.push(first);
+        graph.layers = vec![crate::graph::Layer {
+            nodes: vec![1, 0],
+            size: Default::default(),
+        }];
+
+        let sweep = HierarchySweep::new(&mut graph, CrossMinType::Barycenter);
+
+        assert_eq!(
+            sweep.infos[0].child_paths,
+            vec![GraphPath(vec![1]), GraphPath(vec![0])]
+        );
+    }
+
+    #[test]
+    fn layer_sweep_type_decider_uses_origin_port_side_for_external_dummy() {
+        let mut parent_graph = LGraph::new("root", LayeredOptions::default());
+        parent_graph
+            .layerless_nodes
+            .push(LNode::new("parent", 10.0, 10.0, None));
+        let origin = parent_graph
+            .add_port(0, PortType::Output, PortSide::East, Default::default())
+            .unwrap();
+
+        let mut child_graph = LGraph::new("child", LayeredOptions::default());
+        let mut external = LNode::new("external:parent", 0.0, 0.0, None);
+        external.kind = LNodeKind::ExternalPort;
+        external.external_port_side = PortSide::West;
+        external.origin_port = Some(crate::graph::GraphPortRef {
+            graph_id: parent_graph.id.clone(),
+            port: origin,
+        });
+        child_graph.layerless_nodes.push(external);
+
+        assert_eq!(
+            external_dummy_origin_side(&child_graph, Some(&parent_graph), 0),
+            PortSide::East
+        );
+    }
+
+    #[test]
+    fn hierarchical_sweep_saves_currently_best_snapshot_not_current_order() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(LNode::new("A", 10.0, 10.0, None));
+        graph
+            .layerless_nodes
+            .push(LNode::new("B", 10.0, 10.0, None));
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 0);
+
+        let mut sweep = HierarchySweep::new(&mut graph, CrossMinType::Barycenter);
+        sweep.changed.insert(0);
+        sweep.set_currently_best_node_orders(&graph);
+        sweep.infos[0].current_node_order[0] = vec![1, 0];
+
+        sweep.save_all_node_orders_of_changed_graphs(&graph);
+
+        assert_eq!(
+            sweep.infos[0]
+                .best_node_and_port_order
+                .as_ref()
+                .map(|copy| copy.node_order.as_slice()),
+            Some([vec![0, 1]].as_slice())
+        );
+    }
+
+    #[test]
     fn barycenter_orders_free_layer_by_fixed_layer_port_ranks() {
         let mut graph = prepared_graph(
             vec![node("Top"), node("Bottom"), node("Left"), node("Right")],
@@ -3841,6 +4246,54 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(free_ports, vec![Some("Bottom-Free"), Some("Top-Free")]);
+    }
+
+    #[test]
+    fn barycenter_port_ranks_persist_between_rank_calculations() {
+        let mut graph = prepared_graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        );
+        let a = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        let b = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "B")
+            .unwrap();
+        graph.layers[0].nodes = vec![a];
+        graph.layers[1].nodes = vec![b];
+        initialize_crossing_minimization_port_ids(&mut graph);
+        let a_out = graph.layerless_nodes[a]
+            .ports
+            .iter()
+            .position(|port| !port.outgoing_edges.is_empty())
+            .unwrap();
+        let mut distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &[vec![a], vec![b]]);
+
+        distributor.calculate_port_ranks(&graph, &[a], PortType::Output);
+        let before = distributor.rank_of(
+            &graph,
+            PortRef {
+                node: a,
+                port: a_out,
+            },
+        );
+        distributor.calculate_port_ranks(&graph, &[b], PortType::Input);
+        let after = distributor.rank_of(
+            &graph,
+            PortRef {
+                node: a,
+                port: a_out,
+            },
+        );
+
+        assert_eq!(before, after);
+        assert_ne!(after, 0.0);
     }
 
     #[test]
@@ -4079,21 +4532,36 @@ mod tests {
             })
             .unwrap();
 
+        let node_positions = graph.layers[0]
+            .nodes
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(position, node)| (node, position))
+            .collect::<HashMap<_, _>>();
         assert_eq!(
-            north_south_port_barycenter_sum(&graph, north_input, 1, 7.0),
+            north_south_port_barycenter_sum(&graph, &node_positions, north_input, 1, 7.0),
             Some(-0.0)
         );
         assert_eq!(
-            north_south_port_barycenter_sum(&graph, south_input, 1, 7.0),
+            north_south_port_barycenter_sum(&graph, &node_positions, south_input, 1, 7.0),
             Some(7.0)
         );
         assert_eq!(
-            north_south_port_barycenter_sum(&graph, north_output, 2, 7.0),
+            north_south_port_barycenter_sum(&graph, &node_positions, north_output, 2, 7.0),
             Some(2.0)
         );
         assert_eq!(
-            north_south_port_barycenter_sum(&graph, south_both, 3, 7.0),
+            north_south_port_barycenter_sum(&graph, &node_positions, south_both, 3, 7.0),
             Some(3.5)
+        );
+
+        let current_node_positions = [(3usize, 0usize), (2, 1), (1, 2)]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        assert_eq!(
+            north_south_port_barycenter_sum(&graph, &current_node_positions, south_input, 1, 7.0),
+            Some(5.0)
         );
     }
 
@@ -4302,6 +4770,37 @@ mod tests {
         heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
 
         assert_eq!(order[1], vec![a, b]);
+    }
+
+    #[test]
+    fn forster_single_node_groups_merge_by_current_barycenters() {
+        let mut states = HashMap::new();
+        states.insert(
+            0,
+            BarycenterState {
+                summed_weight: 9.0,
+                degree: 3,
+                barycenter: Some(3.0),
+                visited: false,
+            },
+        );
+        states.insert(
+            1,
+            BarycenterState {
+                summed_weight: 1.0,
+                degree: 1,
+                barycenter: Some(1.0),
+                visited: false,
+            },
+        );
+        let first = ConstraintGroup::new(0);
+        let second = ConstraintGroup::new(1);
+
+        let merged = merge_constraint_groups(&mut states, &first, &second);
+
+        assert_eq!(merged.barycenter(&states), Some(2.0));
+        assert_eq!(states[&0].barycenter, Some(2.0));
+        assert_eq!(states[&1].barycenter, Some(2.0));
     }
 
     #[test]

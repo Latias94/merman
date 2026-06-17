@@ -498,8 +498,15 @@ fn sorted_nodes_by_model_order(
     order
 }
 
-pub fn long_edge_target_node_preprocessing(graph: &LGraph, node: usize) -> HashMap<usize, usize> {
+pub fn long_edge_target_node_preprocessing(
+    graph: &mut LGraph,
+    node: usize,
+) -> HashMap<usize, usize> {
     let mut target_node_model_order: HashMap<usize, usize> = HashMap::new();
+
+    for port in &mut graph.layerless_nodes[node].ports {
+        port.long_edge_target_node = None;
+    }
 
     for port in 0..graph.layerless_nodes[node].ports.len() {
         if graph.layerless_nodes[node].ports[port]
@@ -512,6 +519,7 @@ pub fn long_edge_target_node_preprocessing(graph: &LGraph, node: usize) -> HashM
         let Some(target_node) = target_node(graph, PortRef { node, port }) else {
             continue;
         };
+        graph.layerless_nodes[node].ports[port].long_edge_target_node = Some(target_node);
         let edge_index = graph.layerless_nodes[node].ports[port].outgoing_edges[0];
         let edge = &graph.edges[edge_index];
         if !edge.reversed {
@@ -523,6 +531,27 @@ pub fn long_edge_target_node_preprocessing(graph: &LGraph, node: usize) -> HashM
         }
     }
 
+    target_node_model_order
+}
+
+fn cached_long_edge_target_node_orders(graph: &LGraph, node: usize) -> HashMap<usize, usize> {
+    let mut target_node_model_order: HashMap<usize, usize> = HashMap::new();
+    for port in &graph.layerless_nodes[node].ports {
+        let Some(target_node) = port.long_edge_target_node else {
+            continue;
+        };
+        let Some(edge_index) = port.outgoing_edges.first().copied() else {
+            continue;
+        };
+        let edge = &graph.edges[edge_index];
+        if !edge.reversed {
+            let edge_order = edge.model_order.unwrap_or(0);
+            target_node_model_order
+                .entry(target_node)
+                .and_modify(|order| *order = (*order).min(edge_order))
+                .or_insert(edge_order);
+        }
+    }
     target_node_model_order
 }
 
@@ -592,7 +621,7 @@ pub(super) fn count_model_order_port_changes(graph: &LGraph, layers: &[Vec<usize
             .and_then(|index| layers.get(index))
             .unwrap_or(&layers[0]);
         for node in layer {
-            let target_orders = long_edge_target_node_preprocessing(graph, *node);
+            let target_orders = cached_long_edge_target_node_orders(graph, *node);
             let mut comparator = ModelOrderPortComparator::new(
                 graph,
                 *node,
@@ -857,20 +886,8 @@ impl<'a> ModelOrderPortComparator<'a> {
                 .outgoing_edges
                 .is_empty()
         {
-            let p1_target = target_node(
-                self.graph,
-                PortRef {
-                    node: self.node,
-                    port: p1,
-                },
-            );
-            let p2_target = target_node(
-                self.graph,
-                PortRef {
-                    node: self.node,
-                    port: p2,
-                },
-            );
+            let p1_target = self.graph.layerless_nodes[self.node].ports[p1].long_edge_target_node;
+            let p2_target = self.graph.layerless_nodes[self.node].ports[p2].long_edge_target_node;
 
             if self.strategy == OrderingStrategy::PreferNodes
                 && let (Some(p1_target), Some(p2_target)) = (p1_target, p2_target)
@@ -1466,9 +1483,15 @@ mod tests {
             .iter()
             .position(|node| node.id == "D")
             .unwrap();
-        let orders = long_edge_target_node_preprocessing(&graph, a);
+        let orders = long_edge_target_node_preprocessing(&mut graph, a);
 
         assert_eq!(orders.get(&d), Some(&3));
+        assert!(
+            graph.layerless_nodes[a]
+                .ports
+                .iter()
+                .any(|port| port.long_edge_target_node == Some(d))
+        );
     }
 
     #[test]

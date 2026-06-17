@@ -51,7 +51,9 @@ pub use options::{
 pub use p2layers::layer_network_simplex;
 pub use p3order::counting::CrossingsCounter;
 pub use p3order::sweep::{
-    CrossMinType, minimize_crossings_layer_sweep, minimize_crossings_layer_sweep_with_type,
+    CrossMinType, HierarchySweepDebugTrace, HierarchySweepNodeDebug,
+    debug_crossings_layer_sweep_hierarchical_with_type, minimize_crossings_layer_sweep,
+    minimize_crossings_layer_sweep_with_type,
 };
 pub use p3order::{
     long_edge_target_node_preprocessing, process_port_sides, set_port_side, sort_by_input_model,
@@ -63,7 +65,8 @@ pub use p4nodes::{
 pub use pipeline::{
     GraphExecution, LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot,
     assemble_processors, assemble_processors_for_graph, execute_ported_compound_processors,
-    execute_ported_compound_processors_until, execute_ported_processors, execute_processors_until,
+    execute_ported_compound_processors_until, execute_ported_compound_processors_until_processor,
+    execute_ported_processors, execute_processors_until, execute_processors_until_processor,
 };
 pub use random::JavaRandom;
 pub use transform::{GraphTransformMode, transform_graph_direction};

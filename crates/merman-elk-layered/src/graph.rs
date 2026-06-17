@@ -201,6 +201,7 @@ pub struct LPort {
     pub margin: LMargin,
     pub labels: Vec<LLabel>,
     pub model_order: Option<usize>,
+    pub long_edge_target_node: Option<usize>,
     pub port_index: Option<isize>,
     pub border_offset: Option<f64>,
     pub ratio_or_position: f64,
@@ -227,6 +228,7 @@ impl LPort {
             margin: LMargin::default(),
             labels: Vec::new(),
             model_order: None,
+            long_edge_target_node: None,
             port_index: None,
             border_offset: None,
             ratio_or_position: 0.0,
@@ -853,7 +855,7 @@ impl LGraph {
                 port.port = old_to_new[port.port];
             }
             if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-                update_nested_graph_port_refs_after_reorder(
+                update_graph_port_refs_after_reorder(
                     nested_graph,
                     graph_id.as_str(),
                     node_index,
@@ -984,7 +986,7 @@ fn update_graph_port_ref_after_reorder(
     }
 }
 
-fn update_nested_graph_port_refs_after_reorder(
+fn update_graph_port_refs_after_reorder(
     graph: &mut LGraph,
     graph_id: &str,
     node_index: usize,
@@ -998,12 +1000,7 @@ fn update_nested_graph_port_refs_after_reorder(
             old_to_new,
         );
         if let Some(nested_graph) = node.nested_graph.as_deref_mut() {
-            update_nested_graph_port_refs_after_reorder(
-                nested_graph,
-                graph_id,
-                node_index,
-                old_to_new,
-            );
+            update_graph_port_refs_after_reorder(nested_graph, graph_id, node_index, old_to_new);
         }
     }
 }
@@ -1221,7 +1218,7 @@ mod tests {
     }
 
     #[test]
-    fn reorder_node_ports_updates_nested_external_dummy_origin_refs() {
+    fn reorder_node_ports_rewrites_nested_external_dummy_origins() {
         let mut parent = LGraph::new("root", LayeredOptions::default());
         let mut compound = LNode::new("cluster", 10.0, 10.0, Some(0));
         compound.ports.push(LPort::new("p0", 0, PortType::Output));

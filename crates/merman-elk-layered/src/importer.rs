@@ -96,6 +96,8 @@ pub fn import_graph(input: &ElkInputGraph) -> ImportResult<LGraph> {
     let index = InputIndex::new(input)?;
     let mut root = LGraph::new(input.id.clone(), input.options.clone());
     root.options.direction = resolve_direction(root.options.direction);
+    root.options.hierarchy_handling =
+        resolve_root_hierarchy_handling(root.options.hierarchy_handling);
     apply_graph_padding_from_options(&mut root);
 
     if root.options.hierarchy_handling == HierarchyHandling::IncludeChildren {
@@ -141,15 +143,15 @@ fn import_hierarchical_graph(
     let mut model_order = 0usize;
     while let Some(node) = queue.pop_front() {
         let parent_graph = graph_for_parent(root, node.parent.as_deref());
-        let node_model_order = needs_model_order_for_child(parent_graph, node).then(|| {
+        let node_model_order = needs_model_order_for_child(input, index, node).then(|| {
             let order = model_order;
             model_order += 1;
             order
         });
         let node_index = transform_node(node, parent_graph, node_model_order);
 
-        if node_has_nested_graph(input, node) {
-            let nested_options = nested_graph_options(input, &parent_graph.options, node);
+        if node_has_nested_graph(input, &parent_graph.options, node) {
+            let nested_options = nested_graph_options(&parent_graph.options, node);
             let mut nested_graph = LGraph::new(node.id.clone(), nested_options);
             nested_graph.parent_node_id = Some(node.id.clone());
             apply_graph_padding_from_options(&mut nested_graph);
@@ -163,16 +165,34 @@ fn import_hierarchical_graph(
         }
     }
 
-    for (edge_order, edge) in input.edges.iter().enumerate() {
-        let source_path = index.graph_path(edge.source.as_str());
-        let target_path = index.graph_path(edge.target.as_str());
-        let edge_model_order =
-            needs_model_order_based_on_parent(&root.options).then_some(edge_order);
-        if source_path == target_path {
-            let graph = graph_for_path(root, &source_path);
-            transform_edge(edge, graph, edge_model_order)?;
-        } else {
-            transform_cross_hierarchy_edge(edge, index, root, edge_order, edge_model_order)?;
+    let mut edge_order = 0usize;
+    let mut edge_graph_queue = VecDeque::new();
+    edge_graph_queue.push_back(None);
+    while let Some(parent) = edge_graph_queue.pop_front() {
+        for edge in input
+            .edges
+            .iter()
+            .filter(|edge| input_edge_containing_parent(index, edge).as_deref() == parent)
+        {
+            let edge_model_order =
+                needs_model_order_based_on_parent(&root.options).then_some(edge_order);
+            let source_path = index.graph_path(edge.source.as_str());
+            let target_path = index.graph_path(edge.target.as_str());
+            if source_path == target_path {
+                let graph = graph_for_path(root, &source_path);
+                transform_edge(edge, graph, edge_model_order)?;
+            } else {
+                transform_cross_hierarchy_edge(edge, index, root, edge_order, edge_model_order)?;
+            }
+            edge_order += 1;
+        }
+
+        for child in index
+            .children(parent)
+            .into_iter()
+            .filter(|child| input_node_uses_include_children_layout(input, index, child))
+        {
+            edge_graph_queue.push_back(Some(child.id.as_str()));
         }
     }
 
@@ -180,8 +200,12 @@ fn import_hierarchical_graph(
 }
 
 /// Mirrors `ElkGraphImporter#needsModelOrder(...)`.
-fn needs_model_order_for_child(parent_graph: &LGraph, _child: &ElkInputNode) -> bool {
-    needs_model_order_based_on_parent(&parent_graph.options)
+fn needs_model_order_for_child(
+    input: &ElkInputGraph,
+    index: &InputIndex<'_>,
+    child: &ElkInputNode,
+) -> bool {
+    needs_model_order_based_on_input_parent(input, index, child)
 }
 
 /// Mirrors `ElkGraphImporter#needsModelOrderBasedOnParent(...)` for currently ported options.
@@ -198,21 +222,104 @@ fn needs_model_order_based_on_parent(options: &LayeredOptions) -> bool {
         )
 }
 
-fn nested_graph_options(
+fn needs_model_order_based_on_input_parent(
     input: &ElkInputGraph,
-    parent_options: &LayeredOptions,
+    index: &InputIndex<'_>,
+    child: &ElkInputNode,
+) -> bool {
+    let Some(parent_id) = child.parent.as_deref() else {
+        return needs_model_order_based_on_parent(&input.options);
+    };
+    let Some(parent_node) = index.nodes.get(parent_id).copied() else {
+        return false;
+    };
+    let parent_options = input_node_options(input, index, parent_node);
+    needs_model_order_based_on_parent(&parent_options)
+}
+
+fn input_node_options(
+    input: &ElkInputGraph,
+    index: &InputIndex<'_>,
     node: &ElkInputNode,
 ) -> LayeredOptions {
+    let parent_options = node
+        .parent
+        .as_deref()
+        .and_then(|parent_id| index.nodes.get(parent_id).copied())
+        .map(|parent| input_node_options(input, index, parent))
+        .unwrap_or_else(|| {
+            let mut options = input.options.clone();
+            options.direction = resolve_direction(options.direction);
+            options.hierarchy_handling =
+                resolve_root_hierarchy_handling(options.hierarchy_handling);
+            options
+        });
+
+    nested_graph_options(&parent_options, node)
+}
+
+fn input_node_uses_include_children_layout(
+    input: &ElkInputGraph,
+    index: &InputIndex<'_>,
+    node: &ElkInputNode,
+) -> bool {
+    input_node_options(input, index, node).hierarchy_handling == HierarchyHandling::IncludeChildren
+}
+
+fn input_edge_containing_parent(index: &InputIndex<'_>, edge: &ElkInputEdge) -> Option<String> {
+    let source_parent = index.node_parent(edge.source.as_str());
+    let target_parent = index.node_parent(edge.target.as_str());
+    if source_parent == target_parent {
+        return source_parent.map(str::to_string);
+    }
+
+    if is_input_descendant(index, edge.target.as_str(), edge.source.as_str()) {
+        return Some(edge.source.clone());
+    }
+    if is_input_descendant(index, edge.source.as_str(), edge.target.as_str()) {
+        return Some(edge.target.clone());
+    }
+
+    None
+}
+
+fn is_input_descendant(index: &InputIndex<'_>, node_id: &str, ancestor_id: &str) -> bool {
+    let mut current = index.node_parent(node_id);
+    while let Some(parent) = current {
+        if parent == ancestor_id {
+            return true;
+        }
+        current = index.node_parent(parent);
+    }
+    false
+}
+
+fn nested_graph_options(parent_options: &LayeredOptions, node: &ElkInputNode) -> LayeredOptions {
     let mut options = LayeredOptions::default();
-    options.direction = node.direction.unwrap_or(parent_options.direction);
-    options.hierarchy_handling = node
-        .hierarchy_handling
-        .unwrap_or(input.options.hierarchy_handling);
-    options.merge_hierarchy_edges = input.options.merge_hierarchy_edges;
+    options.direction = parent_options.direction;
+    options.hierarchy_handling =
+        resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options);
     if let Some(spacing_base) = node.nested_spacing_base {
         options.spacing = SpacingOptions::layered_base_value(spacing_base);
     }
     options
+}
+
+fn resolve_child_hierarchy_handling(
+    node_hierarchy_handling: Option<HierarchyHandling>,
+    parent_options: &LayeredOptions,
+) -> HierarchyHandling {
+    match node_hierarchy_handling.unwrap_or(HierarchyHandling::Inherit) {
+        HierarchyHandling::Inherit => parent_options.hierarchy_handling,
+        handling => handling,
+    }
+}
+
+fn resolve_root_hierarchy_handling(handling: HierarchyHandling) -> HierarchyHandling {
+    match handling {
+        HierarchyHandling::Inherit => HierarchyHandling::SeparateChildren,
+        handling => handling,
+    }
 }
 
 fn apply_graph_padding_from_options(graph: &mut LGraph) {
@@ -616,14 +723,16 @@ fn label_to_lgraph(label: &ElkInputLabel) -> LLabel {
     llabel
 }
 
-fn node_has_nested_graph(input: &ElkInputGraph, node: &ElkInputNode) -> bool {
+fn node_has_nested_graph(
+    input: &ElkInputGraph,
+    parent_options: &LayeredOptions,
+    node: &ElkInputNode,
+) -> bool {
     input
         .nodes
         .iter()
         .any(|candidate| candidate.parent.as_deref() == Some(node.id.as_str()))
-        && node
-            .hierarchy_handling
-            .unwrap_or(input.options.hierarchy_handling)
+        && resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options)
             == HierarchyHandling::IncludeChildren
 }
 
@@ -912,12 +1021,43 @@ mod tests {
 
         assert_eq!(lgraph.layerless_nodes[0].model_order, Some(0));
         assert_eq!(nested.layerless_nodes[0].model_order, None);
-        assert!(!nested.options.merge_hierarchy_edges);
+        assert!(nested.options.merge_hierarchy_edges);
         assert_eq!(
             nested.options.consider_model_order_strategy,
             OrderingStrategy::None
         );
         assert_eq!(nested.options.spacing.node_node, 30.0);
+    }
+
+    #[test]
+    fn importer_forces_nested_direction_to_parent_direction() {
+        let mut cluster = node("cluster");
+        cluster.direction = Some(ElkDirection::Left);
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut input = graph(vec![cluster, child], vec![]);
+        input.options.direction = ElkDirection::Down;
+
+        let lgraph = import_graph(&input).unwrap();
+        let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+
+        assert_eq!(nested.options.direction, ElkDirection::Down);
+    }
+
+    #[test]
+    fn importer_resolves_root_hierarchy_inherit_to_separate_children() {
+        let mut input = graph(vec![node("cluster"), node("A")], vec![]);
+        input.options.hierarchy_handling = HierarchyHandling::Inherit;
+        input.nodes[1].parent = Some("cluster".to_string());
+
+        let lgraph = import_graph(&input).unwrap();
+
+        assert_eq!(
+            lgraph.options.hierarchy_handling,
+            HierarchyHandling::SeparateChildren
+        );
+        assert!(lgraph.layerless_nodes.iter().all(|node| !node.compound));
     }
 
     #[test]
@@ -1270,7 +1410,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_compound_keeps_external_ports_distinct_when_hierarchy_merge_is_disabled() {
+    fn source_ported_compound_keeps_nested_hierarchy_merge_default_when_root_disables_merge() {
         let mut cluster = node("cluster");
         cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
         let mut child = node("A");
@@ -1293,14 +1433,14 @@ mod tests {
             .nested_graph
             .as_ref()
             .unwrap();
-        assert_eq!(nested.edges.len(), 2);
+        assert_eq!(nested.edges.len(), 1);
         assert_eq!(
             nested
                 .cross_hierarchy_edges
                 .iter()
                 .map(|segment| segment.edge)
                 .collect::<Vec<_>>(),
-            vec![0, 1]
+            vec![0, 0]
         );
     }
 

@@ -1766,7 +1766,9 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
 pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixture: Option<PathBuf> = None;
     let mut phase = Some(merman_layout_elk::source_port::LayeredPhase::P3NodeOrdering);
+    let mut processor: Option<merman_layout_elk::source_port::ProcessorKind> = None;
     let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
+    let mut p3_trace = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -1796,6 +1798,16 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
                     }
                     _ => return Err(XtaskError::Usage),
                 };
+            }
+            "--processor" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    return Err(XtaskError::Usage);
+                };
+                processor = Some(parse_source_processor_kind(value)?);
+            }
+            "--p3-trace" => {
+                p3_trace = true;
             }
             "--flowchart-elk-backend" => {
                 i += 1;
@@ -1854,8 +1866,40 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
     let has_parent_nodes = elk_graph.nodes.iter().any(|node| node.parent.is_some());
-    let executed = if has_parent_nodes {
-        let executions = if let Some(phase) = phase {
+    let mut trace = None;
+    let executed = if p3_trace {
+        if !has_parent_nodes {
+            return Err(XtaskError::DebugSvgFailed(
+                "--p3-trace currently expects a compound flowchart fixture".to_string(),
+            ));
+        }
+        let executions =
+            merman_layout_elk::source_port::execute_ported_compound_processors_until_processor(
+                &mut lgraph,
+                merman_layout_elk::source_port::ProcessorKind::SortByInputModelProcessor,
+            )
+            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+        trace = merman_layout_elk::source_port::debug_crossings_layer_sweep_hierarchical_with_type(
+            &mut lgraph,
+            merman_layout_elk::source_port::CrossMinType::Barycenter,
+        );
+        executions
+            .into_iter()
+            .map(|execution| {
+                format!(
+                    "{}({:?})={:?}",
+                    execution.graph_id, execution.parent_node_id, execution.processors
+                )
+            })
+            .collect::<Vec<_>>()
+    } else if has_parent_nodes {
+        let executions = if let Some(processor) = processor {
+            merman_layout_elk::source_port::execute_ported_compound_processors_until_processor(
+                &mut lgraph,
+                processor,
+            )
+            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+        } else if let Some(phase) = phase {
             merman_layout_elk::source_port::execute_ported_compound_processors_until(
                 &mut lgraph,
                 phase,
@@ -1875,7 +1919,13 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
             })
             .collect::<Vec<_>>()
     } else {
-        let processors = if let Some(phase) = phase {
+        let processors = if let Some(processor) = processor {
+            merman_layout_elk::source_port::execute_processors_until_processor(
+                &mut lgraph,
+                processor,
+            )
+            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+        } else if let Some(phase) = phase {
             merman_layout_elk::source_port::execute_processors_until(&mut lgraph, phase)
                 .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
         } else {
@@ -1892,15 +1942,188 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
         "phase: {:?}",
         phase.unwrap_or(merman_layout_elk::source_port::LayeredPhase::P5EdgeRouting)
     );
+    if let Some(processor) = processor {
+        println!("processor_stop: {processor:?}");
+    }
+    if p3_trace {
+        println!("p3_trace: true");
+    }
     println!("executed:");
     for item in executed {
         println!("- {item}");
     }
     println!();
+    if let Some(trace) = trace {
+        dump_hierarchy_sweep_debug_trace(&trace);
+    }
 
     dump_source_graph(&lgraph, 0);
 
     Ok(())
+}
+
+fn parse_source_processor_kind(
+    value: &str,
+) -> Result<merman_layout_elk::source_port::ProcessorKind, XtaskError> {
+    let normalized = value
+        .trim()
+        .chars()
+        .filter(|ch| *ch != '-' && *ch != '_' && !ch.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+
+    let processor = match normalized.as_str() {
+        "directionpreprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::DirectionPreprocessor
+        }
+        "edgeandlayerconstraintedgereverser" => {
+            merman_layout_elk::source_port::ProcessorKind::EdgeAndLayerConstraintEdgeReverser
+        }
+        "greedycyclebreaker" => merman_layout_elk::source_port::ProcessorKind::GreedyCycleBreaker,
+        "layerconstraintpreprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::LayerConstraintPreprocessor
+        }
+        "networksimplexlayerer" => {
+            merman_layout_elk::source_port::ProcessorKind::NetworkSimplexLayerer
+        }
+        "layerconstraintpostprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::LayerConstraintPostprocessor
+        }
+        "hierarchicalportconstraintprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortConstraintProcessor
+        }
+        "longedgesplitter" => merman_layout_elk::source_port::ProcessorKind::LongEdgeSplitter,
+        "portsideprocessor" => merman_layout_elk::source_port::ProcessorKind::PortSideProcessor,
+        "invertedportprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::InvertedPortProcessor
+        }
+        "portlistsorter" => merman_layout_elk::source_port::ProcessorKind::PortListSorter,
+        "sortbyinputmodelprocessor" | "sortbyinputmodel" => {
+            merman_layout_elk::source_port::ProcessorKind::SortByInputModelProcessor
+        }
+        "layersweepcrossingminimizerbarycenter" | "barycenter" => {
+            merman_layout_elk::source_port::ProcessorKind::LayerSweepCrossingMinimizerBarycenter
+        }
+        "inlayerconstraintprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::InLayerConstraintProcessor
+        }
+        "labelandnodesizeprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::LabelAndNodeSizeProcessor
+        }
+        "innermostnodemargincalculator" => {
+            merman_layout_elk::source_port::ProcessorKind::InnermostNodeMarginCalculator
+        }
+        "bknodeplacer" => merman_layout_elk::source_port::ProcessorKind::BKNodePlacer,
+        "layersizeandgraphheightcalculator" => {
+            merman_layout_elk::source_port::ProcessorKind::LayerSizeAndGraphHeightCalculator
+        }
+        "orthogonaledgerouter" => {
+            merman_layout_elk::source_port::ProcessorKind::OrthogonalEdgeRouter
+        }
+        "hierarchicalportdummysizeprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortDummySizeProcessor
+        }
+        "hierarchicalportpositionprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortPositionProcessor
+        }
+        "hierarchicalportorthogonaledgerouter" => {
+            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
+        }
+        "longedgejoiner" => merman_layout_elk::source_port::ProcessorKind::LongEdgeJoiner,
+        "endlabelsorter" => merman_layout_elk::source_port::ProcessorKind::EndLabelSorter,
+        "reversededgerestorer" => {
+            merman_layout_elk::source_port::ProcessorKind::ReversedEdgeRestorer
+        }
+        "hierarchicalnoderesizer" => {
+            merman_layout_elk::source_port::ProcessorKind::HierarchicalNodeResizer
+        }
+        "directionpostprocessor" => {
+            merman_layout_elk::source_port::ProcessorKind::DirectionPostprocessor
+        }
+        _ => return Err(XtaskError::Usage),
+    };
+
+    Ok(processor)
+}
+
+fn dump_hierarchy_sweep_debug_trace(
+    trace: &merman_layout_elk::source_port::HierarchySweepDebugTrace,
+) {
+    println!("p3_trace_graphs:");
+    for graph in &trace.graphs {
+        let child_paths = graph
+            .child_paths
+            .iter()
+            .map(|path| {
+                path.iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .collect::<Vec<_>>();
+        println!(
+            "- graph={} parent={:?} path={} children=[{}] distributor={} use_bottom_up={} paths_random={} paths_hierarchical={} normalized={}",
+            graph.graph_id,
+            graph.parent_node_id,
+            graph
+                .path
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join("/"),
+            child_paths.join(","),
+            graph.port_distributor,
+            graph.use_bottom_up,
+            graph.layer_sweep_paths_to_random,
+            graph.layer_sweep_paths_to_hierarchical,
+            graph.layer_sweep_normalized
+        );
+    }
+    println!("p3_trace_runs:");
+    for run in &trace.runs {
+        println!(
+            "- graph={} run={} first_initial={} second_initial={} initial_crossings={} early_returned={} crossings={} best_before={} improved={}",
+            run.graph_id,
+            run.run_index,
+            run.first_try_with_initial_order,
+            run.second_try_with_initial_order,
+            run.initial_crossings,
+            run.early_returned,
+            run.crossings,
+            run.best_crossings_before,
+            run.improved_best
+        );
+    }
+    println!("p3_trace_layer_sweeps:");
+    for layer in &trace.layer_sweeps {
+        println!(
+            "- graph={} layer={} forward={} first_sweep={} first_sweep_for_heuristic={} pre_ordered={}",
+            layer.graph_id,
+            layer.layer_index,
+            layer.forward,
+            layer.is_first_sweep,
+            layer.first_sweep_for_heuristic,
+            layer.pre_ordered
+        );
+        println!("  before={}", format_hierarchy_sweep_nodes(&layer.before));
+        println!("  after={}", format_hierarchy_sweep_nodes(&layer.after));
+    }
+    println!();
+}
+
+fn format_hierarchy_sweep_nodes(
+    nodes: &[merman_layout_elk::source_port::HierarchySweepNodeDebug],
+) -> String {
+    nodes
+        .iter()
+        .map(|node| {
+            format!(
+                "{}#{}(b={:?},sum={:.6},deg={})",
+                node.node_id, node.node_index, node.barycenter, node.summed_weight, node.degree
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" -> ")
 }
 
 fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usize) {

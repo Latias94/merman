@@ -410,6 +410,30 @@ pub fn execute_processors_until(
     Ok(executed)
 }
 
+/// Execute the source-backed layered pipeline until the requested processor completes.
+///
+/// This is a diagnostic companion to [`execute_processors_until`]. It keeps the normal assembled
+/// processor order and stops immediately after `target` executes.
+pub fn execute_processors_until_processor(
+    graph: &mut LGraph,
+    target: ProcessorKind,
+) -> PipelineResult<Vec<ProcessorKind>> {
+    let mut executed = Vec::new();
+    configure_graph_properties(graph);
+    let processors = assemble_processors_for_graph(graph);
+
+    for slot in processors {
+        execute_processor(graph, slot.kind)?;
+        executed.push(slot.kind);
+
+        if slot.kind == target {
+            break;
+        }
+    }
+
+    Ok(executed)
+}
+
 /// Execute all currently source-ported processors assembled for this graph.
 ///
 /// This is the library equivalent of `ElkLayered.layout(...)`: it uses the same assembled
@@ -451,12 +475,23 @@ pub fn execute_ported_compound_processors_until(
     graph: &mut LGraph,
     target: LayeredPhase,
 ) -> PipelineResult<Vec<GraphExecution>> {
-    execute_ported_compound_processors_to(graph, Some(target))
+    execute_ported_compound_processors_to(graph, Some(PipelineStop::Phase(target)))
+}
+
+/// Execute the source-backed compound pipeline until the requested processor completes.
+///
+/// For hierarchy-aware processors, only the root graph executes the processor in ELK's schedule;
+/// child graph algorithms pause at that processor and resume after the root has run it.
+pub fn execute_ported_compound_processors_until_processor(
+    graph: &mut LGraph,
+    target: ProcessorKind,
+) -> PipelineResult<Vec<GraphExecution>> {
+    execute_ported_compound_processors_to(graph, Some(PipelineStop::Processor(target)))
 }
 
 fn execute_ported_compound_processors_to(
     graph: &mut LGraph,
-    target: Option<LayeredPhase>,
+    stop: Option<PipelineStop>,
 ) -> PipelineResult<Vec<GraphExecution>> {
     preprocess_source_ported_compound_graph(graph);
     configure_graph_properties(graph);
@@ -483,8 +518,8 @@ fn execute_ported_compound_processors_to(
         .collect::<Vec<_>>();
 
     while algorithms[root_index].next_processor < algorithms[root_index].processors.len()
-        && target
-            .map(|target| !compound_algorithms_reached_phase(&algorithms, target))
+        && stop
+            .map(|stop| !compound_algorithms_reached_stop(&algorithms, root_index, stop))
             .unwrap_or(true)
     {
         for index in 0..algorithms.len() {
@@ -492,7 +527,7 @@ fn execute_ported_compound_processors_to(
                 graph,
                 &mut algorithms[index],
                 index == root_index,
-                target,
+                stop,
             )?;
         }
     }
@@ -503,23 +538,50 @@ fn execute_ported_compound_processors_to(
         .collect())
 }
 
-fn compound_algorithms_reached_phase(algorithms: &[GraphAlgorithm], target: LayeredPhase) -> bool {
-    algorithms.iter().all(|algorithm| {
-        !algorithm
-            .processors
-            .iter()
-            .any(|slot| slot.phase == Some(target))
-            || algorithm.processors[..algorithm.next_processor]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PipelineStop {
+    Phase(LayeredPhase),
+    Processor(ProcessorKind),
+}
+
+fn compound_algorithms_reached_stop(
+    algorithms: &[GraphAlgorithm],
+    root_index: usize,
+    stop: PipelineStop,
+) -> bool {
+    match stop {
+        PipelineStop::Phase(target) => algorithms.iter().all(|algorithm| {
+            !algorithm
+                .processors
                 .iter()
                 .any(|slot| slot.phase == Some(target))
-    })
+                || algorithm.processors[..algorithm.next_processor]
+                    .iter()
+                    .any(|slot| slot.phase == Some(target))
+        }),
+        PipelineStop::Processor(target) if target.is_hierarchy_aware() => algorithms[root_index]
+            .execution
+            .processors
+            .contains(&target),
+        PipelineStop::Processor(target) => algorithms.iter().all(|algorithm| {
+            !algorithm.processors.iter().any(|slot| slot.kind == target)
+                || algorithm.execution.processors.contains(&target)
+        }),
+    }
+}
+
+fn slot_matches_stop(slot: ProcessorSlot, stop: PipelineStop) -> bool {
+    match stop {
+        PipelineStop::Phase(target) => slot.phase == Some(target),
+        PipelineStop::Processor(target) => slot.kind == target,
+    }
 }
 
 fn execute_compound_algorithm_until_pause(
     graph: &mut LGraph,
     algorithm: &mut GraphAlgorithm,
     is_root: bool,
-    target: Option<LayeredPhase>,
+    stop: Option<PipelineStop>,
 ) -> PipelineResult<()> {
     while algorithm.next_processor < algorithm.processors.len() {
         let slot = algorithm.processors[algorithm.next_processor];
@@ -544,7 +606,7 @@ fn execute_compound_algorithm_until_pause(
         }
         algorithm.execution.processors.push(kind);
 
-        if hierarchy_aware || target.is_some_and(|target| slot.phase == Some(target)) {
+        if hierarchy_aware || stop.is_some_and(|stop| slot_matches_stop(slot, stop)) {
             break;
         }
     }

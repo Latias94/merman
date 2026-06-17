@@ -1384,13 +1384,13 @@ fn connected_ports(graph: &LGraph, port_ref: PortRef) -> Vec<PortRef> {
         return Vec::new();
     };
 
-    port.outgoing_edges
+    port.incoming_edges
         .iter()
-        .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.target))
+        .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.source))
         .chain(
-            port.incoming_edges
+            port.outgoing_edges
                 .iter()
-                .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.source)),
+                .filter_map(|edge| graph.edges.get(*edge).map(|edge| edge.target)),
         )
         .filter(|other| *other != port_ref)
         .collect()
