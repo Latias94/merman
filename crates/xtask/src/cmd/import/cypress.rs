@@ -366,7 +366,15 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         Ok(())
     }
 
-    fn extract_first_template_literal(s: &str, start: usize) -> Option<(String, usize)> {
+    fn extract_first_template_literal_with_vars(
+        s: &str,
+        start: usize,
+        const_strings: Option<&std::collections::HashMap<String, String>>,
+    ) -> Option<(String, usize)> {
+        fn is_template_ident_byte(b: u8) -> bool {
+            b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+        }
+
         let bytes = s.as_bytes();
         let mut i = start;
         while i < bytes.len() && bytes[i] != b'`' {
@@ -402,9 +410,25 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             if b == b'`' {
                 return Some((out, i + 1));
             }
-            // Reject template interpolation blocks; those aren't static Mermaid fixtures.
             if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-                return None;
+                let vars = const_strings?;
+                let mut j = i + 2;
+                while j < bytes.len() && bytes[j] != b'}' {
+                    if bytes[j] == b'`' {
+                        return None;
+                    }
+                    j += 1;
+                }
+                if j >= bytes.len() {
+                    return None;
+                }
+                let expr = s[i + 2..j].trim();
+                if expr.is_empty() || !expr.as_bytes().iter().copied().all(is_template_ident_byte) {
+                    return None;
+                }
+                out.push_str(vars.get(expr)?);
+                i = j + 1;
+                continue;
             }
             out.push(b as char);
             i += 1;
@@ -412,10 +436,20 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         None
     }
 
-    fn extract_last_template_literal(s: &str, start: usize) -> Option<(String, usize)> {
+    fn extract_first_template_literal(s: &str, start: usize) -> Option<(String, usize)> {
+        extract_first_template_literal_with_vars(s, start, None)
+    }
+
+    fn extract_last_template_literal_with_vars(
+        s: &str,
+        start: usize,
+        const_strings: Option<&std::collections::HashMap<String, String>>,
+    ) -> Option<(String, usize)> {
         let mut cursor = start;
         let mut last: Option<(String, usize)> = None;
-        while let Some((raw, end_rel)) = extract_first_template_literal(s, cursor) {
+        while let Some((raw, end_rel)) =
+            extract_first_template_literal_with_vars(s, cursor, const_strings)
+        {
             last = Some((raw, end_rel));
             cursor = end_rel;
         }
@@ -1763,6 +1797,192 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             current.is_some_and(|it| it.skipped)
         }
 
+        fn cypress_test_start_at(it_positions: &[ItPos], abs: usize) -> Option<usize> {
+            let mut current = None;
+            for it in it_positions {
+                if it.pos > abs {
+                    break;
+                }
+                if it.pos < abs && !it.skipped {
+                    current = Some(it.pos);
+                }
+            }
+            current
+        }
+
+        fn collect_const_string_literals(text: &str) -> std::collections::HashMap<String, String> {
+            let bytes = text.as_bytes();
+
+            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            enum Mode {
+                Normal,
+                SingleQuote,
+                DoubleQuote,
+                Template,
+                LineComment,
+                BlockComment,
+            }
+
+            let mut out = std::collections::HashMap::new();
+            let mut mode = Mode::Normal;
+            let mut escaped = false;
+
+            let mut i = 0usize;
+            while i < bytes.len() {
+                let b = bytes[i];
+                match mode {
+                    Mode::Normal => {
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::LineComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                            mode = Mode::BlockComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::SingleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::DoubleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Template;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+
+                        if bytes.get(i..i + 5) == Some(b"const") {
+                            let before_ok = i == 0 || !is_ident_byte(bytes[i - 1]);
+                            let after_ok = !bytes.get(i + 5).is_some_and(|c| is_ident_byte(*c));
+                            if !before_ok || !after_ok {
+                                i += 1;
+                                continue;
+                            }
+
+                            let mut j = i + 5;
+                            while bytes.get(j).is_some_and(|c| is_ws_byte(*c)) {
+                                j += 1;
+                            }
+                            if !bytes.get(j).is_some_and(|c| is_ident_byte(*c)) {
+                                i += 1;
+                                continue;
+                            }
+                            let (name, mut k) = parse_ident(bytes, j);
+
+                            while k < bytes.len() && bytes[k] != b'=' {
+                                if bytes[k] == b'\n' || bytes[k] == b';' {
+                                    break;
+                                }
+                                k += 1;
+                            }
+                            if bytes.get(k) != Some(&b'=') {
+                                i += 1;
+                                continue;
+                            }
+                            k += 1;
+                            while bytes.get(k).is_some_and(|c| is_ws_byte(*c)) {
+                                k += 1;
+                            }
+                            let quote = match bytes.get(k).copied() {
+                                Some(b'\'') => b'\'',
+                                Some(b'"') => b'"',
+                                _ => {
+                                    i += 1;
+                                    continue;
+                                }
+                            };
+                            if let Some((value, next)) = parse_string_lit(bytes, k + 1, quote) {
+                                out.insert(name, value);
+                                i = next;
+                                continue;
+                            }
+                        }
+
+                        i += 1;
+                    }
+                    Mode::SingleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::DoubleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::Template => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::LineComment => {
+                        if b == b'\n' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::BlockComment => {
+                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::Normal;
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                    }
+                }
+            }
+
+            out
+        }
+
+        let global_const_strings = it_positions
+            .first()
+            .map(|it| collect_const_string_literals(&text[..it.pos]))
+            .unwrap_or_else(|| collect_const_string_literals(&text));
+
         fn synthesize_sankey_render_graph_using_this_graph_blocks(
             spec_path: &Path,
             source_stem: &str,
@@ -1929,12 +2149,16 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 // backtick string from a later `it()` block when the call argument itself isn't
                 // a template literal.
                 let args_slice = &text[start..close_paren];
+                let mut const_strings = global_const_strings.clone();
+                if let Some(scope_start) = cypress_test_start_at(&it_positions, abs) {
+                    const_strings.extend(collect_const_string_literals(&text[scope_start..abs]));
+                }
                 let use_last_template =
                     call == "renderGraph" && args_slice.trim_start().starts_with('[');
                 let extracted = if use_last_template {
-                    extract_last_template_literal(args_slice, 0)
+                    extract_last_template_literal_with_vars(args_slice, 0, Some(&const_strings))
                 } else {
-                    extract_first_template_literal(args_slice, 0)
+                    extract_first_template_literal_with_vars(args_slice, 0, Some(&const_strings))
                 };
                 if let Some((raw, end_rel)) = extracted {
                     let options_obj = extract_second_arg_object_literal(args_slice, end_rel);
