@@ -139,8 +139,8 @@ Relevant platform references:
 The Swift wrapper currently exposes the raw C callback:
 
 ```swift
-let callback: MermanHostTextMeasureCallback = { request, userData in
-    return MermanHostTextMeasureResult(
+let callback: MermanTextMeasureCallback = { request, userData in
+    return MermanTextMeasureResult(
         handled: 0,
         width: 0,
         height: 0,

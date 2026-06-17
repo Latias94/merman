@@ -54,8 +54,8 @@ version is read from the linked native library.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
-For repeated calls or host font measurement, use `MermanReusableEngine` and install a raw
-`MermanHostTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
+For repeated calls or host font measurement, use `MermanReusableEngine` and install a
+`MermanTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
 back to merman's vendored metrics for that request.
 
 For accurate Apple preview geometry, measure with the same text stack that will display the SVG.

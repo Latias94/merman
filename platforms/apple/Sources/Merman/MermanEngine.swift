@@ -1,6 +1,10 @@
 import Foundation
 import MermanFFI
 
+public typealias MermanTextMeasureRequest = MermanHostTextMeasureRequest
+public typealias MermanTextMeasureResult = MermanHostTextMeasureResult
+public typealias MermanTextMeasureCallback = MermanHostTextMeasureCallback
+
 public enum MermanError: Error, LocalizedError {
     case abiMismatch(expected: UInt32, actual: UInt32)
     case structSizeMismatch(name: String, expected: Int, actual: Int)
@@ -283,7 +287,7 @@ public final class MermanReusableEngine {
     }
 
     public func setTextMeasureCallback(
-        _ callback: MermanHostTextMeasureCallback?,
+        _ callback: MermanTextMeasureCallback?,
         userData: UnsafeMutableRawPointer? = nil
     ) throws {
         let engine = try requireEngine()

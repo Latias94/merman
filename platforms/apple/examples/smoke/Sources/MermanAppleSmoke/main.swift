@@ -33,19 +33,19 @@ struct MermanAppleSmoke {
         }
 
         let reusable = try engine.reusableEngine()
-        let callback: MermanHostTextMeasureCallback = { request, _ in
+        let callback: MermanTextMeasureCallback = { request, _ in
             let text = request.text.map {
                 String(decoding: UnsafeBufferPointer(start: $0, count: request.text_len), as: UTF8.self)
             } ?? ""
             if text == "Hello" {
-                return MermanHostTextMeasureResult(
+                return MermanTextMeasureResult(
                     handled: 1,
                     width: 42.0,
                     height: request.line_height,
                     line_count: 1
                 )
             }
-            return MermanHostTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
+            return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
         }
         try reusable.setTextMeasureCallback(callback)
         let reusableSvg = try reusable.renderSvg(source)

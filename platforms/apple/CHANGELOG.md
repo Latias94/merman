@@ -9,6 +9,8 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 ### Added
 
 - Documented Apple host text-measurement guidance for `MermanReusableEngine` callbacks.
+- Added Swift `MermanTextMeasureCallback`, `MermanTextMeasureRequest`, and
+  `MermanTextMeasureResult` aliases for host text-measurement callbacks.
 
 ## [0.8.0-alpha.2] - 2026-06-13
 
