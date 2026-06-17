@@ -706,7 +706,9 @@ fn collect_flowchart_elk_spec_snapshot_cases(
                 let elk_config_source = body.contains("layout: elk")
                     || body.contains("layout: 'elk'")
                     || args_slice.contains("layout: 'elk'")
-                    || args_slice.contains("layout: \"elk\"");
+                    || args_slice.contains("layout: \"elk\"")
+                    || args_slice.contains("defaultRenderer: 'elk'")
+                    || args_slice.contains("defaultRenderer: \"elk\"");
                 if flowchart_elk_source || elk_config_source {
                     cases.push(FlowchartElkSpecCase {
                         case_number: idx_in_file + 1,
@@ -1094,12 +1096,20 @@ it('renderGraph elk config', () => {
       C --> D`
   ], { layout: 'elk' });
 });
+
+it('renderGraph defaultRenderer elk config', () => {
+  renderGraph(
+    `flowchart TD
+      E --> F`,
+    { flowchart: { defaultRenderer: 'elk' } }
+  );
+});
 "#;
 
         let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
             .expect("inline flowchart-elk spec should parse");
 
-        assert_eq!(cases.len(), 2);
+        assert_eq!(cases.len(), 3);
         assert_eq!(cases[0].case_number, 1);
         assert_eq!(cases[0].test_name, "first elk snapshot");
         assert_eq!(
@@ -1117,5 +1127,14 @@ it('renderGraph elk config', () => {
         );
         assert_eq!(cases[1].call, "renderGraph");
         assert!(!cases[1].snapshot);
+
+        assert_eq!(cases[2].case_number, 3);
+        assert_eq!(cases[2].test_name, "renderGraph defaultRenderer elk config");
+        assert_eq!(
+            cases[2].stem,
+            "upstream_cypress_flowchart_elk_spec_rendergraph_defaultrenderer_elk_config_003"
+        );
+        assert_eq!(cases[2].call, "renderGraph");
+        assert!(!cases[2].snapshot);
     }
 }
