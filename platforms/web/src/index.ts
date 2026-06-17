@@ -401,6 +401,40 @@ export function createBrowserTextMeasurer(): HostTextMeasurer {
       };
     }
 
+    applyTextMeasureStyle(probe, request);
+    const maxWidth = normalizeMeasureMaxWidth(request);
+    if (request.wrap_mode === "html-like" && maxWidth !== null) {
+      const natural = measureProbeText(probe, request.text, {
+        display: "inline-block",
+        width: "auto",
+        maxWidth: "none",
+        whiteSpace: "nowrap",
+      });
+      if (natural.width <= maxWidth) {
+        return natural;
+      }
+
+      return measureProbeText(probe, request.text, {
+        display: "table",
+        width: `${maxWidth}px`,
+        maxWidth: `${maxWidth}px`,
+        whiteSpace: "break-spaces",
+      });
+    }
+
+    return measureProbeText(probe, request.text, {
+      display: "inline-block",
+      width: "auto",
+      maxWidth: maxWidth === null ? "none" : `${maxWidth}px`,
+      whiteSpace: request.white_space,
+    });
+  };
+}
+
+function applyTextMeasureStyle(
+  probe: HTMLDivElement,
+  request: HostTextMeasureRequest
+) {
     const style = probe.style;
     style.fontFamily = request.font_family || "sans-serif";
     style.fontSize = `${Math.max(1, request.font_size)}px`;
@@ -410,32 +444,43 @@ export function createBrowserTextMeasurer(): HostTextMeasurer {
     style.letterSpacing = `${request.letter_spacing || 0}px`;
     style.wordSpacing = `${request.word_spacing || 0}px`;
     style.direction = request.direction === "rtl" ? "rtl" : "ltr";
-    style.whiteSpace = request.white_space;
-    style.width =
-      request.has_max_width &&
-      typeof request.max_width === "number" &&
-      Number.isFinite(request.max_width) &&
-      request.max_width > 0
-        ? `${request.max_width}px`
-        : "max-content";
-    style.maxWidth =
-      request.has_max_width &&
-      typeof request.max_width === "number" &&
-      Number.isFinite(request.max_width) &&
-      request.max_width > 0
-        ? `${request.max_width}px`
-        : "none";
+}
 
-    probe.textContent = request.text;
+function measureProbeText(
+  probe: HTMLDivElement,
+  text: string,
+  styleOverride: Pick<
+    CSSStyleDeclaration,
+    "display" | "width" | "maxWidth" | "whiteSpace"
+  >
+): HostTextMeasureResult {
+    probe.style.display = styleOverride.display;
+    probe.style.width = styleOverride.width;
+    probe.style.maxWidth = styleOverride.maxWidth;
+    probe.style.whiteSpace = styleOverride.whiteSpace;
+    probe.textContent = text;
     const rect = probe.getBoundingClientRect();
-    const lineHeight = Math.max(1, request.line_height || request.font_size);
+    const lineHeight = Math.max(1, parseFloat(probe.style.lineHeight) || 1);
     const height = Math.max(lineHeight, rect.height);
     return {
       width: Math.max(0, rect.width),
       height,
       line_count: Math.max(1, Math.round(height / lineHeight)),
     };
-  };
+}
+
+function normalizeMeasureMaxWidth(
+  request: HostTextMeasureRequest
+): number | null {
+  if (
+    !request.has_max_width ||
+    typeof request.max_width !== "number" ||
+    !Number.isFinite(request.max_width) ||
+    request.max_width <= 0
+  ) {
+    return null;
+  }
+  return request.max_width;
 }
 
 function createTextMeasureProbe(): HTMLDivElement | null {

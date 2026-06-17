@@ -36,6 +36,35 @@ const options = {
   layout: { text_measurer: "deterministic" },
 };
 
+class FakeMeasureElement {
+  style = {};
+  textContent = "";
+
+  setAttribute() {}
+
+  getBoundingClientRect() {
+    const fontSize = parseFloat(this.style.fontSize) || 16;
+    const lineHeight = parseFloat(this.style.lineHeight) || fontSize;
+    const naturalWidth = (this.textContent || "").length * fontSize * 0.5;
+    const fixedWidth =
+      typeof this.style.width === "string" && this.style.width.endsWith("px")
+        ? parseFloat(this.style.width)
+        : null;
+    const width =
+      fixedWidth !== null && Number.isFinite(fixedWidth)
+        ? fixedWidth
+        : naturalWidth;
+    const lineCount =
+      fixedWidth !== null && fixedWidth > 0
+        ? Math.max(1, Math.ceil(naturalWidth / fixedWidth))
+        : 1;
+    return {
+      width,
+      height: lineHeight * lineCount,
+    };
+  }
+}
+
 assert.equal(api.isMermanInitialized(), true);
 assert.equal(Number.isInteger(api.abiVersion()), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
@@ -43,6 +72,21 @@ assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
 assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
 assert.equal(typeof api.createBrowserTextMeasurer, "function");
 assert.equal(api.createBrowserTextMeasurer()({ text: "Node", font_size: 16 }), undefined);
+withFakeMeasureDom(() => {
+  const browserMeasurer = api.createBrowserTextMeasurer();
+  const shortLabel = browserMeasurer(textMeasureRequest("Condition?", 200));
+  assert.ok(shortLabel.width > 0);
+  assert.ok(
+    shortLabel.width < 200,
+    `short max-width labels should use natural width, got ${shortLabel.width}`
+  );
+
+  const longLabel = browserMeasurer(
+    textMeasureRequest("Condition ".repeat(40), 200)
+  );
+  assert.equal(longLabel.width, 200);
+  assert.ok(longLabel.line_count > 1);
+});
 
 const capabilities = api.bindingCapabilities();
 assert.equal(typeof capabilities.render, "boolean");
@@ -119,6 +163,47 @@ if (capabilities.core_full) {
 const asciiDiagrams = api.asciiSupportedDiagrams();
 for (const diagram of asciiDiagrams) {
   assert.equal(api.isDiagramType(diagram), true);
+}
+
+function textMeasureRequest(text, maxWidth) {
+  return {
+    text,
+    font_family: "Trebuchet MS, sans-serif",
+    font_size: 16,
+    font_weight: "normal",
+    font_style: "normal",
+    max_width: maxWidth,
+    has_max_width: true,
+    line_height: 24,
+    letter_spacing: 0,
+    word_spacing: 0,
+    wrap_mode: "html-like",
+    direction: "ltr",
+    white_space: "break-spaces",
+  };
+}
+
+function withFakeMeasureDom(run) {
+  const originalDocument = globalThis.document;
+  globalThis.document = {
+    body: {
+      appendChild() {},
+    },
+    createElement(tagName) {
+      assert.equal(tagName, "div");
+      return new FakeMeasureElement();
+    },
+  };
+
+  try {
+    run();
+  } finally {
+    if (originalDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+  }
 }
 
 const fixtureNames = {
