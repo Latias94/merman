@@ -61,6 +61,7 @@ serde_json = { version = "1.0.138", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
 toml = "0.9.12"
 json5 = "0.4.1"
+js-sys = "0.3"
 thiserror = "2.0.11"
 tracing = "0.1.41"
 uniffi = "0.31.1"

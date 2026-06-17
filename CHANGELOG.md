@@ -12,6 +12,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   clipping trailing characters in some browser/font combinations. Merman now keeps Flowchart HTML
   labels non-clipping by default and lets precise hosts supply their own DOM/canvas/native text
   measurements through the callback.
+- Added browser/WASM host text-measurement entry points for `@mermanjs/web`, including
+  `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. The
+  playground now demonstrates this best-practice path by default and adds text-measurement plus
+  font-stack switches for reproducing browser/font-specific clipping reports.
 - Extended the Android JNI, Apple Swift, and Flutter/Dart FFI wrappers to expose reusable engines
   and host text-measurement callbacks on top of the C ABI v2 contract.
 - Documented host text-measurement best practices for Android JNI, Apple Swift, Flutter/Dart FFI,

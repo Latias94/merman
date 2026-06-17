@@ -422,12 +422,20 @@ See
 for platform guidance covering Android JNI, Apple Swift, Flutter/Dart FFI, browser/WebView
 measurement, callback lifetime, and testing.
 
+The web package exposes the same idea for browser integrations through
+`renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. The
+playground uses this as its default preview path and lets maintainers switch between browser and
+headless measurement plus several font stacks, which is the recommended way to reproduce
+browser/font-specific clipping reports such as missing trailing punctuation in Flowchart condition
+labels.
+
 Detailed platform notes:
 
 - Android/Kotlin: [`docs/bindings/ANDROID_JNI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
 - Apple Swift Package: [`docs/bindings/APPLE_SWIFT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
 - Flutter/Dart FFI: [`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
 - Python UniFFI package: [`docs/bindings/PYTHON_UNIFFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
+- Browser/WebAssembly: [`platforms/web/README.md`](https://github.com/Latias94/merman/blob/main/platforms/web/README.md)
 
 ### Binary size
 

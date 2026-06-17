@@ -1,6 +1,11 @@
 import { normalizeThemeName } from "@mermanjs/web";
+import { diagramFontStack, type DiagramFont } from "@/src/lib/diagram-font";
 
 export type MermaidConfigObject = Record<string, unknown>;
+
+export interface MermaidConfigBuildOptions {
+  diagramFont?: DiagramFont;
+}
 
 export const DEFAULT_MERMAID_CONFIG = "{\n}\n";
 
@@ -23,12 +28,16 @@ export function formatMermaidConfigJson(configJson: string): string {
 
 export function buildMermaidConfig(
   configJson: string,
-  theme: string
+  theme: string,
+  options: MermaidConfigBuildOptions = {}
 ): MermaidConfigObject {
   const config = { ...parseMermaidConfigJson(configJson) };
   const normalizedTheme = normalizeThemeName(theme);
   if (normalizedTheme !== "default" && config.theme === undefined) {
     config.theme = normalizedTheme;
+  }
+  if (options.diagramFont) {
+    applyDiagramFont(config, diagramFontStack(options.diagramFont));
   }
   return config;
 }
@@ -36,9 +45,10 @@ export function buildMermaidConfig(
 export function sourceWithConfig(
   source: string,
   theme: string,
-  configJson: string
+  configJson: string,
+  options: MermaidConfigBuildOptions = {}
 ): string {
-  const config = buildMermaidConfig(configJson, theme);
+  const config = buildMermaidConfig(configJson, theme, options);
   if (Object.keys(config).length === 0) {
     return source;
   }
@@ -69,4 +79,18 @@ function insertDirectiveAfterFrontmatter(source: string, directive: string): str
 
 function isPlainObject(value: unknown): value is MermaidConfigObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function applyDiagramFont(config: MermaidConfigObject, fontFamily: string) {
+  if (config.fontFamily === undefined) {
+    config.fontFamily = fontFamily;
+  }
+
+  const themeVariables = isPlainObject(config.themeVariables)
+    ? { ...config.themeVariables }
+    : {};
+  if (themeVariables.fontFamily === undefined) {
+    themeVariables.fontFamily = fontFamily;
+  }
+  config.themeVariables = themeVariables;
 }

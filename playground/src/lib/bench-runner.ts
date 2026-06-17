@@ -2,6 +2,7 @@ import {
   prewarmMermaidRenderer,
   renderMermaidSvg,
 } from "@/src/lib/mermaid-renderer";
+import type { DiagramFont } from "@/src/lib/diagram-font";
 
 export type BenchEngine = "merman" | "mermaid";
 
@@ -42,6 +43,7 @@ export interface BenchRunOptions {
   source: string;
   theme: string;
   configJson: string;
+  diagramFont?: DiagramFont;
   engines: BenchEngine[];
   warmupIterations: number;
   measureIterations: number;
@@ -53,6 +55,7 @@ export async function runLocalRenderBench({
   source,
   theme,
   configJson,
+  diagramFont,
   engines,
   warmupIterations,
   measureIterations,
@@ -63,13 +66,14 @@ export async function runLocalRenderBench({
 
   for (const engine of engines) {
     throwIfAborted(signal);
-    await prepareEngine(engine, theme, configJson);
+    await prepareEngine(engine, theme, configJson, diagramFont);
     throwIfAborted(signal);
     await runWarmup({
       engine,
       source,
       theme,
       configJson,
+      diagramFont,
       iterations: warmupIterations,
       renderMerman,
       signal,
@@ -80,6 +84,7 @@ export async function runLocalRenderBench({
         source,
         theme,
         configJson,
+        diagramFont,
         iterations: measureIterations,
         renderMerman,
         signal,
@@ -97,10 +102,11 @@ export async function runLocalRenderBench({
 async function prepareEngine(
   engine: BenchEngine,
   theme: string,
-  configJson: string
+  configJson: string,
+  diagramFont: DiagramFont | undefined
 ) {
   if (engine === "mermaid") {
-    await prewarmMermaidRenderer(theme, configJson);
+    await prewarmMermaidRenderer(theme, configJson, { diagramFont });
   }
 }
 
@@ -149,6 +155,7 @@ interface RunLoopOptions {
   source: string;
   theme: string;
   configJson: string;
+  diagramFont?: DiagramFont;
   renderMerman: MermanRenderFn;
   signal?: AbortSignal;
 }
@@ -158,6 +165,7 @@ async function renderOnce({
   source,
   theme,
   configJson,
+  diagramFont,
   renderMerman,
 }: Omit<RunLoopOptions, "signal">): Promise<{
   elapsedMs: number;
@@ -165,7 +173,9 @@ async function renderOnce({
   error: string | null;
 }> {
   if (engine === "mermaid") {
-    const result = await renderMermaidSvg(source, theme, configJson);
+    const result = await renderMermaidSvg(source, theme, configJson, {
+      diagramFont,
+    });
     return {
       elapsedMs: result.renderTime,
       svgLength: result.svg?.length ?? 0,

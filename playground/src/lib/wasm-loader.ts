@@ -1,14 +1,18 @@
 import {
   asciiSupportedDiagrams,
+  createBrowserTextMeasurer,
   initMerman,
   layoutJson,
+  layoutJsonWithTextMeasurer,
   parseJson,
   SUPPORTED_THEMES,
   renderAscii,
   renderSvg,
+  renderSvgWithTextMeasurer,
   supportedDiagrams,
   supportedThemes,
   validate as validateDiagram,
+  type HostTextMeasurer,
   type HostThemePresetName,
   type MermanWasmModule,
   type SvgBindingOptions,
@@ -18,6 +22,10 @@ import {
   DEFAULT_MERMAID_CONFIG,
   sourceWithConfig,
 } from "@/src/lib/mermaid-config";
+import {
+  diagramFontStack,
+  type DiagramFont,
+} from "@/src/lib/diagram-font";
 
 export { SUPPORTED_THEMES };
 
@@ -28,10 +36,14 @@ export interface ValidationResult {
 
 export type SvgPipeline = "parity" | "readable" | "resvg-safe";
 export type HostThemePreset = HostThemePresetName;
+export type TextMeasurementMode = "browser" | "headless";
+export type { DiagramFont };
 
 export interface WasmRenderOptions {
   pipeline?: SvgPipeline;
   hostThemePreset?: HostThemePreset;
+  textMeasurementMode?: TextMeasurementMode;
+  diagramFont?: DiagramFont;
 }
 
 export interface MermanWasm {
@@ -65,6 +77,7 @@ let wasmModule: MermanWasm | null = null;
 let loadingPromise: Promise<MermanWasm> | null = null;
 let warmupConfigSignature: string | null = null;
 let warmupPromise: Promise<void> | null = null;
+let browserTextMeasurer: HostTextMeasurer | null = null;
 
 const WARMUP_SOURCE = "flowchart TD\n  warmupA[Warmup] --> warmupB[Ready]";
 const WASM_CACHE_NAME = "merman-playground-wasm-v1";
@@ -147,6 +160,8 @@ export async function prewarmWasmRenderer(
     configJson,
     options?.pipeline ?? "parity",
     options?.hostThemePreset ?? "none",
+    options?.textMeasurementMode ?? "headless",
+    options?.diagramFont ?? "system",
   ].join("\0");
 
   if (warmupConfigSignature === configSignature) return;
@@ -191,10 +206,16 @@ function createWasmAdapter(): MermanWasm {
       options?: WasmRenderOptions
     ): string {
       const sourceTheme = options?.hostThemePreset ? "default" : theme;
-      return renderSvg(
-        sourceWithConfig(code, sourceTheme, configJson),
-        bindingOptionsForRender(options)
-      );
+      const source = sourceWithConfig(code, sourceTheme, configJson);
+      const bindingOptions = bindingOptionsForRender(options);
+      if (options?.textMeasurementMode === "browser") {
+        return renderSvgWithTextMeasurer(
+          source,
+          getBrowserTextMeasurer(),
+          bindingOptions
+        );
+      }
+      return renderSvg(source, bindingOptions);
     },
 
     render_ascii(
@@ -229,9 +250,18 @@ function createWasmAdapter(): MermanWasm {
       options?: WasmRenderOptions
     ): string {
       const sourceTheme = options?.hostThemePreset ? "default" : theme;
+      const source = sourceWithConfig(code, sourceTheme, configJson);
+      const bindingOptions = bindingOptionsForRender(options);
+      if (options?.textMeasurementMode === "browser") {
+        return layoutJsonWithTextMeasurer(
+          source,
+          getBrowserTextMeasurer(),
+          bindingOptions
+        );
+      }
       return layoutJson(
-        sourceWithConfig(code, sourceTheme, configJson),
-        bindingOptionsForRender(options)
+        source,
+        bindingOptions
       );
     },
 
@@ -260,16 +290,34 @@ function createWasmAdapter(): MermanWasm {
 function bindingOptionsForRender(
   options: WasmRenderOptions | undefined
 ): SvgBindingOptions | undefined {
-  if (!options?.pipeline && !options?.hostThemePreset) {
+  const fontFamily = options?.diagramFont
+    ? diagramFontStack(options.diagramFont)
+    : undefined;
+  if (!options?.pipeline && !options?.hostThemePreset && !fontFamily) {
     return undefined;
   }
 
   const bindingOptions: SvgBindingOptions = {};
-  if (options.hostThemePreset) {
-    bindingOptions.host_theme = { preset: options.hostThemePreset };
+  if (options?.hostThemePreset) {
+    bindingOptions.host_theme = {
+      preset: options.hostThemePreset,
+      ...(fontFamily ? { font_family: fontFamily } : {}),
+    };
+  } else if (fontFamily) {
+    bindingOptions.site_config = {
+      fontFamily: fontFamily,
+      themeVariables: {
+        fontFamily: fontFamily,
+      },
+    };
   }
-  if (options.pipeline) {
+  if (options?.pipeline) {
     bindingOptions.svg = { pipeline: options.pipeline };
   }
   return bindingOptions;
+}
+
+function getBrowserTextMeasurer(): HostTextMeasurer {
+  browserTextMeasurer ??= createBrowserTextMeasurer();
+  return browserTextMeasurer;
 }

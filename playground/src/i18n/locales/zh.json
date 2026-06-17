@@ -9,6 +9,8 @@
     "theme": "主题",
     "mermaidTheme": "Mermaid 原生主题",
     "hostTheme": "宿主预设",
+    "textMeasurement": "文本测量",
+    "font": "字体",
     "export": "导出",
     "share": "分享",
     "bench": "压测",
@@ -19,6 +21,17 @@
   "layout": {
     "editor": "编辑",
     "preview": "预览"
+  },
+  "textMeasurement": {
+    "browser": "浏览器",
+    "headless": "Headless"
+  },
+  "diagramFonts": {
+    "trebuchet": "Mermaid 默认",
+    "system": "系统 UI",
+    "arial": "Arial",
+    "georgia": "Georgia",
+    "monospace": "等宽"
   },
   "export": {
     "title": "导出",
@@ -248,6 +261,8 @@
     "chars": "字符",
     "renderTime": "渲染",
     "theme": "主题",
+    "measurement": "测量",
+    "font": "字体",
     "ready": "就绪",
     "rendering": "渲染中...",
     "error": "错误"

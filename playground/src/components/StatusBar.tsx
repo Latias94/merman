@@ -4,8 +4,15 @@ import { cn } from "@/lib/utils";
 
 export function StatusBar() {
   const { t } = useTranslation();
-  const { code, lastRenderTime, diagramTheme, hostThemePreset, diagramType } =
-    useAppStore();
+  const {
+    code,
+    lastRenderTime,
+    diagramTheme,
+    hostThemePreset,
+    diagramType,
+    textMeasurementMode,
+    diagramFont,
+  } = useAppStore();
 
   const lineCount = code.split("\n").length;
   const charCount = code.length;
@@ -40,6 +47,13 @@ export function StatusBar() {
           {hostThemePreset === "none"
             ? t(`themes.${diagramTheme}`)
             : t(`hostThemes.${hostThemePreset}`)}
+        </span>
+        <span className="hidden xl:inline">
+          {t("status.measurement")}:{" "}
+          {t(`textMeasurement.${textMeasurementMode}`)}
+        </span>
+        <span className="hidden xl:inline">
+          {t("status.font")}: {t(`diagramFonts.${diagramFont}`)}
         </span>
         <span className="hidden lg:inline">{t("app.title")}</span>
       </div>

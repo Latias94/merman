@@ -39,6 +39,10 @@ const options = {
 assert.equal(api.isMermanInitialized(), true);
 assert.equal(Number.isInteger(api.abiVersion()), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
+assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
+assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
+assert.equal(typeof api.createBrowserTextMeasurer, "function");
+assert.equal(api.createBrowserTextMeasurer()({ text: "Node", font_size: 16 }), undefined);
 
 const capabilities = api.bindingCapabilities();
 assert.equal(typeof capabilities.render, "boolean");
@@ -51,6 +55,22 @@ if (capabilities.render) {
   const svg = api.renderSvg(source, options);
   assert.match(svg, /<svg/);
   assert.match(svg, /Hello/);
+
+  let measureCallCount = 0;
+  const hostTextMeasurer = (request) => {
+    measureCallCount += 1;
+    return {
+      width: Math.max(1, request.text.length * 8),
+      height: Math.max(1, request.line_height || request.font_size),
+      line_count: 1,
+    };
+  };
+  const measuredSvg = api.renderSvgWithTextMeasurer(source, hostTextMeasurer, options);
+  assert.match(measuredSvg, /<svg/);
+  assert.match(measuredSvg, /Hello/);
+  assert.ok(measureCallCount > 0);
+  const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
+  assert.equal(typeof JSON.parse(measuredLayout), "object");
 
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
   assert.equal(typeof api.layoutObject(source, options), "object");

@@ -9,6 +9,8 @@
     "theme": "Theme",
     "mermaidTheme": "Mermaid themes",
     "hostTheme": "Host presets",
+    "textMeasurement": "Text measurement",
+    "font": "Font",
     "export": "Export",
     "share": "Share",
     "bench": "Bench",
@@ -19,6 +21,17 @@
   "layout": {
     "editor": "Editor",
     "preview": "Preview"
+  },
+  "textMeasurement": {
+    "browser": "Browser",
+    "headless": "Headless"
+  },
+  "diagramFonts": {
+    "trebuchet": "Mermaid default",
+    "system": "System UI",
+    "arial": "Arial",
+    "georgia": "Georgia",
+    "monospace": "Monospace"
   },
   "export": {
     "title": "Export",
@@ -248,6 +261,8 @@
     "chars": "Chars",
     "renderTime": "Render",
     "theme": "Theme",
+    "measurement": "Measure",
+    "font": "Font",
     "ready": "Ready",
     "rendering": "Rendering...",
     "error": "Error"

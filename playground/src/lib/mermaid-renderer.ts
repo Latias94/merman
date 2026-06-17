@@ -3,6 +3,7 @@ import {
   buildMermaidConfig,
   sourceWithConfig,
 } from "@/src/lib/mermaid-config";
+import type { DiagramFont } from "@/src/lib/diagram-font";
 import { normalizeThemeName } from "@mermanjs/web";
 
 export const MERMAID_JS_VERSION = "11.15.0";
@@ -60,7 +61,8 @@ const CDN_ENABLED = import.meta.env.VITE_MERMAID_CDN !== "false";
 export async function renderMermaidSvg(
   source: string,
   theme: string,
-  configJson = DEFAULT_MERMAID_CONFIG
+  configJson = DEFAULT_MERMAID_CONFIG,
+  options: { diagramFont?: DiagramFont } = {}
 ): Promise<MermaidRenderResult> {
   const prepareStartTime = performance.now();
 
@@ -68,12 +70,14 @@ export async function renderMermaidSvg(
     const prepared = await prepareMermaid(theme, configJson, {
       warmup: true,
       zenuml: isZenUmlSource(source),
+      diagramFont: options.diagramFont,
     });
     const prepareTime = performance.now() - prepareStartTime;
     const preparedSource = sourceWithConfig(
       source,
       prepared.normalizedTheme,
-      configJson
+      configJson,
+      { diagramFont: options.diagramFont }
     );
     const startTime = performance.now();
 
@@ -101,9 +105,13 @@ export async function preloadMermaid(): Promise<void> {
 
 export async function prewarmMermaidRenderer(
   theme: string,
-  configJson = DEFAULT_MERMAID_CONFIG
+  configJson = DEFAULT_MERMAID_CONFIG,
+  options: { diagramFont?: DiagramFont } = {}
 ): Promise<void> {
-  await prepareMermaid(theme, configJson, { warmup: true }).catch(() => undefined);
+  await prepareMermaid(theme, configJson, {
+    warmup: true,
+    diagramFont: options.diagramFont,
+  }).catch(() => undefined);
 }
 
 export function isMermaidLoaded(): boolean {
@@ -168,7 +176,7 @@ async function loadMermaidModule(): Promise<MermaidApi> {
 async function prepareMermaid(
   theme: string,
   configJson: string,
-  options: { warmup: boolean; zenuml?: boolean }
+  options: { warmup: boolean; zenuml?: boolean; diagramFont?: DiagramFont }
 ): Promise<{
   mermaid: MermaidApi;
   normalizedTheme: string;
@@ -179,7 +187,9 @@ async function prepareMermaid(
     await ensureZenUmlRegistered(mermaid);
   }
   const normalizedTheme = normalizeThemeName(theme);
-  const effectiveConfig = buildMermaidConfig(configJson, normalizedTheme);
+  const effectiveConfig = buildMermaidConfig(configJson, normalizedTheme, {
+    diagramFont: options.diagramFont,
+  });
   const runtimeConfig: MermaidConfig = {
     ...effectiveConfig,
     startOnLoad: false,
@@ -197,7 +207,13 @@ async function prepareMermaid(
   }
 
   if (options.warmup) {
-    await warmupMermaid(mermaid, normalizedTheme, configJson, configSignature);
+    await warmupMermaid(
+      mermaid,
+      normalizedTheme,
+      configJson,
+      configSignature,
+      options.diagramFont
+    );
   }
 
   return { mermaid, normalizedTheme, configSignature };
@@ -254,7 +270,8 @@ async function warmupMermaid(
   mermaid: MermaidApi,
   normalizedTheme: string,
   configJson: string,
-  configSignature: string
+  configSignature: string,
+  diagramFont: DiagramFont | undefined
 ): Promise<void> {
   if (warmupConfigSignature === configSignature) return;
   if (warmupPromise) {
@@ -265,7 +282,9 @@ async function warmupMermaid(
   warmupPromise = Promise.resolve(
     mermaid.render(
       `mermaid-warmup-${++renderSerial}`,
-      sourceWithConfig(WARMUP_SOURCE, normalizedTheme, configJson)
+      sourceWithConfig(WARMUP_SOURCE, normalizedTheme, configJson, {
+        diagramFont,
+      })
     )
   )
     .then(() => {
