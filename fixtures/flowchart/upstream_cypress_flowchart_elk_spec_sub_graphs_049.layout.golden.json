@@ -1,0 +1,197 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "subgraph_ko6czgs5u",
+          "x": 225.28,
+          "y": -52.0,
+          "width": 131.84,
+          "height": 102.0,
+          "is_cluster": true
+        },
+        {
+          "id": "D",
+          "x": 225.28,
+          "y": -36.0,
+          "width": 115.84,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C",
+          "x": 54.68,
+          "y": -52.0,
+          "width": 109.36,
+          "height": 109.36,
+          "is_cluster": false
+        },
+        {
+          "id": "E",
+          "x": 376.62,
+          "y": -52.0,
+          "width": 70.84,
+          "height": 70.84,
+          "is_cluster": false
+        },
+        {
+          "id": "A",
+          "x": 54.68,
+          "y": 79.68,
+          "width": 69.6,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_C_D_0",
+          "from": "C",
+          "to": "D",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 109.36,
+              "y": -52.0
+            },
+            {
+              "x": 138.36,
+              "y": -52.0
+            },
+            {
+              "x": 138.36,
+              "y": -55.68
+            },
+            {
+              "x": 138.36,
+              "y": -32.32
+            },
+            {
+              "x": 138.36,
+              "y": -36.0
+            },
+            {
+              "x": 167.36,
+              "y": -36.0
+            }
+          ],
+          "label": {
+            "x": 138.36,
+            "y": -44.0,
+            "width": 23.36,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_C_E_0",
+          "from": "C",
+          "to": "E",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 109.36,
+              "y": -52.0
+            },
+            {
+              "x": 210.8,
+              "y": -52.0
+            },
+            {
+              "x": 239.76,
+              "y": -52.0
+            },
+            {
+              "x": 341.2,
+              "y": -52.0
+            }
+          ],
+          "label": {
+            "x": 225.28,
+            "y": -52.0,
+            "width": 28.96,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_D_E_0",
+          "from": "D",
+          "to": "E",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 283.2,
+              "y": -36.0
+            },
+            {
+              "x": 312.2,
+              "y": -36.0
+            },
+            {
+              "x": 312.2,
+              "y": -52.0
+            },
+            {
+              "x": 341.2,
+              "y": -52.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "subgraph_ko6czgs5u",
+          "x": 225.28,
+          "y": -52.0,
+          "width": 131.84,
+          "height": 102.0,
+          "diff": -4.0,
+          "offset_y": 18.0,
+          "title": "Untitled subgraph",
+          "title_label": {
+            "x": 225.28,
+            "y": -92.0,
+            "width": 113.28,
+            "height": 22.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -106.68,
+        "max_x": 412.04,
+        "max_y": 106.68
+      }
+    }
+  }
+}
