@@ -19,6 +19,7 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_018",
     "upstream_cypress_flowchart_elk_spec_58_elk_handle_styling_with_style_expressions_019",
     "upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_020",
+    "upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_021",
     "upstream_cypress_flowchart_elk_spec_61_elk_fontawesome_icons_in_edge_labels_022",
     "upstream_cypress_flowchart_elk_spec_62_elk_should_render_styled_subgraphs_023",
     "upstream_cypress_flowchart_elk_spec_63_elk_title_on_subgraphs_should_be_themeable_024",
@@ -179,6 +180,9 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_020"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_021"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_61_elk_fontawesome_icons_in_edge_labels_022"
