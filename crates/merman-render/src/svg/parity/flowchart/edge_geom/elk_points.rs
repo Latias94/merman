@@ -98,7 +98,8 @@ fn apply_start_intersection(
         return;
     };
     let outside = points[first_outside].clone();
-    let value = node_intersection(ctx, node_id, shape, bounds, &outside);
+    let center = points[0].clone();
+    let value = node_intersection(ctx, node_id, shape, bounds, &outside, &center);
     replace_endpoint(points, Endpoint::Start, value);
 }
 
@@ -117,7 +118,8 @@ fn apply_end_intersection(
         return;
     };
     let outside = points[outside].clone();
-    let value = node_intersection(ctx, node_id, shape, bounds, &outside);
+    let center = points[points.len() - 1].clone();
+    let value = node_intersection(ctx, node_id, shape, bounds, &outside, &center);
     replace_endpoint(points, Endpoint::End, value);
 }
 
@@ -127,8 +129,15 @@ fn node_intersection(
     shape: Option<&str>,
     bounds: &BoundaryNode,
     outside: &crate::model::LayoutPoint,
+    center: &crate::model::LayoutPoint,
 ) -> crate::model::LayoutPoint {
-    intersect_for_layout_shape(ctx, node_id, bounds, shape, outside)
+    let outside = ensure_truly_outside(bounds, outside);
+    let candidate = intersect_for_layout_shape(ctx, node_id, bounds, shape, &outside);
+    if node_intersection_is_usable(bounds, &outside, &candidate) {
+        candidate
+    } else {
+        fallback_intersection(bounds, &outside, center)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -169,6 +178,147 @@ fn outside_node(bounds: &BoundaryNode, point: &crate::model::LayoutPoint) -> boo
     let dx = (point.x - bounds.x).abs();
     let dy = (point.y - bounds.y).abs();
     dx >= bounds.width / 2.0 || dy >= bounds.height / 2.0
+}
+
+fn ensure_truly_outside(
+    bounds: &BoundaryNode,
+    point: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    const EPS: f64 = 1.0;
+    const PUSH_OUT: f64 = 10.0;
+
+    let dx = (point.x - bounds.x).abs();
+    let dy = (point.y - bounds.y).abs();
+    let w = bounds.width / 2.0;
+    let h = bounds.height / 2.0;
+    if (dx - w).abs() < EPS || (dy - h).abs() < EPS {
+        let dir_x = point.x - bounds.x;
+        let dir_y = point.y - bounds.y;
+        let len = (dir_x * dir_x + dir_y * dir_y).sqrt();
+        if len > 0.0 {
+            return crate::model::LayoutPoint {
+                x: bounds.x + (dir_x / len) * (len + PUSH_OUT),
+                y: bounds.y + (dir_y / len) * (len + PUSH_OUT),
+            };
+        }
+    }
+    point.clone()
+}
+
+fn node_intersection_is_usable(
+    bounds: &BoundaryNode,
+    outside: &crate::model::LayoutPoint,
+    candidate: &crate::model::LayoutPoint,
+) -> bool {
+    const EPS: f64 = 1.0;
+
+    let wrong_side = (outside.x < bounds.x && candidate.x > bounds.x)
+        || (outside.x > bounds.x && candidate.x < bounds.x);
+    if wrong_side {
+        return false;
+    }
+
+    let dx = outside.x - candidate.x;
+    let dy = outside.y - candidate.y;
+    (dx * dx + dy * dy).sqrt() > EPS
+}
+
+fn fallback_intersection(
+    bounds: &BoundaryNode,
+    outside: &crate::model::LayoutPoint,
+    center: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    let inside = make_inside_point(bounds, outside, center);
+    rect_intersection(bounds, outside, &inside)
+}
+
+fn make_inside_point(
+    bounds: &BoundaryNode,
+    outside: &crate::model::LayoutPoint,
+    center: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    const EPS: f64 = 1.0;
+
+    let is_vertical = (outside.x - bounds.x).abs() < EPS;
+    let is_horizontal = (outside.y - bounds.y).abs() < EPS;
+    crate::model::LayoutPoint {
+        x: if is_vertical {
+            outside.x
+        } else if outside.x < bounds.x {
+            bounds.x - bounds.width / 4.0
+        } else {
+            bounds.x + bounds.width / 4.0
+        },
+        y: if is_horizontal { outside.y } else { center.y },
+    }
+}
+
+fn rect_intersection(
+    bounds: &BoundaryNode,
+    outside: &crate::model::LayoutPoint,
+    inside: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    let x = bounds.x;
+    let y = bounds.y;
+    let w = bounds.width / 2.0;
+    let h = bounds.height / 2.0;
+
+    let q_total = (outside.y - inside.y).abs();
+    let r_total = (outside.x - inside.x).abs();
+
+    if (y - outside.y).abs() * w > (x - outside.x).abs() * h {
+        let q = if inside.y < outside.y {
+            outside.y - h - y
+        } else {
+            y - h - outside.y
+        };
+        let r = (r_total * q) / q_total;
+        let mut res = crate::model::LayoutPoint {
+            x: if inside.x < outside.x {
+                inside.x + r
+            } else {
+                inside.x - r_total + r
+            },
+            y: if inside.y < outside.y {
+                inside.y + q_total - q
+            } else {
+                inside.y - q_total + q
+            },
+        };
+        if r_total == 0.0 {
+            res.x = outside.x;
+        }
+        if q_total == 0.0 {
+            res.y = outside.y;
+        }
+        res
+    } else {
+        let r = if inside.x < outside.x {
+            outside.x - w - x
+        } else {
+            x - w - outside.x
+        };
+        let q = (q_total * r) / r_total;
+        let mut res = crate::model::LayoutPoint {
+            x: if inside.x < outside.x {
+                inside.x + r_total - r
+            } else {
+                inside.x - r_total + r
+            },
+            y: if inside.y < outside.y {
+                inside.y + q
+            } else {
+                inside.y - q
+            },
+        };
+        if r_total == 0.0 {
+            res.x = outside.x;
+        }
+        if q_total == 0.0 {
+            res.y = outside.y;
+        }
+        res
+    }
 }
 
 fn trim_too_close_tail(points: &mut Vec<crate::model::LayoutPoint>) {

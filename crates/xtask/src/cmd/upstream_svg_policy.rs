@@ -8,6 +8,7 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_4_elk_length_of_edges_005",
     "upstream_cypress_flowchart_elk_spec_5_elk_should_render_escaped_without_html_labels_006",
     "upstream_cypress_flowchart_elk_spec_6_elk_should_render_non_escaped_with_html_labels_007",
+    "upstream_cypress_flowchart_elk_spec_v2_elk_16_render_stadium_shape_008",
     "upstream_cypress_flowchart_elk_spec_50_elk_handle_nested_subgraphs_in_reverse_order_009",
     "upstream_cypress_flowchart_elk_spec_52_elk_handle_nested_subgraphs_in_several_levels_011",
     "upstream_cypress_flowchart_elk_spec_53_elk_handle_nested_subgraphs_with_edges_in_and_out_012",
@@ -149,6 +150,9 @@ mod tests {
             "upstream_cypress_flowchart_elk_spec_6_elk_should_render_non_escaped_with_html_labels_007"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_v2_elk_16_render_stadium_shape_008"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_50_elk_handle_nested_subgraphs_in_reverse_order_009"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
@@ -267,9 +271,6 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063"
-        ));
-        assert!(!flowchart_elk_svg_source_backed_probe_admitted(
-            "upstream_cypress_flowchart_elk_spec_v2_elk_16_render_stadium_shape_008"
         ));
         assert!(!flowchart_elk_svg_parity_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001"
