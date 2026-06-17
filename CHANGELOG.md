@@ -39,6 +39,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   upstream advisory triage checklist in `docs/security/THREAT_MODEL.md`; added public render API
   regression tests for secure config filtering, strict URL handling, loose HTML label cleanup, and
   `resvg_safe` CSS cleanup.
+- Added raster security regressions covering default PNG/JPG pixmap budgets, custom raster size
+  limits, and oversized intrinsic SVG rejection before PDF conversion.
+- Added a `Security Audit` GitHub Actions workflow that runs `cargo audit` on Rust dependency
+  changes and on a weekly schedule.
 - Hardened diagram-level config handling against CSS injection in generated SVG output by treating
   `fontFamily`, `altFontFamily`, `themeCSS`, and `themeVariables` as secure keys by default, while
   preserving trusted site-level config and explicit opt-in compatibility.

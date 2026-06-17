@@ -95,3 +95,70 @@ fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
     assert!(!lower.contains(":root"), "{svg}");
     assert!(!lower.contains("animation:"), "{svg}");
 }
+
+#[test]
+#[cfg(feature = "raster")]
+fn default_raster_plan_caps_large_viewbox_before_pixmap_allocation() {
+    use merman::render::raster::{
+        DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, RasterOptions, svg_raster_plan,
+    };
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
+
+    let plan = svg_raster_plan(svg, &RasterOptions::default()).unwrap();
+
+    assert_eq!(plan.requested_width_px, 30000);
+    assert_eq!(plan.requested_height_px, 20000);
+    assert!(plan.limited, "{plan:?}");
+    assert!(plan.effective_scale < plan.requested_scale, "{plan:?}");
+    assert!(plan.width_px <= DEFAULT_MAX_RASTER_SIDE_LENGTH, "{plan:?}");
+    assert!(plan.height_px <= DEFAULT_MAX_RASTER_SIDE_LENGTH, "{plan:?}");
+    assert!(
+        u64::from(plan.width_px) * u64::from(plan.height_px) <= DEFAULT_MAX_RASTER_PIXELS,
+        "{plan:?}"
+    );
+}
+
+#[test]
+#[cfg(feature = "raster")]
+fn custom_raster_size_limit_caps_actual_png_dimensions() {
+    use merman::render::raster::{RasterOptions, RasterSizeLimit, svg_raster_plan, svg_to_png};
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
+    let options = RasterOptions::default()
+        .with_size_limit(RasterSizeLimit::new(Some(128), Some(128), Some(16_384)))
+        .with_background("white");
+
+    let plan = svg_raster_plan(svg, &options).unwrap();
+    let png = svg_to_png(svg, &options).unwrap();
+
+    assert!(plan.limited, "{plan:?}");
+    assert!(plan.width_px <= 128, "{plan:?}");
+    assert!(plan.height_px <= 128, "{plan:?}");
+    assert!(u64::from(plan.width_px) * u64::from(plan.height_px) <= 16_384);
+    assert_eq!(png_dimensions(&png), (plan.width_px, plan.height_px));
+}
+
+#[test]
+#[cfg(feature = "raster")]
+fn default_pdf_conversion_rejects_oversized_intrinsic_svg() {
+    use merman::render::raster::{RasterOptions, svg_to_pdf_with_options};
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
+
+    let err = svg_to_pdf_with_options(svg, &RasterOptions::default()).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("PDF output exceeds configured size_limit"),
+        "{err}"
+    );
+}
+
+#[cfg(feature = "raster")]
+fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
+    let decoder = png::Decoder::new(bytes);
+    let reader = decoder.read_info().expect("valid PNG header");
+    let info = reader.info();
+    (info.width, info.height)
+}

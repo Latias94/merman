@@ -48,7 +48,7 @@ flowchart LR
 | Script or data URLs in labels and links | Mermaid-compatible `format_url` and `sanitize_url` logic, strict by default. | Core URL tests plus SVG integration tests. |
 | HTML/script in labels | DOMPurify-inspired text sanitizer backed by generated allowlists when full sanitization is enabled. | Core sanitizer tests. |
 | `<foreignObject>` and unsupported CSS in raster paths | `SvgPipeline::readable()` adds text fallbacks; `SvgPipeline::resvg_safe()` strips foreignObject and unsupported CSS patterns. | Pipeline tests and public API regression tests. |
-| Huge or malformed raster output | Raster options include default pixmap limits and fit/scale controls. | Raster tests and CLI behavior. |
+| Huge or malformed raster/PDF output | Raster options include default pixmap limits, fit/scale controls, and intrinsic-size checks before PNG/JPG/PDF conversion. | Raster tests, public API regression tests, and CLI behavior. |
 | Parser/layout denial of service | Diagram-specific guards such as text-size, edge-count, nesting, and Gantt exclude expansion limits. | Core/render unit tests. |
 | Raw style declaration breakouts | SVG style declaration helpers reject or escape known declaration and selector breakouts. | Render CSS tests. |
 
@@ -61,7 +61,7 @@ flowchart LR
 | Custom icon SVG is untrusted | Icon bodies are inserted as SVG fragments. Event attributes, external references, or active SVG elements can survive unless a host sanitizer removes them. | Only load curated icon packs or sanitize icons before registration. |
 | `securityLevel = loose` in site config | Loose mode intentionally preserves more Mermaid behavior, including custom links. | Do not enable loose mode for untrusted diagrams unless the embedding context is already sandboxed. |
 | `resvg_safe` is mistaken for a complete sanitizer | It targets renderer compatibility, not every browser XSS vector. | Use defense in depth for web embedding: CSP, sandboxing, and a dedicated sanitizer. |
-| Dependency vulnerabilities | Parser, XML/HTML, image, and raster dependencies may receive future advisories. | Keep `cargo audit` or equivalent advisory scanning in CI and triage upstream Mermaid advisories against this document. |
+| Dependency vulnerabilities | Parser, XML/HTML, image, and raster dependencies may receive future advisories. | `Security Audit` CI runs `cargo audit` on dependency changes and weekly; triage RustSec and upstream Mermaid advisories against this document. |
 
 ## Output Guidance
 
@@ -69,7 +69,7 @@ flowchart LR
 | --- | --- | --- |
 | Golden parity tests | `render_svg_sync` | Only compare or store as artifact; do not expose as trusted browser HTML. |
 | Editor preview for untrusted markdown | `render_svg_resvg_safe_sync` or host pipeline based on it | CSP, no user-controlled site config, stable diagram IDs. |
-| Server-side PNG/JPG/PDF | Raster APIs, which apply the resvg-safe pipeline | Apply size budgets and request timeouts. |
+| Server-side PNG/JPG/PDF | Raster APIs, which apply the resvg-safe pipeline and default size budgets | Keep budgets enabled for untrusted input; use `with_fit_to` for previews and `with_unbounded_size` only for trusted oversized exports. |
 | Trusted internal design system diagrams | `render_svg_sync` or host theme pipeline | Keep trusted theme/icon sources reviewable. |
 | User-uploaded custom icon packs | Not directly supported as safe input | Sanitize externally before `IconRegistry` registration. |
 
@@ -103,7 +103,8 @@ without consumer demand and sanitizer validation.
 - Loose HTML labels rendered through `resvg_safe` do not retain `<foreignObject>` or active HTML.
 - `resvg_safe` strips unsupported CSS patterns such as `@keyframes`, `:root`, and animation
   declarations.
-- Raster tests keep enforcing size limits for unusually large `viewBox` values.
+- Raster tests keep enforcing size limits for unusually large `viewBox` values before PNG/JPG
+  pixmap allocation and PDF vector conversion.
 - New diagram families identify label, URL, style, and config merge points during admission.
 
 ## Success Criteria
@@ -113,7 +114,8 @@ without consumer demand and sanitizer validation.
 | Secure-key regression coverage | Public render API covered | `cargo nextest run -p merman --features render --test security_regression` |
 | URL sanitizer coverage | Unsafe URL cases stay blocked in strict mode | Core URL tests plus SVG regression tests |
 | SVG cleanup coverage | `resvg_safe` output remains XML-parseable and free of known raster hazards | Pipeline and integration tests |
-| Advisory triage | Every relevant upstream Mermaid advisory maps to mitigation, non-applicability, or follow-up | Update this document and `CHANGELOG.md` |
+| Raster budget coverage | Oversized intrinsic SVGs do not allocate unbounded PNG/JPG pixmaps or convert to PDF by default | `cargo nextest run -p merman --features raster --test security_regression` |
+| Advisory triage | Every relevant RustSec or upstream Mermaid advisory maps to mitigation, non-applicability, or follow-up | `Security Audit` CI plus updates to this document and `CHANGELOG.md` |
 
 ## Future Work
 
@@ -121,4 +123,5 @@ without consumer demand and sanitizer validation.
   sanitizer.
 - Add optional icon SVG sanitization helpers for hosts that cannot fully trust icon packs.
 - Expand denial-of-service budgets around layout-heavy diagram families and CLI/server timeouts.
-- Add CI advisory scanning for Rust dependencies and document the maintainer triage path.
+- Add a broader dependency policy gate, such as license and duplicate-version checks, if release
+  review needs more than RustSec advisory scanning.
