@@ -19,6 +19,12 @@ Apple Core Text view, and a Flutter SVG widget can all choose different fallback
 glyph advances differently. The result can be small layout drift or clipped HTML labels, such as a
 Flowchart decision label ending in `?` when the final font is wider than the headless estimate.
 
+This surfaced publicly in [issue #9](https://github.com/Latias94/merman/issues/9): the same
+Flowchart condition label was visible in Chrome but clipped in Zen Browser on Linux. That kind of
+report is useful because it shows the real boundary: the source text and UTF-8 handling are fine,
+but the final browser's resolved font metrics differ from what a dependency-light headless renderer
+can safely predict.
+
 ## Best Practice
 
 Measure text with the same text stack that will display the SVG.
@@ -44,6 +50,28 @@ sequenceDiagram
 
 Use the callback when exact host geometry matters. Use the default vendored metrics when you need
 small dependency footprint, deterministic headless output, or CI-friendly rendering.
+
+## What Merman Changed
+
+Merman uses a layered strategy instead of pretending there is one universal font measurement answer:
+
+1. The default renderer still uses vendored Mermaid-compatible metrics. This keeps the CLI, CI,
+   documentation builds, server-side batch rendering, and embedders such as editors dependency-light
+   and deterministic.
+2. Flowchart HTML labels are made non-clipping by default so small browser/font differences are less
+   likely to hide trailing punctuation.
+3. Hosts that already own the final display stack can install a synchronous measurement callback on
+   a reusable engine. Browser and WebView hosts should measure with DOM/canvas after fonts are ready;
+   Android, Apple, and Flutter hosts should measure with their own native text layout APIs.
+4. Unsupported requests intentionally fall back per request. Returning "not handled" is better than
+   returning a guessed size from the wrong font stack.
+5. The playground exposes browser-vs-headless measurement and font-stack switches so issues like #9
+   can be reproduced with an explicit environment instead of hidden global browser state.
+
+The alternative would be to ship a heavier Rust-side font discovery, fallback, shaping, and layout
+engine. That can improve some no-callback estimates, but it still cannot exactly match every
+browser, WebView, platform UI toolkit, installed font set, or user stylesheet. Merman therefore keeps
+that as a future optional feature candidate rather than a baseline dependency.
 
 ## Quick Decision Checklist
 

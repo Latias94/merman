@@ -7,15 +7,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ## [Unreleased]
 
 - Added a host text-measurement callback to the C FFI reusable engine API and bumped the C ABI to
-  version 2. This addresses a class of headless rendering issues where the browser or native host
-  chooses a different font fallback than merman can know ahead of time, such as Flowchart labels
-  clipping trailing characters in some browser/font combinations. Merman now keeps Flowchart HTML
-  labels non-clipping by default and lets precise hosts supply their own DOM/canvas/native text
-  measurements through the callback.
+  version 2, while keeping the default headless path dependency-light and deterministic for
+  CLI/CI/docs/server rendering.
 - Added browser/WASM host text-measurement entry points for `@mermanjs/web`, including
   `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. The
   playground now demonstrates this best-practice path by default and adds text-measurement plus
-  font-stack switches for reproducing browser/font-specific clipping reports.
+  font-stack switches for reproducing headless font-metric drift such as
+  [#9](https://github.com/Latias94/merman/issues/9), where a Flowchart label rendered fully in
+  Chrome but clipped trailing punctuation in Zen Browser.
 - Extended the Android JNI, Apple Swift, and Flutter/Dart FFI wrappers to expose reusable engines
   and host text-measurement callbacks on top of the C ABI v2 contract.
 - Documented host text-measurement best practices in the C ABI protocol, package READMEs, and
