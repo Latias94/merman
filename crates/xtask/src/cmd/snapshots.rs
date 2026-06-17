@@ -375,10 +375,24 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         s.contains('*') || s.contains('?') || s.contains('[') || s.contains(']')
     }
 
-    // 2) Every `fixtures/**/*.mmd` must have a sibling `.golden.json`.
+    fn is_flowchart_elk_source_backed_probe_fixture(path: &Path) -> bool {
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            return false;
+        };
+        let is_flowchart_fixture = path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            == Some("flowchart");
+        is_flowchart_fixture && crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem)
+    }
+
+    // 2) Every ordinary `fixtures/**/*.mmd` must have a sibling `.golden.json`.
     // `fixtures/_deferred/**` contains fixtures that were intentionally kept out of the alignment
     // gates (e.g. upstream CLI renders an error, or depends on unsupported options). Do not require
     // goldens for these files.
+    // Flowchart ELK source-backed probes are intentionally governed by the upstream SVG probe gate
+    // instead of the broad semantic golden snapshot lane.
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
         MmdFixtureScan {
@@ -389,6 +403,9 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         },
     );
     for mmd in &mmd_files {
+        if is_flowchart_elk_source_backed_probe_fixture(mmd) {
+            continue;
+        }
         let golden = mmd.with_extension("golden.json");
         if !golden.exists() {
             failures.push(format!(

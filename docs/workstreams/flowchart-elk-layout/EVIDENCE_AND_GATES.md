@@ -79,7 +79,7 @@ Current result:
 
 ## Future Admission Gates
 
-- Decide when the 57 admitted source-backed probe fixtures should enter the broad Flowchart matrix.
-- Import the six duplicate exact-call fixtures only if exact-call traceability is worth the corpus
-  noise.
+- Decide when the 63 admitted source-backed probe fixtures should enter the broad Flowchart matrix.
+- Keep duplicate-body exact-call fixtures in the source-backed lane for upstream traceability while
+  using the 57 unique layout body count for semantic coverage.
 - Keep future ELK user/upstream regressions source-backed; do not tune geometry from fixture output.

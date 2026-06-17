@@ -7,8 +7,8 @@ Last updated: 2026-06-17
 
 - [x] Keep the current Flowchart ELK smoke fixtures renderable.
 - [x] Classify the upstream `flowchart-elk.spec.js` cases into Tier A, Tier B, and Tier C.
-- [x] Record which fixtures are covered by the source-backed probe lane versus duplicate exact-call
-  gaps.
+- [x] Record which exact-call fixtures are covered by the source-backed probe lane and which
+  duplicate layout bodies share semantic coverage.
 
 ## Phase 2 - Subset Growth
 
@@ -49,9 +49,10 @@ Notes:
   imported port marker. The explicit HTML ELK demo probe now matches in the source-backed lane;
   explicit admission still keeps probe fixtures out of the broad parity matrix by policy.
 - 2026-06-17: Public render paths and xtask diagnostics now default Flowchart ELK to the
-  source-backed backend. The dedicated probe gate covers 57 unique layout bodies from 63 upstream
-  exact render calls; the remaining six exact calls are duplicate layout bodies mapped by the
-  coverage audit.
+  source-backed backend.
+- 2026-06-18: The dedicated probe gate now covers all 63 upstream exact render calls from 57 unique
+  layout bodies. Duplicate layout bodies remain visible as separate exact-call fixtures for
+  upstream traceability.
 
 ## Phase 3 - Port Decision
 
@@ -63,8 +64,8 @@ Notes:
   decision instead of leaving the HTML ELK demo only as an ad hoc command.
 - [x] Import and probe the upstream ELK body set against the source-backed lane before broad parity
   admission.
-- [ ] Decide broad Flowchart matrix admission for the 57 source-backed probe fixtures.
-- [ ] Decide whether to import the six duplicate exact-call fixtures for traceability.
+- [x] Import the six duplicate exact-call fixtures for traceability.
+- [ ] Decide broad Flowchart matrix admission for the 63 source-backed probe fixtures.
 
 Notes:
 
@@ -73,3 +74,6 @@ Notes:
   the fixed gate for matching source-backed fixtures.
 - 2026-06-17: xtask compare/XML/debug defaults now match the public source-backed render default.
   `--flowchart-elk-backend compat` remains available when diagnosing the previous alpha fallback.
+- 2026-06-18: Duplicate exact-call fixtures are imported and admitted to the source-backed probe
+  lane; coverage audit reports 63 dedicated fixtures, 63 upstream SVGs, and 0 duplicate-covered
+  gaps.

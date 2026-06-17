@@ -3104,7 +3104,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         let existing = existing_by_diagram
             .entry(c.diagram_dir.clone())
             .or_insert_with(|| load_existing_fixtures(&c.fixtures_dir));
-        if let Some(existing_path) = existing.get(&c.body) {
+        let allow_duplicate_body = flowchart_elk_source_backed_probes
+            && c.diagram_dir == "flowchart"
+            && crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(&c.stem);
+        if let Some(existing_path) = existing.get(&c.body)
+            && !allow_duplicate_body
+        {
             skipped.push(format!(
                 "skip (duplicate content): {} -> {}",
                 c.block.source_spec.display(),
@@ -3113,7 +3118,9 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
-        let stem = {
+        let stem = if allow_duplicate_body {
+            c.stem.clone()
+        } else {
             let source_slug = clamp_slug(slugify(&c.block.source_stem), 48);
             let test_slug = clamp_slug(
                 slugify(c.block.test_name.as_deref().unwrap_or("example")),

@@ -186,11 +186,11 @@ Dedicated Flowchart ELK lane:
 
 - Flowchart ELK fixtures are covered by the dedicated source-backed ELK probe gate rather than the
   broad Flowchart main matrix. The gate uses the source-backed Mermaid ELK adapter / Eclipse ELK
-  layered port and currently covers all 57 unique layout bodies extracted from Mermaid's
-  `flowchart-elk.spec.js`.
-- The upstream spec has 63 exact render calls. Six calls are duplicate layout bodies already covered
-  by admitted probes, so they remain exact-call fixture gaps rather than unique layout gaps. Use
-  `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` for the current mapping.
+  layered port and currently covers all 63 exact render calls / 57 unique layout bodies extracted
+  from Mermaid's `flowchart-elk.spec.js`.
+- Duplicate layout bodies are kept as exact-call fixtures for upstream traceability. Use
+  `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` for the current exact-call and
+  unique-body mapping.
 - `fixtures/flowchart/upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063.mmd` is
   sourced from the ELK spec file but does not encode `layout: elk` in the fixture text.
 

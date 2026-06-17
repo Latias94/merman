@@ -3,9 +3,9 @@
   "slug": "flowchart-elk-layout",
   "title": "Flowchart ELK Layout",
   "status": "active",
-  "updated": "2026-06-17",
+  "updated": "2026-06-18",
   "scope_kind": "execution",
-  "problem": "Flowchart ELK now defaults to the source-backed Mermaid ELK adapter / Eclipse ELK layered port, while broad main-matrix admission, duplicate exact-call fixtures, and future source-port hardening still need a separate lane.",
+  "problem": "Flowchart ELK now defaults to the source-backed Mermaid ELK adapter / Eclipse ELK layered port and the dedicated probe lane covers the upstream exact-call set, while broad main-matrix admission and future source-port hardening still need a separate lane.",
   "authoritative_docs": [
     {
       "role": "design",
