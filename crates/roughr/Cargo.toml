@@ -37,7 +37,13 @@ repository = "https://github.com/Latias94/merman"
 
 [features]
 default = ["host-random"]
-host-random = ["dep:rand", "dep:getrandom", "getrandom/js"]
+host-random = [
+    "dep:rand",
+    "dep:getrandom",
+    "dep:getrandom_0_4",
+    "getrandom/js",
+    "getrandom_0_4/wasm_js",
+]
 
 [lib]
 name = "roughr"
@@ -65,6 +71,12 @@ optional = true
 [target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
 version = "0.2"
 features = ["js"]
+optional = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.getrandom_0_4]
+package = "getrandom"
+version = "0.4"
+features = ["wasm_js"]
 optional = true
 
 [dependencies.svg_path_ops]

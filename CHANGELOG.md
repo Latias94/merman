@@ -32,6 +32,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Against Mermaid JS, the latest cross-family geomean is `0.016x` of Mermaid JS time, which is
   about `62x` faster overall. `xychart_medium` is `73.62 µs` end-to-end versus `3.00 ms` in
   Mermaid JS, or about `41x` faster.
+- Fixed WASM size-budget builds after the `rand 0.10` upgrade by enabling the `getrandom 0.4`
+  `wasm_js` backend for RoughJS host-random builds, and made the xtask WASM budget tooling respect
+  `CARGO_TARGET_DIR` when locating build artifacts.
 
 ### Security
 
