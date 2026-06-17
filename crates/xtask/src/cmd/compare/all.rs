@@ -86,7 +86,7 @@ impl CompareAllOptions {
                 }
                 "--flowchart-elk-backend" => {
                     i += 1;
-                    options.flowchart_elk_backend = Some(parse_flowchart_elk_backend(
+                    options.flowchart_elk_backend = Some(crate::cmd::parse_flowchart_elk_backend(
                         args.get(i).map(String::as_str),
                     )?);
                 }
@@ -360,7 +360,7 @@ impl CompareAllInvocationOptions<'_> {
         if let Some(backend) = self.flowchart_elk_backend {
             args.extend([
                 "--flowchart-elk-backend".to_string(),
-                flowchart_elk_backend_name(backend).to_string(),
+                crate::cmd::flowchart_elk_backend_name(backend).to_string(),
             ]);
         }
         if self.include_elk_probes {
@@ -415,25 +415,6 @@ fn diagram_filter_key(diagram: &str) -> String {
     match diagram.trim().to_ascii_lowercase().as_str() {
         "tree-view" | "treeview" => "treeview".to_string(),
         other => other.to_string(),
-    }
-}
-
-fn parse_flowchart_elk_backend(
-    value: Option<&str>,
-) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
-    match value.map(str::trim) {
-        Some("compat") => Ok(merman_render::FlowchartElkBackend::Compat),
-        Some("source-ported" | "source_ported" | "source") => {
-            Ok(merman_render::FlowchartElkBackend::SourcePorted)
-        }
-        _ => Err(XtaskError::Usage),
-    }
-}
-
-fn flowchart_elk_backend_name(backend: merman_render::FlowchartElkBackend) -> &'static str {
-    match backend {
-        merman_render::FlowchartElkBackend::Compat => "compat",
-        merman_render::FlowchartElkBackend::SourcePorted => "source-ported",
     }
 }
 

@@ -1277,7 +1277,7 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     let mut out: Option<PathBuf> = None;
     let mut upstream: Option<PathBuf> = None;
     let mut local: Option<PathBuf> = None;
-    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
+    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -1304,13 +1304,8 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
             }
             "--flowchart-elk-backend" => {
                 i += 1;
-                flowchart_elk_backend = match args.get(i).map(|s| s.trim()) {
-                    Some("compat") => merman_render::FlowchartElkBackend::Compat,
-                    Some("source-ported" | "source_ported" | "source") => {
-                        merman_render::FlowchartElkBackend::SourcePorted
-                    }
-                    _ => return Err(XtaskError::Usage),
-                };
+                flowchart_elk_backend =
+                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1537,7 +1532,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     let mut fixture: Option<PathBuf> = None;
     let mut edge_id: Option<String> = None;
     let mut text_measurer: String = "deterministic".to_string();
-    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
+    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -1559,13 +1554,8 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
             }
             "--flowchart-elk-backend" => {
                 i += 1;
-                flowchart_elk_backend = match args.get(i).map(|s| s.trim()) {
-                    Some("compat") => merman_render::FlowchartElkBackend::Compat,
-                    Some("source-ported" | "source_ported" | "source") => {
-                        merman_render::FlowchartElkBackend::SourcePorted
-                    }
-                    _ => return Err(XtaskError::Usage),
-                };
+                flowchart_elk_backend =
+                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1767,7 +1757,7 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     let mut fixture: Option<PathBuf> = None;
     let mut phase = Some(merman_layout_elk::source_port::LayeredPhase::P3NodeOrdering);
     let mut processor: Option<merman_layout_elk::source_port::ProcessorKind> = None;
-    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
+    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
     let mut p3_trace = false;
 
     let mut i = 0;
@@ -1811,13 +1801,8 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
             }
             "--flowchart-elk-backend" => {
                 i += 1;
-                flowchart_elk_backend = match args.get(i).map(|s| s.trim()) {
-                    Some("compat") => merman_render::FlowchartElkBackend::Compat,
-                    Some("source-ported" | "source_ported" | "source") => {
-                        merman_render::FlowchartElkBackend::SourcePorted
-                    }
-                    _ => return Err(XtaskError::Usage),
-                };
+                flowchart_elk_backend =
+                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1960,6 +1945,12 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     dump_source_graph(&lgraph, 0);
 
     Ok(())
+}
+
+fn parse_debug_flowchart_elk_backend(
+    raw: Option<&str>,
+) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
+    crate::cmd::parse_flowchart_elk_backend(raw)
 }
 
 fn parse_source_processor_kind(

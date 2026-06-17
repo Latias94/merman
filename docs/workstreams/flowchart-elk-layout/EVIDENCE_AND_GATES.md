@@ -1,7 +1,7 @@
 # Flowchart ELK Layout - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-15
+Last updated: 2026-06-17
 
 ## Current Evidence
 
@@ -11,15 +11,14 @@ Last updated: 2026-06-15
   case with the `elk-layout` feature enabled.
 - `crates/merman-layout-elk/src/lib.rs` unit tests prove recursive group layout, nested local
   directions, cross-group routing direction, sibling group separation, and parallel-edge spacing in
-  the lightweight backend.
+  the compatibility backend.
 - `crates/merman-render/src/flowchart/elk.rs` unit tests prove Flowchart subgraph directions and
   Mermaid `elk` config fields reach the ELK graph adapter.
 - `crates/xtask/src/cmd/upstream_svg_policy.rs` keeps Flowchart ELK admission centralized.
   Current upstream ELK fixtures are source-backed probe admissions only, not default parity
   admissions.
-- `crates/xtask/src/cmd/compare/diagrams/flowchart.rs` supports
-  `--include-elk-probes` with `--flowchart-elk-backend source-ported` for explicit ELK probe runs
-  without turning the default Flowchart parity matrix red. It also exposes
+- `crates/xtask/src/cmd/compare/diagrams/flowchart.rs` defaults Flowchart ELK diagnostics to the
+  source-backed backend, supports explicit `--flowchart-elk-backend compat` fallback, and exposes
   `check-flowchart-elk-source-backed-probes` as the fixed source-backed probe gate.
 - `crates/xtask/src/cmd/compare/xml.rs` skips unadmitted Flowchart ELK after parsing the fixture,
   so `flowchart-elk`, `layout: elk`, and `flowchart.defaultRenderer=elk` share the same backend-
@@ -68,20 +67,19 @@ cargo run -p xtask -- check-flowchart-elk-source-backed-probes
 
 Current result:
 
-- Default compat compare still skips the fixture with the centralized local-policy reason and
-  returns success.
-- `--include-elk-probes` only admits registered Flowchart ELK probe fixtures when the compare run
-  selects `--flowchart-elk-backend source-ported`.
-- Explicit source-backed probe now returns `All fixtures matched` for the HTML ELK demo fixture,
-  and the fixed `check-flowchart-elk-source-backed-probes` gate runs that admitted probe list.
+- Default compare/debug/XML tools now use the source-backed backend for Flowchart ELK; `compat`
+  remains an explicit fallback.
+- Registered Flowchart ELK probe fixtures are admitted only when `--include-elk-probes` is set and
+  the active backend is source-backed, so backend defaulting does not broaden SVG parity admission
+  by itself.
+- The source-backed probe gate returns `All fixtures matched` for the admitted probe list.
 - The last resolved geometry gap was P5 route-slot construction: Eclipse ELK filters
   `PortType.OUTPUT` ports by actual outgoing edges, while the Rust port had been checking the
   static imported port marker.
 
 ## Future Admission Gates
 
-- Tier A smoke fixtures should be admitted with targeted compare coverage before any deeper ELK
-  work starts.
-- Tier B fixtures should only be admitted after the adapter can explain nested subgraph
-  direction, cluster edges, and the visible ordering behavior without ad hoc hacks.
-- Tier C fixtures should only move when there is a clear rationale for a deeper ELK port.
+- Decide when the 57 admitted source-backed probe fixtures should enter the broad Flowchart matrix.
+- Import the six duplicate exact-call fixtures only if exact-call traceability is worth the corpus
+  noise.
+- Keep future ELK user/upstream regressions source-backed; do not tune geometry from fixture output.

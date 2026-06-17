@@ -46,7 +46,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut apply_root_overrides: bool = true;
     let mut include_elk_probes: bool = false;
     let mut force_elk_fixture: bool = false;
-    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
+    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -118,7 +118,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             "--flowchart-elk-backend" => {
                 i += 1;
                 flowchart_elk_backend =
-                    parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
+                    crate::cmd::parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--no-root-overrides" => apply_root_overrides = false,
             "--include-elk-probes" => include_elk_probes = true,
@@ -201,7 +201,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         } else {
             "disabled"
         },
-        flowchart_elk_backend_name(flowchart_elk_backend),
+        crate::cmd::flowchart_elk_backend_name(flowchart_elk_backend),
         if force_elk_fixture {
             "enabled"
         } else {
@@ -1176,25 +1176,6 @@ fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-fn parse_flowchart_elk_backend(
-    raw: Option<&str>,
-) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
-    match raw.map(str::trim) {
-        Some("compat") => Ok(merman_render::FlowchartElkBackend::Compat),
-        Some("source-ported" | "source_ported" | "source") => {
-            Ok(merman_render::FlowchartElkBackend::SourcePorted)
-        }
-        _ => Err(XtaskError::Usage),
-    }
-}
-
-fn flowchart_elk_backend_name(backend: merman_render::FlowchartElkBackend) -> &'static str {
-    match backend {
-        merman_render::FlowchartElkBackend::Compat => "compat",
-        merman_render::FlowchartElkBackend::SourcePorted => "source-ported",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1230,9 +1211,33 @@ mod tests {
     }
 
     #[test]
-    fn forced_elk_fixtures_require_source_ported_backend() {
-        let err = compare_flowchart_svgs(vec!["--force-elk-fixture".to_string()])
-            .expect_err("forced ELK fixture diagnostics should not run on the compat backend");
+    fn default_flowchart_elk_backend_allows_forced_fixture_diagnostics() {
+        let out_path = crate::cmd::target_root()
+            .join("compare")
+            .join("xtask-tests")
+            .join("flowchart_elk_default_forced.md");
+
+        compare_flowchart_svgs(vec![
+            "--filter".to_string(),
+            "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
+            "--force-elk-fixture".to_string(),
+            "--out".to_string(),
+            out_path.display().to_string(),
+        ])
+        .expect("forced ELK fixture diagnostics should use the default source-backed backend");
+
+        let report = std::fs::read_to_string(&out_path).expect("forced report should be written");
+        assert!(report.contains("- Flowchart ELK backend: `source-ported`"));
+    }
+
+    #[test]
+    fn forced_elk_fixtures_reject_explicit_compat_backend() {
+        let err = compare_flowchart_svgs(vec![
+            "--force-elk-fixture".to_string(),
+            "--flowchart-elk-backend".to_string(),
+            "compat".to_string(),
+        ])
+        .expect_err("forced ELK fixture diagnostics should not run on the compat backend");
 
         assert!(
             err.to_string()

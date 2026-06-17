@@ -1,14 +1,14 @@
 # Flowchart ELK Layout - TODO
 
 Status: Active
-Last updated: 2026-06-15
+Last updated: 2026-06-17
 
 ## Phase 1 - Baseline And Classification
 
 - [x] Keep the current Flowchart ELK smoke fixtures renderable.
 - [x] Classify the upstream `flowchart-elk.spec.js` cases into Tier A, Tier B, and Tier C.
-- [x] Record which fixtures are already covered by the current lightweight subset versus which
-  ones still need adapter work.
+- [x] Record which fixtures are covered by the source-backed probe lane versus duplicate exact-call
+  gaps.
 
 ## Phase 2 - Subset Growth
 
@@ -17,14 +17,14 @@ Last updated: 2026-06-15
 - [x] Add an explicit ELK probe lane in `xtask` without admitting failing fixtures to the default
   Flowchart parity matrix.
 - [x] Align Flowchart ELK root SVG group structure with Mermaid before working on layout geometry.
-- [x] Add the source-backed Flowchart ELK lane and keep the default renderer on the stable
-  lightweight backend.
+- [x] Add the source-backed Flowchart ELK lane while keeping the compatibility backend available as
+  an explicit fallback.
 - [x] Port the layered end-label lifecycle far enough for source-backed runs to restore head/tail
   labels after routing.
 - [x] Port `GreedyModelOrderCycleBreaker` and barycenter sweep-time port distribution so explicit
   source-backed probes reach real P3/P5 geometry differences instead of unsupported processor
   failures.
-- [ ] Tighten label and multi-edge spacing where the current subset is visibly close.
+- [x] Cover the current Mermaid ELK spec body set with source-backed probes.
 - [x] Finish the remaining P3/P5 ordering and routing semantics needed by the HTML ELK demo probe.
 
 Notes:
@@ -47,22 +47,29 @@ Notes:
 - 2026-06-15: The source-backed P5 router now matches Eclipse ELK's actual `PortType.OUTPUT`
   semantics by treating ports with outgoing edges as output ports, independent of the stored
   imported port marker. The explicit HTML ELK demo probe now matches in the source-backed lane;
-  the default compat lane still keeps the fixture unadmitted by policy.
+  explicit admission still keeps probe fixtures out of the broad parity matrix by policy.
+- 2026-06-17: Public render paths and xtask diagnostics now default Flowchart ELK to the
+  source-backed backend. The dedicated probe gate covers 57 unique layout bodies from 63 upstream
+  exact render calls; the remaining six exact calls are duplicate layout bodies mapped by the
+  coverage audit.
 
 ## Phase 3 - Port Decision
 
-- [x] Decide to keep a deeper source-backed ELK lane for Flowchart parity while preserving the
-  default lightweight backend.
-- [x] Keep source-backed ELK behind an explicit backend/feature boundary until probe coverage is
-  mature enough for admission.
+- [x] Decide to keep a deeper source-backed ELK lane for Flowchart parity while preserving an
+  explicit compatibility fallback.
+- [x] Make source-backed ELK the default backend once the dedicated probe lane covers the current
+  upstream body set.
 - [x] Update the compare/import policy so the source-backed probe lane reflects the current
   decision instead of leaving the HTML ELK demo only as an ad hoc command.
-- [ ] Import and probe the first Tier A upstream ELK batch against the source-backed lane before
-  default parity admission.
+- [x] Import and probe the upstream ELK body set against the source-backed lane before broad parity
+  admission.
+- [ ] Decide broad Flowchart matrix admission for the 57 source-backed probe fixtures.
+- [ ] Decide whether to import the six duplicate exact-call fixtures for traceability.
 
 Notes:
 
 - 2026-06-15: `--include-elk-probes` now only admits registered source-backed ELK probes when the
-  compare run selects `--flowchart-elk-backend source-ported`. The default compat lane still skips
-  the HTML ELK demo by policy, while `check-flowchart-elk-source-backed-probes` is the fixed gate
-  for the already matching source-backed fixture.
+  compare run uses the source-backed backend, while `check-flowchart-elk-source-backed-probes` is
+  the fixed gate for matching source-backed fixtures.
+- 2026-06-17: xtask compare/XML/debug defaults now match the public source-backed render default.
+  `--flowchart-elk-backend compat` remains available when diagnosing the previous alpha fallback.

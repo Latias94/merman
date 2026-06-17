@@ -1,5 +1,7 @@
 //! Shared upstream SVG baseline policy.
 
+use crate::XtaskError;
+
 const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_html_demos_flowchart_elk_flowchart_elk_001",
     "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
@@ -77,6 +79,31 @@ pub(crate) fn flowchart_elk_svg_source_backed_probe_stems() -> &'static [&'stati
     FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS
 }
 
+pub(crate) fn default_flowchart_elk_backend() -> merman_render::FlowchartElkBackend {
+    merman_render::FlowchartElkBackend::SourcePorted
+}
+
+pub(crate) fn parse_flowchart_elk_backend(
+    raw: Option<&str>,
+) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
+    match raw.map(str::trim) {
+        Some("compat") => Ok(merman_render::FlowchartElkBackend::Compat),
+        Some("source-ported" | "source_ported" | "source") => {
+            Ok(merman_render::FlowchartElkBackend::SourcePorted)
+        }
+        _ => Err(XtaskError::Usage),
+    }
+}
+
+pub(crate) fn flowchart_elk_backend_name(
+    backend: merman_render::FlowchartElkBackend,
+) -> &'static str {
+    match backend {
+        merman_render::FlowchartElkBackend::Compat => "compat",
+        merman_render::FlowchartElkBackend::SourcePorted => "source-ported",
+    }
+}
+
 pub(crate) fn flowchart_elk_svg_source_backed_probe_admitted(name_or_stem: &str) -> bool {
     FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS.contains(&normalized_fixture_stem(name_or_stem))
 }
@@ -124,9 +151,10 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
 #[cfg(test)]
 mod tests {
     use super::{
+        default_flowchart_elk_backend, flowchart_elk_backend_name,
         flowchart_elk_svg_compare_admitted, flowchart_elk_svg_parity_admitted,
         flowchart_elk_svg_parity_skip_reason, flowchart_elk_svg_source_backed_probe_admitted,
-        upstream_svg_baseline_skip_reason,
+        parse_flowchart_elk_backend, upstream_svg_baseline_skip_reason,
     };
 
     #[test]
@@ -348,6 +376,31 @@ mod tests {
             true,
             merman_render::FlowchartElkBackend::SourcePorted
         ));
+    }
+
+    #[test]
+    fn flowchart_elk_backend_helpers_default_to_source_ported() {
+        assert_eq!(
+            default_flowchart_elk_backend(),
+            merman_render::FlowchartElkBackend::SourcePorted
+        );
+        assert_eq!(
+            parse_flowchart_elk_backend(Some("source_ported")).unwrap(),
+            merman_render::FlowchartElkBackend::SourcePorted
+        );
+        assert_eq!(
+            parse_flowchart_elk_backend(Some("source")).unwrap(),
+            merman_render::FlowchartElkBackend::SourcePorted
+        );
+        assert_eq!(
+            parse_flowchart_elk_backend(Some("compat")).unwrap(),
+            merman_render::FlowchartElkBackend::Compat
+        );
+        assert!(parse_flowchart_elk_backend(Some("unknown")).is_err());
+        assert_eq!(
+            flowchart_elk_backend_name(default_flowchart_elk_backend()),
+            "source-ported"
+        );
     }
 
     #[test]

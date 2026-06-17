@@ -33,7 +33,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_root_arg: Option<PathBuf> = None;
     let mut only_diagrams: Vec<String> = Vec::new();
     let mut include_elk_probes = false;
-    let mut flowchart_elk_backend = merman_render::FlowchartElkBackend::Compat;
+    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -77,7 +77,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             "--flowchart-elk-backend" => {
                 i += 1;
                 flowchart_elk_backend =
-                    parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
+                    crate::cmd::parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--include-elk-probes" => include_elk_probes = true,
             "--help" | "-h" => {
@@ -655,21 +655,9 @@ pub(crate) fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     Ok(())
 }
 
-fn parse_flowchart_elk_backend(
-    raw: Option<&str>,
-) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
-    match raw.map(str::trim) {
-        Some("compat") => Ok(merman_render::FlowchartElkBackend::Compat),
-        Some("source-ported" | "source_ported" | "source") => {
-            Ok(merman_render::FlowchartElkBackend::SourcePorted)
-        }
-        _ => Err(XtaskError::Usage),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::svg_xml_compare_skip_reason;
+    use super::{compare_svg_xml, svg_xml_compare_skip_reason};
 
     #[test]
     fn svg_xml_compare_skip_reason_keeps_known_sequence_regen_skip() {
@@ -748,5 +736,29 @@ mod tests {
             svg_xml_compare_skip_reason("class", "upstream_namespaces_and_generics"),
             None
         );
+    }
+
+    #[test]
+    fn compare_svg_xml_defaults_flowchart_elk_to_source_ported_backend() {
+        let out_root = crate::cmd::target_root()
+            .join("compare")
+            .join("xtask-tests")
+            .join("xml_default_flowchart_elk");
+
+        compare_svg_xml(vec![
+            "--diagram".to_string(),
+            "flowchart".to_string(),
+            "--filter".to_string(),
+            "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
+            "--include-elk-probes".to_string(),
+            "--check".to_string(),
+            "--dom-mode".to_string(),
+            "parity".to_string(),
+            "--dom-decimals".to_string(),
+            "3".to_string(),
+            "--out-root".to_string(),
+            out_root.display().to_string(),
+        ])
+        .expect("default source-backed backend should admit and match the ELK probe fixture");
     }
 }
