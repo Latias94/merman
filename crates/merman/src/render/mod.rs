@@ -14,7 +14,8 @@ pub use merman_render::svg::{
     foreign_object_label_fallback_svg_text, resvg_safe_svg, supported_host_theme_presets,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
+    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
+    VendoredFontMetricsTextMeasurer, WrapMode,
 };
 pub use merman_render::{
     Error as RenderError, LayoutOptions, Result as RenderResult, layout_parsed,
@@ -836,6 +837,12 @@ impl HeadlessRenderer {
         self
     }
 
+    /// Use a caller-provided text measurer for layout.
+    ///
+    /// This is the integration seam for hosts that already own a font engine or UI text system.
+    /// The built-in vendored measurer is lightweight and Mermaid-fixture oriented; a host measurer
+    /// can choose platform fonts, fallback rules, shaping, and caching that match the final display
+    /// environment.
     pub fn with_text_measurer(
         mut self,
         measurer: std::sync::Arc<dyn TextMeasurer + Send + Sync>,

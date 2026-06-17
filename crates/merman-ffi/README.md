@@ -48,9 +48,9 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The first C ABI release candidate exposes SVG, ASCII text, semantic JSON, layout JSON, validation
-JSON, and binding metadata. Native raster byte outputs are intentionally split into a later ABI
-lane.
+The C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, binding metadata,
+and an optional host text-measurement callback for reusable engines. Native raster byte outputs are
+intentionally split into a later ABI lane.
 
 ## Minimal C Usage
 
@@ -84,6 +84,18 @@ merman_buffer_free(result.data);
 merman_engine_free(engine.engine);
 ```
 
+Hosts that already own a font stack can install a text measurement callback on a reusable engine:
+
+```c
+MermanResult set_result =
+    merman_engine_set_text_measure_callback(engine.engine, measure_text, user_data);
+merman_buffer_free(set_result.data);
+```
+
+Return `handled=0` for measurement requests your host does not support. `merman` will fall back
+to its vendored Mermaid-compatible measurer for that request. The callback may be invoked from any
+thread that renders with the engine, so shared host font state must be thread-safe.
+
 ## Example
 
 [`examples/render_svg.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg.c)
@@ -113,8 +125,11 @@ same command.
 - `merman_buffer_struct_size`
 - `merman_result_struct_size`
 - `merman_engine_result_struct_size`
+- `merman_host_text_measure_request_struct_size`
+- `merman_host_text_measure_result_struct_size`
 - `merman_engine_new`
 - `merman_engine_free`
+- `merman_engine_set_text_measure_callback`
 - `merman_engine_render_svg`
 - `merman_engine_render_ascii`
 - `merman_engine_parse_json`

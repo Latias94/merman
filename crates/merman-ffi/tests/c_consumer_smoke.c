@@ -16,8 +16,15 @@ typedef struct MermanApi {
     size_t (*buffer_struct_size)(void);
     size_t (*result_struct_size)(void);
     size_t (*engine_result_struct_size)(void);
+    size_t (*host_text_measure_request_struct_size)(void);
+    size_t (*host_text_measure_result_struct_size)(void);
     MermanEngineResult (*engine_new)(const uint8_t*, size_t);
     void (*engine_free)(MermanEngine*);
+    MermanResult (*engine_set_text_measure_callback)(
+        MermanEngine*,
+        MermanHostTextMeasureCallback,
+        void*
+    );
     MermanEngineCall engine_render_svg;
     MermanEngineCall engine_render_ascii;
     MermanEngineCall engine_parse_json;
@@ -101,8 +108,11 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.buffer_struct_size == NULL ||
         api.result_struct_size == NULL ||
         api.engine_result_struct_size == NULL ||
+        api.host_text_measure_request_struct_size == NULL ||
+        api.host_text_measure_result_struct_size == NULL ||
         api.engine_new == NULL ||
         api.engine_free == NULL ||
+        api.engine_set_text_measure_callback == NULL ||
         api.engine_render_svg == NULL ||
         api.engine_render_ascii == NULL ||
         api.engine_parse_json == NULL ||
@@ -136,6 +146,12 @@ int merman_c_consumer_smoke(MermanApi api) {
     }
     if (api.engine_result_struct_size() != sizeof(MermanEngineResult)) {
         return 6;
+    }
+    if (api.host_text_measure_request_struct_size() != sizeof(MermanHostTextMeasureRequest)) {
+        return 7;
+    }
+    if (api.host_text_measure_result_struct_size() != sizeof(MermanHostTextMeasureResult)) {
+        return 8;
     }
 
     rc = api.render_enabled

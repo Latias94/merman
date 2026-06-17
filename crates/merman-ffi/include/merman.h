@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define MERMAN_ABI_VERSION 1
+#define MERMAN_ABI_VERSION 2
 
 enum {
     MERMAN_OK = 0,
@@ -49,6 +49,37 @@ typedef struct MermanEngineResult {
     MermanBuffer data;
 } MermanEngineResult;
 
+enum {
+    MERMAN_WRAP_MODE_SVG_LIKE = 0,
+    MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN = 1,
+    MERMAN_WRAP_MODE_HTML_LIKE = 2
+};
+
+typedef struct MermanHostTextMeasureRequest {
+    const uint8_t* text;
+    size_t text_len;
+    const uint8_t* font_family;
+    size_t font_family_len;
+    double font_size;
+    const uint8_t* font_weight;
+    size_t font_weight_len;
+    double max_width;
+    uint8_t has_max_width;
+    int32_t wrap_mode;
+} MermanHostTextMeasureRequest;
+
+typedef struct MermanHostTextMeasureResult {
+    uint8_t handled;
+    double width;
+    double height;
+    size_t line_count;
+} MermanHostTextMeasureResult;
+
+typedef MermanHostTextMeasureResult (*MermanHostTextMeasureCallback)(
+    MermanHostTextMeasureRequest request,
+    void* user_data
+);
+
 /*
  * Return the C ABI protocol version implemented by this library.
  *
@@ -69,6 +100,8 @@ const char* merman_package_version(void);
 size_t merman_buffer_struct_size(void);
 size_t merman_result_struct_size(void);
 size_t merman_engine_result_struct_size(void);
+size_t merman_host_text_measure_request_struct_size(void);
+size_t merman_host_text_measure_result_struct_size(void);
 
 /*
  * Create and free a reusable engine for repeated calls with the same options_json.
@@ -86,6 +119,24 @@ MermanEngineResult merman_engine_new(
     size_t options_len
 );
 void merman_engine_free(MermanEngine* engine);
+
+/*
+ * Install a host-provided text measurer on a reusable engine.
+ *
+ * The callback is used by future layout/render calls made through this engine. Return
+ * handled=0 for any request the host does not support; merman will fall back to its vendored
+ * measurer for that request. Passing callback=NULL resets the engine to the text measurer selected
+ * by merman_engine_new options.
+ *
+ * Request strings are UTF-8 byte slices valid only for the duration of the callback. The callback
+ * must not store those pointers. If the same engine is used concurrently, the callback and
+ * user_data must be thread-safe.
+ */
+MermanResult merman_engine_set_text_measure_callback(
+    MermanEngine* engine,
+    MermanHostTextMeasureCallback callback,
+    void* user_data
+);
 
 /*
  * Reusable-engine variants of the stateless entry points.

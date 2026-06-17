@@ -39,6 +39,16 @@ impl RenderRequestPlan {
         }
     }
 
+    pub(super) fn with_text_measurer(
+        &self,
+        measurer: Arc<dyn merman::render::TextMeasurer + Send + Sync>,
+    ) -> Self {
+        Self {
+            renderer: self.renderer.clone().with_text_measurer(measurer),
+            pipeline: self.pipeline.clone(),
+        }
+    }
+
     pub(super) fn parse_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         let parsed = self
             .renderer

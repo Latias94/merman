@@ -33,10 +33,10 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, and binding
-metadata. Raster byte outputs are not part of this protocol version even though the Rust crate has a
-reserved `raster` feature gate. All source-processing functions accept the shared `options_json`
-contract documented in
+The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, binding
+metadata, and optional host text measurement for reusable engines. Raster byte outputs are not part
+of this protocol version even though the Rust crate has a reserved `raster` feature gate. All
+source-processing functions accept the shared `options_json` contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
 ## Stability
@@ -54,7 +54,7 @@ first FFI release candidate:
 The current ABI protocol version is:
 
 ```c
-#define MERMAN_ABI_VERSION 1
+#define MERMAN_ABI_VERSION 2
 ```
 
 ```c
@@ -75,6 +75,37 @@ typedef struct MermanEngineResult {
     MermanEngine* engine;
     MermanBuffer data;
 } MermanEngineResult;
+
+enum {
+    MERMAN_WRAP_MODE_SVG_LIKE = 0,
+    MERMAN_WRAP_MODE_SVG_LIKE_SINGLE_RUN = 1,
+    MERMAN_WRAP_MODE_HTML_LIKE = 2
+};
+
+typedef struct MermanHostTextMeasureRequest {
+    const uint8_t* text;
+    size_t text_len;
+    const uint8_t* font_family;
+    size_t font_family_len;
+    double font_size;
+    const uint8_t* font_weight;
+    size_t font_weight_len;
+    double max_width;
+    uint8_t has_max_width;
+    int32_t wrap_mode;
+} MermanHostTextMeasureRequest;
+
+typedef struct MermanHostTextMeasureResult {
+    uint8_t handled;
+    double width;
+    double height;
+    size_t line_count;
+} MermanHostTextMeasureResult;
+
+typedef MermanHostTextMeasureResult (*MermanHostTextMeasureCallback)(
+    MermanHostTextMeasureRequest request,
+    void* user_data
+);
 ```
 
 `MermanBuffer.data == NULL` means there is no payload. `len == 0` means the payload is empty.
@@ -90,12 +121,13 @@ const char* merman_package_version(void);
 size_t merman_buffer_struct_size(void);
 size_t merman_result_struct_size(void);
 size_t merman_engine_result_struct_size(void);
+size_t merman_host_text_measure_request_struct_size(void);
+size_t merman_host_text_measure_result_struct_size(void);
 ```
 
 - `merman_abi_version()` returns `MERMAN_ABI_VERSION`.
 - `merman_package_version()` returns a static null-terminated string owned by Rust. Do not free it.
-- `merman_buffer_struct_size()`, `merman_result_struct_size()`, and
-  `merman_engine_result_struct_size()` return Rust-side struct sizes so hosts can catch packing or
+- The `*_struct_size()` functions return Rust-side struct sizes so hosts can catch packing or
   header/library mismatches at startup.
 
 ## Result Codes
@@ -179,6 +211,30 @@ MermanResult merman_engine_validate_json(
 
 Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render
 calls, but callers must not free an engine while another thread is using it.
+
+### Host Text Measurement
+
+Hosts that already own a font stack can install a text measurement callback on a reusable engine:
+
+```c
+MermanResult merman_engine_set_text_measure_callback(
+    MermanEngine* engine,
+    MermanHostTextMeasureCallback callback,
+    void* user_data
+);
+```
+
+The callback applies to future render/layout calls made through that engine. Passing
+`callback == NULL` resets the engine to the text measurer selected by `merman_engine_new`
+`options_json`.
+
+`MermanHostTextMeasureRequest` string pointers are UTF-8 byte slices valid only for the duration of
+the callback. The callback must not store them. `max_width` is meaningful only when
+`has_max_width != 0`; `wrap_mode` is one of the `MERMAN_WRAP_MODE_*` constants.
+
+Return `handled=0` for measurement requests the host does not support. `merman` then falls back
+to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently,
+the callback and `user_data` must be thread-safe.
 
 ## SVG Rendering
 

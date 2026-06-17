@@ -35,6 +35,12 @@ pub(super) fn flowchart_html_contains_img_tag(text: &str) -> bool {
     contains_ascii_case_insensitive(text, b"<img")
 }
 
+/// Flowchart HTML labels use fixed-size `foreignObject` boxes computed during headless layout.
+/// Keep those boxes non-clipping so browser-specific font fallback does not drop terminal glyphs
+/// when the actual display font is slightly wider than the headless measurement.
+pub(super) const HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR: &str =
+    r#" overflow="visible" style="overflow: visible;""#;
+
 pub(super) struct OptionalStyleAttr<'a>(pub(super) &'a str);
 
 impl std::fmt::Display for OptionalStyleAttr<'_> {

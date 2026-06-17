@@ -5,7 +5,9 @@ use std::fmt::Write as _;
 use crate::svg::parity::flowchart::label::{flowchart_label_html, flowchart_label_plain_text};
 use crate::svg::parity::flowchart::style::FlowchartCompiledStyles;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
-use crate::svg::parity::flowchart::util::{OptionalStyleXmlAttr, flowchart_html_contains_img_tag};
+use crate::svg::parity::flowchart::util::{
+    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
+};
 use crate::svg::parity::flowchart::write_flowchart_svg_text;
 use crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_wrapped;
 use crate::svg::parity::{escape_xml_display, fmt_display};
@@ -230,13 +232,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         let _ = write!(
             out,
-            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g></g>"#,
+            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g></g>"#,
             label_group_class,
             escape_xml_display(&compiled_styles.label_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy),
             fmt_display(metrics.width),
             fmt_display(metrics.height),
+            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
             escape_xml_display(&div_style),
             super::helpers::flowchart_node_label_span_class(label.label_type),
             span_style_attr,

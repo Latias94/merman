@@ -4,7 +4,9 @@ use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
     SvgRenderOptions, render_flowchart_v2_debug_svg, render_flowchart_v2_svg,
 };
-use merman_render::text::VendoredFontMetricsTextMeasurer;
+use merman_render::text::{
+    TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
 #[cfg(feature = "ratex-math")]
@@ -98,6 +100,76 @@ fn foreign_object_width_for_data_id(svg: &str, data_id: &str) -> f64 {
     svg[width_start..width_end]
         .parse::<f64>()
         .expect("foreignObject width number")
+}
+
+#[derive(Debug, Clone)]
+struct WidthScaledTextMeasurer {
+    inner: VendoredFontMetricsTextMeasurer,
+    width_scale: f64,
+}
+
+impl WidthScaledTextMeasurer {
+    fn new(width_scale: f64) -> Self {
+        Self {
+            inner: VendoredFontMetricsTextMeasurer::default(),
+            width_scale,
+        }
+    }
+
+    fn scale_width(&self, metrics: TextMetrics) -> TextMetrics {
+        TextMetrics {
+            width: metrics.width * self.width_scale,
+            ..metrics
+        }
+    }
+}
+
+impl TextMeasurer for WidthScaledTextMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.scale_width(self.inner.measure(text, style))
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.scale_width(
+            self.inner
+                .measure_wrapped(text, style, max_width, wrap_mode),
+        )
+    }
+
+    fn measure_wrapped_with_raw_width(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> (TextMetrics, Option<f64>) {
+        let (metrics, raw_width) = self
+            .inner
+            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode);
+        (
+            self.scale_width(metrics),
+            raw_width.map(|width| width * self.width_scale),
+        )
+    }
+
+    fn measure_wrapped_raw(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.scale_width(
+            self.inner
+                .measure_wrapped_raw(text, style, max_width, wrap_mode),
+        )
+    }
 }
 
 #[test]
@@ -337,9 +409,111 @@ fn flowchart_html_node_labels_wrap_at_mermaid_default_width() {
 
     assert!(
         svg.contains(
-            r#"foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;""#
+            r#"foreignObject width="200" height="48" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;""#
         ),
         "expected long flowchart HTML node label to wrap at Mermaid's default 200px width: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
+    let text = r#"flowchart TD
+    A[Start] --> B{Condition?}
+    B -->|Yes| C[Execute]
+    B -->|No| D[End]
+    C --> D"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<foreignObject width="35.015625" height="24" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Start</p></span>"#),
+        "expected Start label foreignObject to remain non-clipping for browser font fallback: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<foreignObject width="74.484375" height="24" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Condition?</p></span>"#),
+        "expected Condition? label foreignObject to remain non-clipping for browser font fallback: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<foreignObject width="26.65625" height="24" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Yes</p></span>"#),
+        "expected edge labels to use the same non-clipping foreignObject contract: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
+    let text = r#"flowchart TD
+    A[Start] --> B{Condition?}
+    B -->|Yes| C[Execute]"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let baseline_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let wide_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(WidthScaledTextMeasurer::new(1.35)),
+        ..Default::default()
+    };
+
+    let baseline_out = layout_parsed(&parsed, &baseline_options).expect("baseline layout ok");
+    let wide_out = layout_parsed(&parsed, &wide_options).expect("wide layout ok");
+
+    let LayoutDiagram::FlowchartV2(baseline_layout) = baseline_out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+    let LayoutDiagram::FlowchartV2(wide_layout) = wide_out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let baseline_condition = baseline_layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "B")
+        .expect("baseline Condition? node");
+    let wide_condition = wide_layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "B")
+        .expect("wide Condition? node");
+    let baseline_label_width = baseline_condition
+        .label_width
+        .expect("baseline Condition? label width");
+    let wide_label_width = wide_condition
+        .label_width
+        .expect("wide Condition? label width");
+
+    assert!(
+        wide_label_width > baseline_label_width * 1.3,
+        "expected host-provided wider font metrics to affect flowchart label layout; baseline={baseline_label_width}, wide={wide_label_width}"
+    );
+    assert!(
+        wide_condition.width > baseline_condition.width,
+        "expected host-provided wider font metrics to enlarge the node shape; baseline={}, wide={}",
+        baseline_condition.width,
+        wide_condition.width
     );
 }
 
@@ -836,7 +1010,9 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
     .expect("render svg");
 
     assert!(
-        svg.contains(r#"<foreignObject width="176.984375" height="28">"#),
+        svg.contains(
+            r#"<foreignObject width="176.984375" height="28" overflow="visible" style="overflow: visible;">"#
+        ),
         "expected image-shape label bbox to include Mermaid 11.15 paragraph padding: {svg}"
     );
     assert!(

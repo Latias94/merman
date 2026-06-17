@@ -13,8 +13,15 @@ struct MermanApi {
     buffer_struct_size: extern "C" fn() -> usize,
     result_struct_size: extern "C" fn() -> usize,
     engine_result_struct_size: extern "C" fn() -> usize,
+    host_text_measure_request_struct_size: extern "C" fn() -> usize,
+    host_text_measure_result_struct_size: extern "C" fn() -> usize,
     engine_new: unsafe extern "C" fn(*const u8, usize) -> merman_ffi::MermanEngineResult,
     engine_free: unsafe extern "C" fn(*mut merman_ffi::MermanEngine),
+    engine_set_text_measure_callback: unsafe extern "C" fn(
+        *mut merman_ffi::MermanEngine,
+        Option<merman_ffi::MermanHostTextMeasureCallback>,
+        *mut std::ffi::c_void,
+    ) -> MermanResult,
     engine_render_svg:
         unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
     engine_render_ascii:
@@ -60,8 +67,13 @@ fn c_consumer_smoke() {
             buffer_struct_size: merman_ffi::merman_buffer_struct_size,
             result_struct_size: merman_ffi::merman_result_struct_size,
             engine_result_struct_size: merman_ffi::merman_engine_result_struct_size,
+            host_text_measure_request_struct_size:
+                merman_ffi::merman_host_text_measure_request_struct_size,
+            host_text_measure_result_struct_size:
+                merman_ffi::merman_host_text_measure_result_struct_size,
             engine_new: merman_ffi::merman_engine_new,
             engine_free: merman_ffi::merman_engine_free,
+            engine_set_text_measure_callback: merman_ffi::merman_engine_set_text_measure_callback,
             engine_render_svg: merman_ffi::merman_engine_render_svg,
             engine_render_ascii: merman_ffi::merman_engine_render_ascii,
             engine_parse_json: merman_ffi::merman_engine_parse_json,

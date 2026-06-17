@@ -1,7 +1,23 @@
 //! Text measurement trait shared by renderers and wrapping helpers.
+//!
+//! Headless Mermaid layout has to size labels before there is a browser DOM. The built-in
+//! measurers are therefore compatibility profiles, not a promise that every host browser will pick
+//! the same font fallback at display time. Hosts that already own a text stack can implement this
+//! trait and pass it through `LayoutOptions::with_text_measurer` or
+//! `merman::render::HeadlessRenderer::with_text_measurer`.
 
 use super::{TextMetrics, TextStyle, WrapMode};
 
+/// Measures label text for layout decisions.
+///
+/// `TextMeasurer` is the extension point for editors and other hosts that need layout to match
+/// their own font system. Implementations should cache aggressively: flowchart/class/sequence
+/// layout can ask for the same label in several wrap modes while computing nodes, edges, and final
+/// SVG.
+///
+/// The default vendored measurer optimizes for Mermaid fixture parity and a light dependency graph.
+/// A host-provided measurer can instead use platform text APIs, a UI toolkit text system, or an
+/// optional font engine while preserving the rest of merman's parser/layout/render pipeline.
 pub trait TextMeasurer {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
 
