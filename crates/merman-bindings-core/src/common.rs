@@ -119,6 +119,7 @@ pub(crate) struct LayoutOptionsJson {
     pub(crate) viewport_height: Option<f64>,
     pub(crate) text_measurer: Option<String>,
     pub(crate) math_renderer: Option<String>,
+    pub(crate) flowchart_elk_backend: Option<String>,
 }
 
 #[cfg(feature = "render")]

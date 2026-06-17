@@ -11,9 +11,10 @@
 //!   https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e,
 //!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
 //!
-//! The public API currently delegates to `compat` to keep `flowchart-elk` usable while the
-//! source-backed layered implementation is ported. New ELK layout behavior must land in
-//! `source_port` with a source file reference; do not tune `compat` from fixture output.
+//! The source-backed layered implementation is the default Flowchart ELK path in `merman-render`.
+//! The older compatibility backend remains available for explicit alpha fallback. New ELK layout
+//! behavior must land in `source_port` with a source file reference; do not tune `compat` from
+//! fixture output.
 
 use std::collections::HashMap;
 
@@ -39,8 +40,8 @@ pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
 /// Opt-in source-backed layered layout adapter.
 ///
 /// This follows Mermaid's ELK adapter construction and executes the Rust port of Eclipse ELK's
-/// layered pipeline. The default `layout` API intentionally remains on the compatibility backend
-/// until the source-backed path covers the full render surface.
+/// layered pipeline. The lower-level `layout` API intentionally remains on the compatibility
+/// backend for callers that explicitly need the pre-port behavior.
 pub fn layout_source_ported(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
     match algorithm {
         Algorithm::Layered => layout_layered_source_ported(graph),

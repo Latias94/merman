@@ -6,9 +6,9 @@ use crate::common::{
 };
 use chrono::TimeZone;
 use merman::render::{
-    DeterministicTextMeasurer, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
-    HostThemePreset, HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
-    VendoredFontMetricsTextMeasurer,
+    DeterministicTextMeasurer, FlowchartElkBackend, HeadlessRenderer, HostThemeAppearance,
+    HostThemePipelinePreset, HostThemePreset, HostThemeProfile, HostThemeRoles,
+    HostThemeRootBackground, LayoutOptions, VendoredFontMetricsTextMeasurer,
 };
 use std::sync::Arc;
 
@@ -227,6 +227,18 @@ fn build_renderer(
                     ));
                 }
             }
+        }
+        if let Some(backend) = layout_json.flowchart_elk_backend.as_deref() {
+            layout.flowchart_elk_backend = match normalize_option(backend).as_str() {
+                "source-ported" | "source_ported" | "source" => FlowchartElkBackend::SourcePorted,
+                "compat" => FlowchartElkBackend::Compat,
+                other => {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!("unsupported layout.flowchart_elk_backend: {other}"),
+                    ));
+                }
+            };
         }
     }
     renderer = renderer.with_layout_options(layout);

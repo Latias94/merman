@@ -51,7 +51,8 @@ numeric values return binding errors instead of panicking.
     "viewport_width": 1024,
     "viewport_height": 768,
     "text_measurer": "vendored",
-    "math_renderer": "none"
+    "math_renderer": "none",
+    "flowchart_elk_backend": "source-ported"
   },
   "svg": {
     "diagram_id": "my-diagram",
@@ -182,9 +183,12 @@ directives. Explicit `svg.*` options override profile output options.
 | `layout.viewport_height` | positive finite number | renderer default | Overrides layout viewport height. |
 | `layout.text_measurer` | string | renderer default | `vendored` or `deterministic`. |
 | `layout.math_renderer` | string | renderer default | `none` or `ratex`. `ratex` requires the `ratex-math` feature. |
+| `layout.flowchart_elk_backend` | string | `source-ported` | `source-ported`, `source_ported`, `source`, or `compat`. Selects the Flowchart ELK backend. |
 
 `text_measurer=deterministic` is useful for repeatable tests. `text_measurer=vendored` uses bundled
 font metrics when available.
+`flowchart_elk_backend=compat` is an alpha fallback for the older lightweight Flowchart ELK backend;
+the default source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port.
 
 ## SVG Options
 

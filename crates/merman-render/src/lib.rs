@@ -99,15 +99,15 @@ pub struct LayoutOptions {
     pub use_manatee_layout: bool,
     /// Selects the Flowchart ELK backend.
     ///
-    /// `Compat` keeps the current public render path stable. `SourcePorted` executes the Rust
-    /// source port of ELK layered layout and is intended for ELK fixture convergence work.
+    /// `SourcePorted` executes the Rust source port of ELK layered layout. `Compat` keeps the
+    /// previous lightweight backend available as an explicit alpha fallback.
     pub flowchart_elk_backend: FlowchartElkBackend,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FlowchartElkBackend {
-    #[default]
     Compat,
+    #[default]
     SourcePorted,
 }
 
@@ -119,7 +119,7 @@ impl Default for LayoutOptions {
             viewport_width: 800.0,
             viewport_height: 600.0,
             use_manatee_layout: false,
-            flowchart_elk_backend: FlowchartElkBackend::Compat,
+            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
         }
     }
 }
@@ -137,7 +137,6 @@ impl LayoutOptions {
             // Mermaid parity fixtures for diagrams like mindmap/architecture rely on the COSE
             // layout port (manatee). Make the headless defaults "just work" for UI integrations.
             use_manatee_layout: true,
-            flowchart_elk_backend: FlowchartElkBackend::Compat,
             ..Default::default()
         }
     }
@@ -889,7 +888,7 @@ A{A} --> B & C
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn render_layouted_svg_uses_rounded_edges_for_flowchart_elk() {
+    fn render_layouted_svg_uses_right_angle_edges_for_flowchart_elk() {
         let parsed = Engine::new()
             .parse_diagram_sync("flowchart-elk LR\nA --> B\nA --> C", ParseOptions::strict())
             .unwrap()
@@ -910,8 +909,8 @@ A{A} --> B & C
         let path = edge_path_chunk(&svg, "L_A_B_0");
         let d = edge_path_d(path);
         assert!(
-            d.contains('Q') && !d.contains('C'),
-            "expected ELK edges to use rounded right-angle paths by default: {d}"
+            d.contains('L') && !d.contains('C'),
+            "expected ELK edges to use right-angle paths without smooth curves by default: {d}"
         );
     }
 

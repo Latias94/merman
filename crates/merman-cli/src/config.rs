@@ -67,7 +67,7 @@ pub(crate) fn layout_options(
         math_renderer,
         // Mermaid parity for some diagrams relies on manatee-backed layout engines.
         use_manatee_layout: true,
-        flowchart_elk_backend: Default::default(),
+        flowchart_elk_backend: render.flowchart_elk_backend.into(),
     }
 }
 
@@ -97,5 +97,35 @@ pub(crate) fn math_renderer(
                 ))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::FlowchartElkBackend;
+
+    #[test]
+    fn layout_options_default_to_source_ported_flowchart_elk_backend() {
+        let layout = layout_options(&RenderCliArgs::default(), None);
+
+        assert_eq!(
+            layout.flowchart_elk_backend,
+            merman::render::FlowchartElkBackend::SourcePorted
+        );
+    }
+
+    #[test]
+    fn layout_options_preserve_explicit_compat_flowchart_elk_backend() {
+        let render = RenderCliArgs {
+            flowchart_elk_backend: FlowchartElkBackend::Compat,
+            ..Default::default()
+        };
+        let layout = layout_options(&render, None);
+
+        assert_eq!(
+            layout.flowchart_elk_backend,
+            merman::render::FlowchartElkBackend::Compat
+        );
     }
 }

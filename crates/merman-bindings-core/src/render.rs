@@ -753,6 +753,35 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
+    fn render_svg_accepts_explicit_flowchart_elk_backend_option() {
+        let svg = String::from_utf8(
+            render_svg(
+                b"flowchart-elk TD\nA[Hello] --> B[World]",
+                br#"{ "layout": { "flowchart_elk_backend": "compat" } }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("Hello"));
+        assert!(svg.contains("World"));
+        assert!(!svg.contains("NaN"));
+    }
+
+    #[test]
+    fn invalid_flowchart_elk_backend_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart-elk TD\nA --> B",
+            br#"{ "layout": { "flowchart_elk_backend": "dagre" } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("layout.flowchart_elk_backend"));
+    }
+
+    #[test]
     fn unsupported_ratex_without_feature_returns_unsupported_format() {
         let result = render_svg(
             b"flowchart TD\nA[Hello]",

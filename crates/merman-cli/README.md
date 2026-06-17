@@ -203,6 +203,9 @@ terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 - `-q, --quiet` suppresses non-error logs.
 - `--text-measurer deterministic|vendored` controls text measurement.
 - `--math-renderer none|ratex` controls math label rendering.
+- `--flowchart-elk-backend source-ported|compat` selects the Flowchart ELK backend. The default
+  source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port; `compat`
+  keeps the older lightweight alpha fallback available for diagnostics.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
 - `--fixed-today <YYYY-MM-DD>` fixes the local "today" date for time-dependent diagrams such as
   Gantt.

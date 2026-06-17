@@ -1,4 +1,5 @@
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
+use merman::render::FlowchartElkBackend as RenderFlowchartElkBackend;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -122,6 +123,10 @@ pub(crate) struct RenderCliArgs {
     #[arg(long = "math-renderer", value_enum, default_value_t = MathRendererKind::None)]
     pub(crate) math_renderer: MathRendererKind,
 
+    /// Flowchart ELK layout backend.
+    #[arg(long = "flowchart-elk-backend", value_enum, default_value_t = FlowchartElkBackend::SourcePorted)]
+    pub(crate) flowchart_elk_backend: FlowchartElkBackend,
+
     /// Viewport width for viewport-sensitive layouts.
     #[arg(short = 'w', long = "width", alias = "viewport-width", value_parser = parse_positive_f64)]
     pub(crate) width: Option<f64>,
@@ -144,6 +149,7 @@ impl Default for RenderCliArgs {
         Self {
             text_measurer: TextMeasurerKind::Vendored,
             math_renderer: MathRendererKind::None,
+            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
             width: None,
             height: None,
             svg_id: None,
@@ -273,6 +279,10 @@ pub(crate) struct ExportArgs {
     #[arg(long = "math-renderer", value_enum, default_value_t = MathRendererKind::None)]
     pub(crate) math_renderer: MathRendererKind,
 
+    /// Flowchart ELK layout backend.
+    #[arg(long = "flowchart-elk-backend", value_enum, default_value_t = FlowchartElkBackend::SourcePorted)]
+    pub(crate) flowchart_elk_backend: FlowchartElkBackend,
+
     /// Emit an error diagram instead of failing on parse errors.
     #[arg(long = "suppress-errors")]
     pub(crate) suppress_errors: bool,
@@ -306,6 +316,22 @@ pub(crate) enum MathRendererKind {
     #[default]
     None,
     Ratex,
+}
+
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub(crate) enum FlowchartElkBackend {
+    Compat,
+    #[default]
+    SourcePorted,
+}
+
+impl From<FlowchartElkBackend> for RenderFlowchartElkBackend {
+    fn from(value: FlowchartElkBackend) -> Self {
+        match value {
+            FlowchartElkBackend::Compat => Self::Compat,
+            FlowchartElkBackend::SourcePorted => Self::SourcePorted,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]

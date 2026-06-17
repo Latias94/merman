@@ -96,6 +96,7 @@ pub(crate) fn render_plan_for_mmdc(
     let mut render = RenderCliArgs {
         text_measurer: export.text_measurer,
         math_renderer: export.math_renderer,
+        flowchart_elk_backend: export.flowchart_elk_backend,
         width: export.width,
         height: export.height,
         svg_id: export.svg_id.clone(),
@@ -155,6 +156,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         render: RenderCliArgs {
             text_measurer: args.export.text_measurer,
             math_renderer: args.export.math_renderer,
+            flowchart_elk_backend: args.export.flowchart_elk_backend,
             width: args.export.width,
             height: args.export.height,
             svg_id: args.export.svg_id.clone(),
