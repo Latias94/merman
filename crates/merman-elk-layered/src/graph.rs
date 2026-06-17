@@ -866,19 +866,28 @@ impl LGraph {
         node_index: usize,
         new_order: impl IntoIterator<Item = usize>,
     ) -> bool {
+        self.reorder_node_ports_with_map(node_index, new_order)
+            .is_some()
+    }
+
+    pub fn reorder_node_ports_with_map(
+        &mut self,
+        node_index: usize,
+        new_order: impl IntoIterator<Item = usize>,
+    ) -> Option<Vec<usize>> {
         let Some(node) = self.layerless_nodes.get(node_index) else {
-            return false;
+            return None;
         };
         let port_count = node.ports.len();
         let new_order = new_order.into_iter().collect::<Vec<_>>();
         if new_order.len() != port_count {
-            return false;
+            return None;
         }
 
         let mut seen = vec![false; port_count];
         for old_index in &new_order {
             if *old_index >= port_count || seen[*old_index] {
-                return false;
+                return None;
             }
             seen[*old_index] = true;
         }
@@ -953,7 +962,7 @@ impl LGraph {
             }
         }
 
-        true
+        Some(old_to_new)
     }
 }
 
@@ -1330,6 +1339,28 @@ mod tests {
         assert_eq!(
             nested.layerless_nodes[0].origin_port.as_ref().unwrap().port,
             PortRef { node: 0, port: 0 }
+        );
+    }
+
+    #[test]
+    fn reorder_node_ports_with_map_returns_old_to_new_indices() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut node = LNode::new("A", 10.0, 10.0, Some(0));
+        node.ports.push(LPort::new("p0", 0, PortType::Output));
+        node.ports.push(LPort::new("p1", 0, PortType::Output));
+        node.ports.push(LPort::new("p2", 0, PortType::Output));
+        graph.layerless_nodes.push(node);
+
+        let old_to_new = graph.reorder_node_ports_with_map(0, [2, 0, 1]).unwrap();
+
+        assert_eq!(old_to_new, vec![1, 2, 0]);
+        assert_eq!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["p2", "p0", "p1"]
         );
     }
 }
