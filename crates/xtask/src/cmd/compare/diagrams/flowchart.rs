@@ -9,6 +9,7 @@ use crate::cmd::compare::{
 };
 use crate::svgdom;
 use regex::Regex;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
@@ -550,6 +551,23 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
 
     let cases = collect_flowchart_elk_spec_snapshot_cases(&spec)?;
     let admitted = crate::cmd::flowchart_elk_svg_source_backed_probe_stems();
+    let mut admitted_layout_body_keys: BTreeMap<String, String> = BTreeMap::new();
+    for stem in admitted {
+        let fixture_path = fixture_dir.join(format!("{stem}.mmd"));
+        if let Ok(text) = fs::read_to_string(&fixture_path) {
+            admitted_layout_body_keys
+                .entry(canonical_flowchart_elk_layout_body_key(&text))
+                .or_insert_with(|| (*stem).to_string());
+        }
+    }
+
+    for case in &cases {
+        if admitted.contains(&case.stem.as_str()) {
+            admitted_layout_body_keys
+                .entry(case.layout_body_key.clone())
+                .or_insert_with(|| case.stem.clone());
+        }
+    }
 
     let mut admitted_count = 0usize;
     let mut fixture_count = 0usize;
@@ -557,6 +575,11 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
     let mut missing = Vec::new();
     let mut not_admitted = Vec::new();
     let mut no_upstream_svg = Vec::new();
+    let mut unique_layout_body_keys = BTreeSet::new();
+    let mut covered_layout_body_keys = BTreeSet::new();
+    let mut duplicate_covered = Vec::new();
+    let mut uncovered_layout_body_groups: BTreeMap<String, Vec<&FlowchartElkSpecCase>> =
+        BTreeMap::new();
 
     for case in &cases {
         let fixture_path = fixture_dir.join(format!("{}.mmd", case.stem));
@@ -564,6 +587,19 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
         let has_fixture = fixture_path.is_file();
         let has_svg = svg_path.is_file();
         let is_admitted = admitted.contains(&case.stem.as_str());
+        let covered_by_layout_body = admitted_layout_body_keys
+            .get(&case.layout_body_key)
+            .map(String::as_str);
+
+        unique_layout_body_keys.insert(case.layout_body_key.clone());
+        if covered_by_layout_body.is_some() {
+            covered_layout_body_keys.insert(case.layout_body_key.clone());
+        } else {
+            uncovered_layout_body_groups
+                .entry(case.layout_body_key.clone())
+                .or_default()
+                .push(case);
+        }
 
         if has_fixture {
             fixture_count += 1;
@@ -579,8 +615,14 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
             admitted_count += 1;
         } else {
             not_admitted.push(case);
+            if let Some(representative) = covered_by_layout_body {
+                duplicate_covered.push((case, representative));
+            }
         }
     }
+
+    let uncovered_layout_body_count =
+        unique_layout_body_keys.len() - covered_layout_body_keys.len();
 
     println!("Flowchart ELK source-backed coverage");
     println!("spec: {}", spec_path.display());
@@ -591,6 +633,63 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
     println!("missing fixtures: {}", missing.len());
     println!("missing upstream SVGs: {}", no_upstream_svg.len());
     println!("not admitted: {}", not_admitted.len());
+    println!("unique layout bodies: {}", unique_layout_body_keys.len());
+    println!(
+        "unique layout bodies covered by admitted probes: {}",
+        covered_layout_body_keys.len()
+    );
+    println!("uncovered unique layout bodies: {uncovered_layout_body_count}");
+    println!(
+        "not admitted but covered by duplicate layout body: {}",
+        duplicate_covered.len()
+    );
+
+    if !duplicate_covered.is_empty() {
+        println!();
+        println!("Exact calls covered through an admitted duplicate layout body:");
+        for (case, representative) in &duplicate_covered {
+            println!(
+                "- {} {} [{}{}]",
+                case.case_number,
+                case.test_name,
+                case.call,
+                if case.snapshot { ", snapshot" } else { "" }
+            );
+            println!("  stem: {}", case.stem);
+            println!("  covered_by: {representative}");
+        }
+    }
+
+    if !uncovered_layout_body_groups.is_empty() {
+        println!();
+        println!("Uncovered unique layout bodies:");
+        let mut groups = uncovered_layout_body_groups.values().collect::<Vec<_>>();
+        groups.sort_by_key(|group| group[0].case_number);
+        for group in groups {
+            let representative = group[0];
+            println!(
+                "- {} {} [{}{}]",
+                representative.case_number,
+                representative.test_name,
+                representative.call,
+                if representative.snapshot {
+                    ", snapshot"
+                } else {
+                    ""
+                }
+            );
+            println!("  stem: {}", representative.stem);
+            if group.len() > 1 {
+                let duplicates = group
+                    .iter()
+                    .skip(1)
+                    .map(|case| case.stem.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                println!("  duplicate_calls: {duplicates}");
+            }
+        }
+    }
 
     if !missing.is_empty() {
         println!();
@@ -645,6 +744,7 @@ struct FlowchartElkSpecCase {
     case_number: usize,
     test_name: String,
     stem: String,
+    layout_body_key: String,
     call: &'static str,
     snapshot: bool,
 }
@@ -717,6 +817,7 @@ fn collect_flowchart_elk_spec_snapshot_cases(
                             "upstream_cypress_{source_slug}_{test_slug}_{case_index:03}",
                             case_index = idx_in_file + 1
                         ),
+                        layout_body_key: canonical_flowchart_elk_layout_body_key(&body),
                         call,
                         snapshot: call == "imgSnapshotTest",
                     });
@@ -997,6 +1098,41 @@ fn clamp_flowchart_elk_slug(mut slug: String, max_len: usize) -> String {
     }
 }
 
+fn canonical_flowchart_elk_layout_body_key(input: &str) -> String {
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let body = strip_flowchart_elk_yaml_frontmatter(normalized.trim_start())
+        .trim_matches(|ch: char| ch.is_whitespace())
+        .replace("flowchart-elk", "flowchart");
+
+    body.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn strip_flowchart_elk_yaml_frontmatter(input: &str) -> &str {
+    let mut pieces = input.split_inclusive('\n');
+    let Some(first_piece) = pieces.next() else {
+        return input;
+    };
+    let first_line = first_piece.trim_end_matches(['\n', '\r']);
+    if first_line.trim() != "---" {
+        return input;
+    }
+
+    let mut consumed = first_piece.len();
+    for piece in pieces {
+        consumed += piece.len();
+        let line = piece.trim_end_matches(['\n', '\r']);
+        if line.trim() == "---" {
+            return &input[consumed..];
+        }
+    }
+
+    input
+}
+
 fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
     let path = crate::cmd::workspace_root()
         .join("crates")
@@ -1036,7 +1172,10 @@ fn flowchart_elk_backend_name(backend: merman_render::FlowchartElkBackend) -> &'
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_flowchart_elk_spec_snapshot_cases, compare_flowchart_svgs};
+    use super::{
+        canonical_flowchart_elk_layout_body_key, collect_flowchart_elk_spec_snapshot_cases,
+        compare_flowchart_svgs,
+    };
 
     #[test]
     fn source_backed_elk_probe_matches_html_demo_fixture() {
@@ -1118,6 +1257,7 @@ it('renderGraph defaultRenderer elk config', () => {
         );
         assert_eq!(cases[0].call, "imgSnapshotTest");
         assert!(cases[0].snapshot);
+        assert_eq!(cases[0].layout_body_key, "flowchart\nA --> B");
 
         assert_eq!(cases[1].case_number, 2);
         assert_eq!(cases[1].test_name, "renderGraph elk config");
@@ -1127,6 +1267,7 @@ it('renderGraph defaultRenderer elk config', () => {
         );
         assert_eq!(cases[1].call, "renderGraph");
         assert!(!cases[1].snapshot);
+        assert_eq!(cases[1].layout_body_key, "flowchart LR\nC --> D");
 
         assert_eq!(cases[2].case_number, 3);
         assert_eq!(cases[2].test_name, "renderGraph defaultRenderer elk config");
@@ -1136,5 +1277,27 @@ it('renderGraph defaultRenderer elk config', () => {
         );
         assert_eq!(cases[2].call, "renderGraph");
         assert!(!cases[2].snapshot);
+        assert_eq!(cases[2].layout_body_key, "flowchart TD\nE --> F");
+    }
+
+    #[test]
+    fn flowchart_elk_layout_body_key_tracks_equivalent_layout_inputs() {
+        let flowchart_elk = r#"
+---
+config:
+  htmlLabels: true
+---
+flowchart-elk LR
+  A --> B
+"#;
+        let default_renderer = r#"
+flowchart LR
+    A --> B
+"#;
+
+        assert_eq!(
+            canonical_flowchart_elk_layout_body_key(flowchart_elk),
+            canonical_flowchart_elk_layout_body_key(default_renderer)
+        );
     }
 }

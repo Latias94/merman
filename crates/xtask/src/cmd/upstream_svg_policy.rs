@@ -32,6 +32,7 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_6088_6_should_handle_diamond_shape_intersections_056",
     "upstream_cypress_flowchart_elk_spec_6647_elk_should_keep_node_order_when_using_elk_layout_unless_it_057",
     "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_058",
+    "upstream_cypress_flowchart_elk_spec_elk_should_include_classes_on_the_edges_061",
     "upstream_cypress_flowchart_elk_spec_sub_graphs_049",
     "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063",
 ];
@@ -201,6 +202,9 @@ mod tests {
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_058"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_elk_should_include_classes_on_the_edges_061"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_sub_graphs_049"

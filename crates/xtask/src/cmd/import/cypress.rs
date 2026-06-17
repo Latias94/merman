@@ -1732,12 +1732,36 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             None
         }
 
-        let mut test_name: Option<String> = None;
         let it_positions = collect_it_positions(&text);
-        let mut next_it_idx = 0usize;
 
         let mut out: Vec<CypressBlock> = Vec::new();
         let mut idx_in_file = 0usize;
+
+        fn cypress_test_name_at(it_positions: &[ItPos], abs: usize) -> Option<String> {
+            let mut current = None;
+            for it in it_positions {
+                if it.pos > abs {
+                    break;
+                }
+                if it.pos < abs && !it.skipped {
+                    current = Some(it.name.clone());
+                }
+            }
+            current
+        }
+
+        fn cypress_call_is_in_skipped_test(it_positions: &[ItPos], abs: usize) -> bool {
+            let mut current = None;
+            for it in it_positions {
+                if it.pos > abs {
+                    break;
+                }
+                if it.pos < abs {
+                    current = Some(it);
+                }
+            }
+            current.is_some_and(|it| it.skipped)
+        }
 
         fn synthesize_sankey_render_graph_using_this_graph_blocks(
             spec_path: &Path,
@@ -1877,23 +1901,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         ] {
             let mut search_from = 0usize;
             while let Some(abs) = find_next_call(&text, needle, search_from) {
-                while next_it_idx + 1 < it_positions.len()
-                    && it_positions[next_it_idx + 1].pos < abs
-                {
-                    next_it_idx += 1;
-                }
-                let skipped_it = it_positions
-                    .get(next_it_idx)
-                    .is_some_and(|it| it.pos < abs && it.skipped);
-                if skipped_it {
+                if cypress_call_is_in_skipped_test(&it_positions, abs) {
                     search_from = abs + needle.len();
                     continue;
                 }
-                if let Some(it) = it_positions.get(next_it_idx)
-                    && it.pos < abs
-                {
-                    test_name = Some(it.name.clone());
-                }
+                let test_name = cypress_test_name_at(&it_positions, abs);
 
                 // Find the opening paren and extract the first template literal after it.
                 let after_call = abs + needle.len();
@@ -1925,16 +1937,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     extract_first_template_literal(args_slice, 0)
                 };
                 if let Some((raw, end_rel)) = extracted {
-                    let options_obj = if call == "imgSnapshotTest" {
-                        extract_second_arg_object_literal(args_slice, end_rel)
-                    } else {
-                        None
-                    };
+                    let options_obj = extract_second_arg_object_literal(args_slice, end_rel);
                     out.push(CypressBlock {
                         source_spec: spec_path.to_path_buf(),
                         source_stem: source_stem.clone(),
                         idx_in_file,
-                        test_name: test_name.clone(),
+                        test_name,
                         call: call.to_string(),
                         body: raw,
                         options_obj,
