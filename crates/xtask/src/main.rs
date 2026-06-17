@@ -118,6 +118,7 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-er-svgs");
     println!("  compare-flowchart-svgs");
     println!("  check-flowchart-elk-source-backed-probes");
+    println!("  audit-flowchart-elk-source-backed-coverage");
     println!("  compare-sequence-svgs");
     println!("  compare-class-svgs");
     println!("  compare-state-svgs");
@@ -210,6 +211,9 @@ fn main() -> Result<(), XtaskError> {
         "compare-flowchart-svgs" => cmd::compare_flowchart_svgs(args.collect()),
         "check-flowchart-elk-source-backed-probes" => {
             cmd::check_flowchart_elk_source_backed_probes(args.collect())
+        }
+        "audit-flowchart-elk-source-backed-coverage" => {
+            cmd::audit_flowchart_elk_source_backed_coverage(args.collect())
         }
         "debug-flowchart-layout" => cmd::debug_flowchart_layout(args.collect()),
         "debug-flowchart-elk-source-phase" => cmd::debug_flowchart_elk_source_phase(args.collect()),

@@ -31,7 +31,10 @@ pub(crate) use block::compare_block_svgs;
 pub(crate) use c4::compare_c4_svgs;
 pub(crate) use class::compare_class_svgs;
 pub(crate) use er::compare_er_svgs;
-pub(crate) use flowchart::{check_flowchart_elk_source_backed_probes, compare_flowchart_svgs};
+pub(crate) use flowchart::{
+    audit_flowchart_elk_source_backed_coverage, check_flowchart_elk_source_backed_probes,
+    compare_flowchart_svgs,
+};
 pub(crate) use gantt::compare_gantt_svgs;
 pub(crate) use generic_stage_b::{
     compare_eventmodeling_svgs, compare_ishikawa_svgs, compare_tree_view_svgs, compare_venn_svgs,
