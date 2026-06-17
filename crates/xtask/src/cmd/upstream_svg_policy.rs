@@ -28,6 +28,8 @@ const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
     "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037",
     "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038",
     "upstream_cypress_flowchart_elk_spec_6088_5_should_handle_diamond_shape_intersections_055",
+    "upstream_cypress_flowchart_elk_spec_6088_6_should_handle_diamond_shape_intersections_056",
+    "upstream_cypress_flowchart_elk_spec_6647_elk_should_keep_node_order_when_using_elk_layout_unless_it_057",
     "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_058",
     "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063",
 ];
@@ -190,6 +192,12 @@ mod tests {
             "upstream_cypress_flowchart_elk_spec_6088_5_should_handle_diamond_shape_intersections_055"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_6088_6_should_handle_diamond_shape_intersections_056"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_6647_elk_should_keep_node_order_when_using_elk_layout_unless_it_057"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_058"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
@@ -197,6 +205,15 @@ mod tests {
         ));
         assert!(!flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001"
+        ));
+        assert!(!flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_61_elk_fontawesome_icons_in_edge_labels_022"
+        ));
+        assert!(!flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_v2_elk_16_render_stadium_shape_008"
+        ));
+        assert!(!flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_cypress_flowchart_elk_spec_should_render_a_flowchart_with_title_062"
         ));
         assert!(!flowchart_elk_svg_parity_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001"

@@ -51,6 +51,8 @@ struct CompareAllOptions {
     dom_decimals: Option<u32>,
     filter: Option<String>,
     flowchart_text_measurer: Option<String>,
+    flowchart_elk_backend: Option<merman_render::FlowchartElkBackend>,
+    include_elk_probes: bool,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
     only_diagrams: Vec<String>,
@@ -82,6 +84,13 @@ impl CompareAllOptions {
                     options.flowchart_text_measurer =
                         args.get(i).map(|s| s.trim().to_ascii_lowercase());
                 }
+                "--flowchart-elk-backend" => {
+                    i += 1;
+                    options.flowchart_elk_backend = Some(parse_flowchart_elk_backend(
+                        args.get(i).map(String::as_str),
+                    )?);
+                }
+                "--include-elk-probes" => options.include_elk_probes = true,
                 "--report-root" => options.report_root = true,
                 "--report-root-all" => {
                     options.report_root = true;
@@ -137,6 +146,8 @@ impl CompareAllOptions {
             dom_decimals: self.dom_decimals,
             filter: self.filter.as_deref(),
             flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
+            flowchart_elk_backend: self.flowchart_elk_backend,
+            include_elk_probes: self.include_elk_probes,
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
         }
@@ -286,6 +297,8 @@ struct CompareAllInvocationOptions<'a> {
     dom_decimals: Option<u32>,
     filter: Option<&'a str>,
     flowchart_text_measurer: Option<&'a str>,
+    flowchart_elk_backend: Option<merman_render::FlowchartElkBackend>,
+    include_elk_probes: bool,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
 }
@@ -337,11 +350,21 @@ impl CompareAllInvocationOptions<'_> {
     }
 
     fn push_diagram_args(&self, diagram: &str, args: &mut Vec<String>) {
-        if diagram == "flowchart"
-            && let Some(tm) = self.flowchart_text_measurer
-        {
-            args.push("--text-measurer".to_string());
-            args.push(tm.to_string());
+        if diagram != "flowchart" {
+            return;
+        }
+
+        if let Some(tm) = self.flowchart_text_measurer {
+            args.extend(["--text-measurer".to_string(), tm.to_string()]);
+        }
+        if let Some(backend) = self.flowchart_elk_backend {
+            args.extend([
+                "--flowchart-elk-backend".to_string(),
+                flowchart_elk_backend_name(backend).to_string(),
+            ]);
+        }
+        if self.include_elk_probes {
+            args.push("--include-elk-probes".to_string());
         }
     }
 
@@ -395,6 +418,25 @@ fn diagram_filter_key(diagram: &str) -> String {
     }
 }
 
+fn parse_flowchart_elk_backend(
+    value: Option<&str>,
+) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
+    match value.map(str::trim) {
+        Some("compat") => Ok(merman_render::FlowchartElkBackend::Compat),
+        Some("source-ported" | "source_ported" | "source") => {
+            Ok(merman_render::FlowchartElkBackend::SourcePorted)
+        }
+        _ => Err(XtaskError::Usage),
+    }
+}
+
+fn flowchart_elk_backend_name(backend: merman_render::FlowchartElkBackend) -> &'static str {
+    match backend {
+        merman_render::FlowchartElkBackend::Compat => "compat",
+        merman_render::FlowchartElkBackend::SourcePorted => "source-ported",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -418,6 +460,9 @@ mod tests {
             "upstream_info_spec".to_string(),
             "--flowchart-text-measurer".to_string(),
             " BROWSER ".to_string(),
+            "--flowchart-elk-backend".to_string(),
+            " source-ported ".to_string(),
+            "--include-elk-probes".to_string(),
             "--report-root-limit".to_string(),
             "7".to_string(),
             "--diagram".to_string(),
@@ -432,6 +477,11 @@ mod tests {
         assert_eq!(options.dom_decimals, None);
         assert_eq!(options.filter.as_deref(), Some("upstream_info_spec"));
         assert_eq!(options.flowchart_text_measurer.as_deref(), Some("browser"));
+        assert_eq!(
+            options.flowchart_elk_backend,
+            Some(merman_render::FlowchartElkBackend::SourcePorted)
+        );
+        assert!(options.include_elk_probes);
         assert!(options.report_root);
         assert_eq!(
             options.root_report_limit,
@@ -446,6 +496,43 @@ mod tests {
         assert!(CompareAllOptions::parse(vec!["--diagram".to_string()]).is_err());
         assert!(CompareAllOptions::parse(vec!["--skip".to_string()]).is_err());
         assert!(CompareAllOptions::parse(vec!["--report-root-limit".to_string()]).is_err());
+        assert!(CompareAllOptions::parse(vec!["--flowchart-elk-backend".to_string()]).is_err());
+        assert!(
+            CompareAllOptions::parse(vec![
+                "--flowchart-elk-backend".to_string(),
+                "unknown".to_string()
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn compare_all_invocation_passes_flowchart_elk_lane_only_to_flowchart() {
+        let options = CompareAllOptions {
+            filter: Some("elk_probe".to_string()),
+            flowchart_text_measurer: Some("vendored".to_string()),
+            flowchart_elk_backend: Some(merman_render::FlowchartElkBackend::SourcePorted),
+            include_elk_probes: true,
+            ..Default::default()
+        };
+        let invocation = options.invocation_options();
+        let compare_dir = Path::new("target/compare");
+
+        let flowchart = invocation.for_diagram("flowchart", compare_dir);
+        assert!(flowchart.args.contains(&"--text-measurer".to_string()));
+        assert!(flowchart.args.contains(&"vendored".to_string()));
+        assert!(
+            flowchart
+                .args
+                .contains(&"--flowchart-elk-backend".to_string())
+        );
+        assert!(flowchart.args.contains(&"source-ported".to_string()));
+        assert!(flowchart.args.contains(&"--include-elk-probes".to_string()));
+
+        let info = invocation.for_diagram("info", compare_dir);
+        assert!(!info.args.contains(&"--text-measurer".to_string()));
+        assert!(!info.args.contains(&"--flowchart-elk-backend".to_string()));
+        assert!(!info.args.contains(&"--include-elk-probes".to_string()));
     }
 
     #[test]

@@ -3125,9 +3125,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
-        // Parity gate (matches `xtask verify`): keep the main fixture corpus green while still
-        // retaining the upstream SVG + input under `_deferred/` for later investigation.
-        if let Err(err) = super::super::compare_all_svgs(vec![
+        // Parity gate (matches `xtask verify` by default). The dedicated Flowchart ELK
+        // source-backed lane opts into the source-ported backend so admitted probes are checked
+        // against the same renderer used by `check-flowchart-elk-source-backed-probes`.
+        let mut compare_args = vec![
             "--check-dom".to_string(),
             "--dom-mode".to_string(),
             "parity".to_string(),
@@ -3137,7 +3138,17 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             f.diagram_dir.clone(),
             "--filter".to_string(),
             f.stem.clone(),
-        ]) {
+        ];
+        if flowchart_elk_source_backed_probes && f.diagram_dir == "flowchart" {
+            compare_args.extend([
+                "--flowchart-text-measurer".to_string(),
+                "vendored".to_string(),
+                "--flowchart-elk-backend".to_string(),
+                "source-ported".to_string(),
+                "--include-elk-probes".to_string(),
+            ]);
+        }
+        if let Err(err) = super::super::compare_all_svgs(compare_args) {
             let msg = err.to_string();
             let msg_head = msg.lines().next().unwrap_or("svg compare failed");
             let reason = "svg dom parity mismatch (deferred)";
