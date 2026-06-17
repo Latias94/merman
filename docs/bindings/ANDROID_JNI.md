@@ -38,6 +38,18 @@ The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` durin
 initialization. `MermanReusableEngine` exposes repeated render/parse/layout/validation calls and a
 `MermanTextMeasurer` callback for hosts that need font-aware text measurement.
 
+## Text Measurement Guidance
+
+Use `MermanReusableEngine.setTextMeasurer(...)` when Android needs label geometry to match the
+surface that will display the SVG. Native Android previews should measure with the same
+`TextPaint`/`StaticLayout` configuration used for display. WebView previews should use a DOM/canvas
+measurement cache from that WebView when practical, because the synchronous JNI callback should not
+block an arbitrary render thread on WebView UI work.
+
+Return `null` for requests the host cannot measure faithfully; merman falls back per request. Keep
+the measurer thread-safe if the reusable engine is rendered concurrently. See
+[`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#android-jni) for the full platform checklist.
+
 ## Example
 
 `platforms/android/examples/MermanSmoke.kt` shows the smallest smoke sequence for SVG, ASCII,

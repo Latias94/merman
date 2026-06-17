@@ -417,6 +417,10 @@ Headless rendering cannot know the exact browser or native UI font fallback that
 final SVG. If precise label geometry matters, native hosts should install the FFI text-measurement
 callback and measure with their own DOM/canvas/WebView/native text stack. Unsupported requests can
 return `handled=0`, and merman will fall back to its vendored Mermaid-compatible measurer.
+See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md)
+for platform guidance covering Android JNI, Apple Swift, Flutter/Dart FFI, browser/WebView
+measurement, callback lifetime, and testing.
 
 Detailed platform notes:
 

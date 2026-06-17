@@ -86,6 +86,19 @@ final resvgSafeSvg = merman.renderSvg(
 - Use `readable` when the target renderer needs best-effort label text fallbacks.
 - Use `resvg-safe` for stricter SVG consumers and raster/PDF export flows.
 
+## Text Measurement Guidance
+
+Use `MermanReusableEngine.setTextMeasurer(...)` when Flutter needs label geometry to match its final
+preview surface. The current wrapper uses `NativeCallable.isolateLocal`, so create the reusable
+engine, install the measurer, render, and close the engine on the same Dart isolate.
+
+For WebView display, measure with a DOM/canvas service from that WebView after fonts are loaded and
+feed cached values into the synchronous measurer. For Flutter-native display, measure with the same
+paragraph/text layout stack and font registration used by the preview. Return `null` for
+unsupported requests so merman can fall back per request. See
+[`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for the full platform
+checklist.
+
 ## Verify Locally
 
 ```bash

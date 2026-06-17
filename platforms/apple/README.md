@@ -58,6 +58,12 @@ For repeated calls or host font measurement, use `MermanReusableEngine` and inst
 `MermanHostTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
 back to merman's vendored metrics for that request.
 
+For accurate Apple preview geometry, measure with the same text stack that will display the SVG.
+Use Core Text for native previews, or a prepared WKWebView DOM/canvas measurement cache when the SVG
+will be shown in WebKit. The callback is synchronous; return `handled = 0` for unsupported requests
+and keep any `userData` alive until the callback is cleared or the engine is closed. See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift).
+
 ## Local Package Use
 
 1. Build `platforms/apple/Merman.xcframework`.

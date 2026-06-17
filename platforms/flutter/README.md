@@ -101,6 +101,12 @@ For repeated calls or host font measurement, use `MermanReusableEngine` and inst
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
 vendored metrics for that request.
 
+For accurate preview geometry, measure with the same surface that will display the SVG: a WebView
+DOM/canvas cache for `webview_flutter`, or Flutter paragraph/text layout APIs for Flutter-native
+text. The current Dart callback is isolate-local, so create the reusable engine, set the measurer,
+render, and close it on the same isolate. See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi).
+
 ## Local Dart Smoke
 
 Raw `dart run` does not execute Flutter's platform packaging step, so the smoke example accepts an

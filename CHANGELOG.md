@@ -14,6 +14,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   measurements through the callback.
 - Extended the Android JNI, Apple Swift, and Flutter/Dart FFI wrappers to expose reusable engines
   and host text-measurement callbacks on top of the C ABI v2 contract.
+- Documented host text-measurement best practices for Android JNI, Apple Swift, Flutter/Dart FFI,
+  browser/WebView measurement, callback lifetime, and regression testing.
 - Improved `dugong` layered layout performance by avoiding repeated dummy-node ID scans during
   long-edge normalization and by using cached adjacency when removing graph nodes. Added a
   `layout_dagreish` benchmark covering the full layout pipeline and normalize run/undo costs.

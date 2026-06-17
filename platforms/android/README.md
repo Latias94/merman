@@ -44,6 +44,12 @@ For repeated calls or host font measurement, use `MermanReusableEngine` and inst
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
 vendored metrics for that request.
 
+For accurate Android preview geometry, measure with the same text stack that will display the SVG:
+`TextPaint`/`StaticLayout` for native Android UI, or a cached DOM/canvas measurement path for
+WebView display. The callback is synchronous, so keep it fast, cache repeated requests, and return
+`null` when the host cannot measure a request faithfully. See
+[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#android-jni).
+
 ## Example
 
 [`examples/MermanSmoke.kt`](examples/MermanSmoke.kt) shows the smallest Android-side smoke call

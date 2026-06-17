@@ -262,7 +262,8 @@ cannot know the exact browser or UI toolkit font fallback chain, glyph shaping, 
 subpixel rounding that will be used when the SVG is displayed. Hosts that need exact label layout
 should measure with the same browser canvas/DOM, WebView, or native text system used for display,
 then return those metrics through this callback. The C ABI only transports measurement requests and
-fallbacks; it does not embed a system font engine.
+fallbacks; it does not embed a system font engine. Platform guidance and test recommendations live
+in [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md).
 
 ## SVG Rendering
 

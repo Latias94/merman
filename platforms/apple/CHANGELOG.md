@@ -4,6 +4,12 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Added
+
+- Documented Apple host text-measurement guidance for `MermanReusableEngine` callbacks.
+
 ## [0.8.0-alpha.2] - 2026-06-13
 
 ### Changed
