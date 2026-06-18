@@ -808,7 +808,7 @@ fn host_reported_diagrams_render_headless_resvg_safe() {
         name,
         &svg,
         &["Dark Node", "Readable Edge", "Other"],
-        &["#111827", "#f8fafc", "#38bdf8", "#f59e0b"],
+        &["#111827", "#f8fafc", "#f59e0b", "#38bdf8"],
     );
 }
 
