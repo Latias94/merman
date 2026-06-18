@@ -4,12 +4,12 @@ use std::ops::MulAssign;
 use euclid::default::Point2D;
 use euclid::Trig;
 use num_traits::{Float, FromPrimitive};
-use points_on_curve::{curve_to_bezier, points_on_bezier_curves};
 use svgtypes::PathSegment;
 
 use crate::core::{
     _c, Drawable, FillStyle, OpSet, OpSetType, OpType, Options, OptionsBuilder, PathInfo,
 };
+use crate::curve_points::{curve_to_bezier, points_on_bezier_curves};
 use crate::geometry::{convert_bezier_quadratic_to_cubic, BezierQuadratic};
 use crate::points_on_path::{points_on_path, points_on_segments};
 use crate::renderer::{

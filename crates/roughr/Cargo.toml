@@ -61,9 +61,6 @@ version = "0.7"
 default-features = false
 features = ["std"]
 
-[dependencies.points_on_curve]
-version = "0.7.0"
-
 [dependencies.rand]
 version = "0.10"
 optional = true

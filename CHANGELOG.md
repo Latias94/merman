@@ -6,6 +6,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+- Inlined the `points_on_curve` sampling helpers into `roughr`, reducing the render crate's
+  external dependency surface without changing curve sampling behavior.
 - Added a host text-measurement callback to the C FFI reusable engine API and bumped the C ABI to
   version 2, while keeping the default headless path dependency-light and deterministic for
   CLI/CI/docs/server rendering.
