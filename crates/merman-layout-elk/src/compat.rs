@@ -93,6 +93,7 @@ pub struct LayeredOptions {
     pub unnecessary_bendpoints: bool,
     pub inside_self_loops_activate: bool,
     pub self_loop_distribution: SelfLoopDistributionStrategy,
+    pub self_loop_ordering: SelfLoopOrderingStrategy,
 }
 
 impl Default for LayeredOptions {
@@ -110,6 +111,7 @@ impl Default for LayeredOptions {
             unnecessary_bendpoints: true,
             inside_self_loops_activate: false,
             self_loop_distribution: SelfLoopDistributionStrategy::Equally,
+            self_loop_ordering: SelfLoopOrderingStrategy::Stacked,
         }
     }
 }
@@ -162,6 +164,14 @@ pub enum SelfLoopDistributionStrategy {
     #[default]
     Equally,
     NorthSouth,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelfLoopOrderingStrategy {
+    #[default]
+    Stacked,
+    ReverseStacked,
+    Sequenced,
 }
 
 #[derive(Debug, Clone, PartialEq)]

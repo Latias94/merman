@@ -269,6 +269,7 @@ fn transform_inside_self_loop(
         })
         .expect("inside self-loop dummies were created before adding edge");
 
+    graph.graph_properties.self_loops = true;
     if has_parallel_port_edges(&graph.layerless_nodes[source.node].ports[source.port])
         || has_parallel_port_edges(&graph.layerless_nodes[target.node].ports[target.port])
     {
@@ -1161,6 +1162,29 @@ mod tests {
             .expect("inside self-loop output dummy should exist");
         assert_eq!(input_dummy.ports[0].incoming_edges.len(), 2);
         assert_eq!(output_dummy.ports[0].outgoing_edges.len(), 2);
+    }
+
+    #[test]
+    fn importer_marks_inside_self_loops_as_graph_self_loops() {
+        let mut graph = graph(
+            vec![node("A")],
+            vec![ElkInputEdge {
+                inside_self_loops_yo: true,
+                ..edge("A-A", "A", "A")
+            }],
+        );
+        graph.options.inside_self_loops_activate = true;
+
+        let lgraph = import_graph(&graph).unwrap();
+        let nested = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .and_then(|node| node.nested_graph.as_ref())
+            .expect("inside self-loop should create a nested graph");
+
+        assert!(nested.graph_properties.self_loops);
+        assert!(nested.options.graph_has_self_loops);
     }
 
     #[test]

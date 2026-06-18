@@ -30,7 +30,7 @@ pub use compat::{
     Algorithm, CycleBreakingStrategy, Direction, Edge, EdgeLabelLayout, EdgeLayout, EdgeRouting,
     Error, Graph, HierarchyHandling, Label, LayeredOptions, LayoutOptions, LayoutResult,
     ModelOrderStrategy, Node, NodeKind, NodeLayout, NodePlacementStrategy, Point, Result,
-    SelfLoopDistributionStrategy, Spacing,
+    SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, Spacing,
 };
 
 pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
@@ -409,6 +409,8 @@ fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
     options.inside_self_loops_activate = graph.options.layered.inside_self_loops_activate;
     options.self_loop_distribution =
         self_loop_distribution_to_source(graph.options.layered.self_loop_distribution);
+    options.self_loop_ordering =
+        self_loop_ordering_to_source(graph.options.layered.self_loop_ordering);
     options
 }
 
@@ -480,6 +482,18 @@ fn self_loop_distribution_to_source(
         SelfLoopDistributionStrategy::NorthSouth => {
             source_port::SelfLoopDistributionStrategy::NorthSouth
         }
+    }
+}
+
+fn self_loop_ordering_to_source(
+    self_loop_ordering: SelfLoopOrderingStrategy,
+) -> source_port::SelfLoopOrderingStrategy {
+    match self_loop_ordering {
+        SelfLoopOrderingStrategy::Stacked => source_port::SelfLoopOrderingStrategy::Stacked,
+        SelfLoopOrderingStrategy::ReverseStacked => {
+            source_port::SelfLoopOrderingStrategy::ReverseStacked
+        }
+        SelfLoopOrderingStrategy::Sequenced => source_port::SelfLoopOrderingStrategy::Sequenced,
     }
 }
 

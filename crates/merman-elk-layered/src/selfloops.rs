@@ -14,7 +14,7 @@ use crate::graph::{
     SelfHyperLoopLabels, SelfLoopEdge, SelfLoopHolder, SelfLoopLabelAlignment, SelfLoopLabelRef,
     SelfLoopPort, SelfLoopType,
 };
-use crate::options::SelfLoopDistributionStrategy;
+use crate::options::{SelfLoopDistributionStrategy, SelfLoopOrderingStrategy};
 use crate::p5edges::orthogonal::{HyperEdgeGraph, HyperEdgeSegment, break_non_critical_cycles};
 
 const UNCONNECTED_PORT_PENALTY: usize = 1;
@@ -542,11 +542,16 @@ fn process_one_side_loops(
     holder: &SelfLoopHolder,
     target_areas: &mut PortRestoreTargetAreas,
 ) {
-    for hyper_loop in holder
+    let mut one_side_loops = holder
         .hyper_loops
         .iter()
         .filter(|hyper_loop| hyper_loop.self_loop_type == Some(SelfLoopType::OneSide))
-    {
+        .collect::<Vec<_>>();
+    if graph.options.self_loop_ordering == SelfLoopOrderingStrategy::ReverseStacked {
+        one_side_loops.reverse();
+    }
+
+    for hyper_loop in one_side_loops {
         let Some(side) = hyper_loop
             .ports
             .first()
@@ -557,27 +562,43 @@ fn process_one_side_loops(
 
         let mut sorted_ports = hyper_loop.ports.clone();
         sorted_ports.sort_by_key(|port| self_loop_port_net_flow(hyper_loop, port.port));
-        let split_index = compute_port_list_split_index(hyper_loop, &sorted_ports);
-        target_areas.add_port_list(
-            sorted_ports[..split_index]
-                .iter()
-                .filter(|port| port.hidden)
-                .map(|port| port.port)
-                .collect(),
-            side,
-            PortSideArea::Middle,
-            AddMode::Prepend,
-        );
-        target_areas.add_port_list(
-            sorted_ports[split_index..]
-                .iter()
-                .filter(|port| port.hidden)
-                .map(|port| port.port)
-                .collect(),
-            side,
-            PortSideArea::Middle,
-            AddMode::Append,
-        );
+        match graph.options.self_loop_ordering {
+            SelfLoopOrderingStrategy::Sequenced => {
+                target_areas.add_port_list(
+                    sorted_ports
+                        .iter()
+                        .filter(|port| port.hidden)
+                        .map(|port| port.port)
+                        .collect(),
+                    side,
+                    PortSideArea::Middle,
+                    AddMode::Append,
+                );
+            }
+            SelfLoopOrderingStrategy::Stacked | SelfLoopOrderingStrategy::ReverseStacked => {
+                let split_index = compute_port_list_split_index(hyper_loop, &sorted_ports);
+                target_areas.add_port_list(
+                    sorted_ports[..split_index]
+                        .iter()
+                        .filter(|port| port.hidden)
+                        .map(|port| port.port)
+                        .collect(),
+                    side,
+                    PortSideArea::Middle,
+                    AddMode::Prepend,
+                );
+                target_areas.add_port_list(
+                    sorted_ports[split_index..]
+                        .iter()
+                        .filter(|port| port.hidden)
+                        .map(|port| port.port)
+                        .collect(),
+                    side,
+                    PortSideArea::Middle,
+                    AddMode::Append,
+                );
+            }
+        }
     }
 }
 
@@ -2112,7 +2133,7 @@ fn side_from_ordinal(ordinal: usize) -> Option<PortSide> {
 
 fn compute_baseline_position(graph: &LGraph, node: usize, side: PortSide) -> f64 {
     let lnode = &graph.layerless_nodes[node];
-    let node_self_loop_distance = graph.options.spacing.edge_node;
+    let node_self_loop_distance = graph.options.spacing.node_self_loop;
     match side {
         PortSide::North => -lnode.margin.top - node_self_loop_distance,
         PortSide::East => lnode.size.width + lnode.margin.right + node_self_loop_distance,
@@ -2431,7 +2452,10 @@ mod tests {
     use super::*;
     use crate::graph::{LLabel, LNode, LayeredEdge, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
-    use crate::options::{ElkDirection, LayeredOptions, PortConstraints};
+    use crate::options::{
+        ElkDirection, LayeredOptions, PortConstraints, SelfLoopDistributionStrategy,
+        SelfLoopOrderingStrategy,
+    };
 
     fn node(id: &str) -> ElkInputNode {
         ElkInputNode {
@@ -2561,6 +2585,59 @@ mod tests {
             areas.get(PortSide::North, PortSideArea::Middle),
             &[4, 3, 2, 1]
         );
+    }
+
+    #[test]
+    fn restore_hidden_one_side_ports_respects_sequenced_ordering() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        graph.options.self_loop_distribution = SelfLoopDistributionStrategy::North;
+        graph.options.self_loop_ordering = SelfLoopOrderingStrategy::Sequenced;
+
+        let node = add_node(&mut graph, "A");
+        let source = add_port(&mut graph, node, PortSide::North);
+        let target = add_port(&mut graph, node, PortSide::North);
+        graph.add_edge(self_loop_edge("loop", "A", source, target));
+
+        preprocess_self_loops(&mut graph);
+        restore_self_loop_ports(&mut graph);
+
+        let order = graph.layerless_nodes[node]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(order, vec!["A:1", "A:0"]);
+    }
+
+    #[test]
+    fn restore_hidden_one_side_ports_respects_reverse_stacked_ordering() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        graph.options.self_loop_distribution = SelfLoopDistributionStrategy::North;
+        graph.options.self_loop_ordering = SelfLoopOrderingStrategy::ReverseStacked;
+
+        let node = add_node(&mut graph, "A");
+        let p0 = add_port(&mut graph, node, PortSide::North);
+        let p1 = add_port(&mut graph, node, PortSide::North);
+        let p2 = add_port(&mut graph, node, PortSide::North);
+        let p3 = add_port(&mut graph, node, PortSide::North);
+        graph.add_edge(self_loop_edge("loop-1", "A", p0, p1));
+        graph.add_edge(self_loop_edge("loop-2", "A", p2, p3));
+
+        preprocess_self_loops(&mut graph);
+        restore_self_loop_ports(&mut graph);
+
+        let order = graph.layerless_nodes[node]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(order, vec!["A:0", "A:2", "A:3", "A:1"]);
     }
 
     #[test]

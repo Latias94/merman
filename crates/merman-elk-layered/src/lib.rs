@@ -49,7 +49,8 @@ pub use options::{
     Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeLabelSideSelection, EdgeRouting,
     ElkDirection, ElkPadding, GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions,
     LongEdgeOrderingStrategy, NodeLabelPlacement, NodePlacementStrategy, OrderingStrategy,
-    PortConstraints, PortSortingStrategy, SelfLoopDistributionStrategy, SpacingOptions,
+    PortConstraints, PortSortingStrategy, SelfLoopDistributionStrategy, SelfLoopOrderingStrategy,
+    SpacingOptions,
 };
 pub use p2layers::layer_network_simplex;
 pub use p3order::counting::CrossingsCounter;

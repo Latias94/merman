@@ -621,6 +621,18 @@ fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOption
             },
         )
         .unwrap_or_default();
+    let self_loop_ordering = config_string(
+        effective_config,
+        &["elk", "layered", "edgeRouting", "selfLoopOrdering"],
+    )
+    .map(
+        |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+            "REVERSE_STACKED" => elk::SelfLoopOrderingStrategy::ReverseStacked,
+            "SEQUENCED" => elk::SelfLoopOrderingStrategy::Sequenced,
+            _ => elk::SelfLoopOrderingStrategy::Stacked,
+        },
+    )
+    .unwrap_or_default();
 
     elk::LayoutOptions {
         layered: elk::LayeredOptions {
@@ -633,6 +645,7 @@ fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOption
             )
             .unwrap_or(false),
             self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
+            self_loop_ordering,
             force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
                 .unwrap_or(false),
             consider_model_order: model_order != elk::ModelOrderStrategy::None,
@@ -1317,6 +1330,11 @@ mod tests {
                 "forceNodeModelOrder": true,
                 "considerModelOrder": "PREFER_EDGES",
                 "cycleBreakingStrategy": "GREEDY_MODEL_ORDER",
+                "layered": {
+                    "edgeRouting": {
+                        "selfLoopOrdering": "SEQUENCED"
+                    }
+                },
                 "insideSelfLoops": {
                     "activate": true
                 }
@@ -1352,6 +1370,10 @@ mod tests {
         assert_eq!(
             graph.options.layered.self_loop_distribution,
             elk::SelfLoopDistributionStrategy::Equally
+        );
+        assert_eq!(
+            graph.options.layered.self_loop_ordering,
+            elk::SelfLoopOrderingStrategy::Sequenced
         );
     }
 

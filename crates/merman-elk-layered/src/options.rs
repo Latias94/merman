@@ -164,6 +164,14 @@ pub enum SelfLoopDistributionStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelfLoopOrderingStrategy {
+    #[default]
+    Stacked,
+    ReverseStacked,
+    Sequenced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PortConstraints {
     #[default]
     Undefined,
@@ -270,6 +278,7 @@ pub struct LayeredOptions {
     pub merge_hierarchy_edges: bool,
     pub unnecessary_bendpoints: bool,
     pub self_loop_distribution: SelfLoopDistributionStrategy,
+    pub self_loop_ordering: SelfLoopOrderingStrategy,
     pub wrapping_strategy: WrappingStrategy,
     pub wrapping_multi_edge_improve_cuts: bool,
     pub wrapping_multi_edge_improve_wrapped_edges: bool,
@@ -318,6 +327,7 @@ impl Default for ElkPadding {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpacingOptions {
     pub node_node: f64,
+    pub node_self_loop: f64,
     pub edge_edge: f64,
     pub edge_node: f64,
     pub edge_label: f64,
@@ -344,6 +354,7 @@ impl Default for SpacingOptions {
     fn default() -> Self {
         Self {
             node_node: 20.0,
+            node_self_loop: 10.0,
             edge_edge: 10.0,
             edge_node: 10.0,
             edge_label: 2.0,
@@ -370,6 +381,7 @@ impl SpacingOptions {
         let scale = base_value / defaults.node_node;
         Self {
             node_node: base_value,
+            node_self_loop: defaults.node_self_loop * scale,
             edge_edge: defaults.edge_edge * scale,
             edge_node: defaults.edge_node * scale,
             edge_label: defaults.edge_label * scale,
@@ -418,6 +430,7 @@ impl Default for LayeredOptions {
             merge_hierarchy_edges: true,
             unnecessary_bendpoints: false,
             self_loop_distribution: SelfLoopDistributionStrategy::North,
+            self_loop_ordering: SelfLoopOrderingStrategy::Stacked,
             wrapping_strategy: WrappingStrategy::Off,
             wrapping_multi_edge_improve_cuts: true,
             wrapping_multi_edge_improve_wrapped_edges: true,
@@ -455,6 +468,7 @@ impl LayeredOptions {
             spacing: SpacingOptions::layered_base_value(40.0),
             unnecessary_bendpoints: true,
             self_loop_distribution: SelfLoopDistributionStrategy::Equally,
+            self_loop_ordering: SelfLoopOrderingStrategy::Stacked,
             wrapping_multi_edge_improve_cuts: true,
             wrapping_multi_edge_improve_wrapped_edges: true,
             merge_hierarchy_edges: true,
@@ -511,6 +525,7 @@ mod tests {
         let options = LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down);
 
         assert_eq!(options.spacing.node_node, 40.0);
+        assert_eq!(options.spacing.node_self_loop, 20.0);
         assert_eq!(options.spacing.edge_edge, 20.0);
         assert_eq!(options.spacing.edge_node, 20.0);
         assert_eq!(options.spacing.edge_label, 4.0);
@@ -522,6 +537,16 @@ mod tests {
         assert_eq!(options.spacing.edge_edge_between_layers, 20.0);
         assert_eq!(options.spacing.edge_node_between_layers, 20.0);
         assert_eq!(options.spacing.node_node_between_layers, 40.0);
+    }
+
+    #[test]
+    fn layered_default_self_loop_ordering_is_stacked() {
+        let options = LayeredOptions::default();
+
+        assert_eq!(
+            options.self_loop_ordering,
+            SelfLoopOrderingStrategy::Stacked
+        );
     }
 
     #[test]

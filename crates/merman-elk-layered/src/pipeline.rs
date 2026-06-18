@@ -1586,6 +1586,54 @@ mod tests {
     }
 
     #[test]
+    fn inside_self_loops_enable_self_loop_processors_on_nested_graphs() {
+        let mut input = ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![ElkInputNode {
+                id: "A".to_string(),
+                width: 80.0,
+                height: 40.0,
+                parent: None,
+                direction: None,
+                hierarchy_handling: Some(crate::options::HierarchyHandling::IncludeChildren),
+                layer_constraint: None,
+                port_constraints: None,
+                node_label_placement: crate::options::NodeLabelPlacement::Fixed,
+                nested_spacing_base: None,
+                label: None,
+            }],
+            edges: vec![ElkInputEdge {
+                id: "A-A".to_string(),
+                source: "A".to_string(),
+                target: "A".to_string(),
+                label: None,
+                minlen: 1,
+                inside_self_loops_yo: true,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+            }],
+        };
+        input.options.inside_self_loops_activate = true;
+
+        let mut graph = import_graph(&input).unwrap();
+
+        preprocess_source_ported_compound_graph(&mut graph);
+
+        let nested = graph.layerless_nodes[0]
+            .nested_graph
+            .as_ref()
+            .expect("inside self-loop should create a nested graph");
+        let processors = graph_kinds(nested);
+
+        assert!(processors.contains(&ProcessorKind::SelfLoopPreProcessor));
+        assert!(processors.contains(&ProcessorKind::SelfLoopPortRestorer));
+        assert!(processors.contains(&ProcessorKind::SelfLoopRouter));
+        assert!(processors.contains(&ProcessorKind::SelfLoopPostProcessor));
+    }
+
+    #[test]
     fn hierarchical_port_orthogonal_router_runs_for_east_west_external_ports() {
         let mut graph = LGraph::new(
             "root",
