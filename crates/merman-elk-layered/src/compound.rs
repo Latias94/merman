@@ -737,6 +737,7 @@ struct ExternalDummyInfo {
     parent_port_key: String,
     parent_port_type: PortType,
     connects_parent_node: bool,
+    parent_end_net_flow: Option<isize>,
     external_port_side: PortSide,
     border_offset: Option<f64>,
     origin_port: Option<GraphPortRef>,
@@ -817,6 +818,9 @@ fn external_dummies_for_parent_node(
         .filter(|(_, node)| node.kind == LNodeKind::ExternalPort && node.id == dummy_id)
         .filter_map(|(dummy_node, node)| {
             let port = node.ports.first()?;
+            let connects_parent_node = node
+                .parent_port_type
+                .is_some_and(|parent_port_type| parent_port_type != port.port_type);
             let incident_edge_ids = port
                 .incoming_edges
                 .iter()
@@ -832,9 +836,9 @@ fn external_dummies_for_parent_node(
                     .clone()
                     .unwrap_or_else(|| port.id.clone()),
                 parent_port_type: node.parent_port_type.unwrap_or(port.port_type),
-                connects_parent_node: node
-                    .parent_port_type
-                    .is_some_and(|parent_port_type| parent_port_type != port.port_type),
+                connects_parent_node,
+                parent_end_net_flow: connects_parent_node
+                    .then(|| parent_end_segment_net_flow(port.port_type)),
                 external_port_side: node.external_port_side,
                 border_offset: port.border_offset,
                 origin_port: node.origin_port.clone(),
@@ -880,7 +884,12 @@ fn refresh_parent_end_external_dummy(
         external_dummy.port_type,
         parent_constraints,
         parent_port_data.side,
-        parent_end_port_net_flow(external_dummy.port_type, &parent_port_data),
+        parent_end_external_dummy_net_flow(
+            &parent_port_data,
+            external_dummy
+                .parent_end_net_flow
+                .unwrap_or_else(|| parent_end_segment_net_flow(external_dummy.port_type)),
+        ),
         parent_port_data.position,
         parent_port_data.size,
         parent_node_size,
@@ -901,12 +910,12 @@ fn refresh_parent_end_external_dummy(
     nested_graph.layerless_nodes[external_dummy.dummy_node] = rebuilt;
 }
 
-fn parent_end_port_net_flow(dummy_port_type: PortType, parent_port: &LPort) -> isize {
-    let net_flow = parent_port.net_flow();
-    if net_flow != 0 {
-        return net_flow;
-    }
+fn parent_end_external_dummy_net_flow(parent_port: &LPort, parent_end_net_flow: isize) -> isize {
+    parent_port.outgoing_edges.len() as isize - parent_port.incoming_edges.len() as isize
+        + parent_end_net_flow
+}
 
+fn parent_end_segment_net_flow(dummy_port_type: PortType) -> isize {
     match dummy_port_type {
         PortType::Input => -1,
         PortType::Output => 1,
@@ -1208,6 +1217,7 @@ mod tests {
             target: target.to_string(),
             label: None,
             minlen: 1,
+            inside_self_loops_yo: false,
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,
@@ -1358,5 +1368,40 @@ mod tests {
         assert_eq!(external.ports[0].border_offset, Some(-4.0));
         assert_eq!(external.size.width, 4.0);
         assert_eq!(external.size.height, 8.0);
+    }
+
+    #[test]
+    fn parent_end_external_dummy_uses_parent_port_net_flow() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let mut lgraph = import_graph(&graph(
+            vec![cluster, child],
+            vec![edge("cluster-A", "cluster", "A")],
+        ))
+        .unwrap();
+        let cluster_index = lgraph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "cluster")
+            .unwrap();
+
+        preprocess_source_ported_compound_graph(&mut lgraph);
+
+        let cluster = &lgraph.layerless_nodes[cluster_index];
+        let parent_port = &cluster.ports[0];
+        assert_eq!(parent_port.net_flow(), 0);
+        let port_dummy = parent_port
+            .port_dummy
+            .as_ref()
+            .expect("parent port should link to the nested external dummy");
+        let nested = cluster.nested_graph.as_ref().unwrap();
+        let external = &nested.layerless_nodes[port_dummy.node];
+
+        assert_eq!(external.parent_port_type, Some(PortType::Output));
+        assert_eq!(external.external_port_side, PortSide::North);
+        assert_eq!(external.ports[0].side, PortSide::South);
     }
 }

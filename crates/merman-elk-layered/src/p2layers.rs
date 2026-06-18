@@ -176,6 +176,7 @@ mod tests {
             target: target.to_string(),
             label: None,
             minlen: 1,
+            inside_self_loops_yo: false,
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,

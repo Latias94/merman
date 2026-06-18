@@ -47,6 +47,7 @@ pub struct ElkInputEdge {
     pub target: String,
     pub label: Option<ElkInputLabel>,
     pub minlen: usize,
+    pub inside_self_loops_yo: bool,
     pub priority_direction: i32,
     pub priority_shortness: i32,
     pub priority_straightness: i32,
@@ -176,13 +177,30 @@ fn import_hierarchical_graph(
         {
             let edge_model_order =
                 needs_model_order_based_on_parent(&root.options).then_some(edge_order);
-            let source_path = index.graph_path(edge.source.as_str());
-            let target_path = index.graph_path(edge.target.as_str());
-            if source_path == target_path {
-                let graph = graph_for_path(root, &source_path);
+            let source_parent = index.node_parent(edge.source.as_str());
+            let source_container_options = graph_for_parent(root, source_parent).options.clone();
+
+            if edge.inside_self_loops_yo
+                && edge.source == edge.target
+                && source_container_options.inside_self_loops_activate
+            {
+                let graph = graph_for_parent(root, Some(edge.source.as_str()));
                 transform_edge(edge, graph, edge_model_order)?;
             } else {
-                transform_cross_hierarchy_edge(edge, index, root, edge_order, edge_model_order)?;
+                let source_path = index.graph_path(edge.source.as_str());
+                let target_path = index.graph_path(edge.target.as_str());
+                if source_path == target_path {
+                    let graph = graph_for_path(root, &source_path);
+                    transform_edge(edge, graph, edge_model_order)?;
+                } else {
+                    transform_cross_hierarchy_edge(
+                        edge,
+                        index,
+                        root,
+                        edge_order,
+                        edge_model_order,
+                    )?;
+                }
             }
             edge_order += 1;
         }
@@ -729,12 +747,28 @@ fn node_has_nested_graph(
     parent_options: &LayeredOptions,
     node: &ElkInputNode,
 ) -> bool {
-    input
+    let has_children = input
         .nodes
         .iter()
         .any(|candidate| candidate.parent.as_deref() == Some(node.id.as_str()))
         && resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options)
-            == HierarchyHandling::IncludeChildren
+            == HierarchyHandling::IncludeChildren;
+    has_children || node_has_inside_self_loops(input, parent_options, node.id.as_str())
+}
+
+fn node_has_inside_self_loops(
+    input: &ElkInputGraph,
+    parent_options: &LayeredOptions,
+    node_id: &str,
+) -> bool {
+    if !parent_options.inside_self_loops_activate {
+        return false;
+    }
+
+    input
+        .edges
+        .iter()
+        .any(|edge| edge.inside_self_loops_yo && edge.source == node_id && edge.target == node_id)
 }
 
 fn graph_for_parent<'a>(graph: &'a mut LGraph, parent: Option<&str>) -> &'a mut LGraph {
@@ -913,6 +947,7 @@ mod tests {
             target: target.to_string(),
             label: None,
             minlen: 1,
+            inside_self_loops_yo: false,
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,
@@ -949,6 +984,26 @@ mod tests {
         );
         assert!(lgraph.graph_properties.center_labels);
         assert!(lgraph.options.graph_has_center_labels);
+    }
+
+    #[test]
+    fn importer_creates_nested_graph_for_inside_self_loop() {
+        let mut graph = graph(
+            vec![node("A")],
+            vec![ElkInputEdge {
+                inside_self_loops_yo: true,
+                ..edge("A-A", "A", "A")
+            }],
+        );
+        graph.options.inside_self_loops_activate = true;
+
+        let lgraph = import_graph(&graph).unwrap();
+        let node = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .unwrap();
+        assert!(node.nested_graph.is_some());
     }
 
     #[test]

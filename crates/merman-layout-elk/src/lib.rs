@@ -160,6 +160,7 @@ fn graph_to_source_input_with_root_context(
                     .label
                     .map(|label| ElkInputLabel::center("", label.width, label.height)),
                 minlen: edge.minlen,
+                inside_self_loops_yo: false,
                 priority_direction: 0,
                 priority_shortness: 0,
                 priority_straightness: 0,
