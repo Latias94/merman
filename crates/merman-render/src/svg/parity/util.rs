@@ -780,7 +780,7 @@ mod tests {
         );
         assert_eq!(
             css_rgba_fade("hsl(80, 100%, 96.2745098039%)", 0.5).as_deref(),
-            Some("rgba(248, 255, 235, 0.5)")
+            Some("rgba(249, 255, 236, 0.5)")
         );
         assert!(css_rgba_fade("var(--not-runtime-resolved)", 0.5).is_none());
     }

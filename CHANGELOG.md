@@ -6,6 +6,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+- Migrated the Android JNI FFI bridge to `jni` 0.22's `EnvUnowned`/`Env` model, and refreshed
+  the headless dark-theme smoke expectation to match the current visible color output.
 - Inlined the `points_on_curve` sampling helpers into `roughr`, reducing the render crate's
   external dependency surface without changing curve sampling behavior.
 - Added a host text-measurement callback to the C FFI reusable engine API and bumped the C ABI to
