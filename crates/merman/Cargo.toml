@@ -47,7 +47,7 @@ merman-core.workspace = true
 merman-ascii = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
-eframe = { version = "0.32.3", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"], optional = true }
+eframe = { version = "0.34.3", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"], optional = true }
 image = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true }
@@ -55,7 +55,7 @@ tiny-skia = { workspace = true, optional = true }
 svg2pdf = { workspace = true, optional = true }
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8.2"
 png.workspace = true
 roxmltree.workspace = true
 serde_json.workspace = true

@@ -38,6 +38,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Fixed SVG parity CI after secure config hardening by making xtask compare commands share the
   trusted upstream-baseline site config that keeps legacy `themeVariables` init/frontmatter
   overrides available without changing production defaults.
+- Reduced the headless SVG path parsing surface by inlining `svg_path_ops` into `roughr` and
+  upgrading `svgtypes` to `0.16.1`, which also clears the last direct `svgtypes 0.11` dependency
+  in the workspace.
 
 ### Security
 

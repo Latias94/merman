@@ -5,10 +5,10 @@ use euclid::default::Point2D;
 use euclid::Trig;
 use num_traits::{Float, FromPrimitive};
 use points_on_curve::{points_on_bezier_curves, simplify};
-use svg_path_ops::{absolutize, normalize};
 use svgtypes::{PathParser, PathSegment};
 
 use crate::core::{_c, _cc};
+use crate::svg_path::{absolutize, normalize};
 
 pub fn points_on_path<F>(
     path: String,

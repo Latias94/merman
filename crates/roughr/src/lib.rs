@@ -158,6 +158,8 @@
 #[macro_use]
 extern crate derive_builder;
 
+mod svg_path;
+
 pub mod core;
 pub mod filler;
 pub mod generator;

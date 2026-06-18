@@ -37,4 +37,4 @@ thiserror.workspace = true
 uniffi.workspace = true
 
 [dev-dependencies]
-tempfile = "3.14.0"
+tempfile = "3.27.0"
