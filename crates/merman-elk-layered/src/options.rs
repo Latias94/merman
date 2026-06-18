@@ -244,6 +244,7 @@ pub struct LayeredOptions {
     pub direction: ElkDirection,
     pub direction_congruency: DirectionCongruency,
     pub hierarchy_handling: HierarchyHandling,
+    pub inside_self_loops_activate: bool,
     pub edge_routing: EdgeRouting,
     pub padding: ElkPadding,
     pub node_labels_padding: ElkPadding,
@@ -391,6 +392,7 @@ impl Default for LayeredOptions {
             direction: ElkDirection::Undefined,
             direction_congruency: DirectionCongruency::ReadingDirection,
             hierarchy_handling: HierarchyHandling::SeparateChildren,
+            inside_self_loops_activate: false,
             edge_routing: EdgeRouting::Orthogonal,
             padding: ElkPadding::default(),
             node_labels_padding: ElkPadding::uniform(5.0),
@@ -447,6 +449,7 @@ impl LayeredOptions {
         Self {
             direction,
             hierarchy_handling: HierarchyHandling::IncludeChildren,
+            inside_self_loops_activate: false,
             node_placement_strategy: NodePlacementStrategy::BrandesKoepf,
             consider_model_order_strategy: OrderingStrategy::NodesAndEdges,
             spacing: SpacingOptions::layered_base_value(40.0),

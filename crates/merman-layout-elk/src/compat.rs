@@ -91,6 +91,7 @@ pub struct LayeredOptions {
     pub merge_edges: bool,
     pub merge_hierarchy_edges: bool,
     pub unnecessary_bendpoints: bool,
+    pub inside_self_loops_activate: bool,
     pub self_loop_distribution: SelfLoopDistributionStrategy,
 }
 
@@ -107,6 +108,7 @@ impl Default for LayeredOptions {
             merge_edges: false,
             merge_hierarchy_edges: true,
             unnecessary_bendpoints: true,
+            inside_self_loops_activate: false,
             self_loop_distribution: SelfLoopDistributionStrategy::Equally,
         }
     }

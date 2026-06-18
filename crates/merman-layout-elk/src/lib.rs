@@ -373,11 +373,10 @@ fn append_translated_layout(layout: &mut LayoutResult, nested: &LayoutResult, of
 }
 
 fn source_graph_has_nested_graphs(graph: &LGraph) -> bool {
-    graph.layerless_nodes.iter().any(|node| {
-        node.nested_graph.as_deref().is_some_and(|nested| {
-            !nested.layerless_nodes.is_empty() || source_graph_has_nested_graphs(nested)
-        })
-    })
+    graph
+        .layerless_nodes
+        .iter()
+        .any(|node| node.nested_graph.is_some())
 }
 
 fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
@@ -406,6 +405,7 @@ fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
     options.merge_edges = graph.options.layered.merge_edges;
     options.merge_hierarchy_edges = graph.options.layered.merge_hierarchy_edges;
     options.unnecessary_bendpoints = graph.options.layered.unnecessary_bendpoints;
+    options.inside_self_loops_activate = graph.options.layered.inside_self_loops_activate;
     options.self_loop_distribution =
         self_loop_distribution_to_source(graph.options.layered.self_loop_distribution);
     options
@@ -992,6 +992,16 @@ mod tests {
         assert_eq!(label.height, 12.0);
         assert!(label.x.is_finite());
         assert!(label.y.is_finite());
+    }
+
+    #[test]
+    fn layered_options_to_source_propagates_inside_self_loops_activate() {
+        let mut graph = flat_graph(vec![leaf("A")], vec![]);
+        graph.options.layered.inside_self_loops_activate = true;
+
+        let input = graph_to_source_input(&graph);
+
+        assert!(input.options.inside_self_loops_activate);
     }
 
     #[test]

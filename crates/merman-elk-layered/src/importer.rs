@@ -299,6 +299,7 @@ fn nested_graph_options(parent_options: &LayeredOptions, node: &ElkInputNode) ->
     options.direction = parent_options.direction;
     options.hierarchy_handling =
         resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options);
+    options.inside_self_loops_activate = parent_options.inside_self_loops_activate;
     if let Some(spacing_base) = node.nested_spacing_base {
         options.spacing = SpacingOptions::layered_base_value(spacing_base);
     }

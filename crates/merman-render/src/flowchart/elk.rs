@@ -627,6 +627,11 @@ fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOption
             merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
             merge_hierarchy_edges: true,
             unnecessary_bendpoints: true,
+            inside_self_loops_activate: config_bool(
+                effective_config,
+                &["elk", "insideSelfLoops", "activate"],
+            )
+            .unwrap_or(false),
             self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
             force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
                 .unwrap_or(false),
@@ -1311,7 +1316,10 @@ mod tests {
                 "nodePlacementStrategy": "LINEAR_SEGMENTS",
                 "forceNodeModelOrder": true,
                 "considerModelOrder": "PREFER_EDGES",
-                "cycleBreakingStrategy": "GREEDY_MODEL_ORDER"
+                "cycleBreakingStrategy": "GREEDY_MODEL_ORDER",
+                "insideSelfLoops": {
+                    "activate": true
+                }
             }
         }));
 
@@ -1338,6 +1346,7 @@ mod tests {
             graph.options.layered.node_placement,
             elk::NodePlacementStrategy::LinearSegments
         );
+        assert!(graph.options.layered.inside_self_loops_activate);
         assert!(graph.options.layered.unnecessary_bendpoints);
         assert!(graph.options.layered.merge_hierarchy_edges);
         assert_eq!(
