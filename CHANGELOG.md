@@ -6,6 +6,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+- Inlined the `points_on_curve` sampling helpers into `roughr`, reducing the render crate's
+  external dependency surface without changing curve sampling behavior.
 - Added a host text-measurement callback to the C FFI reusable engine API and bumped the C ABI to
   version 2, while keeping the default headless path dependency-light and deterministic for
   CLI/CI/docs/server rendering.
@@ -32,9 +34,33 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Against Mermaid JS, the latest cross-family geomean is `0.016x` of Mermaid JS time, which is
   about `62x` faster overall. `xychart_medium` is `73.62 µs` end-to-end versus `3.00 ms` in
   Mermaid JS, or about `41x` faster.
+- Fixed WASM size-budget builds after the `rand 0.10` upgrade by enabling the `getrandom 0.4`
+  `wasm_js` backend for RoughJS host-random builds, and made the xtask WASM budget tooling respect
+  `CARGO_TARGET_DIR` when locating build artifacts.
+- Fixed SVG parity CI after secure config hardening by making xtask compare commands share the
+  trusted upstream-baseline site config that keeps legacy `themeVariables` init/frontmatter
+  overrides available without changing production defaults.
+- Reduced the headless SVG path parsing surface by inlining `svg_path_ops` into `roughr` and
+  upgrading `svgtypes` to `0.16.1`, which also clears the last direct `svgtypes 0.11` dependency
+  in the workspace.
 
 ### Security
 
+- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG
+  elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation
+  `url(...)` values while preserving local paint/reference URLs and raster data images.
+- Reduced dependency advisory exposure by upgrading `htmlize`, `nalgebra`, `ratex-*`, and
+  `roughr`'s direct `rand` usage. This removes the `paste` advisory path and avoids a direct
+  `rand 0.8` dependency in `roughr`; the remaining `rand 0.8` audit warning is transitive through
+  upstream `phf 0.11` users.
+- Documented the SVG rendering trust boundaries, residual risks, recommended output paths, and
+  upstream advisory triage checklist in `docs/security/THREAT_MODEL.md`; added public render API
+  regression tests for secure config filtering, strict URL handling, loose HTML label cleanup, and
+  `resvg_safe` CSS cleanup.
+- Added raster security regressions covering default PNG/JPG pixmap budgets, custom raster size
+  limits, and oversized intrinsic SVG rejection before PDF conversion.
+- Added a `Security Audit` GitHub Actions workflow that runs `cargo audit` on Rust dependency
+  changes and on a weekly schedule.
 - Hardened diagram-level config handling against CSS injection in generated SVG output by treating
   `fontFamily`, `altFontFamily`, `themeCSS`, and `themeVariables` as secure keys by default, while
   preserving trusted site-level config and explicit opt-in compatibility.

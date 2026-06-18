@@ -2,7 +2,10 @@
 #![recursion_limit = "256"]
 
 use merman::MermaidConfig;
-use merman::render::{CssOverridePostprocessor, HeadlessRenderer, SvgPipeline};
+use merman::render::{
+    CssOverridePolicy, CssOverridePostprocessor, HeadlessRenderer, ScopedCssPostprocessor,
+    SvgPipeline,
+};
 
 fn zed_like_renderer(id: &str) -> HeadlessRenderer {
     let theme_config = MermaidConfig::from_value(serde_json::json!({
@@ -104,8 +107,23 @@ fn render_zed_safe(name: &str, source: &str) -> String {
     let pipeline = SvgPipeline::resvg_safe()
         .with_postprocessor(CssOverridePostprocessor::strip_existing_important());
 
+    render_zed_with_pipeline(name, source, &pipeline)
+}
+
+fn render_zed_with_host_css(name: &str, source: &str, host_css: &str) -> String {
+    let pipeline = SvgPipeline::resvg_safe()
+        .with_postprocessor(CssOverridePostprocessor::strip_existing_important())
+        .with_postprocessor(
+            ScopedCssPostprocessor::new(host_css)
+                .with_override_policy(CssOverridePolicy::StripExistingImportant),
+        );
+
+    render_zed_with_pipeline(name, source, &pipeline)
+}
+
+fn render_zed_with_pipeline(name: &str, source: &str, pipeline: &SvgPipeline) -> String {
     zed_like_renderer(name)
-        .render_svg_with_pipeline_sync(source, &pipeline)
+        .render_svg_with_pipeline_sync(source, pipeline)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
@@ -231,18 +249,23 @@ fn zed_like_editor_pipeline_keeps_resvg_safe_themeable_svg_contract() {
 
 #[test]
 fn zed_like_css_override_pipeline_leaves_host_css_in_control() {
-    let svg = render_zed_safe(
+    let svg = render_zed_with_host_css(
         "zed-contract-css",
         r##"%%{init: {"themeCSS": ".node rect { fill: #123456 !important; } @keyframes pulse { to { opacity: 1; } }"}}%%
 flowchart TD
   A[Styled] --> B[Host]
 "##,
+        r#".node rect { stroke: #0ea5e9; }"#,
     );
 
     assert_zed_safe_svg("zed-contract-css", &svg);
     assert!(
-        svg.contains("#zed-contract-css .node rect { fill: #123456; }"),
-        "expected scoped host CSS to remain after stripping !important: {svg}"
+        !svg.contains("fill: #123456"),
+        "diagram-level themeCSS should stay filtered out: {svg}"
+    );
+    assert!(
+        svg.contains("#zed-contract-css .node rect { stroke: #0ea5e9; }"),
+        "expected scoped host CSS to remain in control: {svg}"
     );
     assert!(
         !svg.contains("@keyframes"),

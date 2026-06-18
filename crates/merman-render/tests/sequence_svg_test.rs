@@ -1,3 +1,6 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
 use merman_render::model::{LayoutDiagram, LayoutEdge, LayoutPoint, SequenceDiagramLayout};
 use merman_render::svg::{
@@ -107,6 +110,10 @@ fn render_sequence_svg_from_fixture_with_options(
 
 fn render_sequence_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
+    render_sequence_svg_from_text_with_engine(engine, text)
+}
+
+fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -291,7 +298,8 @@ Bob->>Alice:Again"#,
 
 #[test]
 fn sequence_svg_honors_mermaid_11_15_theme_css_options() {
-    let svg = render_sequence_svg_from_text(
+    let svg = render_sequence_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
 sequenceDiagram
 autonumber

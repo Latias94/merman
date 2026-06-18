@@ -1,4 +1,7 @@
 use futures::executor::block_on;
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
@@ -519,7 +522,8 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
 
 #[test]
 fn flowchart_svg_honors_mermaid_11_15_numeric_stroke_width_theme() {
-    let svg = render_flowchart_svg_from_text(
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"strokeWidth": 4, "lineColor": "#112233", "nodeBorder": "#445566"}}}%%
 flowchart TB
     A --> B
@@ -550,7 +554,8 @@ flowchart TB
 
 #[test]
 fn flowchart_link_style_stroke_width_overrides_theme_default_edge_width() {
-    let svg = render_flowchart_svg_from_text(
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"strokeWidth": 4, "lineColor": "#112233"}}}%%
 flowchart TB
     A --> B
@@ -579,7 +584,8 @@ flowchart TB
 
 #[test]
 fn flowchart_svg_honors_node_text_color_theme_variable() {
-    let svg = render_flowchart_svg_from_text(
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "nodeTextColor": "#f8fafc", "textColor": "#fde68a"}}}%%
 flowchart TD
     A[Dark Node] --> B[Other]
@@ -606,7 +612,8 @@ flowchart TD
 
 #[test]
 fn flowchart_svg_uses_extended_theme_derived_secondary_color_overrides() {
-    let svg = render_flowchart_svg_from_text(
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"theme": "redux", "themeVariables": {"primaryColor": "#123456"}}}%%
 flowchart TD
     A[Redux Node] -- Edge Label --> B[Other]
@@ -759,7 +766,7 @@ fn flowchart_base_theme_renders_root_gradient() {
 flowchart TB
 A --> B
 "##;
-    let engine = Engine::new();
+    let engine = legacy_init_theme_compat_engine();
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");

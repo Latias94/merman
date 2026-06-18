@@ -1,9 +1,24 @@
 #![cfg(feature = "render")]
 
+use merman::MermaidConfig;
 use merman::render::HeadlessRenderer;
+
+fn legacy_init_theme_compat_config() -> MermaidConfig {
+    MermaidConfig::from_value(serde_json::json!({
+        "secure": [
+            "secure",
+            "securityLevel",
+            "startOnLoad",
+            "maxTextSize",
+            "suppressErrorRendering",
+            "maxEdges"
+        ]
+    }))
+}
 
 fn render_svg(name: &str, source: &str) -> String {
     HeadlessRenderer::new()
+        .with_site_config(legacy_init_theme_compat_config())
         .with_vendored_text_measurer()
         .with_diagram_id(name)
         .render_svg_sync(source)

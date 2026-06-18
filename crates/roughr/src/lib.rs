@@ -158,6 +158,9 @@
 #[macro_use]
 extern crate derive_builder;
 
+pub(crate) mod curve_points;
+mod svg_path;
+
 pub mod core;
 pub mod filler;
 pub mod generator;

@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
-use super::super::svg_compare_layout_opts;
+use super::super::{svg_compare_engine, svg_compare_layout_opts};
 
 pub(crate) fn compare_requirement_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -65,7 +65,7 @@ pub(crate) fn compare_requirement_svgs(args: Vec<String>) -> Result<(), XtaskErr
     );
     let mut failures: Vec<String> = Vec::new();
 
-    let engine = merman::Engine::new();
+    let engine = svg_compare_engine();
 
     for mmd_path in &mmd_files {
         let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {

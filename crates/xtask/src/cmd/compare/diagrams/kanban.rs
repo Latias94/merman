@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
-use super::super::svg_compare_layout_opts;
+use super::super::{svg_compare_engine, svg_compare_layout_opts};
 
 pub(crate) fn compare_kanban_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -64,7 +64,7 @@ pub(crate) fn compare_kanban_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
-    let engine = merman::Engine::new();
+    let engine = svg_compare_engine();
 
     let mut report = String::new();
     let _ = writeln!(

@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
@@ -252,6 +252,9 @@ fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
 
 #[test]
 fn architecture_svg_honors_mermaid_11_15_style_theme_variables() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
+    })));
     let text = r##"%%{init: {"themeVariables": {"lineColor": "#445566", "primaryBorderColor": "#778899", "archEdgeColor": "#010203", "archEdgeArrowColor": "#040506", "archEdgeWidth": 7, "archGroupBorderColor": "#070809", "archGroupBorderWidth": "6px"}}}%%
 architecture-beta
   group core(cloud)[Core]
@@ -260,7 +263,8 @@ architecture-beta
   api:R --> L:db
 "##;
 
-    let svg = render_architecture_text_with_options(
+    let svg = render_architecture_text_with_engine_and_options(
+        &engine,
         text,
         &SvgRenderOptions {
             diagram_id: Some("architecture-theme".to_string()),

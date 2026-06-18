@@ -37,14 +37,18 @@ repository = "https://github.com/Latias94/merman"
 
 [features]
 default = ["host-random"]
-host-random = ["dep:rand", "dep:getrandom", "getrandom/js"]
+host-random = [
+    "dep:rand",
+    "dep:getrandom_0_4",
+    "getrandom_0_4/wasm_js",
+]
 
 [lib]
 name = "roughr"
 path = "src/lib.rs"
 
 [dependencies.derive_builder]
-version = "0.12"
+version = "0.20.2"
 
 [dependencies.euclid]
 version = "0.22"
@@ -54,21 +58,18 @@ version = "0.2"
 
 [dependencies.palette]
 version = "0.7"
-
-[dependencies.points_on_curve]
-version = "0.7.0"
+default-features = false
+features = ["std"]
 
 [dependencies.rand]
-version = "0.8"
+version = "0.10"
 optional = true
 
-[target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
-version = "0.2"
-features = ["js"]
+[target.'cfg(target_arch = "wasm32")'.dependencies.getrandom_0_4]
+package = "getrandom"
+version = "0.4"
+features = ["wasm_js"]
 optional = true
-
-[dependencies.svg_path_ops]
-version = "0.11.0"
 
 [dependencies.svgtypes]
-version = "0.11"
+version = "0.16.1"

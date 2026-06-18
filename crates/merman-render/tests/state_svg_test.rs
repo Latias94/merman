@@ -1,3 +1,6 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
@@ -60,7 +63,7 @@ Join --> [*]
 note right of Idle : seeded note"#
     );
 
-    render_state_svg_from_text(&source)
+    render_state_svg_from_text_with_engine(legacy_init_theme_compat_engine(), &source)
 }
 
 #[test]
@@ -86,7 +89,8 @@ fn state_debug_svg_includes_cluster_positioning_metadata() {
 
 #[test]
 fn state_svg_honors_mermaid_11_15_theme_css_options() {
-    let svg = render_state_svg_from_text(
+    let svg = render_state_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"transitionColor": "#202020", "lineColor": "#303030", "nodeBorder": "#404040", "stateLabelColor": "#505050", "mainBkg": "#606060", "background": "#707070", "altBackground": "#808080", "strokeWidth": 4, "noteBorderColor": "#909090", "noteBkgColor": "#a0a0a0", "noteTextColor": "#b0b0b0", "labelBackgroundColor": "#c0c0c0", "edgeLabelBackground": "#d0d0d0", "transitionLabelColor": "#e0e0e0", "specialStateColor": "#f0f0f0", "innerEndBackground": "#010101", "compositeBackground": "#020202", "stateBkg": "#030303", "stateBorder": "#040404", "compositeTitleBackground": "#050505"}}}%%
 stateDiagram-v2
 [*] --> Active: start
@@ -129,7 +133,8 @@ Active --> [*]: done"##,
 
 #[test]
 fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
-    let svg = render_state_svg_from_text(
+    let svg = render_state_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"look": "neo", "themeVariables": {"transitionColor": "#202020", "mainBkg": "#606060", "stateBorder": "#040404", "strokeWidth": 4, "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566", "dropShadow": "url(#drop-shadow)", "radius": 3}}}%%
 stateDiagram-v2
 [*] --> Active: start
@@ -377,7 +382,8 @@ click S1 href "javascript:alert(1)"
 
 #[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
-    let svg = render_state_svg_from_text(
+    let svg = render_state_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%
 stateDiagram-v2
 [*] --> Idle

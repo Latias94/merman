@@ -1,3 +1,6 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
@@ -36,7 +39,7 @@ ishikawa-beta
         Shaky hands
 "##;
 
-    let parsed = Engine::new()
+    let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();

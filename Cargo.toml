@@ -37,28 +37,28 @@ rust-version = "1.95"
 [workspace.dependencies]
 base64 = "0.22.1"
 brotli = "8.0.3"
-euclid = "0.22"
+euclid = "0.22.14"
 flate2 = "1.1.9"
-htmlize = { version = "1.0.6", features = ["unescape"] }
+htmlize = { version = "1.1.0", features = ["unescape"] }
 indexmap = { version = "2.2.6", features = ["serde"] }
 lalrpop = "0.20.2"
 lalrpop-util = "0.20.2"
 logos = "0.14.4"
-nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
+nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
 pulldown-cmark = "0.12.2"
-ratex-layout = "0.1.10"
-ratex-parser = "0.1.10"
-ratex-svg = { version = "0.1.10", default-features = false }
-ratex-types = "0.1.10"
+ratex-layout = "0.1.11"
+ratex-parser = "0.1.11"
+ratex-svg = { version = "0.1.11", default-features = false }
+ratex-types = "0.1.11"
 regex = "1.11.1"
 reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "rustls-tls"] }
-rayon = "1.10.0"
+rayon = "1.12.0"
 roxmltree = "0.20.0"
 rustc-hash = "2.1.1"
 ryu-js = "1.0.2"
 roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.1", default-features = false }
 serde = { version = "1.0.217", features = ["derive", "rc"] }
-serde_json = { version = "1.0.138", features = ["preserve_order"] }
+serde_json = { version = "1.0.150", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
 toml = "0.9.12"
 json5 = "0.4.1"

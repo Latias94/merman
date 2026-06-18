@@ -1,5 +1,6 @@
 #![cfg(feature = "render")]
 
+use merman::MermaidConfig;
 use merman::render::HeadlessRenderer;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
@@ -213,6 +214,19 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
     render_resvg_safe_with_options(name, source, false, None)
 }
 
+fn trusted_host_dark_flowchart_config() -> MermaidConfig {
+    MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "mainBkg": "#111827",
+            "primaryTextColor": "#f8fafc",
+            "nodeBorder": "#38bdf8",
+            "lineColor": "#f59e0b",
+            "edgeLabelBackground": "#0f172a",
+            "nodeTextColor": "#f8fafc"
+        }
+    }))
+}
+
 fn render_resvg_safe_for_fixture(
     name: &str,
     source: &str,
@@ -333,6 +347,26 @@ fn assert_resvg_safe_output(name: &str, source: &str, svg: &str) {
     }
 
     assert_rasterizes_when_enabled(name, source, svg);
+}
+
+fn assert_expected_labels_and_colors(
+    name: &str,
+    svg: &str,
+    expected_labels: &[&str],
+    expected_colors: &[&str],
+) {
+    for label in expected_labels {
+        assert!(
+            svg.contains(label),
+            "{name}: expected visible label {label:?}"
+        );
+    }
+    for color in expected_colors {
+        assert!(
+            svg.contains(color),
+            "{name}: expected visible theme color {color:?}"
+        );
+    }
 }
 
 #[cfg(feature = "raster")]
@@ -751,34 +785,31 @@ fn host_reported_diagrams_render_headless_resvg_safe() {
             &["main", "develop", "feature"],
             &[],
         ),
-        (
-            "host-dark-theme-flowchart",
-            r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "nodeTextColor": "#f8fafc"}}}%%
-flowchart TD
-  A[Dark Node] -->|Readable Edge| B[Other]
-"##,
-            &["Dark Node", "Readable Edge", "Other"],
-            &["#111827", "#f8fafc", "#38bdf8", "#f59e0b"],
-        ),
     ];
 
     for (name, source, expected_labels, expected_colors) in cases {
         let svg = render_resvg_safe(name, source);
         assert_resvg_safe_output(name, source, &svg);
-
-        for label in *expected_labels {
-            assert!(
-                svg.contains(label),
-                "{name}: expected visible label {label:?}"
-            );
-        }
-        for color in *expected_colors {
-            assert!(
-                svg.contains(color),
-                "{name}: expected visible theme color {color:?}"
-            );
-        }
+        assert_expected_labels_and_colors(name, &svg, expected_labels, expected_colors);
     }
+
+    let name = "host-dark-theme-flowchart";
+    let source = r##"flowchart TD
+  A[Dark Node] -->|Readable Edge| B[Other]
+"##;
+    let svg = render_resvg_safe_with_options(
+        name,
+        source,
+        false,
+        Some(trusted_host_dark_flowchart_config()),
+    );
+    assert_resvg_safe_output(name, source, &svg);
+    assert_expected_labels_and_colors(
+        name,
+        &svg,
+        &["Dark Node", "Readable Edge", "Other"],
+        &["#111827", "#f8fafc", "#38bdf8", "#f59e0b"],
+    );
 }
 
 #[test]

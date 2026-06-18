@@ -1,6 +1,7 @@
 //! SVG compare XML helpers.
 
 use crate::XtaskError;
+use crate::cmd::svg_compare_engine_with_site_config;
 use crate::svgdom;
 use crate::util::*;
 use std::fmt::Write as _;
@@ -118,9 +119,9 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     // Mermaid gitGraph auto-generates commit ids using `Math.random()`. Upstream gitGraph SVGs in
     // this repo are generated with a seeded upstream renderer, so keep the local side seeded too
     // for meaningful strict XML comparisons.
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+    let engine = svg_compare_engine_with_site_config(
         serde_json::json!({ "handDrawnSeed": 1, "gitGraph": { "seed": 1 } }),
-    ));
+    );
     let layout_opts = merman_render::LayoutOptions {
         text_measurer: Arc::clone(&measurer),
         flowchart_elk_backend,

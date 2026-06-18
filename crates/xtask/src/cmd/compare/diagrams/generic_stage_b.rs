@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
-use super::super::svg_compare_layout_opts;
+use super::super::{svg_compare_engine, svg_compare_layout_opts};
 
 struct StageBCompareSpec {
     diagram_dir: &'static str,
@@ -114,7 +114,7 @@ fn compare_stage_b_svgs(args: Vec<String>, spec: StageBCompareSpec) -> Result<()
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
-    let engine = merman::Engine::new();
+    let engine = svg_compare_engine();
     let parse_opts = merman::ParseOptions {
         suppress_errors: true,
     };

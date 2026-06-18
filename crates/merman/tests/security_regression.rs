@@ -1,0 +1,244 @@
+#![cfg(feature = "render")]
+
+use merman::MermaidConfig;
+use merman::render::HeadlessRenderer;
+use std::sync::Arc;
+
+fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
+    renderer
+        .render_svg_sync(source)
+        .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
+        .unwrap_or_else(|| panic!("{name}: no diagram detected"))
+}
+
+fn render_resvg_safe(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
+    renderer
+        .render_svg_resvg_safe_sync(source)
+        .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
+        .unwrap_or_else(|| panic!("{name}: no diagram detected"))
+}
+
+fn assert_xml_parseable(name: &str, svg: &str) {
+    roxmltree::Document::parse(svg)
+        .unwrap_or_else(|err| panic!("{name}: output should be XML-parseable: {err}\n{svg}"));
+}
+
+#[test]
+fn diagram_level_css_config_cannot_reach_effective_svg() {
+    let source = r##"%%{init: {"themeCSS": ".node rect { outline: 13px solid rgb(1, 2, 3); }", "fontFamily": "x;a{b} :not(&){background:green !important} c{d}"}}%%
+flowchart TD
+    A[Start] --> B[Done]
+"##;
+    let renderer = HeadlessRenderer::new().with_diagram_id("security-config");
+
+    let svg = render_svg(&renderer, "security-config", source);
+
+    assert_xml_parseable("security-config", &svg);
+    assert!(!svg.contains("outline: 13px"), "{svg}");
+    assert!(!svg.contains("background:green"), "{svg}");
+    assert!(!svg.contains("x;a{b}"), "{svg}");
+}
+
+#[test]
+fn strict_click_javascript_url_does_not_emit_renderable_href() {
+    let source = r#"flowchart TD
+    A[Click me]
+    click A "javascript:alert(1)" "bad" _blank
+"#;
+    let renderer = HeadlessRenderer::new().with_diagram_id("security-url");
+
+    let svg = render_svg(&renderer, "security-url", source);
+
+    assert_xml_parseable("security-url", &svg);
+    assert!(!svg.to_ascii_lowercase().contains("javascript:"), "{svg}");
+    assert!(!svg.contains(r#"xlink:href="about:blank""#), "{svg}");
+}
+
+#[test]
+fn resvg_safe_pipeline_removes_loose_html_label_foreign_object() {
+    let source = r#"flowchart TD
+    A["<b onclick='alert(1)'>Hello</b><br/><img src=x onerror='alert(1)'>"] --> B[Done]
+"#;
+    let renderer = HeadlessRenderer::new()
+        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose",
+            "flowchart": {
+                "htmlLabels": true
+            }
+        })))
+        .with_diagram_id("security-html-label");
+
+    let svg = render_resvg_safe(&renderer, "security-html-label", source);
+
+    assert_xml_parseable("security-html-label", &svg);
+    let lower = svg.to_ascii_lowercase();
+    assert!(!lower.contains("<foreignobject"), "{svg}");
+    assert!(!lower.contains("onclick"), "{svg}");
+    assert!(!lower.contains("onerror"), "{svg}");
+    assert!(!lower.contains("<img"), "{svg}");
+    assert!(svg.contains("Hello"), "{svg}");
+}
+
+#[test]
+fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
+    let source = "flowchart TD\n    A[Start] --> B[Done]";
+    let renderer = HeadlessRenderer::new()
+        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeCSS": ".node rect { animation: pulse 1s infinite; } @keyframes pulse { to { opacity: 0.5; } } :root { --bad: 1; }"
+        })))
+        .with_diagram_id("security-resvg-css");
+
+    let svg = render_resvg_safe(&renderer, "security-resvg-css", source);
+
+    assert_xml_parseable("security-resvg-css", &svg);
+    let lower = svg.to_ascii_lowercase();
+    assert!(!lower.contains("@keyframes"), "{svg}");
+    assert!(!lower.contains(":root"), "{svg}");
+    assert!(!lower.contains("animation:"), "{svg}");
+}
+
+#[test]
+fn raw_resvg_safe_pipeline_strips_active_svg_content() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16">
+<script>alert(1)</script>
+<a href="#safe"><use href="#shape" xlink:href="#shape"/></a>
+<a href="javascript&colon;alert(1)" onclick="alert(1)"><text>bad</text></a>
+<image href="data:image/png;base64,AAAA"/>
+<image href="data:text/html;base64,PHNjcmlwdD4="/>
+<image href="file:///etc/passwd"/>
+<defs><path id="shape" d="M0 0H16V16H0z"/></defs>
+<rect width="16" height="16" fill="black"/>
+</svg>"##;
+
+    let out = merman::render::svg_resvg_safe(svg).unwrap();
+
+    assert_xml_parseable("raw-resvg-safe-active-content", &out);
+    let lower = out.to_ascii_lowercase();
+    assert!(!lower.contains("<script"), "{out}");
+    assert!(!lower.contains("onclick"), "{out}");
+    assert!(!lower.contains("javascript"), "{out}");
+    assert!(!lower.contains("data:text/html"), "{out}");
+    assert!(!lower.contains("file:///"), "{out}");
+    assert!(out.contains(r##"href="#safe""##), "{out}");
+    assert!(out.contains(r##"href="#shape""##), "{out}");
+    assert!(out.contains(r##"xlink:href="#shape""##), "{out}");
+    assert!(out.contains("data:image/png"), "{out}");
+}
+
+#[test]
+fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
+    let mut registry = merman::render::IconRegistry::new();
+    registry.insert(
+        "test:active",
+        merman::render::IconSvg::new(
+            r##"<script>alert(1)</script><path id="shape" d="M0 0H16V16H0z"/><use href="#shape" onclick="alert(1)"/><a href="javascript:alert(1)"><path d="M1 1H2V2H1z"/></a>"##,
+            16.0,
+            16.0,
+        ),
+    );
+    let renderer = HeadlessRenderer::new().with_svg_options(merman::render::SvgRenderOptions {
+        diagram_id: Some("security-icon".to_string()),
+        icon_registry: Some(Arc::new(registry)),
+        ..Default::default()
+    });
+    let source = r#"flowchart TD
+    A@{ icon: "test:active", label: "A" }
+"#;
+
+    let svg = render_resvg_safe(&renderer, "security-custom-icon", source);
+
+    assert_xml_parseable("security-custom-icon", &svg);
+    let lower = svg.to_ascii_lowercase();
+    assert!(!lower.contains("<script"), "{svg}");
+    assert!(!lower.contains("onclick"), "{svg}");
+    assert!(!lower.contains("javascript:"), "{svg}");
+    assert!(svg.contains("IconifyId"), "{svg}");
+}
+
+#[test]
+#[cfg(feature = "raster")]
+fn default_raster_plan_caps_large_viewbox_before_pixmap_allocation() {
+    use merman::render::raster::{
+        DEFAULT_MAX_RASTER_PIXELS, DEFAULT_MAX_RASTER_SIDE_LENGTH, RasterOptions, svg_raster_plan,
+    };
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
+
+    let plan = svg_raster_plan(svg, &RasterOptions::default()).unwrap();
+
+    assert_eq!(plan.requested_width_px, 30000);
+    assert_eq!(plan.requested_height_px, 20000);
+    assert!(plan.limited, "{plan:?}");
+    assert!(plan.effective_scale < plan.requested_scale, "{plan:?}");
+    assert!(plan.width_px <= DEFAULT_MAX_RASTER_SIDE_LENGTH, "{plan:?}");
+    assert!(plan.height_px <= DEFAULT_MAX_RASTER_SIDE_LENGTH, "{plan:?}");
+    assert!(
+        u64::from(plan.width_px) * u64::from(plan.height_px) <= DEFAULT_MAX_RASTER_PIXELS,
+        "{plan:?}"
+    );
+}
+
+#[test]
+#[cfg(feature = "raster")]
+fn raster_size_limit_rejects_zero_budget_before_pixmap_allocation() {
+    use merman::render::raster::{RasterOptions, RasterSizeLimit, svg_raster_plan};
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="black"/></svg>"#;
+    let options = RasterOptions::default().with_size_limit(RasterSizeLimit::new(
+        Some(0),
+        Some(128),
+        Some(16_384),
+    ));
+
+    let err = svg_raster_plan(svg, &options).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("size_limit max_width and max_height must be positive"),
+        "{err}"
+    );
+}
+
+#[test]
+#[cfg(feature = "raster")]
+fn custom_raster_size_limit_caps_actual_png_dimensions() {
+    use merman::render::raster::{RasterOptions, RasterSizeLimit, svg_raster_plan, svg_to_png};
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
+    let options = RasterOptions::default()
+        .with_size_limit(RasterSizeLimit::new(Some(128), Some(128), Some(16_384)))
+        .with_background("white");
+
+    let plan = svg_raster_plan(svg, &options).unwrap();
+    let png = svg_to_png(svg, &options).unwrap();
+
+    assert!(plan.limited, "{plan:?}");
+    assert!(plan.width_px <= 128, "{plan:?}");
+    assert!(plan.height_px <= 128, "{plan:?}");
+    assert!(u64::from(plan.width_px) * u64::from(plan.height_px) <= 16_384);
+    assert_eq!(png_dimensions(&png), (plan.width_px, plan.height_px));
+}
+
+#[test]
+#[cfg(feature = "raster")]
+fn default_pdf_conversion_rejects_oversized_intrinsic_svg() {
+    use merman::render::raster::{RasterOptions, svg_to_pdf_with_options};
+
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
+
+    let err = svg_to_pdf_with_options(svg, &RasterOptions::default()).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("PDF output exceeds configured size_limit"),
+        "{err}"
+    );
+}
+
+#[cfg(feature = "raster")]
+fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
+    let decoder = png::Decoder::new(bytes);
+    let reader = decoder.read_info().expect("valid PNG header");
+    let info = reader.info();
+    (info.width, info.height)
+}

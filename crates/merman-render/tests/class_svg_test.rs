@@ -1,3 +1,6 @@
+mod common;
+
+use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
@@ -150,7 +153,8 @@ fn class_svg_scopes_text_color_for_html_labels() {
 
 #[test]
 fn class_svg_honors_configured_class_text_color() {
-    let svg = render_class_svg_from_text(
+    let svg = render_class_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"classText": "#123456"}}}%%
 classDiagram
     class Animal
@@ -255,7 +259,8 @@ namespace Platform.Core {
 
 #[test]
 fn class_svg_honors_numeric_stroke_width_theme_css() {
-    let svg = render_class_svg_from_text(
+    let svg = render_class_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"mainBkg": "#112233", "nodeBorder": "#445566", "lineColor": "#778899", "strokeWidth": 7}}}%%
 classDiagram
     Animal <|-- Dog
@@ -287,13 +292,16 @@ classDiagram
 #[test]
 fn class_svg_honors_configured_note_theme_colors() {
     for html_labels in [true, false] {
-        let svg = render_class_svg_from_text(&format!(
-            r##"%%{{init: {{"htmlLabels": {html_labels}, "themeVariables": {{"noteBkgColor": "#112233", "noteBorderColor": "#445566", "noteTextColor": "#778899"}}}}}}%%
+        let svg = render_class_svg_from_text_with_engine(
+            legacy_init_theme_compat_engine(),
+            &format!(
+                r##"%%{{init: {{"htmlLabels": {html_labels}, "themeVariables": {{"noteBkgColor": "#112233", "noteBorderColor": "#445566", "noteTextColor": "#778899"}}}}}}%%
 classDiagram
     class Animal
     note for Animal "hello"
 "##
-        ));
+            ),
+        );
 
         assert!(
             svg.contains(
@@ -998,7 +1006,8 @@ fn class_svg_relation_only_generic_nodes_keep_type_suffix() {
 
 #[test]
 fn class_svg_preserves_numeric_theme_font_size_css_spelling() {
-    let svg = render_class_svg_from_text(
+    let svg = render_class_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"fontSize": 10, "themeVariables": {"fontSize": 24}, "htmlLabels": false} }%%
 classDiagram
   class FontSizeSvgProbe {
@@ -1023,7 +1032,8 @@ classDiagram
 
 #[test]
 fn class_svg_px_string_theme_font_size_uses_mermaid_svg_label_wrapping() {
-    let svg = render_class_svg_from_text(
+    let svg = render_class_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
         r##"%%{init: {"theme": "base", "fontSize": 10, "themeVariables": {"fontSize": "24px"}, "htmlLabels": false} }%%
 classDiagram
   class Foo {

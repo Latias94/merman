@@ -3,7 +3,7 @@
 use crate::XtaskError;
 use crate::cmd::compare::{
     DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta, RootDeltaReportLimit, parse_root_attrs,
-    parse_root_delta_report_limit, write_root_deltas_report,
+    parse_root_delta_report_limit, svg_compare_engine_with_site_config, write_root_deltas_report,
 };
 use crate::svgdom;
 use std::fmt::Write as _;
@@ -85,9 +85,8 @@ pub(crate) fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError>
     // Mermaid gitGraph auto-generates commit ids via `Math.random()`. Upstream gitGraph SVG
     // baselines in this repo are generated with a seeded renderer, so keep the local side seeded
     // too for meaningful parity-root comparisons (root viewBox/max-width depend on label widths).
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "gitGraph": { "seed": 1 } }),
-    ));
+    let engine =
+        svg_compare_engine_with_site_config(serde_json::json!({ "gitGraph": { "seed": 1 } }));
 
     let mut report = String::new();
     let _ = writeln!(

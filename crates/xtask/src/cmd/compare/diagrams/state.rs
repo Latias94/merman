@@ -5,6 +5,7 @@ use crate::cmd::compare::{
     DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta, RootDeltaReportLimit, parse_root_attrs,
     parse_root_delta_report_limit, write_root_deltas_report,
 };
+use crate::cmd::svg_compare_engine;
 use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
@@ -86,7 +87,7 @@ pub(crate) fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mode = svgdom::DomMode::parse(&dom_mode);
     let should_report_root = report_root || mode == svgdom::DomMode::ParityRoot;
 
-    let engine = merman::Engine::new();
+    let engine = svg_compare_engine();
     let mut report = String::new();
     let _ = writeln!(
         &mut report,

@@ -15,6 +15,15 @@ pub(crate) fn fixtures_root() -> PathBuf {
 }
 
 pub(crate) fn target_root() -> PathBuf {
+    if let Some(path) = std::env::var_os("CARGO_TARGET_DIR") {
+        let path = PathBuf::from(path);
+        return if path.is_absolute() {
+            path
+        } else {
+            workspace_root().join(path)
+        };
+    }
+
     workspace_root().join("target")
 }
 

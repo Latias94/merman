@@ -1,10 +1,13 @@
-use merman_core::{Engine, ParseOptions};
+mod common;
+
+use common::legacy_init_theme_compat_engine;
+use merman_core::ParseOptions;
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_quadrantchart_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn render_quadrantchart_svg_from_text(text: &str) -> String {
-    let engine = Engine::new();
+    let engine = legacy_init_theme_compat_engine();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");

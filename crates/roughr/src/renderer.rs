@@ -3,7 +3,6 @@ use std::borrow::BorrowMut;
 use euclid::default::Point2D;
 use euclid::{point2, Trig};
 use num_traits::{Float, FloatConst, FromPrimitive};
-use svg_path_ops::{absolutize, normalize};
 use svgtypes::{PathParser, PathSegment};
 
 use super::core::{_c, Options};
@@ -13,6 +12,7 @@ use crate::filler::FillerType::{
     DashedFiller, DotFiller, HatchFiller, ScanLineHachure, ZigZagFiller, ZigZagLineFiller,
 };
 use crate::geometry::{convert_bezier_quadratic_to_cubic, BezierQuadratic};
+use crate::svg_path::{absolutize, normalize};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct EllipseParams<F: Float> {
