@@ -185,7 +185,7 @@ fn import_hierarchical_graph(
                 && source_container_options.inside_self_loops_activate
             {
                 let graph = graph_for_parent(root, Some(edge.source.as_str()));
-                transform_edge(edge, graph, edge_model_order)?;
+                transform_inside_self_loop(edge, graph, edge_model_order)?;
             } else {
                 let source_path = index.graph_path(edge.source.as_str());
                 let target_path = index.graph_path(edge.target.as_str());
@@ -215,6 +215,120 @@ fn import_hierarchical_graph(
     }
 
     Ok(())
+}
+
+fn transform_inside_self_loop(
+    edge: &ElkInputEdge,
+    graph: &mut LGraph,
+    model_order: Option<usize>,
+) -> ImportResult<usize> {
+    let source_port_key = inside_self_loop_port_key(edge.source.as_str(), "source");
+    let target_port_key = inside_self_loop_port_key(edge.target.as_str(), "target");
+    let source = ensure_inside_self_loop_dummy(
+        graph,
+        edge.source.as_str(),
+        PortType::Output,
+        source_port_key.as_str(),
+    );
+    let target = ensure_inside_self_loop_dummy(
+        graph,
+        edge.target.as_str(),
+        PortType::Input,
+        target_port_key.as_str(),
+    );
+
+    let mut labels = Vec::new();
+    if let Some(label) = edge.label.as_ref() {
+        match label.placement {
+            EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
+            EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
+                graph.graph_properties.end_labels = true;
+            }
+        }
+        labels.push(label_to_lgraph(label));
+    }
+
+    let edge_index = graph
+        .add_edge(LayeredEdge {
+            id: edge.id.clone(),
+            source,
+            target,
+            source_node_id: edge.source.clone(),
+            target_node_id: edge.target.clone(),
+            labels,
+            minlen: edge.minlen.max(1),
+            reversed: false,
+            bend_points: Vec::new(),
+            model_order,
+            priority_direction: edge.priority_direction,
+            priority_shortness: edge.priority_shortness,
+            priority_straightness: edge.priority_straightness,
+            thickness: 0.0,
+            original_opposite_port: None,
+            compound_segment: None,
+        })
+        .expect("inside self-loop dummies were created before adding edge");
+
+    if has_parallel_port_edges(&graph.layerless_nodes[source.node].ports[source.port])
+        || has_parallel_port_edges(&graph.layerless_nodes[target.node].ports[target.port])
+    {
+        graph.graph_properties.hyperedges = true;
+    }
+
+    Ok(edge_index)
+}
+
+fn ensure_inside_self_loop_dummy(
+    graph: &mut LGraph,
+    parent_node_id: &str,
+    port_type: PortType,
+    parent_port_key: &str,
+) -> PortRef {
+    graph.graph_properties.external_ports = true;
+    graph.graph_properties.non_free_ports = true;
+
+    let dummy_id = format!("external:{parent_node_id}");
+    if let Some((node, _)) = graph
+        .layerless_nodes
+        .iter()
+        .enumerate()
+        .find(|(_, candidate)| {
+            candidate.kind == crate::graph::LNodeKind::ExternalPort
+                && candidate.id == dummy_id
+                && candidate.parent_port_type == Some(port_type)
+                && candidate.parent_port_key.as_deref() == Some(parent_port_key)
+        })
+    {
+        return PortRef { node, port: 0 };
+    }
+
+    let mut dummy = create_external_port_dummy(
+        dummy_id,
+        parent_port_key.to_string(),
+        port_type,
+        PortConstraints::Free,
+        PortSide::Undefined,
+        match port_type {
+            PortType::Input => 1,
+            PortType::Output => -1,
+        },
+        Default::default(),
+        LSize::default(),
+        LSize::default(),
+        0.0,
+        graph.options.direction,
+    );
+    dummy.parent_port_key = Some(parent_port_key.to_string());
+    dummy.parent_port_type = Some(port_type);
+
+    let node = graph.layerless_nodes.len();
+    dummy.ports[0].node = node;
+    graph.layerless_nodes.push(dummy);
+    PortRef { node, port: 0 }
+}
+
+fn inside_self_loop_port_key(node_id: &str, role: &str) -> String {
+    format!("{node_id}:{role}")
 }
 
 /// Mirrors `ElkGraphImporter#needsModelOrder(...)`.
@@ -1004,6 +1118,49 @@ mod tests {
             .find(|node| node.id == "A")
             .unwrap();
         assert!(node.nested_graph.is_some());
+    }
+
+    #[test]
+    fn importer_reuses_inside_self_loop_dummies_per_node_role() {
+        let mut graph = graph(
+            vec![node("A")],
+            vec![
+                ElkInputEdge {
+                    inside_self_loops_yo: true,
+                    ..edge("A-A-1", "A", "A")
+                },
+                ElkInputEdge {
+                    inside_self_loops_yo: true,
+                    ..edge("A-A-2", "A", "A")
+                },
+            ],
+        );
+        graph.options.inside_self_loops_activate = true;
+
+        let lgraph = import_graph(&graph).unwrap();
+        let node = lgraph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .unwrap();
+        let nested = node.nested_graph.as_ref().unwrap();
+        let external_dummies = nested
+            .layerless_nodes
+            .iter()
+            .filter(|candidate| candidate.kind == LNodeKind::ExternalPort)
+            .collect::<Vec<_>>();
+
+        assert_eq!(external_dummies.len(), 2);
+        let input_dummy = external_dummies
+            .iter()
+            .find(|dummy| dummy.parent_port_type == Some(PortType::Input))
+            .expect("inside self-loop input dummy should exist");
+        let output_dummy = external_dummies
+            .iter()
+            .find(|dummy| dummy.parent_port_type == Some(PortType::Output))
+            .expect("inside self-loop output dummy should exist");
+        assert_eq!(input_dummy.ports[0].incoming_edges.len(), 2);
+        assert_eq!(output_dummy.ports[0].outgoing_edges.len(), 2);
     }
 
     #[test]
