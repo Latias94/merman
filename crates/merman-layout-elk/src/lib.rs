@@ -160,7 +160,7 @@ fn graph_to_source_input_with_root_context(
                     .label
                     .map(|label| ElkInputLabel::center("", label.width, label.height)),
                 minlen: edge.minlen,
-                inside_self_loops_yo: false,
+                inside_self_loops_yo: edge.inside_self_loops_yo,
                 priority_direction: 0,
                 priority_shortness: 0,
                 priority_straightness: 0,
@@ -923,6 +923,7 @@ mod tests {
             target: target.to_string(),
             label: None,
             minlen: 1,
+            inside_self_loops_yo: false,
         }
     }
 
@@ -1017,6 +1018,21 @@ mod tests {
         let input = graph_to_source_input(&graph);
 
         assert!(input.options.inside_self_loops_activate);
+    }
+
+    #[test]
+    fn graph_to_source_input_propagates_inside_self_loop_edge_flag() {
+        let graph = flat_graph(
+            vec![leaf("A")],
+            vec![Edge {
+                inside_self_loops_yo: true,
+                ..edge("A-A", "A", "A")
+            }],
+        );
+
+        let input = graph_to_source_input(&graph);
+
+        assert!(input.edges[0].inside_self_loops_yo);
     }
 
     #[test]

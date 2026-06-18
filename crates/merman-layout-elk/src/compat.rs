@@ -193,6 +193,7 @@ pub struct Edge {
     pub target: String,
     pub label: Option<Label>,
     pub minlen: usize,
+    pub inside_self_loops_yo: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1603,6 +1604,7 @@ mod tests {
                 target: "B".to_string(),
                 label: None,
                 minlen: 1,
+                inside_self_loops_yo: false,
             }],
             ..Default::default()
         };
@@ -1776,6 +1778,7 @@ mod tests {
             target: "B".to_string(),
             label: None,
             minlen: 1,
+            inside_self_loops_yo: false,
         });
 
         let result = layout(&graph, Algorithm::Layered).unwrap();
@@ -1811,6 +1814,7 @@ mod tests {
             target: "A".to_string(),
             label: None,
             minlen: 1,
+            inside_self_loops_yo: false,
         });
 
         let result = layout(&graph, Algorithm::Layered).unwrap();
@@ -1945,6 +1949,7 @@ mod tests {
             target: target.to_string(),
             label: None,
             minlen: 1,
+            inside_self_loops_yo: false,
         }
     }
 }

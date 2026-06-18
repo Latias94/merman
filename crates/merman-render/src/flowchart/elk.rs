@@ -519,6 +519,7 @@ fn build_flowchart_elk_graph_with_mode(
                 target: edge.to.clone(),
                 label,
                 minlen: edge.length.max(1),
+                inside_self_loops_yo: false,
             }
         })
         .collect();
@@ -1375,6 +1376,24 @@ mod tests {
             graph.options.layered.self_loop_ordering,
             elk::SelfLoopOrderingStrategy::Sequenced
         );
+    }
+
+    #[test]
+    fn flowchart_elk_graph_adapter_defaults_inside_self_loop_edges_to_false() {
+        let model = model(
+            vec![node("A", Some("Alpha"), None)],
+            vec![edge("A-A", "A", "A", None)],
+        );
+
+        let graph = build_flowchart_elk_graph(
+            &model,
+            &MermaidConfig::default(),
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+
+        assert!(!graph.edges[0].inside_self_loops_yo);
     }
 
     #[test]
