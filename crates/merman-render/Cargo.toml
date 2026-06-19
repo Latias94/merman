@@ -21,7 +21,7 @@ exclude = [
 [features]
 default = ["core-full"]
 core-full = ["merman-core/full", "cytoscape-layout"]
-host = ["chrono/clock", "merman-core/host", "roughr/host-random"]
+host = ["chrono/clock", "chrono/wasmbind", "merman-core/host", "roughr/host-random"]
 cytoscape-layout = ["dep:manatee"]
 elk-layout = ["dep:merman-layout-elk"]
 ratex-math = [

@@ -96,6 +96,26 @@ assert.equal(typeof capabilities.core_host, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
 
 if (capabilities.render) {
+  const rawGantt = `gantt
+title Project Development Plan
+dateFormat YYYY-MM-DD
+section Design
+Requirements    :a1, 2024-01-01, 7d
+UI Design       :a2, after a1, 10d
+section Development
+Frontend Dev    :b1, after a2, 15d
+Backend Dev     :b2, after a2, 15d
+section Testing
+Integration     :c1, after b1, 7d
+User Testing    :c2, after c1, 5d`;
+  assert.match(
+    api.renderSvg(rawGantt, {
+      svg: { pipeline: "readable" },
+      layout: { text_measurer: "deterministic" },
+    }),
+    /<svg/
+  );
+
   const svg = api.renderSvg(source, options);
   assert.match(svg, /<svg/);
   assert.match(svg, /Hello/);
