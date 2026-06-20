@@ -1,0 +1,118 @@
+{
+  "diagramType": "flowchart-elk",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "B",
+          "x": 105.88,
+          "y": 12.0,
+          "width": 0.0,
+          "height": 0.0,
+          "is_cluster": true
+        },
+        {
+          "id": "A",
+          "x": 105.88,
+          "y": 126.5,
+          "width": 187.76,
+          "height": 105.0,
+          "is_cluster": true
+        },
+        {
+          "id": "a",
+          "x": 57.44,
+          "y": 140.0,
+          "width": 66.88,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "b",
+          "x": 154.32,
+          "y": 140.0,
+          "width": 66.88,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_a_b_0",
+          "from": "a",
+          "to": "b",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 90.88,
+              "y": 140.0
+            },
+            {
+              "x": 120.88,
+              "y": 140.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "A",
+          "x": 105.88,
+          "y": 126.5,
+          "width": 187.76,
+          "height": 105.0,
+          "diff": -4.0,
+          "offset_y": 18.0,
+          "title": "A",
+          "title_label": {
+            "x": 105.88,
+            "y": 85.0,
+            "width": 9.6,
+            "height": 22.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "B",
+          "x": 105.88,
+          "y": 12.0,
+          "width": 0.0,
+          "height": 0.0,
+          "diff": 0.8,
+          "offset_y": 18.0,
+          "title": "B",
+          "title_label": {
+            "x": 105.88,
+            "y": 23.0,
+            "width": 9.6,
+            "height": 22.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 199.76,
+        "max_y": 179.0
+      }
+    }
+  }
+}

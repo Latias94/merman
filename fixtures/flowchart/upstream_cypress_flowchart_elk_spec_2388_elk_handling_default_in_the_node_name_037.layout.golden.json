@@ -1,47 +1,55 @@
 {
-  "diagramType": "flowchart-v2",
+  "diagramType": "flowchart-elk",
   "layout": {
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "A",
-          "x": 46.8,
-          "y": 48.0,
-          "width": 69.6,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "B",
-          "x": 156.4,
+          "id": "default-index.js",
+          "x": 92.64,
           "y": 39.0,
-          "width": 69.6,
+          "width": 161.28,
           "height": 54.0,
           "is_cluster": false
         },
         {
-          "id": "C",
-          "x": 156.4,
+          "id": "dot.template.js",
+          "x": 294.08,
+          "y": 39.0,
+          "width": 161.6,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "index.js",
+          "x": 118.16,
           "y": 133.0,
-          "width": 69.6,
+          "width": 110.24,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "module-utl.js",
+          "x": 286.4,
+          "y": 133.0,
+          "width": 146.24,
           "height": 54.0,
           "is_cluster": false
         }
       ],
       "edges": [
         {
-          "id": "L_A_B_0",
-          "from": "A",
-          "to": "B",
+          "id": "L_default-index.js_dot.template.js_0",
+          "from": "default-index.js",
+          "to": "dot.template.js",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 81.6,
+              "x": 173.28,
               "y": 39.0
             },
             {
-              "x": 121.6,
+              "x": 213.28,
               "y": 39.0
             }
           ],
@@ -55,26 +63,18 @@
           "stroke_dasharray": null
         },
         {
-          "id": "L_A_C_0",
-          "from": "A",
-          "to": "C",
+          "id": "L_index.js_module-utl.js_0",
+          "from": "index.js",
+          "to": "module-utl.js",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 81.6,
-              "y": 57.0
-            },
-            {
-              "x": 101.6,
-              "y": 57.0
-            },
-            {
-              "x": 101.6,
+              "x": 173.28,
               "y": 133.0
             },
             {
-              "x": 121.6,
+              "x": 213.28,
               "y": 133.0
             }
           ],
@@ -92,7 +92,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 191.2,
+        "max_x": 374.88,
         "max_y": 160.0
       }
     }

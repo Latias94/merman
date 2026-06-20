@@ -1,29 +1,37 @@
 {
-  "diagramType": "flowchart-v2",
+  "diagramType": "flowchart-elk",
   "layout": {
     "FlowchartV2": {
       "nodes": [
         {
           "id": "A",
           "x": 46.8,
-          "y": 48.0,
-          "width": 69.6,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "B",
-          "x": 156.4,
           "y": 39.0,
           "width": 69.6,
           "height": 54.0,
           "is_cluster": false
         },
         {
-          "id": "C",
-          "x": 156.4,
+          "id": "B",
+          "x": 210.67,
+          "y": 39.0,
+          "width": 178.141,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id1",
+          "x": 48.04,
           "y": 133.0,
-          "width": 69.6,
+          "width": 67.12,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id2",
+          "x": 151.72,
+          "y": 133.0,
+          "width": 60.24,
           "height": 54.0,
           "is_cluster": false
         }
@@ -55,22 +63,14 @@
           "stroke_dasharray": null
         },
         {
-          "id": "L_A_C_0",
-          "from": "A",
-          "to": "C",
+          "id": "L_id1_id2_0",
+          "from": "id1",
+          "to": "id2",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
               "x": 81.6,
-              "y": 57.0
-            },
-            {
-              "x": 101.6,
-              "y": 57.0
-            },
-            {
-              "x": 101.6,
               "y": 133.0
             },
             {
@@ -92,7 +92,7 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 191.2,
+        "max_x": 299.741,
         "max_y": 160.0
       }
     }

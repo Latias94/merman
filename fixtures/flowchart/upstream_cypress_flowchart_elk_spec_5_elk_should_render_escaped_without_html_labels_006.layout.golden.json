@@ -1,0 +1,59 @@
+{
+  "diagramType": "flowchart-elk",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "a",
+          "x": 93.2,
+          "y": 44.6,
+          "width": 162.4,
+          "height": 65.2,
+          "is_cluster": false
+        },
+        {
+          "id": "b",
+          "x": 93.2,
+          "y": 141.0,
+          "width": 66.875,
+          "height": 47.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_a_b_0",
+          "from": "a",
+          "to": "b",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 93.2,
+              "y": 77.2
+            },
+            {
+              "x": 93.2,
+              "y": 117.2
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 174.4,
+        "max_y": 164.8
+      }
+    }
+  }
+}

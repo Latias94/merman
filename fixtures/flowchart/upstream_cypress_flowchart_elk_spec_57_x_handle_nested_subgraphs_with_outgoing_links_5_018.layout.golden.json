@@ -1,0 +1,239 @@
+{
+  "diagramType": "flowchart-elk",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "container_Alpha",
+          "x": 168.14,
+          "y": 254.25,
+          "width": 312.28,
+          "height": 484.5,
+          "is_cluster": true
+        },
+        {
+          "id": "container_Beta",
+          "x": 98.88,
+          "y": 375.0,
+          "width": 149.76,
+          "height": 189.0,
+          "is_cluster": true
+        },
+        {
+          "id": "process_A",
+          "x": 119.387,
+          "y": 78.0,
+          "width": 123.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "process_B",
+          "x": 250.76,
+          "y": 162.0,
+          "width": 123.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "process_C",
+          "x": 98.88,
+          "y": 346.5,
+          "width": 123.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Process_D",
+          "x": 98.88,
+          "y": 430.5,
+          "width": 125.76,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_process_A_process_C_0",
+          "from": "process_A",
+          "to": "process_C",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 98.88,
+              "y": 105.0
+            },
+            {
+              "x": 98.88,
+              "y": 273.0
+            },
+            {
+              "x": 98.88,
+              "y": 319.5
+            }
+          ],
+          "label": {
+            "x": 98.7,
+            "y": 231.0,
+            "width": 60.64,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_process_A_process_B_0",
+          "from": "process_A",
+          "to": "process_B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 139.893,
+              "y": 105.0
+            },
+            {
+              "x": 139.893,
+              "y": 120.0
+            },
+            {
+              "x": 250.76,
+              "y": 120.0
+            },
+            {
+              "x": 250.76,
+              "y": 135.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_process_B_container_Beta_0",
+          "from": "process_B",
+          "to": "container_Beta",
+          "from_cluster": null,
+          "to_cluster": "container_Beta",
+          "points": [
+            {
+              "x": 250.76,
+              "y": 189.0
+            },
+            {
+              "x": 250.76,
+              "y": 484.5
+            },
+            {
+              "x": 36.0,
+              "y": 484.5
+            },
+            {
+              "x": 36.0,
+              "y": 469.5
+            }
+          ],
+          "label": {
+            "x": 250.48,
+            "y": 371.25,
+            "width": 93.44,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_process_C_Process_D_0",
+          "from": "process_C",
+          "to": "Process_D",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 98.88,
+              "y": 373.5
+            },
+            {
+              "x": 98.88,
+              "y": 403.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "container_Alpha",
+          "x": 168.14,
+          "y": 254.25,
+          "width": 312.28,
+          "height": 484.5,
+          "diff": -4.0,
+          "offset_y": 18.0,
+          "title": "container_Alpha",
+          "title_label": {
+            "x": 168.14,
+            "y": 23.0,
+            "width": 99.52,
+            "height": 22.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "container_Beta",
+          "x": 98.88,
+          "y": 375.0,
+          "width": 149.76,
+          "height": 189.0,
+          "diff": -4.0,
+          "offset_y": 18.0,
+          "title": "container_Beta",
+          "title_label": {
+            "x": 98.88,
+            "y": 291.5,
+            "width": 95.04,
+            "height": 22.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 324.28,
+        "max_y": 496.5
+      }
+    }
+  }
+}

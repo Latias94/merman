@@ -1,47 +1,47 @@
 {
-  "diagramType": "flowchart-v2",
+  "diagramType": "flowchart-elk",
   "layout": {
     "FlowchartV2": {
       "nodes": [
         {
-          "id": "A",
-          "x": 46.8,
-          "y": 48.0,
-          "width": 69.6,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "B",
-          "x": 156.4,
+          "id": "Lorem",
+          "x": 63.36,
           "y": 39.0,
-          "width": 69.6,
+          "width": 102.72,
           "height": 54.0,
           "is_cluster": false
         },
         {
-          "id": "C",
-          "x": 156.4,
-          "y": 133.0,
-          "width": 69.6,
+          "id": "Ipsum",
+          "x": 203.68,
+          "y": 39.0,
+          "width": 97.92,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Dolor",
+          "x": 340.0,
+          "y": 39.0,
+          "width": 94.72,
           "height": 54.0,
           "is_cluster": false
         }
       ],
       "edges": [
         {
-          "id": "L_A_B_0",
-          "from": "A",
-          "to": "B",
+          "id": "L_Lorem_Ipsum_0",
+          "from": "Lorem",
+          "to": "Ipsum",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 81.6,
+              "x": 114.72,
               "y": 39.0
             },
             {
-              "x": 121.6,
+              "x": 154.72,
               "y": 39.0
             }
           ],
@@ -55,27 +55,19 @@
           "stroke_dasharray": null
         },
         {
-          "id": "L_A_C_0",
-          "from": "A",
-          "to": "C",
+          "id": "L_Ipsum_Dolor_0",
+          "from": "Ipsum",
+          "to": "Dolor",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 81.6,
-              "y": 57.0
+              "x": 252.64,
+              "y": 39.0
             },
             {
-              "x": 101.6,
-              "y": 57.0
-            },
-            {
-              "x": 101.6,
-              "y": 133.0
-            },
-            {
-              "x": 121.6,
-              "y": 133.0
+              "x": 292.64,
+              "y": 39.0
             }
           ],
           "label": null,
@@ -92,8 +84,8 @@
       "bounds": {
         "min_x": 12.0,
         "min_y": 12.0,
-        "max_x": 191.2,
-        "max_y": 160.0
+        "max_x": 387.36,
+        "max_y": 66.0
       }
     }
   }
