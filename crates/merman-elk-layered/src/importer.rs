@@ -432,6 +432,7 @@ fn nested_graph_options(parent_options: &LayeredOptions, node: &ElkInputNode) ->
     options.direction = parent_options.direction;
     options.hierarchy_handling =
         resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options);
+    options.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
     options.inside_self_loops_activate = parent_options.inside_self_loops_activate;
     if let Some(spacing_base) = node.nested_spacing_base {
         options.spacing = SpacingOptions::layered_base_value(spacing_base);
@@ -1264,6 +1265,20 @@ mod tests {
             OrderingStrategy::None
         );
         assert_eq!(nested.options.spacing.node_node, 30.0);
+    }
+
+    #[test]
+    fn importer_copies_node_port_constraints_to_nested_graph_options() {
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        cluster.port_constraints = Some(PortConstraints::FixedSide);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+
+        let lgraph = import_graph(&graph(vec![cluster, child], vec![])).unwrap();
+        let nested = lgraph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+
+        assert_eq!(nested.options.port_constraints, PortConstraints::FixedSide);
     }
 
     #[test]

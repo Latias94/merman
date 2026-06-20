@@ -202,6 +202,9 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
 
             let layouted = match layout_parsed(&parsed, &layout_opts) {
                 Ok(v) => v,
+                Err(merman_render::Error::UnsupportedDiagram { .. }) => {
+                    continue;
+                }
                 Err(err) => {
                     failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
                     continue;

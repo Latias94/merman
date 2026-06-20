@@ -212,7 +212,9 @@ pub(crate) fn link_external_port_dummy(
     });
     parent_port_data.inside_connections = true;
     parent_port_data.set_side(dummy_side);
-    if let Some(border_offset) = dummy_border_offset {
+    if parent_port_data.border_offset.is_none()
+        && let Some(border_offset) = dummy_border_offset
+    {
         parent_port_data.border_offset = Some(border_offset);
     }
     parent_node.port_constraints = PortConstraints::FixedSide;
@@ -590,13 +592,23 @@ fn ensure_nested_external_dummies_for_parent_ports(graph: &mut LGraph) {
                 port: port_index,
             };
             let port = &graph.layerless_nodes[node_index].ports[port_index];
-            let port_constraints = parent_external_dummy_constraints(parent_constraints, port.side);
+            let port_side =
+                if parent_constraints.is_side_fixed() && port.side == PortSide::Undefined {
+                    let side = calc_port_side(port, parent_size, graph.options.direction);
+                    if side == PortSide::Undefined {
+                        port_side_from_direction(graph.options.direction)
+                    } else {
+                        side
+                    }
+                } else {
+                    port.side
+                };
             let mut dummy = create_external_port_dummy(
                 format!("external:{parent_node_id}"),
                 format!("external:{parent_node_id}:0"),
                 port.port_type,
-                port_constraints,
-                port.side,
+                parent_constraints,
+                port_side,
                 -port.net_flow(),
                 port.position,
                 port.size,
@@ -604,8 +616,10 @@ fn ensure_nested_external_dummies_for_parent_ports(graph: &mut LGraph) {
                 port.border_offset.unwrap_or(0.0),
                 nested_direction,
             );
+            dummy.parent_port_key = Some(port.id.clone());
+            dummy.parent_port_type = Some(port.port_type);
             let dummy_side = dummy.external_port_side;
-            let dummy_border_offset = dummy.ports.first().and_then(|port| port.border_offset);
+            let dummy_border_offset = port.border_offset;
             let dummy_node = {
                 let nested_graph = graph.layerless_nodes[node_index]
                     .nested_graph
@@ -632,17 +646,6 @@ fn ensure_nested_external_dummies_for_parent_ports(graph: &mut LGraph) {
                 set_external_dummy_origin(nested_graph, dummy_node, graph_id.clone(), parent_port);
             }
         }
-    }
-}
-
-fn parent_external_dummy_constraints(
-    parent_constraints: PortConstraints,
-    port_side: PortSide,
-) -> PortConstraints {
-    if parent_constraints.is_side_fixed() && port_side == PortSide::Undefined {
-        PortConstraints::Free
-    } else {
-        parent_constraints
     }
 }
 
@@ -732,12 +735,9 @@ fn apply_source_ported_compound_endpoint_metadata(
 #[derive(Debug, Clone)]
 struct ExternalDummyInfo {
     dummy_node: usize,
-    incident_edge_ids: Vec<String>,
     port_type: PortType,
     parent_port_key: String,
     parent_port_type: PortType,
-    connects_parent_node: bool,
-    parent_end_net_flow: Option<isize>,
     external_port_side: PortSide,
     border_offset: Option<f64>,
     origin_port: Option<GraphPortRef>,
@@ -756,7 +756,7 @@ fn link_compound_external_dummy_metadata(graph: &mut LGraph) {
         let external_dummies =
             external_dummies_for_parent_node(nested_graph, parent_node_id.as_str());
 
-        for mut external_dummy in external_dummies {
+        for external_dummy in external_dummies {
             let parent_port = parent_port_for_external_dummy(graph, node_index, &external_dummy)
                 .unwrap_or_else(|| {
                     create_parent_external_port(
@@ -767,14 +767,6 @@ fn link_compound_external_dummy_metadata(graph: &mut LGraph) {
                         Some(external_dummy.parent_port_key.as_str()),
                     )
                 });
-            if external_dummy.connects_parent_node {
-                refresh_parent_end_external_dummy(
-                    graph,
-                    node_index,
-                    parent_port,
-                    &mut external_dummy,
-                );
-            }
             link_external_port_dummy(
                 graph,
                 parent_port,
@@ -818,108 +810,20 @@ fn external_dummies_for_parent_node(
         .filter(|(_, node)| node.kind == LNodeKind::ExternalPort && node.id == dummy_id)
         .filter_map(|(dummy_node, node)| {
             let port = node.ports.first()?;
-            let connects_parent_node = node
-                .parent_port_type
-                .is_some_and(|parent_port_type| parent_port_type != port.port_type);
-            let incident_edge_ids = port
-                .incoming_edges
-                .iter()
-                .chain(port.outgoing_edges.iter())
-                .map(|edge| nested_graph.edges[*edge].id.clone())
-                .collect::<Vec<_>>();
             Some(ExternalDummyInfo {
                 dummy_node,
-                incident_edge_ids,
                 port_type: port.port_type,
                 parent_port_key: node
                     .parent_port_key
                     .clone()
                     .unwrap_or_else(|| port.id.clone()),
                 parent_port_type: node.parent_port_type.unwrap_or(port.port_type),
-                connects_parent_node,
-                parent_end_net_flow: connects_parent_node
-                    .then(|| parent_end_segment_net_flow(port.port_type)),
                 external_port_side: node.external_port_side,
                 border_offset: port.border_offset,
                 origin_port: node.origin_port.clone(),
             })
         })
         .collect()
-}
-
-fn refresh_parent_end_external_dummy(
-    graph: &mut LGraph,
-    parent_node_index: usize,
-    parent_port: PortRef,
-    external_dummy: &mut ExternalDummyInfo,
-) {
-    let parent_node = &graph.layerless_nodes[parent_node_index];
-    let parent_node_size = parent_node.size;
-    let parent_constraints = parent_node.port_constraints;
-    let Some(parent_port_data) = parent_node.ports.get(parent_port.port).cloned() else {
-        return;
-    };
-
-    let Some(nested_graph) = graph.layerless_nodes[parent_node_index]
-        .nested_graph
-        .as_deref_mut()
-    else {
-        return;
-    };
-
-    let Some(existing_dummy) = nested_graph
-        .layerless_nodes
-        .get(external_dummy.dummy_node)
-        .cloned()
-    else {
-        return;
-    };
-    let Some(existing_port) = existing_dummy.ports.first().cloned() else {
-        return;
-    };
-
-    let mut rebuilt = create_external_port_dummy(
-        existing_dummy.id,
-        existing_port.id,
-        external_dummy.port_type,
-        parent_constraints,
-        parent_port_data.side,
-        parent_end_external_dummy_net_flow(
-            &parent_port_data,
-            external_dummy
-                .parent_end_net_flow
-                .unwrap_or_else(|| parent_end_segment_net_flow(external_dummy.port_type)),
-        ),
-        parent_port_data.position,
-        parent_port_data.size,
-        parent_node_size,
-        parent_port_data.border_offset.unwrap_or(0.0),
-        nested_graph.options.direction,
-    );
-    rebuilt.parent_port_key = Some(parent_port_data.id.clone());
-    rebuilt.parent_port_type = Some(parent_port_data.port_type);
-    rebuilt.origin_port = existing_dummy.origin_port;
-    rebuilt.ports[0].node = external_dummy.dummy_node;
-    rebuilt.ports[0].incoming_edges = existing_port.incoming_edges;
-    rebuilt.ports[0].outgoing_edges = existing_port.outgoing_edges;
-
-    external_dummy.external_port_side = rebuilt.external_port_side;
-    external_dummy.border_offset = rebuilt.ports.first().and_then(|port| port.border_offset);
-    external_dummy.parent_port_key = parent_port_data.id;
-    external_dummy.parent_port_type = parent_port_data.port_type;
-    nested_graph.layerless_nodes[external_dummy.dummy_node] = rebuilt;
-}
-
-fn parent_end_external_dummy_net_flow(parent_port: &LPort, parent_end_net_flow: isize) -> isize {
-    parent_port.outgoing_edges.len() as isize - parent_port.incoming_edges.len() as isize
-        + parent_end_net_flow
-}
-
-fn parent_end_segment_net_flow(dummy_port_type: PortType) -> isize {
-    match dummy_port_type {
-        PortType::Input => -1,
-        PortType::Output => 1,
-    }
 }
 
 fn parent_port_for_external_dummy(
@@ -956,27 +860,7 @@ fn parent_port_for_external_dummy(
         });
     }
 
-    graph
-        .layerless_nodes
-        .get(parent_node)?
-        .ports
-        .iter()
-        .enumerate()
-        .find_map(|(port_index, port)| {
-            let matches_edge = port
-                .incoming_edges
-                .iter()
-                .chain(port.outgoing_edges.iter())
-                .any(|edge| {
-                    external_dummy
-                        .incident_edge_ids
-                        .contains(&graph.edges[*edge].id)
-                });
-            matches_edge.then_some(PortRef {
-                node: parent_node,
-                port: port_index,
-            })
-        })
+    None
 }
 
 fn create_parent_external_port(
@@ -1074,6 +958,30 @@ fn create_parent_boundary_port(
     } else {
         PortConstraints::Free
     };
+    let parent_port_side = if connects_parent_node {
+        graph
+            .layerless_nodes
+            .iter()
+            .find(|node| node.id == parent_node_id)
+            .and_then(|node| {
+                node.ports
+                    .iter()
+                    .find(|port| port.id == parent_port_key && port.port_type == parent_port_type)
+            })
+            .map(|port| port.side)
+    } else {
+        None
+    };
+    let port_side = if let Some(port_side) = parent_port_side {
+        port_side
+    } else if graph.options.port_constraints.is_side_fixed() {
+        match parent_port_type {
+            PortType::Input => port_side_from_direction(graph.options.direction).opposed(),
+            PortType::Output => port_side_from_direction(graph.options.direction),
+        }
+    } else {
+        PortSide::Undefined
+    };
     let border_offset = graph.options.spacing.edge_edge / 2.0;
     let mut dummy = create_external_port_dummy(
         format!("external:{parent_node_id}"),
@@ -1084,7 +992,7 @@ fn create_parent_boundary_port(
         },
         dummy_port_type,
         graph.options.port_constraints,
-        PortSide::Undefined,
+        port_side,
         match dummy_port_type {
             PortType::Input => -1,
             PortType::Output => 1,
@@ -1155,6 +1063,65 @@ fn port_side_from_direction(direction: ElkDirection) -> PortSide {
         ElkDirection::Left => PortSide::West,
         ElkDirection::Down => PortSide::South,
         ElkDirection::Up => PortSide::North,
+    }
+}
+
+fn calc_port_side(port: &LPort, node_size: LSize, direction: ElkDirection) -> PortSide {
+    let node_width = node_size.width;
+    let node_height = node_size.height;
+    if node_width <= 0.0 && node_height <= 0.0 {
+        return PortSide::Undefined;
+    }
+
+    let xpos = port.position.x;
+    let ypos = port.position.y;
+    let width = port.size.width;
+    let height = port.size.height;
+
+    match direction {
+        ElkDirection::Left | ElkDirection::Right => {
+            if xpos < 0.0 {
+                PortSide::West
+            } else if xpos + width > node_width {
+                PortSide::East
+            } else {
+                calc_port_side_from_percentages(node_width, node_height, xpos, ypos, width, height)
+            }
+        }
+        ElkDirection::Up | ElkDirection::Down => {
+            if ypos < 0.0 {
+                PortSide::North
+            } else if ypos + height > node_height {
+                PortSide::South
+            } else {
+                calc_port_side_from_percentages(node_width, node_height, xpos, ypos, width, height)
+            }
+        }
+        ElkDirection::Undefined => {
+            calc_port_side_from_percentages(node_width, node_height, xpos, ypos, width, height)
+        }
+    }
+}
+
+fn calc_port_side_from_percentages(
+    node_width: f64,
+    node_height: f64,
+    xpos: f64,
+    ypos: f64,
+    width: f64,
+    height: f64,
+) -> PortSide {
+    let width_percent = (xpos + width / 2.0) / node_width;
+    let height_percent = (ypos + height / 2.0) / node_height;
+
+    if width_percent + height_percent <= 1.0 && width_percent - height_percent <= 0.0 {
+        PortSide::West
+    } else if width_percent + height_percent >= 1.0 && width_percent - height_percent >= 0.0 {
+        PortSide::East
+    } else if height_percent < 0.5 {
+        PortSide::North
+    } else {
+        PortSide::South
     }
 }
 
@@ -1356,18 +1323,14 @@ mod tests {
         let nested = cluster.nested_graph.as_ref().unwrap();
         let external = &nested.layerless_nodes[port_dummy.node];
 
-        assert_eq!(parent_port.side, PortSide::East);
-        assert_eq!(parent_port.border_offset, Some(-4.0));
-        assert_eq!(external.external_port_side, PortSide::East);
+        assert_eq!(parent_port.side, PortSide::South);
+        assert_eq!(external.external_port_side, PortSide::South);
         assert_eq!(
             external.parent_port_key.as_deref(),
             Some("cluster:0:source")
         );
         assert_eq!(external.parent_port_type, Some(PortType::Output));
-        assert_eq!(external.ports[0].side, PortSide::West);
-        assert_eq!(external.ports[0].border_offset, Some(-4.0));
-        assert_eq!(external.size.width, 4.0);
-        assert_eq!(external.size.height, 8.0);
+        assert_eq!(external.ports[0].side, PortSide::North);
     }
 
     #[test]

@@ -3876,40 +3876,40 @@ fn apply_parent_hierarchical_port_order_on_sweep_side(
         return;
     }
 
-    let node = &parent_graph.layerless_nodes[parent_node_index];
-    let mut new_order = Vec::with_capacity(node.ports.len());
-    let mut used = vec![false; node.ports.len()];
-    let mut ordered_iter = ordered_ports.iter().copied();
     let sweep_side = if on_right_most_layer {
         PortSide::East
     } else {
         PortSide::West
     };
+    let eligible_count = parent_graph.layerless_nodes[parent_node_index]
+        .ports
+        .iter()
+        .filter(|port| port.side == sweep_side && port.inside_connections)
+        .count();
+    debug_assert_eq!(eligible_count, ordered_ports.len());
 
-    for (index, port) in node.ports.iter().enumerate() {
-        if port.side == sweep_side && port.inside_connections {
-            if let Some(next) = ordered_iter.next()
-                && next < node.ports.len()
-                && !used[next]
-            {
-                new_order.push(next);
-                used[next] = true;
-                continue;
-            }
+    let mut new_order =
+        Vec::with_capacity(parent_graph.layerless_nodes[parent_node_index].ports.len());
+    let mut ordered_iter = ordered_ports.iter().copied();
+
+    for (index, port) in parent_graph.layerless_nodes[parent_node_index]
+        .ports
+        .iter()
+        .enumerate()
+    {
+        if port.side == sweep_side
+            && port.inside_connections
+            && let Some(next) = ordered_iter.next()
+        {
+            new_order.push(next);
+            continue;
         }
-        if !used[index] {
-            new_order.push(index);
-            used[index] = true;
-        }
+        new_order.push(index);
     }
 
-    for index in 0..node.ports.len() {
-        if !used[index] {
-            new_order.push(index);
-        }
-    }
-
-    parent_graph.reorder_node_ports(parent_node_index, new_order);
+    debug_assert!(ordered_iter.next().is_none());
+    let _changed = parent_graph.reorder_node_ports(parent_node_index, new_order);
+    debug_assert!(_changed);
 }
 
 fn first_index(forward: bool, length: usize) -> usize {
@@ -4392,6 +4392,120 @@ mod tests {
     }
 
     #[test]
+    fn parent_hierarchical_port_order_updates_edge_references() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("parent", 80.0, 40.0, None));
+        let _west_a = graph
+            .add_port(0, PortType::Input, PortSide::West, Default::default())
+            .unwrap()
+            .port;
+        let east_a = graph
+            .add_port(0, PortType::Output, PortSide::East, Default::default())
+            .unwrap()
+            .port;
+        let _west_b = graph
+            .add_port(0, PortType::Input, PortSide::West, Default::default())
+            .unwrap()
+            .port;
+        let east_b = graph
+            .add_port(0, PortType::Output, PortSide::East, Default::default())
+            .unwrap()
+            .port;
+        for port in &mut graph.layerless_nodes[0].ports {
+            port.inside_connections = true;
+        }
+        graph
+            .layerless_nodes
+            .push(crate::graph::LNode::new("target", 10.0, 10.0, None));
+        let target_port = graph
+            .add_port(1, PortType::Input, PortSide::West, Default::default())
+            .unwrap()
+            .port;
+
+        let edge_a = graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "edge-a".to_string(),
+                source: PortRef {
+                    node: 0,
+                    port: east_a,
+                },
+                target: PortRef {
+                    node: 1,
+                    port: target_port,
+                },
+                source_node_id: "parent".to_string(),
+                target_node_id: "target".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+        let edge_b = graph
+            .add_edge(crate::graph::LayeredEdge {
+                id: "edge-b".to_string(),
+                source: PortRef {
+                    node: 0,
+                    port: east_b,
+                },
+                target: PortRef {
+                    node: 1,
+                    port: target_port,
+                },
+                source_node_id: "parent".to_string(),
+                target_node_id: "target".to_string(),
+                labels: Vec::new(),
+                minlen: 1,
+                reversed: false,
+                bend_points: Vec::new(),
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+                thickness: 0.0,
+                original_opposite_port: None,
+                compound_segment: None,
+            })
+            .unwrap();
+
+        apply_parent_hierarchical_port_order_on_sweep_side(&mut graph, 0, true, &[east_b, east_a]);
+
+        assert_eq!(graph.edges[edge_a].source.port, east_b);
+        assert_eq!(graph.edges[edge_b].source.port, east_a);
+        assert_eq!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .map(|port| port.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["parent:0", "parent:3", "parent:2", "parent:1"]
+        );
+        assert_eq!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .enumerate()
+                .map(|(index, port)| (index, port.id.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (0, "parent:0"),
+                (1, "parent:3"),
+                (2, "parent:2"),
+                (3, "parent:1"),
+            ]
+        );
+    }
+
+    #[test]
     fn north_south_hierarchical_ports_use_source_barycenter_keys() {
         let mut graph = LGraph::new("root", LayeredOptions::default());
         graph
@@ -4671,6 +4785,7 @@ mod tests {
 
         crate::compound::preprocess_source_ported_compound_graph(&mut graph);
         crate::configurator::configure_graph_properties(&mut graph);
+
         crate::pipeline::execute_ported_compound_processors_until(
             &mut graph,
             crate::pipeline::LayeredPhase::P3NodeOrdering,

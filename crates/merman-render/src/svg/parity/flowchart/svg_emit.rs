@@ -155,14 +155,12 @@ fn render_flowchart_v2_svg_with_config_inner(
         let _ = nodes_by_id.entry(n.id.as_str()).or_insert(n);
     }
 
-    let edge_order: Vec<&str> = if layout.source_ported_elk_rendering {
-        layout.edges.iter().map(|e| e.id.as_str()).collect()
-    } else {
-        render_edges
-            .iter()
-            .map(|e| e.as_ref().id.as_str())
-            .collect()
-    };
+    // Source-ported ELK should preserve Mermaid's edge emission order, not the layout engine's
+    // internal reordering. `render_edges` already reflects the source-backed ordering rules.
+    let edge_order: Vec<&str> = render_edges
+        .iter()
+        .map(|e| e.as_ref().id.as_str())
+        .collect();
     let mut edges_by_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
         FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {

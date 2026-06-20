@@ -2133,8 +2133,9 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
         graph.padding.bottom
     );
     println!(
-        "{indent}options direction={:?} thoroughness={} hierarchical_sweepiness={} consider_model_order={:?} force_node_model_order={} port_model_order={}",
+        "{indent}options direction={:?} port_constraints={:?} thoroughness={} hierarchical_sweepiness={} consider_model_order={:?} force_node_model_order={} port_model_order={}",
         graph.options.direction,
+        graph.options.port_constraints,
         graph.options.thoroughness,
         graph.options.hierarchical_sweepiness,
         graph.options.consider_model_order_strategy,
@@ -2144,7 +2145,7 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
     println!("{indent}layerless:");
     for (index, node) in graph.layerless_nodes.iter().enumerate() {
         println!(
-            "{indent}- #{index} {} kind={:?} layer={:?} order={:?} pos=({}, {}) size=({}, {}) margin=({}, {}, {}, {}) parent_graph={}",
+            "{indent}- #{index} {} kind={:?} layer={:?} order={:?} pos=({}, {}) size=({}, {}) margin=({}, {}, {}, {}) port_constraints={:?} parent_graph={}",
             node.id,
             node.kind,
             node.layer_index,
@@ -2157,6 +2158,7 @@ fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usiz
             node.margin.right,
             node.margin.top,
             node.margin.bottom,
+            node.port_constraints,
             node.nested_graph.is_some()
         );
         if node.kind == merman_layout_elk::source_port::LNodeKind::ExternalPort {

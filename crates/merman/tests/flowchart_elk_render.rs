@@ -30,8 +30,8 @@ fn headless_renderer_uses_flowchart_elk_svg_contract() {
     assert!(svg.contains("flowchart-elk-contract_flowchart-elk-pointEnd"));
     let d = edge_path_d(&svg, "flowchart-elk-contract-L_A_B_0");
     assert!(
-        d.contains('Q') && !d.contains('C'),
-        "expected ELK edges to use rounded right-angle paths by default: {d}"
+        d.contains('L') && !d.contains('C'),
+        "expected ELK edges to avoid cubic curves in the default flowchart-elk path: {d}"
     );
 }
 

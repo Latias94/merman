@@ -4398,6 +4398,21 @@ mod tests {
     }
 
     #[test]
+    fn hierarchical_port_position_processor_uses_port_position_for_east_west_dummies() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.port_constraints = PortConstraints::FixedRatio;
+        graph.size.height = 100.0;
+
+        let west = push_external_dummy(&mut graph, "west", PortSide::West, 0.25);
+        graph.layerless_nodes[west].ports[0].position.y = 7.0;
+        graph.set_node_layer(west, 0);
+
+        process_hierarchical_port_positions(&mut graph);
+
+        assert_eq!(graph.layerless_nodes[west].position.y, 18.0);
+    }
+
+    #[test]
     fn hierarchical_port_position_processor_sets_fixed_pos_only_on_border_layers() {
         let mut graph = LGraph::new("root", LayeredOptions::default());
         graph.options.port_constraints = PortConstraints::FixedPos;

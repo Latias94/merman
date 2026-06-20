@@ -1172,9 +1172,19 @@ pub fn create_external_port_dummy(
     dummy.external_port_side = external_side;
     dummy.external_port_size = port_size;
 
-    let mut position = LPoint {
-        x: port_size.width / 2.0,
-        y: port_size.height / 2.0,
+    let position = match external_side {
+        PortSide::West | PortSide::East => LPoint {
+            x: 0.0,
+            y: port_size.height / 2.0,
+        },
+        PortSide::North | PortSide::South => LPoint {
+            x: port_size.width / 2.0,
+            y: 0.0,
+        },
+        PortSide::Undefined => LPoint {
+            x: port_size.width / 2.0,
+            y: port_size.height / 2.0,
+        },
     };
     let mut dummy_port_side = external_side.opposed();
 
@@ -1186,8 +1196,6 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.width = -border_offset;
             }
-            position.x = 0.0;
-            position.x -= port_size.width;
         }
         PortSide::East => {
             dummy.layer_constraint = LayerConstraint::LastSeparate;
@@ -1196,7 +1204,6 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.width = -border_offset;
             }
-            position.x = 0.0;
         }
         PortSide::North => {
             dummy.in_layer_constraint = InLayerConstraint::Top;
@@ -1204,8 +1211,6 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.height = -border_offset;
             }
-            position.y = 0.0;
-            position.y -= port_size.height;
         }
         PortSide::South => {
             dummy.in_layer_constraint = InLayerConstraint::Bottom;
@@ -1213,7 +1218,6 @@ pub fn create_external_port_dummy(
             if border_offset < 0.0 {
                 dummy.size.height = -border_offset;
             }
-            position.y = 0.0;
         }
         PortSide::Undefined => {
             dummy_port_side = PortSide::Undefined;
@@ -1327,7 +1331,7 @@ mod tests {
         assert_eq!(dummy.size.width, 3.0);
         assert_eq!(dummy.size.height, 6.0);
         assert_eq!(dummy.ports[0].side, PortSide::East);
-        assert_eq!(dummy.ports[0].position, LPoint { x: -4.0, y: 3.0 });
+        assert_eq!(dummy.ports[0].position, LPoint { x: 0.0, y: 3.0 });
         assert_eq!(dummy.ports[0].anchor, LPoint { x: 0.0, y: 0.0 });
         assert_eq!(dummy.ports[0].size, LSize::default());
         assert_eq!(
