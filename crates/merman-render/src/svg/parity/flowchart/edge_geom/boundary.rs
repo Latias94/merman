@@ -16,7 +16,15 @@ pub(in crate::svg::parity::flowchart) fn boundary_for_node(
     normalize_cyclic_special: bool,
 ) -> Option<BoundaryNode> {
     let _ = normalize_cyclic_special;
-    let n = ctx.layout_nodes_by_id.get(node_id)?;
+    if let Some(n) = ctx.layout_nodes_by_id.get(node_id) {
+        return Some(BoundaryNode {
+            x: n.x + ctx.tx - origin_x,
+            y: n.y + ctx.ty - origin_y,
+            width: n.width,
+            height: n.height,
+        });
+    }
+    let n = ctx.layout_clusters_by_id.get(node_id)?;
     Some(BoundaryNode {
         x: n.x + ctx.tx - origin_x,
         y: n.y + ctx.ty - origin_y,

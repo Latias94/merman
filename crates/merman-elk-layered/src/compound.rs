@@ -592,22 +592,17 @@ fn ensure_nested_external_dummies_for_parent_ports(graph: &mut LGraph) {
                 port: port_index,
             };
             let port = &graph.layerless_nodes[node_index].ports[port_index];
-            let port_side =
-                if parent_constraints.is_side_fixed() && port.side == PortSide::Undefined {
-                    let side = calc_port_side(port, parent_size, graph.options.direction);
-                    if side == PortSide::Undefined {
-                        port_side_from_direction(graph.options.direction)
-                    } else {
-                        side
-                    }
-                } else {
-                    port.side
-                };
+            let (port_constraints, port_side) = parent_dummy_port_side(
+                port,
+                parent_constraints,
+                parent_size,
+                graph.options.direction,
+            );
             let mut dummy = create_external_port_dummy(
                 format!("external:{parent_node_id}"),
                 format!("external:{parent_node_id}:0"),
                 port.port_type,
-                parent_constraints,
+                port_constraints,
                 port_side,
                 -port.net_flow(),
                 port.position,
@@ -647,6 +642,27 @@ fn ensure_nested_external_dummies_for_parent_ports(graph: &mut LGraph) {
             }
         }
     }
+}
+
+fn parent_dummy_port_side(
+    port: &LPort,
+    parent_constraints: PortConstraints,
+    parent_size: LSize,
+    direction: ElkDirection,
+) -> (PortConstraints, PortSide) {
+    if !parent_constraints.is_side_fixed() || port.side != PortSide::Undefined {
+        return (parent_constraints, port.side);
+    }
+
+    let side = calc_port_side(port, parent_size, direction);
+    if side != PortSide::Undefined {
+        return (parent_constraints, side);
+    }
+
+    // ELK creates missing child dummies before `setSidesOfPortsToSidesOfDummyNodes` fixes the
+    // parent node constraints. If a sibling dummy already fixed this node in the Rust model, keep
+    // this still-undefined port on the original free-constraints path so net flow can choose a side.
+    (PortConstraints::Free, PortSide::Undefined)
 }
 
 fn ensure_cross_hierarchy_edge_record(
@@ -1366,5 +1382,47 @@ mod tests {
         assert_eq!(external.parent_port_type, Some(PortType::Output));
         assert_eq!(external.external_port_side, PortSide::North);
         assert_eq!(external.ports[0].side, PortSide::South);
+    }
+
+    #[test]
+    fn unlinked_parent_port_uses_net_flow_after_sibling_external_port_fixing() {
+        let mut s1 = node("S1");
+        s1.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut sub1 = node("sub1");
+        sub1.parent = Some("S1".to_string());
+        let mut s2 = node("S2");
+        s2.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+        let mut sub4 = node("sub4");
+        sub4.parent = Some("S2".to_string());
+
+        let mut lgraph = import_graph(&graph(
+            vec![s1, sub1, s2, sub4],
+            vec![edge("S1-S2", "S1", "S2"), edge("sub1-sub4", "sub1", "sub4")],
+        ))
+        .unwrap();
+        let s2_index = lgraph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "S2")
+            .unwrap();
+
+        preprocess_source_ported_compound_graph(&mut lgraph);
+
+        let s2 = &lgraph.layerless_nodes[s2_index];
+        let parent_port = s2
+            .ports
+            .iter()
+            .find(|port| port.id == "S2:0" && port.port_type == PortType::Input)
+            .expect("top-level edge target port should exist on S2");
+        let port_dummy = parent_port
+            .port_dummy
+            .as_ref()
+            .expect("S2 top-level target port should link to nested external dummy");
+        let nested = s2.nested_graph.as_ref().unwrap();
+        let external = &nested.layerless_nodes[port_dummy.node];
+
+        assert_eq!(parent_port.net_flow(), 1);
+        assert_eq!(parent_port.side, PortSide::West);
+        assert_eq!(external.external_port_side, PortSide::West);
     }
 }
