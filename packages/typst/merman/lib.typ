@@ -24,6 +24,41 @@
   }
 }
 
+#let _typst-layout = layout
+
+#let _font-family-value(font) = {
+  if font == none {
+    none
+  } else if type(font) == str {
+    str(font)
+  } else if type(font) == array {
+    font.join(", ")
+  } else {
+    none
+  }
+}
+
+#let _font-size-value(size) = {
+  if size == none {
+    none
+  } else {
+    repr(size)
+  }
+}
+
+#let _context-host-theme(font-family, font-size) = {
+  let family = _font-family-value(font-family)
+  let size = _font-size-value(font-size)
+  if family == none and size == none {
+    none
+  } else {
+    (
+      font_family: family,
+      font_size: size,
+    )
+  }
+}
+
 #let _layout-options(
   layout,
   text-measurer,
@@ -611,6 +646,173 @@
   }
 }
 
+#let _context-mermaid(
+  source,
+  options: none,
+  site-config: none,
+  host-theme: none,
+  theme: none,
+  theme-name: none,
+  base-theme: none,
+  pipeline: "resvg-safe",
+  id: none,
+  diagram-id: none,
+  background: none,
+  layout: none,
+  scoped-css: none,
+  css-override-policy: none,
+  drop-native-duplicate-fallbacks: none,
+  text-measurer: none,
+  math-renderer: none,
+  viewport-width: none,
+  viewport-height: none,
+  fixed-today: none,
+  fixed-local-offset-minutes: none,
+  width: auto,
+  height: auto,
+  fit: "contain",
+  scale: none,
+  alt: none,
+  error-mode: "panic",
+) = context {
+  let context-host-theme = _context-host-theme(text.font, text.size)
+  let merged-host-theme = if host-theme != none {
+    if context-host-theme != none {
+      (: ..context-host-theme, ..host-theme)
+    } else {
+      host-theme
+    }
+  } else {
+    context-host-theme
+  }
+
+  if layout != none or viewport-width != none {
+    mermaid(
+      source,
+      options: options,
+      site-config: site-config,
+      host-theme: merged-host-theme,
+      theme: theme,
+      theme-name: theme-name,
+      base-theme: base-theme,
+      pipeline: pipeline,
+      id: id,
+      diagram-id: diagram-id,
+      background: background,
+      layout: layout,
+      scoped-css: scoped-css,
+      css-override-policy: css-override-policy,
+      drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+      text-measurer: text-measurer,
+      math-renderer: math-renderer,
+      viewport-width: viewport-width,
+      viewport-height: viewport-height,
+      fixed-today: fixed-today,
+      fixed-local-offset-minutes: fixed-local-offset-minutes,
+      width: width,
+      height: height,
+      fit: fit,
+      scale: scale,
+      alt: alt,
+      error-mode: error-mode,
+    )
+  } else {
+    _typst-layout(size => mermaid(
+      source,
+      options: options,
+      site-config: site-config,
+      host-theme: merged-host-theme,
+      theme: theme,
+      theme-name: theme-name,
+      base-theme: base-theme,
+      pipeline: pipeline,
+      id: id,
+      diagram-id: diagram-id,
+      background: background,
+      layout: _layout-options(
+        layout,
+        text-measurer,
+        math-renderer,
+        size.width / 1pt,
+        viewport-height,
+      ),
+      scoped-css: scoped-css,
+      css-override-policy: css-override-policy,
+      drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+      text-measurer: text-measurer,
+      math-renderer: math-renderer,
+      viewport-width: size.width / 1pt,
+      viewport-height: viewport-height,
+      fixed-today: fixed-today,
+      fixed-local-offset-minutes: fixed-local-offset-minutes,
+      width: width,
+      height: height,
+      fit: fit,
+      scale: scale,
+      alt: alt,
+      error-mode: error-mode,
+    ))
+  }
+}
+
+#let mermaid-context(
+  source,
+  options: none,
+  site-config: none,
+  host-theme: none,
+  theme: none,
+  theme-name: none,
+  base-theme: none,
+  pipeline: "resvg-safe",
+  id: none,
+  diagram-id: none,
+  background: none,
+  layout: none,
+  scoped-css: none,
+  css-override-policy: none,
+  drop-native-duplicate-fallbacks: none,
+  text-measurer: none,
+  math-renderer: none,
+  viewport-width: none,
+  viewport-height: none,
+  fixed-today: none,
+  fixed-local-offset-minutes: none,
+  width: auto,
+  height: auto,
+  fit: "contain",
+  scale: none,
+  alt: none,
+  error-mode: "panic",
+) = _context-mermaid(
+  source,
+  options: options,
+  site-config: site-config,
+  host-theme: host-theme,
+  theme: theme,
+  theme-name: theme-name,
+  base-theme: base-theme,
+  pipeline: pipeline,
+  id: id,
+  diagram-id: diagram-id,
+  background: background,
+  layout: layout,
+  scoped-css: scoped-css,
+  css-override-policy: css-override-policy,
+  drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+  text-measurer: text-measurer,
+  math-renderer: math-renderer,
+  viewport-width: viewport-width,
+  viewport-height: viewport-height,
+  fixed-today: fixed-today,
+  fixed-local-offset-minutes: fixed-local-offset-minutes,
+  width: width,
+  height: height,
+  fit: fit,
+  scale: scale,
+  alt: alt,
+  error-mode: error-mode,
+)
+
 #let mermaid-raw(
   block,
   options: none,
@@ -670,6 +872,63 @@
     error-mode: error-mode,
   )
 }
+
+#let show-mermaid-blocks-context(
+  options: none,
+  site-config: none,
+  host-theme: none,
+  theme: none,
+  theme-name: none,
+  base-theme: none,
+  pipeline: "resvg-safe",
+  id: none,
+  diagram-id: none,
+  background: none,
+  layout: none,
+  scoped-css: none,
+  css-override-policy: none,
+  drop-native-duplicate-fallbacks: none,
+  text-measurer: none,
+  math-renderer: none,
+  viewport-width: none,
+  viewport-height: none,
+  fixed-today: none,
+  fixed-local-offset-minutes: none,
+  width: 100%,
+  height: auto,
+  fit: "contain",
+  scale: none,
+  alt: none,
+  error-mode: "placeholder",
+) = block => mermaid-context(
+  block.text,
+  options: options,
+  site-config: site-config,
+  host-theme: host-theme,
+  theme: theme,
+  theme-name: theme-name,
+  base-theme: base-theme,
+  pipeline: pipeline,
+  id: id,
+  diagram-id: diagram-id,
+  background: background,
+  layout: layout,
+  scoped-css: scoped-css,
+  css-override-policy: css-override-policy,
+  drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+  text-measurer: text-measurer,
+  math-renderer: math-renderer,
+  viewport-width: viewport-width,
+  viewport-height: viewport-height,
+  fixed-today: fixed-today,
+  fixed-local-offset-minutes: fixed-local-offset-minutes,
+  width: width,
+  height: height,
+  fit: fit,
+  scale: scale,
+  alt: alt,
+  error-mode: error-mode,
+)
 
 #let show-mermaid-blocks(
   options: none,

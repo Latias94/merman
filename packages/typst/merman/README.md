@@ -27,6 +27,7 @@ flowchart TD
 ## Examples
 
 - [basic.typ](examples/basic.typ): minimal `#mermaid(...)` usage.
+- [document-context.typ](examples/document-context.typ): opt-in document typography and width bridging.
 - [raw-block.typ](examples/raw-block.typ): document-wide Mermaid fences with `show-mermaid-blocks`.
 - [options.typ](examples/options.typ): themes, stable ids, `mermaid-result`, SVG export, and placeholder errors.
 - [print.typ](examples/print.typ): print-friendly white-background output.
@@ -35,7 +36,7 @@ flowchart TD
 
 ## Raw Blocks
 
-Use `show-mermaid-blocks` with Typst's `raw.where` selector:
+Use `show-mermaid-blocks` with Typst's `raw.where` selector for the explicit-only baseline:
 
 ~~~typst
 #import "@preview/merman:0.1.0": show-mermaid-blocks
@@ -50,6 +51,14 @@ flowchart LR
 ~~~
 
 Avoid setting a fixed `id` in a document-wide raw-block show rule unless the document has only one Mermaid block; otherwise multiple diagrams will share the same SVG id.
+
+For document-context-aware rendering, use `show-mermaid-blocks-context` instead. It reads the current Typst text font, text size, and container width inside `context`, then forwards them to the existing renderer entry points.
+
+~~~typst
+#import "@preview/merman:0.1.0": show-mermaid-blocks-context
+
+#show raw.where(lang: "mermaid"): show-mermaid-blocks-context(width: 100%)
+~~~
 
 ## API
 
@@ -75,6 +84,12 @@ Common parameters:
 - `fixed-today`: `YYYY-MM-DD` for date-sensitive diagrams.
 - `error-mode`: `"panic"` by default. Use `"placeholder"` or `"text"` to show diagram errors in the document instead of failing the Typst compile. These modes handle structured errors returned by `merman`; missing wasm files, Typst plugin loading failures, invalid `error-mode` values, and SVG image decoding failures still fail the Typst compile.
 - `options`: escape hatch; when present, it is passed through directly to the Rust binding options and overrides shorthand parameters.
+
+This entry point is explicit-only. It does not automatically inherit the surrounding Typst font or container width. Use `mermaid-context(...)` when you want opt-in document typography and width bridging.
+
+### `mermaid-context(source, ..)`
+
+Like `mermaid(source, ..)`, but it resolves the current Typst text font, text size, and container width inside `context` before calling the renderer. Explicit `host-theme`, `layout`, `viewport-width`, and other direct parameters still win.
 
 ### `mermaid-svg(source, ..)`
 
@@ -105,6 +120,10 @@ Returns the validation payload produced by the Rust bindings:
 ### `mermaid-raw(block, ..)`
 
 Convenience wrapper for raw blocks. This is intended for `#show raw.where(...)` rules.
+
+### `show-mermaid-blocks-context(..)`
+
+Returns a raw block show handler that bridges the current Typst document font, text size, and container width. Use this when you want document-wide Mermaid fences to follow surrounding typography on demand.
 
 ### `show-mermaid-blocks(..)`
 
