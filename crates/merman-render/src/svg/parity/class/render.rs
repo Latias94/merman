@@ -132,7 +132,12 @@ fn render_class_diagram_v2_svg_model_impl_inner(
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
-    class_markers(&mut out, diagram_id, aria_roledescription);
+    class_markers(
+        &mut out,
+        diagram_id,
+        aria_roledescription,
+        settings.look != "handDrawn",
+    );
 
     let ClassRenderLookups {
         class_nodes_by_id,
@@ -322,7 +327,9 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         viewbox_attrs.max_w_attr.as_str(),
     );
 
-    push_class_shadow_defs(&mut out, diagram_id, effective_config);
+    if settings.look != "handDrawn" {
+        push_class_shadow_defs(&mut out, diagram_id, effective_config);
+    }
     out.push_str("</svg>");
     drop(finalize_guard);
 

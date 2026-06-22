@@ -163,6 +163,11 @@ pub(super) fn render_class_note_node(
     } else {
         format!(r#" data-look="{}""#, escape_attr_display(ctx.look))
     };
+    let note_node_id = if hand_drawn {
+        note.id.clone()
+    } else {
+        format!("{}-{}", ctx.diagram_id, note.id)
+    };
     let mut note_shape = String::new();
     if hand_drawn {
         let _ = write!(
@@ -197,10 +202,9 @@ pub(super) fn render_class_note_node(
         let note_div_style = class_note_html_div_style(label_w, 200);
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="label noteLabel" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel markdown-node-label"><p>"##,
+            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="label noteLabel" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel markdown-node-label"><p>"##,
             note_node_class,
-            escape_attr_display(ctx.diagram_id),
-            escape_attr_display(&note.id),
+            escape_attr_display(&note_node_id),
             note_data_look_attr,
             fmt(position.node_tx),
             fmt(position.node_ty),
@@ -227,10 +231,9 @@ pub(super) fn render_class_note_node(
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
+            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
             note_node_class,
-            escape_attr_display(ctx.diagram_id),
-            escape_attr_display(&note.id),
+            escape_attr_display(&note_node_id),
             note_data_look_attr,
             fmt(position.node_tx),
             fmt(position.node_ty),

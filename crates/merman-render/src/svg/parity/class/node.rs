@@ -191,8 +191,10 @@ pub(super) fn render_class_node_shell_open(
     }
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
-    super::super::util::escape_attr_into(out, diagram_id);
-    out.push('-');
+    if look != "handDrawn" {
+        super::super::util::escape_attr_into(out, diagram_id);
+        out.push('-');
+    }
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
     if link.is_none() && look != "handDrawn" {

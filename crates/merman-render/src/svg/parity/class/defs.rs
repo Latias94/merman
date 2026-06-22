@@ -33,7 +33,12 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
     }
 }
 
-pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str) {
+pub(super) fn class_markers(
+    out: &mut String,
+    diagram_id: &str,
+    diagram_marker_class: &str,
+    include_margin_markers: bool,
+) {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
     struct MarkerContext<'a> {
         out: &'a mut String,
@@ -45,7 +50,10 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
         Path(&'a str),
         PathWithViewBox(&'a str, &'a str),
         Polygon(&'a str),
-        Circle { stroke_width: Option<&'a str> },
+        Circle {
+            stroke: Option<&'a str>,
+            stroke_width: Option<&'a str>,
+        },
     }
 
     struct MarkerSpec<'a> {
@@ -127,7 +135,10 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
                     escape_xml_display(points)
                 );
             }
-            MarkerShape::Circle { stroke_width } => {
+            MarkerShape::Circle {
+                stroke,
+                stroke_width,
+            } => {
                 let _ = write!(
                     ctx.out,
                     r#"<marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
@@ -149,6 +160,9 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
                 }
                 ctx.out
                     .push_str(r#"><circle fill="transparent" cx="7" cy="7" r="6""#);
+                if let Some(stroke) = stroke {
+                    let _ = write!(ctx.out, r#" stroke="{}""#, escape_xml_display(stroke));
+                }
                 if let Some(stroke_width) = stroke_width {
                     let _ = write!(ctx.out, r#" stroke-width="{}""#, stroke_width);
                 }
@@ -196,37 +210,45 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
         },
     );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "aggregationStart-margin",
-            kind: "aggregation",
-            ref_x: "15",
-            ref_y: "7",
-            marker_w: "190",
-            marker_h: "240",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
-        },
-    );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "aggregationEnd-margin",
-            kind: "aggregation",
-            ref_x: "1",
-            ref_y: "7",
-            marker_w: "20",
-            marker_h: "28",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
-        },
-    );
+    if include_margin_markers {
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "aggregationStart-margin",
+                kind: "aggregation",
+                ref_x: "15",
+                ref_y: "7",
+                marker_w: "190",
+                marker_h: "240",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+            },
+        );
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "aggregationEnd-margin",
+                kind: "aggregation",
+                ref_x: "1",
+                ref_y: "7",
+                marker_w: "20",
+                marker_h: "28",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+            },
+        );
+    }
 
+    let (extension_start_marker_w, extension_start_marker_h, extension_start_marker_units) =
+        if include_margin_markers {
+            ("20", "28", Some("userSpaceOnUse"))
+        } else {
+            ("190", "240", None)
+        };
     marker(
         &mut ctx,
         MarkerSpec {
@@ -234,9 +256,9 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
             kind: "extension",
             ref_x: "18",
             ref_y: "7",
-            marker_w: "20",
-            marker_h: "28",
-            marker_units: Some("userSpaceOnUse"),
+            marker_w: extension_start_marker_w,
+            marker_h: extension_start_marker_h,
+            marker_units: extension_start_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path("M 1,7 L18,13 V 1 Z"),
@@ -257,36 +279,38 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
             shape: MarkerShape::Path("M 1,1 V 13 L18,7 Z"),
         },
     );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "extensionStart-margin",
-            kind: "extension",
-            ref_x: "18",
-            ref_y: "7",
-            marker_w: "20",
-            marker_h: "28",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: Some("0 0 20 14"),
-            wrap_defs: false,
-            shape: MarkerShape::Polygon("10,7 18,13 18,1"),
-        },
-    );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "extensionEnd-margin",
-            kind: "extension",
-            ref_x: "9",
-            ref_y: "7",
-            marker_w: "20",
-            marker_h: "28",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: Some("0 0 20 14"),
-            wrap_defs: true,
-            shape: MarkerShape::Polygon("10,1 10,13 18,7"),
-        },
-    );
+    if include_margin_markers {
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "extensionStart-margin",
+                kind: "extension",
+                ref_x: "18",
+                ref_y: "7",
+                marker_w: "20",
+                marker_h: "28",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: Some("0 0 20 14"),
+                wrap_defs: false,
+                shape: MarkerShape::Polygon("10,7 18,13 18,1"),
+            },
+        );
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "extensionEnd-margin",
+                kind: "extension",
+                ref_x: "9",
+                ref_y: "7",
+                marker_w: "20",
+                marker_h: "28",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: Some("0 0 20 14"),
+                wrap_defs: true,
+                shape: MarkerShape::Polygon("10,1 10,13 18,7"),
+            },
+        );
+    }
 
     marker(
         &mut ctx,
@@ -318,36 +342,38 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
             shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
         },
     );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "compositionStart-margin",
-            kind: "composition",
-            ref_x: "15",
-            ref_y: "7",
-            marker_w: "190",
-            marker_h: "240",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
-            shape: MarkerShape::PathWithViewBox("M 18,7 L9,13 L1,7 L9,1 Z", "0 0 15 15"),
-        },
-    );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "compositionEnd-margin",
-            kind: "composition",
-            ref_x: "3.5",
-            ref_y: "7",
-            marker_w: "20",
-            marker_h: "28",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
-        },
-    );
+    if include_margin_markers {
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "compositionStart-margin",
+                kind: "composition",
+                ref_x: "15",
+                ref_y: "7",
+                marker_w: "190",
+                marker_h: "240",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::PathWithViewBox("M 18,7 L9,13 L1,7 L9,1 Z", "0 0 15 15"),
+            },
+        );
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "compositionEnd-margin",
+                kind: "composition",
+                ref_x: "3.5",
+                ref_y: "7",
+                marker_w: "20",
+                marker_h: "28",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+            },
+        );
+    }
 
     marker(
         &mut ctx,
@@ -379,36 +405,38 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
             shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
         },
     );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "dependencyStart-margin",
-            kind: "dependency",
-            ref_x: "4",
-            ref_y: "7",
-            marker_w: "190",
-            marker_h: "240",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
-            shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
-        },
-    );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "dependencyEnd-margin",
-            kind: "dependency",
-            ref_x: "16",
-            ref_y: "7",
-            marker_w: "20",
-            marker_h: "28",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
-            shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
-        },
-    );
+    if include_margin_markers {
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "dependencyStart-margin",
+                kind: "dependency",
+                ref_x: "4",
+                ref_y: "7",
+                marker_w: "190",
+                marker_h: "240",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
+            },
+        );
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "dependencyEnd-margin",
+                kind: "dependency",
+                ref_x: "16",
+                ref_y: "7",
+                marker_w: "20",
+                marker_h: "28",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
+            },
+        );
+    }
 
     marker(
         &mut ctx,
@@ -422,7 +450,10 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Circle { stroke_width: None },
+            shape: MarkerShape::Circle {
+                stroke: (!include_margin_markers).then_some("black"),
+                stroke_width: None,
+            },
         },
     );
     marker(
@@ -437,43 +468,50 @@ pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_c
             marker_units: None,
             view_box: None,
             wrap_defs: true,
-            shape: MarkerShape::Circle { stroke_width: None },
-        },
-    );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "lollipopStart-margin",
-            kind: "lollipop",
-            ref_x: "13",
-            ref_y: "7",
-            marker_w: "190",
-            marker_h: "240",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
             shape: MarkerShape::Circle {
-                stroke_width: Some("2"),
+                stroke: (!include_margin_markers).then_some("black"),
+                stroke_width: None,
             },
         },
     );
-    marker(
-        &mut ctx,
-        MarkerSpec {
-            name: "lollipopEnd-margin",
-            kind: "lollipop",
-            ref_x: "1",
-            ref_y: "7",
-            marker_w: "190",
-            marker_h: "240",
-            marker_units: Some("userSpaceOnUse"),
-            view_box: None,
-            wrap_defs: true,
-            shape: MarkerShape::Circle {
-                stroke_width: Some("2"),
+    if include_margin_markers {
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "lollipopStart-margin",
+                kind: "lollipop",
+                ref_x: "13",
+                ref_y: "7",
+                marker_w: "190",
+                marker_h: "240",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::Circle {
+                    stroke: None,
+                    stroke_width: Some("2"),
+                },
             },
-        },
-    );
+        );
+        marker(
+            &mut ctx,
+            MarkerSpec {
+                name: "lollipopEnd-margin",
+                kind: "lollipop",
+                ref_x: "1",
+                ref_y: "7",
+                marker_w: "190",
+                marker_h: "240",
+                marker_units: Some("userSpaceOnUse"),
+                view_box: None,
+                wrap_defs: true,
+                shape: MarkerShape::Circle {
+                    stroke: None,
+                    stroke_width: Some("2"),
+                },
+            },
+        );
+    }
 }
 
 pub(super) fn push_class_shadow_defs(

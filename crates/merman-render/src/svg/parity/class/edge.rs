@@ -369,12 +369,16 @@ pub(super) fn render_class_edge_groups(
         }
         edge_class_buf.push_str(" relation");
 
+        let edge_id_attr = if ctx.look == "handDrawn" {
+            edge_dom_id_buf.clone()
+        } else {
+            format!("{}-{}", ctx.diagram_id, edge_dom_id_buf)
+        };
         let _ = write!(
             out,
-            r#"<path d="{}" id="{}-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+            r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
             escape_attr_display(render_d),
-            escape_attr_display(ctx.diagram_id),
-            escape_attr_display(&edge_dom_id_buf),
+            escape_attr_display(&edge_id_attr),
             escape_attr_display(&edge_class_buf),
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_points_b64_buf),

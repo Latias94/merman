@@ -292,7 +292,7 @@ fn class_svg_hand_drawn_seed_controls_visible_rough_paths() {
             )
         },
         &[
-            r#"class="rough-node default" id="class-seed-classId-A-0""#,
+            r#"class="rough-node default" id="classId-A-0""#,
             r#"class="edge-thickness-normal edge-pattern-solid transition relation""#,
             r##"stroke="#f8fafc" stroke-width="4""##,
             r##"stroke="#ef4444" stroke-width="1.3""##,

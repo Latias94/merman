@@ -205,11 +205,11 @@ classDiagram
     );
 
     assert!(
-        svg.contains(r#"<g class="rough-node default" id="merman-classId-Class10-0""#),
+        svg.contains(r#"<g class="rough-node default" id="classId-Class10-0""#),
         "hand-drawn class node should use Mermaid's rough-node wrapper class: {svg}"
     );
     assert!(
-        !svg.contains(r#"<g class="node default" id="merman-classId-Class10-0""#),
+        !svg.contains(r#"<g class="node default" id="classId-Class10-0""#),
         "hand-drawn class node should not keep the classic node wrapper class: {svg}"
     );
     assert!(
@@ -225,6 +225,14 @@ classDiagram
     assert!(
         !svg.contains(r#"<g class="basic label-container outer-path"><path d=""#),
         "hand-drawn class node should not use the classic outer-path shape group: {svg}"
+    );
+    assert!(
+        !svg.contains("-margin"),
+        "hand-drawn class SVG should not emit unused margin marker defs: {svg}"
+    );
+    assert!(
+        !svg.contains("drop-shadow"),
+        "hand-drawn class SVG should not emit unused shadow filter defs: {svg}"
     );
 }
 
@@ -257,7 +265,7 @@ classDiagram
     );
 
     assert!(
-        svg.contains(r#"<g class="rough-node undefined" id="merman-note0""#),
+        svg.contains(r#"<g class="rough-node undefined" id="note0""#),
         "hand-drawn class note should use Mermaid's rough-node wrapper class: {svg}"
     );
     assert!(
