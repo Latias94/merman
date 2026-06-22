@@ -20,15 +20,18 @@ use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::{LGraph, LNode, LNodeKind, LPoint, LSize, PortSide};
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, insert_label_dummies,
-    join_long_edges, merge_hyperedge_dummies, postprocess_end_labels,
-    postprocess_layer_constraints, preprocess_end_labels, preprocess_layer_constraints,
-    process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
-    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
-    process_inverted_ports, remove_label_dummies, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, select_label_sides, sort_end_labels,
-    split_long_edges, switch_label_dummies,
+    join_long_edges, merge_hyperedge_dummies, position_interactive_external_ports,
+    postprocess_end_labels, postprocess_layer_constraints, preprocess_end_labels,
+    preprocess_layer_constraints, process_hierarchical_port_constraints,
+    process_hierarchical_port_dummy_sizes, process_hierarchical_port_orthogonal_edges,
+    process_hierarchical_port_positions, process_inverted_ports, remove_label_dummies,
+    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, select_label_sides,
+    sort_end_labels, split_long_edges, switch_label_dummies,
 };
-use crate::p1cycles::{break_cycles_greedy, break_cycles_greedy_model_order};
+use crate::p1cycles::{
+    break_cycles_depth_first, break_cycles_greedy, break_cycles_greedy_model_order,
+    break_cycles_interactive, break_cycles_model_order,
+};
 use crate::p2layers::layer_network_simplex;
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists,
@@ -847,8 +850,14 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::EdgeAndLayerConstraintEdgeReverser => {
             reverse_edges_for_edge_and_layer_constraints(graph);
         }
+        ProcessorKind::InteractiveExternalPortPositioner => {
+            position_interactive_external_ports(graph);
+        }
         ProcessorKind::SelfLoopPreProcessor => preprocess_self_loops(graph),
         ProcessorKind::GreedyCycleBreaker => break_cycles_greedy(graph),
+        ProcessorKind::DepthFirstCycleBreaker => break_cycles_depth_first(graph),
+        ProcessorKind::InteractiveCycleBreaker => break_cycles_interactive(graph),
+        ProcessorKind::ModelOrderCycleBreaker => break_cycles_model_order(graph),
         ProcessorKind::GreedyModelOrderCycleBreaker => break_cycles_greedy_model_order(graph),
         ProcessorKind::LayerConstraintPreprocessor => preprocess_layer_constraints(graph)?,
         ProcessorKind::LabelDummyInserter => insert_label_dummies(graph),
@@ -1192,8 +1201,14 @@ fn cycle_breaking_processor(strategy: CycleBreakingStrategy) -> ProcessorKind {
     }
 }
 
-fn cycle_breaking_dependencies(_processor: ProcessorKind) -> Config {
+fn cycle_breaking_dependencies(processor: ProcessorKind) -> Config {
     let mut config = Config::default();
+    if processor == ProcessorKind::InteractiveCycleBreaker {
+        config.add_before(
+            LayeredPhase::P1CycleBreaking,
+            ProcessorKind::InteractiveExternalPortPositioner,
+        );
+    }
     config.add_after(
         LayeredPhase::P5EdgeRouting,
         ProcessorKind::ReversedEdgeRestorer,

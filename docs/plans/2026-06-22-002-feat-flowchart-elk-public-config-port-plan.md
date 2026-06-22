@@ -9,7 +9,7 @@ execution: code
 
 ## Summary
 
-This plan ports the source-backed ELK processors needed for Mermaid's public Flowchart ELK configuration surface. It covers `elk.mergeEdges` and all documented `elk.nodePlacementStrategy` values while keeping full Eclipse ELK parity out of scope.
+This plan ports the source-backed ELK processors needed for Mermaid's public Flowchart ELK configuration surface. It now covers the current Mermaid `elk` keys reachable from Flowchart config: `mergeEdges`, `nodePlacementStrategy`, `nodePlacementAlignment`, `cycleBreakingStrategy`, `forceNodeModelOrder`, `considerModelOrder`, and `keepEntryNodeOnTop`, while keeping full Eclipse ELK parity out of scope.
 
 ---
 
@@ -28,7 +28,10 @@ The failure is not a parser or config issue. `merman-render` already maps Mermai
 - R1. The documented Mermaid example with `layout: elk`, `mergeEdges: true`, and `nodePlacementStrategy: LINEAR_SEGMENTS` must render through the source-backed backend without falling back to compat.
 - R2. All documented `nodePlacementStrategy` values must be accepted and renderable: `BRANDES_KOEPF`, `LINEAR_SEGMENTS`, `SIMPLE`, and `NETWORK_SIMPLEX`.
 - R3. `mergeEdges: true` must execute source-backed hyperedge dummy merging instead of being ignored or downgraded.
-- R4. Existing config mapping for `cycleBreakingStrategy`, `considerModelOrder`, `forceNodeModelOrder`, self-loop options, and default `BRANDES_KOEPF` behavior must not regress.
+- R4. Existing config mapping for `considerModelOrder`, `forceNodeModelOrder`, self-loop options, and default `BRANDES_KOEPF` behavior must not regress.
+- R4a. All public `cycleBreakingStrategy` values must be accepted and renderable: `GREEDY`, `DEPTH_FIRST`, `INTERACTIVE`, `MODEL_ORDER`, and `GREEDY_MODEL_ORDER`.
+- R4b. All public `nodePlacementAlignment` values must be accepted and renderable: `NONE`, `LEFTUP`, `LEFTDOWN`, `RIGHTUP`, `RIGHTDOWN`, and `BALANCED`.
+- R4c. `keepEntryNodeOnTop` must match Mermaid adapter semantics by pinning only first-declared nodes of cyclic same-container components that have no natural source.
 
 ### ELK Port Integrity
 
@@ -49,8 +52,10 @@ The failure is not a parser or config issue. `merman-render` already maps Mermai
 ### In Scope
 
 - Source-backed ports for `SimpleNodePlacer`, `LinearSegmentsNodePlacer`, `NetworkSimplexPlacer`, and `HyperedgeDummyMerger`.
+- Source-backed ports for public cycle-breaking processors selected by Mermaid config: `DepthFirstCycleBreaker`, `InteractiveCycleBreaker`, and `ModelOrderCycleBreaker`.
+- Mermaid adapter mapping for `nodePlacementAlignment` and `keepEntryNodeOnTop`, including `LayerConstraint::FIRST` propagation into the source-backed input graph.
 - Focused graph-model helpers needed to rewire long-edge dummy nodes, collector ports, and node positions safely.
-- Regression tests for the exact Mermaid documentation example and each documented node placement strategy.
+- Regression tests for the exact Mermaid documentation example, the reported frontmatter case, every public node placement strategy, every public node placement alignment, every public cycle-breaking strategy, and `keepEntryNodeOnTop`.
 - Flowchart ELK fixture or probe updates that demonstrate public config support without broad golden churn.
 - Documentation updates to the Flowchart ELK alignment/support notes.
 
@@ -58,13 +63,12 @@ The failure is not a parser or config issue. `merman-render` already maps Mermai
 
 - Complete Eclipse ELK processor coverage.
 - New edge-routing strategies such as polyline or splines.
-- Interactive cycle breaking, interactive crossing minimization, partition processors, wrapping processors, comment processors, and hypernode postprocessing.
+- Interactive crossing minimization, partition processors, wrapping processors, comment processors, and hypernode postprocessing.
 - Pixel-perfect layout matching against browser ELK output.
 - Package-surface, EPL, FFI, Typst, and resource-budget policy changes already handled by the render-resource-limits plan.
 
 ### Deferred To Follow-Up Work
 
-- Porting `cycleBreakingStrategy` values that currently select unported processors: `DEPTH_FIRST`, `INTERACTIVE`, and `MODEL_ORDER`.
 - Porting non-orthogonal routers if Mermaid or user fixtures expose them through a supported public config path.
 - Expanding the dedicated Flowchart ELK fixture lane after the public config processors are stable.
 
@@ -72,12 +76,13 @@ The failure is not a parser or config issue. `merman-render` already maps Mermai
 
 ## Key Technical Decisions
 
-- KTD1. Treat Mermaid's documented config surface as the support boundary: This plan ports the processors users can reach through current public `elk` config, not the full ELK processor inventory.
+- KTD1. Treat Mermaid's current public config surface as the support boundary: This plan ports the processors users can reach through current public `elk` config, not the full ELK processor inventory.
 - KTD2. Keep source-backed behavior source-backed: Missing config support should be fixed in `merman-elk-layered`, not by silently ignoring options or routing configured graphs to the compat backend.
 - KTD3. Port node placement as a complete documented family: `LINEAR_SEGMENTS` fixes the reported example, but `SIMPLE` and `NETWORK_SIMPLEX` are also documented Mermaid values and should not remain runtime traps.
 - KTD4. Reuse existing graph primitives before adding new abstractions: `LGraph` already has edge rewiring, collector ports, layer membership, and network simplex support; new helpers should fill processor gaps rather than duplicate graph ownership.
 - KTD5. Keep tests semantic where browser residuals dominate: Assertions should check render success, labels, edge path sanity, layer ordering, dummy merging, and absence of `NaN` or unsupported errors rather than exact browser coordinates.
 - KTD6. Leave unsupported errors meaningful: Processor strategies not in this public config slice should continue to fail clearly so future ELK work is discoverable.
+- KTD7. Treat Eclipse ELK Java and Mermaid source as authoritative: `repo-ref/openedges/elk-rs` is useful translation guidance only and is not a semantic source of truth.
 
 ---
 
@@ -189,6 +194,17 @@ The public adapter already carries the config values. The implementation should 
 - **Test scenarios:** The default `layout: elk` path still uses `BRANDES_KOEPF`; each public node placement strategy renders through `HeadlessRenderer`; `mergeEdges: true` plus `LINEAR_SEGMENTS` renders the documented example; unsupported non-scope processors still produce explicit unsupported errors when selected through lower-level options.
 - **Verification:** Public Flowchart ELK config support is documented as renderable, and remaining ELK gaps are recorded as out of scope rather than hidden.
 
+### U7. Port remaining public cycle and entry/alignment config
+
+- **Goal:** Remove the remaining public Mermaid ELK config traps exposed by current `config.schema.yaml`.
+- **Requirements:** R4a, R4b, R4c, R5, R6, R9, R10
+- **Dependencies:** U1, U6
+- **Files:** `crates/merman-elk-layered/src/p1cycles.rs`, `crates/merman-elk-layered/src/intermediate.rs`, `crates/merman-elk-layered/src/pipeline.rs`, `crates/merman-layout-elk/src/compat.rs`, `crates/merman-layout-elk/src/lib.rs`, `crates/merman-render/src/flowchart/elk.rs`, `crates/xtask/default_config_schema.yaml`, `crates/merman/tests/flowchart_elk_render.rs`
+- **Approach:** Port `DepthFirstCycleBreaker`, `InteractiveCycleBreaker`, and `ModelOrderCycleBreaker` from Eclipse ELK Java; wire `InteractiveExternalPortPositioner` only for the interactive cycle breaker; map `nodePlacementAlignment` to `elk.layered.nodePlacement.bk.fixedAlignment`; implement `keepEntryNodeOnTop` as Mermaid adapter preprocessing that sets `LayerConstraint::First` on nominated same-container cyclic entry nodes.
+- **Patterns to follow:** Current Mermaid `packages/mermaid-layout-elk/src/render.ts` for public option names and cyclic entry semantics; Eclipse ELK Java cycle breaker and `InteractiveExternalPortPositioner` sources for processor behavior. Use `elk-rs` only as a translation reference.
+- **Test scenarios:** Every public `cycleBreakingStrategy` renders without `UnsupportedProcessor`; every public `nodePlacementAlignment` renders without `NaN`; `keepEntryNodeOnTop` pins the first declared node of a same-container cycle and leaves acyclic components unpinned.
+- **Verification:** `cargo nextest run -p merman-elk-layered p1cycles`, `cargo nextest run -p merman --features render,elk-layout flowchart_elk`, and config-generation verification pass.
+
 ---
 
 ## Acceptance Examples
@@ -197,7 +213,10 @@ The public adapter already carries the config values. The implementation should 
 - AE2. Given the same simple Flowchart ELK graph and each documented `nodePlacementStrategy`, rendering succeeds through the source-backed backend.
 - AE3. Given parallel edges with `mergeEdges: true`, long-edge dummy merging preserves edge incidence and labels according to ELK's merge rules.
 - AE4. Given a default `layout: elk` graph with no custom ELK config, the default `BRANDES_KOEPF` path remains renderable and retains the existing SVG contract tests.
-- AE5. Given an ELK strategy outside this plan, the error remains explicit rather than silently downgraded or ignored.
+- AE5. Given each public `cycleBreakingStrategy`, rendering succeeds through the source-backed backend.
+- AE6. Given each public `nodePlacementAlignment`, rendering succeeds through the source-backed backend.
+- AE7. Given `keepEntryNodeOnTop: true` on a same-container cyclic component without a natural source, the nominated entry node is constrained to the first layer.
+- AE8. Given an ELK strategy outside this plan, the error remains explicit rather than silently downgraded or ignored.
 
 ---
 
@@ -227,10 +246,10 @@ The implementation should update Flowchart ELK alignment documentation after the
 ## Sources / Research
 
 - `repo-ref/mermaid/docs/intro/syntax-reference.md` documents `mergeEdges` and `nodePlacementStrategy` with the exact `LINEAR_SEGMENTS` example.
-- `repo-ref/mermaid/packages/mermaid/src/config.type.ts` exposes the public `elk` config keys and documented node placement values.
-- `repo-ref/mermaid/packages/mermaid-layout-elk/src/render.ts` shows Mermaid's adapter passing `nodePlacement.strategy` and `elk.layered.mergeEdges` into ELK.
+- Current Mermaid `packages/mermaid/src/config.type.ts` and `packages/mermaid/src/schemas/config.schema.yaml` expose the public `elk` config keys and values.
+- Current Mermaid `packages/mermaid-layout-elk/src/render.ts` shows Mermaid's adapter passing public `elk` options into ELK and implementing `keepEntryNodeOnTop` by setting `elk.layered.layering.layerConstraint = FIRST`.
 - `crates/merman-render/src/flowchart/elk.rs` already maps Mermaid config into ELK layout options.
 - `crates/merman-layout-elk/src/lib.rs` forwards public ELK options into the source-backed layered port.
 - `crates/merman-elk-layered/src/pipeline.rs` assembles the needed processors and currently reports unsupported processors for this scope.
 - `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p4nodes/` and `repo-ref/elk/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/HyperedgeDummyMerger.java` are the pinned source references.
-- `repo-ref/openedges/elk-rs/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/` provides Rust translation guidance for the same processors.
+- `repo-ref/openedges/elk-rs/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/` provides Rust translation guidance for the same processors, but is not considered authoritative.

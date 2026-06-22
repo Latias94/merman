@@ -496,6 +496,13 @@ fn build_flowchart_elk_graph_with_mode(
         ));
     }
 
+    apply_cyclic_entry_constraints(
+        model,
+        effective_config_value,
+        &parent_by_id,
+        &mut graph.nodes,
+    );
+
     graph.edges = model
         .edges
         .iter()
@@ -622,6 +629,19 @@ fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOption
             },
         )
         .unwrap_or_default();
+    let node_placement_alignment =
+        config_string(effective_config, &["elk", "nodePlacementAlignment"])
+            .map(
+                |alignment| match alignment.trim().to_ascii_uppercase().as_str() {
+                    "LEFTUP" => elk::NodePlacementAlignment::LeftUp,
+                    "LEFTDOWN" => elk::NodePlacementAlignment::LeftDown,
+                    "RIGHTUP" => elk::NodePlacementAlignment::RightUp,
+                    "RIGHTDOWN" => elk::NodePlacementAlignment::RightDown,
+                    "BALANCED" => elk::NodePlacementAlignment::Balanced,
+                    _ => elk::NodePlacementAlignment::None,
+                },
+            )
+            .unwrap_or_default();
     let self_loop_ordering = config_string(
         effective_config,
         &["elk", "layered", "edgeRouting", "selfLoopOrdering"],
@@ -653,9 +673,125 @@ fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOption
             model_order,
             cycle_breaking,
             node_placement,
+            node_placement_alignment,
             ..Default::default()
         },
     }
+}
+
+fn apply_cyclic_entry_constraints(
+    model: &FlowchartV2Model,
+    effective_config: &serde_json::Value,
+    parent_by_id: &HashMap<String, String>,
+    nodes: &mut [elk::Node],
+) {
+    if !config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+        return;
+    }
+
+    let entry_ids = find_cyclic_entry_nodes(model, parent_by_id);
+    if entry_ids.is_empty() {
+        return;
+    }
+
+    for node in nodes {
+        if entry_ids.contains(node.id.as_str()) {
+            node.layer_constraint = Some(elk::LayerConstraint::First);
+        }
+    }
+}
+
+fn find_cyclic_entry_nodes(
+    model: &FlowchartV2Model,
+    parent_by_id: &HashMap<String, String>,
+) -> HashSet<String> {
+    let node_ids = model
+        .nodes
+        .iter()
+        .map(|node| node.id.as_str())
+        .chain(model.subgraphs.iter().map(|subgraph| subgraph.id.as_str()))
+        .collect::<Vec<_>>();
+    let node_id_set = node_ids.iter().copied().collect::<HashSet<_>>();
+    let mut by_parent: HashMap<Option<&str>, Vec<&str>> = HashMap::new();
+    for id in &node_ids {
+        let parent = parent_by_id.get(*id).map(String::as_str);
+        by_parent.entry(parent).or_default().push(*id);
+    }
+
+    let mut entries = HashSet::new();
+    for ids in by_parent.values() {
+        let local_ids = ids.iter().copied().collect::<HashSet<_>>();
+        let mut incoming_count = ids
+            .iter()
+            .map(|id| (*id, 0usize))
+            .collect::<HashMap<_, _>>();
+        let mut adjacency = ids
+            .iter()
+            .map(|id| (*id, Vec::<&str>::new()))
+            .collect::<HashMap<_, _>>();
+
+        for edge in &model.edges {
+            let source = edge.from.as_str();
+            let target = edge.to.as_str();
+            if source == target
+                || !node_id_set.contains(source)
+                || !node_id_set.contains(target)
+                || !local_ids.contains(source)
+                || !local_ids.contains(target)
+            {
+                continue;
+            }
+            if let Some(count) = incoming_count.get_mut(target) {
+                *count += 1;
+            }
+            adjacency.entry(source).or_default().push(target);
+            adjacency.entry(target).or_default().push(source);
+        }
+
+        let mut component = HashMap::new();
+        let mut component_count = 0usize;
+        for id in ids {
+            if component.contains_key(id) {
+                continue;
+            }
+            let mut stack = vec![*id];
+            while let Some(current) = stack.pop() {
+                if component.insert(current, component_count).is_some() {
+                    continue;
+                }
+                if let Some(neighbors) = adjacency.get(current) {
+                    for neighbor in neighbors {
+                        if !component.contains_key(neighbor) {
+                            stack.push(*neighbor);
+                        }
+                    }
+                }
+            }
+            component_count += 1;
+        }
+
+        let mut has_source = vec![false; component_count];
+        for id in ids {
+            if incoming_count.get(id).copied().unwrap_or_default() == 0
+                && let Some(component_index) = component.get(id).copied()
+            {
+                has_source[component_index] = true;
+            }
+        }
+
+        let mut nominated = vec![false; component_count];
+        for id in ids {
+            let Some(component_index) = component.get(id).copied() else {
+                continue;
+            };
+            if !has_source[component_index] && !nominated[component_index] {
+                entries.insert((*id).to_string());
+                nominated[component_index] = true;
+            }
+        }
+    }
+
+    entries
 }
 
 fn parent_by_id(model: &FlowchartV2Model) -> Result<HashMap<String, String>> {
@@ -980,6 +1116,7 @@ fn flow_node_to_elk_node(
         parent,
         direction: None,
         hierarchy_handling: None,
+        layer_constraint: None,
         label: Some(label),
     }
 }
@@ -1004,6 +1141,7 @@ fn subgraph_to_elk_node(
         } else {
             None
         },
+        layer_constraint: None,
         label: subgraph_label(sg, ctx),
     }
 }
@@ -1022,6 +1160,7 @@ fn empty_subgraph_to_elk_node(
         parent,
         direction: None,
         hierarchy_handling: None,
+        layer_constraint: None,
         label: Some(label),
     }
 }
@@ -1328,6 +1467,7 @@ mod tests {
             "elk": {
                 "mergeEdges": true,
                 "nodePlacementStrategy": "LINEAR_SEGMENTS",
+                "nodePlacementAlignment": "RIGHTDOWN",
                 "forceNodeModelOrder": true,
                 "considerModelOrder": "PREFER_EDGES",
                 "cycleBreakingStrategy": "GREEDY_MODEL_ORDER",
@@ -1364,6 +1504,10 @@ mod tests {
         assert_eq!(
             graph.options.layered.node_placement,
             elk::NodePlacementStrategy::LinearSegments
+        );
+        assert_eq!(
+            graph.options.layered.node_placement_alignment,
+            elk::NodePlacementAlignment::RightDown
         );
         assert!(graph.options.layered.inside_self_loops_activate);
         assert!(graph.options.layered.unnecessary_bendpoints);
@@ -1434,6 +1578,40 @@ mod tests {
             graph.options.layered.node_placement,
             elk::NodePlacementStrategy::NetworkSimplex
         );
+    }
+
+    #[test]
+    fn flowchart_elk_graph_adapter_marks_cyclic_entry_node_on_top() {
+        let model = model(
+            vec![
+                node("A", Some("Alpha"), None),
+                node("B", Some("Beta"), None),
+                node("C", Some("Gamma"), None),
+            ],
+            vec![
+                edge("L-A-B", "A", "B", None),
+                edge("L-B-C", "B", "C", None),
+                edge("L-C-A", "C", "A", None),
+            ],
+        );
+        let config = MermaidConfig::from_value(json!({
+            "elk": {
+                "keepEntryNodeOnTop": true
+            }
+        }));
+
+        let graph = build_flowchart_elk_graph(
+            &model,
+            &config,
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            None,
+        )
+        .unwrap();
+
+        let a = graph.nodes.iter().find(|node| node.id == "A").unwrap();
+        let b = graph.nodes.iter().find(|node| node.id == "B").unwrap();
+        assert_eq!(a.layer_constraint, Some(elk::LayerConstraint::First));
+        assert_eq!(b.layer_constraint, None);
     }
 
     #[test]

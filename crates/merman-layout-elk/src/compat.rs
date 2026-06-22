@@ -85,6 +85,7 @@ pub struct LayeredOptions {
     pub edge_routing: EdgeRouting,
     pub cycle_breaking: CycleBreakingStrategy,
     pub node_placement: NodePlacementStrategy,
+    pub node_placement_alignment: NodePlacementAlignment,
     pub model_order: ModelOrderStrategy,
     pub consider_model_order: bool,
     pub force_node_model_order: bool,
@@ -103,6 +104,7 @@ impl Default for LayeredOptions {
             edge_routing: EdgeRouting::Orthogonal,
             cycle_breaking: CycleBreakingStrategy::Greedy,
             node_placement: NodePlacementStrategy::BrandesKoepf,
+            node_placement_alignment: NodePlacementAlignment::None,
             model_order: ModelOrderStrategy::NodesAndEdges,
             consider_model_order: true,
             force_node_model_order: false,
@@ -150,6 +152,17 @@ pub enum NodePlacementStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NodePlacementAlignment {
+    #[default]
+    None,
+    LeftUp,
+    RightUp,
+    LeftDown,
+    RightDown,
+    Balanced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ModelOrderStrategy {
     None,
     #[default]
@@ -183,7 +196,16 @@ pub struct Node {
     pub parent: Option<String>,
     pub direction: Option<Direction>,
     pub hierarchy_handling: Option<HierarchyHandling>,
+    pub layer_constraint: Option<LayerConstraint>,
     pub label: Option<Label>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayerConstraint {
+    First,
+    FirstSeparate,
+    Last,
+    LastSeparate,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1585,6 +1607,7 @@ mod tests {
                     parent: None,
                     direction: None,
                     hierarchy_handling: None,
+                    layer_constraint: None,
                     label: None,
                 },
                 Node {
@@ -1595,6 +1618,7 @@ mod tests {
                     parent: None,
                     direction: None,
                     hierarchy_handling: None,
+                    layer_constraint: None,
                     label: None,
                 },
             ],
@@ -1646,6 +1670,7 @@ mod tests {
                 parent: None,
                 direction: Some(Direction::Down),
                 hierarchy_handling: None,
+                layer_constraint: None,
                 label: Some(Label {
                     width: 300.0,
                     height: 24.0,
@@ -1922,6 +1947,7 @@ mod tests {
             parent: parent.map(str::to_string),
             direction: None,
             hierarchy_handling: None,
+            layer_constraint: None,
             label: None,
         }
     }
@@ -1935,6 +1961,7 @@ mod tests {
             parent: parent.map(str::to_string),
             direction,
             hierarchy_handling: None,
+            layer_constraint: None,
             label: Some(Label {
                 width: 80.0,
                 height: 20.0,

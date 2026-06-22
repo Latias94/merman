@@ -188,9 +188,15 @@ Dedicated Flowchart ELK lane:
   broad Flowchart main matrix. The gate uses the source-backed Mermaid ELK adapter / Eclipse ELK
   layered port and currently covers all 63 exact render calls / 57 unique layout bodies extracted
   from Mermaid's `flowchart-elk.spec.js`.
-- Mermaid's public ELK config surface has render-level coverage for the documented
-  `mergeEdges: true` + `nodePlacementStrategy: LINEAR_SEGMENTS` example and for all documented node
-  placement values: `BRANDES_KOEPF`, `SIMPLE`, `LINEAR_SEGMENTS`, and `NETWORK_SIMPLEX`.
+- Mermaid's current public Flowchart ELK config surface has render-level coverage:
+  `mergeEdges`, all `nodePlacementStrategy` values (`BRANDES_KOEPF`, `SIMPLE`,
+  `LINEAR_SEGMENTS`, `NETWORK_SIMPLEX`), all `nodePlacementAlignment` values (`NONE`, `LEFTUP`,
+  `LEFTDOWN`, `RIGHTUP`, `RIGHTDOWN`, `BALANCED`), all `cycleBreakingStrategy` values
+  (`GREEDY`, `DEPTH_FIRST`, `INTERACTIVE`, `MODEL_ORDER`, `GREEDY_MODEL_ORDER`),
+  `forceNodeModelOrder`, `considerModelOrder`, and `keepEntryNodeOnTop`.
+- The reported frontmatter case with `mergeEdges: true` and
+  `nodePlacementStrategy: LINEAR_SEGMENTS` is locked by
+  `headless_renderer_renders_reported_flowchart_elk_linear_segments_case`.
 - Duplicate layout bodies are kept as exact-call fixtures for upstream traceability. Use
   `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` for the current exact-call and
   unique-body mapping.

@@ -1,13 +1,109 @@
 //! Phase 1 cycle breaking processors.
 //!
 //! Source references:
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/DepthFirstCycleBreaker.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GreedyCycleBreaker.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GreedyModelOrderCycleBreaker.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/InteractiveCycleBreaker.java
+//! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/ModelOrderCycleBreaker.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LEdge.java
 
 use std::collections::VecDeque;
 
 use crate::graph::{LGraph, PortRef, reverse_edge};
+use crate::options::LayerConstraint;
+
+pub fn break_cycles_depth_first(graph: &mut LGraph) {
+    let node_count = graph.layerless_nodes.len();
+    let mut visited = vec![false; node_count];
+    let mut active = vec![false; node_count];
+    let mut edges_to_reverse = Vec::new();
+
+    let sources = (0..node_count)
+        .filter(|node| graph.node_incoming_edges(*node).is_empty())
+        .collect::<Vec<_>>();
+    for source in sources {
+        collect_depth_first_back_edges(
+            graph,
+            source,
+            &mut visited,
+            &mut active,
+            &mut edges_to_reverse,
+        );
+    }
+
+    for node in 0..node_count {
+        if !visited[node] {
+            collect_depth_first_back_edges(
+                graph,
+                node,
+                &mut visited,
+                &mut active,
+                &mut edges_to_reverse,
+            );
+        }
+    }
+
+    reverse_feedback_edges(graph, edges_to_reverse, true);
+}
+
+pub fn break_cycles_interactive(graph: &mut LGraph) {
+    let mut rev_edges = Vec::new();
+
+    for source in 0..graph.layerless_nodes.len() {
+        let source_x = interactive_reference_x(graph, source);
+        for edge_index in graph.node_outgoing_edges(source) {
+            let target = graph.edges[edge_index].target.node;
+            if target == source {
+                continue;
+            }
+            if interactive_reference_x(graph, target) < source_x {
+                rev_edges.push(edge_index);
+            }
+        }
+    }
+
+    reverse_feedback_edges(graph, rev_edges, false);
+
+    let node_count = graph.layerless_nodes.len();
+    let mut state = vec![InteractiveVisitState::Unvisited; node_count];
+    let mut rev_edges = Vec::new();
+    for node in 0..node_count {
+        if state[node] == InteractiveVisitState::Unvisited {
+            collect_interactive_back_edges(graph, node, &mut state, &mut rev_edges);
+        }
+    }
+
+    reverse_feedback_edges(graph, rev_edges, false);
+}
+
+pub fn break_cycles_model_order(graph: &mut LGraph) {
+    let offset = graph
+        .layerless_nodes
+        .iter()
+        .filter_map(|node| node.model_order.map(|order| order + 1))
+        .max()
+        .unwrap_or(graph.layerless_nodes.len())
+        .max(graph.layerless_nodes.len()) as i64;
+    let mut context = ModelOrderContext::default();
+    let mut rev_edges = Vec::new();
+
+    for source in 0..graph.layerless_nodes.len() {
+        let model_order_source = context.compute_constraint_model_order(graph, source, offset);
+        for edge_index in graph.node_outgoing_edges(source) {
+            let target = graph.edges[edge_index].target.node;
+            if target == source {
+                continue;
+            }
+            let model_order_target = context.compute_constraint_model_order(graph, target, offset);
+            if model_order_target < model_order_source {
+                rev_edges.push(edge_index);
+            }
+        }
+    }
+
+    reverse_feedback_edges(graph, rev_edges, true);
+}
 
 pub fn break_cycles_greedy(graph: &mut LGraph) {
     break_cycles_greedy_with_choice(graph, GreedyNodeChoice::Random);
@@ -147,6 +243,114 @@ fn break_cycles_greedy_with_choice(graph: &mut LGraph, choice: GreedyNodeChoice)
                     graph.cyclic = true;
                 }
             }
+        }
+    }
+}
+
+fn collect_depth_first_back_edges(
+    graph: &LGraph,
+    node: usize,
+    visited: &mut [bool],
+    active: &mut [bool],
+    edges_to_reverse: &mut Vec<usize>,
+) {
+    if visited[node] {
+        return;
+    }
+
+    visited[node] = true;
+    active[node] = true;
+
+    for edge_index in graph.node_outgoing_edges(node) {
+        let target = graph.edges[edge_index].target.node;
+        if target == node {
+            continue;
+        }
+        if active[target] {
+            edges_to_reverse.push(edge_index);
+        } else {
+            collect_depth_first_back_edges(graph, target, visited, active, edges_to_reverse);
+        }
+    }
+
+    active[node] = false;
+}
+
+fn interactive_reference_x(graph: &LGraph, node: usize) -> f64 {
+    let node = &graph.layerless_nodes[node];
+    node.position.x + node.size.width / 2.0
+}
+
+fn collect_interactive_back_edges(
+    graph: &LGraph,
+    node: usize,
+    state: &mut [InteractiveVisitState],
+    edges_to_reverse: &mut Vec<usize>,
+) {
+    state[node] = InteractiveVisitState::Active;
+
+    for edge_index in graph.node_outgoing_edges(node) {
+        let target = graph.edges[edge_index].target.node;
+        if target == node {
+            continue;
+        }
+        match state[target] {
+            InteractiveVisitState::Active => edges_to_reverse.push(edge_index),
+            InteractiveVisitState::Unvisited => {
+                collect_interactive_back_edges(graph, target, state, edges_to_reverse);
+            }
+            InteractiveVisitState::Visited => {}
+        }
+    }
+
+    state[node] = InteractiveVisitState::Visited;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InteractiveVisitState {
+    Unvisited,
+    Active,
+    Visited,
+}
+
+#[derive(Debug, Default)]
+struct ModelOrderContext {
+    first_separate_model_order: i64,
+    last_separate_model_order: i64,
+}
+
+impl ModelOrderContext {
+    fn compute_constraint_model_order(
+        &mut self,
+        graph: &LGraph,
+        node_index: usize,
+        offset: i64,
+    ) -> i64 {
+        let node = &graph.layerless_nodes[node_index];
+        let mut model_order = match node.layer_constraint {
+            LayerConstraint::FirstSeparate => {
+                let order = -2 * offset + self.first_separate_model_order;
+                self.first_separate_model_order += 1;
+                order
+            }
+            LayerConstraint::First => -offset,
+            LayerConstraint::Last => offset,
+            LayerConstraint::LastSeparate => {
+                let order = 2 * offset + self.last_separate_model_order;
+                self.last_separate_model_order += 1;
+                order
+            }
+            LayerConstraint::None => 0,
+        };
+        model_order += node.model_order.unwrap_or_default() as i64;
+        model_order
+    }
+}
+
+fn reverse_feedback_edges(graph: &mut LGraph, edges: Vec<usize>, mark_cyclic: bool) {
+    for edge_index in edges {
+        if reverse_edge(graph, edge_index, true) && mark_cyclic {
+            graph.cyclic = true;
         }
     }
 }
@@ -354,6 +558,70 @@ mod tests {
                 .any(|edge| edge.id == "A-B" && edge.reversed),
             "choosing B first makes the incoming A-B edge the feedback edge"
         );
+        assert!(!has_directed_cycle(&graph));
+    }
+
+    #[test]
+    fn depth_first_cycle_breaker_reverses_back_edges() {
+        let mut graph = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![
+                edge("A-B", "A", "B"),
+                edge("B-C", "B", "C"),
+                edge("C-A", "C", "A"),
+            ],
+        );
+
+        break_cycles_depth_first(&mut graph);
+
+        assert!(graph.cyclic);
+        assert!(graph.edges.iter().any(|edge| edge.reversed));
+        assert!(!has_directed_cycle(&graph));
+    }
+
+    #[test]
+    fn interactive_cycle_breaker_reverses_edges_against_reference_x() {
+        let mut graph = graph(vec![node("A"), node("B")], vec![edge("B-A", "B", "A")]);
+        let a = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        let b = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "B")
+            .unwrap();
+        graph.layerless_nodes[a].position.x = 0.0;
+        graph.layerless_nodes[b].position.x = 100.0;
+
+        break_cycles_interactive(&mut graph);
+
+        assert!(graph.edges[0].reversed);
+        assert!(!has_directed_cycle(&graph));
+    }
+
+    #[test]
+    fn model_order_cycle_breaker_respects_first_layer_constraint() {
+        let mut graph = graph(vec![node("A"), node("B")], vec![edge("B-A", "B", "A")]);
+        let a = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "A")
+            .unwrap();
+        let b = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "B")
+            .unwrap();
+        graph.layerless_nodes[a].model_order = Some(1);
+        graph.layerless_nodes[a].layer_constraint = crate::options::LayerConstraint::First;
+        graph.layerless_nodes[b].model_order = Some(0);
+
+        break_cycles_model_order(&mut graph);
+
+        assert!(graph.cyclic);
+        assert!(graph.edges[0].reversed);
         assert!(!has_directed_cycle(&graph));
     }
 

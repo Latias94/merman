@@ -28,9 +28,10 @@ use source_port::{
 
 pub use compat::{
     Algorithm, CycleBreakingStrategy, Direction, Edge, EdgeLabelLayout, EdgeLayout, EdgeRouting,
-    Error, Graph, HierarchyHandling, Label, LayeredOptions, LayoutOptions, LayoutResult,
-    ModelOrderStrategy, Node, NodeKind, NodeLayout, NodePlacementStrategy, Point, Result,
-    SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, Spacing,
+    Error, Graph, HierarchyHandling, Label, LayerConstraint, LayeredOptions, LayoutOptions,
+    LayoutResult, ModelOrderStrategy, Node, NodeKind, NodeLayout, NodePlacementAlignment,
+    NodePlacementStrategy, Point, Result, SelfLoopDistributionStrategy, SelfLoopOrderingStrategy,
+    Spacing,
 };
 
 pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
@@ -134,7 +135,7 @@ fn graph_to_source_input_with_root_context(
                     )),
                     (NodeKind::Leaf, _) => None,
                 },
-                layer_constraint: None,
+                layer_constraint: node.layer_constraint.map(layer_constraint_to_source),
                 port_constraints: None,
                 node_label_placement: match node.kind {
                     NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
@@ -397,6 +398,8 @@ fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
         cycle_breaking_to_source(graph.options.layered.cycle_breaking);
     options.node_placement_strategy =
         node_placement_to_source(graph.options.layered.node_placement);
+    options.node_placement_bk_fixed_alignment =
+        node_placement_alignment_to_source(graph.options.layered.node_placement_alignment);
     options.consider_model_order_strategy = if graph.options.layered.consider_model_order {
         model_order_to_source(graph.options.layered.model_order)
     } else {
@@ -461,6 +464,28 @@ fn node_placement_to_source(
         NodePlacementStrategy::NetworkSimplex => source_port::NodePlacementStrategy::NetworkSimplex,
         NodePlacementStrategy::LinearSegments => source_port::NodePlacementStrategy::LinearSegments,
         NodePlacementStrategy::BrandesKoepf => source_port::NodePlacementStrategy::BrandesKoepf,
+    }
+}
+
+fn node_placement_alignment_to_source(
+    alignment: NodePlacementAlignment,
+) -> source_port::FixedAlignment {
+    match alignment {
+        NodePlacementAlignment::None => source_port::FixedAlignment::None,
+        NodePlacementAlignment::LeftUp => source_port::FixedAlignment::LeftUp,
+        NodePlacementAlignment::RightUp => source_port::FixedAlignment::RightUp,
+        NodePlacementAlignment::LeftDown => source_port::FixedAlignment::LeftDown,
+        NodePlacementAlignment::RightDown => source_port::FixedAlignment::RightDown,
+        NodePlacementAlignment::Balanced => source_port::FixedAlignment::Balanced,
+    }
+}
+
+fn layer_constraint_to_source(layer_constraint: LayerConstraint) -> source_port::LayerConstraint {
+    match layer_constraint {
+        LayerConstraint::First => source_port::LayerConstraint::First,
+        LayerConstraint::FirstSeparate => source_port::LayerConstraint::FirstSeparate,
+        LayerConstraint::Last => source_port::LayerConstraint::Last,
+        LayerConstraint::LastSeparate => source_port::LayerConstraint::LastSeparate,
     }
 }
 
@@ -912,6 +937,7 @@ mod tests {
             parent: None,
             direction: None,
             hierarchy_handling: None,
+            layer_constraint: None,
             label: None,
         }
     }
@@ -1329,6 +1355,7 @@ mod tests {
                     parent: None,
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
+                    layer_constraint: None,
                     label: None,
                 },
                 child,
@@ -1372,6 +1399,7 @@ mod tests {
                     parent: None,
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
+                    layer_constraint: None,
                     label: None,
                 },
                 child,
@@ -1416,6 +1444,7 @@ mod tests {
                     parent: None,
                     direction: Some(Direction::Down),
                     hierarchy_handling: None,
+                    layer_constraint: None,
                     label: None,
                 },
                 child,
@@ -1457,6 +1486,7 @@ mod tests {
                     parent: None,
                     direction: Some(Direction::Right),
                     hierarchy_handling: Some(HierarchyHandling::SeparateChildren),
+                    layer_constraint: None,
                     label: Some(Label {
                         width: 42.0,
                         height: 18.0,

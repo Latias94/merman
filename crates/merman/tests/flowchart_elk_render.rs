@@ -96,6 +96,34 @@ flowchart LR
 }
 
 #[test]
+fn headless_renderer_renders_reported_flowchart_elk_linear_segments_case() {
+    let source = r#"---
+config:
+  layout: elk
+  elk:
+    mergeEdges: true
+    nodePlacementStrategy: LINEAR_SEGMENTS
+---
+flowchart LR
+  A[Start] --> B{Choose Path}
+  B -->|Option 1| C[Path 1]
+  B -->|Option 2| D[Path 2]"#;
+
+    let svg = HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_diagram_id("flowchart-elk-linear-segments-reported")
+        .render_svg_sync(source)
+        .expect("render should succeed")
+        .expect("diagram should be detected");
+
+    assert!(svg.contains("Start"));
+    assert!(svg.contains("Choose Path"));
+    assert!(svg.contains("Path 1"));
+    assert!(svg.contains("Path 2"));
+    assert!(!svg.contains("NaN"));
+}
+
+#[test]
 fn headless_renderer_renders_public_flowchart_elk_node_placement_strategies() {
     for strategy in [
         "BRANDES_KOEPF",
@@ -128,6 +156,107 @@ flowchart TD
         assert!(svg.contains("Gamma"));
         assert!(!svg.contains("NaN"));
     }
+}
+
+#[test]
+fn headless_renderer_renders_public_flowchart_elk_node_placement_alignments() {
+    for alignment in [
+        "NONE",
+        "LEFTUP",
+        "LEFTDOWN",
+        "RIGHTUP",
+        "RIGHTDOWN",
+        "BALANCED",
+    ] {
+        let source = format!(
+            r#"---
+config:
+  layout: elk
+  elk:
+    nodePlacementAlignment: {alignment}
+---
+flowchart TD
+  A[Alpha] --> B[Beta]
+  A --> C[Gamma]"#
+        );
+
+        let diagram_id = format!("flowchart-elk-alignment-{alignment}");
+        let svg = HeadlessRenderer::new()
+            .with_vendored_text_measurer()
+            .with_diagram_id(&diagram_id)
+            .render_svg_sync(&source)
+            .unwrap_or_else(|err| panic!("{alignment} render should succeed: {err}"))
+            .unwrap_or_else(|| panic!("{alignment} diagram should be detected"));
+
+        assert!(svg.contains("Alpha"));
+        assert!(svg.contains("Beta"));
+        assert!(svg.contains("Gamma"));
+        assert!(!svg.contains("NaN"));
+    }
+}
+
+#[test]
+fn headless_renderer_renders_public_flowchart_elk_cycle_breaking_strategies() {
+    for strategy in [
+        "GREEDY",
+        "DEPTH_FIRST",
+        "INTERACTIVE",
+        "MODEL_ORDER",
+        "GREEDY_MODEL_ORDER",
+    ] {
+        let source = format!(
+            r#"---
+config:
+  layout: elk
+  elk:
+    cycleBreakingStrategy: {strategy}
+---
+flowchart TD
+  A[Alpha] --> B[Beta]
+  B --> C[Gamma]
+  C --> A"#
+        );
+
+        let diagram_id = format!("flowchart-elk-cycle-{strategy}");
+        let svg = HeadlessRenderer::new()
+            .with_vendored_text_measurer()
+            .with_diagram_id(&diagram_id)
+            .render_svg_sync(&source)
+            .unwrap_or_else(|err| panic!("{strategy} render should succeed: {err}"))
+            .unwrap_or_else(|| panic!("{strategy} diagram should be detected"));
+
+        assert!(svg.contains("Alpha"));
+        assert!(svg.contains("Beta"));
+        assert!(svg.contains("Gamma"));
+        assert!(!svg.contains("NaN"));
+    }
+}
+
+#[test]
+fn headless_renderer_renders_public_flowchart_elk_alignment_and_entry_config() {
+    let source = r#"---
+config:
+  layout: elk
+  elk:
+    nodePlacementAlignment: BALANCED
+    keepEntryNodeOnTop: true
+---
+flowchart TD
+  A[Entry] --> B[Step]
+  B --> C[Loop]
+  C --> A"#;
+
+    let svg = HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_diagram_id("flowchart-elk-alignment-entry")
+        .render_svg_sync(source)
+        .expect("render should succeed")
+        .expect("diagram should be detected");
+
+    assert!(svg.contains("Entry"));
+    assert!(svg.contains("Step"));
+    assert!(svg.contains("Loop"));
+    assert!(!svg.contains("NaN"));
 }
 
 fn edge_path_d<'a>(svg: &'a str, edge_id: &str) -> &'a str {

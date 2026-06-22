@@ -155,7 +155,9 @@
   "elk": {
     "considerModelOrder": "NODES_AND_EDGES",
     "forceNodeModelOrder": false,
+    "keepEntryNodeOnTop": false,
     "mergeEdges": false,
+    "nodePlacementAlignment": "NONE",
     "nodePlacementStrategy": "BRANDES_KOEPF"
   },
   "er": {
