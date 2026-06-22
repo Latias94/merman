@@ -24,6 +24,7 @@ pub(super) struct ClassClusterEdgeGroupsRenderContext<'a> {
     pub(super) content_ty: f64,
     pub(super) edge_use_html_labels: bool,
     pub(super) look: &'a str,
+    pub(super) hand_drawn_seed: u64,
     pub(super) timing_enabled: bool,
 }
 
@@ -80,6 +81,7 @@ pub(super) fn render_class_cluster_edge_groups(
             bounds_dy,
             edge_use_html_labels: ctx.edge_use_html_labels,
             look: ctx.look,
+            hand_drawn_seed: ctx.hand_drawn_seed,
             timing_enabled: ctx.timing_enabled,
         },
     );
@@ -116,6 +118,7 @@ pub(super) fn render_class_split_edge_groups(
             bounds_dy,
             edge_use_html_labels: ctx.edge_use_html_labels,
             look: ctx.look,
+            hand_drawn_seed: ctx.hand_drawn_seed,
             timing_enabled: ctx.timing_enabled,
         },
     );

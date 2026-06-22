@@ -6,6 +6,7 @@ use super::label::{
     class_html_div_style, render_class_html_label, write_class_svg_edge_text,
     write_class_svg_edge_text_markdown,
 };
+use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
@@ -33,6 +34,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub bounds_dy: f64,
     pub edge_use_html_labels: bool,
     pub look: &'a str,
+    pub hand_drawn_seed: u64,
     pub timing_enabled: bool,
 }
 
@@ -315,11 +317,19 @@ pub(super) fn render_class_edge_groups(
         if let Some(s) = curve_start {
             detail.edge_curve += s.elapsed();
         }
+        let rough_d = if ctx.look == "handDrawn" {
+            class_rough_hand_drawn_stroke_path_for_svg_path(&d, 0.3, ctx.hand_drawn_seed)
+        } else {
+            None
+        };
+        let render_d = rough_d.as_deref().unwrap_or(&d);
         let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
-        if let Some(pb) = d_pb.as_ref() {
+        if rough_d.is_none()
+            && let Some(pb) = d_pb.as_ref()
+        {
             include_path_bounds(content_bounds, pb, ctx.bounds_dx, ctx.bounds_dy);
         } else {
-            include_path_d(content_bounds, &d, ctx.bounds_dx, ctx.bounds_dy);
+            include_path_d(content_bounds, render_d, ctx.bounds_dx, ctx.bounds_dy);
         }
         if let Some(s) = path_bounds_start {
             detail.path_bounds += s.elapsed();
@@ -354,12 +364,15 @@ pub(super) fn render_class_edge_groups(
         } else {
             edge_class_buf.push_str("edge-pattern-solid");
         }
+        if ctx.look == "handDrawn" {
+            edge_class_buf.push_str(" transition");
+        }
         edge_class_buf.push_str(" relation");
 
         let _ = write!(
             out,
             r#"<path d="{}" id="{}-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-            escape_attr_display(&d),
+            escape_attr_display(render_d),
             escape_attr_display(ctx.diagram_id),
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_class_buf),
@@ -383,7 +396,11 @@ pub(super) fn render_class_edge_groups(
                 out.push_str(r#")""#);
             }
         }
-        let _ = write!(out, r#" style="{}""#, class_edge_path_style(e.id.as_str()));
+        let _ = write!(
+            out,
+            r#" style="{}""#,
+            class_edge_path_style(e.id.as_str(), ctx.look == "handDrawn")
+        );
         out.push_str("/>");
     }
     out.push_str("</g>");
@@ -716,8 +733,12 @@ pub(super) fn class_note_edge_pattern() -> &'static str {
     "edge-pattern-dotted"
 }
 
-pub(super) fn class_edge_path_style(edge_id: &str) -> &'static str {
-    if edge_id.starts_with("edgeNote") {
+pub(super) fn class_edge_path_style(edge_id: &str, hand_drawn: bool) -> &'static str {
+    if hand_drawn && edge_id.starts_with("edgeNote") {
+        ";fill: none"
+    } else if hand_drawn {
+        ";"
+    } else if edge_id.starts_with("edgeNote") {
         "fill: none;;;fill: none"
     } else {
         ";;;"

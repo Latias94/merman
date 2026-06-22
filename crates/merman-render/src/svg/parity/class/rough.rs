@@ -1,4 +1,17 @@
+use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
+
+fn class_parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
+    let dash = stroke_dasharray.trim().replace(',', " ");
+    let mut nums = dash
+        .split_whitespace()
+        .filter_map(|t| t.parse::<f64>().ok());
+    match (nums.next(), nums.next()) {
+        (Some(a), Some(b)) => (a, b),
+        (Some(a), None) => (a, a),
+        _ => (0.0, 0.0),
+    }
+}
 
 fn roughjs46_next_f64(seed: &mut u32) -> f64 {
     if *seed == 0 {
@@ -13,8 +26,111 @@ fn roughjs46_diverge_point(seed: &mut u32) -> f64 {
     0.2 + roughjs46_next_f64(seed) * 0.2
 }
 
-pub(super) fn class_rough_seed(_diagram_id: &str, _dom_id: &str) -> u64 {
-    1
+pub(super) fn class_rough_seed(base_seed: u64, _diagram_id: &str, _dom_id: &str) -> u64 {
+    base_seed
+}
+
+pub(super) fn class_rough_hachure_rect_paths(
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    seed: u64,
+) -> Option<(String, String)> {
+    let fill =
+        parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
+    let stroke =
+        parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
+    let (dash0, dash1) = class_parse_stroke_dash_pair(stroke_dasharray);
+    let options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.7)
+        .fill(fill)
+        .fill_style(roughr::core::FillStyle::Hachure)
+        .fill_weight(4.0)
+        .hachure_gap(5.2)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0, dash1])
+        .stroke_line_dash_offset(0.0)
+        .fill_line_dash(vec![0.0, 0.0])
+        .fill_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+
+    let generator = roughr::generator::Generator::default();
+    let drawable = generator.rectangle::<f64>(left, top, width, height, &Some(options));
+    let mut fill_d = None;
+    let mut stroke_d = None;
+
+    for set in drawable.sets {
+        let d = ops_to_svg_path_d(&set);
+        match set.op_set_type {
+            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
+                fill_d = Some(d);
+            }
+            roughr::core::OpSetType::Path => {
+                stroke_d = Some(d);
+            }
+        }
+    }
+
+    Some((fill_d?, stroke_d?))
+}
+
+pub(super) fn class_rough_hand_drawn_line_path(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    seed: u64,
+) -> Option<String> {
+    let stroke =
+        parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
+    let (dash0, dash1) = class_parse_stroke_dash_pair(stroke_dasharray);
+    let mut options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.7)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0, dash1])
+        .stroke_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .build()
+        .ok()?;
+
+    Some(ops_to_svg_path_d(&roughr::renderer::line::<f64>(
+        x1,
+        y1,
+        x2,
+        y2,
+        &mut options,
+    )))
+}
+
+pub(super) fn class_rough_hand_drawn_stroke_path_for_svg_path(
+    svg_path_data: &str,
+    roughness: f32,
+    seed: u64,
+) -> Option<String> {
+    let mut options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(roughness)
+        .disable_multi_stroke(false)
+        .build()
+        .ok()?;
+
+    let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
+    Some(ops_to_svg_path_d(&opset))
 }
 
 pub(super) fn class_rough_line_double_path_and_bounds(

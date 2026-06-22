@@ -182,6 +182,7 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         content_ty,
         edge_use_html_labels: settings.edge_use_html_labels,
         look: settings.look.as_str(),
+        hand_drawn_seed: settings.hand_drawn_seed,
         timing_enabled,
     };
 

@@ -16,6 +16,7 @@ pub(super) struct ClassRenderSettings {
     pub(super) default_node_stroke: String,
     pub(super) security_level_loose: bool,
     pub(super) look: String,
+    pub(super) hand_drawn_seed: u64,
 }
 
 impl ClassRenderSettings {
@@ -40,6 +41,10 @@ impl ClassRenderSettings {
             .and_then(serde_json::Value::as_str)
             == Some("loose");
         let look = config.diagram_look();
+        let hand_drawn_seed = effective_config
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
 
         Self {
             diagram_use_html_labels,
@@ -57,6 +62,7 @@ impl ClassRenderSettings {
             default_node_stroke,
             security_level_loose,
             look,
+            hand_drawn_seed,
         }
     }
 }

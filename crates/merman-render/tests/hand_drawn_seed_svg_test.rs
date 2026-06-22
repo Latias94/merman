@@ -268,6 +268,40 @@ linkStyle 0 stroke:#123456,stroke-width:2px
 }
 
 #[test]
+fn class_svg_hand_drawn_seed_controls_visible_rough_paths() {
+    assert_seeded_svg_contract(
+        "Class",
+        "class-seed",
+        |seed| {
+            source_with_init(
+                json!({
+                    "look": "handDrawn",
+                    "handDrawnSeed": seed,
+                    "themeVariables": {
+                        "mainBkg": "#f8fafc",
+                        "nodeBorder": "#ef4444",
+                        "lineColor": "#0f172a"
+                    }
+                }),
+                r#"classDiagram
+  A --> B
+  class A {
+    +start()
+  }
+"#,
+            )
+        },
+        &[
+            r#"class="rough-node default" id="class-seed-classId-A-0""#,
+            r#"class="edge-thickness-normal edge-pattern-solid transition relation""#,
+            r##"stroke="#f8fafc" stroke-width="4""##,
+            r##"stroke="#ef4444" stroke-width="1.3""##,
+            r#"data-look="handDrawn""#,
+        ],
+    );
+}
+
+#[test]
 fn er_svg_hand_drawn_seed_controls_visible_rough_paths() {
     assert_seeded_svg_contract(
         "ER",

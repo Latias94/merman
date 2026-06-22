@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
-use super::super::{svg_compare_engine, svg_compare_layout_opts};
+use super::super::{svg_compare_engine_with_site_config, svg_compare_layout_opts};
 
 pub(crate) fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -88,7 +88,7 @@ pub(crate) fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         source,
     })?;
 
-    let engine = svg_compare_engine();
+    let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
 
     let mut report = String::new();

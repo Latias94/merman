@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use web_time::Duration;
 
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
-use super::bounds::{include_path_bounds, include_xywh};
+use super::bounds::{include_path_d, include_xywh};
 use super::label::{
     bolder_delta_scale_for_svg, class_html_div_style, class_html_label_max_width_px,
     class_html_label_metrics, class_html_title_metrics, class_svg_label_rect,
@@ -14,6 +14,7 @@ use super::label::{
     write_class_svg_text_markdown,
 };
 use super::rough::{
+    class_rough_hachure_rect_paths, class_rough_hand_drawn_line_path,
     class_rough_line_double_path_and_bounds, class_rough_rect_stroke_path_and_bounds,
     class_rough_seed,
 };
@@ -47,6 +48,8 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
+    pub hand_drawn_seed: u64,
     pub timing_enabled: bool,
 }
 
@@ -55,6 +58,7 @@ pub(super) struct ClassNodeDividerContext<'a> {
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
     pub timing_enabled: bool,
 }
 
@@ -119,6 +123,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
     pub timing_enabled: bool,
 }
 
@@ -133,6 +138,7 @@ pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
+    pub look: &'a str,
     pub timing_enabled: bool,
 }
 
@@ -157,9 +163,11 @@ pub(super) fn render_class_node_shell_open(
 
     if let Some(link) = link {
         out.push_str("<a");
-        out.push_str(r#" data-look=""#);
-        super::super::util::escape_attr_into(out, look);
-        out.push('"');
+        if look != "handDrawn" {
+            out.push_str(r#" data-look=""#);
+            super::super::util::escape_attr_into(out, look);
+            out.push('"');
+        }
         if include_href {
             out.push_str(r#" xlink:href=""#);
             super::super::util::escape_attr_into(out, link);
@@ -176,14 +184,18 @@ pub(super) fn render_class_node_shell_open(
     }
 
     out.push_str(r#"<g class=""#);
-    out.push_str("node ");
+    if look == "handDrawn" {
+        out.push_str("rough-node ");
+    } else {
+        out.push_str("node ");
+    }
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
     super::super::util::escape_attr_into(out, diagram_id);
     out.push('-');
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
-    if link.is_none() {
+    if link.is_none() && look != "handDrawn" {
         out.push_str(r#" data-look=""#);
         super::super::util::escape_attr_into(out, look);
         out.push('"');
@@ -243,28 +255,53 @@ pub(super) fn render_class_node_basic_container(
     let content_bounds = &mut *state.content_bounds;
     let mut stats = ClassNodeRenderStats::default();
 
-    out.push_str(r#"<g class="basic label-container outer-path">"#);
     let w = layout_node.width.max(1.0);
     let h = layout_node.height.max(1.0);
     let left = -w / 2.0;
     let top = -h / 2.0;
-    let rough_seed = class_rough_seed(ctx.diagram_id, &node.dom_id);
-    let _ = write!(
-        out,
-        r#"<path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-        fmt(left),
-        fmt(top),
-        fmt(left + w),
-        fmt(top),
-        fmt(left + w),
-        fmt(top + h),
-        fmt(left),
-        fmt(top + h),
-        escape_attr_display(ctx.node_fill),
-        escape_attr_display(ctx.node_style_attr)
-    );
-    let (stroke_d, stroke_pb) =
-        class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+    let rough_seed = class_rough_seed(ctx.hand_drawn_seed, ctx.diagram_id, &node.dom_id);
+    let hand_drawn = ctx.look == "handDrawn";
+    if hand_drawn {
+        out.push_str(r#"<g class="basic label-container">"#);
+    } else {
+        out.push_str(r#"<g class="basic label-container outer-path">"#);
+        let _ = write!(
+            out,
+            r#"<path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+            fmt(left),
+            fmt(top),
+            fmt(left + w),
+            fmt(top),
+            fmt(left + w),
+            fmt(top + h),
+            fmt(left),
+            fmt(top + h),
+            escape_attr_display(ctx.node_fill),
+            escape_attr_display(ctx.node_style_attr)
+        );
+    }
+
+    let (fill_d, stroke_d) = if hand_drawn {
+        class_rough_hachure_rect_paths(
+            left,
+            top,
+            w,
+            h,
+            ctx.node_fill,
+            ctx.node_stroke,
+            ctx.node_stroke_width.parse::<f32>().unwrap_or(1.3),
+            ctx.node_stroke_dasharray,
+            rough_seed,
+        )
+        .unwrap_or_else(|| {
+            let (stroke_d, _) =
+                class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+            (String::new(), stroke_d)
+        })
+    } else {
+        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+        (String::new(), stroke_d)
+    };
     include_xywh(
         content_bounds,
         position.node_bounds_tx + left,
@@ -273,15 +310,23 @@ pub(super) fn render_class_node_basic_container(
         h,
     );
     let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
-    include_path_bounds(
+    include_path_d(
         content_bounds,
-        &stroke_pb,
+        &stroke_d,
         position.node_bounds_tx,
         position.node_bounds_ty,
     );
     if let Some(s) = path_bounds_start {
         stats.path_bounds += s.elapsed();
         stats.path_bounds_calls += 1;
+    }
+    if hand_drawn {
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/>"#,
+            escape_attr_display(&fill_d),
+            escape_attr_display(ctx.node_fill),
+        );
     }
     let _ = write!(
         out,
@@ -324,11 +369,27 @@ pub(super) fn render_class_node_dividers(
             r#"<g class="divider" style="{}">"#,
             escape_attr_display(ctx.node_style_attr)
         );
-        let (d, d_pb) = class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed);
+        let d = if ctx.look == "handDrawn" {
+            class_rough_hand_drawn_line_path(
+                left,
+                y,
+                right,
+                y + 0.001,
+                ctx.node_stroke,
+                ctx.node_stroke_width.parse::<f32>().unwrap_or(1.3),
+                ctx.node_stroke_dasharray,
+                rough_seed,
+            )
+            .unwrap_or_else(|| {
+                class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed).0
+            })
+        } else {
+            class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed).0
+        };
         let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
-        include_path_bounds(
+        include_path_d(
             content_bounds,
-            &d_pb,
+            &d,
             position.node_bounds_tx,
             position.node_bounds_ty,
         );
@@ -617,6 +678,7 @@ pub(super) fn render_class_html_node_body(
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
+                look: ctx.look,
                 timing_enabled: ctx.timing_enabled,
             },
         )
@@ -1026,6 +1088,7 @@ pub(super) fn render_class_svg_node_body(
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
                 node_stroke_dasharray: ctx.node_stroke_dasharray,
+                look: ctx.look,
                 timing_enabled: ctx.timing_enabled,
             },
         )

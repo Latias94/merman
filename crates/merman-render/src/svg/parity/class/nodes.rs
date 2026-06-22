@@ -454,6 +454,7 @@ fn render_class_split_edges_for_namespace(
         },
         edge_use_html_labels: edge_ctx.edge_use_html_labels,
         look: edge_ctx.look,
+        hand_drawn_seed: edge_ctx.hand_drawn_seed,
         timing_enabled: edge_ctx.timing_enabled,
     };
     render_class_split_edge_groups(
@@ -672,6 +673,7 @@ fn render_class_node_id(
                 line_height: settings.line_height,
                 use_html_labels: settings.diagram_use_html_labels,
                 look: settings.look.as_str(),
+                hand_drawn_seed: settings.hand_drawn_seed,
                 timing_enabled: ctx.timing_enabled,
             },
         );
@@ -743,6 +745,8 @@ fn render_class_node_id(
             node_stroke,
             node_stroke_width,
             node_stroke_dasharray,
+            look: settings.look.as_str(),
+            hand_drawn_seed: settings.hand_drawn_seed,
             timing_enabled: ctx.timing_enabled,
         },
     );
@@ -773,6 +777,7 @@ fn render_class_node_id(
                 node_stroke,
                 node_stroke_width,
                 node_stroke_dasharray,
+                look: settings.look.as_str(),
                 timing_enabled: ctx.timing_enabled,
             },
         );
@@ -798,6 +803,7 @@ fn render_class_node_id(
                 node_stroke,
                 node_stroke_width,
                 node_stroke_dasharray,
+                look: settings.look.as_str(),
                 timing_enabled: ctx.timing_enabled,
             },
         );

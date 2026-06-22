@@ -6,10 +6,12 @@ use web_time::Duration;
 
 use super::super::{escape_attr_display, escape_xml_into, fmt, theme_color};
 use super::ClassSvgNote;
-use super::bounds::{include_path_bounds, include_xywh};
+use super::bounds::{include_path_d, include_xywh};
 use super::label::class_note_html_div_style;
 use super::node::ClassNodeRenderPosition;
-use super::rough::{class_rough_rect_stroke_path_and_bounds, class_rough_seed};
+use super::rough::{
+    class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
+};
 
 pub(super) struct ClassNoteRenderContext<'a> {
     pub diagram_id: &'a str,
@@ -19,6 +21,7 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub line_height: f64,
     pub use_html_labels: bool,
     pub look: &'a str,
+    pub hand_drawn_seed: u64,
     pub timing_enabled: bool,
 }
 
@@ -98,13 +101,8 @@ pub(super) fn render_class_note_node(
     } else {
         -label_h / 2.0 - crate::class::class_svg_create_text_bbox_y_offset_px(ctx.text_style)
     };
-    let (note_stroke_d, note_stroke_pb) = class_rough_rect_stroke_path_and_bounds(
-        left,
-        top,
-        w,
-        h,
-        class_rough_seed(ctx.diagram_id, &note.id),
-    );
+    let hand_drawn = ctx.look == "handDrawn";
+    let rough_seed = class_rough_seed(ctx.hand_drawn_seed, ctx.diagram_id, &note.id);
     include_xywh(
         content_bounds,
         position.node_bounds_tx + left,
@@ -120,9 +118,33 @@ pub(super) fn render_class_note_node(
         label_h,
     );
     let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
-    include_path_bounds(
+    let note_fill = theme_color(ctx.effective_config, "noteBkgColor", "#fff5ad");
+    let note_stroke = theme_color(ctx.effective_config, "noteBorderColor", "#aaaa33");
+    let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
+    let (note_fill_d, note_stroke_d) = if hand_drawn {
+        class_rough_hachure_rect_paths(
+            left,
+            top,
+            w,
+            h,
+            &note_fill,
+            &note_stroke,
+            1.3,
+            "0 0",
+            rough_seed,
+        )
+        .unwrap_or_else(|| {
+            let (stroke_d, _) =
+                class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+            (String::new(), stroke_d)
+        })
+    } else {
+        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+        (String::new(), stroke_d)
+    };
+    include_path_d(
         content_bounds,
-        &note_stroke_pb,
+        &note_stroke_d,
         position.node_bounds_tx,
         position.node_bounds_ty,
     );
@@ -131,19 +153,30 @@ pub(super) fn render_class_note_node(
         stats.path_bounds_calls += 1;
     }
 
-    let note_fill = theme_color(ctx.effective_config, "noteBkgColor", "#fff5ad");
-    let note_stroke = theme_color(ctx.effective_config, "noteBorderColor", "#aaaa33");
-    let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
-    if ctx.use_html_labels {
-        let note_div_style = class_note_html_div_style(label_w, 200);
+    let note_node_class = if hand_drawn {
+        "rough-node undefined"
+    } else {
+        "node undefined"
+    };
+    let note_data_look_attr = if hand_drawn {
+        String::new()
+    } else {
+        format!(r#" data-look="{}""#, escape_attr_display(ctx.look))
+    };
+    let mut note_shape = String::new();
+    if hand_drawn {
         let _ = write!(
-            out,
-            r##"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel markdown-node-label"><p>"##,
-            escape_attr_display(ctx.diagram_id),
-            escape_attr_display(&note.id),
-            escape_attr_display(ctx.look),
-            fmt(position.node_tx),
-            fmt(position.node_ty),
+            &mut note_shape,
+            r##"<g class="basic label-container"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
+            escape_attr_display(&note_fill_d),
+            escape_attr_display(&note_fill),
+            escape_attr_display(&note_stroke_d),
+            escape_attr_display(&note_stroke),
+        );
+    } else {
+        let _ = write!(
+            &mut note_shape,
+            r##"<g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g>"##,
             fmt(left),
             fmt(top),
             fmt(left + w),
@@ -157,6 +190,21 @@ pub(super) fn render_class_note_node(
             escape_attr_display(&note_stroke_d),
             escape_attr_display(&note_stroke),
             escape_attr_display(&note_shape_style),
+        );
+    }
+
+    if ctx.use_html_labels {
+        let note_div_style = class_note_html_div_style(label_w, 200);
+        let _ = write!(
+            out,
+            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="label noteLabel" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel markdown-node-label"><p>"##,
+            note_node_class,
+            escape_attr_display(ctx.diagram_id),
+            escape_attr_display(&note.id),
+            note_data_look_attr,
+            fmt(position.node_tx),
+            fmt(position.node_ty),
+            note_shape,
             fmt(label_x),
             fmt(label_y),
             fmt(label_w),
@@ -179,25 +227,14 @@ pub(super) fn render_class_note_node(
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(
             out,
-            r##"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
+            r##"<g class="{}" id="{}-{}"{} transform="translate({}, {})">{}<g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
+            note_node_class,
             escape_attr_display(ctx.diagram_id),
             escape_attr_display(&note.id),
-            escape_attr_display(ctx.look),
+            note_data_look_attr,
             fmt(position.node_tx),
             fmt(position.node_ty),
-            fmt(left),
-            fmt(top),
-            fmt(left + w),
-            fmt(top),
-            fmt(left + w),
-            fmt(top + h),
-            fmt(left),
-            fmt(top + h),
-            escape_attr_display(&note_fill),
-            escape_attr_display(&note_shape_style),
-            escape_attr_display(&note_stroke_d),
-            escape_attr_display(&note_stroke),
-            escape_attr_display(&note_shape_style),
+            note_shape,
             escape_attr_display(note_label_style),
             fmt(label_x),
             fmt(label_y),

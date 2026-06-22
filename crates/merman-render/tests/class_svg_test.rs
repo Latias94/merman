@@ -195,6 +195,100 @@ Animal --> Keeper
 }
 
 #[test]
+fn class_svg_hand_drawn_basic_node_uses_rough_wrapper_and_hachure_paths() {
+    let svg = render_class_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"mainBkg": "#f8fafc", "nodeBorder": "#ef4444"}}}%%
+classDiagram
+  class Class10
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"<g class="rough-node default" id="merman-classId-Class10-0""#),
+        "hand-drawn class node should use Mermaid's rough-node wrapper class: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"<g class="node default" id="merman-classId-Class10-0""#),
+        "hand-drawn class node should not keep the classic node wrapper class: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<g class="basic label-container"><path d=""#)
+            && svg.contains(
+                r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+            )
+            && svg.contains(
+                r##"stroke="#ef4444" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##
+            ),
+        "hand-drawn class node should render RoughJS hachure fill and outline paths: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"<g class="basic label-container outer-path"><path d=""#),
+        "hand-drawn class node should not use the classic outer-path shape group: {svg}"
+    );
+}
+
+#[test]
+fn class_svg_hand_drawn_inline_styles_reach_rough_paths_and_labels() {
+    let svg = render_class_svg_from_text(
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+classDiagram
+  class Class10
+  style Class10 fill:#f9f,stroke:#333,stroke-width:4px,color:white
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="rough-node default""#)
+            && svg.contains(r##"stroke="#f9f" stroke-width="4" fill="none""##)
+            && svg.contains(r##"stroke="#333" stroke-width="4" fill="none" stroke-dasharray="0 0" style="fill:#f9f;stroke:#333;stroke-width:4px;color:white""##)
+            && svg.contains(r##"style="fill:#f9f;stroke:#333;stroke-width:4px;color:white"><p>Class10</p>"##),
+        "inline style should reach hand-drawn class rough paths and label span: {svg}"
+    );
+}
+
+#[test]
+fn class_svg_hand_drawn_notes_use_rough_wrapper_and_note_hachure_paths() {
+    let svg = render_class_svg_from_text(
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"noteBkgColor": "#fff5ad", "noteBorderColor": "#aaaa33"}}}%%
+classDiagram
+  note "hello"
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"<g class="rough-node undefined" id="merman-note0""#),
+        "hand-drawn class note should use Mermaid's rough-node wrapper class: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<g class="basic label-container"><path d=""#)
+            && svg.contains(
+                r##"stroke="#fff5ad" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+            )
+            && svg.contains(
+                r##"stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"##
+            ),
+        "hand-drawn class note should render note-colored hachure fill and outline paths: {svg}"
+    );
+}
+
+#[test]
+fn class_svg_hand_drawn_edges_use_rough_transition_class() {
+    let svg = render_class_svg_from_text(
+        r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+classDiagram
+  A --> B
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"class="edge-thickness-normal edge-pattern-solid transition relation""#)
+            && svg.contains(r#"data-look="handDrawn""#),
+        "hand-drawn class relations should use RoughJS transition edge DOM: {svg}"
+    );
+}
+
+#[test]
 fn class_svg_security_level_controls_unsafe_click_href_rendering() {
     let strict = render_class_svg_from_text(
         r#"%%{init: {"securityLevel": "strict"}}%%
