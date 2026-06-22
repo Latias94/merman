@@ -807,7 +807,8 @@ class Merman {
   List<MermanDiagramFamilyCapability> diagramFamilyCapabilities() {
     return _diagramFamilyCapabilitiesCache ??= List.unmodifiable(
       _decodeJsonCapabilityList(
-        _decodeText(_bindings.metadata(_bindings.diagramFamilyCapabilitiesJson)),
+        _decodeText(
+            _bindings.metadata(_bindings.diagramFamilyCapabilitiesJson)),
       ),
     );
   }
@@ -863,18 +864,16 @@ class Merman {
   ) {
     final decoded = jsonDecode(text);
     if (decoded is List) {
-      return decoded
-          .map((item) {
-            if (item is Map<String, Object?>) {
-              return MermanDiagramFamilyCapability.fromJson(item);
-            }
-            throw const MermanException(
-              code: -1,
-              codeName: 'DART_JSON_TYPE_ERROR',
-              message: 'expected diagram family capability JSON object',
-            );
-          })
-          .toList(growable: false);
+      return decoded.map((item) {
+        if (item is Map<String, Object?>) {
+          return MermanDiagramFamilyCapability.fromJson(item);
+        }
+        throw const MermanException(
+          code: -1,
+          codeName: 'DART_JSON_TYPE_ERROR',
+          message: 'expected diagram family capability JSON object',
+        );
+      }).toList(growable: false);
     }
     throw const MermanException(
       code: -1,
