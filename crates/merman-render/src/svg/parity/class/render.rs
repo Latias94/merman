@@ -287,7 +287,9 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         detail.nodes += s.elapsed();
     }
 
-    push_class_gradient(&mut out, diagram_id, effective_config);
+    if settings.look != "handDrawn" {
+        push_class_gradient(&mut out, diagram_id, effective_config);
+    }
 
     drop(render_guard);
     let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));

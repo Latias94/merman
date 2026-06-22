@@ -363,6 +363,11 @@ fn re_gitgraph_dynamic_commit_id() -> &'static Regex {
     ONCE.get_or_init(|| Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").unwrap())
 }
 
+fn re_class_edge_note_id() -> &'static Regex {
+    static ONCE: OnceLock<Regex> = OnceLock::new();
+    ONCE.get_or_init(|| Regex::new(r"\bedgeNote\d+\b").unwrap())
+}
+
 fn normalize_gitgraph_dynamic_commit_ids(s: &str) -> String {
     re_gitgraph_dynamic_commit_id()
         .replace_all(s, "$1-<dynamic>")
@@ -379,6 +384,12 @@ fn normalize_identifier_tokens(s: &str) -> String {
 fn normalize_mermaid_generated_id_only(s: &str) -> String {
     re_mermaid_generate_id_capture()
         .replace_all(s, "id-<id>-$1")
+        .to_string()
+}
+
+fn normalize_class_edge_note_ids(s: &str) -> String {
+    re_class_edge_note_id()
+        .replace_all(s, "edgeNote<n>")
         .to_string()
 }
 
@@ -519,6 +530,19 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             false
         }
 
+        fn is_class_diagram(n: roxmltree::Node<'_, '_>) -> bool {
+            for a in n.ancestors() {
+                if a.is_element() && a.tag_name().name() == "svg" {
+                    return a
+                        .attribute("aria-roledescription")
+                        .is_some_and(|v| v == "class")
+                        || a.attribute("class")
+                            .is_some_and(|c| c.split_whitespace().any(|t| t == "classDiagram"));
+                }
+            }
+            false
+        }
+
         fn is_architecture_icon_content(n: roxmltree::Node<'_, '_>) -> bool {
             let mut svg_count = 0;
             for a in n.ancestors() {
@@ -548,6 +572,14 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         fn has_class_token(n: roxmltree::Node<'_, '_>, token: &str) -> bool {
             n.attribute("class")
                 .is_some_and(|c| c.split_whitespace().any(|t| t == token))
+        }
+
+        fn is_class_rough_node_path(n: roxmltree::Node<'_, '_>) -> bool {
+            n.tag_name().name() == "path"
+                && is_class_diagram(n)
+                && n.ancestors().any(|a| {
+                    a.is_element() && a.tag_name().name() == "g" && has_class_token(a, "rough-node")
+                })
         }
 
         fn is_architecture_edge_arrow(n: roxmltree::Node<'_, '_>) -> bool {
@@ -745,6 +777,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                             // semantic attributes.
                             val = "<geom>".to_string();
                             normalized_geom = true;
+                        } else if key == "d" && is_class_rough_node_path(n) {
+                            // Mermaid's hand-drawn class nodes are emitted by RoughJS. The exact
+                            // bezier payload changes with rough generation details even when the
+                            // semantic node structure and styling match, so keep this scoped to
+                            // classDiagram rough-node geometry only.
+                            val = "<class-rough-node-geom>".to_string();
+                            normalized_geom = true;
                         } else if key == "d" && is_architecture_service_node_bkg_path(n) {
                             // Architecture fallback service background paths differ between
                             // historical fixtures and Mermaid 11.15's current `svgDraw.ts`
@@ -832,6 +871,12 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             ) && is_sankey_diagram(n)
             {
                 val = normalize_sankey_scoped_dom_value(n, &val);
+            }
+            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && is_class_diagram(n)
+                && matches!(key.as_str(), "id" | "data-id")
+            {
+                val = normalize_class_edge_note_ids(&val);
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);
@@ -1610,6 +1655,46 @@ mod tests {
             dom.children[0].attrs.get("d").map(|s| s.as_str()),
             Some("<geom>")
         );
+    }
+
+    #[test]
+    fn parity_masks_class_hand_drawn_rough_node_path_geometry() {
+        let upstream = r#"<svg class="classDiagram" aria-roledescription="class"><g class="rough-node default"><path d="M0,0 L10,10"/></g></svg>"#;
+        let local = r#"<svg class="classDiagram" aria-roledescription="class"><g class="rough-node default"><path d="M0,0 C1,2 3,4 5,6"/></g></svg>"#;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(upstream_dom, local_dom);
+        assert_eq!(
+            upstream_dom.children[0].children[0]
+                .attrs
+                .get("d")
+                .map(|s| s.as_str()),
+            Some("<class-rough-node-geom>")
+        );
+    }
+
+    #[test]
+    fn parity_normalizes_class_edge_note_dom_ids() {
+        let upstream = r#"<svg class="classDiagram" aria-roledescription="class"><g><path id="edgeNote2" data-id="edgeNote2"/></g></svg>"#;
+        let local = r#"<svg class="classDiagram" aria-roledescription="class"><g><path id="edgeNote1" data-id="edgeNote1"/></g></svg>"#;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(upstream_dom, local_dom);
+    }
+
+    #[test]
+    fn parity_keeps_non_class_rough_node_path_structure() {
+        let upstream = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="rough-node default"><path d="M0,0 L10,10"/></g></svg>"#;
+        let local = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="rough-node default"><path d="M0,0 C1,2 3,4 5,6"/></g></svg>"#;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+
+        assert_ne!(upstream_dom, local_dom);
     }
 
     #[test]

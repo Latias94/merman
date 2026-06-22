@@ -16,6 +16,9 @@ use std::fmt::Write as _;
 use super::super::{escape_attr_display, escape_xml_into, fmt, json_stringify_points_into};
 use rustc_hash::FxHashMap;
 
+const CLASS_HAND_DRAWN_EDGE_STROKE: &str = "#000";
+const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
+
 pub(super) struct ClassEdgeGroupsRenderState<'a> {
     pub out: &'a mut String,
     pub content_bounds: &'a mut Option<Bounds>,
@@ -374,16 +377,25 @@ pub(super) fn render_class_edge_groups(
         } else {
             format!("{}-{}", ctx.diagram_id, edge_dom_id_buf)
         };
+        let _ = write!(out, r#"<path d="{}""#, escape_attr_display(render_d));
+        if ctx.look == "handDrawn" {
+            let _ = write!(
+                out,
+                r#" stroke="{}" stroke-width="{}" fill="none""#,
+                CLASS_HAND_DRAWN_EDGE_STROKE, CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH,
+            );
+        }
         let _ = write!(
             out,
-            r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-            escape_attr_display(render_d),
+            r#" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
             escape_attr_display(&edge_id_attr),
             escape_attr_display(&edge_class_buf),
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_points_b64_buf),
-            escape_attr_display(ctx.look),
         );
+        if ctx.look != "handDrawn" {
+            let _ = write!(out, r#" data-look="{}""#, escape_attr_display(ctx.look));
+        }
         if !e.id.starts_with("edgeNote")
             && let Some(rel) = ctx.relations_by_id.get(e.id.as_str())
         {
@@ -482,6 +494,7 @@ pub(super) fn render_class_edge_groups(
                         lbl.y + ctx.content_ty,
                         start_text,
                         true,
+                        ctx.look == "handDrawn",
                     );
                 }
             }
@@ -527,6 +540,7 @@ pub(super) fn render_class_edge_groups(
                         lbl.y + ctx.content_ty,
                         end_text,
                         false,
+                        ctx.look == "handDrawn",
                     );
                 }
             }
@@ -659,6 +673,7 @@ pub(super) fn render_class_edge_terminal_group(
     y: f64,
     text: &str,
     is_start_terminal: bool,
+    hand_drawn: bool,
 ) {
     let decoded = decode_entities_minimal_cow(text);
     let trimmed = decoded.trim();
@@ -666,30 +681,51 @@ pub(super) fn render_class_edge_terminal_group(
         return;
     }
     let (width, height) = class_terminal_box_size(trimmed);
+    let foreign_object_size = if hand_drawn {
+        format!(
+            r#"style="width: {}px; height: {}px;""#,
+            fmt(width),
+            fmt(height)
+        )
+    } else {
+        format!(r#"width="{}" height="{}""#, fmt(width), fmt(height))
+    };
     if is_start_terminal {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel"><p>"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject {}><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
             fmt(x),
             fmt(y),
-            fmt(width),
-            fmt(height),
+            foreign_object_size,
             class_text_overrides::class_html_span_padding_right_px(),
         );
+        if !hand_drawn {
+            out.push_str("<p>");
+        }
         escape_xml_into(out, trimmed);
-        out.push_str("</p></span></div></foreignObject></g></g>");
+        if !hand_drawn {
+            out.push_str("</p>");
+        }
+        out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel"><p>"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><foreignObject {}><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
             fmt(x),
             fmt(y),
-            fmt(width),
-            fmt(height),
+            foreign_object_size,
             class_text_overrides::class_html_span_padding_right_px(),
         );
+        if !hand_drawn {
+            out.push_str("<p>");
+        }
         escape_xml_into(out, trimmed);
-        out.push_str(r#"</p></span></div></foreignObject><g class="inner" transform="translate(0, 0)"/></g>"#);
+        if !hand_drawn {
+            out.push_str("</p>");
+        }
+        out.push_str(
+            r#"</span></div></foreignObject><g class="inner" transform="translate(0, 0)"/></g>"#,
+        );
     }
 }
 

@@ -291,7 +291,8 @@ classDiagram
 
     assert!(
         svg.contains(r#"class="edge-thickness-normal edge-pattern-solid transition relation""#)
-            && svg.contains(r#"data-look="handDrawn""#),
+            && svg.contains(r##"stroke="#000" stroke-width="1" fill="none""##)
+            && !svg.contains(r#"data-look="handDrawn""#),
         "hand-drawn class relations should use RoughJS transition edge DOM: {svg}"
     );
 }
@@ -883,6 +884,23 @@ fn class_svg_cardinality_terminals_keep_mermaid_sizes_and_offsets() {
         svg.contains(r#"<foreignObject width="36" height="12">"#)
             && svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#),
         "expected `many` cardinality terminal to keep Mermaid width sizing"
+    );
+}
+
+#[test]
+fn class_svg_hand_drawn_cardinality_terminals_match_mermaid_xhtml() {
+    let svg = render_class_svg_from_text(
+        r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+classDiagram
+  A "1" --> "many" B
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"<foreignObject style="width: 9px; height: 12px;">"#)
+            && svg.contains(r#"<span class="edgeLabel">1</span>"#)
+            && !svg.contains(r#"<span class="edgeLabel"><p>1</p></span>"#),
+        "hand-drawn class cardinality terminals should match Mermaid's XHTML shape: {svg}"
     );
 }
 
