@@ -35,7 +35,7 @@ Capability levels:
 
 | Config field | Accepted | Merged | Consumed | Rendered | Evidence / residual |
 | --- | --- | --- | --- | --- | --- |
-| `secure` | Yes | Yes | Yes | Config contract only | Directive/frontmatter sanitization removes attempted `secure` mutations, and `secure_filtered_overrides_removes_default_secure_keys_recursively` proves Mermaid's default six-key secure list prevents diagram config from changing those protected fields anywhere in the override object. `default_secure_keys_protect_only_upstream_default_secure_fields` proves diagram-local `themeVariables`, `themeCSS`, and font fields remain effective by default like upstream Mermaid; `site_config_secure_keys_protect_effective_config_from_diagram_config` proves custom site `secure` lists can still lock matching keys while preserving `ParseMetadata.config` as user-authored evidence. Imported upstream fixtures that relied on external Cypress render config now use `fixtures/_config/site_config_overrides.json` as harness-level site config instead of depending on diagram-local protected-key overrides. |
+| `secure` | Yes | Yes | Yes | Config contract only | Directive/frontmatter sanitization removes attempted `secure` mutations, and `secure_filtered_overrides_removes_default_secure_keys_recursively` proves the local default secure list prevents diagram config from changing protected fields anywhere in the override object. `default_secure_keys_protect_effective_config_from_diagram_config` proves diagram-local `themeVariables`, `themeCSS`, and font fields are retained in `ParseMetadata.config` but filtered out of `effective_config` by default; site config can explicitly opt into legacy Mermaid init compatibility when parity fixtures need it. `site_config_secure_keys_protect_effective_config_from_diagram_config` proves custom site `secure` lists can still lock matching keys while preserving `ParseMetadata.config` as user-authored evidence. Imported upstream fixtures that relied on external Cypress render config now use `fixtures/_config/site_config_overrides.json` as harness-level site config instead of depending on diagram-local protected-key overrides. |
 | `theme` | Yes | Yes | Yes | Yes | `render_svg_accepts_external_site_config`, `config_file_theme_overrides_cli_theme`, `config_file_theme_variables_and_theme_css_affect_svg`, `theme_renderability_smoke.rs`; family-specific coverage is tracked in `docs/rendering/diagram-theme-coverage.md`. |
 | `themeVariables` | Yes | Yes | Yes | Yes | Shared render config helpers, `crates/merman-render/src/svg/parity/theme/*`, family CSS/style modules, `theme_renderability_smoke.rs`, family SVG tests, and `config_file_theme_variables_and_theme_css_affect_svg`. Tests assert visible SVG style values that consume variables. |
 | `themeCSS` | Yes | Yes | Yes | Yes | Scoped CSS postprocessor in `crates/merman-render/src/svg/parity.rs`; `render_svg_accepts_external_site_config` and `config_file_theme_variables_and_theme_css_affect_svg` assert scoped CSS plus `data-merman-postprocess="scoped-css"`. Coverage proves scoping/injection, not arbitrary CSS cascade parity for every selector. |
@@ -62,10 +62,11 @@ Capability levels:
   lane for public render entry points. The dedicated ELK probe gate covers every upstream
   `flowchart-elk.spec.js` exact render call and all 57 unique layout bodies; broad SVG parity
   admits the registered ELK probes when the source-backed backend is active.
-- Mermaid default `secure` follows the upstream six-key schema list. Custom site `secure` lists
-  are also enforced against diagram config when producing `effective_config`, so embedders can
-  explicitly lock additional fields such as `themeVariables`, `themeCSS`, or fonts. Imported
-  upstream fixtures that need non-default host config use
+- Mermaid's local default `secure` list intentionally extends the upstream schema list with
+  CSS-bearing fields such as `themeVariables`, `themeCSS`, and fonts. Custom site `secure` lists
+  are enforced against diagram config when producing `effective_config`, and trusted parity
+  harnesses can explicitly opt into the upstream six-key behavior when they need legacy init
+  config compatibility. Imported upstream fixtures that need non-default host config use
   explicit test-harness site config in `fixtures/_config/site_config_overrides.json`; keep new
   imported render options there rather than reintroducing diagram-local protected-key overrides.
 - `look` is not a universal all-diagram contract. Renderers should only claim support after tests

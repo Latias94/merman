@@ -173,6 +173,12 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
         );
     }
 
+    if diagram == "flowchart" && stem.starts_with("local_flowchart_elk_hardening_") {
+        return Some(
+            "local Flowchart ELK hardening fixture is covered by semantic/layout snapshots and has no upstream SVG baseline",
+        );
+    }
+
     None
 }
 
@@ -487,6 +493,15 @@ mod tests {
                 "upstream_html_demos_flowchart_flowchart_040_katex.svg"
             ),
             None
+        );
+        assert_eq!(
+            upstream_svg_baseline_skip_reason(
+                "flowchart",
+                "local_flowchart_elk_hardening_compound_self_loops_003.mmd"
+            ),
+            Some(
+                "local Flowchart ELK hardening fixture is covered by semantic/layout snapshots and has no upstream SVG baseline"
+            )
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
