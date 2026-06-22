@@ -38,7 +38,10 @@ enum MermanStatus {
   panic(8, 'MERMAN_PANIC'),
 
   /// An unexpected internal error occurred.
-  internalError(9, 'MERMAN_INTERNAL_ERROR');
+  internalError(9, 'MERMAN_INTERNAL_ERROR'),
+
+  /// A source, layout-model, label, or SVG resource budget was exceeded.
+  resourceLimitExceeded(10, 'MERMAN_RESOURCE_LIMIT_EXCEEDED');
 
   const MermanStatus(this.code, this.codeName);
 

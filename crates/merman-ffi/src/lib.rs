@@ -1213,6 +1213,31 @@ mod tests {
     }
 
     #[test]
+    fn render_resource_limit_error_uses_dedicated_status() {
+        let result = call_render(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "resources": { "max_source_bytes": 4 } }"#,
+        );
+
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::ResourceLimitExceeded.code());
+            let error = take_error(result);
+            assert_eq!(
+                error["code_name"],
+                BindingStatus::ResourceLimitExceeded.code_name()
+            );
+            assert!(
+                error["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("max_source_bytes")
+            );
+        } else {
+            expect_render_feature_error(result);
+        }
+    }
+
+    #[test]
     fn unsupported_ratex_without_feature_returns_unsupported_format() {
         let result = call_render(
             b"flowchart TD\nA[Hello]",

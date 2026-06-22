@@ -101,6 +101,7 @@ pub(crate) fn render_plan_for_mmdc(
         height: export.height,
         svg_id: export.svg_id.clone(),
         hand_drawn_seed: export.hand_drawn_seed,
+        resource_profile: export.resource_profile,
     };
 
     apply_official_defaults(&mut parse, &mut render);
@@ -161,6 +162,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
             height: args.export.height,
             svg_id: args.export.svg_id.clone(),
             hand_drawn_seed: args.export.hand_drawn_seed,
+            resource_profile: args.export.resource_profile,
         },
         scale: args.export.scale.unwrap_or(1.0),
         raster: RasterCliOptions::from_export(&args.export)?,

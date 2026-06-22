@@ -68,6 +68,9 @@ pub(crate) fn layout_options(
         // Mermaid parity for some diagrams relies on manatee-backed layout engines.
         use_manatee_layout: true,
         flowchart_elk_backend: render.flowchart_elk_backend.into(),
+        resource_limits: merman::render::RenderResourceLimits::for_profile(
+            render.resource_profile.into(),
+        ),
     }
 }
 

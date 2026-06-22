@@ -753,6 +753,39 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
+    fn resource_limit_error_uses_dedicated_binding_status() {
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "resources": { "max_source_bytes": 4 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(err.message().contains("max_source_bytes"), "{err:?}");
+    }
+
+    #[test]
+    fn invalid_resource_options_return_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "resources": { "profile": "unsafe-fast" } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("resources.profile"), "{err:?}");
+
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "resources": { "max_svg_bytes": 0 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("resources.max_svg_bytes"), "{err:?}");
+    }
+
+    #[test]
     fn render_svg_accepts_explicit_flowchart_elk_backend_option() {
         let svg = String::from_utf8(
             render_svg(

@@ -2,6 +2,10 @@
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::model::LayoutedDiagram;
+pub use merman_render::resources::{
+    FlowchartComplexity, RenderResourceLimits, RenderResourceProfile, ResourceLimitExceeded,
+    ResourceLimitPhase,
+};
 pub use merman_render::svg::{
     CompiledHostTheme, CompiledHostThemeOutput, CssOverridePolicy, CssOverridePostprocessor,
     DropNativeDuplicateFallbacksPostprocessor, ForeignObjectFallbackPostprocessor,
@@ -35,6 +39,10 @@ pub enum HeadlessError {
 }
 
 pub type Result<T> = std::result::Result<T, HeadlessError>;
+
+fn resource_limit_error(err: ResourceLimitExceeded) -> HeadlessError {
+    RenderError::ResourceLimitExceeded(err).into()
+}
 
 /// Converts an arbitrary string into a conservative SVG `id` token suitable for embedding
 /// multiple Mermaid diagrams in the same UI tree.
@@ -492,6 +500,59 @@ mod svg_pipeline_tests {
         assert!(svg.contains("id=host-style"));
     }
 
+    #[test]
+    fn render_svg_rejects_source_over_resource_limit_before_parse() {
+        let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
+            max_source_bytes: Some(4),
+            ..RenderResourceLimits::unbounded_for_trusted_input()
+        });
+
+        let err = renderer
+            .render_svg_sync("flowchart TD\nA --> B")
+            .unwrap_err();
+
+        let HeadlessError::Render(RenderError::ResourceLimitExceeded(limit)) = err else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::Source);
+        assert_eq!(limit.limit, "max_source_bytes");
+    }
+
+    #[test]
+    fn render_svg_with_pipeline_rejects_expanded_svg_over_resource_limit() {
+        struct AppendingPass;
+
+        impl SvgPostprocessor for AppendingPass {
+            fn name(&self) -> &'static str {
+                "append"
+            }
+
+            fn process<'a>(
+                &self,
+                svg: Cow<'a, str>,
+                _ctx: &SvgPostprocessContext<'_>,
+            ) -> RenderResult<Cow<'a, str>> {
+                Ok(Cow::Owned(format!("{svg}{}", "x".repeat(128 * 1024))))
+            }
+        }
+
+        let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
+            max_svg_bytes: Some(64 * 1024),
+            ..RenderResourceLimits::unbounded_for_trusted_input()
+        });
+        let pipeline = SvgPipeline::parity().with_postprocessor(AppendingPass);
+
+        let err = renderer
+            .render_svg_with_pipeline_sync("flowchart TD\nA --> B", &pipeline)
+            .unwrap_err();
+
+        let HeadlessError::Render(RenderError::ResourceLimitExceeded(limit)) = err else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgPostprocess);
+        assert_eq!(limit.limit, "max_svg_bytes");
+    }
+
     #[cfg(feature = "raster")]
     #[test]
     fn render_png_sync_uses_renderer_owned_pipeline_before_encoding() {
@@ -862,6 +923,15 @@ impl HeadlessRenderer {
         self
     }
 
+    pub fn with_resource_limits(mut self, limits: RenderResourceLimits) -> Self {
+        self.layout.resource_limits = limits;
+        self
+    }
+
+    pub fn with_resource_profile(self, profile: RenderResourceProfile) -> Self {
+        self.with_resource_limits(RenderResourceLimits::for_profile(profile))
+    }
+
     pub fn with_svg_options(mut self, svg: SvgRenderOptions) -> Self {
         self.svg = svg;
         self
@@ -918,10 +988,12 @@ impl HeadlessRenderer {
     }
 
     pub fn render_layouted_svg_sync(&self, diagram: &LayoutedDiagram) -> Result<String> {
-        self.apply_default_svg_pipeline(
-            render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), &self.svg)?,
-            &diagram.meta,
-        )
+        let svg = render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), &self.svg)?;
+        self.layout
+            .resource_limits
+            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)
+            .map_err(resource_limit_error)?;
+        self.apply_default_svg_pipeline(svg, &diagram.meta)
     }
 
     pub fn render_layouted_svg_sync_with(
@@ -929,10 +1001,12 @@ impl HeadlessRenderer {
         diagram: &LayoutedDiagram,
         svg: &SvgRenderOptions,
     ) -> Result<String> {
-        self.apply_default_svg_pipeline(
-            render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), svg)?,
-            &diagram.meta,
-        )
+        let out = render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), svg)?;
+        self.layout
+            .resource_limits
+            .check_svg_bytes(&out, ResourceLimitPhase::SvgOutput)
+            .map_err(resource_limit_error)?;
+        self.apply_default_svg_pipeline(out, &diagram.meta)
     }
 
     pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {
@@ -1022,7 +1096,12 @@ impl HeadlessRenderer {
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
             .with_diagram_type(meta.diagram_type.clone())
             .with_optional_diagram_title(meta.title.clone());
-        apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata)
+        let out = apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata)?;
+        self.layout
+            .resource_limits
+            .check_svg_bytes(&out, ResourceLimitPhase::SvgPostprocess)
+            .map_err(resource_limit_error)?;
+        Ok(out)
     }
 
     #[cfg(feature = "raster")]

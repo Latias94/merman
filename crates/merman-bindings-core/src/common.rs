@@ -15,6 +15,7 @@ pub enum BindingStatus {
     UnsupportedFormat = 7,
     Panic = 8,
     InternalError = 9,
+    ResourceLimitExceeded = 10,
 }
 
 impl BindingStatus {
@@ -34,6 +35,7 @@ impl BindingStatus {
             Self::UnsupportedFormat => "MERMAN_UNSUPPORTED_FORMAT",
             Self::Panic => "MERMAN_PANIC",
             Self::InternalError => "MERMAN_INTERNAL_ERROR",
+            Self::ResourceLimitExceeded => "MERMAN_RESOURCE_LIMIT_EXCEEDED",
         }
     }
 }
@@ -103,6 +105,8 @@ pub(crate) struct BindingOptions {
     #[cfg(feature = "render")]
     pub(crate) layout: Option<LayoutOptionsJson>,
     #[cfg(feature = "render")]
+    pub(crate) resources: Option<ResourceOptionsJson>,
+    #[cfg(feature = "render")]
     pub(crate) svg: Option<SvgOptionsJson>,
 }
 
@@ -120,6 +124,18 @@ pub(crate) struct LayoutOptionsJson {
     pub(crate) text_measurer: Option<String>,
     pub(crate) math_renderer: Option<String>,
     pub(crate) flowchart_elk_backend: Option<String>,
+}
+
+#[cfg(feature = "render")]
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct ResourceOptionsJson {
+    pub(crate) profile: Option<String>,
+    pub(crate) max_source_bytes: Option<usize>,
+    pub(crate) max_svg_bytes: Option<usize>,
+    pub(crate) max_flowchart_nodes: Option<usize>,
+    pub(crate) max_flowchart_edges: Option<usize>,
+    pub(crate) max_flowchart_subgraphs: Option<usize>,
+    pub(crate) max_label_bytes: Option<usize>,
 }
 
 #[cfg(feature = "render")]

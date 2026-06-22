@@ -54,6 +54,15 @@ numeric values return binding errors instead of panicking.
     "math_renderer": "none",
     "flowchart_elk_backend": "source-ported"
   },
+  "resources": {
+    "profile": "interactive",
+    "max_source_bytes": 2097152,
+    "max_svg_bytes": 25165824,
+    "max_flowchart_nodes": 8000,
+    "max_flowchart_edges": 16000,
+    "max_flowchart_subgraphs": 2000,
+    "max_label_bytes": 2097152
+  },
   "svg": {
     "diagram_id": "my-diagram",
     "pipeline": "parity",
@@ -78,6 +87,7 @@ Every field is optional.
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `layout` | object | defaults | Layout and text measurement behavior. |
+| `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
 
 ## Fixed Time Options
@@ -189,6 +199,26 @@ directives. Explicit `svg.*` options override profile output options.
 font metrics when available.
 `flowchart_elk_backend=compat` is an alpha fallback for the older lightweight Flowchart ELK backend;
 the default source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port.
+
+## Resource Options
+
+`resources` controls render-wide deterministic budgets. These limits are separate from raster
+pixel/PDF limits; disabling raster limits does not disable source, layout, label, or SVG limits.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `resources.profile` | string | `interactive` | `interactive`, `typst-package`, `trusted-native`, or `unbounded-for-trusted-input`. |
+| `resources.max_source_bytes` | positive integer | profile value | Source bytes checked before parse/render work. |
+| `resources.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
+| `resources.max_flowchart_nodes` | positive integer | profile value | Flowchart nodes plus subgraph layout nodes. |
+| `resources.max_flowchart_edges` | positive integer | profile value | Flowchart edge cardinality. |
+| `resources.max_flowchart_subgraphs` | positive integer | profile value | Flowchart hierarchy cardinality. |
+| `resources.max_label_bytes` | positive integer | profile value | Aggregate Flowchart ids, labels, subgraph titles, and tooltips. |
+
+`interactive` is the default for binding surfaces. `typst-package` is tighter and is injected by the
+Typst plugin when the caller does not provide `resources`. `trusted-native` is intended for CLI or
+controlled batch rendering. `unbounded-for-trusted-input` is an explicit opt-out for trusted inputs,
+not a browser or server default.
 
 ## SVG Options
 
@@ -314,6 +344,17 @@ Lenient parsing:
 }
 ```
 
+Strict resource profile override:
+
+```json
+{
+  "resources": {
+    "profile": "typst-package",
+    "max_flowchart_nodes": 500
+  }
+}
+```
+
 ## Error Behavior
 
 Invalid options produce binding errors:
@@ -324,6 +365,7 @@ Invalid options produce binding errors:
 | Invalid JSON | `MERMAN_OPTIONS_JSON_ERROR` |
 | Unsupported option value | `MERMAN_INVALID_ARGUMENT` |
 | Feature-gated format disabled | `MERMAN_UNSUPPORTED_FORMAT` |
+| Resource budget exceeded | `MERMAN_RESOURCE_LIMIT_EXCEEDED` |
 
 Platform wrappers surface those errors through their native exception type:
 

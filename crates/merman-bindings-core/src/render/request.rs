@@ -1,5 +1,5 @@
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson,
+    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, ResourceOptionsJson,
     binding_fixed_local_offset_minutes, binding_fixed_today, binding_site_config,
     css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
     normalize_option,
@@ -50,6 +50,13 @@ impl RenderRequestPlan {
     }
 
     pub(super) fn parse_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+        self.renderer
+            .layout
+            .resource_limits
+            .check_source_bytes(source)
+            .map_err(|err| {
+                BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string())
+            })?;
         let parsed = self
             .renderer
             .parse_diagram_sync(source)
@@ -205,6 +212,9 @@ fn build_renderer(
     }
 
     let mut layout = LayoutOptions::headless_svg_defaults();
+    if let Some(resources) = options.resources.as_ref() {
+        layout.resource_limits = binding_resource_limits(resources)?;
+    }
     if let Some(layout_json) = options.layout.as_ref() {
         if let Some(width) = layout_json.viewport_width {
             layout.viewport_width = finite_positive(width, "layout.viewport_width")?;
@@ -458,6 +468,82 @@ fn binding_host_theme(
     Ok(profile.compile())
 }
 
+fn binding_resource_limits(
+    resources: &ResourceOptionsJson,
+) -> Result<merman::render::RenderResourceLimits, BindingError> {
+    let mut limits = match resources.profile.as_deref() {
+        None => merman::render::RenderResourceLimits::interactive(),
+        Some(profile) => match normalize_option(profile).as_str() {
+            "interactive" => merman::render::RenderResourceLimits::interactive(),
+            "typst-package" | "typst_package" | "typst" => {
+                merman::render::RenderResourceLimits::typst_package()
+            }
+            "trusted-native" | "trusted_native" | "trusted" => {
+                merman::render::RenderResourceLimits::trusted_native()
+            }
+            "unbounded-for-trusted-input" | "unbounded_for_trusted_input" | "unbounded" => {
+                merman::render::RenderResourceLimits::unbounded_for_trusted_input()
+            }
+            other => {
+                return Err(BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported resources.profile: {other}"),
+                ));
+            }
+        },
+    };
+
+    apply_usize_override(
+        &mut limits.max_source_bytes,
+        resources.max_source_bytes,
+        "resources.max_source_bytes",
+    )?;
+    apply_usize_override(
+        &mut limits.max_svg_bytes,
+        resources.max_svg_bytes,
+        "resources.max_svg_bytes",
+    )?;
+    apply_usize_override(
+        &mut limits.max_flowchart_nodes,
+        resources.max_flowchart_nodes,
+        "resources.max_flowchart_nodes",
+    )?;
+    apply_usize_override(
+        &mut limits.max_flowchart_edges,
+        resources.max_flowchart_edges,
+        "resources.max_flowchart_edges",
+    )?;
+    apply_usize_override(
+        &mut limits.max_flowchart_subgraphs,
+        resources.max_flowchart_subgraphs,
+        "resources.max_flowchart_subgraphs",
+    )?;
+    apply_usize_override(
+        &mut limits.max_label_bytes,
+        resources.max_label_bytes,
+        "resources.max_label_bytes",
+    )?;
+
+    Ok(limits)
+}
+
+fn apply_usize_override(
+    target: &mut Option<usize>,
+    value: Option<usize>,
+    name: &'static str,
+) -> Result<(), BindingError> {
+    if let Some(value) = value {
+        if value == 0 {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!("{name} must be a positive integer"),
+            ));
+        }
+        *target = Some(value);
+    }
+    Ok(())
+}
+
 fn binding_host_theme_preset(value: &str) -> Result<HostThemePreset, BindingError> {
     match normalize_option(value).as_str() {
         "editor-light" | "editor_light" => Ok(HostThemePreset::EditorLight),
@@ -613,6 +699,9 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
         merman::render::HeadlessError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }
+        merman::render::HeadlessError::Render(
+            merman::render::RenderError::ResourceLimitExceeded(err),
+        ) => BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string()),
         merman::render::HeadlessError::Render(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
