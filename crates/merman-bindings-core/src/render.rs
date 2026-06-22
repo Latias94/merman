@@ -722,6 +722,19 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
+    fn invalid_text_measurer_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "layout": { "text_measurer": "typst-font-assets" } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("layout.text_measurer"));
+        assert!(err.message().contains("typst-font-assets"));
+    }
+
+    #[test]
     fn unsupported_ratex_without_feature_returns_unsupported_format() {
         let result = render_svg(
             b"flowchart TD\nA[Hello]",

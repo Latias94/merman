@@ -98,6 +98,48 @@ fn flowchart_html_unicode_block_fallback_widths_match_upstream() {
 }
 
 #[test]
+fn typst_relevant_font_intent_keeps_measurement_finite_without_host_font_assets() {
+    let payloads = [
+        "unknown font family",
+        "CJK: 负责人审批",
+        "emoji: 😀😅👍",
+        "mixed: Source Sans 3 / 測試 / 🚀",
+    ];
+    let styles = [
+        TextStyle {
+            font_family: Some("TypstOnlyFont, Arial, sans-serif".to_string()),
+            font_size: 13.0,
+            font_weight: None,
+        },
+        TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        },
+    ];
+    let vendored = VendoredFontMetricsTextMeasurer::default();
+    let deterministic = DeterministicTextMeasurer::default();
+
+    for style in &styles {
+        for payload in payloads {
+            for metrics in [
+                vendored.measure_wrapped(payload, style, Some(200.0), WrapMode::HtmlLike),
+                deterministic.measure_wrapped(payload, style, Some(200.0), WrapMode::HtmlLike),
+            ] {
+                assert!(
+                    metrics.width.is_finite() && metrics.width >= 0.0,
+                    "{metrics:?}"
+                );
+                assert!(
+                    metrics.height.is_finite() && metrics.height >= 0.0,
+                    "{metrics:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn markdown_strong_width_matches_flowchart_table() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
