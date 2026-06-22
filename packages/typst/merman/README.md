@@ -27,15 +27,81 @@ flowchart TD
 ## Examples
 
 - [basic.typ](examples/basic.typ): minimal `#mermaid(...)` usage.
+- [document-context.typ](examples/document-context.typ): opt-in document typography and width bridging.
+- [profile.typ](examples/profile.typ): reusable renderer settings shared by direct calls and raw blocks.
+- [figure.typ](examples/figure.typ): Mermaid diagrams wrapped as Typst figures with reusable layout defaults.
 - [raw-block.typ](examples/raw-block.typ): document-wide Mermaid fences with `show-mermaid-blocks`.
 - [options.typ](examples/options.typ): themes, stable ids, `mermaid-result`, SVG export, and placeholder errors.
 - [print.typ](examples/print.typ): print-friendly white-background output.
 - [presentation.typ](examples/presentation.typ): dark slide-sized output.
 - [svg-export.typ](examples/svg-export.typ): raw SVG and structured render payloads.
 
+## Document Fonts
+
+`mermaid(...)` is explicit-only. It does not automatically inherit the surrounding Typst font, text size, or container width.
+
+Use `mermaid-context(...)` or `show-mermaid-blocks-context(...)` when you want opt-in document context bridging. These wrappers forward the current Typst text font, text size, and available width as renderer options unless you override them directly.
+
+You can also pass typography intent explicitly:
+
+```typst
+#mermaid(
+  source,
+  typography: (
+    font: ("Source Sans 3", "Arial", "sans-serif"),
+    size: "16px",
+  ),
+)
+```
+
+This changes the SVG style intent sent to the headless renderer. It does not mean the Typst plugin measured the exact Typst font file. Current measurement modes are the built-in `vendored` and `deterministic` measurers; browser-style host callbacks and Typst font-asset measurement are not automatic.
+
+Check the compiled plugin capability surface with:
+
+```typst
+#let capabilities = merman-capabilities()
+#capabilities.text_measurement
+```
+
+## Profiles
+
+Use `mermaid-profile(...)` for reusable diagram settings:
+
+```typst
+#let diagrams = mermaid-profile(
+  typography: (
+    font: ("Source Sans 3", "Arial", "sans-serif"),
+    size: "16px",
+  ),
+  background: "#ffffff",
+  theme-name: "base",
+  figure: (
+    placement: bottom,
+    scope: "parent",
+    caption-position: top,
+    gap: 1em,
+    outlined: false,
+  ),
+)
+
+#mermaid(source, profile: diagrams, width: 100%)
+#mermaid-figure(source, profile: diagrams, caption: [System flow], width: 100%)
+```
+
+Profiles work with `mermaid(...)`, `mermaid-context(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `validate-mermaid(...)`, and raw-block show rules. The optional `figure` section is consumed only by `mermaid-figure(...)`; it does not change raw SVG rendering or non-figure image calls.
+
+Precedence is:
+
+1. `options`
+2. direct parameters such as `host-theme`, `layout`, `viewport-width`, and `pipeline`
+3. direct `typography`
+4. profile values
+5. context-derived font, size, and width
+6. package and renderer defaults
+
 ## Raw Blocks
 
-Use `show-mermaid-blocks` with Typst's `raw.where` selector:
+Use `show-mermaid-blocks` with Typst's `raw.where` selector for the explicit-only baseline:
 
 ~~~typst
 #import "@preview/merman:0.1.0": show-mermaid-blocks
@@ -51,6 +117,14 @@ flowchart LR
 
 Avoid setting a fixed `id` in a document-wide raw-block show rule unless the document has only one Mermaid block; otherwise multiple diagrams will share the same SVG id.
 
+For document-context-aware rendering, use `show-mermaid-blocks-context` instead. It reads the current Typst text font, text size, and container width inside `context`, then forwards them to the existing renderer entry points.
+
+~~~typst
+#import "@preview/merman:0.1.0": show-mermaid-blocks-context
+
+#show raw.where(lang: "mermaid"): show-mermaid-blocks-context(width: 100%)
+~~~
+
 ## API
 
 ### `mermaid(source, ..)`
@@ -61,6 +135,8 @@ Common parameters:
 
 - `width`, `height`, `fit`, `alt`: forwarded to Typst's `image`.
 - `scale`: wraps the rendered image with Typst `scale`; accepts ratios such as `120%` or numbers such as `1.2`.
+- `profile`: reusable options produced by `mermaid-profile(...)`.
+- `typography`: high-level font and size intent, mapped to the current `host-theme` fields.
 - `pipeline`: `"resvg-safe"` by default for Typst rendering. Use `"parity"` when you need Mermaid-like SVG DOM output, or `"readable"` for inline SVG inspection.
 - `id`: stable SVG root id. `diagram-id` is kept as the lower-level binding name and takes precedence when both are provided.
 - `background`: SVG root background color, mapped to `svg.root_background_color`.
@@ -75,6 +151,24 @@ Common parameters:
 - `fixed-today`: `YYYY-MM-DD` for date-sensitive diagrams.
 - `error-mode`: `"panic"` by default. Use `"placeholder"` or `"text"` to show diagram errors in the document instead of failing the Typst compile. These modes handle structured errors returned by `merman`; missing wasm files, Typst plugin loading failures, invalid `error-mode` values, and SVG image decoding failures still fail the Typst compile.
 - `options`: escape hatch; when present, it is passed through directly to the Rust binding options and overrides shorthand parameters.
+
+This entry point is explicit-only. It does not automatically inherit the surrounding Typst font or container width. Use `mermaid-context(...)` when you want opt-in document typography and width bridging.
+
+### `mermaid-profile(..)`
+
+Returns a reusable profile dictionary. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path.
+
+### `mermaid-figure(source, ..)`
+
+Renders a Mermaid diagram and wraps it in a Typst `figure`.
+
+Use `context-aware: true` when the figure should opt into the same document-context bridge as `mermaid-context(...)`.
+
+Figure layout parameters are forwarded to Typst's native `figure`: `placement`, `scope`, `supplement`, `numbering`, `gap`, and `outlined`. Use `caption-position` and `caption-separator` when you need a top caption or document-specific caption separator. Direct figure parameters override `profile.figure` defaults.
+
+### `mermaid-context(source, ..)`
+
+Like `mermaid(source, ..)`, but it resolves the current Typst text font, text size, and container width inside `context` before calling the renderer. Explicit `host-theme`, `layout`, `viewport-width`, and other direct parameters still win.
 
 ### `mermaid-svg(source, ..)`
 
@@ -102,9 +196,22 @@ Returns the validation payload produced by the Rust bindings:
 #result.code_name
 ```
 
+### `merman-capabilities()`
+
+Returns the compiled plugin capability payload, including the current text measurement boundary:
+
+```typst
+#let capabilities = merman-capabilities()
+#capabilities.text_measurement.vendored
+```
+
 ### `mermaid-raw(block, ..)`
 
 Convenience wrapper for raw blocks. This is intended for `#show raw.where(...)` rules.
+
+### `show-mermaid-blocks-context(..)`
+
+Returns a raw block show handler that bridges the current Typst document font, text size, and container width. Use this when you want document-wide Mermaid fences to follow surrounding typography on demand.
 
 ### `show-mermaid-blocks(..)`
 
@@ -133,11 +240,7 @@ dist/typst/merman/0.1.0
 For local `@preview` smoke tests, copy the built package under a preview namespace package path and compile with `--package-path`:
 
 ```sh
-mkdir -p target/typst-preview/preview/merman
-cp -R dist/typst/merman/0.1.0 target/typst-preview/preview/merman/
-typst compile --package-path target/typst-preview \
-  dist/typst/merman/0.1.0/examples/options.typ \
-  target/typst-smoke/options.pdf
+cargo run -p xtask -- typst-package-smoke --skip-wasm-build
 ```
 
 The default package build is size-oriented and does not enable `core-full`. Build the larger full-config/full-sanitization artifact with:
@@ -149,4 +252,5 @@ cargo run -p xtask -- build-typst-package --profile full
 ## Current Limits
 
 - Output is SVG embedded through Typst `image`; diagrams are not Typst-native vector elements.
+- Font family and size can be forwarded as style intent, but exact Typst font glyph measurement is not automatic.
 - Browser-only Mermaid interactions such as script callbacks and popup behavior are not expected to work in static Typst output.

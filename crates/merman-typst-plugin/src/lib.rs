@@ -54,6 +54,13 @@ pub fn package_version() -> Vec<u8> {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
+pub fn capabilities_json() -> Vec<u8> {
+    merman_bindings_core::binding_capabilities_json().unwrap_or_else(|_| {
+        br#"{"render":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
+    })
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
     match merman_bindings_core::render_svg(source, options_json) {
         Ok(svg) => match std::str::from_utf8(&svg) {
@@ -97,6 +104,23 @@ mod tests {
     #[test]
     fn package_version_matches_crate_version() {
         assert_eq!(package_version(), env!("CARGO_PKG_VERSION").as_bytes());
+    }
+
+    #[test]
+    fn capabilities_json_reports_text_measurement_boundary() {
+        let payload: Value = serde_json::from_slice(&capabilities_json()).expect("valid JSON");
+
+        assert_eq!(payload["render"], cfg!(feature = "render"));
+        assert_eq!(
+            payload["text_measurement"]["vendored"],
+            cfg!(feature = "render")
+        );
+        assert_eq!(
+            payload["text_measurement"]["deterministic"],
+            cfg!(feature = "render")
+        );
+        assert_eq!(payload["text_measurement"]["host_callback"], false);
+        assert_eq!(payload["text_measurement"]["font_assets"], false);
     }
 
     #[test]

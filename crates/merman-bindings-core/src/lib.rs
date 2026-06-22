@@ -20,11 +20,12 @@ pub use common::{
 };
 pub use engine::BindingEngine;
 pub use metadata::{
-    BindingCapabilities, BindingDiagramFamilyCapability, ascii_supported_diagrams,
-    ascii_supported_diagrams_json, binding_capabilities, diagram_family_capabilities,
-    diagram_family_capabilities_json, selected_registry_profile, supported_diagrams,
-    supported_diagrams_json, supported_host_theme_presets, supported_host_theme_presets_json,
-    supported_themes, supported_themes_json,
+    BindingCapabilities, BindingDiagramFamilyCapability, TextMeasurementCapabilities,
+    ascii_supported_diagrams, ascii_supported_diagrams_json, binding_capabilities,
+    binding_capabilities_json, diagram_family_capabilities, diagram_family_capabilities_json,
+    selected_registry_profile, supported_diagrams, supported_diagrams_json,
+    supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
+    supported_themes_json,
 };
 
 #[cfg(feature = "ascii")]

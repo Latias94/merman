@@ -1,19 +1,20 @@
 #import "@preview/merman:0.1.0": show-mermaid-blocks-context
 
+#set page(width: 12cm, margin: 10mm)
+#set text(font: "Arial", size: 13pt)
+
 #show raw.where(lang: "mermaid"): show-mermaid-blocks-context(
   width: 100%,
   pipeline: "readable",
-  alt: "A Mermaid diagram rendered from a raw block",
+  error-mode: "panic",
 )
-
-= merman Typst Raw Block Example
 
 ```mermaid
 sequenceDiagram
-  participant User
   participant Typst
   participant merman
-  User->>Typst: Write a mermaid raw block
-  Typst->>merman: Call the wasm plugin
+  Typst->>merman: Render this raw block
   merman-->>Typst: Return SVG bytes
 ```
+
+Raw block context fixture passed.

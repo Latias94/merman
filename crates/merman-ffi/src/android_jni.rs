@@ -461,13 +461,15 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeAsciiSupportedDiagramsJ
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanEngine_nativeDiagramFamilyCapabilitiesJson(
-    mut env: JNIEnv<'_>,
+    mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
 ) -> jstring {
-    call_metadata(
-        &mut env,
-        merman_bindings_core::diagram_family_capabilities_json,
-    )
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_metadata(
+            env,
+            merman_bindings_core::diagram_family_capabilities_json,
+        ))
+    })
 }
 
 #[unsafe(no_mangle)]
