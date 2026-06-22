@@ -135,6 +135,9 @@ pub(crate) struct ResourceOptionsJson {
     pub(crate) max_flowchart_nodes: Option<usize>,
     pub(crate) max_flowchart_edges: Option<usize>,
     pub(crate) max_flowchart_subgraphs: Option<usize>,
+    pub(crate) max_class_nodes: Option<usize>,
+    pub(crate) max_class_edges: Option<usize>,
+    pub(crate) max_class_namespaces: Option<usize>,
     pub(crate) max_label_bytes: Option<usize>,
 }
 

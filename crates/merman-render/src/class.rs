@@ -1,3 +1,5 @@
+#[cfg(feature = "elk-layout")]
+use crate::config::{config_bool, config_string};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
     Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
@@ -15,10 +17,19 @@ use std::sync::Arc;
 
 pub(crate) mod config;
 use self::config::{ClassConfigView, ClassLayoutSettings};
+#[cfg(feature = "elk-layout")]
+use merman_layout_elk as elk;
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
 type ClassNote = merman_core::models::class_diagram::ClassNote;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClassLayoutEngine {
+    Dagre,
+    #[cfg(feature = "elk-layout")]
+    Elk,
+}
 
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
@@ -1830,6 +1841,32 @@ pub fn layout_class_diagram_v2_typed_with_config(
         effective_config.as_value(),
         effective_config,
         measurer,
+        ClassLayoutEngine::Dagre,
+    )
+}
+
+#[cfg(feature = "elk-layout")]
+pub fn layout_class_diagram_v2_elk_with_config(
+    semantic: &Value,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+) -> Result<ClassDiagramV2Layout> {
+    let model: ClassDiagramModel = crate::json::from_value_ref(semantic)?;
+    layout_class_diagram_v2_elk_typed_with_config(&model, effective_config, measurer)
+}
+
+#[cfg(feature = "elk-layout")]
+pub fn layout_class_diagram_v2_elk_typed_with_config(
+    model: &ClassDiagramModel,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+) -> Result<ClassDiagramV2Layout> {
+    layout_class_diagram_v2_typed_inner(
+        model,
+        effective_config.as_value(),
+        effective_config,
+        measurer,
+        ClassLayoutEngine::Elk,
     )
 }
 
@@ -1838,6 +1875,7 @@ fn layout_class_diagram_v2_typed_inner(
     effective_config: &Value,
     note_html_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
+    engine: ClassLayoutEngine,
 ) -> Result<ClassDiagramV2Layout> {
     validate_class_namespace_parent_cycles(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
@@ -2197,6 +2235,26 @@ fn layout_class_diagram_v2_typed_inner(
         g.set_edge_named(note.id.clone(), class_id.clone(), Some(edge_id), Some(el));
     }
 
+    #[cfg(feature = "elk-layout")]
+    if engine == ClassLayoutEngine::Elk {
+        return layout_class_diagram_v2_elk_from_graph(
+            model,
+            effective_config,
+            g,
+            namespace_ids,
+            class_row_metrics_by_id,
+            ClassElkLayoutSettings {
+                namespace_padding,
+                title_margin_top,
+                title_margin_bottom,
+                text_style: &text_style,
+                wrap_mode_label,
+            },
+            measurer,
+        );
+    }
+
+    let _ = engine;
     let mut prepared = prepare_graph(g, 0)?;
     let (mut fragments, _bounds) = layout_prepared(&mut prepared, &node_label_metrics_by_id)?;
 
@@ -2495,6 +2553,500 @@ fn should_mirror_note_heavy_tb_layout(model: &ClassDiagramModel, nodes: &[Layout
     };
 
     from_x + 0.5 < to_x
+}
+
+#[cfg(feature = "elk-layout")]
+struct ClassElkLayoutSettings<'a> {
+    namespace_padding: f64,
+    title_margin_top: f64,
+    title_margin_bottom: f64,
+    text_style: &'a TextStyle,
+    wrap_mode_label: WrapMode,
+}
+
+#[cfg(feature = "elk-layout")]
+fn layout_class_diagram_v2_elk_from_graph(
+    model: &ClassDiagramModel,
+    effective_config: &Value,
+    graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    namespace_ids: Vec<&str>,
+    class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
+    settings: ClassElkLayoutSettings<'_>,
+    measurer: &dyn TextMeasurer,
+) -> Result<ClassDiagramV2Layout> {
+    let elk_graph = class_graph_to_elk_graph(
+        model,
+        effective_config,
+        &graph,
+        &namespace_ids,
+        &settings,
+        measurer,
+    );
+    let layout = elk::layout_source_ported(&elk_graph, elk::Algorithm::Layered).map_err(|err| {
+        Error::InvalidModel {
+            message: format!("Class ELK layout failed: {err}"),
+        }
+    })?;
+    class_layout_from_elk(
+        model,
+        &graph,
+        &elk_graph,
+        layout,
+        namespace_ids,
+        class_row_metrics_by_id,
+        settings,
+        measurer,
+    )
+}
+
+#[cfg(feature = "elk-layout")]
+fn class_graph_to_elk_graph(
+    model: &ClassDiagramModel,
+    effective_config: &Value,
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    namespace_ids: &[&str],
+    settings: &ClassElkLayoutSettings<'_>,
+    measurer: &dyn TextMeasurer,
+) -> elk::Graph {
+    let namespace_set: HashSet<&str> = namespace_ids.iter().copied().collect();
+    let direction = rank_dir_to_elk_direction(graph.graph().rankdir);
+    let mut nodes = Vec::with_capacity(graph.node_count());
+
+    for id in graph.node_ids() {
+        let label = graph.node(&id).cloned().unwrap_or_default();
+        let is_group = namespace_set.contains(id.as_str()) || !graph.children(&id).is_empty();
+        let namespace_label = is_group.then(|| {
+            let title = class_namespace_label(model, &id);
+            let (width, height) = label_metrics(
+                title,
+                measurer,
+                settings.text_style,
+                settings.wrap_mode_label,
+            );
+            elk::Label {
+                width: width.max(1.0),
+                height: height.max(1.0),
+            }
+        });
+
+        nodes.push(elk::Node {
+            id: id.clone(),
+            kind: if is_group {
+                elk::NodeKind::Group
+            } else {
+                elk::NodeKind::Leaf
+            },
+            width: label.width.max(if is_group { 0.0 } else { 1.0 }),
+            height: label.height.max(if is_group { 0.0 } else { 1.0 }),
+            parent: graph.parent(&id).map(str::to_string),
+            direction: is_group.then_some(direction),
+            hierarchy_handling: is_group.then_some(elk::HierarchyHandling::IncludeChildren),
+            layer_constraint: None,
+            label: namespace_label,
+        });
+    }
+
+    let edges = graph
+        .edge_keys()
+        .into_iter()
+        .filter_map(|key| {
+            let label = graph.edge_by_key(&key)?;
+            Some(elk::Edge {
+                id: key
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("{}-{}", key.v, key.w)),
+                source: key.v,
+                target: key.w,
+                label: (label.width > 0.0 && label.height > 0.0).then_some(elk::Label {
+                    width: label.width,
+                    height: label.height,
+                }),
+                minlen: label.minlen.max(1),
+                inside_self_loops_yo: false,
+            })
+        })
+        .collect();
+
+    elk::Graph {
+        id: "classDiagram".to_string(),
+        direction,
+        nodes,
+        edges,
+        spacing: elk::Spacing {
+            node_node: graph.graph().nodesep,
+            layer_layer: graph.graph().ranksep,
+            group_padding_x: settings.namespace_padding,
+            group_padding_y: settings.namespace_padding,
+            ..Default::default()
+        },
+        options: class_elk_layout_options(effective_config),
+    }
+}
+
+#[cfg(feature = "elk-layout")]
+fn class_layout_from_elk(
+    model: &ClassDiagramModel,
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    elk_graph: &elk::Graph,
+    layout: elk::LayoutResult,
+    namespace_ids: Vec<&str>,
+    class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
+    settings: ClassElkLayoutSettings<'_>,
+    measurer: &dyn TextMeasurer,
+) -> Result<ClassDiagramV2Layout> {
+    let namespace_set: HashSet<&str> = namespace_ids.iter().copied().collect();
+    let source_node_by_id: HashMap<&str, &elk::Node> = elk_graph
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let source_edge_by_id: HashMap<&str, &elk::Edge> = elk_graph
+        .edges
+        .iter()
+        .map(|edge| (edge.id.as_str(), edge))
+        .collect();
+
+    let mut nodes = Vec::with_capacity(layout.nodes.len());
+    for node in layout.nodes {
+        let Some(source) = source_node_by_id.get(node.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned unknown class node {}", node.id),
+            });
+        };
+        nodes.push(LayoutNode {
+            id: node.id,
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+            is_cluster: source.kind == elk::NodeKind::Group,
+            label_width: source.label.map(|label| label.width),
+            label_height: source.label.map(|label| label.height),
+        });
+    }
+
+    let node_by_id: HashMap<&str, &LayoutNode> =
+        nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+    let mut node_rect_by_id: HashMap<&str, Rect> = HashMap::new();
+    for node in &nodes {
+        node_rect_by_id.insert(
+            node.id.as_str(),
+            Rect::from_center(node.x, node.y, node.width, node.height),
+        );
+    }
+
+    let edge_label_by_id: HashMap<String, EdgeLabel> = graph
+        .edge_keys()
+        .into_iter()
+        .filter_map(|key| {
+            let id = key
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("{}-{}", key.v, key.w));
+            graph.edge_by_key(&key).cloned().map(|edge| (id, edge))
+        })
+        .collect();
+
+    let mut edges = Vec::with_capacity(layout.edges.len());
+    for edge in layout.edges {
+        let Some(source) = source_edge_by_id.get(edge.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned unknown class edge {}", edge.id),
+            });
+        };
+        let label_meta = edge_label_by_id.get(edge.id.as_str());
+        let points = edge
+            .points
+            .into_iter()
+            .map(|point| LayoutPoint {
+                x: point.x,
+                y: point.y,
+            })
+            .collect::<Vec<_>>();
+        let label = source.label.and_then(|source_label| {
+            edge.labels
+                .first()
+                .map(|label| LayoutLabel {
+                    x: label.x + label.width / 2.0,
+                    y: label.y + label.height / 2.0,
+                    width: label.width,
+                    height: label.height,
+                })
+                .or_else(|| class_elk_edge_label_position(&points, source_label))
+        });
+        let terminal_meta = label_meta.map(edge_terminal_metrics_from_extras);
+        let terminal_points = if let (Some(from), Some(to)) = (
+            node_rect_by_id.get(source.source.as_str()).copied(),
+            node_rect_by_id.get(source.target.as_str()).copied(),
+        ) {
+            terminal_path_for_edge(&points, from, to)
+        } else {
+            points.clone()
+        };
+
+        let mut out_edge = LayoutEdge {
+            id: edge.id,
+            from: source.source.clone(),
+            to: source.target.clone(),
+            from_cluster: node_by_id
+                .get(source.source.as_str())
+                .filter(|node| node.is_cluster)
+                .map(|node| node.id.clone()),
+            to_cluster: node_by_id
+                .get(source.target.as_str())
+                .filter(|node| node.is_cluster)
+                .map(|node| node.id.clone()),
+            points,
+            label,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        };
+        if let Some(meta) = terminal_meta {
+            apply_class_terminal_labels(&mut out_edge, &meta, &terminal_points);
+        }
+        edges.push(out_edge);
+    }
+
+    let mut clusters = Vec::new();
+    for &id in &namespace_ids {
+        if !namespace_set.contains(id) {
+            continue;
+        }
+        let Some(node) = node_by_id.get(id).copied() else {
+            continue;
+        };
+        let title = class_namespace_label(model, id).to_string();
+        let (mut title_width, title_height) = label_metrics(
+            &title,
+            measurer,
+            settings.text_style,
+            settings.wrap_mode_label,
+        );
+        if let Some(width) =
+            class_namespace_known_rendered_width_override_px(&title, settings.text_style)
+        {
+            title_width = width;
+        }
+        let title_label = LayoutLabel {
+            x: node.x,
+            y: node.y - node.height / 2.0 + settings.title_margin_top + title_height / 2.0,
+            width: title_width,
+            height: title_height,
+        };
+        let min_title_w = (title_width + settings.namespace_padding).max(1.0);
+        let width = if node.width <= min_title_w {
+            min_title_w
+        } else {
+            node.width
+        };
+        let diff = if node.width <= min_title_w {
+            (width - node.width) / 2.0 - settings.namespace_padding
+        } else {
+            -settings.namespace_padding
+        };
+        clusters.push(LayoutCluster {
+            id: id.to_string(),
+            x: node.x,
+            y: node.y,
+            width,
+            height: node.height,
+            diff,
+            offset_y: title_height - settings.namespace_padding / 2.0,
+            title,
+            title_label,
+            requested_dir: None,
+            effective_dir: normalize_dir(&model.direction),
+            padding: settings.namespace_padding,
+            title_margin_top: settings.title_margin_top,
+            title_margin_bottom: settings.title_margin_bottom,
+        });
+    }
+
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+    let namespace_order: HashMap<&str, usize> = namespace_ids
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(idx, id)| (id, idx))
+        .collect();
+    clusters.sort_by(|a, b| {
+        namespace_order
+            .get(a.id.as_str())
+            .copied()
+            .unwrap_or(usize::MAX)
+            .cmp(
+                &namespace_order
+                    .get(b.id.as_str())
+                    .copied()
+                    .unwrap_or(usize::MAX),
+            )
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    let bounds = compute_bounds(&nodes, &edges, &clusters);
+    Ok(ClassDiagramV2Layout {
+        nodes,
+        edges,
+        clusters,
+        bounds,
+        class_row_metrics_by_id,
+    })
+}
+
+#[cfg(feature = "elk-layout")]
+fn apply_class_terminal_labels(
+    edge: &mut LayoutEdge,
+    meta: &EdgeTerminalMetrics,
+    points: &[LayoutPoint],
+) {
+    if let Some((w, h)) = meta.start_left
+        && let Some((x, y)) =
+            calc_terminal_label_position(meta.start_marker, TerminalPos::StartLeft, points)
+    {
+        edge.start_label_left = Some(LayoutLabel {
+            x,
+            y,
+            width: w,
+            height: h,
+        });
+    }
+    if let Some((w, h)) = meta.start_right
+        && let Some((x, y)) =
+            calc_terminal_label_position(meta.start_marker, TerminalPos::StartRight, points)
+    {
+        edge.start_label_right = Some(LayoutLabel {
+            x,
+            y,
+            width: w,
+            height: h,
+        });
+    }
+    if let Some((w, h)) = meta.end_left
+        && let Some((x, y)) =
+            calc_terminal_label_position(meta.end_marker, TerminalPos::EndLeft, points)
+    {
+        edge.end_label_left = Some(LayoutLabel {
+            x,
+            y,
+            width: w,
+            height: h,
+        });
+    }
+    if let Some((w, h)) = meta.end_right
+        && let Some((x, y)) =
+            calc_terminal_label_position(meta.end_marker, TerminalPos::EndRight, points)
+    {
+        edge.end_label_right = Some(LayoutLabel {
+            x,
+            y,
+            width: w,
+            height: h,
+        });
+    }
+}
+
+#[cfg(feature = "elk-layout")]
+fn class_elk_edge_label_position(points: &[LayoutPoint], label: elk::Label) -> Option<LayoutLabel> {
+    calculate_point(points, class_elk_polyline_len(points) / 2.0).map(|point| LayoutLabel {
+        x: point.x,
+        y: point.y,
+        width: label.width,
+        height: label.height,
+    })
+}
+
+#[cfg(feature = "elk-layout")]
+fn class_elk_polyline_len(points: &[LayoutPoint]) -> f64 {
+    points
+        .windows(2)
+        .map(|pair| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y))
+        .sum::<f64>()
+}
+
+#[cfg(feature = "elk-layout")]
+fn rank_dir_to_elk_direction(rank_dir: RankDir) -> elk::Direction {
+    match rank_dir {
+        RankDir::LR => elk::Direction::Right,
+        RankDir::RL => elk::Direction::Left,
+        RankDir::BT => elk::Direction::Up,
+        RankDir::TB => elk::Direction::Down,
+    }
+}
+
+#[cfg(feature = "elk-layout")]
+fn class_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
+    let model_order = config_string(effective_config, &["elk", "considerModelOrder"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "NONE" => elk::ModelOrderStrategy::None,
+                "PREFER_EDGES" => elk::ModelOrderStrategy::PreferEdges,
+                "PREFER_NODES" => elk::ModelOrderStrategy::PreferNodes,
+                _ => elk::ModelOrderStrategy::NodesAndEdges,
+            },
+        )
+        .unwrap_or_default();
+    let cycle_breaking = config_string(effective_config, &["elk", "cycleBreakingStrategy"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "DEPTH_FIRST" => elk::CycleBreakingStrategy::DepthFirst,
+                "INTERACTIVE" => elk::CycleBreakingStrategy::Interactive,
+                "MODEL_ORDER" => elk::CycleBreakingStrategy::ModelOrder,
+                "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::GreedyModelOrder,
+                _ => elk::CycleBreakingStrategy::Greedy,
+            },
+        )
+        .unwrap_or_default();
+    let node_placement = config_string(effective_config, &["elk", "nodePlacementStrategy"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "SIMPLE" => elk::NodePlacementStrategy::Simple,
+                "NETWORK_SIMPLEX" => elk::NodePlacementStrategy::NetworkSimplex,
+                "LINEAR_SEGMENTS" => elk::NodePlacementStrategy::LinearSegments,
+                _ => elk::NodePlacementStrategy::BrandesKoepf,
+            },
+        )
+        .unwrap_or_default();
+    let node_placement_alignment =
+        config_string(effective_config, &["elk", "nodePlacementAlignment"])
+            .map(
+                |alignment| match alignment.trim().to_ascii_uppercase().as_str() {
+                    "LEFTUP" => elk::NodePlacementAlignment::LeftUp,
+                    "LEFTDOWN" => elk::NodePlacementAlignment::LeftDown,
+                    "RIGHTUP" => elk::NodePlacementAlignment::RightUp,
+                    "RIGHTDOWN" => elk::NodePlacementAlignment::RightDown,
+                    "BALANCED" => elk::NodePlacementAlignment::Balanced,
+                    _ => elk::NodePlacementAlignment::None,
+                },
+            )
+            .unwrap_or_default();
+
+    elk::LayoutOptions {
+        layered: elk::LayeredOptions {
+            merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
+            merge_hierarchy_edges: true,
+            unnecessary_bendpoints: true,
+            inside_self_loops_activate: config_bool(
+                effective_config,
+                &["elk", "insideSelfLoops", "activate"],
+            )
+            .unwrap_or(false),
+            force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
+                .unwrap_or(false),
+            consider_model_order: model_order != elk::ModelOrderStrategy::None,
+            model_order,
+            cycle_breaking,
+            node_placement,
+            node_placement_alignment,
+            ..Default::default()
+        },
+    }
 }
 
 fn compute_bounds(

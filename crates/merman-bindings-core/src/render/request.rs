@@ -519,6 +519,21 @@ fn binding_resource_limits(
         "resources.max_flowchart_subgraphs",
     )?;
     apply_usize_override(
+        &mut limits.max_class_nodes,
+        resources.max_class_nodes,
+        "resources.max_class_nodes",
+    )?;
+    apply_usize_override(
+        &mut limits.max_class_edges,
+        resources.max_class_edges,
+        "resources.max_class_edges",
+    )?;
+    apply_usize_override(
+        &mut limits.max_class_namespaces,
+        resources.max_class_namespaces,
+        "resources.max_class_namespaces",
+    )?;
+    apply_usize_override(
         &mut limits.max_label_bytes,
         resources.max_label_bytes,
         "resources.max_label_bytes",

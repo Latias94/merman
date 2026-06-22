@@ -37,12 +37,13 @@ spot checks:
 - Generate a report: `cargo run -p xtask -- audit-gaps --out target/audit/gaps.md`
 - Output is intentionally written under `target/` (do not commit it); only summarize conclusions here.
 
-As of `2026-06-08` (see the generated report for details):
+As of `2026-06-22` (see the generated report for details):
 
-- Parser-only fixtures: `10` (not included in SVG DOM parity gates)
-- Deferred fixtures (`fixtures/_deferred`): `15` parse OK, `86` parse ERR
-- Most “parse OK but deferred” cases are out-of-scope config signals (`look=handDrawn`, `layout=elk`) rather than
-  parser correctness issues.
+- Parser-only fixtures: `6` (not included in SVG DOM parity gates)
+- Deferred fixtures (`fixtures/_deferred`): `0` parse OK, `86` parse ERR, `2` absorbed duplicates
+- The absorbed duplicates are Mermaid-reachable ELK requests that now have active source-backed evidence:
+  the Class ELK Cypress full-diagram body is covered by the active Class fixture, and the Flowchart docs
+  `layout: elk` example is covered by `fixtures/flowchart/upstream_docs_layouts_how_to_use_001.mmd`.
 
 Notes:
 
@@ -108,15 +109,20 @@ Legend:
 
 ### P2: Beyond core parity (optional expansions)
 
-6. **Flowchart `look=handDrawn` parity**
-   - Requires RoughJS-style path generation parity (or a compatible deterministic port).
+6. **Family-specific `look=handDrawn` parity**
+   - Flowchart, Class, ER, Requirement, and State have focused rendered seed evidence. Venn and
+     Ishikawa RoughJS branches remain deferred family lanes and must be promoted only with
+     source-backed rendered tests.
    - Risk: H (shape/path output diverges substantially).
 
-7. **Flowchart `layout=elk` parity**
+7. **Mermaid-reachable ELK hardening**
    - Source-backed Flowchart ELK is the default public render path and the dedicated probe gate
      covers every exact upstream `flowchart-elk.spec.js` render call and all 57 unique layout
-     bodies; broad SVG parity admits those probes under the source-backed backend. Remaining work
-     is continued hardening from new upstream or user-reported cases.
+     bodies; broad SVG parity admits those probes under the source-backed backend. Class
+     `layout: elk` and `class.defaultRenderer: elk` now dispatch through the Class ELK adapter
+     under the existing `elk-layout` feature and reuse the Class SVG renderer. Remaining work is
+     continued hardening from new upstream or user-reported cases, not a generic deferred
+     `layout=elk` gap.
    - Risk: M/H (large surface area, but the current Mermaid spec body coverage is source-backed).
 
 8. **ZenUML “practical” compatibility expansion**

@@ -204,6 +204,11 @@ Dedicated Flowchart ELK lane:
 - The reported frontmatter case with `mergeEdges: true` and
   `nodePlacementStrategy: LINEAR_SEGMENTS` is locked by
   `headless_renderer_renders_reported_flowchart_elk_linear_segments_case`.
+- The Mermaid docs frontmatter example is admitted as
+  `fixtures/flowchart/upstream_docs_layouts_how_to_use_001.mmd`, with semantic/layout goldens and
+  `fixtures/upstream-svgs/flowchart/upstream_docs_layouts_how_to_use_001.svg`. It is validated
+  through `compare-flowchart-svgs --filter upstream_docs_layouts_how_to_use_001 --check-dom
+  --dom-mode parity --dom-decimals 3 --force-elk-fixture`.
 - Duplicate layout bodies are kept as exact-call fixtures for upstream traceability. Use
   `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` for the current exact-call and
   unique-body mapping.

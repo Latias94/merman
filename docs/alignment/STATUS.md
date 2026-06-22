@@ -19,10 +19,10 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Upstream SVG baselines (`fixtures/upstream-svgs/**`):
   - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
   - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-- Current corpus (2026-06-12):
-  - semantic snapshots: 3609
-  - layout snapshots: 3588
-  - upstream SVG baselines: 3558 across 27 diagrams.
+- Current corpus (2026-06-22):
+  - semantic snapshots: 3694
+  - layout snapshots: 3673
+  - upstream SVG baselines: 3639 across 27 diagrams.
 - Raster previews (PNG/JPG/PDF via `merman-cli`):
   - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
@@ -138,6 +138,13 @@ and an accepted support plan for layout/render behavior.
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
+Recent progress (2026-06-22): Mermaid-reachable ELK support now covers Flowchart and Class public
+entry points. Flowchart docs `layout: elk` is admitted as
+`fixtures/flowchart/upstream_docs_layouts_how_to_use_001.mmd`, Class `layout: elk` and
+`class.defaultRenderer: elk` dispatch through the feature-gated Class ELK adapter, and
+`xtask audit-gaps` reports `0` deferred parse-OK fixtures with `2` absorbed ELK duplicates.
+`look: handDrawn` support remains family-specific; Flowchart, Class, ER, Requirement, and State
+have focused seed evidence, while Venn and Ishikawa RoughJS branches stay deferred.
 Recent progress (2026-02-11): imported an additional batch of Class docs fixtures (with upstream SVG baselines),
 keeping the global parity-root gate green.
 Recent progress (2026-02-11): imported an additional batch of GitGraph docs fixtures (with upstream SVG baselines),

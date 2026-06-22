@@ -60,6 +60,19 @@ These fixtures are parity-gated against upstream SVG baselines under `fixtures/u
 
 - `cargo run --release -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
+Class ELK entry-point coverage:
+
+- Mermaid-reachable `layout: elk` and `class.defaultRenderer: elk` requests dispatch through the
+  feature-gated Class ELK adapter under `elk-layout`, then reuse the existing Class SVG renderer.
+  `render_model_dispatch_uses_elk_for_class_layout_config`,
+  `render_model_dispatch_uses_elk_for_class_default_renderer_config`, and
+  `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered
+  Class semantics for namespaces, styles, links, notes, relation labels, and cardinality terminals.
+- The deferred upstream Cypress full-diagram ELK copy with stem
+  `upstream_cypress_classdiagram_v3_spec_should_render_a_full_class_diagram_using_elk_057`
+  is treated as absorbed because its diagram body matches the active fixture
+  `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_full_class_diagram_using_elk_057.mmd`.
+
 Imported fixtures:
 
 - `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_1_1_should_render_a_simple_class_diagram_without_htmllabels_003.mmd`

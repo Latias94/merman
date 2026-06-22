@@ -61,13 +61,14 @@ use crate::math::MathRenderer;
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer};
 use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
 use serde_json::Value;
 use std::sync::Arc;
 
 pub use resources::{
-    FlowchartComplexity, RenderResourceLimits, RenderResourceProfile, ResourceLimitExceeded,
-    ResourceLimitPhase,
+    ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
+    ResourceLimitExceeded, ResourceLimitPhase,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -263,10 +264,11 @@ pub fn layout_parsed_render_layout_only(
             )?,
         ))),
         RenderSemanticModel::Class(model) => Ok(LayoutDiagram::ClassDiagramV2(Box::new(
-            class::layout_class_diagram_v2_typed_with_config(
+            layout_class_typed_by_engine(
+                diagram_type,
                 model,
                 &parsed.meta.effective_config,
-                options.text_measurer.as_ref(),
+                options,
             )?,
         ))),
         RenderSemanticModel::C4(model) => Ok(LayoutDiagram::C4Diagram(Box::new(
@@ -422,6 +424,75 @@ fn flowchart_uses_elk_layout(
     effective_config: &merman_core::MermaidConfig,
 ) -> bool {
     diagram_type == "flowchart-elk" || effective_config.get_str("layout") == Some("elk")
+}
+
+fn class_uses_elk_layout(effective_config: &merman_core::MermaidConfig) -> bool {
+    effective_config.get_str("layout") == Some("elk")
+        || effective_config.get_str("class.defaultRenderer") == Some("elk")
+}
+
+fn layout_class_typed_by_engine(
+    diagram_type: &str,
+    model: &ClassDiagram,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutOptions,
+) -> Result<model::ClassDiagramV2Layout> {
+    if class_uses_elk_layout(effective_config) {
+        return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
+    }
+
+    options.resource_limits.check_class_complexity(model)?;
+    class::layout_class_diagram_v2_typed_with_config(
+        model,
+        effective_config,
+        options.text_measurer.as_ref(),
+    )
+}
+
+fn layout_class_json_by_engine(
+    diagram_type: &str,
+    semantic: &Value,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutOptions,
+) -> Result<model::ClassDiagramV2Layout> {
+    let model: ClassDiagram = crate::json::from_value_ref(semantic)?;
+    if class_uses_elk_layout(effective_config) {
+        return layout_class_elk_typed_by_feature(diagram_type, &model, effective_config, options);
+    }
+
+    options.resource_limits.check_class_complexity(&model)?;
+    class::layout_class_diagram_v2_typed_with_config(
+        &model,
+        effective_config,
+        options.text_measurer.as_ref(),
+    )
+}
+
+#[cfg(feature = "elk-layout")]
+fn layout_class_elk_typed_by_feature(
+    _diagram_type: &str,
+    model: &ClassDiagram,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutOptions,
+) -> Result<model::ClassDiagramV2Layout> {
+    options.resource_limits.check_class_complexity(model)?;
+    class::layout_class_diagram_v2_elk_typed_with_config(
+        model,
+        effective_config,
+        options.text_measurer.as_ref(),
+    )
+}
+
+#[cfg(not(feature = "elk-layout"))]
+fn layout_class_elk_typed_by_feature(
+    diagram_type: &str,
+    _model: &ClassDiagram,
+    _effective_config: &merman_core::MermaidConfig,
+    _options: &LayoutOptions,
+) -> Result<model::ClassDiagramV2Layout> {
+    Err(Error::UnsupportedDiagram {
+        diagram_type: diagram_type.to_string(),
+    })
 }
 
 fn layout_flowchart_typed_by_engine(
@@ -604,11 +675,7 @@ fn layout_json_by_type(
             )?,
         ))),
         "classDiagram" | "class" => Ok(LayoutDiagram::ClassDiagramV2(Box::new(
-            class::layout_class_diagram_v2_with_config(
-                semantic,
-                effective_config,
-                options.text_measurer.as_ref(),
-            )?,
+            layout_class_json_by_engine(diagram_type, semantic, effective_config, options)?,
         ))),
         "er" | "erDiagram" => Ok(LayoutDiagram::ErDiagram(Box::new(er::layout_er_diagram(
             semantic,
@@ -828,6 +895,108 @@ A-->B
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
+    fn render_model_dispatch_uses_elk_for_class_layout_config() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  layout: elk
+---
+classDiagram
+direction LR
+Animal <|-- Duck
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "classDiagram");
+        let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+        let LayoutDiagram::ClassDiagramV2(layout) = layout else {
+            panic!("expected class layout");
+        };
+        let animal = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "Animal")
+            .unwrap();
+        let duck = layout.nodes.iter().find(|node| node.id == "Duck").unwrap();
+        assert!(
+            duck.x > animal.x,
+            "ELK LR class layout should place Duck to the right of Animal; Animal={}, Duck={}",
+            animal.x,
+            duck.x
+        );
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_model_dispatch_uses_elk_for_class_default_renderer_config() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  class:
+    defaultRenderer: elk
+---
+classDiagram
+direction LR
+Animal <|-- Duck
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "classDiagram");
+        let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+        let LayoutDiagram::ClassDiagramV2(layout) = layout else {
+            panic!("expected class layout");
+        };
+        let animal = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "Animal")
+            .unwrap();
+        let duck = layout.nodes.iter().find(|node| node.id == "Duck").unwrap();
+        assert!(
+            duck.x > animal.x,
+            "ELK LR class layout should place Duck to the right of Animal; Animal={}, Duck={}",
+            animal.x,
+            duck.x
+        );
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_model_dispatch_rejects_class_over_node_resource_limit() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "classDiagram\nAnimal <|-- Duck",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let options = LayoutOptions {
+            resource_limits: RenderResourceLimits {
+                max_class_nodes: Some(1),
+                ..RenderResourceLimits::unbounded_for_trusted_input()
+            },
+            ..LayoutOptions::default()
+        };
+
+        let err = layout_parsed_render_layout_only(&parsed, &options).unwrap_err();
+
+        let Error::ResourceLimitExceeded(limit) = err else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_class_nodes");
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
     fn json_dispatch_rejects_flowchart_over_edge_resource_limit() {
         let parsed = Engine::new()
             .parse_diagram_sync("flowchart TD\nA-->B\nB-->C\nC-->D", ParseOptions::strict())
@@ -848,6 +1017,33 @@ A-->B
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
         assert_eq!(limit.limit, "max_flowchart_edges");
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn json_dispatch_rejects_class_over_edge_resource_limit() {
+        let parsed = Engine::new()
+            .parse_diagram_sync(
+                "classDiagram\nAnimal <|-- Duck\nDuck <|-- Mallard",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let options = LayoutOptions {
+            resource_limits: RenderResourceLimits {
+                max_class_edges: Some(1),
+                ..RenderResourceLimits::unbounded_for_trusted_input()
+            },
+            ..LayoutOptions::default()
+        };
+
+        let err = layout_parsed(&parsed, &options).unwrap_err();
+
+        let Error::ResourceLimitExceeded(limit) = err else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_class_edges");
     }
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
@@ -1093,6 +1289,30 @@ id1(Start)-->id2(Stop)
         assert!(matches!(
             err,
             Error::UnsupportedDiagram { diagram_type } if diagram_type == "flowchart-elk"
+        ));
+    }
+
+    #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
+    #[test]
+    fn render_model_dispatch_rejects_class_elk_without_feature() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  layout: elk
+---
+classDiagram
+Animal <|-- Duck
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        let err = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::UnsupportedDiagram { diagram_type } if diagram_type == "classDiagram"
         ));
     }
 

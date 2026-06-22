@@ -39,5 +39,8 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
   current committed baseline corpus.
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/ishikawa/`.
 - Hand-drawn / rough.js mode is not implemented in local SVG output.
+- `look: "handDrawn"` remains a dedicated follow-up lane and should not be promoted in the
+  config support matrix until Ishikawa has rendered SVG tests proving deterministic RoughJS output
+  and seed behavior for the spine, branches, head, and label boxes.
 - Browser `getBBox()` float parity for labels and head shape has not been strict-audited.
 - Full Cypress image snapshot coverage has not been imported.

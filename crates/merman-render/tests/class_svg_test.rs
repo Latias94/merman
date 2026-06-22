@@ -334,6 +334,60 @@ click Class1 href "notes://do-your-thing/id" "tip" _self
     );
 }
 
+#[cfg(feature = "elk-layout")]
+#[test]
+fn class_svg_elk_layout_preserves_existing_renderer_semantics() {
+    let svg = render_class_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        r##"---
+config:
+  layout: elk
+---
+classDiagram
+direction LR
+namespace Platform {
+  class Service:::critical {
+    +start()
+  }
+}
+class Client {
+  +request()
+}
+Client "1" --> "many" Service : calls
+note for Service "ELK note"
+click Service href "https://example.com/service" "Open Service" _blank
+classDef critical fill:#ffdddd,stroke:#aa0000,stroke-width:2px,color:#111111
+style Client fill:#ddffdd,stroke:#00aa00,stroke-width:2px
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"id="merman-Platform" data-look="classic""#)
+            && svg.contains(r#"data-look="classic" xlink:href="https://example.com/service""#)
+            && svg.contains(r#"id="merman-classId-Service-0""#)
+            && svg.contains(r#"id="merman-classId-Client-"#),
+        "Class ELK layout should still render namespaces and class nodes through the Class SVG renderer: {svg}"
+    );
+    assert!(
+        svg.contains(r#"xlink:href="https://example.com/service""#)
+            && svg.contains(r#"title="Open Service""#),
+        "Class ELK layout should preserve Class click/link SVG semantics: {svg}"
+    );
+    assert!(
+        svg.contains(r#"style="fill:#ffdddd;stroke:#aa0000;stroke-width:2px;color:#111111""#)
+            && svg.contains(r#"style="fill:#ddffdd;stroke:#00aa00;stroke-width:2px""#),
+        "Class ELK layout should preserve classDef and inline style SVG semantics: {svg}"
+    );
+    assert!(
+        svg.contains("<p>ELK note</p>")
+            && svg.contains(r#"<span class="edgeLabel"><p>calls</p></span>"#)
+            && svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#),
+        "Class ELK layout should preserve notes, relation labels, and cardinality terminals: {svg}"
+    );
+}
+
 #[test]
 fn class_svg_namespace_clusters_keep_theme_fill() {
     let svg = render_class_svg_from_text(

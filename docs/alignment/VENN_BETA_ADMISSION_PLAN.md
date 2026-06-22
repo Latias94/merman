@@ -109,6 +109,11 @@ The implementation lane should have these slices:
 
 `venn-beta` is admitted for classic SVG output. The source-backed layout/parser, renderer foundation, normalized fixtures, upstream baselines, and targeted compare tooling are in place. `@upsetjs/venn.js@2.0.0` remains a test/tooling oracle only, not a runtime dependency.
 
+`look: "handDrawn"` remains a separate follow-up lane. Mermaid's renderer switches the generated
+circle/intersection paths through RoughJS, so local support should only be promoted after rendered
+SVG tests prove deterministic rough output and seed behavior for Venn-specific shapes. The current
+support matrix must not list Venn as rendered hand-drawn support.
+
 The renderer now consumes Venn theme roles through `PresentationTheme::venn()`, so Venn-specific theme fallback chains no longer live inside the SVG emission module.
 
 ## Admission Gates

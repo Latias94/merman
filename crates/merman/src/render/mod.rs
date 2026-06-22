@@ -3,8 +3,8 @@ pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::model::LayoutedDiagram;
 pub use merman_render::resources::{
-    FlowchartComplexity, RenderResourceLimits, RenderResourceProfile, ResourceLimitExceeded,
-    ResourceLimitPhase,
+    ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
+    ResourceLimitExceeded, ResourceLimitPhase,
 };
 pub use merman_render::svg::{
     CompiledHostTheme, CompiledHostThemeOutput, CssOverridePolicy, CssOverridePostprocessor,

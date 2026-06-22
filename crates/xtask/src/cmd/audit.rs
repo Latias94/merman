@@ -113,6 +113,51 @@ fn detect_out_of_scope(meta: &merman::ParseMetadata) -> Vec<String> {
     out
 }
 
+fn fixture_body_without_frontmatter(path: &Path) -> Option<String> {
+    let mut text = fs::read_to_string(path).ok()?;
+    if text.contains("\r\n") {
+        text = text.replace("\r\n", "\n");
+    }
+
+    let body = if let Some(rest) = text.strip_prefix("---\n") {
+        match rest.find("\n---\n") {
+            Some(end) => &rest[end + "\n---\n".len()..],
+            None => text.as_str(),
+        }
+    } else {
+        text.as_str()
+    };
+
+    Some(body.trim().to_string())
+}
+
+fn body_equivalent_active_fixture(
+    fixtures_root: &Path,
+    expected_group: &str,
+    deferred_path: &Path,
+) -> Option<PathBuf> {
+    let deferred_body = fixture_body_without_frontmatter(deferred_path)?;
+    let active_dir = fixtures_root.join(expected_group);
+    if !active_dir.is_dir() {
+        return None;
+    }
+
+    let mut candidates = collect_mmd_fixtures(
+        &active_dir,
+        MmdFixtureScan {
+            recursive: true,
+            skip_private_dirs: true,
+            skip_upstream_svgs: true,
+            ..MmdFixtureScan::default()
+        },
+    );
+    candidates.sort();
+
+    candidates.into_iter().find(|candidate| {
+        fixture_body_without_frontmatter(candidate).is_some_and(|body| body == deferred_body)
+    })
+}
+
 fn absorbed_deferred_duplicate(
     fixtures_root: &Path,
     deferred_root: &Path,
@@ -120,33 +165,38 @@ fn absorbed_deferred_duplicate(
     expected_group: &str,
     meta: &merman::ParseMetadata,
 ) -> Option<AbsorbedDeferredDuplicate> {
-    if expected_group != "flowchart" {
-        return None;
-    }
-    if !(meta.diagram_type == "flowchart-elk"
-        || meta.config.get_str("layout") == Some("elk")
-        || meta.config.get_str("flowchart.defaultRenderer") == Some("elk"))
-    {
-        return None;
-    }
-
-    let stem = path.file_stem()?.to_str()?;
-    if !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem) {
-        return None;
-    }
-
     let rel = path.strip_prefix(deferred_root).ok()?;
     let active_path = fixtures_root.join(rel);
-    if !active_path.exists() {
-        return None;
+
+    if expected_group == "flowchart"
+        && (meta.diagram_type == "flowchart-elk"
+            || meta.config.get_str("layout") == Some("elk")
+            || meta.config.get_str("flowchart.defaultRenderer") == Some("elk"))
+        && active_path.exists()
+    {
+        return Some(AbsorbedDeferredDuplicate {
+            path: path.to_path_buf(),
+            expected_group: expected_group.to_string(),
+            active_path,
+            reason: "active source-backed Flowchart ELK parity fixture already exists",
+        });
     }
 
-    Some(AbsorbedDeferredDuplicate {
-        path: path.to_path_buf(),
-        expected_group: expected_group.to_string(),
-        active_path,
-        reason: "active source-backed Flowchart ELK parity fixture already exists",
-    })
+    if expected_group == "class"
+        && (meta.config.get_str("layout") == Some("elk")
+            || meta.config.get_str("class.defaultRenderer") == Some("elk"))
+        && let Some(active_path) =
+            body_equivalent_active_fixture(fixtures_root, expected_group, path)
+    {
+        return Some(AbsorbedDeferredDuplicate {
+            path: path.to_path_buf(),
+            expected_group: expected_group.to_string(),
+            active_path,
+            reason: "active Class ELK source fixture has the same diagram body",
+        });
+    }
+
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -1034,6 +1084,43 @@ mod tests {
         assert!(
             absorbed_deferred_duplicate(&fixtures_root, &deferred_root, &path, "flowchart", &meta)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn absorbed_deferred_duplicate_recognizes_class_elk_body_equivalent_copy() {
+        let root = crate::cmd::target_root()
+            .join("xtask-tests")
+            .join("audit_absorbed_class_elk_body_duplicate");
+        let fixtures_root = root.join("fixtures");
+        let deferred_root = fixtures_root.join("_deferred");
+        let active_path = fixtures_root.join("class").join("active_class_elk.mmd");
+        let deferred_path = deferred_root.join("class").join("deferred_class_elk.mmd");
+
+        fs::create_dir_all(active_path.parent().expect("active parent")).expect("active dir");
+        fs::create_dir_all(deferred_path.parent().expect("deferred parent")).expect("deferred dir");
+        fs::write(&active_path, "classDiagram\nA <|-- B\n").expect("active fixture");
+        fs::write(
+            &deferred_path,
+            "---\nconfig:\n  layout: elk\n---\nclassDiagram\nA <|-- B\n",
+        )
+        .expect("deferred fixture");
+
+        let meta = parse_meta("---\nconfig:\n  layout: elk\n---\nclassDiagram\nA <|-- B\n");
+
+        let absorbed = absorbed_deferred_duplicate(
+            &fixtures_root,
+            &deferred_root,
+            &deferred_path,
+            "class",
+            &meta,
+        )
+        .expect("body-equivalent Class ELK duplicate should be absorbed");
+
+        assert_eq!(absorbed.active_path, active_path);
+        assert_eq!(
+            absorbed.reason,
+            "active Class ELK source fixture has the same diagram body"
         );
     }
 }

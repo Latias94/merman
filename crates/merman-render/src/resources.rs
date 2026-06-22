@@ -1,4 +1,5 @@
 use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::models::class_diagram::ClassDiagram;
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
@@ -18,6 +19,9 @@ pub struct RenderResourceLimits {
     pub max_flowchart_nodes: Option<usize>,
     pub max_flowchart_edges: Option<usize>,
     pub max_flowchart_subgraphs: Option<usize>,
+    pub max_class_nodes: Option<usize>,
+    pub max_class_edges: Option<usize>,
+    pub max_class_namespaces: Option<usize>,
     pub max_label_bytes: Option<usize>,
 }
 
@@ -35,6 +39,9 @@ impl RenderResourceLimits {
             max_flowchart_nodes: Some(8_000),
             max_flowchart_edges: Some(16_000),
             max_flowchart_subgraphs: Some(2_000),
+            max_class_nodes: Some(8_000),
+            max_class_edges: Some(16_000),
+            max_class_namespaces: Some(2_000),
             max_label_bytes: Some(2 * MIB),
         }
     }
@@ -46,6 +53,9 @@ impl RenderResourceLimits {
             max_flowchart_nodes: Some(4_000),
             max_flowchart_edges: Some(8_000),
             max_flowchart_subgraphs: Some(1_000),
+            max_class_nodes: Some(4_000),
+            max_class_edges: Some(8_000),
+            max_class_namespaces: Some(1_000),
             max_label_bytes: Some(MIB),
         }
     }
@@ -57,6 +67,9 @@ impl RenderResourceLimits {
             max_flowchart_nodes: Some(50_000),
             max_flowchart_edges: Some(100_000),
             max_flowchart_subgraphs: Some(10_000),
+            max_class_nodes: Some(50_000),
+            max_class_edges: Some(100_000),
+            max_class_namespaces: Some(10_000),
             max_label_bytes: Some(16 * MIB),
         }
     }
@@ -68,6 +81,9 @@ impl RenderResourceLimits {
             max_flowchart_nodes: None,
             max_flowchart_edges: None,
             max_flowchart_subgraphs: None,
+            max_class_nodes: None,
+            max_class_edges: None,
+            max_class_namespaces: None,
             max_label_bytes: None,
         }
     }
@@ -129,6 +145,38 @@ impl RenderResourceLimits {
         )?;
         Ok(complexity)
     }
+
+    pub fn check_class_complexity(
+        &self,
+        model: &ClassDiagram,
+    ) -> Result<ClassComplexity, ResourceLimitExceeded> {
+        let complexity = ClassComplexity::from_model(model);
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_class_nodes",
+            complexity.nodes,
+            self.max_class_nodes,
+        )?;
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_class_edges",
+            complexity.edges,
+            self.max_class_edges,
+        )?;
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_class_namespaces",
+            complexity.namespaces,
+            self.max_class_namespaces,
+        )?;
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_label_bytes",
+            complexity.label_bytes,
+            self.max_label_bytes,
+        )?;
+        Ok(complexity)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +219,116 @@ impl FlowchartComplexity {
                 .saturating_add(edge_label_bytes)
                 .saturating_add(subgraph_label_bytes)
                 .saturating_add(tooltip_bytes),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClassComplexity {
+    pub nodes: usize,
+    pub edges: usize,
+    pub namespaces: usize,
+    pub label_bytes: usize,
+}
+
+impl ClassComplexity {
+    pub fn from_model(model: &ClassDiagram) -> Self {
+        let class_label_bytes = model
+            .classes
+            .values()
+            .map(|node| {
+                node.id
+                    .len()
+                    .saturating_add(node.label.len())
+                    .saturating_add(node.text.len())
+                    .saturating_add(node.type_param.len())
+                    .saturating_add(node.css_classes.len())
+                    .saturating_add(node.tooltip.as_deref().map(str::len).unwrap_or(0))
+                    .saturating_add(node.link.as_deref().map(str::len).unwrap_or(0))
+                    .saturating_add(
+                        node.members
+                            .iter()
+                            .chain(node.methods.iter())
+                            .map(|member| {
+                                member
+                                    .display_text
+                                    .len()
+                                    .saturating_add(member.id.len())
+                                    .saturating_add(member.parameters.len())
+                                    .saturating_add(member.return_type.len())
+                            })
+                            .sum::<usize>(),
+                    )
+                    .saturating_add(node.annotations.iter().map(String::len).sum::<usize>())
+                    .saturating_add(node.styles.iter().map(String::len).sum::<usize>())
+            })
+            .sum::<usize>();
+        let relation_label_bytes = model
+            .relations
+            .iter()
+            .map(|rel| {
+                rel.id
+                    .len()
+                    .saturating_add(rel.id1.len())
+                    .saturating_add(rel.id2.len())
+                    .saturating_add(rel.title.len())
+                    .saturating_add(rel.relation_title_1.len())
+                    .saturating_add(rel.relation_title_2.len())
+            })
+            .sum::<usize>();
+        let note_label_bytes = model
+            .notes
+            .iter()
+            .map(|note| {
+                note.id
+                    .len()
+                    .saturating_add(note.text.len())
+                    .saturating_add(note.class_id.as_deref().map(str::len).unwrap_or(0))
+            })
+            .sum::<usize>();
+        let interface_label_bytes = model
+            .interfaces
+            .iter()
+            .map(|iface| {
+                iface
+                    .id
+                    .len()
+                    .saturating_add(iface.label.len())
+                    .saturating_add(iface.class_id.len())
+            })
+            .sum::<usize>();
+        let namespace_label_bytes = model
+            .namespaces
+            .values()
+            .map(|namespace| {
+                namespace
+                    .id
+                    .len()
+                    .saturating_add(namespace.label.len())
+                    .saturating_add(namespace.parent.as_deref().map(str::len).unwrap_or(0))
+            })
+            .sum::<usize>();
+
+        Self {
+            nodes: model
+                .classes
+                .len()
+                .saturating_add(model.notes.len())
+                .saturating_add(model.interfaces.len())
+                .saturating_add(model.namespaces.len()),
+            edges: model.relations.len().saturating_add(
+                model
+                    .notes
+                    .iter()
+                    .filter(|note| note.class_id.is_some())
+                    .count(),
+            ),
+            namespaces: model.namespaces.len(),
+            label_bytes: class_label_bytes
+                .saturating_add(relation_label_bytes)
+                .saturating_add(note_label_bytes)
+                .saturating_add(interface_label_bytes)
+                .saturating_add(namespace_label_bytes),
         }
     }
 }
