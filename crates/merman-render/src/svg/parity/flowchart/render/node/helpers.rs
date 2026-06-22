@@ -60,14 +60,10 @@ pub(super) fn try_render_self_loop_label_placeholder(
     true
 }
 
-fn href_is_renderable_for_security_level(href: &str, config: &merman_core::MermaidConfig) -> bool {
+fn href_is_renderable(href: &str) -> bool {
     let href = href.trim();
     if href.is_empty() {
         return false;
-    }
-
-    if config.get_str("securityLevel") == Some("loose") {
-        return true;
     }
 
     let lower = href.to_ascii_lowercase();
@@ -308,13 +304,11 @@ pub(super) fn resolve_node_render_info<'a>(
             .map(|u| u.trim())
             .filter(|u| !u.is_empty());
         let link_present = link.is_some();
-        // Mermaid sanitizes unsafe URLs (e.g. `javascript:` in strict mode) into
-        // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
-        // Loose mode is different: Mermaid's `formatUrl` preserves custom protocols, so the SVG
-        // link must keep them too.
+        // Mermaid stores the original click link in the model, but the final SVG sanitizer removes
+        // unsafe or unknown schemes from the emitted anchor while keeping the `<a>` wrapper.
         let href = link
             .filter(|u| *u != "about:blank")
-            .filter(|u| href_is_renderable_for_security_level(u, ctx.config));
+            .filter(|u| href_is_renderable(u));
         // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
         // interactions (`click A someFn`) still mark the node as clickable, but do not
         // emit an anchor element in the SVG.

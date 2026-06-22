@@ -203,13 +203,24 @@ flowchart TD
         }))),
         r#"%%{init: {"securityLevel": "loose"}}%%
 flowchart TD
-    A[Alpha] --> B[Beta]
-    click A href "notes://do-your-thing/id" "tip" _blank
+    A[Alpha] --> B[Beta] --> C[Gamma]
+    click A href "mailto:user@user.user" "mail" _blank
+    click B href "notes://do-your-thing/id" "custom" _blank
+    click C href "javascript:alert(1)" "script" _blank
 "#,
     );
     assert!(
-        loose.contains(r#"xlink:href="notes://do-your-thing/id""#),
-        "expected loose mode to preserve Mermaid formatUrl-compatible custom protocols: {loose}"
+        loose.contains(r#"xlink:href="mailto:user@user.user""#),
+        "expected loose mode to preserve Mermaid-renderable mailto links: {loose}"
+    );
+    assert!(
+        loose.contains(r#"<a transform=""#),
+        "expected loose mode to keep Mermaid's anchor wrappers for declared links: {loose}"
+    );
+    assert!(
+        !loose.contains(r#"xlink:href="notes://do-your-thing/id""#)
+            && !loose.contains(r#"xlink:href="javascript:alert(1)""#),
+        "expected loose mode SVG sanitizer parity to omit unknown and script hrefs: {loose}"
     );
 }
 
