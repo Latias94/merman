@@ -42,6 +42,7 @@ Capability levels:
 | `securityLevel` | Yes | Yes | Yes | Partial by family | Core sanitizer and URL formatting consume the root field (`format_url_matches_mermaid_utils_spec`, sanitize tests, and family parser tests for flowchart/class/state/gantt links). `flowchart_svg_security_level_controls_unsafe_click_href_rendering`, `class_svg_security_level_controls_unsafe_click_href_rendering`, and `state_svg_security_level_controls_unsafe_click_href_rendering` prove visible SVG link behavior for the current headless renderers: unsafe strict-mode hrefs do not become `xlink:href`, while loose site config preserves Mermaid-compatible custom/raw links. Gantt has parser/model evidence; upstream Gantt wraps links through browser DOM postprocessing for sandbox mode, so standalone SVG coverage should wait for an intentional headless link-emission design. Mermaid's browser iframe behavior for `sandbox` is outside the headless SVG contract. |
 | `look` | Yes | Yes | Partial by diagram | Partial by diagram | `crates/merman-render/src/config.rs`, `look_svg_test.rs`, `theme_renderability_smoke.rs`. Do not claim universal `look` behavior until the family has a focused SVG assertion. |
 | `layout` | Yes | Yes | Partial | Flowchart ELK source-backed lane | Detector/family selection paths preserve flowchart layout side effects; `parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect`, `full_build_detects_flowchart_elk_and_sets_layout`, `render_svg_returns_svg_for_flowchart_elk`, and `headless_renderer_renders_flowchart_elk_svg`. Flowchart `layout: elk` now uses the source-backed Mermaid ELK adapter / Eclipse ELK layered port by default. The dedicated ELK probe lane covers every upstream `flowchart-elk.spec.js` exact render call and all 57 unique layout bodies. |
+| `elk.mergeEdges` and `elk.nodePlacementStrategy` | Yes | Yes | Flowchart ELK source-backed lane | Yes | `headless_renderer_renders_documented_flowchart_elk_public_config` covers Mermaid's documented `mergeEdges: true` + `nodePlacementStrategy: LINEAR_SEGMENTS` example. `headless_renderer_renders_public_flowchart_elk_node_placement_strategies` covers the documented `BRANDES_KOEPF`, `SIMPLE`, `LINEAR_SEGMENTS`, and `NETWORK_SIMPLEX` values. Processor-level coverage lives in `merman-elk-layered` tests for `SimpleNodePlacer`, `LinearSegmentsNodePlacer`, `NetworkSimplexPlacer`, and `HyperedgeDummyMerger`. |
 | `flowchart.defaultRenderer` | Yes | Yes | Detector/family selection + Flowchart ELK source-backed lane | Flowchart ELK source-backed lane | `crates/merman-core/src/detect/mod.rs`, `crates/merman-core/src/family.rs`, flowchart detector tests, flowchart-elk metadata tests, Flowchart ELK render smoke tests, and `xtask check-flowchart-elk-source-backed-probes`. `elk` selection is preserved and renderable through the source-backed ELK path; broad SVG parity admits the registered ELK probes when the source-backed backend is active. |
 | `class.defaultRenderer` | Yes | Yes | Detector branching | Detector only | `crates/merman-core/src/detect/mod.rs`, `engine_with_site_config_preserves_default_renderer_for_detection`, class detector coverage. Renderer-specific DOM deltas need targeted tests when behavior diverges. |
 | `state.defaultRenderer` | Yes | Yes | Detector branching | Detector only | `crates/merman-core/src/detect/mod.rs` and state detector coverage. Renderer-specific DOM deltas need targeted tests when behavior diverges. |
@@ -59,9 +60,12 @@ Capability levels:
 ## Known Gaps
 
 - Flowchart `layout: elk` is renderable through the source-backed ELK lane and defaults to that
-  lane for public render entry points. The dedicated ELK probe gate covers every upstream
-  `flowchart-elk.spec.js` exact render call and all 57 unique layout bodies; broad SVG parity
-  admits the registered ELK probes when the source-backed backend is active.
+  lane for public render entry points. Mermaid's documented `elk.mergeEdges` example and all
+  documented `elk.nodePlacementStrategy` values are renderable. The dedicated ELK probe gate covers
+  every upstream `flowchart-elk.spec.js` exact render call and all 57 unique layout bodies; broad
+  SVG parity admits the registered ELK probes when the source-backed backend is active. Full
+  Eclipse ELK processor parity is still tracked separately; unsupported non-public strategies should
+  continue to fail explicitly rather than being silently downgraded.
 - Mermaid's local default `secure` list intentionally extends the upstream schema list with
   CSS-bearing fields such as `themeVariables`, `themeCSS`, and fonts. Custom site `secure` lists
   are enforced against diagram config when producing `effective_config`, and trusted parity

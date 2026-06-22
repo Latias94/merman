@@ -20,12 +20,13 @@ use crate::configurator::{configure_graph_properties, configured_options};
 use crate::graph::{LGraph, LNode, LNodeKind, LPoint, LSize, PortSide};
 use crate::intermediate::{
     IntermediateError, calculate_layer_sizes_and_graph_height, insert_label_dummies,
-    join_long_edges, postprocess_end_labels, postprocess_layer_constraints, preprocess_end_labels,
-    preprocess_layer_constraints, process_hierarchical_port_constraints,
-    process_hierarchical_port_dummy_sizes, process_hierarchical_port_orthogonal_edges,
-    process_hierarchical_port_positions, process_inverted_ports, remove_label_dummies,
-    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, select_label_sides,
-    sort_end_labels, split_long_edges, switch_label_dummies,
+    join_long_edges, merge_hyperedge_dummies, postprocess_end_labels,
+    postprocess_layer_constraints, preprocess_end_labels, preprocess_layer_constraints,
+    process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
+    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
+    process_inverted_ports, remove_label_dummies, restore_reversed_edges,
+    reverse_edges_for_edge_and_layer_constraints, select_label_sides, sort_end_labels,
+    split_long_edges, switch_label_dummies,
 };
 use crate::p1cycles::{break_cycles_greedy, break_cycles_greedy_model_order};
 use crate::p2layers::layer_network_simplex;
@@ -39,6 +40,7 @@ use crate::p3order::{
 };
 use crate::p4nodes::{
     calculate_innermost_node_margins, calculate_label_and_node_sizes, place_nodes_brandes_koepf,
+    place_nodes_linear_segments, place_nodes_network_simplex, place_nodes_simple,
     process_in_layer_constraints,
 };
 use crate::p5edges::route_edges_orthogonal;
@@ -876,8 +878,12 @@ fn execute_processor(graph: &mut LGraph, kind: ProcessorKind) -> PipelineResult<
         ProcessorKind::SelfLoopRouter => route_self_loops(graph),
         ProcessorKind::LabelDummySwitcher => switch_label_dummies(graph),
         ProcessorKind::LabelSideSelector => select_label_sides(graph),
+        ProcessorKind::HyperedgeDummyMerger => merge_hyperedge_dummies(graph),
         ProcessorKind::EndLabelPreprocessor => preprocess_end_labels(graph),
         ProcessorKind::BKNodePlacer => place_nodes_brandes_koepf(graph),
+        ProcessorKind::SimpleNodePlacer => place_nodes_simple(graph),
+        ProcessorKind::LinearSegmentsNodePlacer => place_nodes_linear_segments(graph),
+        ProcessorKind::NetworkSimplexPlacer => place_nodes_network_simplex(graph),
         ProcessorKind::LayerSizeAndGraphHeightCalculator => {
             calculate_layer_sizes_and_graph_height(graph);
         }
@@ -1377,7 +1383,9 @@ mod tests {
     use super::*;
     use crate::graph::{LNode, LNodeKind, PortSide, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
-    use crate::options::{ElkDirection, GreedySwitchType, LayeredOptions, PortConstraints};
+    use crate::options::{
+        ElkDirection, GreedySwitchType, LayeredOptions, NodePlacementStrategy, PortConstraints,
+    };
     use crate::p3order::{counting::CrossingsCounter, process_port_sides, sort_port_lists};
 
     fn kinds(options: &LayeredOptions) -> Vec<ProcessorKind> {
@@ -1508,6 +1516,64 @@ mod tests {
             ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
         };
         assert!(kinds(&options).contains(&ProcessorKind::GreedyModelOrderCycleBreaker));
+    }
+
+    #[test]
+    fn documented_node_placement_strategies_assemble_public_processors() {
+        let cases = [
+            (
+                NodePlacementStrategy::BrandesKoepf,
+                ProcessorKind::BKNodePlacer,
+            ),
+            (
+                NodePlacementStrategy::Simple,
+                ProcessorKind::SimpleNodePlacer,
+            ),
+            (
+                NodePlacementStrategy::LinearSegments,
+                ProcessorKind::LinearSegmentsNodePlacer,
+            ),
+            (
+                NodePlacementStrategy::NetworkSimplex,
+                ProcessorKind::NetworkSimplexPlacer,
+            ),
+        ];
+
+        for (strategy, expected_processor) in cases {
+            let options = LayeredOptions {
+                node_placement_strategy: strategy,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+            };
+
+            assert!(
+                kinds(&options).contains(&expected_processor),
+                "{strategy:?} should assemble {expected_processor:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn merge_edges_hyperedge_graph_assembles_dummy_merger() {
+        let graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: true,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+            },
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![
+                edge("A-C-1", "A", "C"),
+                edge("A-C-2", "A", "C"),
+                edge("B-C", "B", "C"),
+            ],
+        })
+        .unwrap();
+
+        assert!(graph.options.graph_has_hyperedges);
+        assert!(
+            graph_kinds(&graph).contains(&ProcessorKind::HyperedgeDummyMerger),
+            "mergeEdges hyperedge graph should assemble HyperedgeDummyMerger"
+        );
     }
 
     #[test]

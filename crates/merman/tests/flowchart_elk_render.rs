@@ -57,6 +57,79 @@ fn headless_renderer_keeps_flowchart_elk_cutter_jog_for_straight_shape_edge() {
     );
 }
 
+#[test]
+fn headless_renderer_renders_documented_flowchart_elk_public_config() {
+    let source = r#"---
+config:
+  layout: elk
+  elk:
+    mergeEdges: true
+    nodePlacementStrategy: LINEAR_SEGMENTS
+---
+flowchart LR
+  A[Start] --> B{Choose Path}
+  B -->|Option 1| C[Path 1]
+  B -->|Option 2| D[Path 2]"#;
+
+    let svg = HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_diagram_id("flowchart-elk-public-config")
+        .render_svg_sync(source)
+        .expect("render should succeed")
+        .expect("diagram should be detected");
+
+    assert!(svg.starts_with("<svg"));
+    for expected in [
+        "Start",
+        "Choose Path",
+        "Option 1",
+        "Option 2",
+        "Path 1",
+        "Path 2",
+    ] {
+        assert!(
+            svg.contains(expected),
+            "expected rendered SVG to contain {expected:?}"
+        );
+    }
+    assert!(!svg.contains("NaN"));
+}
+
+#[test]
+fn headless_renderer_renders_public_flowchart_elk_node_placement_strategies() {
+    for strategy in [
+        "BRANDES_KOEPF",
+        "SIMPLE",
+        "LINEAR_SEGMENTS",
+        "NETWORK_SIMPLEX",
+    ] {
+        let source = format!(
+            r#"---
+config:
+  layout: elk
+  elk:
+    nodePlacementStrategy: {strategy}
+---
+flowchart TD
+  A[Alpha] --> B[Beta]
+  A --> C[Gamma]"#
+        );
+
+        let diagram_id = format!("flowchart-elk-{strategy}");
+        let svg = HeadlessRenderer::new()
+            .with_vendored_text_measurer()
+            .with_diagram_id(&diagram_id)
+            .render_svg_sync(&source)
+            .unwrap_or_else(|err| panic!("{strategy} render should succeed: {err}"))
+            .unwrap_or_else(|| panic!("{strategy} diagram should be detected"));
+
+        assert!(svg.contains("Alpha"));
+        assert!(svg.contains("Beta"));
+        assert!(svg.contains("Gamma"));
+        assert!(!svg.contains("NaN"));
+    }
+}
+
 fn edge_path_d<'a>(svg: &'a str, edge_id: &str) -> &'a str {
     path_attr(edge_path_chunk(svg, edge_id), "d")
 }

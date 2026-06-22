@@ -10,6 +10,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use super::vertical_spacing;
 use crate::graph::{LGraph, LNodeKind, LayeredEdge, PortRef};
 use crate::options::{EdgeStraighteningStrategy, FixedAlignment};
 
@@ -1349,48 +1350,6 @@ fn is_in_layer_edge(graph: &LGraph, edge: &LayeredEdge) -> bool {
 fn is_in_layer_edge_index(graph: &LGraph, edge: usize) -> bool {
     let edge = &graph.edges[edge];
     is_in_layer_edge(graph, edge)
-}
-
-fn vertical_spacing(graph: &LGraph, first: usize, second: usize) -> f64 {
-    use LNodeKind::*;
-
-    match (
-        graph.layerless_nodes[first].kind,
-        graph.layerless_nodes[second].kind,
-    ) {
-        (Normal, Normal) | (Normal, Label) | (Label, Normal) => graph.options.spacing.node_node,
-        (Normal, LongEdge)
-        | (LongEdge, Normal)
-        | (LongEdge, Label)
-        | (Label, LongEdge)
-        | (BreakingPoint, Normal)
-        | (Normal, BreakingPoint)
-        | (BreakingPoint, Label)
-        | (Label, BreakingPoint)
-        | (BreakingPoint, LongEdge)
-        | (LongEdge, BreakingPoint) => graph.options.spacing.edge_node,
-        (LongEdge, LongEdge)
-        | (LongEdge, NorthSouthPort)
-        | (NorthSouthPort, LongEdge)
-        | (LongEdge, ExternalPort)
-        | (ExternalPort, LongEdge)
-        | (Label, Label)
-        | (BreakingPoint, BreakingPoint) => graph.options.spacing.edge_edge,
-        (Normal, NorthSouthPort)
-        | (NorthSouthPort, Normal)
-        | (Normal, ExternalPort)
-        | (ExternalPort, Normal) => graph.options.spacing.edge_node,
-        (NorthSouthPort, NorthSouthPort)
-        | (NorthSouthPort, ExternalPort)
-        | (ExternalPort, NorthSouthPort) => graph.options.spacing.edge_edge,
-        (NorthSouthPort, Label) | (Label, NorthSouthPort) => graph.options.spacing.label_node,
-        (ExternalPort, ExternalPort) => graph.options.spacing.port_port,
-        (ExternalPort, Label) | (Label, ExternalPort) => graph.options.spacing.label_port_vertical,
-        (BreakingPoint, ExternalPort)
-        | (ExternalPort, BreakingPoint)
-        | (BreakingPoint, NorthSouthPort)
-        | (NorthSouthPort, BreakingPoint) => graph.options.spacing.edge_edge,
-    }
 }
 
 #[cfg(test)]

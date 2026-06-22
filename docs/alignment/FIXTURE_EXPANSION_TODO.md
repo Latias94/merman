@@ -167,8 +167,10 @@ Focus areas:
 Deferred (tracked for future import / parity work):
 
 - Flowchart frontmatter config `layout: elk` is now covered by the source-backed ELK lane and
-  admitted to broad SVG parity under the source-backed backend; future work should add only new
-  upstream/user cases that expose missing ELK source-port semantics.
+  admitted to broad SVG parity under the source-backed backend. The documented public ELK options
+  `mergeEdges` and `nodePlacementStrategy` are covered by focused render regressions; future work
+  should add only new upstream/user cases that expose missing ELK source-port semantics or
+  unsupported non-public processor families.
 - Flowchart "layout and look" syntax reference examples (frontmatter `config: { look: ..., layout: ... }`) were briefly imported but removed due to deeper SVG DOM structure deltas (marker grouping / root wrappers / transition class). Track these as a dedicated Flowchart "layout+look" parity work item.
 - Sequence math rendering (`$$...$$`) parity (upstream uses browser math rendering and `<foreignObject>` output).
 - C4 docs fixtures imported from Mermaid docs were temporarily tried and then removed because they require deeper SVG DOM parity

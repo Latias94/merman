@@ -38,12 +38,12 @@ pub use importer::{
 };
 pub use intermediate::{
     IntermediateError, IntermediateResult, calculate_layer_sizes_and_graph_height,
-    insert_label_dummies, postprocess_layer_constraints, preprocess_layer_constraints,
-    process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
-    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
-    process_inverted_ports, remove_label_dummies, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, select_label_sides, split_edge, split_long_edges,
-    switch_label_dummies,
+    insert_label_dummies, merge_hyperedge_dummies, postprocess_layer_constraints,
+    preprocess_layer_constraints, process_hierarchical_port_constraints,
+    process_hierarchical_port_dummy_sizes, process_hierarchical_port_orthogonal_edges,
+    process_hierarchical_port_positions, process_inverted_ports, remove_label_dummies,
+    restore_reversed_edges, reverse_edges_for_edge_and_layer_constraints, select_label_sides,
+    split_edge, split_long_edges, switch_label_dummies,
 };
 pub use options::{
     Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeLabelSideSelection, EdgeRouting,
@@ -64,7 +64,8 @@ pub use p3order::{
     sort_port_lists, target_node,
 };
 pub use p4nodes::{
-    calculate_innermost_node_margins, calculate_label_and_node_sizes, process_in_layer_constraints,
+    calculate_innermost_node_margins, calculate_label_and_node_sizes, place_nodes_linear_segments,
+    place_nodes_network_simplex, place_nodes_simple, process_in_layer_constraints,
 };
 pub use pipeline::{
     GraphExecution, LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot,
