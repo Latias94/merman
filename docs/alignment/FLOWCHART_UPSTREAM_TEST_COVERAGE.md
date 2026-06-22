@@ -194,6 +194,13 @@ Dedicated Flowchart ELK lane:
   `LEFTDOWN`, `RIGHTUP`, `RIGHTDOWN`, `BALANCED`), all `cycleBreakingStrategy` values
   (`GREEDY`, `DEPTH_FIRST`, `INTERACTIVE`, `MODEL_ORDER`, `GREEDY_MODEL_ORDER`),
   `forceNodeModelOrder`, `considerModelOrder`, and `keepEntryNodeOnTop`.
+- Mermaid-reachable processor coverage is audited from the adapter/schema boundary, not from the
+  full Eclipse ELK processor inventory. Current Flowchart ELK inputs can reach Mermaid defaults,
+  public cycle breaking, public node placement, model-order preservation, `mergeEdges`,
+  `keepEntryNodeOnTop` layer constraints, center/end labels, self-loops, and compound external-port
+  routing without assembling an unported processor. Unsupported full-ELK processors remain outside
+  the current Mermaid Flowchart public surface unless Mermaid starts exposing routing, layering,
+  crossing-minimization, wrapping, partition, comment, or hypernode options.
 - The reported frontmatter case with `mergeEdges: true` and
   `nodePlacementStrategy: LINEAR_SEGMENTS` is locked by
   `headless_renderer_renders_reported_flowchart_elk_linear_segments_case`.

@@ -1399,7 +1399,8 @@ mod tests {
     use crate::graph::{LNode, LNodeKind, PortSide, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
     use crate::options::{
-        ElkDirection, GreedySwitchType, LayeredOptions, NodePlacementStrategy, PortConstraints,
+        CycleBreakingStrategy, ElkDirection, FixedAlignment, GreedySwitchType, LayeredOptions,
+        NodePlacementStrategy, OrderingStrategy, PortConstraints,
     };
     use crate::p3order::{counting::CrossingsCounter, process_port_sides, sort_port_lists};
 
@@ -1415,6 +1416,73 @@ mod tests {
             .into_iter()
             .map(|slot| slot.kind)
             .collect()
+    }
+
+    fn is_source_ported_processor(kind: ProcessorKind) -> bool {
+        matches!(
+            kind,
+            ProcessorKind::DirectionPreprocessor
+                | ProcessorKind::EdgeAndLayerConstraintEdgeReverser
+                | ProcessorKind::InteractiveExternalPortPositioner
+                | ProcessorKind::GreedyCycleBreaker
+                | ProcessorKind::DepthFirstCycleBreaker
+                | ProcessorKind::InteractiveCycleBreaker
+                | ProcessorKind::ModelOrderCycleBreaker
+                | ProcessorKind::GreedyModelOrderCycleBreaker
+                | ProcessorKind::LayerConstraintPreprocessor
+                | ProcessorKind::NetworkSimplexLayerer
+                | ProcessorKind::LabelDummyInserter
+                | ProcessorKind::SelfLoopPreProcessor
+                | ProcessorKind::LayerConstraintPostprocessor
+                | ProcessorKind::LongEdgeSplitter
+                | ProcessorKind::PortSideProcessor
+                | ProcessorKind::InvertedPortProcessor
+                | ProcessorKind::PortListSorter
+                | ProcessorKind::SortByInputModelProcessor
+                | ProcessorKind::HierarchicalPortConstraintProcessor
+                | ProcessorKind::LayerSweepCrossingMinimizerBarycenter
+                | ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch
+                | ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch
+                | ProcessorKind::NoCrossingMinimizer
+                | ProcessorKind::InLayerConstraintProcessor
+                | ProcessorKind::LabelAndNodeSizeProcessor
+                | ProcessorKind::InnermostNodeMarginCalculator
+                | ProcessorKind::EndLabelPreprocessor
+                | ProcessorKind::LabelSideSelector
+                | ProcessorKind::HyperedgeDummyMerger
+                | ProcessorKind::HierarchicalPortDummySizeProcessor
+                | ProcessorKind::BKNodePlacer
+                | ProcessorKind::SimpleNodePlacer
+                | ProcessorKind::LinearSegmentsNodePlacer
+                | ProcessorKind::NetworkSimplexPlacer
+                | ProcessorKind::LayerSizeAndGraphHeightCalculator
+                | ProcessorKind::HierarchicalPortPositionProcessor
+                | ProcessorKind::OrthogonalEdgeRouter
+                | ProcessorKind::LongEdgeJoiner
+                | ProcessorKind::LabelDummyRemover
+                | ProcessorKind::EndLabelSorter
+                | ProcessorKind::ReversedEdgeRestorer
+                | ProcessorKind::EndLabelPostprocessor
+                | ProcessorKind::HierarchicalNodeResizer
+                | ProcessorKind::DirectionPostprocessor
+                | ProcessorKind::SelfLoopPortRestorer
+                | ProcessorKind::SelfLoopRouter
+                | ProcessorKind::SelfLoopPostProcessor
+                | ProcessorKind::LabelDummySwitcher
+                | ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
+        )
+    }
+
+    fn assert_processors_are_source_ported(case: &str, processors: Vec<ProcessorKind>) {
+        let unsupported = processors
+            .into_iter()
+            .filter(|kind| !is_source_ported_processor(*kind))
+            .collect::<Vec<_>>();
+
+        assert!(
+            unsupported.is_empty(),
+            "{case} reached unported ELK processors: {unsupported:?}"
+        );
     }
 
     fn node(id: &str) -> ElkInputNode {
@@ -1522,6 +1590,172 @@ mod tests {
         assert!(!processors.contains(&ProcessorKind::BreakingPointInserter));
         assert!(!processors.contains(&ProcessorKind::BreakingPointProcessor));
         assert!(!processors.contains(&ProcessorKind::BreakingPointRemover));
+    }
+
+    #[test]
+    fn mermaid_reachable_flowchart_elk_processors_are_source_ported() {
+        for direction in [
+            ElkDirection::Right,
+            ElkDirection::Left,
+            ElkDirection::Down,
+            ElkDirection::Up,
+        ] {
+            assert_processors_are_source_ported(
+                &format!("Mermaid flowchart direction {direction:?}"),
+                kinds(&LayeredOptions::mermaid_flowchart_defaults(direction)),
+            );
+        }
+
+        for cycle_breaking_strategy in [
+            CycleBreakingStrategy::Greedy,
+            CycleBreakingStrategy::DepthFirst,
+            CycleBreakingStrategy::Interactive,
+            CycleBreakingStrategy::ModelOrder,
+            CycleBreakingStrategy::GreedyModelOrder,
+        ] {
+            assert_processors_are_source_ported(
+                &format!("public cycleBreakingStrategy {cycle_breaking_strategy:?}"),
+                kinds(&LayeredOptions {
+                    cycle_breaking_strategy,
+                    ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+                }),
+            );
+        }
+
+        for node_placement_strategy in [
+            NodePlacementStrategy::BrandesKoepf,
+            NodePlacementStrategy::Simple,
+            NodePlacementStrategy::LinearSegments,
+            NodePlacementStrategy::NetworkSimplex,
+        ] {
+            assert_processors_are_source_ported(
+                &format!("public nodePlacementStrategy {node_placement_strategy:?}"),
+                kinds(&LayeredOptions {
+                    node_placement_strategy,
+                    ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+                }),
+            );
+        }
+
+        for node_placement_bk_fixed_alignment in [
+            FixedAlignment::None,
+            FixedAlignment::LeftUp,
+            FixedAlignment::RightUp,
+            FixedAlignment::LeftDown,
+            FixedAlignment::RightDown,
+            FixedAlignment::Balanced,
+        ] {
+            assert_processors_are_source_ported(
+                &format!("public nodePlacementAlignment {node_placement_bk_fixed_alignment:?}"),
+                kinds(&LayeredOptions {
+                    node_placement_bk_fixed_alignment,
+                    ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+                }),
+            );
+        }
+
+        for consider_model_order_strategy in [
+            OrderingStrategy::None,
+            OrderingStrategy::NodesAndEdges,
+            OrderingStrategy::PreferEdges,
+            OrderingStrategy::PreferNodes,
+        ] {
+            assert_processors_are_source_ported(
+                &format!("public considerModelOrder {consider_model_order_strategy:?}"),
+                kinds(&LayeredOptions {
+                    consider_model_order_strategy,
+                    ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+                }),
+            );
+        }
+
+        assert_processors_are_source_ported(
+            "public forceNodeModelOrder",
+            kinds(&LayeredOptions {
+                force_node_model_order: true,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+            }),
+        );
+
+        let merge_edges_graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: true,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+            },
+            nodes: vec![node("A"), node("B"), node("C")],
+            edges: vec![
+                edge("A-C-1", "A", "C"),
+                edge("A-C-2", "A", "C"),
+                edge("B-C", "B", "C"),
+            ],
+        })
+        .unwrap();
+        assert_processors_are_source_ported(
+            "public mergeEdges hyperedge graph",
+            graph_kinds(&merge_edges_graph),
+        );
+
+        let mut constrained_entry = node("A");
+        constrained_entry.layer_constraint = Some(crate::options::LayerConstraint::First);
+        let keep_entry_graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![constrained_entry, node("B"), node("C")],
+            edges: vec![edge("A-B", "A", "B"), edge("B-C", "B", "C")],
+        })
+        .unwrap();
+        assert_processors_are_source_ported(
+            "public keepEntryNodeOnTop layer constraint",
+            graph_kinds(&keep_entry_graph),
+        );
+
+        let mut head = ElkInputLabel::center("head", 20.0, 10.0);
+        head.placement = crate::graph::EdgeLabelPlacement::Head;
+        let mut end_label_edge = edge("A-B", "A", "B");
+        end_label_edge.label = Some(head);
+        let label_and_self_loop_graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![node("A"), node("B")],
+            edges: vec![
+                ElkInputEdge {
+                    label: Some(ElkInputLabel::center("center", 28.0, 12.0)),
+                    ..edge("A-A", "A", "A")
+                },
+                end_label_edge,
+            ],
+        })
+        .unwrap();
+        assert_processors_are_source_ported(
+            "Mermaid flowchart labels and self loops",
+            graph_kinds(&label_and_self_loop_graph),
+        );
+
+        let mut cluster = node("cluster");
+        cluster.hierarchy_handling = Some(crate::options::HierarchyHandling::IncludeChildren);
+        let mut child = node("A");
+        child.parent = Some("cluster".to_string());
+        let mut compound_graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+            nodes: vec![cluster, child, node("B")],
+            edges: vec![edge("A-B", "A", "B")],
+        })
+        .unwrap();
+        preprocess_source_ported_compound_graph(&mut compound_graph);
+        assert_processors_are_source_ported(
+            "Mermaid flowchart compound root graph",
+            graph_kinds(&compound_graph),
+        );
+        let nested_graph = compound_graph.layerless_nodes[0]
+            .nested_graph
+            .as_ref()
+            .expect("compound fixture should create a nested graph");
+        assert_processors_are_source_ported(
+            "Mermaid flowchart compound child graph",
+            graph_kinds(nested_graph),
+        );
     }
 
     #[test]
