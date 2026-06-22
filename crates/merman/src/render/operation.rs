@@ -2,6 +2,7 @@ use super::{
     LayoutOptions, LayoutedDiagram, Result, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
     apply_svg_pipeline_with_metadata,
 };
+use merman_render::{RenderResourceLimits, ResourceLimitExceeded, ResourceLimitPhase};
 
 #[cfg(feature = "raster")]
 use super::raster;
@@ -36,6 +37,10 @@ impl<'a> HeadlessOperation<'a> {
     }
 
     pub(super) fn layout_diagram(&self) -> Result<Option<LayoutedDiagram>> {
+        self.layout_options
+            .resource_limits
+            .check_source_bytes(self.text)
+            .map_err(resource_limit_error)?;
         let Some(parsed) = self
             .engine
             .parse_diagram_sync(self.text, self.parse_options)?
@@ -116,6 +121,10 @@ impl<'a> HeadlessOperation<'a> {
     }
 
     fn render_svg_parts(&self, svg_options: &SvgRenderOptions) -> Result<Option<RenderedSvgParts>> {
+        self.layout_options
+            .resource_limits
+            .check_source_bytes(self.text)
+            .map_err(resource_limit_error)?;
         let Some(parsed) = self
             .engine
             .parse_diagram_for_render_model_sync(self.text, self.parse_options)?
@@ -133,11 +142,16 @@ impl<'a> HeadlessOperation<'a> {
             self.layout_options.text_measurer.as_ref(),
             svg_options,
         )?;
+        self.layout_options
+            .resource_limits
+            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)
+            .map_err(resource_limit_error)?;
 
         Ok(Some(RenderedSvgParts {
             svg,
             diagram_type: parsed.meta.diagram_type,
             diagram_title: parsed.meta.title,
+            resource_limits: self.layout_options.resource_limits,
         }))
     }
 }
@@ -146,6 +160,7 @@ struct RenderedSvgParts {
     svg: String,
     diagram_type: String,
     diagram_title: Option<String>,
+    resource_limits: RenderResourceLimits,
 }
 
 impl RenderedSvgParts {
@@ -158,11 +173,20 @@ impl RenderedSvgParts {
             svg,
             diagram_type,
             diagram_title,
+            resource_limits,
         } = self;
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
             .with_diagram_type(diagram_type)
             .with_optional_diagram_title(diagram_title);
 
-        apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata)
+        let out = apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata)?;
+        resource_limits
+            .check_svg_bytes(&out, ResourceLimitPhase::SvgPostprocess)
+            .map_err(resource_limit_error)?;
+        Ok(out)
     }
+}
+
+fn resource_limit_error(err: ResourceLimitExceeded) -> super::HeadlessError {
+    merman_render::Error::ResourceLimitExceeded(err).into()
 }

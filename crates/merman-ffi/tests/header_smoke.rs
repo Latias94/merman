@@ -66,6 +66,9 @@ int merman_header_smoke(void) {
     if (MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES != 2) {
         return 12;
     }
+    if (MERMAN_RESOURCE_LIMIT_EXCEEDED != 10) {
+        return 13;
+    }
     (void)abi_version;
     (void)package_version;
     (void)buffer_struct_size;

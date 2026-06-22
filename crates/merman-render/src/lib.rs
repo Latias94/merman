@@ -41,6 +41,7 @@ pub mod pie;
 pub mod quadrantchart;
 pub mod radar;
 pub mod requirement;
+pub mod resources;
 pub mod sankey;
 pub mod sequence;
 pub mod state;
@@ -64,6 +65,11 @@ use merman_core::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
 use serde_json::Value;
 use std::sync::Arc;
 
+pub use resources::{
+    FlowchartComplexity, RenderResourceLimits, RenderResourceProfile, ResourceLimitExceeded,
+    ResourceLimitPhase,
+};
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("unsupported diagram type for layout: {diagram_type}")]
@@ -72,6 +78,8 @@ pub enum Error {
     InvalidModel { message: String },
     #[error("SVG postprocessor `{pass}` failed: {message}")]
     SvgPostprocess { pass: String, message: String },
+    #[error(transparent)]
+    ResourceLimitExceeded(#[from] ResourceLimitExceeded),
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -102,6 +110,8 @@ pub struct LayoutOptions {
     /// `SourcePorted` executes the Rust source port of ELK layered layout. `Compat` keeps the
     /// previous lightweight backend available as an explicit alpha fallback.
     pub flowchart_elk_backend: FlowchartElkBackend,
+    /// Resource budget applied during layout-heavy model processing.
+    pub resource_limits: RenderResourceLimits,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -120,6 +130,7 @@ impl Default for LayoutOptions {
             viewport_height: 600.0,
             use_manatee_layout: false,
             flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+            resource_limits: RenderResourceLimits::interactive(),
         }
     }
 }
@@ -148,6 +159,11 @@ impl LayoutOptions {
 
     pub fn with_math_renderer(mut self, renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
         self.math_renderer = Some(renderer);
+        self
+    }
+
+    pub fn with_resource_limits(mut self, limits: RenderResourceLimits) -> Self {
+        self.resource_limits = limits;
         self
     }
 }
@@ -423,6 +439,7 @@ fn layout_flowchart_typed_by_engine(
         );
     }
 
+    options.resource_limits.check_flowchart_complexity(model)?;
     flowchart::layout_flowchart_v2_typed(
         model,
         effective_config,
@@ -438,6 +455,7 @@ fn layout_flowchart_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutOptions,
 ) -> Result<model::FlowchartV2Layout> {
+    options.resource_limits.check_flowchart_complexity(model)?;
     flowchart::elk::layout_flowchart_elk_typed(
         model,
         effective_config,
@@ -474,6 +492,8 @@ fn layout_flowchart_json_by_engine(
         );
     }
 
+    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
+    options.resource_limits.check_flowchart_complexity(&model)?;
     flowchart::layout_flowchart_v2(
         semantic,
         effective_config,
@@ -489,6 +509,8 @@ fn layout_flowchart_elk_json_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutOptions,
 ) -> Result<model::FlowchartV2Layout> {
+    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
+    options.resource_limits.check_flowchart_complexity(&model)?;
     flowchart::elk::layout_flowchart_elk(
         semantic,
         effective_config,
@@ -774,6 +796,58 @@ A-->B
         let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
         let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
         assert!(b.y > a.y);
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn render_model_dispatch_rejects_flowchart_over_node_resource_limit() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_with_type_sync(
+                "flowchart-elk",
+                "flowchart-elk TD\nA-->B;",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let options = LayoutOptions {
+            resource_limits: RenderResourceLimits {
+                max_flowchart_nodes: Some(1),
+                ..RenderResourceLimits::unbounded_for_trusted_input()
+            },
+            ..LayoutOptions::default()
+        };
+
+        let err = layout_parsed_render_layout_only(&parsed, &options).unwrap_err();
+
+        let Error::ResourceLimitExceeded(limit) = err else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_flowchart_nodes");
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn json_dispatch_rejects_flowchart_over_edge_resource_limit() {
+        let parsed = Engine::new()
+            .parse_diagram_sync("flowchart TD\nA-->B\nB-->C\nC-->D", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let options = LayoutOptions {
+            resource_limits: RenderResourceLimits {
+                max_flowchart_edges: Some(2),
+                ..RenderResourceLimits::unbounded_for_trusted_input()
+            },
+            ..LayoutOptions::default()
+        };
+
+        let err = layout_parsed(&parsed, &options).unwrap_err();
+
+        let Error::ResourceLimitExceeded(limit) = err else {
+            panic!("expected resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_flowchart_edges");
     }
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]

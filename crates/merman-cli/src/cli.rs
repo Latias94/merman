@@ -142,6 +142,10 @@ pub(crate) struct RenderCliArgs {
     /// Stabilize rough/hand-drawn rendering where supported.
     #[arg(long = "hand-drawn-seed")]
     pub(crate) hand_drawn_seed: Option<u64>,
+
+    /// Render resource profile for source, layout model, and SVG output budgets.
+    #[arg(long = "resource-profile", value_enum, default_value_t = ResourceProfile::TrustedNative)]
+    pub(crate) resource_profile: ResourceProfile,
 }
 
 impl Default for RenderCliArgs {
@@ -154,6 +158,7 @@ impl Default for RenderCliArgs {
             height: None,
             svg_id: None,
             hand_drawn_seed: None,
+            resource_profile: ResourceProfile::TrustedNative,
         }
     }
 }
@@ -302,6 +307,10 @@ pub(crate) struct ExportArgs {
     /// Stabilize rough/hand-drawn rendering where supported.
     #[arg(long = "hand-drawn-seed")]
     pub(crate) hand_drawn_seed: Option<u64>,
+
+    /// Render resource profile for source, layout model, and SVG output budgets.
+    #[arg(long = "resource-profile", value_enum, default_value_t = ResourceProfile::TrustedNative)]
+    pub(crate) resource_profile: ResourceProfile,
 }
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
@@ -323,6 +332,26 @@ pub(crate) enum FlowchartElkBackend {
     Compat,
     #[default]
     SourcePorted,
+}
+
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub(crate) enum ResourceProfile {
+    Interactive,
+    TypstPackage,
+    #[default]
+    TrustedNative,
+    UnboundedForTrustedInput,
+}
+
+impl From<ResourceProfile> for merman::render::RenderResourceProfile {
+    fn from(value: ResourceProfile) -> Self {
+        match value {
+            ResourceProfile::Interactive => Self::Interactive,
+            ResourceProfile::TypstPackage => Self::TypstPackage,
+            ResourceProfile::TrustedNative => Self::TrustedNative,
+            ResourceProfile::UnboundedForTrustedInput => Self::UnboundedForTrustedInput,
+        }
+    }
 }
 
 impl From<FlowchartElkBackend> for RenderFlowchartElkBackend {

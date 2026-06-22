@@ -7,6 +7,7 @@ use std::process::Command;
 enum TypstBuildProfile {
     Minimal,
     Full,
+    FullElk,
 }
 
 impl TypstBuildProfile {
@@ -14,6 +15,7 @@ impl TypstBuildProfile {
         match raw {
             "minimal" | "default" => Ok(Self::Minimal),
             "full" | "core-full" => Ok(Self::Full),
+            "full-elk" | "elk" | "publish" | "default-publish" => Ok(Self::FullElk),
             _ => Err(XtaskError::Usage),
         }
     }
@@ -22,6 +24,7 @@ impl TypstBuildProfile {
         match self {
             Self::Minimal => "minimal",
             Self::Full => "full",
+            Self::FullElk => "full-elk",
         }
     }
 }
@@ -54,7 +57,7 @@ struct TypstManifestPackage {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            profile: TypstBuildProfile::Minimal,
+            profile: TypstBuildProfile::FullElk,
             out_dir: paths::workspace_root().join("dist").join("typst"),
             skip_wasm_build: false,
         }
@@ -303,7 +306,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
 
 fn print_usage() {
     println!(
-        "usage: xtask build-typst-package [--profile minimal|full] [--out <dir>] [--skip-wasm-build]"
+        "usage: xtask build-typst-package [--profile minimal|full|full-elk] [--out <dir>] [--skip-wasm-build]"
     );
 }
 
@@ -451,8 +454,22 @@ fn build_wasm(profile: TypstBuildProfile, wasm_path: &Path) -> Result<(), XtaskE
         "--target",
         "wasm32-unknown-unknown",
     ]);
-    if matches!(profile, TypstBuildProfile::Full) {
-        command.args(["--features", "core-full"]);
+    match profile {
+        TypstBuildProfile::Minimal => {
+            command
+                .arg("--no-default-features")
+                .args(["--features", "render"]);
+        }
+        TypstBuildProfile::Full => {
+            command
+                .arg("--no-default-features")
+                .args(["--features", "render,core-full"]);
+        }
+        TypstBuildProfile::FullElk => {
+            command
+                .arg("--no-default-features")
+                .args(["--features", "render,core-full,elk-layout"]);
+        }
     }
 
     let status = command.status().map_err(|source| XtaskError::ReadFile {
