@@ -18,6 +18,7 @@ pub struct BindingCapabilities {
     pub ascii: bool,
     pub core_full: bool,
     pub core_host: bool,
+    pub elk_layout: bool,
     pub ratex_math: bool,
     pub text_measurement: TextMeasurementCapabilities,
 }
@@ -44,6 +45,7 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         ascii: cfg!(feature = "ascii"),
         core_full: cfg!(feature = "core-full") || cfg!(feature = "ascii"),
         core_host: cfg!(feature = "core-host") || cfg!(feature = "ascii"),
+        elk_layout: cfg!(feature = "elk-layout"),
         ratex_math: cfg!(feature = "ratex-math"),
         text_measurement: TextMeasurementCapabilities {
             vendored: cfg!(feature = "render"),
@@ -191,6 +193,7 @@ mod tests {
             capabilities.core_host,
             cfg!(feature = "core-host") || cfg!(feature = "ascii")
         );
+        assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
         assert_eq!(
             capabilities.text_measurement.vendored,

@@ -164,6 +164,7 @@ size_t merman_host_text_measure_result_struct_size(void);
 | 7 | `MERMAN_UNSUPPORTED_FORMAT` | Requested output is not enabled or not implemented. |
 | 8 | `MERMAN_PANIC` | Rust panic was caught at the ABI boundary. |
 | 9 | `MERMAN_INTERNAL_ERROR` | Serialization, allocation, or other unexpected internal failure. |
+| 10 | `MERMAN_RESOURCE_LIMIT_EXCEEDED` | Source, layout-model, label, or SVG resource budget was exceeded. |
 
 ## Memory Ownership
 

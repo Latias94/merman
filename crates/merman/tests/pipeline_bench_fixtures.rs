@@ -50,6 +50,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
         math_renderer: None,
         use_manatee_layout: true,
         flowchart_elk_backend: Default::default(),
+        resource_limits: Default::default(),
     };
 
     for path in fixtures {

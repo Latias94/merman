@@ -12,6 +12,7 @@ fn xychart_render_svg_sync_uses_typed_render_path() {
         math_renderer: None,
         use_manatee_layout: true,
         flowchart_elk_backend: Default::default(),
+        resource_limits: Default::default(),
     };
     let svg_opts = merman::render::SvgRenderOptions {
         diagram_id: Some("typed_xychart".to_string()),

@@ -472,6 +472,7 @@ mod tests {
             capabilities.core_host,
             cfg!(feature = "core-host") || cfg!(feature = "ascii")
         );
+        assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
     }
 

@@ -7,6 +7,27 @@ export interface LayoutOptions {
   viewport_height?: number;
   text_measurer?: "vendored" | "deterministic";
   math_renderer?: "none" | "ratex";
+  flowchart_elk_backend?: "source-ported" | "source_ported" | "source" | "compat";
+}
+
+export interface ResourceOptions {
+  profile?:
+    | "interactive"
+    | "typst-package"
+    | "typst_package"
+    | "typst"
+    | "trusted-native"
+    | "trusted_native"
+    | "trusted"
+    | "unbounded-for-trusted-input"
+    | "unbounded_for_trusted_input"
+    | "unbounded";
+  max_source_bytes?: number;
+  max_svg_bytes?: number;
+  max_flowchart_nodes?: number;
+  max_flowchart_edges?: number;
+  max_flowchart_subgraphs?: number;
+  max_label_bytes?: number;
 }
 
 export interface SvgOptions {
@@ -81,6 +102,7 @@ export type AsciiBindingOptions = CommonBindingOptions;
 export interface SvgBindingOptions extends CommonBindingOptions {
   host_theme?: HostThemeOptions;
   layout?: LayoutOptions;
+  resources?: ResourceOptions;
   svg?: SvgOptions;
 }
 
@@ -193,6 +215,7 @@ export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_UNSUPPORTED_FORMAT",
   "MERMAN_PANIC",
   "MERMAN_INTERNAL_ERROR",
+  "MERMAN_RESOURCE_LIMIT_EXCEEDED",
 ] as const;
 
 export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
@@ -210,6 +233,7 @@ export interface BindingCapabilities {
   ascii: boolean;
   core_full: boolean;
   core_host: boolean;
+  elk_layout: boolean;
   ratex_math: boolean;
 }
 
@@ -227,6 +251,7 @@ export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
   ascii: true,
   core_full: true,
   core_host: true,
+  elk_layout: true,
   ratex_math: false,
 };
 
@@ -687,6 +712,7 @@ function normalizeBindingCapabilities(
     ascii: Boolean(capabilities.ascii),
     core_full: Boolean(capabilities.core_full),
     core_host: Boolean(capabilities.core_host),
+    elk_layout: Boolean(capabilities.elk_layout),
     ratex_math: Boolean(capabilities.ratex_math),
   };
 }

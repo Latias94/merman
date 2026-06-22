@@ -152,6 +152,10 @@ jobs:
 
           #mermaid("flowchart LR\n  A[Typst] --> B[merman]\n", width: 80%)
 
+          #let elk = mermaid-result("flowchart-elk TD\n  A[Typst] --> B[ELK]\n")
+          ELK result: `#elk.code_name`
+          #mermaid("flowchart-elk TD\n  A[Typst] --> B[ELK]\n", width: 80%)
+
           ```mermaid
           sequenceDiagram
             participant A

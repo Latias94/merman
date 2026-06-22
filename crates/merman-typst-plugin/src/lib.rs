@@ -62,7 +62,8 @@ pub fn capabilities_json() -> Vec<u8> {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
-    match merman_bindings_core::render_svg(source, options_json) {
+    let options_json = typst_options_json(options_json);
+    match merman_bindings_core::render_svg(source, &options_json) {
         Ok(svg) => match std::str::from_utf8(&svg) {
             Ok(svg) => merman_bindings_core::render_payload_json_bytes(
                 merman_bindings_core::BindingStatus::Ok,
@@ -88,7 +89,31 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, TypstPluginError> {
-    merman_bindings_core::validate_json(source, options_json).map_err(TypstPluginError::from)
+    let options_json = typst_options_json(options_json);
+    merman_bindings_core::validate_json(source, &options_json).map_err(TypstPluginError::from)
+}
+
+#[cfg(feature = "render")]
+fn typst_options_json(options_json: &[u8]) -> Vec<u8> {
+    if options_json.is_empty() {
+        return br#"{"resources":{"profile":"typst-package"}}"#.to_vec();
+    }
+
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(options_json) else {
+        return options_json.to_vec();
+    };
+    let Some(object) = value.as_object_mut() else {
+        return options_json.to_vec();
+    };
+    object
+        .entry("resources")
+        .or_insert_with(|| serde_json::json!({ "profile": "typst-package" }));
+    serde_json::to_vec(&value).unwrap_or_else(|_| options_json.to_vec())
+}
+
+#[cfg(not(feature = "render"))]
+fn typst_options_json(options_json: &[u8]) -> Vec<u8> {
+    options_json.to_vec()
 }
 
 #[cfg(test)]
@@ -137,6 +162,33 @@ mod tests {
         assert!(payload["message"].is_null());
         assert!(payload["svg"].as_str().unwrap().contains("<svg"));
         assert!(payload["svg"].as_str().unwrap().contains("Hello"));
+    }
+
+    #[test]
+    fn render_svg_json_renders_flowchart_elk_from_default_artifact() {
+        let payload: Value = serde_json::from_slice(&render_svg_json(
+            b"flowchart-elk TD\nA[Hello] --> B[World]",
+            b"",
+        ))
+        .expect("valid JSON payload");
+
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["code_name"], "MERMAN_OK");
+        assert!(payload["svg"].as_str().unwrap().contains("Hello"));
+    }
+
+    #[test]
+    fn render_svg_json_uses_typst_resource_profile_by_default() {
+        let source = format!("flowchart TD\nA[{}]", "x".repeat(1024 * 1024));
+        let payload: Value = serde_json::from_slice(&render_svg_json(source.as_bytes(), b""))
+            .expect("valid JSON payload");
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["code_name"], "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+        assert!(payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("max_source_bytes"));
     }
 
     #[test]

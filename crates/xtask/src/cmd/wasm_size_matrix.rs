@@ -120,6 +120,14 @@ const PRESETS: &[WasmPreset] = &[
         features: &[],
     },
     WasmPreset {
+        name: "browser-full-no-elk",
+        surface: Surface::Browser,
+        package: "merman-wasm",
+        artifact_name: "merman_wasm.wasm",
+        no_default_features: true,
+        features: &["core-full", "core-host", "render", "ascii"],
+    },
+    WasmPreset {
         name: "browser-ratex-math",
         surface: Surface::Browser,
         package: "merman-wasm",
@@ -136,20 +144,28 @@ const PRESETS: &[WasmPreset] = &[
         features: &[],
     },
     WasmPreset {
-        name: "typst-render",
+        name: "typst-render-no-elk",
+        surface: Surface::Typst,
+        package: "merman-typst-plugin",
+        artifact_name: "merman_typst_plugin.wasm",
+        no_default_features: true,
+        features: &["render"],
+    },
+    WasmPreset {
+        name: "typst-core-full-no-elk",
+        surface: Surface::Typst,
+        package: "merman-typst-plugin",
+        artifact_name: "merman_typst_plugin.wasm",
+        no_default_features: true,
+        features: &["render", "core-full"],
+    },
+    WasmPreset {
+        name: "typst-full-elk",
         surface: Surface::Typst,
         package: "merman-typst-plugin",
         artifact_name: "merman_typst_plugin.wasm",
         no_default_features: false,
         features: &[],
-    },
-    WasmPreset {
-        name: "typst-core-full",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: false,
-        features: &["core-full"],
     },
     WasmPreset {
         name: "typst-ratex-math",
@@ -562,7 +578,7 @@ mod tests {
         let presets = selected_presets(&options).unwrap();
 
         assert!(presets.iter().any(|preset| preset.name == "browser-full"));
-        assert!(presets.iter().any(|preset| preset.name == "typst-render"));
+        assert!(presets.iter().any(|preset| preset.name == "typst-full-elk"));
     }
 
     #[test]

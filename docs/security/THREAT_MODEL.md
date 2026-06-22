@@ -1,7 +1,7 @@
 # Security Threat Model
 
 **Status**: Living document  
-**Last updated**: 2026-06-17  
+**Last updated**: 2026-06-22
 **Scope**: `merman-core`, `merman-render`, `merman`, and `merman-cli`
 
 ## Problem
@@ -17,13 +17,16 @@ parity for consumers that intentionally need Mermaid-like SVG output.
 
 ```mermaid
 flowchart LR
-    Source[Untrusted Mermaid source] --> Core[merman-core parser and sanitizer]
+    Source[Untrusted Mermaid source] --> SourceBudget[Source byte budget]
+    SourceBudget --> Core[merman-core parser and sanitizer]
     SiteConfig[Trusted host site config] --> Core
     Core --> Model[Semantic model]
-    Model --> Render[merman-render SVG renderer]
+    Model --> LayoutBudget[Layout model budget]
+    LayoutBudget --> Render[merman-render SVG renderer]
     Icons[Trusted icon registry] --> Render
     Render --> Parity[Parity SVG]
-    Parity --> Pipeline[Optional SVG pipeline]
+    Parity --> SvgBudget[SVG byte budget]
+    SvgBudget --> Pipeline[Optional SVG pipeline]
     Pipeline --> SafeSvg[Readable or resvg-safe SVG]
     SafeSvg --> Raster[PNG/JPG/PDF]
 ```
@@ -48,8 +51,9 @@ flowchart LR
 | Script or data URLs in labels and links | Mermaid-compatible `format_url` and `sanitize_url` logic, strict by default. | Core URL tests plus SVG integration tests. |
 | HTML/script in labels | DOMPurify-inspired text sanitizer backed by generated allowlists when full sanitization is enabled. | Core sanitizer tests. |
 | `<foreignObject>`, active SVG content, and unsupported CSS in raster paths | `SvgPipeline::readable()` adds text fallbacks; `SvgPipeline::resvg_safe()` strips foreignObject, active SVG elements, event attributes, unsafe URL attributes, unsafe style/presentation URL values, and unsupported CSS patterns. | Pipeline tests and public API regression tests. |
-| Huge or malformed raster/PDF output | Raster options include default pixmap limits, fit/scale controls, and intrinsic-size checks before PNG/JPG/PDF conversion. | Raster tests, public API regression tests, and CLI behavior. |
-| Parser/layout denial of service | Diagram-specific guards such as text-size, edge-count, nesting, and Gantt exclude expansion limits. | Core/render unit tests. |
+| Huge source, layout model, labels, or SVG output | Shared render resource budgets limit source bytes, Flowchart layout cardinality, aggregate label bytes, and SVG bytes before and after SVG postprocessing. | Render, bindings, Typst, and security regression tests. |
+| Huge or malformed raster/PDF output | Raster options include default pixmap limits, fit/scale controls, and intrinsic-size checks before PNG/JPG/PDF conversion. Raster unbounded mode does not disable render resource budgets. | Raster tests, public API regression tests, and CLI behavior. |
+| Parser/layout denial of service | Shared render budgets plus diagram-specific guards such as nesting and Gantt exclude expansion limits. Parser nesting limits remain separate because they protect recursive parse/config surfaces before layout budgets exist. | Core/render unit tests. |
 | Raw style declaration breakouts | SVG style declaration helpers reject or escape known declaration and selector breakouts. | Render CSS tests. |
 
 ## Known Residual Risks
@@ -62,6 +66,7 @@ flowchart LR
 | `securityLevel = loose` in site config | Loose mode intentionally preserves more Mermaid behavior, including custom links. | Do not enable loose mode for untrusted diagrams unless the embedding context is already sandboxed. |
 | `resvg_safe` is mistaken for a complete sanitizer | It targets renderer compatibility, not every browser XSS vector. | Use defense in depth for web embedding: CSP, sandboxing, and a dedicated sanitizer. |
 | Dependency vulnerabilities | Parser, XML/HTML, image, and raster dependencies may receive future advisories. | `Security Audit` CI runs `cargo audit` on dependency changes and weekly; triage RustSec and upstream Mermaid advisories against this document. |
+| Accepted large graph still consumes CPU inside a layout engine | Cardinality and byte limits reduce worst cases but do not preempt CPU once a graph is admitted. | Use tighter `resources` profiles for untrusted surfaces; add cooperative deadlines as follow-up if host workloads need hard CPU caps. |
 
 ## Output Guidance
 
@@ -106,6 +111,8 @@ without consumer demand and sanitizer validation.
   style/presentation URL values in raw SVG and rendered icon fragments.
 - Raster tests keep enforcing size limits for unusually large `viewBox` values before PNG/JPG
   pixmap allocation and PDF vector conversion.
+- Resource-limit tests keep enforcing source bytes, Flowchart model cardinality, aggregate label
+  bytes, and SVG bytes through Rust and binding surfaces.
 - New diagram families identify label, URL, style, and config merge points during admission.
 
 ## Success Criteria
@@ -116,6 +123,7 @@ without consumer demand and sanitizer validation.
 | URL sanitizer coverage | Unsafe URL cases stay blocked in strict mode | Core URL tests plus SVG regression tests |
 | SVG cleanup coverage | `resvg_safe` output remains XML-parseable and free of known raster hazards | Pipeline and integration tests |
 | Raster budget coverage | Oversized intrinsic SVGs do not allocate unbounded PNG/JPG pixmaps or convert to PDF by default | `cargo nextest run -p merman --features raster --test security_regression` |
+| Render resource budget coverage | Oversized source/model/SVG failures classify as resource limits | `cargo nextest run -p merman --features render --test security_regression`; `cargo nextest run -p merman-bindings-core --features render,elk-layout` |
 | Advisory triage | Every relevant RustSec or upstream Mermaid advisory maps to mitigation, non-applicability, or follow-up | `Security Audit` CI plus updates to this document and `CHANGELOG.md` |
 
 ## Future Work
@@ -123,6 +131,7 @@ without consumer demand and sanitizer validation.
 - Add a stricter browser-embedding SVG preset if consumers need inline SVG without an external
   sanitizer.
 - Add optional icon SVG sanitization helpers for hosts that cannot fully trust icon packs.
-- Expand denial-of-service budgets around layout-heavy diagram families and CLI/server timeouts.
+- Expand layout-model budgets beyond Flowchart and add optional cooperative layout deadlines for
+  hosts that need hard CPU preemption.
 - Add a broader dependency policy gate, such as license and duplicate-version checks, if release
   review needs more than RustSec advisory scanning.

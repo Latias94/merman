@@ -1,7 +1,7 @@
 #![cfg(feature = "render")]
 
 use merman::MermaidConfig;
-use merman::render::HeadlessRenderer;
+use merman::render::{HeadlessRenderer, RenderResourceLimits};
 use std::sync::Arc;
 
 fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
@@ -123,6 +123,34 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
     assert!(out.contains(r##"href="#shape""##), "{out}");
     assert!(out.contains(r##"xlink:href="#shape""##), "{out}");
     assert!(out.contains("data:image/png"), "{out}");
+}
+
+#[test]
+fn render_resource_limit_rejects_oversized_source() {
+    let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
+        max_source_bytes: Some(8),
+        ..RenderResourceLimits::unbounded_for_trusted_input()
+    });
+
+    let err = renderer
+        .render_svg_sync("flowchart TD\nA --> B")
+        .unwrap_err();
+
+    assert!(err.to_string().contains("max_source_bytes"), "{err}");
+}
+
+#[test]
+fn render_resource_limit_rejects_oversized_flowchart_model() {
+    let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
+        max_flowchart_edges: Some(1),
+        ..RenderResourceLimits::unbounded_for_trusted_input()
+    });
+
+    let err = renderer
+        .render_svg_sync("flowchart TD\nA-->B\nB-->C")
+        .unwrap_err();
+
+    assert!(err.to_string().contains("max_flowchart_edges"), "{err}");
 }
 
 #[test]

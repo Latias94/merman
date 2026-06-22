@@ -24,8 +24,9 @@ wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
 | `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII calls report `MERMAN_UNSUPPORTED_FORMAT`. |
 | `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, validation, themes, and metadata over the minimal core profile. |
 | `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile. |
-| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/validate, ASCII, and host browser capabilities. |
-| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer. |
+| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/validate, ASCII, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
+| `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Not the npm default. |
+| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. |
 
 Run `npm run build:ts --prefix platforms/web` after a preset build when producing a complete local
 package.
@@ -156,10 +157,10 @@ rendering in the browser. Treat it as a feature module, not as first-paint UI co
 The package does not publish separate npm subpaths for render-only or ASCII-only artifacts yet. Use
 the source build presets above when you need to produce a local slim package, and call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`core_full`, `core_host`, or `ratex_math` capability. `selectedRegistryProfile()` reports the active
-Mermaid registry profile, and `diagramFamilyCapabilities()` reports the diagram parser/render facts
-registered in the current artifact. The ASCII preset currently preserves the full core registry for
-compatibility with the browser ASCII implementation.
+`core_full`, `core_host`, `elk_layout`, or `ratex_math` capability. `selectedRegistryProfile()`
+reports the active Mermaid registry profile, and `diagramFamilyCapabilities()` reports the diagram
+parser/render facts registered in the current artifact. The ASCII preset currently preserves the
+full core registry for compatibility with the browser ASCII implementation.
 
 ## Web Worker integration
 
