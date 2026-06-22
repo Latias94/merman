@@ -8,6 +8,7 @@ import { normalizeThemeName } from "@mermanjs/web";
 
 export const MERMAID_JS_VERSION = "11.15.0";
 export const MERMAID_ZENUML_VERSION = "0.2.2";
+export const MERMAID_LAYOUT_ELK_VERSION = "0.2.1";
 export const MERMAID_CDN_URL =
   import.meta.env.VITE_MERMAID_CDN_URL?.trim() ||
   `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_JS_VERSION}/dist/mermaid.esm.min.mjs`;
@@ -21,6 +22,12 @@ const MERMAID_ZENUML_CDN_URL =
 const MERMAID_ZENUML_FALLBACK_CDN_URL =
   import.meta.env.VITE_MERMAID_ZENUML_FALLBACK_CDN_URL?.trim() ||
   `https://unpkg.com/@mermaid-js/mermaid-zenuml@${MERMAID_ZENUML_VERSION}/dist/mermaid-zenuml.core.mjs`;
+const MERMAID_LAYOUT_ELK_CDN_URL =
+  import.meta.env.VITE_MERMAID_LAYOUT_ELK_CDN_URL?.trim() ||
+  `https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@${MERMAID_LAYOUT_ELK_VERSION}/dist/mermaid-layout-elk.esm.min.mjs`;
+const MERMAID_LAYOUT_ELK_FALLBACK_CDN_URL =
+  import.meta.env.VITE_MERMAID_LAYOUT_ELK_FALLBACK_CDN_URL?.trim() ||
+  `https://unpkg.com/@mermaid-js/layout-elk@${MERMAID_LAYOUT_ELK_VERSION}/dist/mermaid-layout-elk.esm.min.mjs`;
 
 export interface MermaidRenderResult {
   svg: string | null;
@@ -36,6 +43,7 @@ interface MermaidApi {
     diagrams: unknown[],
     options?: { lazyLoad?: boolean }
   ): Promise<void>;
+  registerLayoutLoaders?(loaders: unknown[]): void;
 }
 
 interface MermaidConfig {
@@ -54,6 +62,8 @@ let warmupConfigSignature: string | null = null;
 let warmupPromise: Promise<void> | null = null;
 let zenumlPromise: Promise<unknown> | null = null;
 let zenumlRegisteredMermaid: MermaidApi | null = null;
+let elkLayoutsPromise: Promise<unknown[]> | null = null;
+let elkLayoutsRegisteredMermaid: MermaidApi | null = null;
 
 const WARMUP_SOURCE = "flowchart TD\n  warmupA[Warmup] --> warmupB[Ready]";
 const CDN_ENABLED = import.meta.env.VITE_MERMAID_CDN !== "false";
@@ -69,6 +79,7 @@ export async function renderMermaidSvg(
   try {
     const prepared = await prepareMermaid(theme, configJson, {
       warmup: true,
+      elkLayouts: needsElkLayouts(source, configJson),
       zenuml: isZenUmlSource(source),
       diagramFont: options.diagramFont,
     });
@@ -110,6 +121,7 @@ export async function prewarmMermaidRenderer(
 ): Promise<void> {
   await prepareMermaid(theme, configJson, {
     warmup: true,
+    elkLayouts: needsElkLayouts(WARMUP_SOURCE, configJson),
     diagramFont: options.diagramFont,
   }).catch(() => undefined);
 }
@@ -176,13 +188,21 @@ async function loadMermaidModule(): Promise<MermaidApi> {
 async function prepareMermaid(
   theme: string,
   configJson: string,
-  options: { warmup: boolean; zenuml?: boolean; diagramFont?: DiagramFont }
+  options: {
+    warmup: boolean;
+    elkLayouts?: boolean;
+    zenuml?: boolean;
+    diagramFont?: DiagramFont;
+  }
 ): Promise<{
   mermaid: MermaidApi;
   normalizedTheme: string;
   configSignature: string;
 }> {
   const mermaid = await loadMermaid();
+  if (options.elkLayouts) {
+    await ensureElkLayoutsRegistered(mermaid);
+  }
   if (options.zenuml) {
     await ensureZenUmlRegistered(mermaid);
   }
@@ -262,8 +282,100 @@ async function loadZenUmlModule(): Promise<unknown> {
   );
 }
 
+async function ensureElkLayoutsRegistered(mermaid: MermaidApi): Promise<void> {
+  if (elkLayoutsRegisteredMermaid === mermaid) return;
+  if (typeof mermaid.registerLayoutLoaders !== "function") {
+    throw new Error("Loaded Mermaid runtime does not support layout loaders.");
+  }
+
+  const elkLayouts = await loadElkLayouts();
+  mermaid.registerLayoutLoaders(elkLayouts);
+  elkLayoutsRegisteredMermaid = mermaid;
+}
+
+async function loadElkLayouts(): Promise<unknown[]> {
+  if (elkLayoutsPromise) return elkLayoutsPromise;
+
+  elkLayoutsPromise = loadElkLayoutsModule().catch((error) => {
+    elkLayoutsPromise = null;
+    throw error;
+  });
+  return elkLayoutsPromise;
+}
+
+async function loadElkLayoutsModule(): Promise<unknown[]> {
+  const urls = Array.from(
+    new Set([MERMAID_LAYOUT_ELK_CDN_URL, MERMAID_LAYOUT_ELK_FALLBACK_CDN_URL])
+  );
+  let lastError: unknown = null;
+
+  for (const url of urls) {
+    try {
+      const module = await import(/* @vite-ignore */ url);
+      const layouts = module.default as unknown;
+      if (!Array.isArray(layouts)) {
+        throw new Error("Loaded Mermaid ELK layout module did not export loaders.");
+      }
+      return layouts;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(
+    `${MERMAID_CDN_LOAD_ERROR}: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
+}
+
 function isZenUmlSource(source: string): boolean {
   return /^\s*zenuml\b/i.test(source);
+}
+
+function needsElkLayouts(source: string, configJson: string): boolean {
+  if (/^\s*flowchart-elk\b/i.test(source)) {
+    return true;
+  }
+  if (sourceRequestsElkLayout(source)) {
+    return true;
+  }
+
+  try {
+    const config = buildMermaidConfig(configJson, "default");
+    return (
+      config.layout === "elk" ||
+      (typeof config.layout === "string" && config.layout.startsWith("elk.")) ||
+      getNestedString(config, ["flowchart", "defaultRenderer"]) === "elk"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function sourceRequestsElkLayout(source: string): boolean {
+  return (
+    /(?:^|\n)\s*layout\s*:\s*["']?elk(?:\.[\w-]+)?["']?\s*(?:\n|$)/i.test(
+      source
+    ) ||
+    /["']layout["']\s*:\s*["']elk(?:\.[\w-]+)?["']/i.test(source) ||
+    /["']defaultRenderer["']\s*:\s*["']elk["']/i.test(source) ||
+    /(?:^|\n)\s*defaultRenderer\s*:\s*["']?elk["']?\s*(?:\n|$)/i.test(source)
+  );
+}
+
+function getNestedString(
+  value: Record<string, unknown>,
+  path: string[]
+): string | null {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return null;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "string" ? current : null;
 }
 
 async function warmupMermaid(
