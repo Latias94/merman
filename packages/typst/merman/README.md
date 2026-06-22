@@ -29,7 +29,7 @@ flowchart TD
 - [basic.typ](examples/basic.typ): minimal `#mermaid(...)` usage.
 - [document-context.typ](examples/document-context.typ): opt-in document typography and width bridging.
 - [profile.typ](examples/profile.typ): reusable renderer settings shared by direct calls and raw blocks.
-- [figure.typ](examples/figure.typ): Mermaid diagrams wrapped as Typst figures.
+- [figure.typ](examples/figure.typ): Mermaid diagrams wrapped as Typst figures with reusable layout defaults.
 - [raw-block.typ](examples/raw-block.typ): document-wide Mermaid fences with `show-mermaid-blocks`.
 - [options.typ](examples/options.typ): themes, stable ids, `mermaid-result`, SVG export, and placeholder errors.
 - [print.typ](examples/print.typ): print-friendly white-background output.
@@ -75,12 +75,20 @@ Use `mermaid-profile(...)` for reusable diagram settings:
   ),
   background: "#ffffff",
   theme-name: "base",
+  figure: (
+    placement: bottom,
+    scope: "parent",
+    caption-position: top,
+    gap: 1em,
+    outlined: false,
+  ),
 )
 
 #mermaid(source, profile: diagrams, width: 100%)
+#mermaid-figure(source, profile: diagrams, caption: [System flow], width: 100%)
 ```
 
-Profiles work with `mermaid(...)`, `mermaid-context(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `validate-mermaid(...)`, and raw-block show rules.
+Profiles work with `mermaid(...)`, `mermaid-context(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `validate-mermaid(...)`, and raw-block show rules. The optional `figure` section is consumed only by `mermaid-figure(...)`; it does not change raw SVG rendering or non-figure image calls.
 
 Precedence is:
 
@@ -155,6 +163,8 @@ Returns a reusable profile dictionary. Profiles normalize into the same binding 
 Renders a Mermaid diagram and wraps it in a Typst `figure`.
 
 Use `context-aware: true` when the figure should opt into the same document-context bridge as `mermaid-context(...)`.
+
+Figure layout parameters are forwarded to Typst's native `figure`: `placement`, `scope`, `supplement`, `numbering`, `gap`, and `outlined`. Use `caption-position` and `caption-separator` when you need a top caption or document-specific caption separator. Direct figure parameters override `profile.figure` defaults.
 
 ### `mermaid-context(source, ..)`
 

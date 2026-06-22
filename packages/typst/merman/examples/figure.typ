@@ -9,6 +9,14 @@
     font: ("Source Sans 3", "Arial", "sans-serif"),
     size: "16px",
   ),
+  figure: (
+    placement: bottom,
+    scope: "parent",
+    caption-position: top,
+    caption-separator: [ -- ],
+    gap: 1em,
+    outlined: false,
+  ),
 )
 
 #mermaid-figure(
@@ -20,4 +28,21 @@
   profile: diagram-profile,
   width: 90%,
   alt: "A Mermaid diagram rendered as a Typst figure",
+)
+
+#set text(font: "Arial", size: 12pt)
+
+#mermaid-figure(
+  "sequenceDiagram
+    participant Typst
+    participant merman
+    Typst->>merman: Render with document context
+    merman-->>Typst: Embed as a figure
+  ",
+  caption: [A context-aware Mermaid figure.],
+  context-aware: true,
+  profile: diagram-profile,
+  caption-position: bottom,
+  width: 100%,
+  alt: "A context-aware Mermaid sequence diagram",
 )

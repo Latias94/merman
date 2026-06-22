@@ -37,6 +37,19 @@
   }
 }
 
+#let _figure-field(figure-profile, key, alt: none) = {
+  let figure-profile = _dictionary-or-none(figure-profile, "merman figure profile")
+  if figure-profile == none {
+    none
+  } else if key in figure-profile {
+    figure-profile.at(key)
+  } else if alt != none and alt in figure-profile {
+    figure-profile.at(alt)
+  } else {
+    none
+  }
+}
+
 #let _choose(profile-value, direct-value, default: none) = {
   if direct-value != none {
     direct-value
@@ -296,6 +309,86 @@
   }
 }
 
+#let _figure-caption(caption, caption-position, caption-separator) = {
+  if caption == none {
+    none
+  } else if caption-position != none and caption-separator != none {
+    figure.caption(position: caption-position, separator: caption-separator, caption)
+  } else if caption-position != none {
+    figure.caption(position: caption-position, caption)
+  } else if caption-separator != none {
+    figure.caption(separator: caption-separator, caption)
+  } else {
+    caption
+  }
+}
+
+#let _figure-options(
+  profile,
+  caption,
+  placement,
+  scope,
+  supplement,
+  numbering,
+  outlined,
+  gap,
+  caption-position,
+  caption-separator,
+) = {
+  let figure-profile = _profile-field(profile, "figure")
+  let placement = _choose(_figure-field(figure-profile, "placement"), placement)
+  let scope = _choose(_figure-field(figure-profile, "scope"), scope)
+  let supplement = _choose(_figure-field(figure-profile, "supplement"), supplement)
+  let numbering = _choose(_figure-field(figure-profile, "numbering"), numbering)
+  let outlined = _choose(_figure-field(figure-profile, "outlined"), outlined)
+  let gap = _choose(_figure-field(figure-profile, "gap"), gap)
+  let caption-position = _choose(
+    _figure-field(figure-profile, "caption-position", alt: "caption_position"),
+    caption-position,
+  )
+  let caption-separator = _choose(
+    _figure-field(figure-profile, "caption-separator", alt: "caption_separator"),
+    caption-separator,
+  )
+
+  let caption = _figure-caption(caption, caption-position, caption-separator)
+  let out = if caption != none {
+    (caption: caption)
+  } else {
+    (:)
+  }
+  let out = if placement != none {
+    (: ..out, placement: placement)
+  } else {
+    out
+  }
+  let out = if scope != none {
+    (: ..out, scope: scope)
+  } else {
+    out
+  }
+  let out = if supplement != none {
+    (: ..out, supplement: supplement)
+  } else {
+    out
+  }
+  let out = if numbering != none {
+    (: ..out, numbering: numbering)
+  } else {
+    out
+  }
+  let out = if outlined != none {
+    (: ..out, outlined: outlined)
+  } else {
+    out
+  }
+  if gap != none {
+    (: ..out, gap: gap)
+  } else {
+    out
+  }
+}
+
 #let mermaid-profile(
   options: none,
   site-config: none,
@@ -318,6 +411,7 @@
   viewport-height: none,
   fixed-today: none,
   fixed-local-offset-minutes: none,
+  figure: none,
 ) = {
   (
     options: options,
@@ -341,6 +435,7 @@
     viewport-height: viewport-height,
     fixed-today: fixed-today,
     fixed-local-offset-minutes: fixed-local-offset-minutes,
+    figure: figure,
   )
 }
 
@@ -885,6 +980,14 @@
   source,
   caption: none,
   context-aware: false,
+  placement: none,
+  scope: none,
+  supplement: none,
+  numbering: none,
+  outlined: none,
+  gap: none,
+  caption-position: none,
+  caption-separator: none,
   options: none,
   profile: none,
   typography: none,
@@ -979,7 +1082,19 @@
       error-mode: error-mode,
     )
   }
-  figure(diagram, caption: caption)
+  let figure-options = _figure-options(
+    profile,
+    caption,
+    placement,
+    scope,
+    supplement,
+    numbering,
+    outlined,
+    gap,
+    caption-position,
+    caption-separator,
+  )
+  figure(diagram, ..figure-options)
 }
 
 #let mermaid-raw(
