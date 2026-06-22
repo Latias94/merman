@@ -52,6 +52,20 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         };
         (g.d.as_str(), g.data_points_b64.as_str())
     };
+    let data_look = flowchart_config_look(ctx.config);
+    let hand_drawn = data_look == "handDrawn";
+    let hand_drawn_seed = ctx
+        .config
+        .as_value()
+        .get("handDrawnSeed")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let rough_d = if hand_drawn {
+        super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(d, 0.3, hand_drawn_seed)
+    } else {
+        None
+    };
+    let d = rough_d.as_deref().unwrap_or(d);
 
     let mut marker_color: Option<&str> = None;
     for raw in ctx.default_edge_style.iter().chain(edge.style.iter()) {
@@ -105,8 +119,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         escape_xml_display(&edge.id),
     );
     css::write_flowchart_edge_class_attr(out, edge);
+    if hand_drawn {
+        out.push_str(" transition");
+    }
     out.push_str(r#"" style=""#);
-    if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
+    if hand_drawn {
+        scratch.style_escaped.clear();
+        write_style_joined(
+            &mut scratch.style_escaped,
+            &ctx.default_edge_style,
+            &edge.style,
+        );
+        out.push_str(&scratch.style_escaped);
+    } else if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
         out.push(';');
     } else {
         scratch.style_escaped.clear();
@@ -124,7 +149,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         r#"" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
         escape_xml_display(&edge.id),
         data_points_b64,
-        escape_xml_display(flowchart_config_look(ctx.config)),
+        escape_xml_display(data_look),
     );
     if let Some(base) = flowchart_edge_marker_start_base(edge) {
         out.push_str(r#" marker-start="url(#"#);

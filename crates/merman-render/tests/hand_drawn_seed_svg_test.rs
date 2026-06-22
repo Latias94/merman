@@ -61,6 +61,29 @@ fn assert_seeded_svg_contract<F>(
     }
 }
 
+fn path_chunk_by_id<'a>(svg: &'a str, id: &str) -> &'a str {
+    let id_attr = format!(r#"id="{id}""#);
+    let id_start = svg.find(&id_attr).expect("path id");
+    let path_start = svg[..id_start].rfind("<path ").expect("path start");
+    let path_end = svg[id_start..].find("/>").expect("path end") + id_start + "/>".len();
+    &svg[path_start..path_end]
+}
+
+fn fixed_chunk_after<'a>(svg: &'a str, needle: &str, len: usize) -> &'a str {
+    let start = svg.find(needle).expect("chunk needle");
+    &svg[start..(start + len).min(svg.len())]
+}
+
+fn cluster_shape_chunk<'a>(svg: &'a str, id: &str) -> &'a str {
+    let needle = format!(r#"<g class="cluster" id="{id}" data-look="handDrawn">"#);
+    let start = svg.find(&needle).expect("cluster start");
+    let shape_end = svg[start..]
+        .find(r#"<g class="cluster-label""#)
+        .expect("cluster label start")
+        + start;
+    &svg[start..shape_end]
+}
+
 #[test]
 fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
     assert_seeded_svg_contract(
@@ -90,6 +113,72 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
             r##"fill="#f8fafc""##,
             r##"stroke="#ef4444""##,
         ],
+    );
+}
+
+#[test]
+fn flowchart_svg_hand_drawn_seed_controls_edge_and_cluster_rough_paths() {
+    let source_for_seed = |seed| {
+        source_with_init(
+            json!({
+                "look": "handDrawn",
+                "handDrawnSeed": seed,
+                "themeVariables": {
+                    "clusterBkg": "#f8fafc",
+                    "clusterBorder": "#ef4444",
+                    "mainBkg": "#e0f2fe",
+                    "nodeBorder": "#0369a1"
+                }
+            }),
+            r#"flowchart LR
+subgraph Group
+  A[Start] --> B{Choose}
+end
+B --> C[Done]
+linkStyle 0 stroke:#123456,stroke-width:2px
+"#,
+        )
+    };
+
+    let seed_7 = render_svg("flowchart-seed-surfaces", &source_for_seed(7));
+    let seed_7_again = render_svg("flowchart-seed-surfaces", &source_for_seed(7));
+    let seed_8 = render_svg("flowchart-seed-surfaces", &source_for_seed(8));
+
+    assert_eq!(
+        seed_7, seed_7_again,
+        "same handDrawnSeed should keep Flowchart edge and cluster rough SVG deterministic"
+    );
+
+    let edge_7 = path_chunk_by_id(&seed_7, "flowchart-seed-surfaces-L_A_B_0");
+    let edge_8 = path_chunk_by_id(&seed_8, "flowchart-seed-surfaces-L_A_B_0");
+    assert_ne!(
+        edge_7, edge_8,
+        "different handDrawnSeed should change the visible rough edge path"
+    );
+    assert!(
+        edge_7.contains("transition")
+            && edge_7.contains(
+                r#"marker-end="url(#flowchart-seed-surfaces_flowchart-v2-pointEnd__123456)""#
+            )
+            && edge_7.contains(r#"data-look="handDrawn""#),
+        "hand-drawn edge should keep Mermaid transition class, marker, and data attributes: {edge_7}"
+    );
+
+    let cluster_7 = cluster_shape_chunk(&seed_7, "flowchart-seed-surfaces-Group");
+    let cluster_8 = cluster_shape_chunk(&seed_8, "flowchart-seed-surfaces-Group");
+    assert_ne!(
+        cluster_7, cluster_8,
+        "different handDrawnSeed should change the visible rough cluster path"
+    );
+
+    let cluster_group_7 = fixed_chunk_after(
+        &seed_7,
+        r#"<g class="cluster" id="flowchart-seed-surfaces-Group" data-look="handDrawn">"#,
+        1600,
+    );
+    assert!(
+        cluster_7.contains("<path ") && !cluster_7.contains("<rect "),
+        "hand-drawn cluster should use a rough path group instead of a plain rect: {cluster_group_7}"
     );
 }
 
