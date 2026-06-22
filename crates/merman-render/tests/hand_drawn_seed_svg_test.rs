@@ -194,9 +194,9 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
         &[
             r#"id="flowchart-seed-flowchart-A-0" transform="translate"#,
             r#"data-look="handDrawn""#,
-            r#"<g class="basic label-container" transform="translate"#,
-            r##"fill="#f8fafc""##,
-            r##"stroke="#ef4444""##,
+            r#"<g transform="translate"#,
+            r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0""##,
+            r##"stroke="#ef4444" stroke-width="1.2999999523162842" fill="none" stroke-dasharray="0 0""##,
         ],
     );
 }
@@ -243,10 +243,17 @@ linkStyle 0 stroke:#123456,stroke-width:2px
     assert!(
         edge_7.contains("transition")
             && edge_7.contains(
-                r#"marker-end="url(#flowchart-seed-surfaces_flowchart-v2-pointEnd__123456)""#
+                r#"marker-end="url(#flowchart-seed-surfaces_flowchart-v2-pointEnd_stroke__123456)""#
             )
             && edge_7.contains(r#"data-look="handDrawn""#),
         "hand-drawn edge should keep Mermaid transition class, marker, and data attributes: {edge_7}"
+    );
+    assert!(
+        seed_7.contains(r#"id="flowchart-seed-surfaces_flowchart-v2-pointEnd_stroke__123456""#)
+            && !seed_7.contains(
+                r##"id="flowchart-seed-surfaces_flowchart-v2-pointEnd_stroke__123456" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="#123456" fill="#123456"/>"##
+            ),
+        "hand-drawn colored marker ids should follow Mermaid's raw stroke token without inline sanitized color attrs"
     );
 
     let cluster_7 = cluster_shape_chunk(&seed_7, "flowchart-seed-surfaces-Group");

@@ -6,7 +6,11 @@ use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::fmt_display;
 
 use super::super::geom::path_from_points;
-use super::super::roughjs::roughjs_paths_for_svg_path;
+use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
+
+const FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+const FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
+const FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     out: &mut String,
@@ -30,12 +34,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
 
     let rough_paths = if common.look_is_hand_drawn() {
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-            roughjs_paths_for_svg_path(
+            roughjs_hachure_paths_for_svg_path(
                 &path_data,
                 common.fill_color,
                 common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
+                FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT,
+                FLOWCHART_HEXAGON_HAND_DRAWN_HACHURE_GAP,
+                FLOWCHART_HEXAGON_HAND_DRAWN_ROUGHNESS,
                 common.hand_drawn_seed,
             )
         })
@@ -46,16 +53,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     if let Some((fill_d, stroke_d)) = rough_paths {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" transform="translate({},{})">"#,
+            r#"<g transform="translate({},{})" style="{}">"#,
             fmt_display(-w / 2.0),
-            fmt_display(h / 2.0)
+            fmt_display(h / 2.0),
+            escape_attr(common.rough_group_style)
         );
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
             escape_attr(&fill_d),
             escape_attr(common.fill_color),
-            escape_attr(common.style)
+            fmt_display(FLOWCHART_HEXAGON_HAND_DRAWN_FILL_WEIGHT as f64),
         );
         let _ = write!(
             out,

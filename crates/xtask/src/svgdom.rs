@@ -543,6 +543,19 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             false
         }
 
+        fn is_flowchart_diagram(n: roxmltree::Node<'_, '_>) -> bool {
+            for a in n.ancestors() {
+                if a.is_element() && a.tag_name().name() == "svg" {
+                    return a
+                        .attribute("aria-roledescription")
+                        .is_some_and(|v| v == "flowchart-v2")
+                        || a.attribute("class")
+                            .is_some_and(|c| c.split_whitespace().any(|t| t == "flowchart"));
+                }
+            }
+            false
+        }
+
         fn is_architecture_icon_content(n: roxmltree::Node<'_, '_>) -> bool {
             let mut svg_count = 0;
             for a in n.ancestors() {
@@ -579,6 +592,25 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 && is_class_diagram(n)
                 && n.ancestors().any(|a| {
                     a.is_element() && a.tag_name().name() == "g" && has_class_token(a, "rough-node")
+                })
+        }
+
+        fn is_flowchart_rough_node_path(n: roxmltree::Node<'_, '_>) -> bool {
+            n.tag_name().name() == "path"
+                && is_flowchart_diagram(n)
+                && n.ancestors().any(|a| {
+                    a.is_element() && a.tag_name().name() == "g" && has_class_token(a, "rough-node")
+                })
+        }
+
+        fn is_flowchart_hand_drawn_cluster_path(n: roxmltree::Node<'_, '_>) -> bool {
+            n.tag_name().name() == "path"
+                && is_flowchart_diagram(n)
+                && n.ancestors().any(|a| {
+                    a.is_element()
+                        && a.tag_name().name() == "g"
+                        && has_class_token(a, "cluster")
+                        && a.attribute("data-look").is_some_and(|v| v == "handDrawn")
                 })
         }
 
@@ -783,6 +815,18 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                             // semantic node structure and styling match, so keep this scoped to
                             // classDiagram rough-node geometry only.
                             val = "<class-rough-node-geom>".to_string();
+                            normalized_geom = true;
+                        } else if key == "d" && is_flowchart_rough_node_path(n) {
+                            // Mermaid's hand-drawn flowchart nodes are also RoughJS-generated.
+                            // Keep parity focused on DOM structure and semantic attributes while
+                            // leaving non-flowchart rough paths untouched.
+                            val = "<flowchart-rough-node-geom>".to_string();
+                            normalized_geom = true;
+                        } else if key == "d" && is_flowchart_hand_drawn_cluster_path(n) {
+                            // Hand-drawn flowchart subgraphs use RoughJS paths for cluster
+                            // backgrounds/borders. Their bezier payload is geometry noise; the
+                            // cluster DOM, styling, and labels remain compared.
+                            val = "<flowchart-rough-cluster-geom>".to_string();
                             normalized_geom = true;
                         } else if key == "d" && is_architecture_service_node_bkg_path(n) {
                             // Architecture fallback service background paths differ between
@@ -1687,9 +1731,56 @@ mod tests {
     }
 
     #[test]
-    fn parity_keeps_non_class_rough_node_path_structure() {
+    fn parity_masks_flowchart_hand_drawn_rough_node_path_geometry() {
         let upstream = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="rough-node default"><path d="M0,0 L10,10"/></g></svg>"#;
         let local = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="rough-node default"><path d="M0,0 C1,2 3,4 5,6"/></g></svg>"#;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(upstream_dom, local_dom);
+        assert_eq!(
+            upstream_dom.children[0].children[0]
+                .attrs
+                .get("d")
+                .map(|s| s.as_str()),
+            Some("<flowchart-rough-node-geom>")
+        );
+    }
+
+    #[test]
+    fn parity_masks_flowchart_hand_drawn_cluster_path_geometry() {
+        let upstream = r##"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><path d="M0,0 L10,10" stroke="#000"/></g></svg>"##;
+        let local = r##"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><path d="M0,0 C1,2 3,4 5,6" stroke="#000"/></g></svg>"##;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(upstream_dom, local_dom);
+        assert_eq!(
+            upstream_dom.children[0].children[0]
+                .attrs
+                .get("d")
+                .map(|s| s.as_str()),
+            Some("<flowchart-rough-cluster-geom>")
+        );
+    }
+
+    #[test]
+    fn parity_keeps_flowchart_classic_cluster_path_structure() {
+        let upstream = r##"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="cluster" data-look="classic"><path d="M0,0 L10,10" stroke="#000"/></g></svg>"##;
+        let local = r##"<svg class="flowchart" aria-roledescription="flowchart-v2"><g class="cluster" data-look="classic"><path d="M0,0 C1,2 3,4 5,6" stroke="#000"/></g></svg>"##;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+
+        assert_ne!(upstream_dom, local_dom);
+    }
+
+    #[test]
+    fn parity_keeps_non_class_flowchart_rough_node_path_structure() {
+        let upstream = r#"<svg class="sequence" aria-roledescription="sequence"><g class="rough-node default"><path d="M0,0 L10,10"/></g></svg>"#;
+        let local = r#"<svg class="sequence" aria-roledescription="sequence"><g class="rough-node default"><path d="M0,0 C1,2 3,4 5,6"/></g></svg>"#;
 
         let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
         let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();

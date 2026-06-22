@@ -116,7 +116,7 @@ fn write_flowchart_cluster_shape(
             let border_style = cluster_rough_border_style(rect_style);
             let _ = write!(
                 out,
-                r#"<g><path d="{}" stroke="{}" stroke-width="{}" fill="none"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+                r#"<g><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
                 escape_xml_display(&fill_d),
                 escape_xml_display(fill),
                 fmt_display(FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT as f64),

@@ -69,14 +69,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
 
     let mut marker_color: Option<&str> = None;
     for raw in ctx.default_edge_style.iter().chain(edge.style.iter()) {
-        // Mirror Mermaid@11.12.2: marker coloring uses the `stroke:` style capture without
-        // trimming (see `edges.js` + `edgeMarker.ts`).
+        // Mirror Mermaid: handDrawn passes the full `stroke:...` style token to edgeMarker,
+        // while classic/neo passes the captured color value from final pathStyle.
         let s = raw.trim_start();
         let Some(rest) = s.strip_prefix("stroke:") else {
             continue;
         };
         if !rest.trim().is_empty() {
-            marker_color = Some(rest);
+            marker_color = Some(if hand_drawn { s } else { rest });
             break;
         }
     }
@@ -85,7 +85,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     // styles (see `edges.js` `stylesFromClasses` + `edgeMarker.ts` `strokeColor` extraction).
     // We approximate this by compiling the edge styles using class defs and reusing the resulting
     // `stroke` value for the marker id suffix.
-    let compiled_marker_color = if marker_color.is_none() && !edge.classes.is_empty() {
+    let compiled_marker_color = if !hand_drawn && marker_color.is_none() && !edge.classes.is_empty()
+    {
         flowchart_resolve_stroke_for_marker(
             ctx.class_defs,
             &edge.classes,
@@ -143,6 +144,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         out.push_str(&scratch.style_escaped);
         out.push_str(";;;");
         out.push_str(&scratch.style_escaped);
+    }
+    if hand_drawn {
+        out.push_str(r##"" stroke="#000" stroke-width="1" fill="none"##);
     }
     let _ = write!(
         out,

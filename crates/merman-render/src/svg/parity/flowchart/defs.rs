@@ -3,12 +3,13 @@
 use std::fmt::Write as _;
 
 use super::super::util::{escape_xml, escape_xml_display};
-use super::{FlowchartRenderCtx, flowchart_resolve_stroke_for_marker};
+use super::{FlowchartRenderCtx, flowchart_config_look, flowchart_resolve_stroke_for_marker};
 
 pub(in crate::svg::parity::flowchart) struct FlowchartDefs<'a> {
     diagram_id: &'a str,
     diagram_type: &'a str,
     extra_marker_colors: Vec<String>,
+    hand_drawn: bool,
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_defs<'a>(
@@ -20,6 +21,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_defs<'a>(
         diagram_id,
         diagram_type,
         extra_marker_colors: collect_edge_marker_colors(ctx),
+        hand_drawn: flowchart_config_look(ctx.config) == "handDrawn",
     }
 }
 
@@ -34,6 +36,7 @@ impl FlowchartDefs<'_> {
             self.diagram_id,
             self.diagram_type,
             &self.extra_marker_colors,
+            self.hand_drawn,
         );
     }
 }
@@ -180,35 +183,53 @@ pub(in crate::svg::parity::flowchart) fn write_flowchart_marker_id_xml(
     }
 }
 
-fn push_extra_markers(out: &mut String, diagram_id: &str, diagram_type: &str, colors: &[String]) {
+fn push_extra_markers(
+    out: &mut String,
+    diagram_id: &str,
+    diagram_type: &str,
+    colors: &[String],
+    hand_drawn: bool,
+) {
     for c in colors {
         let cid = marker_color_id(c);
         if cid.is_empty() {
             continue;
         }
 
-        let _ = write!(
-            out,
-            r#"<marker id="{}_{}-pointEnd_{}" class="marker {}" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
-            escape_xml(diagram_id),
-            escape_xml(diagram_type),
-            escape_xml(&cid),
-            escape_xml(diagram_type),
-            escape_xml_display(c.trim()),
-            escape_xml_display(c.trim())
-        );
+        if hand_drawn {
+            let _ = write!(
+                out,
+                r#"<marker id="{}_{}-pointEnd_{}" class="marker {}" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+                escape_xml(diagram_id),
+                escape_xml(diagram_type),
+                escape_xml(&cid),
+                escape_xml(diagram_type)
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<marker id="{}_{}-pointEnd_{}" class="marker {}" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
+                escape_xml(diagram_id),
+                escape_xml(diagram_type),
+                escape_xml(&cid),
+                escape_xml(diagram_type),
+                escape_xml_display(c.trim()),
+                escape_xml_display(c.trim())
+            );
+        }
     }
 }
 
 fn collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>) -> Vec<String> {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out: Vec<String> = Vec::new();
+    let hand_drawn = flowchart_config_look(ctx.config) == "handDrawn";
 
     for e in ctx.edges_by_id.values() {
         let mut found: Option<String> = None;
         for raw in ctx.default_edge_style.iter().chain(e.style.iter()) {
-            // Mirror upstream behavior: `strokeColor` is extracted from `style="...stroke:...;..."`
-            // without trimming, and then marker ids use `replace(/[^\dA-Za-z]/g, '_')`.
+            // Mirror upstream behavior: handDrawn keeps the full `stroke:...` style token, while
+            // classic/neo extracts only the captured color value from final pathStyle.
             //
             // Our style declarations may include a leading space (e.g. ` stroke: orange`), so we
             // only trim the key side.
@@ -216,17 +237,18 @@ fn collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>) -> Vec<String> {
             let Some(rest) = s.strip_prefix("stroke:") else {
                 continue;
             };
-            let cid = marker_color_id(rest);
+            let marker_source = if hand_drawn { s } else { rest };
+            let cid = marker_color_id(marker_source);
             if cid.is_empty() {
                 continue;
             }
             if seen.insert(cid) {
-                found = Some(rest.to_string());
+                found = Some(marker_source.to_string());
             }
             break;
         }
 
-        if found.is_none() && !e.classes.is_empty() {
+        if !hand_drawn && found.is_none() && !e.classes.is_empty() {
             let stroke = flowchart_resolve_stroke_for_marker(
                 ctx.class_defs,
                 &e.classes,

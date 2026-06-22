@@ -5,7 +5,11 @@ use std::fmt::Write as _;
 use crate::svg::parity::{escape_attr, fmt, fmt_display};
 
 use super::super::geom::path_from_points;
-use super::super::roughjs::roughjs_paths_for_svg_path;
+use super::super::roughjs::{roughjs_hachure_paths_for_svg_path, roughjs_paths_for_svg_path};
+
+const FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+const FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
+const FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     out: &mut String,
@@ -109,7 +113,42 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     ));
     let path_data = path_from_points(&pts);
 
-    if let Some((fill_d, stroke_d)) =
+    if common.look_is_hand_drawn() {
+        if let Some((fill_d, stroke_d)) =
+            super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+                roughjs_hachure_paths_for_svg_path(
+                    &path_data,
+                    common.fill_color,
+                    common.stroke_color,
+                    common.stroke_width,
+                    common.stroke_dasharray,
+                    FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
+                    FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
+                    FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+                    common.hand_drawn_seed,
+                )
+            })
+        {
+            out.push_str(r#"<g class="basic label-container outer-path">"#);
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
+                escape_attr(&fill_d),
+                escape_attr(common.fill_color),
+                fmt_display(FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT as f64),
+            );
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+                escape_attr(&stroke_d),
+                escape_attr(common.stroke_color),
+                fmt_display(common.stroke_width as f64),
+                escape_attr(common.stroke_dasharray),
+            );
+            out.push_str("</g>");
+            return;
+        }
+    } else if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -139,17 +178,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
             escape_attr(common.style)
         );
         out.push_str("</g>");
-    } else {
-        let _ = write!(
-            out,
-            r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
-            escape_attr(common.style),
-            fmt(-w / 2.0),
-            fmt(-h / 2.0),
-            fmt(w),
-            fmt(h),
-            fmt(radius),
-            fmt(radius)
-        );
+        return;
     }
+
+    let _ = write!(
+        out,
+        r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+        escape_attr(common.style),
+        fmt(-w / 2.0),
+        fmt(-h / 2.0),
+        fmt(w),
+        fmt(h),
+        fmt(radius),
+        fmt(radius)
+    );
 }

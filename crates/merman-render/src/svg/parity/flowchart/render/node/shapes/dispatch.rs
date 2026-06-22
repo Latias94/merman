@@ -148,7 +148,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_window_pane(out, common, label, details);
         }
         "diamond" | "question" | "diam" | "decision" => {
-            super::render_diamond(out, common);
+            super::render_diamond(out, common, details);
         }
         "circle" => {
             super::render_circle(out, common);
@@ -169,16 +169,16 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_hexagon(out, common, details);
         }
         "lean_right" | "lean-r" | "lean-right" | "in-out" => {
-            super::render_lean_right(out, common);
+            super::render_lean_right(out, common, details);
         }
         "lean_left" | "lean-l" | "lean-left" | "out-in" => {
-            super::render_lean_left(out, common);
+            super::render_lean_left(out, common, details);
         }
         "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => {
-            super::render_trapezoid(out, common);
+            super::render_trapezoid(out, common, details);
         }
         "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
-            super::render_inv_trapezoid(out, common);
+            super::render_inv_trapezoid(out, common, details);
         }
         "odd" => {
             super::render_odd(out, common, label, details);
