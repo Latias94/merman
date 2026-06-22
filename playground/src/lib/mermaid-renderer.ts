@@ -246,7 +246,9 @@ async function ensureZenUmlRegistered(mermaid: MermaidApi): Promise<void> {
   }
 
   const zenuml = await loadZenUmlDiagram();
-  await mermaid.registerExternalDiagrams([zenuml], { lazyLoad: false });
+  // Keep ZenUML lazy-loaded; eager loading can fail during compare preparation
+  // before Mermaid reaches the actual zenuml render path.
+  await mermaid.registerExternalDiagrams([zenuml], { lazyLoad: true });
   zenumlRegisteredMermaid = mermaid;
 }
 
