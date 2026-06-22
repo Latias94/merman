@@ -23,7 +23,7 @@ full = ["full-config", "full-sanitization"]
 full-config = ["dep:serde_yaml", "dep:json5"]
 full-sanitization = ["dep:lol_html", "dep:url"]
 host = ["host-clock", "host-random", "host-timing"]
-host-clock = ["chrono/clock"]
+host-clock = ["chrono/clock", "chrono/wasmbind"]
 host-random = ["dep:uuid", "uuid/js", "uuid/v4"]
 host-timing = ["dep:web-time"]
 
