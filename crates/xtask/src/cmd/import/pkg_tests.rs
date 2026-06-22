@@ -962,12 +962,17 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path);
         }
 
-        fn defer_fixture_and_svg(f: &CreatedFixture, keep_upstream_svg: bool) {
-            let _ = crate::cmd::import::defer_fixture_files(
+        fn defer_fixture_and_svg(
+            f: &CreatedFixture,
+            keep_upstream_svg: bool,
+            replace_existing: bool,
+        ) {
+            let _ = crate::cmd::import::defer_fixture_files_with_replace_existing(
                 &f.diagram_dir,
                 &f.stem,
                 &f.path,
                 keep_upstream_svg,
+                replace_existing,
             );
         }
 
@@ -986,7 +991,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     "defer (upstream svg generation failed): {} ({err})",
                     f.path.display()
                 ));
-                defer_fixture_and_svg(f, false);
+                defer_fixture_and_svg(f, false, overwrite);
                 continue;
             }
 
@@ -999,7 +1004,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     "defer (upstream rendered error diagram): {}",
                     f.path.display()
                 ));
-                defer_fixture_and_svg(f, true);
+                defer_fixture_and_svg(f, true, overwrite);
                 continue;
             }
 

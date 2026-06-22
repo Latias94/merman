@@ -15,7 +15,8 @@ pub(crate) use cypress::import_upstream_cypress;
 pub(crate) use docs::import_upstream_docs;
 pub(crate) use examples::import_upstream_examples;
 pub(crate) use fixture_files::{
-    cleanup_fixture_files, defer_fixture_files, imported_fixture_config_look,
+    cleanup_deferred_fixture_files, cleanup_fixture_files,
+    defer_fixture_files_with_replace_existing, imported_fixture_config_look,
     write_imported_fixture,
 };
 pub(crate) use html::import_upstream_html;

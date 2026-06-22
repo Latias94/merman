@@ -17,11 +17,19 @@ fn deferred_fixture_dir(diagram_dir: &str) -> PathBuf {
     fixtures_root().join("_deferred").join(diagram_dir)
 }
 
+fn deferred_fixture_path(diagram_dir: &str, stem: &str) -> PathBuf {
+    deferred_fixture_dir(diagram_dir).join(format!("{stem}.mmd"))
+}
+
 fn deferred_upstream_svg_dir(diagram_dir: &str) -> PathBuf {
     fixtures_root()
         .join("_deferred")
         .join("upstream-svgs")
         .join(diagram_dir)
+}
+
+fn deferred_upstream_svg_path(diagram_dir: &str, stem: &str) -> PathBuf {
+    deferred_upstream_svg_dir(diagram_dir).join(format!("{stem}.svg"))
 }
 
 fn golden_json_path(diagram_dir: &str, stem: &str) -> PathBuf {
@@ -202,15 +210,10 @@ fn read_site_config_overrides() -> Result<serde_json::Map<String, serde_json::Va
 }
 
 fn write_site_config_overrides(
-    mut overrides: serde_json::Map<String, serde_json::Value>,
+    overrides: serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), XtaskError> {
     let path = site_config_overrides_path();
-    let sorted = overrides
-        .into_iter()
-        .collect::<std::collections::BTreeMap<_, _>>();
-    overrides = sorted.into_iter().collect();
-    let pretty = serde_json::to_string_pretty(&serde_json::Value::Object(overrides))
-        .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))?;
+    let pretty = render_site_config_overrides(&overrides)?;
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
@@ -218,10 +221,60 @@ fn write_site_config_overrides(
             source,
         })?;
     }
-    fs::write(&path, format!("{pretty}\n")).map_err(|source| XtaskError::WriteFile {
+    fs::write(&path, pretty).map_err(|source| XtaskError::WriteFile {
         path: path.display().to_string(),
         source,
     })
+}
+
+fn render_site_config_overrides(
+    overrides: &serde_json::Map<String, serde_json::Value>,
+) -> Result<String, XtaskError> {
+    let mut out = String::from("{\n");
+    for (idx, (key, value)) in overrides.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(",\n");
+        }
+        let key = serde_json::to_string(key)
+            .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))?;
+        let value = render_json_inline(value)?;
+        out.push_str("  ");
+        out.push_str(&key);
+        out.push_str(": ");
+        out.push_str(&value);
+    }
+    out.push_str("\n}\n");
+    Ok(out)
+}
+
+fn render_json_inline(value: &serde_json::Value) -> Result<String, XtaskError> {
+    match value {
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            serde_json::to_string(value)
+                .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))
+        }
+        serde_json::Value::String(value) => serde_json::to_string(value)
+            .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string())),
+        serde_json::Value::Array(items) => {
+            let rendered = items
+                .iter()
+                .map(render_json_inline)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(format!("[{}]", rendered.join(", ")))
+        }
+        serde_json::Value::Object(map) => {
+            if map.is_empty() {
+                return Ok("{}".to_string());
+            }
+            let mut rendered = Vec::with_capacity(map.len());
+            for (key, value) in map {
+                let key = serde_json::to_string(key)
+                    .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))?;
+                rendered.push(format!("{key}: {}", render_json_inline(value)?));
+            }
+            Ok(format!("{{ {} }}", rendered.join(", ")))
+        }
+    }
 }
 
 fn apply_site_config_override(
@@ -267,10 +320,14 @@ fn remove_site_config_override(diagram_dir: &str, stem: &str) {
     }
 }
 
-fn move_or_copy_then_remove(src: &Path, dst: &Path) {
+fn move_or_copy_then_remove(src: &Path, dst: &Path, replace_existing: bool) {
     if dst.exists() {
-        let _ = fs::remove_file(src);
-        return;
+        if replace_existing {
+            let _ = fs::remove_file(dst);
+        } else {
+            let _ = fs::remove_file(src);
+            return;
+        }
     }
 
     let _ = fs::rename(src, dst)
@@ -286,6 +343,11 @@ pub(crate) fn cleanup_fixture_files(diagram_dir: &str, stem: &str, path: &Path) 
     remove_site_config_override(diagram_dir, stem);
 }
 
+pub(crate) fn cleanup_deferred_fixture_files(diagram_dir: &str, stem: &str) {
+    let _ = fs::remove_file(deferred_fixture_path(diagram_dir, stem));
+    let _ = fs::remove_file(deferred_upstream_svg_path(diagram_dir, stem));
+}
+
 pub(crate) fn write_imported_fixture(
     diagram_dir: &str,
     stem: &str,
@@ -299,17 +361,18 @@ pub(crate) fn write_imported_fixture(
     update_site_config_override(diagram_dir, stem, body)
 }
 
-pub(crate) fn defer_fixture_files(
+pub(crate) fn defer_fixture_files_with_replace_existing(
     diagram_dir: &str,
     stem: &str,
     path: &Path,
     keep_upstream_svg: bool,
+    replace_existing: bool,
 ) -> PathBuf {
     let deferred_fixture_dir = deferred_fixture_dir(diagram_dir);
     let _ = fs::create_dir_all(&deferred_fixture_dir);
 
-    let deferred_fixture_path = deferred_fixture_dir.join(format!("{stem}.mmd"));
-    move_or_copy_then_remove(path, &deferred_fixture_path);
+    let deferred_fixture_path = deferred_fixture_path(diagram_dir, stem);
+    move_or_copy_then_remove(path, &deferred_fixture_path, replace_existing);
 
     if keep_upstream_svg {
         let upstream_svg_path = upstream_svg_path(diagram_dir, stem);
@@ -317,8 +380,8 @@ pub(crate) fn defer_fixture_files(
             let deferred_svg_dir = deferred_upstream_svg_dir(diagram_dir);
             let _ = fs::create_dir_all(&deferred_svg_dir);
 
-            let deferred_svg_path = deferred_svg_dir.join(format!("{stem}.svg"));
-            move_or_copy_then_remove(&upstream_svg_path, &deferred_svg_path);
+            let deferred_svg_path = deferred_upstream_svg_path(diagram_dir, stem);
+            move_or_copy_then_remove(&upstream_svg_path, &deferred_svg_path, replace_existing);
         }
     } else {
         let _ = fs::remove_file(upstream_svg_path(diagram_dir, stem));
@@ -335,7 +398,9 @@ pub(crate) fn defer_fixture_files(
 mod tests {
     use super::{
         apply_site_config_override, imported_fixture_config_look, imported_fixture_site_config,
+        render_site_config_overrides,
     };
+    use serde_json::json;
 
     #[test]
     fn imported_fixture_site_config_detects_loose_json_directive() {
@@ -434,6 +499,26 @@ flowchart TD
         );
 
         assert_eq!(look.as_deref(), Some("neo"));
+    }
+
+    #[test]
+    fn render_site_config_overrides_keeps_compact_entry_lines() {
+        let mut overrides = serde_json::Map::new();
+        overrides.insert(
+            "flowchart/a.mmd".to_string(),
+            json!({ "securityLevel": "loose" }),
+        );
+        overrides.insert(
+            "flowchart/b.mmd".to_string(),
+            json!({ "securityLevel": "sandbox" }),
+        );
+
+        let rendered = render_site_config_overrides(&overrides).expect("render overrides");
+
+        assert_eq!(
+            rendered,
+            "{\n  \"flowchart/a.mmd\": { \"securityLevel\": \"loose\" },\n  \"flowchart/b.mmd\": { \"securityLevel\": \"sandbox\" }\n}\n"
+        );
     }
 
     #[test]

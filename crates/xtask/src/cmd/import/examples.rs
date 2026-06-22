@@ -279,12 +279,13 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path);
     }
 
-    fn defer_fixture_files(f: &CreatedFixture, keep_upstream_svg: bool) {
-        let _ = crate::cmd::import::defer_fixture_files(
+    fn defer_fixture_files(f: &CreatedFixture, keep_upstream_svg: bool, replace_existing: bool) {
+        let _ = crate::cmd::import::defer_fixture_files_with_replace_existing(
             &f.diagram_dir,
             &f.stem,
             &f.path,
             keep_upstream_svg,
+            replace_existing,
         );
     }
 
@@ -509,7 +510,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 "skip (deferred for --with-baselines): {} ({reason})",
                 f.path.display(),
             ));
-            defer_fixture_files(&f, false);
+            defer_fixture_files(&f, false, overwrite);
             continue;
         }
 
@@ -539,7 +540,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                     f.path.display(),
                     msg.lines().next().unwrap_or("unknown upstream error")
                 ));
-                defer_fixture_files(&f, false);
+                defer_fixture_files(&f, false, overwrite);
                 continue;
             }
             Err(other) => return Err(other),
@@ -562,7 +563,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
                 f.path.display(),
             ));
-            defer_fixture_files(&f, true);
+            defer_fixture_files(&f, true, overwrite);
             continue;
         }
 

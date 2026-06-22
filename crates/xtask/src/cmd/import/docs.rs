@@ -704,12 +704,13 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path);
     }
 
-    fn defer_fixture_files(f: &CreatedFixture, keep_upstream_svg: bool) {
-        let _ = crate::cmd::import::defer_fixture_files(
+    fn defer_fixture_files(f: &CreatedFixture, keep_upstream_svg: bool, replace_existing: bool) {
+        let _ = crate::cmd::import::defer_fixture_files_with_replace_existing(
             &f.diagram_dir,
             &f.stem,
             &f.path,
             keep_upstream_svg,
+            replace_existing,
         );
     }
 
@@ -807,7 +808,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 f.path.display(),
             ));
             // Preserve the corpus for future parity work without breaking current gates.
-            defer_fixture_files(&f, false);
+            defer_fixture_files(&f, false, overwrite);
             continue;
         }
 
@@ -839,7 +840,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                     msg.lines().next().unwrap_or("unknown upstream error")
                 ));
                 // Keep the fixture source for later investigation/alignment.
-                defer_fixture_files(&f, false);
+                defer_fixture_files(&f, false, overwrite);
                 continue;
             }
             Err(other) => return Err(other),
@@ -864,7 +865,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 f.path.display(),
             ));
             // Preserve the upstream output anomaly for later root-viewport parity work.
-            defer_fixture_files(&f, true);
+            defer_fixture_files(&f, true, overwrite);
             continue;
         }
 

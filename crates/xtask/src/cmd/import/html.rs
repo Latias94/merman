@@ -689,8 +689,14 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
             None
         }
 
-        fn defer_fixture_files_keep_baselines(f: &CreatedFixture) {
-            let _ = crate::cmd::import::defer_fixture_files(&f.diagram_dir, &f.stem, &f.path, true);
+        fn defer_fixture_files_keep_baselines(f: &CreatedFixture, replace_existing: bool) {
+            let _ = crate::cmd::import::defer_fixture_files_with_replace_existing(
+                &f.diagram_dir,
+                &f.stem,
+                &f.path,
+                true,
+                replace_existing,
+            );
         }
 
         let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
@@ -709,7 +715,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                     "defer (upstream svg generation failed): {} ({err})",
                     f.path.display()
                 ));
-                defer_fixture_files_keep_baselines(f);
+                defer_fixture_files_keep_baselines(f, overwrite);
                 continue;
             }
 
@@ -720,13 +726,13 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                         "defer (failed to read fixture after import): {} ({err})",
                         f.path.display()
                     ));
-                    defer_fixture_files_keep_baselines(f);
+                    defer_fixture_files_keep_baselines(f, overwrite);
                     continue;
                 }
             };
             if let Some(reason) = should_defer_fixture(&f.diagram_dir, &f.stem, &fixture_text) {
                 skipped.push(format!("defer ({reason}): {}", f.path.display()));
-                defer_fixture_files_keep_baselines(f);
+                defer_fixture_files_keep_baselines(f, overwrite);
                 continue;
             }
 
@@ -739,7 +745,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                     "defer (suspicious upstream blank svg): {}",
                     f.path.display()
                 ));
-                defer_fixture_files_keep_baselines(f);
+                defer_fixture_files_keep_baselines(f, overwrite);
                 continue;
             }
 
@@ -753,7 +759,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                     "defer (snapshot update failed): {} ({err})",
                     f.path.display()
                 ));
-                defer_fixture_files_keep_baselines(f);
+                defer_fixture_files_keep_baselines(f, overwrite);
                 continue;
             }
 
@@ -767,7 +773,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                     "defer (layout snapshot update failed): {} ({err})",
                     f.path.display()
                 ));
-                defer_fixture_files_keep_baselines(f);
+                defer_fixture_files_keep_baselines(f, overwrite);
                 continue;
             }
 
