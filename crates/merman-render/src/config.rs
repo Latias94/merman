@@ -353,7 +353,10 @@ mod tests {
             "neo"
         );
         assert!(config_diagram_look(&json!({ "look": "neo" })).is_neo());
-        assert!(config_diagram_look(&json!({ "look": "handDrawn" })).is_hand_drawn());
+        assert_eq!(
+            config_diagram_look(&json!({ "look": "handDrawn" })).as_str(),
+            "handDrawn"
+        );
         assert_eq!(
             config_diagram_look(&json!({})).as_str(),
             DEFAULT_DIAGRAM_LOOK
