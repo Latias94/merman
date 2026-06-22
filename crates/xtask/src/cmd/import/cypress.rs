@@ -3015,14 +3015,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     }
                 }
 
-                // Non-classic looks (e.g. `handDrawn`) are currently out of scope for parity-gated
-                // headless rendering. Keep upstream SVG baselines for traceability but move these
-                // fixtures under `_deferred` so `verify` remains green.
-                if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
-                    && !fixture_text.contains("\n  look: classic")
-                    && !fixture_text.contains("\nlook: classic")
+                // Flowchart now admits `handDrawn` alongside `classic`; keep other look variants
+                // deferred until their source-backed DOM contract is implemented.
+                if let Some(look) = crate::cmd::import::imported_fixture_config_look(fixture_text)
+                    && !matches!(look.as_str(), "classic" | "handDrawn")
                 {
-                    return Some("flowchart frontmatter config.look!=classic (deferred)");
+                    return Some("flowchart frontmatter config.look unsupported (deferred)");
                 }
 
                 // Mermaid also has a dedicated `flowchart-elk` diagram type. Keep these fixtures

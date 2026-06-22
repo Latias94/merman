@@ -42,7 +42,7 @@ fn fixture_site_config_overrides() -> &'static Map<String, JsonValue> {
     })
 }
 
-fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
+pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
     let relative_name = path
         .strip_prefix(crate::cmd::workspace_root().join("fixtures"))
         .unwrap_or(path)

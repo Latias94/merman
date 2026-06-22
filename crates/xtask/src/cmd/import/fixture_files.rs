@@ -90,6 +90,24 @@ fn security_level_from_yaml(value: &serde_yaml::Value) -> Option<&'static str> {
         .and_then(normalize_security_level)
 }
 
+fn yaml_mapping_str<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a str> {
+    mapping
+        .get(serde_yaml::Value::String(key.to_string()))
+        .and_then(serde_yaml::Value::as_str)
+}
+
+fn config_look_from_yaml(value: &serde_yaml::Value) -> Option<&str> {
+    let mapping = value.as_mapping()?;
+    if let Some(look) = yaml_mapping_str(mapping, "look") {
+        return Some(look);
+    }
+
+    mapping
+        .get(serde_yaml::Value::String("config".to_string()))
+        .and_then(serde_yaml::Value::as_mapping)
+        .and_then(|config| yaml_mapping_str(config, "look"))
+}
+
 fn split_yaml_frontmatter(input: &str) -> Option<(&str, &str)> {
     let after_marker = input.strip_prefix("---")?;
     let open_line_end = after_marker.find('\n')?;
@@ -116,6 +134,12 @@ fn security_level_from_frontmatter(body: &str) -> Option<&'static str> {
     let (yaml, _) = split_yaml_frontmatter(body)?;
     let parsed = serde_yaml::from_str::<serde_yaml::Value>(yaml).ok()?;
     security_level_from_yaml(&parsed)
+}
+
+pub(crate) fn imported_fixture_config_look(body: &str) -> Option<String> {
+    let (yaml, _) = split_yaml_frontmatter(body)?;
+    let parsed = serde_yaml::from_str::<serde_yaml::Value>(yaml).ok()?;
+    config_look_from_yaml(&parsed).map(str::to_string)
 }
 
 fn security_level_from_directives(body: &str) -> Option<&'static str> {
@@ -309,7 +333,9 @@ pub(crate) fn defer_fixture_files(
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_site_config_override, imported_fixture_site_config};
+    use super::{
+        apply_site_config_override, imported_fixture_config_look, imported_fixture_site_config,
+    };
 
     #[test]
     fn imported_fixture_site_config_detects_loose_json_directive() {
@@ -379,6 +405,35 @@ flowchart TD
         .expect("root frontmatter security level should become site config");
 
         assert_eq!(site_config["securityLevel"], "loose");
+    }
+
+    #[test]
+    fn imported_fixture_config_look_detects_nested_yaml_frontmatter() {
+        let look = imported_fixture_config_look(
+            r#"---
+config:
+  look: handDrawn
+---
+flowchart TD
+  A-->B
+"#,
+        );
+
+        assert_eq!(look.as_deref(), Some("handDrawn"));
+    }
+
+    #[test]
+    fn imported_fixture_config_look_detects_root_yaml_frontmatter() {
+        let look = imported_fixture_config_look(
+            r#"---
+look: neo
+---
+flowchart TD
+  A-->B
+"#,
+        );
+
+        assert_eq!(look.as_deref(), Some("neo"));
     }
 
     #[test]

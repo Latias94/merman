@@ -241,11 +241,10 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                         return Some(reason);
                     }
                 }
-                if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
-                    && !fixture_text.contains("\n  look: classic")
-                    && !fixture_text.contains("\nlook: classic")
+                if let Some(look) = crate::cmd::import::imported_fixture_config_look(fixture_text)
+                    && !matches!(look.as_str(), "classic" | "handDrawn")
                 {
-                    return Some("flowchart frontmatter config.look!=classic (deferred)");
+                    return Some("flowchart frontmatter config.look unsupported (deferred)");
                 }
                 if fixture_text.contains("$$") {
                     return Some("flowchart math (deferred)");

@@ -292,8 +292,12 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         let skip_dom_compare_for_math =
             check_dom && text.contains("$$") && flowchart_math_renderer.is_none();
 
+        let fixture_engine = match crate::cmd::fixture_site_config_for_path(&mmd_path) {
+            Some(site_config) => engine.clone().with_site_config(site_config),
+            None => engine.clone(),
+        };
         let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
+            fixture_engine.parse_diagram(&text, merman::ParseOptions::default()),
         ) {
             Ok(Some(v)) => v,
             Ok(None) => {
