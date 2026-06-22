@@ -3,7 +3,11 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::fmt;
+use crate::svg::parity::{fmt, fmt_display};
+
+const FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+const FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
+const FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 pub(in super::super) fn render_flowchart_v2_shape(
     out: &mut String,
@@ -196,6 +200,52 @@ pub(in super::super) fn render_flowchart_v2_shape(
         _ => {
             let w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
+            let rough_paths = if common.look_is_hand_drawn() {
+                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+                    super::super::roughjs::roughjs_hachure_paths_for_rect(
+                        -w / 2.0,
+                        -h / 2.0,
+                        w,
+                        h,
+                        common.fill_color,
+                        common.stroke_color,
+                        common.stroke_width,
+                        common.stroke_dasharray,
+                        FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
+                        FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
+                        FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
+                        common.hand_drawn_seed,
+                    )
+                })
+            } else {
+                None
+            };
+
+            if let Some((fill_d, stroke_d)) = rough_paths {
+                let _ = write!(
+                    out,
+                    r#"<g class="basic label-container" style="{}">"#,
+                    escape_attr(common.rough_group_style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(common.fill_color),
+                    fmt_display(FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT as f64),
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(common.stroke_color),
+                    common.stroke_width,
+                    escape_attr(common.stroke_dasharray),
+                );
+                out.push_str("</g>");
+                return false;
+            }
+
             let _ = write!(
                 out,
                 r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,

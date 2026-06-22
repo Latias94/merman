@@ -27,4 +27,5 @@ pub(crate) use style::{
     flowchart_effective_font_style_for_classes, flowchart_effective_font_style_for_node_classes,
     flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_node_classes, flowchart_node_has_span_css_height_parity,
+    flowchart_split_mermaid_style_decls,
 };

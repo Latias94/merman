@@ -22,6 +22,7 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub node_asset_width: Option<f64>,
     pub node_asset_height: Option<f64>,
     pub style: &'a str,
+    pub rough_group_style: &'a str,
     pub fill_color: &'a str,
     pub stroke_color: &'a str,
     pub stroke_width: f32,
@@ -38,6 +39,30 @@ impl FlowchartNodeRenderCommon<'_> {
 
     pub(super) fn look_is_hand_drawn(&self) -> bool {
         self.look == "handDrawn"
+    }
+}
+
+fn flowchart_hand_drawn_shape_group_style(inline_styles: &[String]) -> String {
+    let mut node_decls: Vec<String> = Vec::new();
+    let mut text_decls: Vec<String> = Vec::new();
+
+    for raw in inline_styles {
+        for decl in crate::flowchart::flowchart_split_mermaid_style_decls(raw) {
+            let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(decl) else {
+                continue;
+            };
+            if is_text_style_key(key) {
+                text_decls.push(format!("{key}:{value}"));
+            } else {
+                node_decls.push(format!("{key}:{value} !important"));
+            }
+        }
+    }
+
+    if node_decls.is_empty() {
+        text_decls.join(";")
+    } else {
+        node_decls.join(";")
     }
 }
 
@@ -75,8 +100,17 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
     let tooltip_enabled = !tooltip.trim().is_empty();
 
+    let look = flowchart_config_look(ctx.config);
     let dom_idx = resolved.dom_idx;
-    let class_attr_base = resolved.class_attr_base;
+    let class_attr_base = if look == "handDrawn" {
+        match resolved.class_attr_base {
+            "node default" => "rough-node default",
+            "node" => "rough-node",
+            other => other,
+        }
+    } else {
+        resolved.class_attr_base
+    };
     let wrapped_in_a = resolved.wrapped_in_a;
     let href = resolved.href;
     let shape: &str = resolved.shape;
@@ -98,8 +132,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         }
         _ => node_classes,
     };
-    let look = flowchart_config_look(ctx.config);
-
     helpers::open_node_wrapper(
         out,
         helpers::NodeWrapperAttrs {
@@ -125,6 +157,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         details.node_style_compile += s.elapsed();
     }
     let style = std::mem::take(&mut compiled_styles.node_style);
+    let rough_group_style = flowchart_hand_drawn_shape_group_style(node_styles);
     let fill_color = compiled_styles
         .fill
         .as_deref()
@@ -165,6 +198,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         node_asset_width,
         node_asset_height,
         style: &style,
+        rough_group_style: &rough_group_style,
         fill_color,
         stroke_color,
         stroke_width,

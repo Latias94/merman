@@ -3,15 +3,18 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::flowchart::flowchart_config_diagram_look;
 use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::geom::{arc_points, path_from_points};
-use super::super::roughjs::roughjs_paths_for_svg_path;
+use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
+
+const FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+const FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
+const FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     out: &mut String,
-    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    _ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -67,14 +70,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     ));
     let path_data = path_from_points(&pts);
 
-    let rough_paths = if flowchart_config_diagram_look(ctx.config).is_hand_drawn() {
+    let rough_paths = if common.look_is_hand_drawn() {
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-            roughjs_paths_for_svg_path(
+            roughjs_hachure_paths_for_svg_path(
                 &path_data,
                 common.fill_color,
                 common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
+                FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
+                FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
+                FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
                 common.hand_drawn_seed,
             )
         })
@@ -83,22 +89,25 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     };
 
     if let Some((fill_d, stroke_d)) = rough_paths {
-        out.push_str(r#"<g class="basic label-container outer-path">"#);
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(common.fill_color),
-            escape_attr(common.style)
+            r#"<g class="basic label-container" style="{}">"#,
+            escape_attr(common.rough_group_style)
         );
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
+            escape_attr(&fill_d),
+            escape_attr(common.fill_color),
+            fmt_display(FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT as f64),
+        );
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
             escape_attr(&stroke_d),
             escape_attr(common.stroke_color),
-            fmt_display(common.stroke_width as f64),
+            common.stroke_width,
             escape_attr(common.stroke_dasharray),
-            escape_attr(common.style)
         );
         out.push_str("</g>");
     } else {

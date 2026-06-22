@@ -268,6 +268,63 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     Some((fill_d?, stroke_d?))
 }
 
+pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    fill_weight: f32,
+    hachure_gap: f32,
+    roughness: f32,
+    seed: u64,
+) -> Option<(String, String)> {
+    let fill =
+        parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
+    let stroke =
+        parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
+    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
+    let options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(roughness)
+        .fill(fill)
+        .fill_style(roughr::core::FillStyle::Hachure)
+        .fill_weight(fill_weight)
+        .hachure_gap(hachure_gap)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0, dash1])
+        .stroke_line_dash_offset(0.0)
+        .fill_line_dash(vec![0.0, 0.0])
+        .fill_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+
+    let generator = roughr::generator::Generator::default();
+    let drawable = generator.rectangle::<f64>(x, y, w, h, &Some(options));
+    let mut fill_d = None;
+    let mut stroke_d = None;
+
+    for set in drawable.sets {
+        let d = ops_to_svg_path_d(&set);
+        match set.op_set_type {
+            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
+                fill_d = Some(d);
+            }
+            roughr::core::OpSetType::Path => {
+                stroke_d = Some(d);
+            }
+        }
+    }
+
+    Some((fill_d?, stroke_d?))
+}
+
 pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
     points: &[(f64, f64)],
     fill: &str,

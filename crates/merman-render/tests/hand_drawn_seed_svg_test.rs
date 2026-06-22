@@ -85,6 +85,91 @@ fn cluster_shape_chunk<'a>(svg: &'a str, id: &str) -> &'a str {
 }
 
 #[test]
+fn flowchart_svg_hand_drawn_basic_rect_uses_rough_node_wrapper_and_hachure_paths() {
+    let source_for_seed = |seed| {
+        source_with_init(
+            json!({
+                "look": "handDrawn",
+                "handDrawnSeed": seed,
+                "themeVariables": {
+                    "mainBkg": "#f8fafc",
+                    "nodeBorder": "#ef4444"
+                }
+            }),
+            r#"flowchart TD
+  A[Start]
+"#,
+        )
+    };
+
+    let seed_7 = render_svg("flowchart-hand-rect", &source_for_seed(7));
+    let seed_7_again = render_svg("flowchart-hand-rect", &source_for_seed(7));
+    let seed_8 = render_svg("flowchart-hand-rect", &source_for_seed(8));
+
+    assert_eq!(
+        seed_7, seed_7_again,
+        "same handDrawnSeed should keep basic Flowchart node rough paths deterministic"
+    );
+    assert_ne!(
+        seed_7, seed_8,
+        "different handDrawnSeed should change the visible basic Flowchart node rough paths"
+    );
+    assert!(
+        seed_7.contains(r#"<g class="rough-node default" id="flowchart-hand-rect-flowchart-A-0""#),
+        "hand-drawn basic node should use Mermaid's rough-node wrapper class: {seed_7}"
+    );
+    assert!(
+        !seed_7.contains(r#"<g class="node default" id="flowchart-hand-rect-flowchart-A-0""#),
+        "hand-drawn basic node should not keep the classic node wrapper class: {seed_7}"
+    );
+    assert!(
+        seed_7.contains(r#"<g class="basic label-container" style=""><path d=""#)
+            && seed_7.contains(
+                r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
+            )
+            && seed_7.contains(
+                r##"stroke="#ef4444" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"##
+            ),
+        "hand-drawn basic node should render RoughJS hachure fill and outline paths: {seed_7}"
+    );
+    assert!(
+        !seed_7.contains(r#"<rect class="basic label-container""#),
+        "hand-drawn basic node should not fall back to a plain rect: {seed_7}"
+    );
+}
+
+#[test]
+fn flowchart_svg_hand_drawn_class_default_styles_reach_rough_nodes() {
+    let svg = render_svg(
+        "flowchart-hand-class",
+        &source_with_init(
+            json!({
+                "look": "handDrawn",
+                "themeVariables": {
+                    "mainBkg": "#ececff",
+                    "nodeBorder": "#9370db"
+                }
+            }),
+            r#"graph TD
+  A[myClass1] --> B[default]
+  classDef default stroke-width:2px,fill:none,stroke:silver
+  classDef myClass1 color:#0000ff
+  class A myClass1
+"#,
+        ),
+    );
+
+    assert!(
+        svg.contains(r#"class="rough-node default myClass1""#),
+        "classDef default should keep hand-drawn rough-node wrappers and attached classes: {svg}"
+    );
+    assert!(
+        svg.contains(r#"stroke="silver" stroke-width="2""#),
+        "classDef default stroke should reach the hand-drawn rough path: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
     assert_seeded_svg_contract(
         "Flowchart",

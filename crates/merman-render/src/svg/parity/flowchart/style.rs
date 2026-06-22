@@ -45,18 +45,22 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
             continue;
         };
         for d in decls {
+            for d in crate::flowchart::flowchart_split_mermaid_style_decls(d) {
+                let Some((k, v)) = parse_style_decl(d) else {
+                    continue;
+                };
+                m.set(k, v);
+            }
+        }
+    }
+
+    for d in inline_styles_a.iter().chain(inline_styles_b.iter()) {
+        for d in crate::flowchart::flowchart_split_mermaid_style_decls(d) {
             let Some((k, v)) = parse_style_decl(d) else {
                 continue;
             };
             m.set(k, v);
         }
-    }
-
-    for d in inline_styles_a.iter().chain(inline_styles_b.iter()) {
-        let Some((k, v)) = parse_style_decl(d) else {
-            continue;
-        };
-        m.set(k, v);
     }
 
     let mut node_style = String::new();

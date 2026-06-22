@@ -76,10 +76,6 @@ impl<'a> DiagramLook<'a> {
     pub(crate) fn is_neo(&self) -> bool {
         self.value == "neo"
     }
-
-    pub(crate) fn is_hand_drawn(&self) -> bool {
-        self.value == "handDrawn"
-    }
 }
 
 impl std::fmt::Display for DiagramLook<'_> {

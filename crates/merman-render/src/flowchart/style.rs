@@ -14,7 +14,7 @@ fn normalize_css_font_family(font_family: &str) -> String {
     }
 }
 
-fn split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
+pub(crate) fn flowchart_split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
     fn looks_like_key_start(s: &str) -> bool {
         let s = s.trim_start();
         let Some((k, _)) = s.split_once(':') else {
@@ -84,7 +84,7 @@ fn flowchart_effective_text_style_for_class_names<'a>(
             continue;
         };
         for d in decls {
-            for d in split_mermaid_style_decls(d) {
+            for d in flowchart_split_mermaid_style_decls(d) {
                 let Some((k, v)) = parse_style_decl(d) else {
                     continue;
                 };
@@ -94,7 +94,7 @@ fn flowchart_effective_text_style_for_class_names<'a>(
     }
 
     for d in inline_styles {
-        for d in split_mermaid_style_decls(d) {
+        for d in flowchart_split_mermaid_style_decls(d) {
             let Some((k, v)) = parse_style_decl(d) else {
                 continue;
             };
@@ -117,7 +117,7 @@ fn flowchart_effective_font_style_for_class_names<'a>(
             continue;
         };
         for d in decls {
-            for d in split_mermaid_style_decls(d) {
+            for d in flowchart_split_mermaid_style_decls(d) {
                 let Some((k, v)) = parse_style_decl(d) else {
                     continue;
                 };
@@ -127,7 +127,7 @@ fn flowchart_effective_font_style_for_class_names<'a>(
     }
 
     for d in inline_styles {
-        for d in split_mermaid_style_decls(d) {
+        for d in flowchart_split_mermaid_style_decls(d) {
             let Some((k, v)) = parse_style_decl(d) else {
                 continue;
             };
@@ -142,9 +142,12 @@ pub(crate) fn flowchart_effective_node_class_names<'a>(
     class_defs: &'a IndexMap<String, Vec<String>>,
     classes: &'a [String],
 ) -> Vec<&'a str> {
-    let mut effective: Vec<&'a str> = Vec::with_capacity(classes.len() + 1);
-    if classes.is_empty() && class_defs.contains_key("default") {
+    let mut effective: Vec<&'a str> = Vec::with_capacity(classes.len() + 2);
+    if class_defs.contains_key("default") {
         effective.push("default");
+    }
+    if class_defs.contains_key("node") {
+        effective.push("node");
     }
     effective.extend(classes.iter().map(|class| class.as_str()));
     effective
@@ -159,7 +162,7 @@ pub(crate) fn flowchart_node_has_span_css_height_parity(
         .any(|class| {
             class_defs.get(class).is_some_and(|styles| {
                 styles.iter().any(|style| {
-                    split_mermaid_style_decls(style).any(|decl| {
+                    flowchart_split_mermaid_style_decls(style).any(|decl| {
                         matches!(
                             parse_style_decl(decl).map(|(key, _)| key),
                             Some("background" | "border")
