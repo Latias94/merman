@@ -218,7 +218,9 @@ These fixtures are imported from Mermaid's Cypress "platform" HTML test pages (c
   - `fixtures/flowchart/upstream_html_demos_flow2_example_002.mmd` (from `flow2.html`)
   - `fixtures/flowchart/upstream_html_demos_flow2_example_003.mmd` (from `flow2.html`)
 - Flowchart ELK platform smoke:
+  - `fixtures/flowchart/upstream_html_demos_ashish2_example_009.mmd` (from `ashish2.html`)
   - `fixtures/flowchart/upstream_html_demos_flow_elk_example_001.mmd` (from `flow-elk.html`)
+  - `fixtures/flowchart/upstream_html_demos_knsv2_example_011.mmd` (from `knsv2.html`)
 - XSS / config hardening cases:
   - `fixtures/flowchart/upstream_html_demos_xss2_example_001.mmd` (from `xss2.html`, `%%{init: ... __proto__ ... }%%`)
   - `fixtures/flowchart/upstream_html_demos_xss2_example_002.mmd` (from `xss2.html`, repeated `%%{init: ... }%%`)

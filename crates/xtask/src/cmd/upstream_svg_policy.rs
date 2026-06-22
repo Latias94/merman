@@ -3,8 +3,10 @@
 use crate::XtaskError;
 
 const FLOWCHART_ELK_SOURCE_BACKED_PROBE_STEMS: &[&str] = &[
+    "upstream_html_demos_ashish2_example_009",
     "upstream_html_demos_flow_elk_example_001",
     "upstream_html_demos_flowchart_elk_flowchart_elk_001",
+    "upstream_html_demos_knsv2_example_011",
     "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_001",
     "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_002",
     "upstream_cypress_flowchart_elk_spec_2_elk_should_render_a_simple_flowchart_with_diagrampadding_set_t_003",
@@ -187,10 +189,16 @@ mod tests {
     #[test]
     fn flowchart_elk_svg_source_backed_probes_accept_names_and_stems() {
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_html_demos_ashish2_example_009"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_html_demos_flow_elk_example_001"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001"
+        ));
+        assert!(flowchart_elk_svg_source_backed_probe_admitted(
+            "upstream_html_demos_knsv2_example_011"
         ));
         assert!(flowchart_elk_svg_source_backed_probe_admitted(
             "upstream_html_demos_flowchart_elk_flowchart_elk_001.mmd"
