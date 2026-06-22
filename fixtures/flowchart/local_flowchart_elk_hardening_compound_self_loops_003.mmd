@@ -1,0 +1,29 @@
+---
+config:
+  layout: elk
+  flowchart:
+    subGraphTitleMargin:
+      top: 10
+      bottom: 5
+---
+
+flowchart
+  root((Root)) --> root
+
+  subgraph ClusterA [Cluster A]
+    a1[Alpha] --> a1
+    a1 --> a2[Beta]
+    a2 --> a1
+  end
+
+  subgraph ClusterB [Cluster B]
+    subgraph ClusterBInner [Cluster B Inner]
+      b1[Delta] --> b1
+    end
+    b1 --> b2[Echo]
+  end
+
+  root --> ClusterA
+  ClusterA --> ClusterB
+  b2 --> ClusterA
+  ClusterBInner --> root

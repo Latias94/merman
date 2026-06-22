@@ -1,0 +1,23 @@
+---
+config:
+  layout: elk
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+---
+
+flowchart RL
+  entry[Entry] --> rightA
+
+  subgraph Left [Left Cluster]
+    leftA[Left A] --> leftB[Left B]
+  end
+
+  subgraph Right [Right Cluster]
+    rightA[Right A] --> rightB[Right B]
+  end
+
+  Right --> Left
+  rightB --> leftA
+  Left --> rightA
+  leftB --> exit[Exit]

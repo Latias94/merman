@@ -1,0 +1,339 @@
+{
+  "diagramType": "flowchart-elk",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "Work",
+          "x": 566.62,
+          "y": 68.52,
+          "width": 360.12,
+          "height": 113.04,
+          "is_cluster": true
+        },
+        {
+          "id": "input",
+          "x": 55.16,
+          "y": 77.74,
+          "width": 86.32,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "decision",
+          "x": 191.8,
+          "y": 77.74,
+          "width": 106.96,
+          "height": 106.96,
+          "is_cluster": false
+        },
+        {
+          "id": "output",
+          "x": 944.42,
+          "y": 106.02,
+          "width": 104.0,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "taskA",
+          "x": 452.08,
+          "y": 82.02,
+          "width": 107.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "taskB",
+          "x": 589.12,
+          "y": 82.02,
+          "width": 107.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "taskC",
+          "x": 703.66,
+          "y": 82.02,
+          "width": 62.04,
+          "height": 62.04,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_input_decision_0",
+          "from": "input",
+          "to": "decision",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 98.32,
+              "y": 77.74
+            },
+            {
+              "x": 138.32,
+              "y": 77.74
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_decision_Work_0",
+          "from": "decision",
+          "to": "Work",
+          "from_cluster": null,
+          "to_cluster": "Work",
+          "points": [
+            {
+              "x": 245.28,
+              "y": 51.0
+            },
+            {
+              "x": 386.56,
+              "y": 51.0
+            }
+          ],
+          "label": {
+            "x": 325.92,
+            "y": 51.0,
+            "width": 41.28,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Work_output_0",
+          "from": "Work",
+          "to": "output",
+          "from_cluster": "Work",
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 746.68,
+              "y": 97.02
+            },
+            {
+              "x": 892.42,
+              "y": 97.02
+            }
+          ],
+          "label": {
+            "x": 823.3,
+            "y": 97.02,
+            "width": 58.24,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_taskC_decision_0",
+          "from": "taskC",
+          "to": "decision",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 734.68,
+              "y": 82.02
+            },
+            {
+              "x": 754.18,
+              "y": 82.02
+            },
+            {
+              "x": 774.18,
+              "y": 82.02
+            },
+            {
+              "x": 774.18,
+              "y": 177.04
+            },
+            {
+              "x": 325.92,
+              "y": 177.04
+            },
+            {
+              "x": 285.28,
+              "y": 177.04
+            },
+            {
+              "x": 285.28,
+              "y": 77.74
+            },
+            {
+              "x": 245.28,
+              "y": 77.74
+            }
+          ],
+          "label": {
+            "x": 570.37,
+            "y": 177.04,
+            "width": 36.32,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_decision_output_0",
+          "from": "decision",
+          "to": "output",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 245.28,
+              "y": 104.48
+            },
+            {
+              "x": 265.28,
+              "y": 104.48
+            },
+            {
+              "x": 265.28,
+              "y": 221.04
+            },
+            {
+              "x": 325.92,
+              "y": 221.04
+            },
+            {
+              "x": 823.3,
+              "y": 221.04
+            },
+            {
+              "x": 872.42,
+              "y": 221.04
+            },
+            {
+              "x": 872.42,
+              "y": 115.02
+            },
+            {
+              "x": 892.42,
+              "y": 115.02
+            }
+          ],
+          "label": {
+            "x": 570.37,
+            "y": 221.04,
+            "width": 41.28,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_taskA_taskB_0",
+          "from": "taskA",
+          "to": "taskB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 505.6,
+              "y": 82.02
+            },
+            {
+              "x": 535.6,
+              "y": 82.02
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_taskB_taskC_0",
+          "from": "taskB",
+          "to": "taskC",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 642.64,
+              "y": 82.02
+            },
+            {
+              "x": 672.64,
+              "y": 82.02
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Work",
+          "x": 566.62,
+          "y": 68.52,
+          "width": 360.12,
+          "height": 113.04,
+          "diff": -4.0,
+          "offset_y": 18.0,
+          "title": "Work Cluster",
+          "title_label": {
+            "x": 566.62,
+            "y": 23.0,
+            "width": 89.92,
+            "height": 22.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 12.0,
+        "min_y": 12.0,
+        "max_x": 996.42,
+        "max_y": 233.04
+      }
+    }
+  }
+}

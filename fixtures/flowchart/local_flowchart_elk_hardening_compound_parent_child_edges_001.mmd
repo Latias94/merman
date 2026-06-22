@@ -1,0 +1,31 @@
+---
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+  securityLevel: loose
+---
+
+flowchart-elk TB
+  start((Start)) --> gateway{Route}
+
+  subgraph S1 [Outer One]
+    subgraph S1A [Inner One]
+      a1[Alpha] --> a2[Beta]
+    end
+    a2 --> a3[Gamma]
+  end
+
+  subgraph S2 [Outer Two]
+    subgraph S2A [Inner Two]
+      b1[Delta]
+    end
+    b1 --> b2[Epsilon]
+  end
+
+  gateway --> S1
+  S1 --> S2
+  a1 --> S2
+  S1A --> b2
+  b1 --> S1
+  b2 --> finish((Finish))

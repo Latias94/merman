@@ -1,0 +1,24 @@
+---
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+  securityLevel: loose
+---
+
+flowchart-elk LR
+  input[/Input/] --> decision{Decision}
+
+  subgraph Work [Work Cluster]
+    taskA[Task A] ==> taskB[Task B]
+    taskB --> taskC((Task C))
+  end
+
+  decision -->|accept| Work
+  Work -->|complete| output[Output]
+  taskC -->|retry| decision
+  decision -->|reject| output
+
+  classDef hot fill:#ffe0e0,stroke:#cc3333,color:#222;
+  class decision,Work hot
+  linkStyle 1,3 stroke:#cc3333,stroke-width:3px;
