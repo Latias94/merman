@@ -131,6 +131,75 @@ pub(super) fn plan_top_down_bent_route(
     Some(RoutePlan { cells, labels })
 }
 
+pub(super) fn plan_top_down_side_entry_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    let y = from.center_y();
+    if y < to.y || y > to.bottom() {
+        return None;
+    }
+
+    let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let mut cells = Vec::new();
+
+    if from.center_x() < to.center_x() {
+        if to.x <= from.right() + 1 {
+            return None;
+        }
+        if charset.unicode {
+            cells.push(edge_line_cell(from.right(), y, charset.right_connector));
+        }
+        let start = from.right() + 1;
+        let end = to.x - 1;
+        for x in start..end {
+            cells.push(route_cell(x, y, line));
+        }
+        cells.push(match edge.arrow {
+            GraphEdgeArrow::Open => route_cell(end, y, line),
+            GraphEdgeArrow::Point => edge_arrow_cell(end, y, charset.arrow_right),
+        });
+
+        let labels = planned_label(
+            edge.label.as_deref(),
+            CanvasCoord { x: start, y },
+            CanvasCoord { x: end, y },
+        )
+        .into_iter()
+        .collect();
+
+        return Some(RoutePlan { cells, labels });
+    }
+
+    if from.x <= to.right() + 1 {
+        return None;
+    }
+    if charset.unicode {
+        cells.push(edge_line_cell(from.x, y, charset.left_connector));
+    }
+    let start = to.right() + 1;
+    let end = from.x - 1;
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(start, y, line),
+        GraphEdgeArrow::Point => edge_arrow_cell(start, y, charset.arrow_left),
+    });
+    for x in (start + 1)..from.x {
+        cells.push(route_cell(x, y, line));
+    }
+
+    let labels = planned_label(
+        edge.label.as_deref(),
+        CanvasCoord { x: start, y },
+        CanvasCoord { x: end, y },
+    )
+    .into_iter()
+    .collect();
+
+    Some(RoutePlan { cells, labels })
+}
+
 pub(super) fn plan_top_down_back_route(
     from: &NodeLayout,
     to: &NodeLayout,

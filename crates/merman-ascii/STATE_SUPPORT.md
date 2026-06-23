@@ -14,7 +14,7 @@ This document describes the current `merman-ascii` state support boundary. The r
 | States | Supported subset | Simple state nodes render as terminal graph nodes. State aliases and descriptions render as visible labels. |
 | Start/end pseudo states | Supported approximation | `[*]` start and end states render as visible `*` nodes so transitions remain inspectable in text output. |
 | Transitions | Supported subset | Directed transitions and non-empty labels render through the shared graph route planner. |
-| Composite states | Supported subset | Composite states render as group boxes when their children can be mapped cleanly to graph members and transitions do not target the composite group itself. |
+| Composite states | Supported subset | Composite states render as group boxes when their children can be mapped cleanly to graph members. Transitions may attach to composite group boundaries. |
 | State notes | Supported approximation | Inline and block notes render as terminal note nodes connected with open note edges. Multiline note text is preserved. Mermaid's exact note side placement is approximated by the shared graph layout. |
 | Click/href links | Accepted metadata | State link URLs and tooltips are SVG/interaction metadata. They do not block ASCII rendering and are not emitted in terminal output. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -27,7 +27,6 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Feature | Error feature |
 | --- | --- |
 | Divider/concurrency regions | `state dividers` |
-| Transitions whose endpoint is a composite group container | `state group transition endpoints` |
 | State node shapes outside `rect`, `rectWithTitle`, `stateStart`, `stateEnd`, `roundedWithTitle`, and note-backed `noteGroup` | `state node shapes` |
 | State edge arrow types outside Mermaid's normal state arrowheads | `state arrow types` |
 | Directions outside Mermaid's supported direction set | `unsupported state directions` |
@@ -37,8 +36,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 - State rendering is a terminal graph approximation, not SVG layout parity.
 - Start and end pseudo states both render as `*`; their direction is communicated by transitions.
-- Composite groups currently require child-member mapping. Edges to or from a composite group
-  container are rejected until graph routing can attach to group boundaries honestly.
+- Composite groups currently require child-member mapping. Boundary-entry routing is a terminal graph
+  approximation and does not attempt SVG cluster-edge parity.
 - State note side placement is terminal-graph approximate. The note text and note relationship are
   preserved, but Mermaid's exact SVG note offsets are not.
 - State links are accepted as interaction metadata and intentionally omitted from terminal output.

@@ -294,6 +294,7 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
         .collect::<Vec<_>>();
     apply_subgraph_direction_overrides(graph, &mut placements);
+    separate_external_nodes_from_groups(graph, &mut placements);
     placements
 }
 
@@ -529,7 +530,135 @@ fn place_top_down_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
         .collect::<Vec<_>>();
     apply_subgraph_direction_overrides(graph, &mut placements);
+    separate_external_nodes_from_groups(graph, &mut placements);
     placements
+}
+
+fn separate_external_nodes_from_groups(graph: &AsciiGraph, placements: &mut [GridCoord]) {
+    if graph.groups.is_empty() || placements.is_empty() {
+        return;
+    }
+    let endpoint_group_ids = graph_endpoint_group_ids(graph);
+    if endpoint_group_ids.is_empty() {
+        return;
+    }
+
+    let max_passes = graph.groups.len().saturating_mul(placements.len()).max(1);
+    for _ in 0..max_passes {
+        let mut changed = false;
+        for group_index in 0..graph.groups.len() {
+            if !endpoint_group_ids.contains(graph.groups[group_index].id.as_str()) {
+                continue;
+            }
+            let member_indices = group_member_indices(graph, group_index);
+            if member_indices.is_empty() {
+                continue;
+            }
+            let Some(group_bounds) =
+                group_bounds_for_placements(graph, group_index, &member_indices, placements)
+            else {
+                continue;
+            };
+            changed |= shift_external_nodes_away_from_group(
+                graph,
+                &member_indices,
+                group_bounds,
+                placements,
+            );
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
+fn graph_endpoint_group_ids(graph: &AsciiGraph) -> HashSet<&str> {
+    let group_ids = graph
+        .groups
+        .iter()
+        .map(|group| group.id.as_str())
+        .collect::<HashSet<_>>();
+    graph
+        .edges
+        .iter()
+        .flat_map(|edge| [edge.from.as_str(), edge.to.as_str()])
+        .filter(|endpoint| group_ids.contains(endpoint))
+        .collect()
+}
+
+fn group_member_indices(graph: &AsciiGraph, group_index: usize) -> Vec<usize> {
+    let group_index_by_id = graph
+        .groups
+        .iter()
+        .enumerate()
+        .map(|(index, group)| (group.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let node_index_by_id = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let mut indices = HashSet::new();
+    let mut visited_groups = HashSet::new();
+    let mut stack = vec![group_index];
+
+    while let Some(index) = stack.pop() {
+        if !visited_groups.insert(index) {
+            continue;
+        }
+        let Some(group) = graph.groups.get(index) else {
+            continue;
+        };
+
+        for member in &group.nodes {
+            if let Some(node_index) = node_index_by_id.get(member.as_str()).copied() {
+                indices.insert(node_index);
+            } else if let Some(child_group_index) = group_index_by_id.get(member.as_str()).copied()
+            {
+                stack.push(child_group_index);
+            }
+        }
+    }
+
+    let mut indices = indices.into_iter().collect::<Vec<_>>();
+    indices.sort_unstable();
+    indices
+}
+
+fn group_bounds_for_placements(
+    graph: &AsciiGraph,
+    group_index: usize,
+    member_indices: &[usize],
+    placements: &[GridCoord],
+) -> Option<RawBounds> {
+    let group = graph.groups.get(group_index)?;
+    let mut member_bounds = None::<RawBounds>;
+
+    for index in member_indices {
+        let bounds = node_bounds(*placements.get(*index)?);
+        if let Some(current) = &mut member_bounds {
+            current.include(bounds);
+        } else {
+            member_bounds = Some(bounds);
+        }
+    }
+
+    let member_bounds = member_bounds?;
+    let title_width = (member_bounds.right - member_bounds.x + 3).max(1) as usize;
+    let title = GraphLabel::wrapped(&group.title, title_width);
+    let title_space = title.content_height() + 3;
+    let x = member_bounds.x - 2;
+    let y = member_bounds.y - title_space as isize;
+    let right = member_bounds.right + 2;
+    let bottom = member_bounds.bottom + 2;
+
+    Some(RawBounds {
+        x,
+        y,
+        right,
+        bottom,
+    })
 }
 
 fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [GridCoord]) {
@@ -736,9 +865,10 @@ fn shift_external_nodes_away_from_group(
     member_indices: &[usize],
     group_bounds: RawBounds,
     placements: &mut [GridCoord],
-) {
+) -> bool {
     let member_indices = member_indices.iter().copied().collect::<HashSet<_>>();
     let graph_direction = graph.direction.canonical();
+    let mut changed = false;
 
     for index in 0..placements.len() {
         if member_indices.contains(&index) {
@@ -751,6 +881,7 @@ fn shift_external_nodes_away_from_group(
         while raw_bounds_intersects(group_bounds, node_bounds(placements[index]))
             || node_overlaps_any_other(index, placements)
         {
+            changed = true;
             match graph_direction {
                 GraphDirection::LeftRight => placements[index].y += 4,
                 GraphDirection::TopDown => placements[index].x += 4,
@@ -758,6 +889,8 @@ fn shift_external_nodes_away_from_group(
             }
         }
     }
+
+    changed
 }
 
 fn group_bounds_for_offset(

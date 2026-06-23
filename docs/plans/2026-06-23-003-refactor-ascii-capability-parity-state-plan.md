@@ -75,7 +75,8 @@ as architecture and capability prior art, while Mermaid semantics and the typed 
 - R6. The initial state renderer must support simple states, start/end pseudo states, labeled
   transitions, root direction, descriptions, and composite-state boxes where they map cleanly to the
   shared graph renderer.
-- R7. State notes, links, class/style metadata, dividers, and uncommon state node shapes must be
+- R7. State notes, links, class/style metadata, group-boundary transitions, dividers, and uncommon
+  state node shapes must be
   rendered through existing graph/text/color primitives, accepted as documented omitted metadata, or
   rejected with a precise unsupported feature.
 - R8. The state adapter must preserve the model-driven ASCII boundary: no state Mermaid parsing is
@@ -128,11 +129,11 @@ Out of scope:
 - KTD2. Treat `beautiful-mermaid` as a capability map, not an oracle. Its broad family support helps
   prioritize state, but local Mermaid model semantics decide the implementation boundary.
 - KTD3. Keep state unsupported cases precise. Replacing `UnsupportedDiagram { state }` with a broad
-  renderer must not silently drop dividers, group endpoints, or unsupported shapes. State note
-  edges are representable as open terminal connectors once their internal note node is collapsed
-  into the visible note group. State links are interaction metadata and can be accepted when their
-  omission is documented. State style metadata can map only the foreground subset that the graph
-  renderer can express.
+  renderer must not silently drop dividers or unsupported shapes. State note edges are
+  representable as open terminal connectors once their internal note node is collapsed into the
+  visible note group. State links are interaction metadata and can be accepted when their omission
+  is documented. State style metadata can map only the foreground subset that the graph renderer can
+  express. Composite-group transitions attach to group boundaries through the shared graph router.
 - KTD4. Do documentation truthing first. A stale gap registry makes later fearless refactors riskier
   because implementers cannot tell whether a gap is real, solved, or intentionally deferred.
 - KTD5. Preserve the copied `mermaid-ascii` fixture gate. Broader state/class/ER/XYChart support is
@@ -199,6 +200,8 @@ Out of scope:
     label.
   - A composite state with a child node renders as a graph group when the model provides group
     membership.
+  - Transitions targeting composite states attach to the group boundary, including entry transitions
+    into composite states with internal transitions.
   - Unsupported state divider behavior returns `UnsupportedFeature` with `diagram_type: "state"`,
     while state notes render as terminal note nodes, state links are accepted as omitted metadata,
     and foreground state styles map to node/group text and border colors.

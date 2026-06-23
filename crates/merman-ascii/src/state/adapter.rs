@@ -70,24 +70,11 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
 }
 
 fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()> {
-    let group_members = group_members_by_id(model);
-    let group_container_ids = model
-        .nodes
-        .iter()
-        .filter(|node| is_group_container(node, &group_members))
-        .map(|node| node.id.as_str())
-        .collect::<HashSet<_>>();
-
     for node in &model.nodes {
         validate_supported_state_node(node)?;
     }
 
     for edge in &model.edges {
-        if group_container_ids.contains(edge.start.as_str())
-            || group_container_ids.contains(edge.end.as_str())
-        {
-            return Err(unsupported("state group transition endpoints"));
-        }
         if !edge.arrow_type_end.is_empty()
             && !matches!(
                 edge.arrow_type_end.as_str(),

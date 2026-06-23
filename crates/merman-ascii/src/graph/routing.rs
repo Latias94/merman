@@ -1,6 +1,9 @@
 use super::charset::GraphCharset;
-use super::layout::{CanvasCoord, GraphLayout, NodeLayout};
-use super::model::{AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeStyle};
+use super::label::GraphLabel;
+use super::layout::{CanvasCoord, GraphLayout, GridCoord, GroupLayout, NodeLayout};
+use super::model::{
+    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
+};
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
 
@@ -47,11 +50,12 @@ impl<'a> RouteDrawing<'a> {
 
 pub(super) fn edge_canvas_extent(
     graph: &AsciiGraph,
-    layouts: &[NodeLayout],
+    graph_layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
     direction: GraphDirection,
 ) -> (usize, usize) {
-    route_canvas_extent(graph, layouts, edges, direction)
+    let layouts = endpoint_layouts_for_extent(graph_layout);
+    route_canvas_extent(graph, &layouts, edges, direction)
 }
 
 pub(super) fn transform_routed_label(
@@ -70,14 +74,13 @@ pub(super) fn draw_edge(
     drawing: &mut RouteDrawing<'_>,
     request: DrawEdgeRequest<'_>,
 ) -> Result<()> {
-    let layouts = &request.graph_layout.nodes;
-    let Some(from) = layouts.iter().find(|layout| layout.id == request.edge.from) else {
+    let Some(from) = endpoint_layout(request.graph_layout, &request.edge.from) else {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: request.graph.diagram_type(),
             feature: "edges with missing endpoint layouts",
         });
     };
-    let Some(to) = layouts.iter().find(|layout| layout.id == request.edge.to) else {
+    let Some(to) = endpoint_layout(request.graph_layout, &request.edge.to) else {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: request.graph.diagram_type(),
             feature: "edges with missing endpoint layouts",
@@ -87,8 +90,8 @@ pub(super) fn draw_edge(
         graph: request.graph,
         graph_layout: request.graph_layout,
         edges: request.edges,
-        from,
-        to,
+        from: &from,
+        to: &to,
         edge_index: request.edge_index,
         edge: request.edge,
         charset: request.charset,
@@ -102,6 +105,41 @@ pub(super) fn draw_edge(
     paint_route_plan(drawing, &plan);
 
     Ok(())
+}
+
+fn endpoint_layout(graph_layout: &GraphLayout, endpoint_id: &str) -> Option<NodeLayout> {
+    graph_layout
+        .nodes
+        .iter()
+        .find(|layout| layout.id == endpoint_id)
+        .cloned()
+        .or_else(|| {
+            graph_layout
+                .groups
+                .iter()
+                .find(|layout| layout.id == endpoint_id)
+                .map(group_endpoint_layout)
+        })
+}
+
+fn endpoint_layouts_for_extent(graph_layout: &GraphLayout) -> Vec<NodeLayout> {
+    let mut layouts = graph_layout.nodes.clone();
+    layouts.extend(graph_layout.groups.iter().map(group_endpoint_layout));
+    layouts
+}
+
+fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
+    NodeLayout {
+        id: group.id.clone(),
+        label: GraphLabel::new(""),
+        shape: GraphNodeShape::Rect,
+        style: GraphNodeStyle::default(),
+        grid: GridCoord { x: 0, y: 0 },
+        x: group.x,
+        y: group.y,
+        width: group.width,
+        height: group.height,
+    }
 }
 
 fn apply_edge_style_to_plan(plan: &mut RoutePlan, style: GraphEdgeStyle) {

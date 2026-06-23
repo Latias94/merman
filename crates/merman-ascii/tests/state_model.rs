@@ -231,9 +231,53 @@ fn state_style_color_truecolor_maps_classdef_and_inline_node_foreground_without_
 }
 
 #[test]
-fn state_group_transition_endpoints_are_explicitly_unsupported() {
-    assert_unsupported_state(
+fn state_group_transition_endpoints_attach_to_group_boundary() {
+    let rendered = render_state(
         "stateDiagram-v2\nstate Parent {\n  Child\n}\nA --> Parent",
-        "state group transition endpoints",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("state transitions should be able to target composite state boundaries");
+
+    assert!(
+        rendered.contains("Parent"),
+        "target composite state should render as a group label:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Child"),
+        "target composite state should keep its child state visible:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("A"),
+        "source state should render outside the target group:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_composite_entry_transition_attaches_to_group_boundary() {
+    let rendered = render_state(
+        "stateDiagram-v2\n[*] --> Active\nstate Active {\n  [*] --> A\n  A --> B\n}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("entry transitions should attach to composite state boundaries");
+
+    assert!(
+        rendered.contains("Active"),
+        "composite state title should render:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("A") && rendered.contains("B"),
+        "composite state children should render:\n{rendered}"
+    );
+    assert!(
+        rendered.matches("| * |").count() >= 2,
+        "root and nested start pseudo states should render:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_dividers_are_explicitly_unsupported() {
+    assert_unsupported_state(
+        "stateDiagram-v2\nstate Active {\n  A\n  --\n  B\n}",
+        "state dividers",
     );
 }

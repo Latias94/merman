@@ -16,7 +16,7 @@ use super::left_right::{
 };
 use super::top_down::{
     plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
-    top_down_back_edge_lane_x,
+    plan_top_down_side_entry_route, top_down_back_edge_lane_x,
 };
 use crate::text::display_width;
 
@@ -199,6 +199,13 @@ fn plan_boundary_route(
             GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Right))
                 .with_segment(PlannedRouteSegment::Boundary),
         ),
+        EdgeBoundaryContext::Entering {
+            group_id,
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::TopDown,
+        } if request.edge.to == group_id => {
+            plan_top_down_side_entry_route(request.from, request.to, request.edge, request.charset)
+        }
         EdgeBoundaryContext::External { .. } | EdgeBoundaryContext::Internal { .. } => None,
         EdgeBoundaryContext::Entering { .. } | EdgeBoundaryContext::Leaving { .. } => None,
     }
@@ -265,8 +272,9 @@ pub(in crate::graph::routing) fn edge_boundary_context<'a>(
         let Some(local_direction) = group.direction else {
             continue;
         };
-        let from_inside = group.nodes.iter().any(|node| node == &edge.from);
-        let to_inside = group.nodes.iter().any(|node| node == &edge.to);
+        let from_inside =
+            edge.from == group.id || group.nodes.iter().any(|node| node == &edge.from);
+        let to_inside = edge.to == group.id || group.nodes.iter().any(|node| node == &edge.to);
         match (from_inside, to_inside) {
             (true, true) => {
                 return EdgeBoundaryContext::Internal {
