@@ -1650,16 +1650,41 @@ fn sequence_actor_label_html_breaks_render_multiline_participant_boxes() {
 }
 
 #[test]
-fn sequence_actor_links_are_explicitly_unsupported() {
+fn sequence_actor_links_do_not_block_ascii_rendering() {
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant B\n",
+            "links A: { \"Docs\": \"https://example.com/docs\" }\n",
+            "link B: Repo @ https://example.com/repo\n",
+            "A->>B: Hi",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence actor links should not block ASCII rendering");
+
+    assert!(
+        rendered.contains("Hi"),
+        "linked actors should keep sequence messages renderable:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("example.com"),
+        "actor link URLs are SVG metadata and should not leak into ASCII output:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_actor_properties_are_explicitly_unsupported() {
     let mut model = basic_sequence_model();
     model
         .actors
         .get_mut("A")
         .unwrap()
-        .links
-        .insert("docs".to_string(), "https://example.com".into());
+        .properties
+        .insert("icon".to_string(), "@clock".into());
 
-    assert_unsupported_sequence_model(model, "actor links/properties");
+    assert_unsupported_sequence_model(model, "actor properties");
 }
 
 #[test]

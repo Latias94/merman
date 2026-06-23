@@ -17,11 +17,11 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
     if model
         .actors
         .values()
-        .any(|actor| !actor.links.is_empty() || !actor.properties.is_empty())
+        .any(|actor| !actor.properties.is_empty())
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "actor links/properties",
+            feature: "actor properties",
         });
     }
 
