@@ -1,8 +1,6 @@
+use super::model::AsciiSequenceDiagram;
 use super::{BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH};
 use crate::options::AsciiRenderOptions;
-use crate::text::display_width;
-
-use super::model::AsciiSequenceDiagram;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceLayout {
@@ -20,9 +18,7 @@ pub(super) fn calculate_layout(
     let participant_widths = diagram
         .participants
         .iter()
-        .map(|participant| {
-            (display_width(&participant.label) + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH)
-        })
+        .map(|participant| (participant.label.width() + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH))
         .collect::<Vec<_>>();
 
     let mut participant_centers = Vec::with_capacity(diagram.participants.len());

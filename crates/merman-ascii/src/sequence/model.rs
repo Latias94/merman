@@ -1,10 +1,10 @@
+use super::{SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, validate::validate_supported_sequence_model};
 use crate::error::{AsciiError, Result};
+use crate::text::{display_width, split_label_lines, wrap_label_lines};
 use merman_core::diagrams::sequence::{
     SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage, SequenceMessagePayload,
 };
 use std::collections::HashMap;
-
-use super::validate::validate_supported_sequence_model;
 
 const AUTONUMBER_MESSAGE_TYPE: i32 = 26;
 pub(super) const NOTE_MESSAGE_TYPE: i32 = 2;
@@ -50,7 +50,44 @@ pub(crate) struct AsciiSequenceDiagram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceParticipant {
     pub(super) id: String,
-    pub(super) label: String,
+    pub(super) label: SequenceParticipantLabel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SequenceParticipantLabel {
+    lines: Vec<String>,
+    width: usize,
+}
+
+impl SequenceParticipantLabel {
+    pub(super) fn from_raw(raw: &str, wrap: bool) -> Self {
+        let lines = if wrap {
+            wrap_label_lines(raw, SEQUENCE_ACTOR_WRAP_TEXT_WIDTH)
+        } else {
+            split_label_lines(raw)
+        };
+        Self::from_lines(lines)
+    }
+
+    pub(super) fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    pub(super) fn width(&self) -> usize {
+        self.width
+    }
+
+    fn from_lines(mut lines: Vec<String>) -> Self {
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        let width = lines
+            .iter()
+            .map(|line| display_width(line))
+            .max()
+            .unwrap_or_default();
+        Self { lines, width }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -434,7 +471,7 @@ fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequencePart
     ids.into_iter()
         .filter_map(|id| {
             let actor = model.actors.get(&id)?;
-            let label = if actor.description.is_empty() {
+            let raw_label = if actor.description.is_empty() {
                 if actor.name.is_empty() {
                     id.clone()
                 } else {
@@ -443,6 +480,7 @@ fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequencePart
             } else {
                 actor.description.clone()
             };
+            let label = SequenceParticipantLabel::from_raw(&raw_label, actor.wrap);
             Some(SequenceParticipant { id, label })
         })
         .collect()

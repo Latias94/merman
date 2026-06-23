@@ -160,29 +160,12 @@ impl SequenceRowPlan {
         let mut lines = Vec::new();
         let mut event_plan = SequenceEventPlan::new(diagram);
 
-        lines.push(build_participant_line(
+        lines.extend(render_participant_box_rows(
             diagram,
             layout,
+            chars,
             event_plan.visible_actors(),
-            |index| {
-                build_participant_box_row(diagram, layout, chars, index, ParticipantBoxRow::Top)
-            },
-        ));
-        lines.push(build_participant_line(
-            diagram,
-            layout,
-            event_plan.visible_actors(),
-            |index| {
-                build_participant_box_row(diagram, layout, chars, index, ParticipantBoxRow::Label)
-            },
-        ));
-        lines.push(build_participant_line(
-            diagram,
-            layout,
-            event_plan.visible_actors(),
-            |index| {
-                build_participant_box_row(diagram, layout, chars, index, ParticipantBoxRow::Bottom)
-            },
+            ParticipantBoxFrame::Header,
         ));
 
         for event in &diagram.events {
@@ -266,47 +249,12 @@ impl SequenceRowPlan {
             event_plan.visible_actors(),
         ));
         if mirror_actors {
-            lines.push(build_participant_line(
+            lines.extend(render_participant_box_rows(
                 diagram,
                 layout,
+                chars,
                 event_plan.visible_actors(),
-                |index| {
-                    build_participant_box_row(
-                        diagram,
-                        layout,
-                        chars,
-                        index,
-                        ParticipantBoxRow::MirrorTop,
-                    )
-                },
-            ));
-            lines.push(build_participant_line(
-                diagram,
-                layout,
-                event_plan.visible_actors(),
-                |index| {
-                    build_participant_box_row(
-                        diagram,
-                        layout,
-                        chars,
-                        index,
-                        ParticipantBoxRow::Label,
-                    )
-                },
-            ));
-            lines.push(build_participant_line(
-                diagram,
-                layout,
-                event_plan.visible_actors(),
-                |index| {
-                    build_participant_box_row(
-                        diagram,
-                        layout,
-                        chars,
-                        index,
-                        ParticipantBoxRow::MirrorBottom,
-                    )
-                },
+                ParticipantBoxFrame::Mirror,
             ));
         }
 
@@ -319,6 +267,56 @@ impl SequenceRowPlan {
     pub(super) fn into_parts(self) -> (Vec<SequenceLine>, Vec<SequenceControlFrame>) {
         (self.lines, self.control_frames)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParticipantBoxFrame {
+    Header,
+    Mirror,
+}
+
+fn render_participant_box_rows(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    visible_actors: &[bool],
+    frame: ParticipantBoxFrame,
+) -> Vec<SequenceLine> {
+    participant_box_rows(diagram, frame)
+        .into_iter()
+        .map(|row| {
+            build_participant_line(diagram, layout, visible_actors, |index| {
+                build_participant_box_row(diagram, layout, chars, index, row)
+            })
+        })
+        .collect()
+}
+
+fn participant_box_rows(
+    diagram: &AsciiSequenceDiagram,
+    frame: ParticipantBoxFrame,
+) -> Vec<ParticipantBoxRow> {
+    let mut rows = Vec::with_capacity(participant_label_row_count(diagram) + 2);
+    rows.push(match frame {
+        ParticipantBoxFrame::Header => ParticipantBoxRow::Top,
+        ParticipantBoxFrame::Mirror => ParticipantBoxRow::MirrorTop,
+    });
+    rows.extend((0..participant_label_row_count(diagram)).map(ParticipantBoxRow::Label));
+    rows.push(match frame {
+        ParticipantBoxFrame::Header => ParticipantBoxRow::Bottom,
+        ParticipantBoxFrame::Mirror => ParticipantBoxRow::MirrorBottom,
+    });
+    rows
+}
+
+fn participant_label_row_count(diagram: &AsciiSequenceDiagram) -> usize {
+    diagram
+        .participants
+        .iter()
+        .map(|participant| participant.label.lines().len())
+        .max()
+        .unwrap_or(1)
+        .max(1)
 }
 
 fn build_participant_line(
@@ -343,7 +341,7 @@ fn build_participant_line(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ParticipantBoxRow {
     Top,
-    Label,
+    Label(usize),
     Bottom,
     MirrorTop,
     MirrorBottom,
@@ -372,12 +370,20 @@ fn build_participant_box_row(
             }
             line.set_role(width + 1, chars.top_right, AsciiColorRole::SequenceFrame);
         }
-        ParticipantBoxRow::Label => {
+        ParticipantBoxRow::Label(label_row) => {
             let label = &diagram.participants[index].label;
-            let label_width = display_width(label);
+            let label_lines = label.lines();
+            let row_count = label_lines.len().max(1);
+            let top_padding = (participant_label_row_count(diagram).saturating_sub(row_count)) / 2;
+            let row_label = label_row
+                .checked_sub(top_padding)
+                .and_then(|index| label_lines.get(index));
+            let label_width = row_label.map(|line| display_width(line)).unwrap_or(0);
             let left_padding = (width - label_width) / 2;
             line.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
-            line.write_text_role(1 + left_padding, label, AsciiColorRole::Text);
+            if let Some(label) = row_label {
+                line.write_text_role(1 + left_padding, label, AsciiColorRole::Text);
+            }
             line.set_role(width + 1, chars.vertical, AsciiColorRole::SequenceFrame);
         }
         ParticipantBoxRow::Bottom | ParticipantBoxRow::MirrorBottom => {
@@ -404,33 +410,29 @@ fn render_lifecycle_participants(
     visible_actors: &[bool],
     actor_indices: &[usize],
 ) -> Vec<SequenceLine> {
-    [
-        ParticipantBoxRow::Top,
-        ParticipantBoxRow::Label,
-        ParticipantBoxRow::Bottom,
-    ]
-    .into_iter()
-    .map(|row| {
-        let width = actor_indices
-            .iter()
-            .map(|index| {
+    participant_box_rows(diagram, ParticipantBoxFrame::Header)
+        .into_iter()
+        .map(|row| {
+            let width = actor_indices
+                .iter()
+                .map(|index| {
+                    let segment = build_participant_box_row(diagram, layout, chars, *index, row);
+                    participant_left(layout, *index) + segment.len()
+                })
+                .max()
+                .unwrap_or(layout.total_width + 1)
+                .max(layout.total_width + 1);
+            let mut line = padded_line(
+                build_lifeline_line(layout, chars, active_counts, visible_actors),
+                width,
+            );
+            for index in actor_indices {
                 let segment = build_participant_box_row(diagram, layout, chars, *index, row);
-                participant_left(layout, *index) + segment.len()
-            })
-            .max()
-            .unwrap_or(layout.total_width + 1)
-            .max(layout.total_width + 1);
-        let mut line = padded_line(
-            build_lifeline_line(layout, chars, active_counts, visible_actors),
-            width,
-        );
-        for index in actor_indices {
-            let segment = build_participant_box_row(diagram, layout, chars, *index, row);
-            line.write_line(participant_left(layout, *index), &segment);
-        }
-        trim_right(line)
-    })
-    .collect()
+                line.write_line(participant_left(layout, *index), &segment);
+            }
+            trim_right(line)
+        })
+        .collect()
 }
 
 fn unsupported(feature: &'static str) -> AsciiError {
@@ -446,7 +448,8 @@ mod tests {
     use crate::options::AsciiRenderOptions;
     use crate::sequence::layout::calculate_layout;
     use crate::sequence::model::{
-        SequenceActorLifecycle, SequenceControlSeparator, SequenceControlStart, SequenceParticipant,
+        SequenceActorLifecycle, SequenceControlSeparator, SequenceControlStart,
+        SequenceParticipant, SequenceParticipantLabel,
     };
 
     #[test]
@@ -571,7 +574,7 @@ mod tests {
             participants: (0..participant_count)
                 .map(|index| SequenceParticipant {
                     id: format!("p{index}"),
-                    label: format!("P{index}"),
+                    label: SequenceParticipantLabel::from_raw(&format!("P{index}"), false),
                 })
                 .collect(),
             lifecycles: vec![SequenceActorLifecycle::default(); participant_count],

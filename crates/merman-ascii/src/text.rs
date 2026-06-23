@@ -195,6 +195,83 @@ pub(crate) fn wrap_display_lines(text: &str, max_width: usize) -> Vec<String> {
     lines
 }
 
+pub(crate) fn split_label_lines(raw: &str) -> Vec<String> {
+    normalize_label_breaks(raw)
+        .split('\n')
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+pub(crate) fn wrap_label_lines(raw: &str, max_width: usize) -> Vec<String> {
+    let normalized = normalize_label_breaks(raw);
+    let mut lines = Vec::new();
+    for paragraph in normalized.split('\n') {
+        if paragraph.is_empty() {
+            lines.push(String::new());
+        } else {
+            lines.extend(wrap_display_lines(paragraph, max_width));
+        }
+    }
+    lines
+}
+
+fn normalize_label_breaks(raw: &str) -> String {
+    let mut normalized = String::with_capacity(raw.len());
+    let mut index = 0;
+
+    while index < raw.len() {
+        if let Some(end) = html_break_end(raw, index) {
+            normalized.push('\n');
+            index = end;
+            continue;
+        }
+        if raw[index..].starts_with("\\n") {
+            normalized.push('\n');
+            index += 2;
+            continue;
+        }
+
+        let Some(ch) = raw[index..].chars().next() else {
+            break;
+        };
+        normalized.push(ch);
+        index += ch.len_utf8();
+    }
+
+    normalized
+}
+
+fn html_break_end(raw: &str, start: usize) -> Option<usize> {
+    let bytes = raw.as_bytes();
+    if bytes.get(start).copied()? != b'<' {
+        return None;
+    }
+    if !byte_eq_ignore_ascii_case(bytes.get(start + 1).copied()?, b'b')
+        || !byte_eq_ignore_ascii_case(bytes.get(start + 2).copied()?, b'r')
+    {
+        return None;
+    }
+
+    let mut index = start + 3;
+    while bytes
+        .get(index)
+        .is_some_and(|byte| byte.is_ascii_whitespace())
+    {
+        index += 1;
+    }
+    if bytes.get(index).copied() == Some(b'/') {
+        index += 1;
+    }
+    if bytes.get(index).copied() != Some(b'>') {
+        return None;
+    }
+    Some(index + 1)
+}
+
+fn byte_eq_ignore_ascii_case(left: u8, right: u8) -> bool {
+    left.eq_ignore_ascii_case(&right)
+}
+
 fn wrap_display_paragraph(text: &str, max_width: usize, lines: &mut Vec<String>) {
     let mut current = String::new();
     let mut current_width = 0;

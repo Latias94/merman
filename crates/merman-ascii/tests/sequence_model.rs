@@ -1511,11 +1511,43 @@ fn sequence_actor_shapes_are_explicitly_unsupported() {
 }
 
 #[test]
-fn sequence_wrapped_actor_labels_are_explicitly_unsupported() {
+fn sequence_wrapped_actor_labels_render_multiline_participant_boxes() {
     let mut model = basic_sequence_model();
-    model.actors.get_mut("A").unwrap().wrap = true;
+    let actor = model.actors.get_mut("A").unwrap();
+    actor.description = "Public API Gateway".to_string();
+    actor.wrap = true;
 
-    assert_unsupported_sequence_model(model, "wrapped actor labels");
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("sequence should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+
+    assert_eq!(lines[0], "+------------+");
+    assert_eq!(lines[1], "| Public API |");
+    assert_eq!(lines[2], "|  Gateway   |");
+    assert_eq!(lines[3], "+------+-----+");
+    assert_eq!(lines[4], "       |");
+}
+
+#[test]
+fn sequence_actor_label_html_breaks_render_multiline_participant_boxes() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A as First<br />Line\nA->>A: Hi",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+
+    assert!(
+        lines.len() >= 5,
+        "rendered sequence should include multiline participant header:\n{rendered}"
+    );
+    assert_eq!(lines[0], "+-------+");
+    assert_eq!(lines[1], "| First |");
+    assert_eq!(lines[2], "| Line  |");
+    assert_eq!(lines[3], "+---+---+");
+    assert_eq!(lines[4], "    |");
 }
 
 #[test]

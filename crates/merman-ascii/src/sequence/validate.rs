@@ -14,13 +14,6 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
         });
     }
 
-    if model.actors.values().any(|actor| actor.wrap) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "wrapped actor labels",
-        });
-    }
-
     if model
         .actors
         .values()
