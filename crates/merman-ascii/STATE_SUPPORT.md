@@ -12,7 +12,8 @@ This document describes the current `merman-ascii` state support boundary. The r
 | Diagram family | Supported subset | `stateDiagram` and `stateDiagram-v2` inputs that parse into `StateDiagramRenderModel`. |
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | States | Supported subset | Simple state nodes render as terminal graph nodes. State aliases and descriptions render as visible labels. |
-| Start/end pseudo states | Supported approximation | `[*]` start and end states render as visible `*` nodes so transitions remain inspectable in text output. |
+| Start/end pseudo states | Supported approximation | `[*]` start states render as visible start markers and end states render as distinct terminal final-state markers. |
+| Fork/join/choice pseudo states | Supported approximation | `<<fork>>` and `<<join>>` states render as synchronization bars. `<<choice>>` states render as visible diamond-like branch nodes. Implementation ids are omitted from terminal output. |
 | Transitions | Supported subset | Directed transitions and non-empty labels render through the shared graph route planner. |
 | Composite states | Supported subset | Composite states render as group boxes when their children can be mapped cleanly to graph members. Transitions may attach to composite group boundaries. |
 | Divider/concurrency regions | Supported approximation | Mermaid divider groups render as vertically stacked terminal sections with horizontal separator lines. Section children keep their own graph layout and divider implementation ids are omitted. |
@@ -27,7 +28,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 | Feature | Error feature |
 | --- | --- |
-| State node shapes outside `rect`, `rectWithTitle`, `stateStart`, `stateEnd`, `roundedWithTitle`, and note-backed `noteGroup` | `state node shapes` |
+| Future or unrecognized state node shapes not mapped by the adapter | `state node shapes` |
 | State edge arrow types outside Mermaid's normal state arrowheads | `state arrow types` |
 | Directions outside Mermaid's supported direction set | `unsupported state directions` |
 | Graph routes the shared route planner cannot represent | `unroutable graph edges` |
@@ -35,7 +36,9 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 ## Known Limitations
 
 - State rendering is a terminal graph approximation, not SVG layout parity.
-- Start and end pseudo states both render as `*`; their direction is communicated by transitions.
+- Start/end, fork/join, and choice pseudo states are terminal approximations of Mermaid's SVG
+  shapes. They preserve topology and avoid leaking implementation ids, but they are not pixel
+  parity with browser rendering.
 - Composite groups currently require child-member mapping. Boundary-entry routing is a terminal graph
   approximation and does not attempt SVG cluster-edge parity.
 - Divider/concurrency regions are a terminal graph approximation. Sections stack vertically and
@@ -45,7 +48,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 - State links are accepted as interaction metadata and intentionally omitted from terminal output.
 - State style fill/background, font weight, font style, and other non-foreground semantics are not
   emitted as terminal foreground colors.
-- Broader state-specific shape support should be added one semantic shape at a time with
+- Any future Mermaid state shape variants should be added one semantic shape at a time with
   parser-backed tests.
 
 ## Test Coverage

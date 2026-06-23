@@ -18,10 +18,17 @@ impl GraphDirection {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphRootPolicy {
+    DeclaredFirst,
+    IncomingEdges,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiGraph {
     pub(super) diagram_type: &'static str,
     pub(super) direction: GraphDirection,
+    pub(super) root_policy: GraphRootPolicy,
     pub(super) nodes: Vec<AsciiGraphNode>,
     pub(super) edges: Vec<AsciiGraphEdge>,
     pub(super) groups: Vec<AsciiGraphGroup>,
@@ -48,6 +55,17 @@ pub(crate) enum GraphNodeShape {
     Diamond,
     Subroutine,
     Cylinder,
+    StateStart,
+    StateEnd,
+    ForkJoinHorizontal,
+    ForkJoinVertical,
+    Choice,
+}
+
+impl GraphNodeShape {
+    pub(super) fn is_diamond_like(self) -> bool {
+        matches!(self, Self::Diamond | Self::Choice)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +151,7 @@ impl AsciiGraph {
         Self {
             diagram_type,
             direction,
+            root_policy: GraphRootPolicy::DeclaredFirst,
             nodes: Vec::new(),
             edges: Vec::new(),
             groups: Vec::new(),
@@ -141,6 +160,10 @@ impl AsciiGraph {
 
     pub(crate) fn diagram_type(&self) -> &'static str {
         self.diagram_type
+    }
+
+    pub(crate) fn use_incoming_edge_roots(&mut self) {
+        self.root_policy = GraphRootPolicy::IncomingEdges;
     }
 
     #[cfg(test)]

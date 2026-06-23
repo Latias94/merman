@@ -482,11 +482,11 @@ fn flowchart_parser_top_down_branch_merge_uses_connected_unicode_bend_corner() {
     .unwrap();
 
     assert!(
-        rendered.contains("├────────┐"),
+        rendered.contains("├──No────┐"),
         "top-down right/down branch should use a connected top-right bend: {rendered}"
     );
     assert!(
-        !rendered.contains("├────────└"),
+        !rendered.contains("├──No────└"),
         "top-down right/down branch must not use a disconnected bottom-left bend: {rendered}"
     );
     assert!(

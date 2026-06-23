@@ -1,7 +1,7 @@
 use super::label::GraphLabel;
 use super::model::{
     AsciiGraph, AsciiGraphGroup, AsciiGraphNode, GraphDirection, GraphGroupKind, GraphGroupStyle,
-    GraphNodeShape, GraphNodeStyle,
+    GraphNodeShape, GraphNodeStyle, GraphRootPolicy,
 };
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
@@ -241,7 +241,7 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
     let mut occupied = HashSet::new();
     let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
 
-    let root_indices = left_right_root_indices(graph);
+    let root_indices = graph_root_indices(graph);
     let should_separate_roots =
         should_separate_left_right_roots(graph, &root_indices, &index_by_id);
     let (external_roots, subgraph_roots): (Vec<_>, Vec<_>) =
@@ -324,18 +324,32 @@ fn should_separate_left_right_roots(
     has_external_roots && has_subgraph_roots_with_edges
 }
 
-fn left_right_root_indices(graph: &AsciiGraph) -> Vec<usize> {
-    let mut nodes_found = HashSet::new();
-    let mut roots = Vec::new();
+fn graph_root_indices(graph: &AsciiGraph) -> Vec<usize> {
+    let nodes_with_incoming = graph
+        .edges
+        .iter()
+        .map(|edge| edge.to.as_str())
+        .collect::<HashSet<_>>();
 
-    for (index, node) in graph.nodes.iter().enumerate() {
-        if !nodes_found.contains(node.id.as_str()) {
-            roots.push(index);
-        }
-        nodes_found.insert(node.id.as_str());
-        for edge in graph.edges.iter().filter(|edge| edge.from == node.id) {
-            nodes_found.insert(edge.to.as_str());
-        }
+    let declared_first =
+        graph.root_policy == GraphRootPolicy::DeclaredFirst && !graph.nodes.is_empty();
+    let mut roots = Vec::new();
+    if declared_first {
+        roots.push(0);
+    }
+
+    let incoming_roots = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            (!nodes_with_incoming.contains(node.id.as_str()) && (!declared_first || index != 0))
+                .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    roots.extend(incoming_roots);
+    if roots.is_empty() && !graph.nodes.is_empty() {
+        roots.push(0);
     }
 
     roots
@@ -496,7 +510,7 @@ fn place_top_down_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
     let mut occupied = HashSet::new();
     let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
 
-    for root_index in left_right_root_indices(graph) {
+    for root_index in graph_root_indices(graph) {
         place_top_down_node(
             root_index,
             0,
@@ -1212,7 +1226,20 @@ fn axis_span(axis_sizes: &BTreeMap<usize, usize>, start: usize, len: usize) -> u
 }
 
 fn node_height(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
-    2 + GraphLabel::new(&node.label).content_height() + options.box_border_padding * 2
+    match node.shape {
+        GraphNodeShape::StateStart
+        | GraphNodeShape::StateEnd
+        | GraphNodeShape::ForkJoinHorizontal
+        | GraphNodeShape::Choice => 3,
+        GraphNodeShape::ForkJoinVertical => 7,
+        GraphNodeShape::Rect
+        | GraphNodeShape::Rounded
+        | GraphNodeShape::Diamond
+        | GraphNodeShape::Subroutine
+        | GraphNodeShape::Cylinder => {
+            2 + GraphLabel::new(&node.label).content_height() + options.box_border_padding * 2
+        }
+    }
 }
 
 fn subgraph_offsets(graph: &AsciiGraph, layouts: &[NodeLayout]) -> (usize, usize) {
@@ -1532,6 +1559,9 @@ fn divider_inner_span(group: &GroupLayout) -> Option<DividerSpan> {
 fn node_width(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
     let base = GraphLabel::new(&node.label).width() + options.box_border_padding * 2 + 2;
     match node.shape {
+        GraphNodeShape::StateStart | GraphNodeShape::StateEnd | GraphNodeShape::Choice => 5,
+        GraphNodeShape::ForkJoinHorizontal => 7,
+        GraphNodeShape::ForkJoinVertical => 3,
         GraphNodeShape::Subroutine => base + 2,
         GraphNodeShape::Cylinder => base + 2,
         GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => base,

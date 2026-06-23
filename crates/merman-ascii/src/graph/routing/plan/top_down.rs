@@ -1,11 +1,10 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
+use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphNodeShape};
 use super::super::cell::edge_line_char;
-use super::super::path::StepDirection;
 use super::{
     PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
-    edge_line_cell, planned_label, route_cell, route_turn_char,
+    edge_line_cell, planned_label, route_cell,
 };
 
 pub(super) fn plan_top_down_direct_route(
@@ -73,40 +72,73 @@ pub(super) fn plan_top_down_bent_route(
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
-    if to.y <= from.center_y() + 1 {
+    if uses_drop_then_turn_bent_route(from.shape) || uses_drop_then_turn_bent_route(to.shape) {
+        return plan_top_down_drop_then_turn_route(from, to, edge, charset);
+    }
+
+    plan_top_down_side_bend_route(from, to, edge, charset)
+}
+
+fn uses_drop_then_turn_bent_route(shape: GraphNodeShape) -> bool {
+    matches!(
+        shape,
+        GraphNodeShape::StateStart
+            | GraphNodeShape::StateEnd
+            | GraphNodeShape::ForkJoinHorizontal
+            | GraphNodeShape::ForkJoinVertical
+            | GraphNodeShape::Choice
+    )
+}
+
+fn plan_top_down_side_bend_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    let turn_y = from.center_y();
+    let end_y = to.y.checked_sub(1)?;
+    if end_y <= turn_y {
         return None;
     }
 
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let source_y = from.center_y();
     let target_x = to.center_x();
-    let end_y = to.y - 1;
     let mut cells = Vec::new();
+    let (label_start_x, label_end_x);
 
     if target_x > from.center_x() {
+        if target_x <= from.right() {
+            return None;
+        }
+
+        label_start_x = from.right();
+        label_end_x = target_x;
         cells.push(edge_line_cell(
             from.right(),
-            source_y,
+            turn_y,
             charset.right_connector,
         ));
         for x in (from.right() + 1)..target_x {
-            cells.push(route_cell(x, source_y, horizontal));
+            cells.push(route_cell(x, turn_y, horizontal));
         }
+        cells.push(route_cell(target_x, turn_y, charset.top_right));
     } else {
-        cells.push(edge_line_cell(from.x, source_y, charset.left_connector));
-        for x in (target_x + 1)..from.x {
-            cells.push(route_cell(x, source_y, horizontal));
+        if from.x <= target_x {
+            return None;
         }
+
+        label_start_x = target_x;
+        label_end_x = from.x;
+        cells.push(edge_line_cell(from.x, turn_y, charset.left_connector));
+        for x in ((target_x + 1)..from.x).rev() {
+            cells.push(route_cell(x, turn_y, horizontal));
+        }
+        cells.push(route_cell(target_x, turn_y, charset.top_left));
     }
 
-    let bend = if target_x > from.center_x() {
-        route_turn_char(StepDirection::Right, StepDirection::Down, charset)
-    } else {
-        route_turn_char(StepDirection::Left, StepDirection::Down, charset)
-    };
-    cells.push(route_cell(target_x, source_y, bend));
-    for y in (source_y + 1)..end_y {
+    for y in (turn_y + 1)..end_y {
         cells.push(route_cell(target_x, y, vertical));
     }
     cells.push(match edge.arrow {
@@ -117,11 +149,71 @@ pub(super) fn plan_top_down_bent_route(
     let labels = planned_label(
         edge.label.as_deref(),
         CanvasCoord {
-            x: target_x,
-            y: source_y + 1,
+            x: label_start_x,
+            y: turn_y,
         },
         CanvasCoord {
-            x: target_x,
+            x: label_end_x,
+            y: turn_y,
+        },
+    )
+    .into_iter()
+    .collect();
+
+    Some(RoutePlan { cells, labels })
+}
+
+fn plan_top_down_drop_then_turn_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    let end_y = to.y.checked_sub(1)?;
+    if end_y <= from.bottom() {
+        return None;
+    }
+
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let source_x = from.center_x();
+    let target_x = to.center_x();
+    let mut cells = Vec::new();
+
+    cells.push(edge_line_cell(
+        source_x,
+        from.bottom(),
+        charset.down_connector,
+    ));
+    for y in (from.bottom() + 1)..end_y {
+        cells.push(route_cell(source_x, y, vertical));
+    }
+
+    if target_x > source_x {
+        cells.push(route_cell(source_x, end_y, charset.corner_down_right));
+        for x in (source_x + 1)..target_x {
+            cells.push(route_cell(x, end_y, horizontal));
+        }
+    } else {
+        cells.push(route_cell(source_x, end_y, charset.corner_right_up));
+        for x in ((target_x + 1)..source_x).rev() {
+            cells.push(route_cell(x, end_y, horizontal));
+        }
+    }
+
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(target_x, end_y, horizontal),
+        GraphEdgeArrow::Point => edge_arrow_cell(target_x, end_y, charset.arrow_down),
+    });
+
+    let labels = planned_label(
+        edge.label.as_deref(),
+        CanvasCoord {
+            x: source_x.min(target_x),
+            y: end_y,
+        },
+        CanvasCoord {
+            x: source_x.max(target_x),
             y: end_y,
         },
     )

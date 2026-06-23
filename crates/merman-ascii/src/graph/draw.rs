@@ -289,6 +289,11 @@ fn draw_node(
         GraphNodeShape::Diamond => draw_diamond_node(canvas, layout, charset, options),
         GraphNodeShape::Subroutine => draw_subroutine_node(canvas, layout, charset, options),
         GraphNodeShape::Cylinder => draw_cylinder_node(canvas, layout, charset, options),
+        GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset),
+        GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset),
+        GraphNodeShape::ForkJoinHorizontal => draw_fork_join_node(canvas, layout, charset, false),
+        GraphNodeShape::ForkJoinVertical => draw_fork_join_node(canvas, layout, charset, true),
+        GraphNodeShape::Choice => draw_choice_node(canvas, layout),
     }
 }
 
@@ -622,6 +627,85 @@ fn draw_cylinder_node(
         canvas.set(x, text_y, ' ');
     }
     write_centered_label(canvas, layout, options);
+}
+
+fn draw_state_start_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {
+    let symbol = if charset.unicode { '●' } else { '*' };
+    draw_state_pseudo_node(canvas, layout, charset, symbol);
+}
+
+fn draw_state_end_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {
+    let symbol = if charset.unicode { '◎' } else { '@' };
+    draw_state_pseudo_node(canvas, layout, charset, symbol);
+}
+
+fn draw_state_pseudo_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    symbol: char,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        &AsciiRenderOptions::default(),
+        RoundedCorners {
+            top_left: charset.rounded_top_left,
+            top_right: charset.rounded_top_right,
+            bottom_left: charset.rounded_bottom_left,
+            bottom_right: charset.rounded_bottom_right,
+        },
+    );
+    let symbol = symbol.to_string();
+    write_node_text(
+        canvas,
+        layout.center_x(),
+        layout.center_y(),
+        &symbol,
+        layout.style,
+    );
+}
+
+fn draw_fork_join_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    vertical: bool,
+) {
+    let ch = if vertical {
+        charset.thick_vertical
+    } else {
+        charset.thick_horizontal
+    };
+    for y in layout.y..=layout.bottom() {
+        for x in layout.x..=layout.right() {
+            set_node_border(canvas, x, y, ch, layout.style);
+        }
+    }
+}
+
+fn draw_choice_node(canvas: &mut Canvas, layout: &NodeLayout) {
+    let center_x = layout.center_x();
+    let center_y = layout.center_y();
+    set_node_border(
+        canvas,
+        center_x.saturating_sub(1),
+        layout.y,
+        '/',
+        layout.style,
+    );
+    set_node_border(canvas, center_x + 1, layout.y, '\\', layout.style);
+    set_node_border(canvas, layout.x, center_y, '<', layout.style);
+    set_node_border(canvas, layout.right(), center_y, '>', layout.style);
+    set_node_border(
+        canvas,
+        center_x.saturating_sub(1),
+        layout.bottom(),
+        '\\',
+        layout.style,
+    );
+    set_node_border(canvas, center_x + 1, layout.bottom(), '/', layout.style);
 }
 
 fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, _options: &AsciiRenderOptions) {

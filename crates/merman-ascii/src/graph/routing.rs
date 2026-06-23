@@ -255,11 +255,11 @@ mod tests {
     }
 
     #[test]
-    fn draw_edge_reports_unroutable_edges() {
+    fn draw_edge_reports_missing_endpoint_layouts() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         graph.add_node("a", "A");
         graph.add_node("b", "B");
-        graph.add_edge("b", "a");
+        graph.add_edge("b", "missing");
         let options = AsciiRenderOptions::ascii();
         let graph_layout = layout_graph(&graph, &options);
         let charset = GraphCharset::for_options(&options);
@@ -280,13 +280,13 @@ mod tests {
                 charset: &charset,
             },
         )
-        .expect_err("same-rank right-to-left edge in top-down graph should be unsupported");
+        .expect_err("edge with a missing endpoint layout should be unsupported");
 
         assert_eq!(
             error,
             AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
-                feature: "unroutable graph edges",
+                feature: "edges with missing endpoint layouts",
             }
         );
     }

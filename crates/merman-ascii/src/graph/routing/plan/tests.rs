@@ -834,7 +834,7 @@ fn left_right_self_loop_route_plans_loop_and_arrow() {
 }
 
 #[test]
-fn top_down_bent_route_plans_right_bend_arrow_and_label() {
+fn top_down_bent_route_plans_side_bend_arrow_and_label() {
     let from = node("a", 0, 0, 3, 3);
     let to = node("b", 6, 5, 3, 3);
     let edge = edge(Some("bend"), GraphEdgeArrow::Point);
@@ -859,7 +859,41 @@ fn top_down_bent_route_plans_right_bend_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 7, y: 2 },
+            start: CanvasCoord { x: 2, y: 1 },
+            end: CanvasCoord { x: 7, y: 1 },
+            text: "bend".to_string(),
+            color: None,
+        }]
+    );
+}
+
+#[test]
+fn top_down_choice_bent_route_drops_before_turning_and_labels_horizontal_segment() {
+    let from = node_with_shape("a", 0, 0, 3, 3, GraphNodeShape::Choice);
+    let to = node("b", 6, 5, 3, 3);
+    let edge = edge(Some("bend"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+    let plan = plan_top_down_bent_route(&from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(
+        plan.cells,
+        vec![
+            cell(1, 2, '-', PlannedRouteCellKind::EdgeLine),
+            cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
+            cell(1, 4, '+', PlannedRouteCellKind::RouteCell),
+            cell(2, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(3, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(4, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(5, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(6, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(7, 4, 'v', PlannedRouteCellKind::EdgeArrow),
+        ]
+    );
+    assert_eq!(
+        plan.labels,
+        vec![PlannedRouteLabel {
+            start: CanvasCoord { x: 1, y: 4 },
             end: CanvasCoord { x: 7, y: 4 },
             text: "bend".to_string(),
             color: None,
@@ -879,15 +913,14 @@ fn top_down_bent_route_plans_right_bend_unicode_corner() {
     assert!(
         plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '┐'),
-        "right/down bend should connect from the left into a downward leg: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 2, y: 1 } && cell.ch == '├'),
+        "right/down bend should leave the source side with a connector: {plan:?}"
     );
     assert!(
-        !plan
-            .cells
+        plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '└'),
-        "right/down bend must not use the left-right/down-up corner: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '┐'),
+        "right/down bend should turn down with a connected top-right corner: {plan:?}"
     );
 }
 
@@ -904,14 +937,14 @@ fn top_down_bent_route_plans_left_bend_open_endpoint() {
         plan.cells,
         vec![
             cell(10, 1, '|', PlannedRouteCellKind::EdgeLine),
-            cell(2, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(3, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(4, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(5, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(7, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(8, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(9, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(8, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(7, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(5, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(4, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(3, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(2, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(1, 1, '+', PlannedRouteCellKind::RouteCell),
             cell(1, 2, '|', PlannedRouteCellKind::RouteCell),
             cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
@@ -933,15 +966,14 @@ fn top_down_bent_route_plans_left_bend_unicode_corner() {
     assert!(
         plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '┌'),
-        "left/down bend should connect from the right into a downward leg: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 10, y: 1 } && cell.ch == '┤'),
+        "left/down bend should leave the source side with a connector: {plan:?}"
     );
     assert!(
-        !plan
-            .cells
+        plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '└'),
-        "left/down bend must not use the left-right/down-up corner: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '┌'),
+        "left/down bend should turn down with a connected top-left corner: {plan:?}"
     );
 }
 
@@ -1071,10 +1103,21 @@ fn edge_between(
 }
 
 fn node(id: &str, x: usize, y: usize, width: usize, height: usize) -> NodeLayout {
+    node_with_shape(id, x, y, width, height, GraphNodeShape::Rect)
+}
+
+fn node_with_shape(
+    id: &str,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    shape: GraphNodeShape,
+) -> NodeLayout {
     NodeLayout {
         id: id.to_string(),
         label: GraphLabel::new(id),
-        shape: GraphNodeShape::Rect,
+        shape,
         style: GraphNodeStyle::default(),
         grid: GridCoord { x: 0, y: 0 },
         x,

@@ -1,6 +1,6 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphNodeShape};
+use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
 use super::{
     PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
@@ -333,7 +333,7 @@ pub(super) fn plan_left_right_self_loop_route(
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let mut cells = Vec::new();
-    if from.shape != GraphNodeShape::Diamond {
+    if !from.shape.is_diamond_like() {
         cells.push(edge_line_cell(from.right(), y, charset.right_connector));
     }
     for x in (from.right() + 1)..loop_x {

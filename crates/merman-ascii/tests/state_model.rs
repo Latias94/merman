@@ -65,7 +65,7 @@ fn state_lr_direction_renders_states_on_one_row() {
 }
 
 #[test]
-fn state_start_and_end_pseudo_states_render_as_visible_nodes() {
+fn state_start_and_end_pseudo_states_render_as_distinct_visible_nodes() {
     let rendered = render_state(
         "stateDiagram-v2\n[*] --> A\nA --> [*]",
         &AsciiRenderOptions::ascii(),
@@ -73,8 +73,16 @@ fn state_start_and_end_pseudo_states_render_as_visible_nodes() {
     .expect("start and end pseudo states should render");
 
     assert!(
-        rendered.matches("| * |").count() >= 2,
-        "start and end pseudo states should render as visible star nodes:\n{rendered}"
+        rendered.contains("| * |"),
+        "start pseudo state should render as a visible star node:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("| @ |"),
+        "end pseudo state should render with a distinct terminal symbol:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("root_start") && !rendered.contains("root_end"),
+        "start/end implementation ids should not leak into ASCII output:\n{rendered}"
     );
 }
 
@@ -259,6 +267,54 @@ fn state_composite_entry_transition_attaches_to_group_boundary() {
     assert!(
         rendered.matches("| * |").count() >= 2,
         "root and nested start pseudo states should render:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_fork_and_join_pseudo_states_render_as_sync_bars() {
+    let rendered = render_state(
+        "stateDiagram-v2\nstate fork_state <<fork>>\n[*] --> fork_state\nfork_state --> State2\nfork_state --> State3\nstate join_state <<join>>\nState2 --> join_state\nState3 --> join_state\njoin_state --> State4\nState4 --> [*]",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("fork and join pseudo states should render");
+
+    assert!(
+        rendered.lines().any(|line| line.contains("State2"))
+            && rendered.lines().any(|line| line.contains("State3"))
+            && rendered.lines().any(|line| line.contains("State4")),
+        "fork/join branches should keep their target states visible:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("======="),
+        "fork/join pseudo states should render as thick synchronization bars:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("fork_state") && !rendered.contains("join_state"),
+        "fork/join implementation ids should not leak into ASCII output:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_choice_pseudo_state_renders_without_internal_id() {
+    let rendered = render_state(
+        "stateDiagram-v2\nstate choice_state <<choice>>\n[*] --> choice_state\nchoice_state --> A: yes\nchoice_state --> B: no",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("choice pseudo state should render");
+
+    assert!(
+        rendered.contains("yes") && rendered.contains("no"),
+        "choice branch labels should render on outgoing edges:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.contains('<') && line.contains('>')),
+        "choice pseudo state should render as a visible diamond-like node:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("choice_state"),
+        "choice implementation id should not leak into ASCII output:\n{rendered}"
     );
 }
 

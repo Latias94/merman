@@ -20,7 +20,9 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
     let group_members = group_members_by_id(model);
     let note_node_parent_by_id = note_node_parent_by_id(model);
     let direction = parse_state_direction(&model.direction)?;
+    let state_node_direction_by_id = state_node_direction_by_id(model, direction)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
+    graph.use_incoming_edge_roots();
 
     for node in &model.nodes {
         if is_group_container(node, &group_members) {
@@ -32,7 +34,13 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
         graph.add_node_with_shape_and_style(
             &node.id,
             state_node_label(node),
-            state_node_shape(node)?,
+            state_node_shape(
+                node,
+                state_node_direction_by_id
+                    .get(node.id.as_str())
+                    .copied()
+                    .unwrap_or_else(|| direction.canonical()),
+            )?,
             state_node_style(node),
         );
     }
@@ -99,7 +107,7 @@ fn validate_supported_state_node(node: &StateDiagramRenderNode) -> Result<()> {
     if is_state_divider_group(node) {
         return Ok(());
     }
-    state_node_shape(node)?;
+    state_node_shape(node, GraphDirection::TopDown)?;
     Ok(())
 }
 
@@ -170,6 +178,35 @@ fn node_depth(node: &StateDiagramRenderNode, parent_by_id: &HashMap<&str, Option
     depth
 }
 
+fn state_node_direction_by_id(
+    model: &StateDiagramRenderModel,
+    fallback_direction: GraphDirection,
+) -> Result<HashMap<String, GraphDirection>> {
+    let mut group_direction_by_id = HashMap::<&str, GraphDirection>::new();
+    for node in &model.nodes {
+        let Some(direction) = node.dir.as_deref() else {
+            continue;
+        };
+        group_direction_by_id.insert(
+            node.id.as_str(),
+            parse_state_direction(direction)?.canonical(),
+        );
+    }
+
+    Ok(model
+        .nodes
+        .iter()
+        .map(|node| {
+            let direction = node
+                .parent_id
+                .as_deref()
+                .and_then(|parent_id| group_direction_by_id.get(parent_id).copied())
+                .unwrap_or_else(|| fallback_direction.canonical());
+            (node.id.clone(), direction)
+        })
+        .collect())
+}
+
 fn is_group_container(
     node: &StateDiagramRenderNode,
     group_members: &HashMap<String, Vec<String>>,
@@ -183,10 +220,21 @@ fn is_group_container(
             .is_some_and(|members| !members.is_empty())
 }
 
-fn state_node_shape(node: &StateDiagramRenderNode) -> Result<GraphNodeShape> {
+fn state_node_shape(
+    node: &StateDiagramRenderNode,
+    direction: GraphDirection,
+) -> Result<GraphNodeShape> {
     match node.shape.as_str() {
         "rect" | "rectWithTitle" => Ok(GraphNodeShape::Rect),
-        "roundedWithTitle" | "stateStart" | "stateEnd" | "noteGroup" => Ok(GraphNodeShape::Rounded),
+        "roundedWithTitle" | "noteGroup" => Ok(GraphNodeShape::Rounded),
+        "stateStart" => Ok(GraphNodeShape::StateStart),
+        "stateEnd" => Ok(GraphNodeShape::StateEnd),
+        "fork" | "join" => match direction.canonical() {
+            GraphDirection::LeftRight => Ok(GraphNodeShape::ForkJoinVertical),
+            GraphDirection::TopDown => Ok(GraphNodeShape::ForkJoinHorizontal),
+            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+        },
+        "choice" => Ok(GraphNodeShape::Choice),
         _ => Err(unsupported("state node shapes")),
     }
 }
@@ -236,8 +284,8 @@ fn is_state_divider_group(node: &StateDiagramRenderNode) -> bool {
 }
 
 fn state_node_label(node: &StateDiagramRenderNode) -> String {
-    if matches!(node.shape.as_str(), "stateStart" | "stateEnd") {
-        return "*".to_string();
+    if is_state_pseudo_shape(node.shape.as_str()) {
+        return String::new();
     }
 
     let mut lines = Vec::new();
@@ -263,6 +311,13 @@ fn state_node_label(node: &StateDiagramRenderNode) -> String {
     } else {
         lines.join("\n")
     }
+}
+
+fn is_state_pseudo_shape(shape: &str) -> bool {
+    matches!(
+        shape,
+        "stateStart" | "stateEnd" | "fork" | "join" | "choice"
+    )
 }
 
 fn push_nonempty_label_line(lines: &mut Vec<String>, line: &str) {
