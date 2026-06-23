@@ -1602,11 +1602,29 @@ fn sequence_titles_render_above_participants() {
 }
 
 #[test]
-fn sequence_actor_shapes_are_explicitly_unsupported() {
-    let mut model = basic_sequence_model();
-    model.actors.get_mut("A").unwrap().actor_type = "actor".to_string();
+fn sequence_actor_keyword_renders_as_participant_box() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nactor U as User\nparticipant S as System\nU->>S: Click",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence actor keyword should render in ASCII");
 
-    assert_unsupported_sequence_model(model, "actor participant shapes");
+    assert!(
+        rendered.contains("| User |") && rendered.contains("| System |"),
+        "actor and participant labels should both render as ASCII participant boxes:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Click"),
+        "messages involving actor declarations should keep rendering:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_extended_actor_types_are_explicitly_unsupported() {
+    assert_unsupported_sequence_input(
+        "sequenceDiagram\nparticipant DB@{ \"type\" : \"database\" }\nDB->>DB: Query",
+        "extended actor types",
+    );
 }
 
 #[test]

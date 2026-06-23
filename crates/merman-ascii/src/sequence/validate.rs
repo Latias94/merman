@@ -6,11 +6,11 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
     if model
         .actors
         .values()
-        .any(|actor| actor.actor_type != "participant")
+        .any(|actor| !matches!(actor.actor_type.as_str(), "participant" | "actor"))
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "actor participant shapes",
+            feature: "extended actor types",
         });
     }
 
