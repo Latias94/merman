@@ -1,4 +1,8 @@
 use crate::error::{AsciiError, Result};
+use crate::graph::style::{
+    apply_group_declaration, apply_group_declarations, apply_node_declaration,
+    apply_node_declarations,
+};
 use crate::graph::{
     AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupStyle, GraphNodeShape,
     GraphNodeStyle,
@@ -29,7 +33,7 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
             &node.id,
             state_node_label(node),
             state_node_shape(node)?,
-            GraphNodeStyle::default(),
+            state_node_style(node),
         );
     }
 
@@ -44,7 +48,7 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
                 .transpose()?
                 .map(GraphDirection::canonical),
             members,
-            GraphGroupStyle::default(),
+            state_group_style(node),
         );
     }
 
@@ -66,9 +70,6 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
 }
 
 fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()> {
-    if !model.style_classes.is_empty() {
-        return Err(unsupported("state styles"));
-    }
     let group_members = group_members_by_id(model);
     let group_container_ids = model
         .nodes
@@ -109,12 +110,6 @@ fn validate_supported_state_node(node: &StateDiagramRenderNode) -> Result<()> {
     }
     if node.shape == "divider" {
         return Err(unsupported("state dividers"));
-    }
-    if !node.label_style.trim().is_empty()
-        || !node.css_styles.is_empty()
-        || !node.css_compiled_styles.is_empty()
-    {
-        return Err(unsupported("state styles"));
     }
     state_node_shape(node)?;
     Ok(())
@@ -206,6 +201,22 @@ fn state_node_shape(node: &StateDiagramRenderNode) -> Result<GraphNodeShape> {
         "roundedWithTitle" | "stateStart" | "stateEnd" | "noteGroup" => Ok(GraphNodeShape::Rounded),
         _ => Err(unsupported("state node shapes")),
     }
+}
+
+fn state_node_style(node: &StateDiagramRenderNode) -> GraphNodeStyle {
+    let mut style = GraphNodeStyle::default();
+    apply_node_declarations(&mut style, &node.css_compiled_styles);
+    apply_node_declarations(&mut style, &node.css_styles);
+    apply_node_declaration(&mut style, &node.label_style);
+    style
+}
+
+fn state_group_style(node: &StateDiagramRenderNode) -> GraphGroupStyle {
+    let mut style = GraphGroupStyle::default();
+    apply_group_declarations(&mut style, &node.css_compiled_styles);
+    apply_group_declarations(&mut style, &node.css_styles);
+    apply_group_declaration(&mut style, &node.label_style);
+    style
 }
 
 fn is_state_note_group(node: &StateDiagramRenderNode) -> bool {

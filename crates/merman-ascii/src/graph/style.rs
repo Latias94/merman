@@ -41,36 +41,46 @@ pub(super) fn resolve_group_style(
     style
 }
 
-fn apply_node_declarations(style: &mut GraphNodeStyle, declarations: &[String]) {
-    for (name, value) in style_declarations(declarations) {
-        match name {
-            "color" => style.text = parse_css_color(value),
-            "stroke" => style.border = parse_css_color(value),
-            _ => {}
+pub(crate) fn apply_node_declarations(style: &mut GraphNodeStyle, declarations: &[String]) {
+    for declaration in declarations {
+        apply_node_declaration(style, declaration);
+    }
+}
+
+pub(crate) fn apply_node_declaration(style: &mut GraphNodeStyle, declaration: &str) {
+    for (name, value) in style_declaration(declaration) {
+        if name.eq_ignore_ascii_case("color") {
+            style.text = parse_css_color(value);
+        } else if name.eq_ignore_ascii_case("stroke") || name.eq_ignore_ascii_case("border") {
+            style.border = parse_border_color(value);
         }
     }
 }
 
 fn apply_edge_declarations(style: &mut GraphEdgeStyle, declarations: &[String]) {
     for (name, value) in style_declarations(declarations) {
-        match name {
-            "stroke" => {
-                let color = parse_css_color(value);
-                style.line = color;
-                style.arrow = color;
-            }
-            "color" => style.label = parse_css_color(value),
-            _ => {}
+        if name.eq_ignore_ascii_case("stroke") {
+            let color = parse_css_color(value);
+            style.line = color;
+            style.arrow = color;
+        } else if name.eq_ignore_ascii_case("color") {
+            style.label = parse_css_color(value);
         }
     }
 }
 
-fn apply_group_declarations(style: &mut GraphGroupStyle, declarations: &[String]) {
-    for (name, value) in style_declarations(declarations) {
-        match name {
-            "color" => style.title = parse_css_color(value),
-            "stroke" => style.border = parse_css_color(value),
-            _ => {}
+pub(crate) fn apply_group_declarations(style: &mut GraphGroupStyle, declarations: &[String]) {
+    for declaration in declarations {
+        apply_group_declaration(style, declaration);
+    }
+}
+
+pub(crate) fn apply_group_declaration(style: &mut GraphGroupStyle, declaration: &str) {
+    for (name, value) in style_declaration(declaration) {
+        if name.eq_ignore_ascii_case("color") {
+            style.title = parse_css_color(value);
+        } else if name.eq_ignore_ascii_case("stroke") || name.eq_ignore_ascii_case("border") {
+            style.border = parse_border_color(value);
         }
     }
 }
@@ -78,13 +88,16 @@ fn apply_group_declarations(style: &mut GraphGroupStyle, declarations: &[String]
 fn style_declarations(declarations: &[String]) -> impl Iterator<Item = (&str, &str)> {
     declarations
         .iter()
-        .flat_map(|declaration| declaration.split([',', ';']))
-        .filter_map(|declaration| {
-            let (name, value) = declaration.split_once(':')?;
-            let name = name.trim();
-            let value = value.trim();
-            (!name.is_empty() && !value.is_empty()).then_some((name, value))
-        })
+        .flat_map(|declaration| style_declaration(declaration))
+}
+
+fn style_declaration(declaration: &str) -> impl Iterator<Item = (&str, &str)> {
+    declaration.split([',', ';']).filter_map(|declaration| {
+        let (name, value) = declaration.split_once(':')?;
+        let name = name.trim();
+        let value = value.trim();
+        (!name.is_empty() && !value.is_empty()).then_some((name, value))
+    })
 }
 
 fn parse_css_color(value: &str) -> Option<AsciiRgb> {
@@ -96,6 +109,10 @@ fn parse_css_color(value: &str) -> Option<AsciiRgb> {
         return parse_hex_color(hex);
     }
     parse_named_color(value)
+}
+
+fn parse_border_color(value: &str) -> Option<AsciiRgb> {
+    parse_css_color(value).or_else(|| value.split_whitespace().rev().find_map(parse_css_color))
 }
 
 fn parse_hex_color(hex: &str) -> Option<AsciiRgb> {

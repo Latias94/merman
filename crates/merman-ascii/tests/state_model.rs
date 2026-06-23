@@ -1,4 +1,4 @@
-use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
+use merman_ascii::{AsciiColorMode, AsciiError, AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
 
 fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -21,6 +21,24 @@ fn assert_unsupported_state(input: &str, feature: &'static str) {
             feature,
         }
     );
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for escaped in chars.by_ref() {
+                if escaped == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+    output
 }
 
 #[test]
@@ -176,6 +194,40 @@ fn state_links_do_not_block_ascii_rendering() {
         !rendered.contains("example.com"),
         "state link URLs are SVG metadata and should not leak into ASCII output:\n{rendered}"
     );
+}
+
+#[test]
+fn state_style_color_truecolor_maps_classdef_and_inline_node_foreground_without_plain_text_changes()
+{
+    let input = concat!(
+        "stateDiagram-v2\n",
+        "classDef warm color:#112233,border:1px solid #445566,background:#ffeecc\n",
+        "A:::warm --> B\n",
+        "style B color:#778899,border:1px solid #aabbcc,background:#001122\n",
+    );
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor);
+
+    let rendered = render_state(input, &options).expect("state foreground styles should render");
+    let plain = render_state(input, &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(strip_ansi(&rendered), plain);
+    for expected_code in [
+        "\u{1b}[38;2;17;34;51m",
+        "\u{1b}[38;2;68;85;102m",
+        "\u{1b}[38;2;119;136;153m",
+        "\u{1b}[38;2;170;187;204m",
+    ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
+    for ignored_background_code in ["\u{1b}[38;2;255;238;204m", "\u{1b}[38;2;0;17;34m"] {
+        assert!(
+            !rendered.contains(ignored_background_code),
+            "background style should not be emitted as foreground in {rendered:?}"
+        );
+    }
 }
 
 #[test]

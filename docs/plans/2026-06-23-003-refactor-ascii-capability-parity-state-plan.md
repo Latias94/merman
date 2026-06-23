@@ -76,7 +76,7 @@ as architecture and capability prior art, while Mermaid semantics and the typed 
   transitions, root direction, descriptions, and composite-state boxes where they map cleanly to the
   shared graph renderer.
 - R7. State notes, links, class/style metadata, dividers, and uncommon state node shapes must be
-  rendered through existing graph/text primitives, accepted as documented omitted metadata, or
+  rendered through existing graph/text/color primitives, accepted as documented omitted metadata, or
   rejected with a precise unsupported feature.
 - R8. The state adapter must preserve the model-driven ASCII boundary: no state Mermaid parsing is
   copied into `merman-ascii`.
@@ -128,10 +128,11 @@ Out of scope:
 - KTD2. Treat `beautiful-mermaid` as a capability map, not an oracle. Its broad family support helps
   prioritize state, but local Mermaid model semantics decide the implementation boundary.
 - KTD3. Keep state unsupported cases precise. Replacing `UnsupportedDiagram { state }` with a broad
-  renderer must not silently drop dividers, style metadata, group endpoints, or unsupported shapes.
-  State note edges are representable as open terminal connectors once their internal note node is
-  collapsed into the visible note group. State links are interaction metadata and can be accepted
-  when their omission is documented.
+  renderer must not silently drop dividers, group endpoints, or unsupported shapes. State note
+  edges are representable as open terminal connectors once their internal note node is collapsed
+  into the visible note group. State links are interaction metadata and can be accepted when their
+  omission is documented. State style metadata can map only the foreground subset that the graph
+  renderer can express.
 - KTD4. Do documentation truthing first. A stale gap registry makes later fearless refactors riskier
   because implementers cannot tell whether a gap is real, solved, or intentionally deferred.
 - KTD5. Preserve the copied `mermaid-ascii` fixture gate. Broader state/class/ER/XYChart support is
@@ -185,7 +186,8 @@ Out of scope:
   graph node/group shapes. It should reject state shapes or metadata that cannot be represented
   honestly yet. State note groups may be collapsed into terminal note nodes when their text and
   note relationship are preserved. State links may be accepted as omitted metadata because URLs and
-  tooltips have no terminal topology.
+  tooltips have no terminal topology. State `classDef`, `class`, and `style` foreground colors may
+  map through shared graph style declarations.
 - **Patterns to follow:** Flowchart adapter in `crates/merman-ascii/src/graph/adapter.rs`; graph
   model constructors in `crates/merman-ascii/src/graph/model.rs`; state typed model fields in
   `crates/merman-core/src/diagrams/state/render_model.rs`.
@@ -197,9 +199,9 @@ Out of scope:
     label.
   - A composite state with a child node renders as a graph group when the model provides group
     membership.
-  - Unsupported state style/divider behavior returns `UnsupportedFeature` with
-    `diagram_type: "state"`, while state notes render as terminal note nodes and state links are
-    accepted as omitted metadata.
+  - Unsupported state divider behavior returns `UnsupportedFeature` with `diagram_type: "state"`,
+    while state notes render as terminal note nodes, state links are accepted as omitted metadata,
+    and foreground state styles map to node/group text and border colors.
 - **Verification:** `render_model` no longer returns `UnsupportedDiagram { diagram_type: "state" }`
   for the supported state subset.
 
@@ -226,8 +228,8 @@ Out of scope:
   - Start and end pseudo states.
   - State alias/description syntax from `crates/merman-core/src/tests/state.rs`.
   - Composite state group with one or more child states.
-  - State notes and links render through the public parser-backed path, while unsupported
-    style/divider metadata stays explicit.
+  - State notes, links, and foreground style metadata render through the public parser-backed path,
+    while unsupported divider metadata stays explicit.
 - **Verification:** `cargo nextest run -p merman-ascii state` exercises the new state family, and
   `cargo nextest run -p merman-ascii` keeps existing families stable.
 
