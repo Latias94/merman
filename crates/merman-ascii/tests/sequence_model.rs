@@ -665,16 +665,65 @@ fn sequence_boxes_render_from_typed_model() {
 }
 
 #[test]
-fn sequence_wrapped_boxes_are_explicitly_unsupported() {
-    let mut model = basic_sequence_model();
-    model.boxes.push(SequenceBox {
-        actor_keys: vec!["A".to_string()],
-        fill: "green".to_string(),
-        name: Some("Group".to_string()),
-        wrap: true,
-    });
+fn sequence_wrapped_boxes_render_multiline_labels() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox :wrap: Alpha Beta Gamma Delta\nparticipant A\nend\nA->>A: Ping",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("wrapped sequence boxes should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+    let alpha = lines
+        .iter()
+        .position(|line| line.contains("Alpha"))
+        .expect("first wrapped box label line should render");
+    let gamma = lines
+        .iter()
+        .position(|line| line.contains("Gamma"))
+        .expect("second wrapped box label line should render");
 
-    assert_unsupported_sequence_model(model, "wrapped boxes");
+    assert_eq!(
+        gamma,
+        alpha + 1,
+        "wrapped box label lines should stay adjacent above participant content:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Beta") && rendered.contains("Delta"),
+        "wrapped box labels should keep all words:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Alpha Beta Gamma Delta") && !rendered.contains(":wrap:"),
+        "wrapped box label should not render as one long line or leak wrap syntax:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_box_html_breaks_render_multiline_labels() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox First<br/>Second\nparticipant A\nend\nA->>A: Ping",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence box labels with HTML breaks should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+    let first = lines
+        .iter()
+        .position(|line| line.contains("First"))
+        .expect("first box label line should render");
+    let second = lines
+        .iter()
+        .position(|line| line.contains("Second"))
+        .expect("second box label line should render");
+
+    assert_eq!(
+        second,
+        first + 1,
+        "HTML breaks in box labels should create adjacent label rows:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("<br"),
+        "HTML break markup should not leak into sequence box labels:\n{rendered}"
+    );
 }
 
 #[test]

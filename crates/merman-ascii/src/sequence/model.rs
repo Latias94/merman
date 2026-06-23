@@ -94,6 +94,7 @@ impl SequenceParticipantLabel {
 pub(super) struct SequenceGroupBox {
     pub(super) actor_indices: Vec<usize>,
     pub(super) label: Option<String>,
+    pub(super) wrap: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -510,6 +511,7 @@ fn sequence_boxes(
             Ok(SequenceGroupBox {
                 actor_indices,
                 label,
+                wrap: sequence_box.wrap,
             })
         })
         .collect()

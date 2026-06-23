@@ -37,13 +37,6 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
         });
     }
 
-    if model.boxes.iter().any(|sequence_box| sequence_box.wrap) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "wrapped boxes",
-        });
-    }
-
     if model
         .boxes
         .iter()
