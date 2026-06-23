@@ -19,12 +19,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
 ) {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
-    let points = [(w / 2.0, 0.0), (w, -h / 2.0), (w / 2.0, -h), (0.0, -h)];
     let tx = -w / 2.0 + 0.5;
     let ty = h / 2.0;
 
     let rough_paths = if common.look_is_hand_drawn() {
-        let path_data = path_from_points(&points);
+        // RoughJS normalizes this path to a left-edge hachure start. `roughr` is start-point
+        // sensitive for this diamond, so feed the same polygon from the left vertex to keep the
+        // hand-drawn silhouette centered instead of visually skewing into a parallelogram.
+        let rough_points = [
+            (0.0, -h / 2.0),
+            (w / 2.0, 0.0),
+            (w, -h / 2.0),
+            (w / 2.0, -h),
+        ];
+        let path_data = path_from_points(&rough_points);
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,

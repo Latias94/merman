@@ -84,6 +84,49 @@ fn cluster_shape_chunk<'a>(svg: &'a str, id: &str) -> &'a str {
     &svg[start..shape_end]
 }
 
+fn node_shape_chunk<'a>(svg: &'a str, id: &str) -> &'a str {
+    let id_attr = format!(r#"id="{id}""#);
+    let id_start = svg.find(&id_attr).expect("node id");
+    let node_start = svg[..id_start].rfind("<g ").expect("node start");
+    let label_start = svg[id_start..]
+        .find(r#"<g class="label""#)
+        .map(|idx| id_start + idx)
+        .expect("node label start");
+    &svg[node_start..label_start]
+}
+
+fn node_shape_chunk_by_id_prefix<'a>(svg: &'a str, id_prefix: &str) -> &'a str {
+    let id_attr_prefix = format!(r#"id="{id_prefix}"#);
+    let id_start = svg.find(&id_attr_prefix).expect("node id prefix");
+    let node_start = svg[..id_start].rfind("<g ").expect("node start");
+    let label_start = svg[id_start..]
+        .find(r#"<g class="label""#)
+        .map(|idx| id_start + idx)
+        .expect("node label start");
+    &svg[node_start..label_start]
+}
+
+fn first_path_d(chunk: &str) -> &str {
+    let marker = r#"<path d=""#;
+    let d_start = chunk.find(marker).expect("first path") + marker.len();
+    let d_end = chunk[d_start..].find('"').expect("first path d end") + d_start;
+    &chunk[d_start..d_end]
+}
+
+fn path_element_count(chunk: &str) -> usize {
+    chunk.matches(r#"<path d=""#).count()
+}
+
+fn first_svg_move_y(d: &str) -> f64 {
+    let rest = d.strip_prefix('M').expect("path starts with move");
+    rest.split(|ch: char| ch == ',' || ch.is_ascii_whitespace())
+        .filter(|part| !part.is_empty())
+        .nth(1)
+        .expect("move y")
+        .parse::<f64>()
+        .expect("move y number")
+}
+
 #[test]
 fn flowchart_svg_hand_drawn_basic_rect_uses_rough_node_wrapper_and_hachure_paths() {
     let source_for_seed = |seed| {
@@ -136,6 +179,93 @@ fn flowchart_svg_hand_drawn_basic_rect_uses_rough_node_wrapper_and_hachure_paths
         !seed_7.contains(r#"<rect class="basic label-container""#),
         "hand-drawn basic node should not fall back to a plain rect: {seed_7}"
     );
+}
+
+#[test]
+fn flowchart_svg_hand_drawn_decision_hachure_keeps_diamond_silhouette() {
+    let svg = render_svg(
+        "flowchart-hand-decision",
+        &source_with_init(
+            json!({
+                "look": "handDrawn",
+                "handDrawnSeed": 7,
+                "theme": "dark"
+            }),
+            r#"flowchart TB
+  A{Decision}
+"#,
+        ),
+    );
+
+    let chunk = node_shape_chunk(&svg, "flowchart-hand-decision-flowchart-A-0");
+    assert!(
+        chunk.contains(
+            r#"<g class="rough-node default" id="flowchart-hand-decision-flowchart-A-0""#
+        ),
+        "hand-drawn decision should render through the rough-node wrapper: {chunk}"
+    );
+
+    let first_y = first_svg_move_y(first_path_d(chunk));
+    assert!(
+        first_y > -80.0 && first_y < -40.0,
+        "hand-drawn decision hachure should start near the left edge, not the top vertex; y={first_y}: {chunk}"
+    );
+}
+
+#[test]
+fn flowchart_svg_hand_drawn_high_risk_shapes_keep_hachure_starts_in_bounds() {
+    let svg = render_svg(
+        "flowchart-hand-risk-shapes",
+        &source_with_init(
+            json!({
+                "look": "handDrawn",
+                "handDrawnSeed": 7,
+                "theme": "dark"
+            }),
+            r#"flowchart LR
+  D@{ shape: diam, label: "diam" }
+  H@{ shape: hex, label: "hex" }
+  LR@{ shape: lean-r, label: "lean-r" }
+  LL@{ shape: lean-l, label: "lean-l" }
+  TB@{ shape: trap-b, label: "trap-b" }
+  TT@{ shape: trap-t, label: "trap-t" }
+  R@{ shape: rounded, label: "rounded" }
+  S@{ shape: stadium, label: "stadium" }
+  D --> H --> LR --> LL --> TB --> TT --> R --> S
+"#,
+        ),
+    );
+
+    for (node_id, min_y, max_y) in [
+        ("D", -80.0, -30.0),
+        ("H", -65.0, -20.0),
+        ("LR", -65.0, -20.0),
+        ("LL", -65.0, -20.0),
+        ("TB", -65.0, -20.0),
+        ("TT", -80.0, -30.0),
+        ("R", -50.0, -5.0),
+        ("S", -35.0, 10.0),
+    ] {
+        let chunk = node_shape_chunk_by_id_prefix(
+            &svg,
+            &format!("flowchart-hand-risk-shapes-flowchart-{node_id}-"),
+        );
+        assert!(
+            chunk.contains(r#"class="rough-node"#),
+            "{node_id} should render through the rough-node wrapper: {chunk}"
+        );
+        assert_eq!(
+            path_element_count(chunk),
+            2,
+            "{node_id} should render one hachure fill path and one rough outline path: {chunk}"
+        );
+
+        let first_y = first_svg_move_y(first_path_d(chunk));
+        assert!(
+            first_y > min_y && first_y < max_y,
+            "{node_id} hachure start should stay within the expected local shape band; y={first_y}: {chunk}"
+        );
+    }
 }
 
 #[test]
