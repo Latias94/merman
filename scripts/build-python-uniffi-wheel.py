@@ -14,6 +14,58 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+WHEEL_SMOKE = """
+import merman
+
+
+class Measurer(merman.MermanTextMeasurer):
+    def __init__(self):
+        self.calls = 0
+
+    def measure(self, request):
+        self.calls += 1
+        return merman.MermanTextMeasureResult(
+            width=max(len(request.text) * 8.0, 1.0),
+            height=max(request.line_height, 1.0),
+            line_count=1,
+        )
+
+
+engine = merman.MermanEngine()
+assert engine.abi_version() == 2
+assert engine.package_version()
+source = "flowchart TD\\nA[Hello] --> B[World]"
+assert "Hello" in engine.render_svg(source, None)
+assert "Hello" in engine.render_ascii(source, None)
+assert "flowchart-v2" in engine.parse_json(source, None)
+assert "layout" in engine.layout_json(source, None)
+assert engine.validate(source, None).valid
+assert "flowchart" in engine.supported_diagrams()
+assert "sequence" in engine.ascii_supported_diagrams()
+assert "default" in engine.supported_themes()
+assert any(item.diagram_type == "flowchart" for item in engine.diagram_family_capabilities())
+
+measurer = Measurer()
+reusable = engine.reusable_engine_with_text_measurer(None, measurer)
+assert reusable.render_svg(source).startswith("<svg")
+assert "Hello" in reusable.render_ascii(source)
+assert "flowchart-v2" in reusable.parse_json(source)
+assert "layout" in reusable.layout_json(source)
+assert reusable.validate(source).valid
+assert measurer.calls > 0
+
+setter_measurer = Measurer()
+reusable = engine.reusable_engine(None)
+reusable.set_text_measurer(setter_measurer)
+assert reusable.render_svg(source).startswith("<svg")
+calls_after_set = setter_measurer.calls
+assert calls_after_set > 0
+reusable.clear_text_measurer()
+assert reusable.render_svg(source).startswith("<svg")
+assert setter_measurer.calls == calls_after_set
+print("python wheel smoke passed")
+"""
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -161,7 +213,7 @@ def main() -> int:
             [
                 str(python),
                 "-c",
-                "import merman; e = merman.MermanEngine(); s = 'flowchart TD\\nA[Hello] --> B[World]'; assert e.abi_version() == 1; assert e.package_version(); assert e.render_svg(s, None).startswith('<svg'); assert 'Hello' in e.render_ascii(s, None); assert 'flowchart-v2' in e.parse_json(s, None); assert 'layout' in e.layout_json(s, None); assert e.validate(s, None).valid; assert 'flowchart' in e.supported_diagrams(); assert 'sequence' in e.ascii_supported_diagrams(); assert 'default' in e.supported_themes()",
+                WHEEL_SMOKE,
             ]
         )
 

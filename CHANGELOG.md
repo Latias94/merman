@@ -6,6 +6,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- Added a shared FFI publish-surface check that verifies C ABI, Python UniFFI ABI, and package-page metadata before CI and release publishing.
+- Improved Python and Flutter package metadata so PyPI and pub.dev expose changelog, documentation, issue tracker, and discovery links.
+- Added Python UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host text-measurement callbacks that can be installed or cleared on reusable engines.
+
 ## [0.8.0-alpha.2] - 2026-06-23
 
 This alpha focuses on Mermaid 11.15 parity, safer host integrations, and packaging readiness across CLI, Web/WASM, Typst, and native bindings.

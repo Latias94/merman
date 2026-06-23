@@ -46,6 +46,9 @@ jobs:
             exit 1
           fi
 
+      - name: Verify FFI publish surface
+        run: python3 scripts/verify-ffi-publish-surface.py
+
       - name: Setup JDK
         uses: actions/setup-java@v5
         with:

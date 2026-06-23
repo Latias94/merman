@@ -59,6 +59,30 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose MermanEngine"
     );
     assert!(
+        generated.contains("class MermanReusableEngine"),
+        "generated binding should expose MermanReusableEngine"
+    );
+    assert!(
+        generated.contains("class MermanTextMeasurer"),
+        "generated binding should expose MermanTextMeasurer"
+    );
+    assert!(
+        generated.contains("class MermanTextMeasureRequest"),
+        "generated binding should expose MermanTextMeasureRequest"
+    );
+    assert!(
+        generated.contains("class MermanTextMeasureResult"),
+        "generated binding should expose MermanTextMeasureResult"
+    );
+    assert!(
+        generated.contains("class MermanTextWrapMode"),
+        "generated binding should expose MermanTextWrapMode"
+    );
+    assert!(
+        generated.contains("class MermanDiagramFamilyCapability"),
+        "generated binding should expose MermanDiagramFamilyCapability"
+    );
+    assert!(
         generated.contains("def render_svg"),
         "generated binding should expose render_svg"
     );
@@ -77,6 +101,22 @@ fn generates_python_binding_from_cdylib_metadata() {
     assert!(
         generated.contains("def supported_host_theme_presets"),
         "generated binding should expose supported_host_theme_presets"
+    );
+    assert!(
+        generated.contains("def diagram_family_capabilities"),
+        "generated binding should expose diagram_family_capabilities"
+    );
+    assert!(
+        generated.contains("def reusable_engine_with_text_measurer"),
+        "generated binding should expose reusable_engine_with_text_measurer"
+    );
+    assert!(
+        generated.contains("def set_text_measurer"),
+        "generated binding should expose set_text_measurer"
+    );
+    assert!(
+        generated.contains("def clear_text_measurer"),
+        "generated binding should expose clear_text_measurer"
     );
     assert!(
         generated.contains("def abi_version"),
@@ -108,11 +148,8 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     let package_dir = tempfile::tempdir().expect("create Python package smoke tempdir");
     let module_dir = package_dir.path().join("src").join("merman");
     fs::create_dir_all(&module_dir).expect("create staged Python module directory");
-    fs::write(
-        module_dir.join("__init__.py"),
-        "from .merman_uniffi import MermanEngine, MermanError, MermanValidationResult\n__all__ = ['MermanEngine', 'MermanError', 'MermanValidationResult']\n",
-    )
-    .expect("write staged Python package shim");
+    fs::write(module_dir.join("__init__.py"), PYTHON_PACKAGE_INIT)
+        .expect("write staged Python package shim");
 
     generate_python_bindings(&cdylib, &module_dir);
     copy_cdylib_next_to_generated_module(&cdylib, &module_dir);
@@ -136,13 +173,44 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     );
 }
 
+const PYTHON_PACKAGE_INIT: &str = r#"
+from .merman_uniffi import (
+    MermanDiagramFamilyCapability,
+    MermanEngine,
+    MermanError,
+    MermanReusableEngine,
+    MermanTextDirection,
+    MermanTextMeasureRequest,
+    MermanTextMeasureResult,
+    MermanTextMeasurer,
+    MermanTextWhiteSpace,
+    MermanTextWrapMode,
+    MermanValidationResult,
+)
+
+__all__ = [
+    "MermanDiagramFamilyCapability",
+    "MermanEngine",
+    "MermanError",
+    "MermanReusableEngine",
+    "MermanTextDirection",
+    "MermanTextMeasureRequest",
+    "MermanTextMeasureResult",
+    "MermanTextMeasurer",
+    "MermanTextWhiteSpace",
+    "MermanTextWrapMode",
+    "MermanValidationResult",
+]
+"#;
+
 const PYTHON_PACKAGE_SMOKE: &str = r#"
 import json
+from dataclasses import dataclass
 
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 1
+assert engine.abi_version() == 2
 assert engine.package_version()
 source = "flowchart TD\nA[Hello] --> B[World]"
 
@@ -175,6 +243,38 @@ assert "flowchart" in engine.supported_diagrams()
 assert "sequence" in engine.ascii_supported_diagrams()
 assert "default" in engine.supported_themes()
 assert "one-dark" in engine.supported_host_theme_presets()
+assert any(
+    item.diagram_type == "flowchart"
+    for item in engine.diagram_family_capabilities()
+)
+
+@dataclass
+class Measurer(merman.MermanTextMeasurer):
+    calls: int = 0
+
+    def measure(self, request):
+        self.calls += 1
+        return merman.MermanTextMeasureResult(
+            width=max(len(request.text) * 8.0, 1.0),
+            height=max(request.line_height, 1.0),
+            line_count=1,
+        )
+
+
+measurer = Measurer()
+reusable = engine.reusable_engine_with_text_measurer(None, measurer)
+assert "Hello" in reusable.render_svg(source)
+assert measurer.calls > 0
+
+setter_measurer = Measurer()
+reusable = engine.reusable_engine(None)
+reusable.set_text_measurer(setter_measurer)
+assert "Hello" in reusable.render_svg(source)
+calls_after_set = setter_measurer.calls
+assert calls_after_set > 0
+reusable.clear_text_measurer()
+assert "Hello" in reusable.render_svg(source)
+assert setter_measurer.calls == calls_after_set
 
 try:
     engine.render_svg(source, "{")

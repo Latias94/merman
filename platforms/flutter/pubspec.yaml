@@ -1,7 +1,16 @@
 name: merman
 description: Flutter and Dart FFI bindings for merman headless Mermaid rendering.
 version: 0.8.0-alpha.2
+homepage: https://github.com/Latias94/merman
 repository: https://github.com/Latias94/merman
+issue_tracker: https://github.com/Latias94/merman/issues
+documentation: https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md
+topics:
+  - mermaid
+  - ffi
+  - flutter
+  - svg
+  - diagrams
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

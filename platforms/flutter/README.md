@@ -14,6 +14,16 @@ and metadata. On Flutter targets, the plugin also carries the native `merman-ffi
 application code normally opens the engine with `Merman.open()` and does not pass a dynamic library
 path.
 
+## Compatibility And Release Notes
+
+This package tracks C ABI version 2. The Dart wrapper checks ABI and struct sizes before it opens
+the native library, so stale generated code or mismatched native artifacts fail fast at startup.
+
+For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md) and the shared
+[`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
+guide. The pub.dev page also surfaces the repository, issue tracker, documentation, and topic
+metadata from `pubspec.yaml`.
+
 ## Supported Flutter Platforms
 
 - Android: bundled `libmerman_ffi.so` slices under `android/src/main/jniLibs`.

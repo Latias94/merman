@@ -4,6 +4,11 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## Unreleased
+
+- Added PyPI changelog metadata and README compatibility notes for UniFFI ABI and release discovery.
+- Added UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host text-measurement callbacks that can be installed or cleared on reusable engines.
+
 ## [0.8.0a2] - 2026-06-13
 
 Corresponds to merman workspace release `0.8.0-alpha.2`.

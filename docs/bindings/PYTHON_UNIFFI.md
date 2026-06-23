@@ -48,7 +48,7 @@ The package re-exports the generated UniFFI API:
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 1
+assert engine.abi_version() == 2
 print(engine.package_version())
 
 svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -59,6 +59,23 @@ validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = engine.supported_diagrams()
 themes = engine.supported_themes()
 host_presets = engine.supported_host_theme_presets()
+capabilities = engine.diagram_family_capabilities()
+
+class Measurer(merman.MermanTextMeasurer):
+    def measure(self, request):
+        return merman.MermanTextMeasureResult(
+            width=max(len(request.text) * 8.0, 1.0),
+            height=max(request.line_height, 1.0),
+            line_count=1,
+        )
+
+reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
+svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
+
+reusable = engine.reusable_engine(None)
+reusable.set_text_measurer(Measurer())
+svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
+reusable.clear_text_measurer()
 ```
 
 Errors are exposed through the generated `MermanError` type. The underlying status code, status
@@ -66,18 +83,20 @@ name, and message still come from `merman-bindings-core`.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 
-## Text Measurement Limit
+## Text Measurement
 
-The Python UniFFI package currently uses Merman's built-in headless text measurer and does not expose
-the C ABI host text-measurement callback. This is the right default for CLI tools, documentation
-generation, tests, and server-side batch rendering because it is deterministic and does not require
-GUI or browser dependencies.
+The Python UniFFI package uses Merman's built-in headless text measurer by default. This is the
+right default for CLI tools, documentation generation, tests, and server-side batch rendering
+because it is deterministic and does not require GUI or browser dependencies.
 
-Python GUI or WebView hosts that need label geometry to match their own font stack should use the C
-ABI directly for now, install `merman_engine_set_text_measure_callback`, and follow
-[`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md). Adding an equivalent UniFFI callback surface
-would be a separate API design because callback lifetime, threading, and Python GIL behavior need
-to be explicit.
+Python GUI or WebView hosts that need label geometry to match their own font stack can use
+`MermanEngine.reusable_engine_with_text_measurer` when constructing a reusable engine, or call
+`MermanReusableEngine.set_text_measurer` on an existing reusable engine. Use
+`MermanReusableEngine.clear_text_measurer` to restore the engine's original built-in measurer.
+Return
+`None` for requests that the host cannot answer synchronously; merman will fall back to vendored
+metrics for that request. Follow [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
+shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
 
 ## Verification
 
@@ -89,7 +108,9 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
 it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
 `MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
-`MermanEngine.validate`, metadata methods, `MermanEngine.abi_version`,
+`MermanEngine.validate`, metadata methods, `MermanEngine.diagram_family_capabilities`,
+`MermanEngine.reusable_engine_with_text_measurer`, `MermanReusableEngine.set_text_measurer`,
+`MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`,
 `MermanEngine.package_version`, and checks `MermanError.Binding` fields for invalid options JSON.
 
 ## Build A Local Wheel

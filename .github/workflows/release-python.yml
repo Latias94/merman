@@ -64,6 +64,9 @@ jobs:
       - name: Verify Python package version matches tag
         run: python scripts/release-version.py check --version "${{ steps.version.outputs.version }}"
 
+      - name: Verify FFI publish surface
+        run: python scripts/verify-ffi-publish-surface.py
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
@@ -97,7 +100,48 @@ jobs:
             PYTHON=target/python-final-wheel-smoke/bin/python
           fi
           "$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl
-          "$PYTHON" -c "import merman; e = merman.MermanEngine(); s = 'flowchart TD\nA[Hello] --> B[World]'; assert e.abi_version() == 1; assert e.render_svg(s, None).startswith('<svg'); assert 'Hello' in e.render_ascii(s, None); assert e.validate(s, None).valid; assert 'flowchart' in e.supported_diagrams(); assert 'default' in e.supported_themes()"
+          "$PYTHON" - <<'PY'
+          import merman
+
+
+          class Measurer(merman.MermanTextMeasurer):
+              def __init__(self):
+                  self.calls = 0
+
+              def measure(self, request):
+                  self.calls += 1
+                  return merman.MermanTextMeasureResult(
+                      width=max(len(request.text) * 8.0, 1.0),
+                      height=max(request.line_height, 1.0),
+                      line_count=1,
+                  )
+
+
+          e = merman.MermanEngine()
+          s = 'flowchart TD\nA[Hello] --> B[World]'
+          assert e.abi_version() == 2
+          assert e.render_svg(s, None).startswith('<svg')
+          assert 'Hello' in e.render_ascii(s, None)
+          assert e.validate(s, None).valid
+          assert 'flowchart' in e.supported_diagrams()
+          assert 'default' in e.supported_themes()
+          assert any(item.diagram_type == 'flowchart' for item in e.diagram_family_capabilities())
+
+          measurer = Measurer()
+          reusable = e.reusable_engine_with_text_measurer(None, measurer)
+          assert reusable.render_svg(s).startswith('<svg')
+          assert measurer.calls > 0
+
+          setter_measurer = Measurer()
+          reusable = e.reusable_engine(None)
+          reusable.set_text_measurer(setter_measurer)
+          assert reusable.render_svg(s).startswith('<svg')
+          calls_after_set = setter_measurer.calls
+          assert calls_after_set > 0
+          reusable.clear_text_measurer()
+          assert reusable.render_svg(s).startswith('<svg')
+          assert setter_measurer.calls == calls_after_set
+          PY
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6

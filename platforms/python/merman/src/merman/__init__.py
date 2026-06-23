@@ -1,7 +1,19 @@
 """Python package shim for generated merman UniFFI bindings."""
 
 try:
-    from .merman_uniffi import MermanEngine, MermanError, MermanValidationResult
+    from .merman_uniffi import (
+        MermanDiagramFamilyCapability,
+        MermanEngine,
+        MermanError,
+        MermanReusableEngine,
+        MermanTextDirection,
+        MermanTextMeasureRequest,
+        MermanTextMeasureResult,
+        MermanTextMeasurer,
+        MermanTextWhiteSpace,
+        MermanTextWrapMode,
+        MermanValidationResult,
+    )
 except ModuleNotFoundError as exc:
     if exc.name == f"{__name__}.merman_uniffi":
         raise ImportError(
@@ -12,4 +24,16 @@ except ModuleNotFoundError as exc:
         ) from exc
     raise
 
-__all__ = ["MermanEngine", "MermanError", "MermanValidationResult"]
+__all__ = [
+    "MermanDiagramFamilyCapability",
+    "MermanEngine",
+    "MermanError",
+    "MermanReusableEngine",
+    "MermanTextDirection",
+    "MermanTextMeasureRequest",
+    "MermanTextMeasureResult",
+    "MermanTextMeasurer",
+    "MermanTextWhiteSpace",
+    "MermanTextWrapMode",
+    "MermanValidationResult",
+]

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Documented Flutter/Dart host text-measurement guidance for `MermanReusableEngine` callbacks.
+- Added pub.dev metadata links and README compatibility notes for C ABI release discovery.
 
 ## 0.8.0-alpha.2
 

@@ -12,10 +12,17 @@ Status: experimental generated-binding surface.
 - `MermanEngine::parse_json(source, options_json)`
 - `MermanEngine::layout_json(source, options_json)`
 - `MermanEngine::validate(source, options_json)`
+- `MermanEngine::reusable_engine(options_json)`
+- `MermanEngine::reusable_engine_with_text_measurer(options_json, measurer)`
 - `MermanEngine::supported_diagrams()`
 - `MermanEngine::ascii_supported_diagrams()`
 - `MermanEngine::supported_themes()`
 - `MermanEngine::supported_host_theme_presets()`
+- `MermanEngine::diagram_family_capabilities()`
+- `MermanReusableEngine` render/parse/layout/validation methods
+- `MermanReusableEngine::set_text_measurer(measurer)`
+- `MermanReusableEngine::clear_text_measurer()`
+- `MermanTextMeasurer` callback interface
 - `MermanError::Binding { code, code_name, message }`
 
 The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a convenience layer for
@@ -23,10 +30,13 @@ Swift, Kotlin, Python, and Ruby package lanes.
 The optional `options_json` argument uses the shared contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
-The current UniFFI surface does not expose host text-measurement callbacks. Generated bindings use
-Merman's built-in headless measurer. Hosts that need DOM, WebView, Core Text, Android, Flutter, or
-another platform font stack should use the C ABI reusable-engine callback until a deliberate UniFFI
-callback API is designed.
+Generated bindings use Merman's built-in headless measurer by default. Hosts that need DOM,
+WebView, Core Text, Android, Flutter, or another platform font stack can use
+`MermanReusableEngine` with `MermanTextMeasurer`, either at construction time through
+`MermanEngine::reusable_engine_with_text_measurer` or later through
+`MermanReusableEngine::set_text_measurer`. `MermanReusableEngine::clear_text_measurer` restores the
+engine's original built-in measurer. The callback should return `None` for unsupported or uncached
+requests so Merman can fall back to vendored metrics.
 
 ## Bindgen Smoke
 
@@ -40,8 +50,10 @@ This test builds the `merman-uniffi` cdylib, generates Python bindings from the 
 metadata into a temporary package, copies the native library beside the generated module, imports
 the package with Python, and calls `MermanEngine.abi_version`, `MermanEngine.package_version`,
 `MermanEngine.render_svg`, `MermanEngine.render_ascii`, `MermanEngine.parse_json`,
-`MermanEngine.layout_json`, `MermanEngine.validate`, metadata methods, plus a `MermanError.Binding`
-error-path check.
+`MermanEngine.layout_json`, `MermanEngine.validate`, metadata methods,
+`MermanEngine.diagram_family_capabilities`, `MermanEngine.reusable_engine_with_text_measurer`,
+`MermanReusableEngine.set_text_measurer`, `MermanReusableEngine.clear_text_measurer`, plus a
+`MermanError.Binding` error-path check.
 
 Generated Swift, Kotlin, Python, or Ruby files are not committed by this lane. Platform-specific
 package layouts should be split into follow-on lanes.

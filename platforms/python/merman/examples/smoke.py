@@ -1,9 +1,11 @@
+from dataclasses import dataclass
+
 import merman
 
 
 def main() -> None:
     engine = merman.MermanEngine()
-    if engine.abi_version() != 1:
+    if engine.abi_version() != 2:
         raise RuntimeError(f"unexpected ABI version: {engine.abi_version()}")
     if not engine.package_version():
         raise RuntimeError("empty package version")
@@ -42,6 +44,41 @@ def main() -> None:
         raise RuntimeError("themes smoke failed")
     if "one-dark" not in engine.supported_host_theme_presets():
         raise RuntimeError("host theme presets smoke failed")
+    if not any(item.diagram_type == "flowchart" for item in engine.diagram_family_capabilities()):
+        raise RuntimeError("diagram family capabilities smoke failed")
+
+    @dataclass
+    class Measurer(merman.MermanTextMeasurer):
+        calls: int = 0
+
+        def measure(self, request):
+            self.calls += 1
+            return merman.MermanTextMeasureResult(
+                width=max(len(request.text) * 8.0, 1.0),
+                height=max(request.line_height, 1.0),
+                line_count=1,
+            )
+
+    measurer = Measurer()
+    reusable = engine.reusable_engine_with_text_measurer(None, measurer)
+    if "Hello" not in reusable.render_svg(source):
+        raise RuntimeError("reusable engine smoke failed")
+    if measurer.calls == 0:
+        raise RuntimeError("text measurer callback smoke failed")
+
+    setter_measurer = Measurer()
+    reusable = engine.reusable_engine(None)
+    reusable.set_text_measurer(setter_measurer)
+    if "Hello" not in reusable.render_svg(source):
+        raise RuntimeError("set text measurer smoke failed")
+    calls_after_set = setter_measurer.calls
+    if calls_after_set == 0:
+        raise RuntimeError("set text measurer callback smoke failed")
+    reusable.clear_text_measurer()
+    if "Hello" not in reusable.render_svg(source):
+        raise RuntimeError("clear text measurer smoke failed")
+    if setter_measurer.calls != calls_after_set:
+        raise RuntimeError("clear text measurer did not reset callback")
 
     print("merman Python UniFFI smoke passed")
 

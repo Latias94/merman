@@ -6,9 +6,12 @@ UniFFI bindings for Merman headless Mermaid rendering.
 experimental Python package scaffold, while `merman-ffi` remains the stable C ABI entry point for
 native hosts.
 
-Host text-measurement callbacks are not exposed by this UniFFI surface yet. Generated bindings use
-the built-in headless measurer. GUI and WebView hosts that need their platform font stack should use
-the `merman-ffi` C ABI until a deliberate UniFFI callback API is designed.
+Generated bindings use the built-in headless measurer by default. GUI and WebView hosts that need
+their platform font stack can use `MermanReusableEngine` with a `MermanTextMeasurer` callback.
+Call `MermanReusableEngine::set_text_measurer` to install a host measurer later, and
+`MermanReusableEngine::clear_text_measurer` to restore the built-in measurer.
+`diagram_family_capabilities()` exposes the same parser/render discovery information as the C ABI
+metadata surface.
 
 Most applications should start with one of these package-level entry points:
 

@@ -27,6 +27,7 @@ Homepage = "https://github.com/Latias94/merman"
 Repository = "https://github.com/Latias94/merman"
 Documentation = "https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md"
 Issues = "https://github.com/Latias94/merman/issues"
+Changelog = "https://github.com/Latias94/merman/blob/main/platforms/python/merman/CHANGELOG.md"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

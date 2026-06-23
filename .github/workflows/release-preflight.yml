@@ -37,6 +37,9 @@ jobs:
       - name: Verify release versions
         run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
 
+      - name: Verify FFI publish surface
+        run: python3 scripts/verify-ffi-publish-surface.py
+
       - name: Check Rust formatting
         run: cargo fmt --check
 

@@ -9,13 +9,25 @@ JSON, compute layout JSON, and render SVG through a headless Rust engine. See th
 and [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 for the main library contract.
 
+## Compatibility And Release Notes
+
+This package tracks UniFFI ABI 2 and is regenerated from the `merman-uniffi` cdylib. The
+published PyPI page shows this README together with the metadata links in `pyproject.toml`, so the
+package page can point directly to the binding docs, issues, and changelog.
+
+`MermanReusableEngine` exposes the reusable render path, and `MermanTextMeasurer` lets Python
+hosts provide a callback when they need host-owned text measurement. `diagram_family_capabilities()`
+is available for capability discovery.
+
+For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
+
 ## API
 
 ```python
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 1
+assert engine.abi_version() == 2
 print(engine.package_version())
 
 source = "flowchart TD\nA[Hello] --> B[World]"
@@ -27,6 +39,23 @@ validation = engine.validate(source, None)
 diagrams = engine.supported_diagrams()
 themes = engine.supported_themes()
 host_presets = engine.supported_host_theme_presets()
+capabilities = engine.diagram_family_capabilities()
+
+class Measurer(merman.MermanTextMeasurer):
+    def measure(self, request):
+        return merman.MermanTextMeasureResult(
+            width=max(len(request.text) * 8.0, 1.0),
+            height=max(request.line_height, 1.0),
+            line_count=1,
+        )
+
+reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
+assert "Hello" in reusable.render_svg(source)
+
+reusable = engine.reusable_engine(None)
+reusable.set_text_measurer(Measurer())
+assert "Hello" in reusable.render_svg(source)
+reusable.clear_text_measurer()
 
 try:
     engine.render_svg(source, "{")
@@ -38,15 +67,17 @@ except merman.MermanError.Binding as error:
 `svg` options. The shared schema is documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 
-## Text Measurement Limit
+## Text Measurement
 
 The current Python package is generated through UniFFI and uses merman's built-in headless text
-measurer. It does not expose host text-measurement callbacks yet. This is suitable for CLI tools,
-documentation builds, tests, and server-side batch rendering.
+measurer by default. This is suitable for CLI tools, documentation builds, tests, and server-side
+batch rendering.
 
 If a Python GUI, browser automation host, or WebView application needs geometry that matches its
-own font stack, use the `merman-ffi` C ABI and install `merman_engine_set_text_measure_callback`
-until the UniFFI surface grows a callback API. See
+own font stack, create a `MermanReusableEngine` with `reusable_engine_with_text_measurer(...)` or
+call `set_text_measurer(...)` on an existing reusable engine. Call `clear_text_measurer()` to
+restore the engine's original built-in measurer. Return `None` from the callback when a request is
+not handled so merman can fall back to its vendored metrics for that request. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
 
 ## Generate Locally
