@@ -24,7 +24,7 @@ This alpha focuses on Mermaid 11.15 parity, safer host integrations, and packagi
 - Added Typst package improvements for document-context-aware diagrams, figure/layout controls, hardened document APIs, typography handling, and Typst 0.15 smoke coverage.
 - Added `merman-cli completion <shell>` for shell completion generation while keeping `merman-cli` as the installed command name rather than adding an `mmdc` alias.
 - Added repeatable WASM size reporting and budgets for browser and Typst presets, plus an opt-in `cytoscape-layout` feature for size-sensitive Architecture and Mindmap builds.
-- Added Homebrew install guidance for `merman-cli` on macOS and Linux. Thanks [@colindean](https://github.com/colindean) for the contribution in [#4](https://github.com/Latias94/merman/pull/4).
+- Added Homebrew install guidance for `merman-cli` on macOS and Linux. Thanks @colindean for the contribution in #4.
 
 ### Changed
 
@@ -37,7 +37,7 @@ This alpha focuses on Mermaid 11.15 parity, safer host integrations, and packagi
 
 ### Fixed
 
-- Fixed Journey raster rendering in the resvg pipeline. Thanks [@vlasky](https://github.com/vlasky) for the contribution in [#6](https://github.com/Latias94/merman/pull/6).
+- Fixed Journey raster rendering in the resvg pipeline. Thanks @vlasky for the contribution in #6.
 - Fixed Flowchart hand-drawn decision-node silhouettes and other rough node shapes so `layout: elk`, `look: handDrawn`, and dark themes render more consistently.
 - Fixed sanitized Flowchart click links, fallback text entity decoding, and several browser/host text-measurement edge cases that could affect exported SVG readability.
 - Fixed Gantt `excludes` handling so diagrams that exclude every weekday, or otherwise produce a long run of excluded dates, fail with a parse error instead of looping during task date adjustment.
@@ -92,7 +92,7 @@ Feature guidance:
 ### Fixed
 
 - Corrected web package documentation to use the published `@mermanjs/web` npm package name.
-- Avoided clipped Flowchart edge labels in Linux/Firefox browser previews. Thanks @aurabindo for reporting [#2](https://github.com/Latias94/merman/issues/2).
+- Avoided clipped Flowchart edge labels in Linux/Firefox browser previews. Thanks @aurabindo for reporting #2.
 - Limited CSS override cleanup to `<style>` blocks and `style` attributes so ordinary SVG text and metadata containing `!important` stay intact.
 - Scoped embedded icon IDs so repeated Flowchart and Architecture icons do not collide inside one SVG.
 - Scoped Sankey generated IDs and Sequence debug markers for safer inline SVG embedding.
