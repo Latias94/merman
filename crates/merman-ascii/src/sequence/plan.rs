@@ -1,16 +1,24 @@
 use super::control::{SequenceControlFrame, SequenceControlFrameSeparator};
-use super::layout::initial_visible_actors;
+use super::events::{ensure_message_actors_visible, render_message, render_self_message};
+use super::layout::{
+    LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at, participant_left,
+};
 use super::model::{AsciiSequenceDiagram, SequenceControlKind, SequenceEvent};
+use super::notes::{ensure_note_actors_visible, render_note};
+use super::render::{SequenceChars, build_lifeline_line};
+use super::text::{SequenceLine, padded_line, trim_right};
+use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+use crate::text::display_width;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SequencePlanStep {
+enum SequencePlanStep {
     StateOnly,
     Render,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SequenceEventPlan {
+struct SequenceEventPlan {
     active_counts: Vec<usize>,
     visible_actors: Vec<bool>,
     control_frames: Vec<SequenceControlFrame>,
@@ -18,7 +26,7 @@ pub(super) struct SequenceEventPlan {
 }
 
 impl SequenceEventPlan {
-    pub(super) fn new(diagram: &AsciiSequenceDiagram) -> Self {
+    fn new(diagram: &AsciiSequenceDiagram) -> Self {
         Self {
             active_counts: vec![0usize; diagram.participants.len()],
             visible_actors: initial_visible_actors(diagram),
@@ -27,15 +35,15 @@ impl SequenceEventPlan {
         }
     }
 
-    pub(super) fn active_counts(&self) -> &[usize] {
+    fn active_counts(&self) -> &[usize] {
         &self.active_counts
     }
 
-    pub(super) fn visible_actors(&self) -> &[bool] {
+    fn visible_actors(&self) -> &[bool] {
         &self.visible_actors
     }
 
-    pub(super) fn handle_event(
+    fn handle_event(
         &mut self,
         event: &SequenceEvent,
         current_row: usize,
@@ -94,7 +102,7 @@ impl SequenceEventPlan {
         }
     }
 
-    pub(super) fn record_created_actors(&mut self, actor_indices: &[usize]) {
+    fn record_created_actors(&mut self, actor_indices: &[usize]) {
         for actor in actor_indices {
             if let Some(visible) = self.visible_actors.get_mut(*actor) {
                 *visible = true;
@@ -102,7 +110,7 @@ impl SequenceEventPlan {
         }
     }
 
-    pub(super) fn record_destroyed_actors(&mut self, actor_indices: &[usize]) {
+    fn record_destroyed_actors(&mut self, actor_indices: &[usize]) {
         for actor in actor_indices {
             if let Some(visible) = self.visible_actors.get_mut(*actor) {
                 *visible = false;
@@ -113,7 +121,7 @@ impl SequenceEventPlan {
         }
     }
 
-    pub(super) fn finish(self) -> Result<Vec<SequenceControlFrame>> {
+    fn finish(self) -> Result<Vec<SequenceControlFrame>> {
         if self.active_control_frame.is_some() {
             return Err(unsupported("control block ordering"));
         }
@@ -136,6 +144,295 @@ impl SequenceEventPlan {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct SequenceRowPlan {
+    lines: Vec<SequenceLine>,
+    control_frames: Vec<SequenceControlFrame>,
+}
+
+impl SequenceRowPlan {
+    pub(super) fn build(
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        mirror_actors: bool,
+    ) -> Result<Self> {
+        let mut lines = Vec::new();
+        let mut event_plan = SequenceEventPlan::new(diagram);
+
+        lines.push(build_participant_line(
+            diagram,
+            layout,
+            event_plan.visible_actors(),
+            |index| {
+                build_participant_box_row(diagram, layout, chars, index, ParticipantBoxRow::Top)
+            },
+        ));
+        lines.push(build_participant_line(
+            diagram,
+            layout,
+            event_plan.visible_actors(),
+            |index| {
+                build_participant_box_row(diagram, layout, chars, index, ParticipantBoxRow::Label)
+            },
+        ));
+        lines.push(build_participant_line(
+            diagram,
+            layout,
+            event_plan.visible_actors(),
+            |index| {
+                build_participant_box_row(diagram, layout, chars, index, ParticipantBoxRow::Bottom)
+            },
+        ));
+
+        for event in &diagram.events {
+            if event_plan.handle_event(event, lines.len())? == SequencePlanStep::StateOnly {
+                continue;
+            }
+
+            for _ in 0..layout.message_spacing {
+                lines.push(build_lifeline_line(
+                    layout,
+                    chars,
+                    event_plan.active_counts(),
+                    event_plan.visible_actors(),
+                ));
+            }
+
+            let model_index = event.model_index();
+            let created_actors = lifecycle_actors_at(diagram, model_index, LifecycleEdge::Created);
+            if !created_actors.is_empty() {
+                lines.extend(render_lifecycle_participants(
+                    diagram,
+                    layout,
+                    chars,
+                    event_plan.active_counts(),
+                    event_plan.visible_actors(),
+                    &created_actors,
+                ));
+                event_plan.record_created_actors(&created_actors);
+            }
+
+            let destroyed_actors =
+                lifecycle_actors_at(diagram, model_index, LifecycleEdge::Destroyed);
+
+            match event {
+                SequenceEvent::Message(message) => {
+                    ensure_message_actors_visible(message, event_plan.visible_actors())?;
+                    if message.from == message.to {
+                        lines.extend(render_self_message(
+                            message,
+                            layout,
+                            chars,
+                            event_plan.active_counts(),
+                            event_plan.visible_actors(),
+                            &destroyed_actors,
+                        ));
+                    } else {
+                        lines.extend(render_message(
+                            message,
+                            layout,
+                            chars,
+                            event_plan.active_counts(),
+                            event_plan.visible_actors(),
+                            &destroyed_actors,
+                        ));
+                    }
+                }
+                SequenceEvent::Note(note) => {
+                    ensure_note_actors_visible(note, event_plan.visible_actors())?;
+                    lines.extend(render_note(
+                        note,
+                        layout,
+                        chars,
+                        event_plan.active_counts(),
+                        event_plan.visible_actors(),
+                    ));
+                }
+                SequenceEvent::ActivationStart { .. }
+                | SequenceEvent::ActivationEnd { .. }
+                | SequenceEvent::ControlStart(_)
+                | SequenceEvent::ControlEnd { .. }
+                | SequenceEvent::ControlSeparator(_) => {}
+            }
+
+            event_plan.record_destroyed_actors(&destroyed_actors);
+        }
+
+        lines.push(build_lifeline_line(
+            layout,
+            chars,
+            event_plan.active_counts(),
+            event_plan.visible_actors(),
+        ));
+        if mirror_actors {
+            lines.push(build_participant_line(
+                diagram,
+                layout,
+                event_plan.visible_actors(),
+                |index| {
+                    build_participant_box_row(
+                        diagram,
+                        layout,
+                        chars,
+                        index,
+                        ParticipantBoxRow::MirrorTop,
+                    )
+                },
+            ));
+            lines.push(build_participant_line(
+                diagram,
+                layout,
+                event_plan.visible_actors(),
+                |index| {
+                    build_participant_box_row(
+                        diagram,
+                        layout,
+                        chars,
+                        index,
+                        ParticipantBoxRow::Label,
+                    )
+                },
+            ));
+            lines.push(build_participant_line(
+                diagram,
+                layout,
+                event_plan.visible_actors(),
+                |index| {
+                    build_participant_box_row(
+                        diagram,
+                        layout,
+                        chars,
+                        index,
+                        ParticipantBoxRow::MirrorBottom,
+                    )
+                },
+            ));
+        }
+
+        Ok(Self {
+            lines,
+            control_frames: event_plan.finish()?,
+        })
+    }
+
+    pub(super) fn into_parts(self) -> (Vec<SequenceLine>, Vec<SequenceControlFrame>) {
+        (self.lines, self.control_frames)
+    }
+}
+
+fn build_participant_line(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    visible_actors: &[bool],
+    draw: impl Fn(usize) -> SequenceLine,
+) -> SequenceLine {
+    let mut line = SequenceLine::blank(0);
+    for index in 0..diagram.participants.len() {
+        if !visible_actors.get(index).copied().unwrap_or(true) {
+            continue;
+        }
+        let left = participant_left(layout, index);
+        let needed = left.saturating_sub(line.len());
+        line.push_spaces(needed);
+        line.push_line(&draw(index));
+    }
+    line
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParticipantBoxRow {
+    Top,
+    Label,
+    Bottom,
+    MirrorTop,
+    MirrorBottom,
+}
+
+fn build_participant_box_row(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    index: usize,
+    row: ParticipantBoxRow,
+) -> SequenceLine {
+    let width = layout.participant_widths[index];
+    let total_width = width + super::BOX_BORDER_WIDTH;
+    let mut line = SequenceLine::blank(total_width);
+    match row {
+        ParticipantBoxRow::Top | ParticipantBoxRow::MirrorTop => {
+            line.set_role(0, chars.top_left, AsciiColorRole::SequenceFrame);
+            for x in 1..=width {
+                let ch = if row == ParticipantBoxRow::MirrorTop && x == (width / 2) + 1 {
+                    chars.tee_up
+                } else {
+                    chars.horizontal
+                };
+                line.set_role(x, ch, AsciiColorRole::SequenceFrame);
+            }
+            line.set_role(width + 1, chars.top_right, AsciiColorRole::SequenceFrame);
+        }
+        ParticipantBoxRow::Label => {
+            let label = &diagram.participants[index].label;
+            let label_width = display_width(label);
+            let left_padding = (width - label_width) / 2;
+            line.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
+            line.write_text_role(1 + left_padding, label, AsciiColorRole::Text);
+            line.set_role(width + 1, chars.vertical, AsciiColorRole::SequenceFrame);
+        }
+        ParticipantBoxRow::Bottom | ParticipantBoxRow::MirrorBottom => {
+            line.set_role(0, chars.bottom_left, AsciiColorRole::SequenceFrame);
+            for x in 1..=width {
+                let ch = if row == ParticipantBoxRow::Bottom && x == (width / 2) + 1 {
+                    chars.tee_down
+                } else {
+                    chars.horizontal
+                };
+                line.set_role(x, ch, AsciiColorRole::SequenceFrame);
+            }
+            line.set_role(width + 1, chars.bottom_right, AsciiColorRole::SequenceFrame);
+        }
+    }
+    line
+}
+
+fn render_lifecycle_participants(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    active_counts: &[usize],
+    visible_actors: &[bool],
+    actor_indices: &[usize],
+) -> Vec<SequenceLine> {
+    [
+        ParticipantBoxRow::Top,
+        ParticipantBoxRow::Label,
+        ParticipantBoxRow::Bottom,
+    ]
+    .into_iter()
+    .map(|row| {
+        let width = actor_indices
+            .iter()
+            .map(|index| {
+                let segment = build_participant_box_row(diagram, layout, chars, *index, row);
+                participant_left(layout, *index) + segment.len()
+            })
+            .max()
+            .unwrap_or(layout.total_width + 1)
+            .max(layout.total_width + 1);
+        let mut line = padded_line(
+            build_lifeline_line(layout, chars, active_counts, visible_actors),
+            width,
+        );
+        for index in actor_indices {
+            let segment = build_participant_box_row(diagram, layout, chars, *index, row);
+            line.write_line(participant_left(layout, *index), &segment);
+        }
+        trim_right(line)
+    })
+    .collect()
+}
+
 fn unsupported(feature: &'static str) -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "sequence",
@@ -146,6 +443,8 @@ fn unsupported(feature: &'static str) -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::options::AsciiRenderOptions;
+    use crate::sequence::layout::calculate_layout;
     use crate::sequence::model::{
         SequenceActorLifecycle, SequenceControlSeparator, SequenceControlStart, SequenceParticipant,
     };
@@ -237,6 +536,35 @@ mod tests {
         assert_eq!(plan.active_counts(), &[0]);
     }
 
+    #[test]
+    fn row_plan_wraps_empty_diagram_with_lifeline_and_mirror_rows() {
+        let diagram = diagram(2);
+        let options = AsciiRenderOptions::ascii().with_sequence_mirror_actors(true);
+        let layout = calculate_layout(&diagram, &options);
+        let plan = SequenceRowPlan::build(
+            &diagram,
+            &layout,
+            &ascii_chars(),
+            options.sequence_mirror_actors,
+        )
+        .unwrap();
+        let (lines, control_frames) = plan.into_parts();
+
+        assert!(control_frames.is_empty());
+        let rendered = lines
+            .into_iter()
+            .map(SequenceLine::into_text)
+            .collect::<Vec<_>>();
+        assert_eq!(rendered.len(), 7);
+        assert!(rendered[0].starts_with('+'));
+        assert!(rendered[1].contains("P0"));
+        assert!(rendered[1].contains("P1"));
+        assert!(rendered[3].contains('|'));
+        assert!(rendered[4].starts_with('+'));
+        assert!(rendered[5].contains("P0"));
+        assert!(rendered[6].starts_with('+'));
+    }
+
     fn diagram(participant_count: usize) -> AsciiSequenceDiagram {
         AsciiSequenceDiagram {
             title: None,
@@ -249,6 +577,31 @@ mod tests {
             lifecycles: vec![SequenceActorLifecycle::default(); participant_count],
             boxes: Vec::new(),
             events: Vec::new(),
+        }
+    }
+
+    fn ascii_chars() -> SequenceChars {
+        SequenceChars {
+            top_left: '+',
+            top_right: '+',
+            bottom_left: '+',
+            bottom_right: '+',
+            horizontal: '-',
+            vertical: '|',
+            active_vertical: '#',
+            destroyed_mark: 'x',
+            tee_down: '+',
+            tee_up: '+',
+            tee_right: '+',
+            tee_left: '+',
+            filled_arrow_right: '>',
+            filled_arrow_left: '<',
+            open_arrow_right: '>',
+            open_arrow_left: '<',
+            solid_line: '-',
+            dotted_line: '.',
+            self_top_right: '+',
+            self_bottom: '+',
         }
     }
 }
