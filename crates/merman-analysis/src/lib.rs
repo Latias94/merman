@@ -6,6 +6,7 @@
 //! helpers that FFI, UniFFI, WASM, CLI linting, Markdown scanning, and future LSP adapters can share.
 
 mod analyzer;
+pub mod markdown;
 mod payload;
 mod rules;
 mod source_map;

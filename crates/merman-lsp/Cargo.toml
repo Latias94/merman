@@ -1,0 +1,30 @@
+[package]
+name = "merman-lsp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Language server for Merman diagnostics and completion foundations."
+documentation = "https://docs.rs/merman-lsp"
+readme = "README.md"
+keywords = ["mermaid", "lsp", "language-server", "completion", "diagnostics"]
+categories = ["development-tools", "text-editors"]
+
+[dependencies]
+lsp-types.workspace = true
+tower-lsp.workspace = true
+tokio.workspace = true
+url.workspace = true
+merman-analysis.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+tempfile = "3.27.0"

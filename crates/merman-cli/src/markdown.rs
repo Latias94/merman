@@ -8,7 +8,6 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone)]
 pub(crate) struct MarkdownChart {
     pub(crate) start: usize,
-    pub(crate) body_start: usize,
     pub(crate) end: usize,
     pub(crate) definition: String,
 }
@@ -39,7 +38,6 @@ pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
             let definition = captures.get(2)?;
             Some(MarkdownChart {
                 start: whole.start(),
-                body_start: definition.start(),
                 end: whole.end(),
                 definition: definition.as_str().to_string(),
             })

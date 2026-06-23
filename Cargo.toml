@@ -7,6 +7,7 @@ members = [
   "crates/merman-ascii",
   "crates/merman-bindings-core",
   "crates/merman-cli",
+  "crates/merman-lsp",
   "crates/merman-ffi",
   "crates/merman-elk-layered",
   "crates/merman-layout-elk",
@@ -61,11 +62,13 @@ roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.1"
 serde = { version = "1.0.217", features = ["derive", "rc"] }
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
+tokio = { version = "1.52.3", features = ["full"] }
 toml = "0.9.12"
 json5 = "0.4.1"
 js-sys = "0.3"
 thiserror = "2.0.11"
 tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["fmt", "env-filter"] }
 uniffi = "0.31.1"
 futures = "0.3.31"
 hashbrown = "0.16.1"
@@ -91,6 +94,8 @@ wasm-bindgen = "0.2"
 web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
 wasmi = { version = "1.0.9", default-features = false, features = ["simd"] }
+lsp-types = "0.97.0"
+tower-lsp = "0.20.0"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.

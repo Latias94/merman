@@ -98,6 +98,48 @@ impl SourceMap {
         self.span(0, self.source.len())
     }
 
+    pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
+        let start = *self.line_starts.get(line_index)?;
+        let end = self
+            .line_starts
+            .get(line_index + 1)
+            .copied()
+            .unwrap_or_else(|| self.source.len());
+        let end = if end > start && self.source.as_bytes().get(end - 1) == Some(&b'\n') {
+            end - 1
+        } else {
+            end
+        };
+        Some((start, end))
+    }
+
+    pub fn byte_offset_for_utf16_position(&self, position: Utf16Position) -> Option<usize> {
+        let (line_start, line_end) = self.line_bounds(position.line)?;
+        let line = &self.source[line_start..line_end];
+        let mut utf16 = 0usize;
+
+        if position.character == 0 {
+            return Some(line_start);
+        }
+
+        for (relative, ch) in line.char_indices() {
+            if utf16 == position.character {
+                return Some(line_start + relative);
+            }
+
+            utf16 += ch.len_utf16();
+            if utf16 == position.character {
+                return Some(line_start + relative + ch.len_utf8());
+            }
+        }
+
+        if utf16 == position.character {
+            Some(line_end)
+        } else {
+            None
+        }
+    }
+
     fn validate_offset(&self, offset: usize) -> Result<(), SourceMapError> {
         if offset > self.source.len() {
             return Err(SourceMapError::OffsetOutOfBounds {
