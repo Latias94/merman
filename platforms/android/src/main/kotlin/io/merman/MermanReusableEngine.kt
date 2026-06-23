@@ -19,6 +19,9 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
     fun layoutJson(source: String): String =
         nativeLayoutJson(requireHandle(), source)
 
+    fun analyzeJson(source: String): String =
+        nativeAnalyzeJson(requireHandle(), source)
+
     fun validateJson(source: String): String =
         nativeValidateJson(requireHandle(), source)
 
@@ -63,6 +66,9 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
 
         @JvmStatic
         private external fun nativeLayoutJson(handle: Long, source: String): String
+
+        @JvmStatic
+        private external fun nativeAnalyzeJson(handle: Long, source: String): String
 
         @JvmStatic
         private external fun nativeValidateJson(handle: Long, source: String): String

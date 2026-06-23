@@ -107,6 +107,19 @@ pub fn render_ascii(source: &str, options_json: Option<String>) -> Result<String
 }
 
 #[wasm_bindgen]
+pub fn analyze(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    json_value_result(merman_bindings_core::analyze_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+    ))
+}
+
+#[wasm_bindgen(js_name = analyzeJson)]
+pub fn analyze_json(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    analyze(source, options_json)
+}
+
+#[wasm_bindgen]
 pub fn validate(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
     json_value_result(merman_bindings_core::validate_json(
         source.as_bytes(),
@@ -441,6 +454,16 @@ mod tests {
         } else {
             assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_FORMAT");
         }
+    }
+
+    #[test]
+    fn analyze_json_exposes_diagnostics_payload() {
+        let value: Value =
+            serde_json::from_value(analyze_json("".as_bytes(), None).unwrap()).unwrap();
+
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["valid"], false);
+        assert_eq!(value["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
     }
 
     #[test]

@@ -1,8 +1,6 @@
 mod request;
 
-use crate::common::{
-    BindingError, BindingOptions, parse_options, source_text, validation_payload_json,
-};
+use crate::common::{BindingError, BindingOptions, parse_options, source_text};
 use request::RenderRequestPlan;
 use std::sync::Arc;
 
@@ -19,10 +17,6 @@ pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Binding
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     request_plan_from_options_json(options_json)?.layout_json(source)
-}
-
-pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    validation_payload_json(validate_source(source, options_json))
 }
 
 #[derive(Clone)]
@@ -60,25 +54,11 @@ impl CachedRenderEngine {
         let source = source_text(source)?;
         self.plan.layout_json(source)
     }
-
-    pub(crate) fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        validation_payload_json(self.validate_source(source))
-    }
-
-    fn validate_source(&self, source: &[u8]) -> Result<(), BindingError> {
-        let source = source_text(source)?;
-        self.plan.validate(source)
-    }
 }
 
 fn request_plan_from_options_json(options_json: &[u8]) -> Result<RenderRequestPlan, BindingError> {
     let options = parse_options(options_json)?;
     RenderRequestPlan::from_options(&options)
-}
-
-fn validate_source(source: &[u8], options_json: &[u8]) -> Result<(), BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.validate(source)
 }
 
 #[cfg(test)]
@@ -700,13 +680,14 @@ Missing ref: id2,after missing,1d
     #[test]
     fn validate_json_reports_success_and_errors_without_throwing() {
         let valid: Value =
-            serde_json::from_slice(&validate_json(b"flowchart TD\nA[Hello]", b"").unwrap())
+            serde_json::from_slice(&crate::validate_json(b"flowchart TD\nA[Hello]", b"").unwrap())
                 .unwrap();
         assert_eq!(valid["valid"], true);
         assert_eq!(valid["code_name"], BindingStatus::Ok.code_name());
         assert_eq!(valid.get("error"), Some(&Value::Null));
 
-        let invalid: Value = serde_json::from_slice(&validate_json(b"", b"").unwrap()).unwrap();
+        let invalid: Value =
+            serde_json::from_slice(&crate::validate_json(b"", b"").unwrap()).unwrap();
         assert_eq!(invalid["valid"], false);
         assert_eq!(invalid["code_name"], BindingStatus::NoDiagram.code_name());
         assert!(

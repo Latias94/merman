@@ -24,14 +24,15 @@ and LSP foundations without adding Mermaid JS as a production fallback.
 - A new plan exists at `docs/plans/2026-06-23-002-refactor-diagnostics-first-analysis-plan.md`.
 - ADR 0070 exists and records the diagnostics-first analysis contract, including canonical JSON
   shape, alternatives, risks, and migration rules.
-- FFI, UniFFI, options JSON, and README docs now describe `analyze_json` as the reserved canonical
-  diagnostics payload and `validate_json` as the alpha compatibility projection.
+- FFI, UniFFI, options JSON, and README docs now describe `analyze_json` as the canonical
+  diagnostics payload and `validate_json` as the compatibility projection.
 - `crates/merman-analysis` exists and provides the first shared diagnostics payload, source
   descriptor, span, summary, and source-map/UTF-16 range helpers.
 - `merman-analysis::Analyzer` now runs a render-free core parse pass and emits normalized
   `AnalysisPayload` diagnostics for no-diagram, parse, unsupported diagram, config parse,
   source-byte resource-limit, panic, Block width overflow, and GitGraph duplicate commit IDs.
-- The current validation path still returns a coarse payload from `merman-bindings-core`.
+- The binding-core, FFI, UniFFI, WASM, and platform wrapper surfaces now expose canonical `analyze_json` alongside compatibility `validate` paths.
+- The browser package `@mermanjs/web` now exposes `analyze()` / `analyzeJson()` in checked-in `pkg` and `dist` artifacts after rebuilding with a matching `wasm-bindgen-cli`.
 - `merman-cli` has render-oriented Markdown extraction, but not lint-oriented document diagnostics.
 - Existing family warnings in Block and GitGraph are normalized by the analysis crate when they
   appear in parsed model `warnings`.
@@ -44,14 +45,11 @@ and LSP foundations without adding Mermaid JS as a production fallback.
 - U3 is implemented in `merman-analysis`; the crate now depends on `merman-core` behind forwarded
   default features and owns the first small semantic-warning registry.
 - Keep parser-level exact spans progressive; whole-diagram and Markdown fence spans are acceptable for the first lint/LSP-ready payload.
-- Binding surfaces have not yet been migrated to `Analyzer`; `validate_json` is still a separate
-  compatibility path.
+- Thin wrapper documentation has been aligned; no blocking runtime drift remains for the analysis bridge.
 
 # Next Action
 
-Start from U4 in the diagnostics-first plan. Add canonical `analyze_json` surfaces to
-`merman-bindings-core`, C FFI, UniFFI, WASM, and related wrappers, then make legacy `validate_json`
-derive from the same `AnalysisPayload` projection.
+Review the remaining thin wrappers and docs for any naming drift, then decide whether to keep the current bridge or continue the migration into package-layer polish.
 
 # Citations
 

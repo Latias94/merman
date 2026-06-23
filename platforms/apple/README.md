@@ -36,6 +36,7 @@ let svg = try engine.renderSvg(
 )
 let semanticJson = try engine.parseJsonRaw(source)
 let layoutJson = try engine.layoutJsonRaw(source)
+let analysisJson = try engine.analyzeJsonRaw(source)
 let ascii = try engine.renderAscii(source)
 let validation = try engine.validate(source)
 let diagrams = try engine.supportedDiagrams()

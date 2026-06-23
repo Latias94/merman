@@ -13,8 +13,9 @@ npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 ```
 
-`npm run build` produces the default `browser-full` artifact used for npm publication. Source and
-CI builds can choose a browser WASM preset when a smaller local artifact is useful:
+`npm run build` produces the default `browser-full` artifact used for npm publication. The surface
+includes rendering, parsing, layout, ASCII, validation, and diagnostics analysis. Source and CI
+builds can choose a browser WASM preset when a smaller local artifact is useful:
 
 The WASM build uses the workspace `wasm-size` Cargo profile through `wasm-pack --profile
 wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
@@ -22,9 +23,9 @@ wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
 | Preset | Command | Capability |
 | --- | --- | --- |
 | `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII calls report `MERMAN_UNSUPPORTED_FORMAT`. |
-| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, validation, themes, and metadata over the minimal core profile. |
+| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, diagnostics analysis, validation, themes, and metadata over the minimal core profile. |
 | `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile. |
-| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/validate, ASCII, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
+| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
 | `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Not the npm default. |
 | `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. |
 
@@ -120,6 +121,8 @@ main thread through your own worker protocol.
 `createBrowserTextMeasurer()` measures the natural no-wrap width for HTML-like labels before it
 applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
 label can make the diagram wider than Mermaid would make it in the browser.
+
+`analyze()` returns the diagnostics payload JSON object for linting and editor integrations.
 
 ## Custom wasm loading
 
@@ -221,12 +224,12 @@ initialization is usually simpler.
 - `renderAscii()`
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
-- `validate()`
+- `analyze()`, `analyzeJson()`, `validate()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
-All render, parse, layout, validation, and metadata functions require `initMerman()` first.
+All render, parse, layout, analysis, validation, and metadata functions require `initMerman()` first.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
 metadata drifts from the TypeScript surface.

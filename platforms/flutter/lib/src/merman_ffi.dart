@@ -631,6 +631,17 @@ class MermanReusableEngine {
     return Merman._decodeJsonMap(layoutJsonRaw(source));
   }
 
+  /// Analyzes Mermaid [source] and returns raw diagnostics JSON text.
+  String analyzeJsonRaw(String source) {
+    return _decodeText(
+        _bindings.engineCall(_bindings.engineAnalyzeJson, _engine, source));
+  }
+
+  /// Analyzes Mermaid [source] and returns the diagnostics JSON object.
+  Map<String, Object?> analyzeJson(String source) {
+    return Merman._decodeJsonMap(analyzeJsonRaw(source));
+  }
+
   /// Validates Mermaid [source] and returns raw validation JSON text.
   String validateJsonRaw(String source) {
     return _decodeText(
@@ -772,6 +783,18 @@ class Merman {
   /// Lays out Mermaid [source] and returns the layout JSON object.
   Map<String, Object?> layoutJson(String source, {String? optionsJson}) {
     return _decodeJsonMap(layoutJsonRaw(source, optionsJson: optionsJson));
+  }
+
+  /// Analyzes Mermaid [source] and returns raw diagnostics JSON text.
+  String analyzeJsonRaw(String source, {String? optionsJson}) {
+    return _decodeText(
+      _bindings.call(_bindings.analyzeJson, source, optionsJson),
+    );
+  }
+
+  /// Analyzes Mermaid [source] and returns the diagnostics JSON object.
+  Map<String, Object?> analyzeJson(String source, {String? optionsJson}) {
+    return _decodeJsonMap(analyzeJsonRaw(source, optionsJson: optionsJson));
   }
 
   /// Validates Mermaid [source] and returns raw validation JSON text.
@@ -939,6 +962,10 @@ class _MermanBindings {
             library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_layout_json',
         ),
+        engineAnalyzeJson =
+            library.lookupFunction<_EngineCallC, _EngineCallDart>(
+          'merman_engine_analyze_json',
+        ),
         engineValidateJson =
             library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_validate_json',
@@ -954,6 +981,9 @@ class _MermanBindings {
         ),
         layoutJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_layout_json',
+        ),
+        analyzeJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
+          'merman_analyze_json',
         ),
         validateJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_validate_json',
@@ -996,12 +1026,14 @@ class _MermanBindings {
   final _EngineCallDart engineRenderAscii;
   final _EngineCallDart engineParseJson;
   final _EngineCallDart engineLayoutJson;
+  final _EngineCallDart engineAnalyzeJson;
   final _EngineCallDart engineValidateJson;
   final _BufferFreeDart _bufferFree;
   final _MermanCallDart renderSvg;
   final _MermanCallDart renderAscii;
   final _MermanCallDart parseJson;
   final _MermanCallDart layoutJson;
+  final _MermanCallDart analyzeJson;
   final _MermanCallDart validateJson;
   final _MermanMetadataDart supportedDiagramsJson;
   final _MermanMetadataDart asciiSupportedDiagramsJson;

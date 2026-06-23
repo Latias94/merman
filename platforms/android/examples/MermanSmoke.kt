@@ -27,6 +27,11 @@ fun runMermanSmoke() {
         "layout JSON smoke failed"
     }
 
+    val analysisJson = MermanEngine.analyzeJson(source)
+    check(analysisJson.contains("\"version\":1") && analysisJson.contains("\"valid\":true")) {
+        "analysis JSON smoke failed"
+    }
+
     val validationJson = MermanEngine.validateJson(source)
     check(validationJson.contains("\"valid\":true")) {
         "validation JSON smoke failed"

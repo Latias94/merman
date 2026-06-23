@@ -358,6 +358,17 @@ impl MermanEngine {
         ))
     }
 
+    pub fn analyze_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_output(merman_bindings_core::analyze_json(
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+        ))
+    }
+
     pub fn validate(
         &self,
         source: String,
@@ -445,6 +456,11 @@ impl MermanReusableEngine {
     pub fn layout_json(&self, source: String) -> Result<String, MermanError> {
         let inner = self.current_inner()?;
         string_output(inner.layout_json(source.as_bytes()))
+    }
+
+    pub fn analyze_json(&self, source: String) -> Result<String, MermanError> {
+        let inner = self.current_inner()?;
+        string_output(inner.analyze_json(source.as_bytes()))
     }
 
     pub fn validate(&self, source: String) -> Result<MermanValidationResult, MermanError> {
@@ -693,6 +709,19 @@ mod tests {
 
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
+    }
+
+    #[test]
+    fn engine_returns_analysis_json() {
+        let json: Value = serde_json::from_str(
+            &engine()
+                .analyze_json("flowchart TD\nA[Hello]".to_string(), None)
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["valid"], true);
     }
 
     #[test]

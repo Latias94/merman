@@ -36,11 +36,13 @@ int merman_header_smoke(void) {
     MermanResult (*engine_set_text_measure_callback)(MermanEngine*, MermanHostTextMeasureCallback, void*) = &merman_engine_set_text_measure_callback;
     MermanResult (*engine_render_svg)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_render_svg;
     MermanResult (*engine_render_ascii)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_render_ascii;
+    MermanResult (*engine_analyze_json)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_analyze_json;
     MermanResult (*engine_parse_json)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_parse_json;
     MermanResult (*engine_layout_json)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_layout_json;
     MermanResult (*engine_validate_json)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_validate_json;
     MermanResult (*render_svg)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_svg;
     MermanResult (*render_ascii)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_ascii;
+    MermanResult (*analyze_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_analyze_json;
     MermanResult (*parse_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_parse_json;
     MermanResult (*layout_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_layout_json;
     MermanResult (*validate_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_validate_json;
@@ -81,11 +83,13 @@ int merman_header_smoke(void) {
     (void)engine_set_text_measure_callback;
     (void)engine_render_svg;
     (void)engine_render_ascii;
+    (void)engine_analyze_json;
     (void)engine_parse_json;
     (void)engine_layout_json;
     (void)engine_validate_json;
     (void)render_svg;
     (void)render_ascii;
+    (void)analyze_json;
     (void)parse_json;
     (void)layout_json;
     (void)validate_json;

@@ -48,6 +48,10 @@ object MermanEngine {
         nativeLayoutJson(source, optionsJson)
 
     @JvmStatic
+    fun analyzeJson(source: String, optionsJson: String? = null): String =
+        nativeAnalyzeJson(source, optionsJson)
+
+    @JvmStatic
     fun validateJson(source: String, optionsJson: String? = null): String =
         nativeValidateJson(source, optionsJson)
 
@@ -104,6 +108,9 @@ object MermanEngine {
 
     @JvmStatic
     private external fun nativeLayoutJson(source: String, optionsJson: String?): String
+
+    @JvmStatic
+    private external fun nativeAnalyzeJson(source: String, optionsJson: String?): String
 
     @JvmStatic
     private external fun nativeValidateJson(source: String, optionsJson: String?): String

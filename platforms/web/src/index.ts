@@ -306,6 +306,32 @@ export interface ValidationResult {
   code_name: BindingStatusCodeName;
 }
 
+export interface AnalysisResult {
+  version: number;
+  valid: boolean;
+  summary: {
+    errors: number;
+    warnings: number;
+    infos: number;
+    hints: number;
+  };
+  source: {
+    kind: "diagram" | "markdown" | "mdx";
+    path?: string | null;
+    diagram_index?: number | null;
+    language: string;
+  };
+  diagnostics: Array<{
+    id: string;
+    severity: "error" | "warning" | "info" | "hint";
+    category: string;
+    message: string;
+    code?: number | null;
+    code_name?: string | null;
+    diagram_type?: string | null;
+  }>;
+}
+
 export interface MermanWasmModule {
   default: (input?: unknown) => Promise<unknown>;
   abiVersion: () => number;
@@ -324,6 +350,8 @@ export interface MermanWasmModule {
     optionsJson: string | null | undefined,
     measurer: HostTextMeasurer
   ) => string;
+  analyze: (source: string, optionsJson?: string | null) => AnalysisResult;
+  analyzeJson?: (source: string, optionsJson?: string | null) => AnalysisResult;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   asciiSupportedDiagrams: () => string[];
   bindingCapabilities?: () => BindingCapabilities;
@@ -593,6 +621,22 @@ export function layoutJson(source: string, options?: SvgBindingOptions | string)
 
 export function layoutObject<T = unknown>(source: string, options?: SvgBindingOptions | string): T {
   return JSON.parse(layoutJson(source, options)) as T;
+}
+
+export function analyze(source: string, options?: SvgBindingOptions | string): AnalysisResult {
+  const merman = getMerman();
+  const analysis = merman.analyze?.(source, encodeOptions(options)) ?? merman.analyzeJson?.(source, encodeOptions(options));
+  if (!analysis) {
+    throw new Error("Merman analyze() is not available in this artifact.");
+  }
+  return analysis;
+}
+
+export function analyzeJson(
+  source: string,
+  options?: SvgBindingOptions | string
+): AnalysisResult {
+  return analyze(source, options);
 }
 
 export function validate(source: string, options?: SvgBindingOptions | string): ValidationResult {

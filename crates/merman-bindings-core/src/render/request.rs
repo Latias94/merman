@@ -75,10 +75,6 @@ impl RenderRequestPlan {
 
         serde_json::to_vec(&layouted).map_err(internal_json_error)
     }
-
-    pub(super) fn validate(&self, source: &str) -> Result<(), BindingError> {
-        self.parse_json(source).map(|_| ())
-    }
 }
 
 #[cfg(test)]

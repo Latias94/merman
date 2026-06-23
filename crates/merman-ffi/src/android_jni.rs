@@ -332,6 +332,23 @@ pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeLayoutJson(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeAnalyzeJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    source: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_engine_binding(
+            env,
+            handle,
+            source,
+            merman_bindings_core::BindingEngine::analyze_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeValidateJson(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -412,6 +429,23 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeLayoutJson(
             source,
             options_json,
             merman_bindings_core::layout_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_binding(
+            env,
+            source,
+            options_json,
+            merman_bindings_core::analyze_json,
         ))
     })
 }

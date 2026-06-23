@@ -1,9 +1,11 @@
 use crate::{BindingError, common};
+use merman_analysis::Analyzer;
 #[cfg(feature = "render")]
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct BindingEngine {
+    analyzer: Analyzer,
     #[cfg(feature = "render")]
     render: crate::render::CachedRenderEngine,
     #[cfg(feature = "ascii")]
@@ -12,22 +14,14 @@ pub struct BindingEngine {
 
 impl BindingEngine {
     pub fn new(options_json: &[u8]) -> Result<Self, BindingError> {
-        #[cfg(any(feature = "render", feature = "ascii"))]
-        {
-            let options = common::parse_options(options_json)?;
-            Ok(Self {
-                #[cfg(feature = "render")]
-                render: crate::render::CachedRenderEngine::new(&options)?,
-                #[cfg(feature = "ascii")]
-                ascii: crate::ascii::CachedAsciiEngine::new(&options)?,
-            })
-        }
-
-        #[cfg(not(any(feature = "render", feature = "ascii")))]
-        {
-            let _ = options_json;
-            Ok(Self {})
-        }
+        let options = common::parse_options(options_json)?;
+        Ok(Self {
+            analyzer: Analyzer::with_options(common::analysis_options(&options)?),
+            #[cfg(feature = "render")]
+            render: crate::render::CachedRenderEngine::new(&options)?,
+            #[cfg(feature = "ascii")]
+            ascii: crate::ascii::CachedAsciiEngine::new(&options)?,
+        })
     }
 
     pub fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -46,6 +40,7 @@ impl BindingEngine {
     #[cfg(feature = "render")]
     pub fn with_text_measurer(&self, measurer: Arc<dyn crate::TextMeasurer + Send + Sync>) -> Self {
         Self {
+            analyzer: self.analyzer.clone(),
             render: self.render.with_text_measurer(measurer),
             #[cfg(feature = "ascii")]
             ascii: self.ascii.clone(),
@@ -91,20 +86,23 @@ impl BindingEngine {
         }
     }
 
-    pub fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "render")]
-        {
-            self.render.validate_json(source)
-        }
+    pub fn analyze_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = common::source_text_utf8(source)?;
+        self.analyzer
+            .analyze_json(source)
+            .map_err(common::internal_json_error)
+    }
 
-        #[cfg(not(feature = "render"))]
-        {
-            let _ = source;
-            common::validation_payload_json(Err(common::feature_required_error(
-                "validation",
-                "render",
-            )))
-        }
+    pub fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        common::validation_payload_json_from_analysis(&self.analyze_payload(source)?)
+    }
+
+    fn analyze_payload(
+        &self,
+        source: &[u8],
+    ) -> Result<merman_analysis::AnalysisPayload, BindingError> {
+        let source = common::source_text_utf8(source)?;
+        Ok(self.analyzer.analyze(source))
     }
 }
 
@@ -143,13 +141,8 @@ mod tests {
         let validation: Value =
             serde_json::from_slice(&engine.validate_json(b"").unwrap()).unwrap();
 
-        if cfg!(feature = "render") {
-            assert_eq!(validation["valid"], false);
-            assert_eq!(validation["code_name"], "MERMAN_NO_DIAGRAM");
-        } else {
-            assert_eq!(validation["valid"], false);
-            assert_eq!(validation["code_name"], "MERMAN_UNSUPPORTED_FORMAT");
-        }
+        assert_eq!(validation["valid"], false);
+        assert_eq!(validation["code_name"], "MERMAN_NO_DIAGRAM");
     }
 
     #[test]

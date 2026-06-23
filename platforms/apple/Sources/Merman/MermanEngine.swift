@@ -88,6 +88,10 @@ public final class MermanEngine {
         try call(merman_layout_json, source: source, optionsJson: optionsJson)
     }
 
+    public func analyzeJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
+        try call(merman_analyze_json, source: source, optionsJson: optionsJson)
+    }
+
     public func validateJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
         try call(merman_validate_json, source: source, optionsJson: optionsJson)
     }
@@ -335,6 +339,10 @@ public final class MermanReusableEngine {
 
     public func layoutJsonRaw(_ source: String) throws -> String {
         try call(merman_engine_layout_json, source: source)
+    }
+
+    public func analyzeJsonRaw(_ source: String) throws -> String {
+        try call(merman_engine_analyze_json, source: source)
     }
 
     public func validateJsonRaw(_ source: String) throws -> String {

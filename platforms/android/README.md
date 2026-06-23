@@ -21,6 +21,7 @@ val svg = MermanEngine.renderSvg(
 )
 val semanticJson = MermanEngine.parseJson(source)
 val layoutJson = MermanEngine.layoutJson(source)
+val analysisJson = MermanEngine.analyzeJson(source)
 val ascii = MermanEngine.renderAscii(source)
 val validationJson = MermanEngine.validateJson(source)
 val diagramsJson = MermanEngine.supportedDiagramsJson()

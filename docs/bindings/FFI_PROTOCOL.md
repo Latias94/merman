@@ -50,8 +50,7 @@ first FFI release candidate:
 - tolerate missing optional fields
 - do not assume JSON field ordering
 - release every non-empty result buffer exactly once
-- prefer the diagnostics-first analysis payload once `analyze_json` is exposed by a given binding
-  package
+- prefer the diagnostics-first analysis payload exposed by a given binding package
 
 ## Types
 
@@ -364,8 +363,7 @@ returns `MERMAN_UNSUPPORTED_FORMAT`.
 ## Diagnostics-First Analysis JSON
 
 ADR 0070 reserves analysis JSON as the canonical diagnostics payload for validation, lint, Markdown
-scanning, and future LSP adapters. These symbols are the intended next protocol extension and must
-not be treated as available until `merman.h` and the native library export them for the active ABI:
+scanning, and future LSP adapters. These symbols are the protocol extension for the active ABI:
 
 ```c
 MermanResult merman_analyze_json(
@@ -469,7 +467,8 @@ reported in `data`:
 If the native library is built without the `render` feature, this function still returns
 `MERMAN_OK`, with `MERMAN_UNSUPPORTED_FORMAT` represented inside the validation payload.
 
-During the ADR 0070 migration, validation is a legacy compatibility projection. Once analysis is
+Validation is now a legacy compatibility projection over diagnostics analysis. The payload shape is
+kept for older consumers.
 implemented, `valid` should be derived from the diagnostics summary, and the top-level `error`,
 `message`, `code`, and `code_name` fields should mirror the first error diagnostic when present.
 Bindings may add optional fields such as `version`, `summary`, or `diagnostics` while preserving the
