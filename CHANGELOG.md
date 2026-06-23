@@ -6,108 +6,50 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-- Migrated the Android JNI FFI bridge to `jni` 0.22's `EnvUnowned`/`Env` model, and refreshed
-  the headless dark-theme smoke expectation to match the current visible color output.
-- Inlined the `points_on_curve` sampling helpers into `roughr`, reducing the render crate's
-  external dependency surface without changing curve sampling behavior.
-- Added a host text-measurement callback to the C FFI reusable engine API and bumped the C ABI to
-  version 2, while keeping the default headless path dependency-light and deterministic for
-  CLI/CI/docs/server rendering.
-- Added browser/WASM host text-measurement entry points for `@mermanjs/web`, including
-  `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`. The
-  playground now demonstrates this best-practice path by default and adds text-measurement plus
-  font-stack switches for reproducing headless font-metric drift such as
-  [#9](https://github.com/Latias94/merman/issues/9), where a Flowchart label rendered fully in
-  Chrome but clipped trailing punctuation in Zen Browser.
-- Extended the Android JNI, Apple Swift, and Flutter/Dart FFI wrappers to expose reusable engines
-  and host text-measurement callbacks on top of the C ABI v2 contract.
-- Documented host text-measurement best practices in the C ABI protocol, package READMEs, and
-  platform guides, covering Android JNI, Apple Swift, Flutter/Dart FFI, browser/WebView
-  measurement, callback lifetime, regression testing, and the current Python/UniFFI limitation.
-- Improved `dugong` layered layout performance by avoiding repeated dummy-node ID scans during
-  long-edge normalization and by using cached adjacency when removing graph nodes. Added a
-  `layout_dagreish` benchmark covering the full layout pipeline and normalize run/undo costs.
-- Improved benchmark coverage and hotspot workflow for Mermaid parity work. Added a corpus-backed
-  perf runner, shared corpus helpers, contract tests, and a profiler-friendly `profile_render`
-  example; Mermaid JS benchmarking now loads ZenUML on demand. Updated the performance docs to use
-  the new canary/default execution order and the broader stage/stress suite naming.
-- Reduced architecture and XYChart hot-path overhead by trimming repeated string formatting,
-  avoiding extra text-measurement work, and shrinking SVG allocation churn in the parity renderers.
-  Against Mermaid JS, the latest cross-family geomean is `0.016x` of Mermaid JS time, which is
-  about `62x` faster overall. `xychart_medium` is `73.62 µs` end-to-end versus `3.00 ms` in
-  Mermaid JS, or about `41x` faster.
-- Fixed WASM size-budget builds after the `rand 0.10` upgrade by enabling the `getrandom 0.4`
-  `wasm_js` backend for RoughJS host-random builds, and made the xtask WASM budget tooling respect
-  `CARGO_TARGET_DIR` when locating build artifacts.
-- Fixed SVG parity CI after secure config hardening by making xtask compare commands share the
-  trusted upstream-baseline site config that keeps legacy `themeVariables` init/frontmatter
-  overrides available without changing production defaults.
-- Reduced the headless SVG path parsing surface by inlining `svg_path_ops` into `roughr` and
-  upgrading `svgtypes` to `0.16.1`, which also clears the last direct `svgtypes 0.11` dependency
-  in the workspace.
+## [0.8.0-alpha.2] - 2026-06-23
 
-### Security
+This alpha focuses on Mermaid 11.15 parity, safer host integrations, and packaging readiness across CLI, Web/WASM, Typst, and native bindings.
 
-- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG
-  elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation
-  `url(...)` values while preserving local paint/reference URLs and raster data images.
-- Reduced dependency advisory exposure by upgrading `htmlize`, `nalgebra`, `ratex-*`, and
-  `roughr`'s direct `rand` usage. This removes the `paste` advisory path and avoids a direct
-  `rand 0.8` dependency in `roughr`; the remaining `rand 0.8` audit warning is transitive through
-  upstream `phf 0.11` users.
-- Documented the SVG rendering trust boundaries, residual risks, recommended output paths, and
-  upstream advisory triage checklist in `docs/security/THREAT_MODEL.md`; added public render API
-  regression tests for secure config filtering, strict URL handling, loose HTML label cleanup, and
-  `resvg_safe` CSS cleanup.
-- Added raster security regressions covering default PNG/JPG pixmap budgets, custom raster size
-  limits, and oversized intrinsic SVG rejection before PDF conversion.
-- Added a `Security Audit` GitHub Actions workflow that runs `cargo audit` on Rust dependency
-  changes and on a weekly schedule.
-- Hardened diagram-level config handling against CSS injection in generated SVG output by treating
-  `fontFamily`, `altFontFamily`, `themeCSS`, and `themeVariables` as secure keys by default, while
-  preserving trusted site-level config and explicit opt-in compatibility.
-- Hardened Mermaid style declaration parsing and configured font-family normalization so malformed
-  CSS fragments cannot break out into extra SVG style rules.
-- Fixed Gantt `excludes` handling so diagrams that exclude every weekday, or otherwise produce a
-  long run of excluded dates, fail with a parse error instead of looping during task date
-  adjustment.
+### Breaking Changes
 
-## [0.8.0-alpha.2] - 2026-06-13
-
-This alpha continues Merman for the next stable release by tightening headless rendering
-consistency, improving Mermaid parity gates, and paying down renderer architecture debt. Most of
-the work is internal, but it should make CLI, library, SVG, and raster output behave more
-predictably across diagram families.
+- The C ABI is now version 2 so native hosts can provide text-measurement callbacks; C, Android JNI, Apple Swift, and Flutter/Dart integrations should rebuild against the updated headers and wrapper APIs.
+- Diagram-level CSS-sensitive config is filtered more strictly by default; move trusted `themeCSS`, font-family, and related theme overrides into trusted site config or the documented compatibility path when you intentionally need those overrides.
 
 ### Added
 
-- Added an opt-in `cytoscape-layout` feature for Architecture and Mindmap, so size-sensitive
-  browser and Typst builds can leave those heavier layout dependencies out. The wasm-size matrix
-  now reports browser, Typst, full, stripped, gzip, and brotli presets for repeatable release gates.
-- Added Homebrew install guidance for `merman-cli` on macOS and Linux. Thanks
-  [@colindean](https://github.com/colindean) for the contribution in
-  [#4](https://github.com/Latias94/merman/pull/4).
+- Added source-backed ELK layout support for Flowchart and Class diagrams, including Mermaid-reachable ELK options such as `mergeEdges` and `nodePlacementStrategy`.
+- Added `look: handDrawn` rendering support for Flowchart and Class diagrams, including deterministic seeding and fixes for rough edges, clusters, and decision shapes.
+- Added browser/WASM host text-measurement APIs for `@mermanjs/web`, including `renderSvgWithTextMeasurer`, `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer`.
+- Added host text-measurement callbacks to the native binding surfaces for C, Android JNI, Apple Swift, and Flutter/Dart.
+- Added Typst package improvements for document-context-aware diagrams, figure/layout controls, hardened document APIs, typography handling, and Typst 0.15 smoke coverage.
+- Added `merman-cli completion <shell>` for shell completion generation while keeping `merman-cli` as the installed command name rather than adding an `mmdc` alias.
+- Added repeatable WASM size reporting and budgets for browser and Typst presets, plus an opt-in `cytoscape-layout` feature for size-sensitive Architecture and Mindmap builds.
+- Added Homebrew install guidance for `merman-cli` on macOS and Linux. Thanks [@colindean](https://github.com/colindean) for the contribution in [#4](https://github.com/Latias94/merman/pull/4).
 
 ### Changed
 
-- Unified SVG-to-raster export through the same renderer-owned operation pipeline used by
-  library and CLI callers, so sanitization, sizing, and encoding now follow one path.
-- Centralized diagram configuration handling across the renderer. Family-owned config views now
-  preserve Mermaid-compatible defaults while keeping layout and SVG decisions closer to the code
-  that consumes them.
-- Improved C4 and Journey layout parity by separating their configuration/layout internals and
-  refreshing the affected layout baselines.
-- Tightened admission checks so parser, layout, and SVG coverage claims are validated against
-  `merman-core` diagram-family capability facts before alignment reports pass.
-- Simplified parser and SVG parity internals behind focused modules, including the core parse
-  pipeline, family renderers, presentation themes, and CSS regression tests.
+- Improved Flowchart ELK parity across compound subgraphs, cross-hierarchy edges, external ports, labels, self-loops, and source-backed layout defaults.
+- Improved CLI ergonomics and functional `mmdc` workflow coverage by grouping help, separating top-level export flags from developer `render` options, and documenting command-name compatibility boundaries.
+- Improved the playground and Web/WASM package so browser text measurement and Mermaid ELK layouts load on demand instead of forcing heavier default startup paths.
+- Unified SVG-to-raster export through the same renderer-owned operation pipeline used by library and CLI callers, so sanitization, sizing, and encoding follow one path.
+- Improved performance for layered layout and hot render paths, including Architecture and XYChart output, without changing public rendering APIs.
+- Improved benchmark and parity tooling so release checks can cover source-backed ELK, hand-drawn output, WASM sizes, and Mermaid JS comparisons more repeatably.
 
 ### Fixed
 
-- Fixed Journey raster rendering in the resvg pipeline. Thanks
-  [@vlasky](https://github.com/vlasky) for the contribution in
-  [#6](https://github.com/Latias94/merman/pull/6).
+- Fixed Journey raster rendering in the resvg pipeline. Thanks [@vlasky](https://github.com/vlasky) for the contribution in [#6](https://github.com/Latias94/merman/pull/6).
+- Fixed Flowchart hand-drawn decision-node silhouettes and other rough node shapes so `layout: elk`, `look: handDrawn`, and dark themes render more consistently.
+- Fixed sanitized Flowchart click links, fallback text entity decoding, and several browser/host text-measurement edge cases that could affect exported SVG readability.
+- Fixed Gantt `excludes` handling so diagrams that exclude every weekday, or otherwise produce a long run of excluded dates, fail with a parse error instead of looping during task date adjustment.
+- Fixed WASM size-budget builds after dependency updates and made the size tooling respect `CARGO_TARGET_DIR` when locating build artifacts.
 - Refreshed Kanban and Timeline layout snapshots to restore CI.
+
+### Security
+
+- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation `url(...)` values while preserving local paint/reference URLs and raster data images.
+- Hardened diagram config and Mermaid style parsing against CSS injection while preserving trusted site-level compatibility options.
+- Added raster security regressions for default PNG/JPG pixmap budgets, custom raster size limits, and oversized intrinsic SVG rejection before PDF conversion.
+- Added a `Security Audit` GitHub Actions workflow for Rust dependency changes and weekly scheduled audit runs.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 
