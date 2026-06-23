@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-06-09
+Last updated: 2026-06-23
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -184,6 +184,22 @@ directives. Explicit `svg.*` options override profile output options.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `parse.suppress_errors` | boolean | `false` | Enables lenient parsing when true. |
+
+## Analysis Consumers
+
+Diagnostics-first analysis, validation projection, CLI linting, Markdown/MDX scanning, and future
+LSP adapters use the same `options_json` envelope. Analysis consumers should honor options that
+affect parsing, deterministic time, Mermaid site config, and resource limits:
+
+- `fixed_today` and `fixed_local_offset_minutes` for time-dependent diagram semantics;
+- `site_config` and diagram directives for Mermaid-compatible parse/config behavior;
+- `parse.*` for parser strictness;
+- `resources.*` for source and model budgets.
+
+Render-only options such as `layout.*`, `svg.*`, and host text-measurement settings should not be
+required for the default analyzer. Layout-backed or render-backed diagnostics may opt into those
+fields later, but they must be profile-controlled and reported through the same diagnostic payload
+defined by ADR 0070.
 
 ## Layout Options
 

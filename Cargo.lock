@@ -2652,6 +2652,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-analysis"
+version = "0.8.0-alpha.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "merman-ascii"
 version = "0.8.0-alpha.2"
 dependencies = [

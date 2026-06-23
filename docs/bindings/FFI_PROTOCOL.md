@@ -1,7 +1,7 @@
 # Merman FFI Protocol
 
 Status: Draft
-Last updated: 2026-06-04
+Last updated: 2026-06-23
 
 This document defines the first C ABI protocol for `merman-ffi`.
 
@@ -12,6 +12,7 @@ Authoritative code:
 - `crates/merman-ffi/include/merman.h`
 - `crates/merman-ffi/src/lib.rs`
 - `docs/adr/0066-ffi-binding-strategy.md`
+- `docs/adr/0070-diagnostics-first-analysis-contract.md`
 - `docs/workstreams/ffi-api/DESIGN.md`
 
 ## Build And Link
@@ -35,8 +36,9 @@ cargo build -p merman-ffi --release --features raster,ratex-math
 
 The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, binding
 metadata, and optional host text measurement for reusable engines. Raster byte outputs are not part
-of this protocol version even though the Rust crate has a reserved `raster` feature gate. All
-source-processing functions accept the shared `options_json` contract documented in
+of this protocol version even though the Rust crate has a reserved `raster` feature gate. The next
+protocol extension reserves diagnostics-first analysis JSON as the canonical validation/lint
+payload. All source-processing functions accept the shared `options_json` contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
 ## Stability
@@ -48,6 +50,8 @@ first FFI release candidate:
 - tolerate missing optional fields
 - do not assume JSON field ordering
 - release every non-empty result buffer exactly once
+- prefer the diagnostics-first analysis payload once `analyze_json` is exposed by a given binding
+  package
 
 ## Types
 
@@ -357,6 +361,88 @@ On success, `data` contains UTF-8 layout JSON using the same `LayoutedDiagram` s
 `merman-cli layout`. If the native library is built without the `render` feature, this function
 returns `MERMAN_UNSUPPORTED_FORMAT`.
 
+## Diagnostics-First Analysis JSON
+
+ADR 0070 reserves analysis JSON as the canonical diagnostics payload for validation, lint, Markdown
+scanning, and future LSP adapters. These symbols are the intended next protocol extension and must
+not be treated as available until `merman.h` and the native library export them for the active ABI:
+
+```c
+MermanResult merman_analyze_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+
+MermanResult merman_engine_analyze_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+```
+
+When implemented, these functions should return `MERMAN_OK` when the analysis payload was produced.
+Diagram errors are represented inside `data` as diagnostics. Transport errors such as invalid
+pointers, invalid UTF-8, invalid options JSON, panics, and internal serialization failures remain
+non-zero `MermanResult.code` values.
+
+The default analyzer is expected to be render-free. Optional layout or render checks may be added
+later behind feature/profile controls, but must use the same payload shape and report disabled
+checks as diagnostics or profile metadata rather than changing the top-level transport contract.
+
+Initial payload shape:
+
+```json
+{
+  "version": 1,
+  "valid": false,
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0,
+    "hints": 0
+  },
+  "source": {
+    "kind": "diagram",
+    "path": null,
+    "diagram_index": null,
+    "language": "mermaid"
+  },
+  "diagnostics": [
+    {
+      "id": "merman.parse.no_diagram",
+      "severity": "error",
+      "category": "parse",
+      "message": "no Mermaid diagram detected",
+      "code": 4,
+      "code_name": "MERMAN_NO_DIAGRAM",
+      "diagram_type": null,
+      "span": {
+        "byte_start": 0,
+        "byte_end": 0,
+        "line": 1,
+        "column": 1,
+        "end_line": 1,
+        "end_column": 1,
+        "lsp_range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 }
+        }
+      },
+      "related": [],
+      "help": null
+    }
+  ]
+}
+```
+
+`span` is optional. When present, `byte_start` and `byte_end` are canonical UTF-8 byte offsets in
+the source slice passed to the analyzer. Line/column fields are 1-based for CLI output.
+`lsp_range` is 0-based and UTF-16-oriented for language-server adapters. Markdown and MDX scanning
+should map fence-local spans back to host-document ranges before returning diagnostics to callers
+that asked for document analysis.
+
 ## Validation JSON
 
 ```c
@@ -368,7 +454,7 @@ MermanResult merman_validate_json(
 );
 ```
 
-This function returns `MERMAN_OK` when the validation payload was produced. Invalid source is
+This ABI v2 function returns `MERMAN_OK` when the validation payload was produced. Invalid source is
 reported in `data`:
 
 ```json
@@ -382,6 +468,13 @@ reported in `data`:
 
 If the native library is built without the `render` feature, this function still returns
 `MERMAN_OK`, with `MERMAN_UNSUPPORTED_FORMAT` represented inside the validation payload.
+
+During the ADR 0070 migration, validation is a legacy compatibility projection. Once analysis is
+implemented, `valid` should be derived from the diagnostics summary, and the top-level `error`,
+`message`, `code`, and `code_name` fields should mirror the first error diagnostic when present.
+Bindings may add optional fields such as `version`, `summary`, or `diagnostics` while preserving the
+legacy top-level fields. New integrations should prefer analysis JSON after the active package
+exports it.
 
 ## Metadata JSON
 

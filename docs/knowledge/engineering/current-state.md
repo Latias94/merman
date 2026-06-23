@@ -5,17 +5,20 @@ status: active
 
 # Current State
 
-- Goal: 完成 merman 的 Flowchart ELK 适配：以 Mermaid 与 Eclipse ELK 源码为依据持续 port 到成熟可默认使用，补齐 source-backed layered/compound 语义、重构适配层边界、收敛 ELK fixture，并保持默认 render 路径稳定。
+- Goal: 执行 diagnostics-first analysis core 重构：把 `validate` 从粗粒度通过/失败接口升级成跨 Rust、CLI、WASM、FFI、UniFFI、平台 wrapper 共用的诊断契约，为 `merman-cli lint` 和未来 LSP 打基础。
 - Branch: main
-- Last verified: 2026-06-18
-- Done: Flowchart ELK source-backed probes are green; compound parent-end external dummy net-flow semantics were ported closer to ELK source; inside-self-loop edges now route into the source node nested graph when ELK `insideSelfLoops.activate` is on; targeted compound/importer/layout tests pass.
-- In progress: continue source-backed semantic convergence around compound/self-loop boundary; assess whether any higher-level adapter boundary still needs source-backed rework.
+- Last verified: 2026-06-23
+- Done: diagnostics-first scope was confirmed; `docs/plans/2026-06-23-002-refactor-diagnostics-first-analysis-plan.md` was written; ADR 0070 and binding protocol docs now reserve diagnostics-first analysis as the canonical validation/lint contract; `merman-analysis` now provides the first shared payload/source-map types with schema and UTF-16 range tests; Python compatibility was fixed locally by mapping `python` to `python3` in `~/.zshenv`; previous Flowchart ELK source-backed probes remained the last code-verification state from 2026-06-18.
+- In progress: build the Rust analysis pipeline on top of the new payload/source-map crate before migrating bindings.
 - Blocked: none
-- Next action: decide whether to port further ELK recursive/compound behavior or stage and continue with the next source-backed gap.
+- Next action: implement U3 from the diagnostics-first plan: map no-diagram, parse, unsupported, resource, and existing family warnings into `AnalysisPayload` without invoking render/layout by default.
 
 # Citations
 
-- [compound.rs](../../../../crates/merman-elk-layered/src/compound.rs)
-- [importer.rs](../../../../crates/merman-elk-layered/src/importer.rs)
-- [pipeline.rs](../../../../crates/merman-elk-layered/src/pipeline.rs)
-- [layout.rs](../../../../crates/merman-layout-elk/src/lib.rs)
+- [Diagnostics-first plan](../../plans/2026-06-23-002-refactor-diagnostics-first-analysis-plan.md)
+- [Diagnostics-first session handoff](sessions/2026-06-23-diagnostics-first-analysis-plan-handoff.md)
+- [Diagnostics-first analysis ADR](../../adr/0070-diagnostics-first-analysis-contract.md)
+- [merman-analysis crate](../../../crates/merman-analysis/src/lib.rs)
+- [FFI protocol](../../bindings/FFI_PROTOCOL.md)
+- [FFI binding strategy ADR](../../adr/0066-ffi-binding-strategy.md)
+- [WASM package surface ADR](../../adr/0069-wasm-package-surface-semantics.md)

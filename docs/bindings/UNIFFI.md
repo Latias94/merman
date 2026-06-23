@@ -12,6 +12,8 @@ Status: experimental generated-binding surface.
 - `MermanEngine::parse_json(source, options_json)`
 - `MermanEngine::layout_json(source, options_json)`
 - `MermanEngine::validate(source, options_json)`
+- future `MermanEngine::analyze_json(source, options_json)` once the ADR 0070 analysis contract is
+  implemented
 - `MermanEngine::reusable_engine(options_json)`
 - `MermanEngine::reusable_engine_with_text_measurer(options_json, measurer)`
 - `MermanEngine::supported_diagrams()`
@@ -20,6 +22,7 @@ Status: experimental generated-binding surface.
 - `MermanEngine::supported_host_theme_presets()`
 - `MermanEngine::diagram_family_capabilities()`
 - `MermanReusableEngine` render/parse/layout/validation methods
+- future `MermanReusableEngine` analysis method once the shared binding facade exposes it
 - `MermanReusableEngine::set_text_measurer(measurer)`
 - `MermanReusableEngine::clear_text_measurer()`
 - `MermanTextMeasurer` callback interface
@@ -29,6 +32,20 @@ The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a 
 Swift, Kotlin, Python, and Ruby package lanes.
 The optional `options_json` argument uses the shared contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
+
+## Analysis And Validation
+
+`validate` is the current compatibility method. It returns the legacy validation payload with
+top-level `valid`, `error`, `message`, `code`, and `code_name` fields.
+
+ADR 0070 makes diagnostics-first analysis the next canonical method for linting, CI, editor
+integrations, and future LSP adapters. When the shared binding facade implements analysis, UniFFI
+should expose it as JSON rather than inventing a UniFFI-only diagnostic record model. Generated
+bindings may add typed helpers later, but the JSON payload should remain byte-for-byte compatible
+with the C ABI and WASM surfaces.
+
+After analysis lands, `validate` should be implemented as a projection over analysis diagnostics so
+existing package users keep working while new integrations can consume `analyze_json`.
 
 Generated bindings use Merman's built-in headless measurer by default. Hosts that need DOM,
 WebView, Core Text, Android, Flutter, or another platform font stack can use
