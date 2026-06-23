@@ -73,13 +73,13 @@ pub(super) fn draw_edge(
     let layouts = &request.graph_layout.nodes;
     let Some(from) = layouts.iter().find(|layout| layout.id == request.edge.from) else {
         return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
+            diagram_type: request.graph.diagram_type(),
             feature: "edges with missing endpoint layouts",
         });
     };
     let Some(to) = layouts.iter().find(|layout| layout.id == request.edge.to) else {
         return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
+            diagram_type: request.graph.diagram_type(),
             feature: "edges with missing endpoint layouts",
         });
     };
@@ -94,7 +94,7 @@ pub(super) fn draw_edge(
         charset: request.charset,
     }) else {
         return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
+            diagram_type: request.graph.diagram_type(),
             feature: "unroutable graph edges",
         });
     };

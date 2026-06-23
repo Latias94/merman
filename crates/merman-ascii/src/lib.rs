@@ -14,6 +14,7 @@ mod graph;
 mod options;
 mod relation_graph;
 mod sequence;
+mod state;
 mod terminal;
 mod text;
 mod xychart;
@@ -26,6 +27,7 @@ use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
 use merman_core::diagrams::flowchart::FlowchartV2Model;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::state::StateDiagramRenderModel;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
@@ -56,6 +58,7 @@ pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -
         RenderSemanticModel::Er(model) => render_er(model, options),
         RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
         RenderSemanticModel::Sequence(model) => render_sequence(model, options),
+        RenderSemanticModel::State(model) => render_state(model, options),
         RenderSemanticModel::XyChart(model) => render_xychart(model, options),
         other => Err(AsciiError::UnsupportedDiagram {
             diagram_type: other.kind().to_string(),
@@ -86,6 +89,15 @@ pub fn render_sequence(
     options.validate()?;
     let diagram = sequence::from_sequence_model(model)?;
     sequence::render_sequence_diagram(&diagram, options)
+}
+
+pub fn render_state(
+    model: &StateDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    let graph = state::from_state_model(model)?;
+    graph::render_graph(&graph, options)
 }
 
 pub fn render_xychart(

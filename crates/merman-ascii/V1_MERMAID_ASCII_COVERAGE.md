@@ -59,6 +59,7 @@ The following families are product extensions beyond the `mermaid-ascii` v1 gate
 
 - `classDiagram`
 - `erDiagram`
+- `stateDiagram`
 - `xychart`
 - any Mermaid family not rendered by `repo-ref/mermaid-ascii`
 

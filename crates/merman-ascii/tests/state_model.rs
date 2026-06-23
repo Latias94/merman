@@ -1,0 +1,133 @@
+use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
+use merman_core::{Engine, ParseOptions};
+
+fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("state diagram should parse")
+        .expect("state diagram should be detected");
+
+    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
+    render_model(&parsed.model, options)
+}
+
+fn assert_unsupported_state(input: &str, feature: &'static str) {
+    let err = render_state(input, &AsciiRenderOptions::ascii()).unwrap_err();
+
+    assert_eq!(
+        err,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "state",
+            feature,
+        }
+    );
+}
+
+#[test]
+fn state_simple_transition_renders_through_render_model() {
+    let rendered = render_state("stateDiagram-v2\nA --> B: go", &AsciiRenderOptions::ascii())
+        .expect("simple state transition should render");
+
+    assert!(
+        rendered.lines().any(|line| line.contains("| A")),
+        "source state should render as a graph node:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("go"),
+        "transition label should render on the graph edge:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().any(|line| line.contains("| B")),
+        "target state should render as a graph node:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_lr_direction_renders_states_on_one_row() {
+    let rendered = render_state(
+        "stateDiagram-v2\ndirection LR\nA --> B: go",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("LR state direction should render");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.contains("| A |") && line.contains("| B |")),
+        "LR state output should place source and target on the same row:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_start_and_end_pseudo_states_render_as_visible_nodes() {
+    let rendered = render_state(
+        "stateDiagram-v2\n[*] --> A\nA --> [*]",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("start and end pseudo states should render");
+
+    assert!(
+        rendered.matches("| * |").count() >= 2,
+        "start and end pseudo states should render as visible star nodes:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_alias_description_renders_human_label() {
+    let rendered = render_state(
+        "stateDiagram-v2\nstate \"Small State 1\" as namedState1\nnamedState1 --> Done",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("state aliases and descriptions should render");
+
+    assert!(
+        rendered.contains("Small State 1"),
+        "state description should be used as the visible label:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("namedState1"),
+        "internal state id should not replace the human label:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_composite_without_group_transition_renders_group_box() {
+    let rendered = render_state(
+        "stateDiagram-v2\nstate Parent {\n  Child\n}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("composite state without group edge endpoints should render");
+
+    assert!(
+        rendered.contains("Parent"),
+        "composite state title should render as a group label:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Child"),
+        "composite state child should render inside the graph output:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_notes_are_explicitly_unsupported() {
+    assert_unsupported_state(
+        "stateDiagram-v2\nA --> B\nnote right of A : note text",
+        "state notes",
+    );
+}
+
+#[test]
+fn state_links_are_explicitly_unsupported() {
+    assert_unsupported_state(
+        "stateDiagram-v2\nS1\nclick S1 \"https://example.com\" \"Go\"",
+        "state links",
+    );
+}
+
+#[test]
+fn state_group_transition_endpoints_are_explicitly_unsupported() {
+    assert_unsupported_state(
+        "stateDiagram-v2\nstate Parent {\n  Child\n}\nA --> Parent",
+        "state group transition endpoints",
+    );
+}

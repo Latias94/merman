@@ -1,0 +1,247 @@
+use crate::error::{AsciiError, Result};
+use crate::graph::{
+    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
+};
+use merman_core::diagrams::state::{StateDiagramRenderModel, StateDiagramRenderNode};
+use std::collections::{HashMap, HashSet};
+
+const STATE_DIAGRAM_TYPE: &str = "state";
+
+pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiGraph> {
+    validate_supported_state_model(model)?;
+
+    let group_members = group_members_by_id(model);
+    let direction = parse_state_direction(&model.direction)?;
+    let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
+
+    for node in &model.nodes {
+        if is_group_container(node, &group_members) {
+            continue;
+        }
+        graph.add_node_with_shape_and_style(
+            &node.id,
+            state_node_label(node),
+            state_node_shape(node)?,
+            GraphNodeStyle::default(),
+        );
+    }
+
+    for node in sorted_group_nodes(model, &group_members) {
+        let members = group_members.get(&node.id).cloned().unwrap_or_default();
+        graph.add_group_with_style(
+            &node.id,
+            state_node_label(node),
+            node.dir
+                .as_deref()
+                .map(parse_state_direction)
+                .transpose()?
+                .map(GraphDirection::canonical),
+            members,
+            GraphGroupStyle::default(),
+        );
+    }
+
+    for edge in &model.edges {
+        graph.add_edge_with_attrs(
+            &edge.start,
+            &edge.end,
+            GraphEdgeAttrs {
+                label: edge_label(&edge.label),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+    }
+
+    Ok(graph)
+}
+
+fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()> {
+    if !model.links.is_empty() {
+        return Err(unsupported("state links"));
+    }
+    if !model.style_classes.is_empty() {
+        return Err(unsupported("state styles"));
+    }
+    if model.states.values().any(|state| state.note.is_some()) {
+        return Err(unsupported("state notes"));
+    }
+
+    let group_members = group_members_by_id(model);
+    let group_container_ids = model
+        .nodes
+        .iter()
+        .filter(|node| is_group_container(node, &group_members))
+        .map(|node| node.id.as_str())
+        .collect::<HashSet<_>>();
+
+    for node in &model.nodes {
+        validate_supported_state_node(node)?;
+    }
+
+    for edge in &model.edges {
+        if edge
+            .classes
+            .split_whitespace()
+            .any(|class| class == "note-edge")
+        {
+            return Err(unsupported("state notes"));
+        }
+        if group_container_ids.contains(edge.start.as_str())
+            || group_container_ids.contains(edge.end.as_str())
+        {
+            return Err(unsupported("state group transition endpoints"));
+        }
+        if !edge.arrow_type_end.is_empty()
+            && !matches!(
+                edge.arrow_type_end.as_str(),
+                "arrow_barb" | "arrow_barb_neo"
+            )
+        {
+            return Err(unsupported("state arrow types"));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_supported_state_node(node: &StateDiagramRenderNode) -> Result<()> {
+    if matches!(node.shape.as_str(), "note" | "noteGroup") || node.position.is_some() {
+        return Err(unsupported("state notes"));
+    }
+    if node.shape == "divider" {
+        return Err(unsupported("state dividers"));
+    }
+    if !node.label_style.trim().is_empty()
+        || !node.css_styles.is_empty()
+        || !node.css_compiled_styles.is_empty()
+    {
+        return Err(unsupported("state styles"));
+    }
+    state_node_shape(node)?;
+    Ok(())
+}
+
+fn unsupported(feature: &'static str) -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: STATE_DIAGRAM_TYPE,
+        feature,
+    }
+}
+
+fn group_members_by_id(model: &StateDiagramRenderModel) -> HashMap<String, Vec<String>> {
+    let mut members = HashMap::<String, Vec<String>>::new();
+    for node in &model.nodes {
+        let Some(parent_id) = node.parent_id.as_ref() else {
+            continue;
+        };
+        members
+            .entry(parent_id.clone())
+            .or_default()
+            .push(node.id.clone());
+    }
+    members
+}
+
+fn sorted_group_nodes<'a>(
+    model: &'a StateDiagramRenderModel,
+    group_members: &HashMap<String, Vec<String>>,
+) -> Vec<&'a StateDiagramRenderNode> {
+    let parent_by_id = model
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node.parent_id.as_deref()))
+        .collect::<HashMap<_, _>>();
+    let mut groups = model
+        .nodes
+        .iter()
+        .filter(|node| is_group_container(node, group_members))
+        .collect::<Vec<_>>();
+    groups.sort_by_key(|node| std::cmp::Reverse(node_depth(node, &parent_by_id)));
+    groups
+}
+
+fn node_depth(node: &StateDiagramRenderNode, parent_by_id: &HashMap<&str, Option<&str>>) -> usize {
+    let mut depth = 0;
+    let mut seen = HashSet::new();
+    let mut parent = node.parent_id.as_deref();
+
+    while let Some(parent_id) = parent {
+        if !seen.insert(parent_id) {
+            break;
+        }
+        depth += 1;
+        parent = parent_by_id.get(parent_id).copied().flatten();
+    }
+
+    depth
+}
+
+fn is_group_container(
+    node: &StateDiagramRenderNode,
+    group_members: &HashMap<String, Vec<String>>,
+) -> bool {
+    node.is_group
+        && group_members
+            .get(&node.id)
+            .is_some_and(|members| !members.is_empty())
+}
+
+fn state_node_shape(node: &StateDiagramRenderNode) -> Result<GraphNodeShape> {
+    match node.shape.as_str() {
+        "rect" | "rectWithTitle" => Ok(GraphNodeShape::Rect),
+        "roundedWithTitle" | "stateStart" | "stateEnd" => Ok(GraphNodeShape::Rounded),
+        _ => Err(unsupported("state node shapes")),
+    }
+}
+
+fn state_node_label(node: &StateDiagramRenderNode) -> String {
+    if matches!(node.shape.as_str(), "stateStart" | "stateEnd") {
+        return "*".to_string();
+    }
+
+    let mut lines = Vec::new();
+    if let Some(label) = node.label.as_ref() {
+        if let Some(label) = label.as_str() {
+            push_nonempty_label_line(&mut lines, label);
+        } else if let Some(items) = label.as_array() {
+            for item in items {
+                if let Some(line) = item.as_str() {
+                    push_nonempty_label_line(&mut lines, line);
+                }
+            }
+        }
+    }
+    if let Some(description) = node.description.as_ref() {
+        for line in description {
+            push_nonempty_label_line(&mut lines, line);
+        }
+    }
+
+    if lines.is_empty() {
+        node.id.clone()
+    } else {
+        lines.join("\n")
+    }
+}
+
+fn push_nonempty_label_line(lines: &mut Vec<String>, line: &str) {
+    let line = line.trim();
+    if !line.is_empty() {
+        lines.push(line.to_string());
+    }
+}
+
+fn edge_label(label: &str) -> Option<String> {
+    let label = label.trim();
+    (!label.is_empty()).then(|| label.to_string())
+}
+
+fn parse_state_direction(direction: &str) -> Result<GraphDirection> {
+    match direction.trim() {
+        "LR" => Ok(GraphDirection::LeftRight),
+        "RL" => Ok(GraphDirection::RightLeft),
+        "TB" | "TD" => Ok(GraphDirection::TopDown),
+        "BT" => Ok(GraphDirection::BottomTop),
+        _ => Err(unsupported("unsupported state directions")),
+    }
+}
