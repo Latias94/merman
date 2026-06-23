@@ -87,6 +87,8 @@ jobs:
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
+      TYPST_CLI_VERSION: "0.14.2"
+      TYPST_COMPAT_CLI_VERSION: "0.15.0"
     steps:
       - uses: actions/checkout@v6
 
@@ -107,7 +109,7 @@ jobs:
         run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Install Typst
-        run: cargo install typst-cli --version 0.14.2 --locked
+        run: cargo install typst-cli --version "${TYPST_CLI_VERSION}" --locked
 
       - name: Test Typst plugin crate
         run: cargo test -p merman-typst-plugin
@@ -164,6 +166,12 @@ jobs:
           ```
           EOF
           typst compile --package-path target/typst-preview target/typst-smoke/preview-package.typ target/typst-smoke/preview-package.pdf
+
+      - name: Install Typst compatibility version
+        run: cargo install typst-cli --version "${TYPST_COMPAT_CLI_VERSION}" --locked --force
+
+      - name: Smoke Typst compatibility version
+        run: cargo run -p xtask -- typst-package-smoke --skip-wasm-build
 
   platform-script-syntax:
     name: platform-script-syntax

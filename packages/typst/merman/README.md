@@ -225,7 +225,7 @@ Returns a raw block show handler. This is the shortest way to enable Mermaid fen
 
 The Typst package uses its own version track and is not locked to the Rust crate version.
 
-Build the default minimal Typst package locally:
+Build the default Typst package locally:
 
 ```sh
 cargo run -p xtask -- build-typst-package
@@ -243,10 +243,17 @@ For local `@preview` smoke tests, copy the built package under a preview namespa
 cargo run -p xtask -- typst-package-smoke --skip-wasm-build
 ```
 
-The default package build is size-oriented and does not enable `core-full`. Build the larger full-config/full-sanitization artifact with:
+The default package build is the publish profile and enables `render`, `core-full`, and `elk-layout`.
+Build the no-ELK full-config artifact with:
 
 ```sh
 cargo run -p xtask -- build-typst-package --profile full
+```
+
+Build the protocol-only transport with:
+
+```sh
+cargo run -p xtask -- build-typst-package --profile minimal
 ```
 
 ## Current Limits
@@ -254,3 +261,5 @@ cargo run -p xtask -- build-typst-package --profile full
 - Output is SVG embedded through Typst `image`; diagrams are not Typst-native vector elements.
 - Font family and size can be forwarded as style intent, but exact Typst font glyph measurement is not automatic.
 - Browser-only Mermaid interactions such as script callbacks and popup behavior are not expected to work in static Typst output.
+- The package is smoke-tested with Typst 0.14.2 and 0.15.0. Typst 0.15 HTML export remains experimental and is not a package promise here.
+- The `readable` and `parity` pipelines can embed SVG structures that Typst warns about; `resvg-safe` is the intended embedded-image path for package output.

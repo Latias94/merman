@@ -6,7 +6,6 @@
 
 #let figure-profile = mermaid-profile(
   id: "figure-wrapper",
-  pipeline: "readable",
   typography: (
     font: "Figure Sans",
     size: "18px",
@@ -37,7 +36,6 @@
   context-aware: true,
   profile: figure-profile,
   id: "context-aware-figure",
-  pipeline: "readable",
   placement: top,
   caption-position: bottom,
   width: 80%,

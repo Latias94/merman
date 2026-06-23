@@ -16,7 +16,6 @@
 #let context-image = mermaid-context(
   source,
   id: "typst-context-font",
-  pipeline: "readable",
   width: 100%,
 )
 
