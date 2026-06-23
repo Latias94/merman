@@ -30,7 +30,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Sequence control blocks | Supported subset | `loop`, `opt`, `break`, `rect`, and `par_over` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. Nested control blocks render as nested frames with stable row ownership. |
 | Control-block combinations | Supported subset | Notes, activations, create/destroy lifecycle rows, and participant boxes are covered with control-block frames. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
-| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit foreground roles for participants, lifelines, activations, messages, notes, boxes, and control frames. Parseable Mermaid `box` fill and `rect` background colors also render as terminal/HTML backgrounds; browser-only alpha/transparency forms remain deferred when the terminal cannot represent them faithfully. |
+| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit foreground roles for participants, lifelines, activations, messages, notes, boxes, and control frames. Mermaid `box` fill colors in supported sequence syntax (`rgb`/`rgba`/`hsl`/`hsla`/named colors) and parseable `rect` backgrounds render as terminal/HTML backgrounds when they can be represented without alpha blending. |
 
 ## Explicitly Unsupported
 
@@ -67,7 +67,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 - Sequence messages and notes wrap with deterministic terminal display-width heuristics; this is a
   text rendering approximation rather than Mermaid's browser font measurement path.
 - Sequence box fill colors render as terminal/HTML backgrounds only when Mermaid supplies a color
-  the terminal can represent faithfully; otherwise they remain plain text boxes with labels.
+  the terminal can represent faithfully. Mermaid sequence syntax does not preserve `#hex` box/rect
+  colors because `#` is handled as a comment marker upstream.
 - Mermaid `rect` style/color expressions render as frame backgrounds when the value is a parseable
   terminal color. Browser-only transparency/alpha forms stay visible as labels rather than being
   approximated.
