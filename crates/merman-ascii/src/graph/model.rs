@@ -46,6 +46,7 @@ pub(super) struct AsciiGraphNode {
 pub(crate) struct GraphNodeStyle {
     pub(super) text: Option<AsciiRgb>,
     pub(super) border: Option<AsciiRgb>,
+    pub(super) background: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +128,7 @@ pub(crate) enum GraphGroupKind {
 pub(crate) struct GraphGroupStyle {
     pub(super) title: Option<AsciiRgb>,
     pub(super) border: Option<AsciiRgb>,
+    pub(super) background: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

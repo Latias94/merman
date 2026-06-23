@@ -220,6 +220,12 @@ fn flowchart_style_color_truecolor_maps_classdef_and_inline_node_foreground_with
             "fill/background style should not be emitted as foreground in {rendered:?}"
         );
     }
+    for expected_background_code in ["\u{1b}[48;2;255;238;204m", "\u{1b}[48;2;0;17;34m"] {
+        assert!(
+            rendered.contains(expected_background_code),
+            "missing background {expected_background_code:?} in {rendered:?}"
+        );
+    }
 }
 
 #[test]
@@ -244,6 +250,25 @@ fn flowchart_style_color_html_maps_linkstyle_edge_and_label_foreground_without_p
     assert!(
         rendered.contains("<span style=\"color:#654321\">go</span>"),
         "missing styled edge label in {rendered:?}"
+    );
+}
+
+#[test]
+fn flowchart_style_color_html_maps_node_fill_background_without_plain_text_changes() {
+    let input = concat!(
+        "flowchart LR\n",
+        "  A[Alpha]:::hot\n",
+        "  classDef hot color:#112233,stroke:#445566,fill:#ffeecc\n",
+    );
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html);
+
+    let rendered = render_flowchart(input, &options).unwrap();
+    let plain = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(strip_html_spans(&rendered), plain);
+    assert!(
+        rendered.contains("background-color:#ffeecc"),
+        "missing node fill background in {rendered:?}"
     );
 }
 

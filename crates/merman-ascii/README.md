@@ -46,8 +46,8 @@ separate components beside the relationship layout. The stateDiagram slice can r
 descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, root
 directions, and composite-state boxes through `render_state` or `render_model`; inline and block
 state notes render as terminal note nodes with open note edges, and state click/href metadata is
-accepted but omitted from ASCII output. State `classDef`, `class`, and `style` foreground colors map
-to terminal node/group text and border colors; transitions directly targeting composite groups
+accepted but omitted from ASCII output. State `classDef`, `class`, and `style` colors map
+to terminal node/group text, border, and ANSI/HTML background colors; transitions directly targeting composite groups
 attach to group boundaries, and divider/concurrency regions render as stacked sections with
 horizontal separators.
 The XYChart slice
@@ -56,8 +56,9 @@ horizontal bars, inferred numeric x labels, and ASCII/Unicode chart characters t
 `render_xychart` or `render_model`; richer legends and full terminal graph layout remain follow-on
 work. Shipped
 diagram families have opt-in ANSI/HTML foreground color roles through `AsciiColorMode`; flowchart
-also maps Mermaid `classDef`, `class`, inline `style`, and `linkStyle` foreground colors for
-`color` and `stroke`. Fill/background interpretation remains follow-on work.
+also maps Mermaid `classDef`, `class`, inline `style`, and `linkStyle` colors for `color`,
+`stroke`, and node/subgraph `fill`/`background`. Sequence rect/box background interpretation
+remains follow-on work.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,
@@ -72,11 +73,11 @@ validation gates.
 
 | Diagram family | Public entry points | Shipped text subset |
 | --- | --- | --- |
-| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML foreground color roles, and foreground `classDef`/`class`/`style`/`linkStyle` mapping. |
+| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML color roles, foreground `classDef`/`class`/`style`/`linkStyle` mapping, and node/subgraph `fill`/`background` output. |
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, core control blocks, and opt-in ANSI/HTML foreground color roles. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
-| stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML foreground color roles. |
+| stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground/background `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML color roles. |
 | xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, inferred numeric labels, and opt-in ANSI/HTML foreground color roles. |
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the

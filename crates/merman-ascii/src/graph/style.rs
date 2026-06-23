@@ -53,6 +53,8 @@ pub(crate) fn apply_node_declaration(style: &mut GraphNodeStyle, declaration: &s
             style.text = parse_css_color(value);
         } else if name.eq_ignore_ascii_case("stroke") || name.eq_ignore_ascii_case("border") {
             style.border = parse_border_color(value);
+        } else if name.eq_ignore_ascii_case("fill") || name.eq_ignore_ascii_case("background") {
+            style.background = parse_css_color(value);
         }
     }
 }
@@ -81,6 +83,8 @@ pub(crate) fn apply_group_declaration(style: &mut GraphGroupStyle, declaration: 
             style.title = parse_css_color(value);
         } else if name.eq_ignore_ascii_case("stroke") || name.eq_ignore_ascii_case("border") {
             style.border = parse_border_color(value);
+        } else if name.eq_ignore_ascii_case("fill") || name.eq_ignore_ascii_case("background") {
+            style.background = parse_css_color(value);
         }
     }
 }

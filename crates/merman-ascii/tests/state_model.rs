@@ -224,6 +224,12 @@ fn state_style_color_truecolor_maps_classdef_and_inline_node_foreground_without_
             "background style should not be emitted as foreground in {rendered:?}"
         );
     }
+    for expected_background_code in ["\u{1b}[48;2;255;238;204m", "\u{1b}[48;2;0;17;34m"] {
+        assert!(
+            rendered.contains(expected_background_code),
+            "missing background {expected_background_code:?} in {rendered:?}"
+        );
+    }
 }
 
 #[test]

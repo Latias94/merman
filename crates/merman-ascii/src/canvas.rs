@@ -1,6 +1,8 @@
 use crate::color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
 use crate::options::AsciiRenderOptions;
-use crate::terminal::{TerminalCell, char_display_width, write_primary_cell};
+use crate::terminal::{
+    CanvasStyle, ResolvedCanvasStyle, TerminalCell, char_display_width, write_primary_cell_style,
+};
 use std::env;
 use std::fmt::Write as _;
 use std::io::{self, IsTerminal};
@@ -26,7 +28,8 @@ impl Canvas {
 
     pub(crate) fn set(&mut self, x: usize, y: usize, ch: char) {
         if let Some(index) = self.index(x, y) {
-            write_primary_cell(&mut self.cells, index, ch, None);
+            let style = self.cells[index].raw_style().with_foreground(None);
+            write_primary_cell_style(&mut self.cells, index, ch, style);
         }
     }
 
@@ -40,7 +43,24 @@ impl Canvas {
 
     pub(crate) fn set_canvas_color(&mut self, x: usize, y: usize, ch: char, color: CanvasColor) {
         if let Some(index) = self.index(x, y) {
-            write_primary_cell(&mut self.cells, index, ch, Some(color));
+            let style = self.cells[index].raw_style().with_foreground(Some(color));
+            write_primary_cell_style(&mut self.cells, index, ch, style);
+        }
+    }
+
+    pub(crate) fn set_style(&mut self, x: usize, y: usize, ch: char, style: CanvasStyle) {
+        if let Some(index) = self.index(x, y) {
+            write_primary_cell_style(&mut self.cells, index, ch, style);
+        }
+    }
+
+    pub(crate) fn set_background_color(&mut self, x: usize, y: usize, color: AsciiRgb) {
+        self.set_background_canvas_color(x, y, CanvasColor::Direct(color));
+    }
+
+    pub(crate) fn set_background_canvas_color(&mut self, x: usize, y: usize, color: CanvasColor) {
+        if let Some(index) = self.index(x, y) {
+            self.cells[index].set_background(color);
         }
     }
 
@@ -49,8 +69,13 @@ impl Canvas {
             .and_then(|index| self.cells[index].output_char())
     }
 
+    #[cfg(test)]
     pub(crate) fn get_color(&self, x: usize, y: usize) -> Option<CanvasColor> {
         self.index(x, y).and_then(|index| self.cells[index].color())
+    }
+
+    pub(crate) fn get_style(&self, x: usize, y: usize) -> Option<CanvasStyle> {
+        self.index(x, y).and_then(|index| self.cells[index].style())
     }
 
     #[allow(dead_code)]
@@ -157,24 +182,24 @@ impl Canvas {
             } else {
                 row_start + self.width
             };
-            let mut active_color = None;
+            let mut active_style = ResolvedCanvasStyle::default();
             for cell in &self.cells[row_start..row_end] {
                 let Some(ch) = cell.output_char() else {
                     continue;
                 };
-                let desired_color = cell.color().map(|color| color.resolve(theme));
-                if desired_color != active_color {
-                    if active_color.is_some() {
+                let desired_style = cell.raw_style().resolve(theme);
+                if desired_style != active_style {
+                    if !active_style.is_plain() {
                         out.push_str("\u{1b}[0m");
                     }
-                    if let Some(color) = desired_color {
-                        push_ansi_start(&mut out, mode, color);
+                    if !desired_style.is_plain() {
+                        push_ansi_start(&mut out, mode, desired_style);
                     }
-                    active_color = desired_color;
+                    active_style = desired_style;
                 }
                 out.push(ch);
             }
-            if active_color.is_some() {
+            if !active_style.is_plain() {
                 out.push_str("\u{1b}[0m");
             }
             out.push('\n');
@@ -194,24 +219,24 @@ impl Canvas {
             } else {
                 row_start + self.width
             };
-            let mut active_color = None;
+            let mut active_style = ResolvedCanvasStyle::default();
             for cell in &self.cells[row_start..row_end] {
                 let Some(ch) = cell.output_char() else {
                     continue;
                 };
-                let desired_color = cell.color().map(|color| color.resolve(theme));
-                if desired_color != active_color {
-                    if active_color.is_some() {
+                let desired_style = cell.raw_style().resolve(theme);
+                if desired_style != active_style {
+                    if !active_style.is_plain() {
                         out.push_str("</span>");
                     }
-                    if let Some(color) = desired_color {
-                        push_html_span_start(&mut out, color);
+                    if !desired_style.is_plain() {
+                        push_html_span_start(&mut out, desired_style);
                     }
-                    active_color = desired_color;
+                    active_style = desired_style;
                 }
                 push_html_escaped_char(&mut out, ch);
             }
-            if active_color.is_some() {
+            if !active_style.is_plain() {
                 out.push_str("</span>");
             }
             out.push('\n');
@@ -283,16 +308,30 @@ fn supports_truecolor(colorterm: &str) -> bool {
     colorterm.contains("truecolor") || colorterm.contains("24bit")
 }
 
-fn push_ansi_start(out: &mut String, mode: AsciiColorMode, color: AsciiRgb) {
-    match mode {
-        AsciiColorMode::Ansi16 => out.push_str(ansi16_start(color)),
-        AsciiColorMode::Ansi256 => {
-            let _ = write!(out, "\u{1b}[38;5;{}m", ansi256_index(color));
+fn push_ansi_start(out: &mut String, mode: AsciiColorMode, style: ResolvedCanvasStyle) {
+    if let Some(color) = style.foreground {
+        match mode {
+            AsciiColorMode::Ansi16 => out.push_str(ansi16_foreground_start(color)),
+            AsciiColorMode::Ansi256 => {
+                let _ = write!(out, "\u{1b}[38;5;{}m", ansi256_index(color));
+            }
+            AsciiColorMode::TrueColor => {
+                let _ = write!(out, "\u{1b}[38;2;{};{};{}m", color.r, color.g, color.b);
+            }
+            AsciiColorMode::Plain | AsciiColorMode::Auto | AsciiColorMode::Html => {}
         }
-        AsciiColorMode::TrueColor => {
-            let _ = write!(out, "\u{1b}[38;2;{};{};{}m", color.r, color.g, color.b);
+    }
+    if let Some(color) = style.background {
+        match mode {
+            AsciiColorMode::Ansi16 => out.push_str(ansi16_background_start(color)),
+            AsciiColorMode::Ansi256 => {
+                let _ = write!(out, "\u{1b}[48;5;{}m", ansi256_index(color));
+            }
+            AsciiColorMode::TrueColor => {
+                let _ = write!(out, "\u{1b}[48;2;{};{};{}m", color.r, color.g, color.b);
+            }
+            AsciiColorMode::Plain | AsciiColorMode::Auto | AsciiColorMode::Html => {}
         }
-        AsciiColorMode::Plain | AsciiColorMode::Auto | AsciiColorMode::Html => {}
     }
 }
 
@@ -303,31 +342,43 @@ fn ansi256_index(color: AsciiRgb) -> u16 {
     16 + 36 * r + 6 * g + b
 }
 
-fn ansi16_start(color: AsciiRgb) -> &'static str {
-    const PALETTE: [(AsciiRgb, &str); 16] = [
-        (AsciiRgb::new(0x00, 0x00, 0x00), "\u{1b}[30m"),
-        (AsciiRgb::new(0x80, 0x00, 0x00), "\u{1b}[31m"),
-        (AsciiRgb::new(0x00, 0x80, 0x00), "\u{1b}[32m"),
-        (AsciiRgb::new(0x80, 0x80, 0x00), "\u{1b}[33m"),
-        (AsciiRgb::new(0x00, 0x00, 0x80), "\u{1b}[34m"),
-        (AsciiRgb::new(0x80, 0x00, 0x80), "\u{1b}[35m"),
-        (AsciiRgb::new(0x00, 0x80, 0x80), "\u{1b}[36m"),
-        (AsciiRgb::new(0xc0, 0xc0, 0xc0), "\u{1b}[37m"),
-        (AsciiRgb::new(0x80, 0x80, 0x80), "\u{1b}[90m"),
-        (AsciiRgb::new(0xff, 0x00, 0x00), "\u{1b}[91m"),
-        (AsciiRgb::new(0x00, 0xff, 0x00), "\u{1b}[92m"),
-        (AsciiRgb::new(0xff, 0xff, 0x00), "\u{1b}[93m"),
-        (AsciiRgb::new(0x00, 0x00, 0xff), "\u{1b}[94m"),
-        (AsciiRgb::new(0xff, 0x00, 0xff), "\u{1b}[95m"),
-        (AsciiRgb::new(0x00, 0xff, 0xff), "\u{1b}[96m"),
-        (AsciiRgb::new(0xff, 0xff, 0xff), "\u{1b}[97m"),
+fn ansi16_foreground_start(color: AsciiRgb) -> &'static str {
+    ansi16_start(color, false)
+}
+
+fn ansi16_background_start(color: AsciiRgb) -> &'static str {
+    ansi16_start(color, true)
+}
+
+fn ansi16_start(color: AsciiRgb, background: bool) -> &'static str {
+    const PALETTE: [(AsciiRgb, &str, &str); 16] = [
+        (AsciiRgb::new(0x00, 0x00, 0x00), "\u{1b}[30m", "\u{1b}[40m"),
+        (AsciiRgb::new(0x80, 0x00, 0x00), "\u{1b}[31m", "\u{1b}[41m"),
+        (AsciiRgb::new(0x00, 0x80, 0x00), "\u{1b}[32m", "\u{1b}[42m"),
+        (AsciiRgb::new(0x80, 0x80, 0x00), "\u{1b}[33m", "\u{1b}[43m"),
+        (AsciiRgb::new(0x00, 0x00, 0x80), "\u{1b}[34m", "\u{1b}[44m"),
+        (AsciiRgb::new(0x80, 0x00, 0x80), "\u{1b}[35m", "\u{1b}[45m"),
+        (AsciiRgb::new(0x00, 0x80, 0x80), "\u{1b}[36m", "\u{1b}[46m"),
+        (AsciiRgb::new(0xc0, 0xc0, 0xc0), "\u{1b}[37m", "\u{1b}[47m"),
+        (AsciiRgb::new(0x80, 0x80, 0x80), "\u{1b}[90m", "\u{1b}[100m"),
+        (AsciiRgb::new(0xff, 0x00, 0x00), "\u{1b}[91m", "\u{1b}[101m"),
+        (AsciiRgb::new(0x00, 0xff, 0x00), "\u{1b}[92m", "\u{1b}[102m"),
+        (AsciiRgb::new(0xff, 0xff, 0x00), "\u{1b}[93m", "\u{1b}[103m"),
+        (AsciiRgb::new(0x00, 0x00, 0xff), "\u{1b}[94m", "\u{1b}[104m"),
+        (AsciiRgb::new(0xff, 0x00, 0xff), "\u{1b}[95m", "\u{1b}[105m"),
+        (AsciiRgb::new(0x00, 0xff, 0xff), "\u{1b}[96m", "\u{1b}[106m"),
+        (AsciiRgb::new(0xff, 0xff, 0xff), "\u{1b}[97m", "\u{1b}[107m"),
     ];
 
     PALETTE
         .iter()
-        .min_by_key(|(candidate, _)| color_distance(*candidate, color))
-        .map(|(_, code)| *code)
-        .unwrap_or("\u{1b}[37m")
+        .min_by_key(|(candidate, _, _)| color_distance(*candidate, color))
+        .map(|(_, fg, bg)| if background { *bg } else { *fg })
+        .unwrap_or(if background {
+            "\u{1b}[47m"
+        } else {
+            "\u{1b}[37m"
+        })
 }
 
 fn color_distance(a: AsciiRgb, b: AsciiRgb) -> u32 {
@@ -337,12 +388,28 @@ fn color_distance(a: AsciiRgb, b: AsciiRgb) -> u32 {
     (dr * dr + dg * dg + db * db) as u32
 }
 
-fn push_html_span_start(out: &mut String, color: AsciiRgb) {
-    let _ = write!(
-        out,
-        "<span style=\"color:#{:02x}{:02x}{:02x}\">",
-        color.r, color.g, color.b
-    );
+fn push_html_span_start(out: &mut String, style: ResolvedCanvasStyle) {
+    let mut wrote_any = false;
+    out.push_str("<span style=\"");
+    if let Some(color) = style.foreground {
+        let _ = write!(out, "color:#{:02x}{:02x}{:02x}", color.r, color.g, color.b);
+        wrote_any = true;
+    }
+    if let Some(color) = style.background {
+        if wrote_any {
+            out.push(';');
+        }
+        let _ = write!(
+            out,
+            "background-color:#{:02x}{:02x}{:02x}",
+            color.r, color.g, color.b
+        );
+        wrote_any = true;
+    }
+    if !wrote_any {
+        out.push_str("color:inherit");
+    }
+    out.push_str("\">");
 }
 
 fn push_html_escaped_char(out: &mut String, ch: char) {
@@ -469,6 +536,43 @@ mod tests {
         );
 
         assert_eq!(output, "\u{1b}[38;2;1;2;3mAB\u{1b}[0m!\n");
+    }
+
+    #[test]
+    fn finish_truecolor_encodes_foreground_and_background() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let mut canvas = Canvas::new(1, 1);
+        canvas.set_background_color(0, 0, AsciiRgb::new(4, 5, 6));
+        canvas.set_role(0, 0, 'A', AsciiColorRole::Text);
+
+        let output = canvas.finish_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::TrueColor)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(output, "\u{1b}[38;2;1;2;3m\u{1b}[48;2;4;5;6mA\u{1b}[0m\n");
+    }
+
+    #[test]
+    fn finish_html_wraps_foreground_and_background() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let mut canvas = Canvas::new(1, 1);
+        canvas.set_background_color(0, 0, AsciiRgb::new(4, 5, 6));
+        canvas.set_role(0, 0, 'A', AsciiColorRole::Text);
+
+        let output = canvas.finish_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::Html)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(
+            output,
+            "<span style=\"color:#010203;background-color:#040506\">A</span>\n"
+        );
     }
 
     #[test]

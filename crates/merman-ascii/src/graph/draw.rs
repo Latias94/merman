@@ -182,8 +182,8 @@ impl OutputTransform {
                 };
                 let coord = self.coord_for_char(CanvasCoord { x, y }, ch, width, height);
                 let ch = self.map_char(ch);
-                if let Some(color) = source.get_color(x, y) {
-                    canvas.set_canvas_color(coord.x, coord.y, ch, color);
+                if let Some(style) = source.get_style(x, y) {
+                    canvas.set_style(coord.x, coord.y, ch, style);
                 } else {
                     canvas.set(coord.x, coord.y, ch);
                 }
@@ -283,6 +283,7 @@ fn draw_node(
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
 ) {
+    paint_node_background(canvas, layout);
     match layout.shape {
         GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
         GraphNodeShape::Rounded => draw_rounded_node(canvas, layout, charset, options),
@@ -298,9 +299,34 @@ fn draw_node(
 }
 
 fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) {
+    if group.kind == GraphGroupKind::Container {
+        paint_group_background(canvas, group);
+    }
     match group.kind {
         GraphGroupKind::Container => draw_group_box(canvas, group, charset),
         GraphGroupKind::Divider => draw_group_divider(canvas, group, charset),
+    }
+}
+
+fn paint_node_background(canvas: &mut Canvas, layout: &NodeLayout) {
+    let Some(color) = layout.style.background else {
+        return;
+    };
+    for y in layout.y..=layout.bottom() {
+        for x in layout.x..=layout.right() {
+            canvas.set_background_color(x, y, color);
+        }
+    }
+}
+
+fn paint_group_background(canvas: &mut Canvas, group: &GroupLayout) {
+    let Some(color) = group.style.background else {
+        return;
+    };
+    for y in group.y..=group.bottom() {
+        for x in group.x..=group.right() {
+            canvas.set_background_color(x, y, color);
+        }
     }
 }
 

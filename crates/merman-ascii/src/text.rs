@@ -171,8 +171,8 @@ impl StyledLine {
             if cell.is_continuation() {
                 continue;
             }
-            if let Some(color) = cell.color() {
-                canvas.set_canvas_color(x_offset + x, y, cell.output_char().unwrap_or(' '), color);
+            if let Some(style) = cell.style() {
+                canvas.set_style(x_offset + x, y, cell.output_char().unwrap_or(' '), style);
             } else {
                 canvas.set(x_offset + x, y, cell.output_char().unwrap_or(' '));
             }

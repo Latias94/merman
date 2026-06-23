@@ -20,7 +20,7 @@ This document describes the current `merman-ascii` state support boundary. The r
 | State notes | Supported approximation | Inline and block notes render as terminal note nodes connected with open note edges. Multiline note text is preserved. Mermaid's exact note side placement is approximated by the shared graph layout. |
 | Click/href links | Accepted metadata | State link URLs and tooltips are SVG/interaction metadata. They do not block ASCII rendering and are not emitted in terminal output. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
-| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit renderer-owned foreground roles for state nodes, groups, transitions, and labels. Mermaid `classDef`, `class`, and `style` foreground colors map `color` to text/title and `stroke`/`border` to node/group borders. |
+| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit renderer-owned foreground/background roles for state nodes, groups, transitions, and labels. Mermaid `classDef`, `class`, and `style` colors map `color` to text/title, `stroke`/`border` to node/group borders, and `fill`/`background` to node/group backgrounds. |
 
 ## Explicitly Unsupported
 
@@ -46,8 +46,9 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 - State note side placement is terminal-graph approximate. The note text and note relationship are
   preserved, but Mermaid's exact SVG note offsets are not.
 - State links are accepted as interaction metadata and intentionally omitted from terminal output.
-- State style fill/background, font weight, font style, and other non-foreground semantics are not
-  emitted as terminal foreground colors.
+- State style fill/background is emitted only in opt-in ANSI/HTML color modes and is invisible in
+  plain text output. Font weight, font style, and other SVG-only presentation metadata are not
+  rendered.
 - Any future Mermaid state shape variants should be added one semantic shape at a time with
   parser-backed tests.
 

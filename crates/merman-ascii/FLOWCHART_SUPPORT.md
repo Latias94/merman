@@ -17,7 +17,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
-| Color roles and styles | Supported subset | Opt-in `AsciiColorMode` can emit ANSI or HTML foreground spans for renderer-owned roles and Mermaid flowchart `classDef`, `class`, inline `style`, and `linkStyle` foreground declarations. Supported style properties are `color` for text/labels and `stroke` for borders/edges. `fill`/background properties remain documented no-ops. |
+| Color roles and styles | Supported subset | Opt-in `AsciiColorMode` can emit ANSI or HTML foreground/background spans for renderer-owned roles and Mermaid flowchart `classDef`, `class`, inline `style`, and `linkStyle` declarations. Supported style properties are `color` for text/labels, `stroke` for borders/edges, and `fill`/`background` for node and subgraph backgrounds. |
 | Safety limit | Supported | `AsciiRenderOptions::max_grid_cells` prevents unexpectedly large character grids. |
 
 ## V1.1 Compatibility Plan
@@ -67,8 +67,8 @@ reference implementation is only an implementation aid.
 | `RL` root direction | Ported with true inversion | `beautiful-mermaid` currently treats `RL` as `LR`, which misrepresents Mermaid semantics; `merman-ascii` implements a true horizontal mirror instead. | Covered by `flowchart_parser_rl_root_direction_renders_with_horizontal_mirror`, `flowchart_parser_rl_multi_character_node_labels_stay_readable`, `flowchart_parser_rl_edge_labels_stay_readable`, and `flowchart_parser_rl_chain_mirrors_unicode_connectors`. |
 | Subgraph direction overrides | Ported subset | `FlowSubgraph.dir` now supports a shipped local-direction subset: canonical `LR` subgraphs inside canonical `TD` roots, including the boundary-aware cross-boundary cases covered by the current router. Broader mixed-direction combinations and nested mixed-direction behavior remain deferred. | Covered by `render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges` and `flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_records_boundary_aware_baseline`. |
 | Multiline and wrapped subgraph labels | Ported | The title text can be represented, and group layout now reserves multiple centered title rows using the shared graph label splitter and display-width wrapper. | Covered by `flowchart_parser_multiline_subgraph_title_renders_centered_rows`, `render_flowchart_renders_model_multiline_subgraph_titles`, and `flowchart_parser_long_subgraph_title_wraps_to_multiple_rows`. |
-| ANSI/HTML color roles | Ported | ADR 0067 added an opt-in foreground color API, and flowchart now assigns semantic roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
-| `classDef`, `class`, inline node styles, and `linkStyle` foreground colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps only safe foreground semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |
+| ANSI/HTML color roles | Ported | ADR 0067 added an opt-in color API, and flowchart now assigns semantic foreground/background roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
+| `classDef`, `class`, inline node styles, and `linkStyle` colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps safe terminal semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, node/subgraph `fill`/`background` to ANSI/HTML backgrounds, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |
 | State diagram graph rendering | Split to state adapter | `stateDiagram` uses a different typed model, not `FlowchartV2Model`; it now renders through the state-to-graph adapter rather than the flowchart adapter. | See `STATE_SUPPORT.md`. |
 | Additional uncommon flowchart shapes | Defer | `beautiful-mermaid` has more shape renderers; current `merman-ascii` intentionally supports the high-frequency terminal approximations first. | Add one shape family at a time with public `render_model` snapshots. |
 
@@ -86,9 +86,10 @@ reference implementation is only an implementation aid.
   long titles inside the current group box width.
 - Leading `paddingX=` and `paddingY=` lines are supported as `mermaid-ascii` compatibility
   directives by ASCII render entry points; they are not Mermaid flowchart syntax.
-- Mermaid classes/styles are rendered only for foreground color properties in opt-in ANSI/HTML modes:
-  `color` and `stroke` support hex colors and a small named-color set. `fill`, backgrounds,
-  stroke width, links, callbacks, icons, images, Markdown labels, and HTML labels are not rendered.
+- Mermaid classes/styles are rendered only for terminal-safe color properties in opt-in ANSI/HTML
+  modes: `color`, `stroke`, `fill`, and `background` support hex colors and a small named-color
+  set. Stroke width, links, callbacks, icons, images, Markdown labels, and HTML labels are not
+  rendered.
 - CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated
   follow-up coverage before being listed as supported.
 
