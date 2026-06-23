@@ -146,6 +146,8 @@ jobs:
             dugong
             manatee
             merman-core
+            merman-elk-layered
+            merman-layout-elk
             merman-render
             merman-ascii
             merman

@@ -50,6 +50,8 @@ jobs:
             dugong
             manatee
             merman-core
+            merman-elk-layered
+            merman-layout-elk
             merman-render
             merman-ascii
             merman
@@ -69,6 +71,7 @@ jobs:
           cargo package -p dugong-graphlib
           cargo package -p manatee
           cargo package -p merman-core
+          cargo package -p merman-elk-layered
 
       - name: Upload package lists
         uses: actions/upload-artifact@v6

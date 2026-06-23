@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: draft for next workspace release.
-Last updated: 2026-06-13
+Last updated: 2026-06-23
 
 ## Version Decision
 
@@ -26,14 +26,16 @@ Publish crates in dependency order:
 2. `dugong`
 3. `manatee`
 4. `merman-core`
-5. `merman-render`
-6. `merman-ascii`
-7. `merman`
-8. `merman-rustdoc`
-9. `merman-bindings-core`
-10. `merman-ffi`
-11. `merman-uniffi`
-12. `merman-cli`
+5. `merman-elk-layered`
+6. `merman-layout-elk`
+7. `merman-render`
+8. `merman-ascii`
+9. `merman`
+10. `merman-rustdoc`
+11. `merman-bindings-core`
+12. `merman-ffi`
+13. `merman-uniffi`
+14. `merman-cli`
 
 `roughr-merman` is versioned separately as `0.12.1`. Publish it before `merman-render` only if that
 crate changed and needs a new release.
@@ -68,6 +70,8 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 For packaging, distinguish file-list checks from full crates.io dependency verification:
 
 ```bash
+cargo package -p merman-elk-layered --allow-dirty
+cargo package -p merman-layout-elk --allow-dirty --list
 cargo package -p merman-render --allow-dirty
 cargo package -p merman-rustdoc --allow-dirty --list
 cargo package -p merman-bindings-core --allow-dirty --list
@@ -80,7 +84,7 @@ one step farther down the dependency chain.
 
 ## Current Package Matrix
 
-As of 2026-06-13:
+As of 2026-06-23:
 
 | Crate | Gate | Current result |
 | --- | --- | --- |
@@ -88,7 +92,10 @@ As of 2026-06-13:
 | `manatee` | `cargo package -p manatee --allow-dirty` | Pass |
 | `merman-core` | `cargo package -p merman-core --allow-dirty` | Pass |
 | `dugong` | `cargo package -p dugong --allow-dirty` | Blocked until `dugong-graphlib 0.8.0-alpha.2` is published |
-| `merman-render` | `cargo package -p merman-render --allow-dirty` | Blocked until `dugong 0.8.0-alpha.2` is published |
+| `merman-elk-layered` | `cargo package -p merman-elk-layered --allow-dirty` | Pass |
+| `merman-layout-elk` | `cargo package -p merman-layout-elk --allow-dirty --list` | Pass |
+| `merman-layout-elk` | `cargo package -p merman-layout-elk --allow-dirty` | Blocked until `merman-elk-layered 0.8.0-alpha.2` is published |
+| `merman-render` | `cargo package -p merman-render --allow-dirty` | Blocked until `dugong 0.8.0-alpha.2` and `merman-layout-elk 0.8.0-alpha.2` are published |
 | `merman-ascii` | `cargo package -p merman-ascii --allow-dirty --list` | Pass |
 | `merman` | `cargo package -p merman --allow-dirty --list` | Pass |
 | `merman-rustdoc` | `cargo package -p merman-rustdoc --allow-dirty --list` | Pass |
