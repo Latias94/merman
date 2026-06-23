@@ -94,7 +94,7 @@ wasm-bindgen = "0.2"
 web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
 wasmi = { version = "1.0.9", default-features = false, features = ["simd"] }
-lsp-types = "0.97.0"
+lsp-types = "0.94.1"
 tower-lsp = "0.20.0"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without

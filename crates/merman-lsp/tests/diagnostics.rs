@@ -1,5 +1,7 @@
-use merman_analysis::{AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, SourceDescriptor};
-use merman_lsp::diagnostics::analysis_payload_to_diagnostics;
+use merman_analysis::{
+    AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, SourceDescriptor,
+    lsp::analysis_payload_to_diagnostics,
+};
 use tower_lsp::lsp_types::Url;
 
 #[test]
