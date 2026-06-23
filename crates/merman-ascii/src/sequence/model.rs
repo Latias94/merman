@@ -1,5 +1,7 @@
 use super::{SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, validate::validate_supported_sequence_model};
+use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
+use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
 use crate::text::{display_width, split_label_lines, wrap_label_lines};
 use merman_core::diagrams::sequence::{
     SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage, SequenceMessagePayload,
@@ -94,6 +96,7 @@ impl SequenceParticipantLabel {
 pub(super) struct SequenceGroupBox {
     pub(super) actor_indices: Vec<usize>,
     pub(super) label: Option<String>,
+    pub(super) background: Option<AsciiRgb>,
     pub(super) wrap: bool,
 }
 
@@ -143,6 +146,7 @@ pub(super) struct SequenceControlStart {
     pub(super) model_index: usize,
     pub(super) kind: SequenceControlKind,
     pub(super) label: String,
+    pub(super) background: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -435,13 +439,31 @@ fn sequence_control_event(
     ensure_endpointless_control_message(message)?;
 
     if is_start {
+        let raw_label = message.message_text();
+        let (label, background) = sequence_control_start_label(kind, raw_label);
         Ok(Some(SequenceEvent::ControlStart(SequenceControlStart {
             model_index,
             kind,
-            label: message.message_text().to_string(),
+            label,
+            background,
         })))
     } else {
         Ok(Some(SequenceEvent::ControlEnd { kind, model_index }))
+    }
+}
+
+fn sequence_control_start_label(
+    kind: SequenceControlKind,
+    raw_label: &str,
+) -> (String, Option<AsciiRgb>) {
+    if kind != SequenceControlKind::Rect {
+        return (raw_label.to_string(), None);
+    }
+
+    match parse_css_color_value(raw_label) {
+        Some(CssColor::Rgb(color)) => (String::new(), Some(color)),
+        Some(CssColor::Transparent) => (String::new(), None),
+        None => (raw_label.to_string(), None),
     }
 }
 
@@ -511,6 +533,7 @@ fn sequence_boxes(
             Ok(SequenceGroupBox {
                 actor_indices,
                 label,
+                background: parse_css_color(&sequence_box.fill),
                 wrap: sequence_box.wrap,
             })
         })

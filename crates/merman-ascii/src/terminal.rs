@@ -167,15 +167,6 @@ pub(crate) fn push_primary_cell_style(cells: &mut Vec<TerminalCell>, ch: char, s
     }
 }
 
-pub(crate) fn write_primary_cell(
-    cells: &mut [TerminalCell],
-    index: usize,
-    ch: char,
-    color: Option<CanvasColor>,
-) {
-    write_primary_cell_style(cells, index, ch, CanvasStyle::foreground_option(color));
-}
-
 pub(crate) fn write_primary_cell_style(
     cells: &mut [TerminalCell],
     index: usize,

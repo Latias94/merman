@@ -68,6 +68,7 @@ impl SequenceEventPlan {
                 self.control_frames.push(SequenceControlFrame {
                     kind: start.kind,
                     label: start.label.clone(),
+                    background: start.background,
                     start_row: current_row,
                     separators: Vec::new(),
                     end_row: None,
@@ -493,6 +494,7 @@ mod tests {
                 model_index: 0,
                 kind: SequenceControlKind::Alt,
                 label: "choice".to_string(),
+                background: None,
             }),
             3,
         )
@@ -528,6 +530,7 @@ mod tests {
                 model_index: 0,
                 kind: SequenceControlKind::Loop,
                 label: "outer".to_string(),
+                background: None,
             }),
             3,
         )
@@ -537,6 +540,7 @@ mod tests {
                 model_index: 1,
                 kind: SequenceControlKind::Opt,
                 label: "inner".to_string(),
+                background: None,
             }),
             3,
         )

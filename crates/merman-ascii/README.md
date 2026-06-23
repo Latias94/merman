@@ -29,7 +29,8 @@ wrapped message labels, wrapped notes, diagram titles, sequence boxes, activatio
 create/destroy lifecycle markers, visible autonumber, and sequence control blocks can render through
 `render_sequence` or
 `render_model`; bottom participant boxes are available with
-`AsciiRenderOptions::with_sequence_mirror_actors(true)`. The classDiagram slice can render class boxes, members, methods, relationship
+`AsciiRenderOptions::with_sequence_mirror_actors(true)`. Sequence box fill and parseable `rect`
+colors map to ANSI/HTML background output when color mode is enabled. The classDiagram slice can render class boxes, members, methods, relationship
 labels, single relationship layouts, layered chain/star multi-relationship layouts, and
 adjacent-layer crossing layouts resolved by layer reordering for extension, dependency,
 aggregation, and composition through `render_class` or `render_model`; same-endpoint and simple
@@ -57,8 +58,8 @@ horizontal bars, inferred numeric x labels, and ASCII/Unicode chart characters t
 work. Shipped
 diagram families have opt-in ANSI/HTML foreground color roles through `AsciiColorMode`; flowchart
 also maps Mermaid `classDef`, `class`, inline `style`, and `linkStyle` colors for `color`,
-`stroke`, and node/subgraph `fill`/`background`. Sequence rect/box background interpretation
-remains follow-on work.
+`stroke`, and node/subgraph `fill`/`background`; state maps node/group text, border, and
+background; sequence maps box fill and parseable rect colors to terminal backgrounds.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,
@@ -74,7 +75,7 @@ validation gates.
 | Diagram family | Public entry points | Shipped text subset |
 | --- | --- | --- |
 | flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML color roles, foreground `classDef`/`class`/`style`/`linkStyle` mapping, and node/subgraph `fill`/`background` output. |
-| sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, core control blocks, and opt-in ANSI/HTML foreground color roles. |
+| sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes with parseable fill backgrounds, activations, lifecycle markers, autonumber, core control blocks, parseable rect backgrounds, and opt-in ANSI/HTML color roles. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
 | stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground/background `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML color roles. |

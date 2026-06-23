@@ -1,13 +1,14 @@
 use super::model::SequenceControlKind;
 use super::render::SequenceChars;
 use super::text::{SequenceLine, padded_line, trim_right};
-use crate::color::AsciiColorRole;
+use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceControlFrame {
     pub(super) kind: SequenceControlKind,
     pub(super) label: String,
+    pub(super) background: Option<AsciiRgb>,
     pub(super) start_row: usize,
     pub(super) separators: Vec<SequenceControlFrameSeparator>,
     pub(super) end_row: Option<usize>,
@@ -102,7 +103,7 @@ fn render_frame_node(
     for row in body_rows {
         match row {
             SequenceControlBodyRow::Content(line) => {
-                rendered.push(render_content_row(line, width, chars));
+                rendered.push(render_content_row(line, width, chars, frame.background));
             }
             SequenceControlBodyRow::Separator(separator_index) => {
                 rendered.push(render_separator_border(
@@ -115,7 +116,7 @@ fn render_frame_node(
         }
     }
 
-    rendered.push(render_bottom_border(width, chars));
+    rendered.push(render_bottom_border(width, chars, frame.background));
     rendered
 }
 
@@ -267,16 +268,22 @@ fn render_top_border(
         chars.horizontal,
         width,
         Some(&frame_title(frame)),
+        frame.background,
     )
 }
 
-fn render_bottom_border(width: usize, chars: &SequenceChars) -> SequenceLine {
+fn render_bottom_border(
+    width: usize,
+    chars: &SequenceChars,
+    background: Option<AsciiRgb>,
+) -> SequenceLine {
     render_border_row(
         chars.bottom_left,
         chars.bottom_right,
         chars.horizontal,
         width,
         None,
+        background,
     )
 }
 
@@ -292,6 +299,7 @@ fn render_separator_border(
         chars.horizontal,
         width,
         Some(&separator_title(frame, separator)),
+        frame.background,
     )
 }
 
@@ -301,8 +309,10 @@ fn render_border_row(
     horizontal: char,
     width: usize,
     label: Option<&str>,
+    background: Option<AsciiRgb>,
 ) -> SequenceLine {
     let mut row = SequenceLine::blank(width);
+    paint_row_background(&mut row, 0..width, background);
     for x in 0..width {
         row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);
     }
@@ -314,11 +324,43 @@ fn render_border_row(
     trim_right(row)
 }
 
-fn render_content_row(row: SequenceLine, width: usize, chars: &SequenceChars) -> SequenceLine {
+fn render_content_row(
+    row: SequenceLine,
+    width: usize,
+    chars: &SequenceChars,
+    background: Option<AsciiRgb>,
+) -> SequenceLine {
     let mut row = padded_line(row, width);
+    paint_row_background_if_unset(&mut row, 0..width, background);
     row.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
     row.set_role(width - 1, chars.vertical, AsciiColorRole::SequenceFrame);
     trim_right(row)
+}
+
+fn paint_row_background(
+    row: &mut SequenceLine,
+    range: impl Iterator<Item = usize>,
+    background: Option<AsciiRgb>,
+) {
+    let Some(background) = background else {
+        return;
+    };
+    for x in range {
+        row.set_background_color(x, background);
+    }
+}
+
+fn paint_row_background_if_unset(
+    row: &mut SequenceLine,
+    range: impl Iterator<Item = usize>,
+    background: Option<AsciiRgb>,
+) {
+    let Some(background) = background else {
+        return;
+    };
+    for x in range {
+        row.set_background_color_if_unset(x, background);
+    }
 }
 
 fn frame_title(frame: &SequenceControlFrame) -> String {

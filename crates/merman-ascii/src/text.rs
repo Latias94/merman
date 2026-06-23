@@ -1,8 +1,8 @@
 use crate::canvas::Canvas;
-use crate::color::AsciiColorRole;
+use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::terminal::{
-    CanvasColor, TerminalCell, char_display_width, display_width as terminal_display_width,
-    push_primary_cell, write_primary_cell,
+    CanvasColor, CanvasStyle, TerminalCell, char_display_width,
+    display_width as terminal_display_width, push_primary_cell, write_primary_cell_style,
 };
 
 pub(crate) type StyledCell = TerminalCell;
@@ -132,7 +132,35 @@ impl StyledLine {
     }
 
     pub(crate) fn set_role(&mut self, index: usize, ch: char, role: AsciiColorRole) {
-        write_primary_cell(&mut self.cells, index, ch, Some(CanvasColor::Role(role)));
+        let background = self
+            .cells
+            .get(index)
+            .map(|cell| cell.raw_style().background)
+            .unwrap_or_default();
+        write_primary_cell_style(
+            &mut self.cells,
+            index,
+            ch,
+            CanvasStyle {
+                foreground: Some(CanvasColor::Role(role)),
+                background,
+            },
+        );
+    }
+
+    pub(crate) fn set_background_color(&mut self, index: usize, color: AsciiRgb) {
+        if let Some(cell) = self.cells.get_mut(index) {
+            cell.set_background(CanvasColor::Direct(color));
+        }
+    }
+
+    pub(crate) fn set_background_color_if_unset(&mut self, index: usize, color: AsciiRgb) {
+        let Some(cell) = self.cells.get_mut(index) else {
+            return;
+        };
+        if cell.raw_style().background.is_none() {
+            cell.set_background(CanvasColor::Direct(color));
+        }
     }
 
     pub(crate) fn write_text_role(&mut self, start: usize, text: &str, role: AsciiColorRole) {

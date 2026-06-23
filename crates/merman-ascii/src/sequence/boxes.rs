@@ -2,7 +2,7 @@ use super::{
     BOX_BORDER_WIDTH, SEQUENCE_BOX_CONTENT_OFFSET, SEQUENCE_BOX_LABEL_MARGIN,
     SEQUENCE_BOX_WRAP_TEXT_WIDTH,
 };
-use crate::color::AsciiColorRole;
+use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::terminal::char_display_width;
 use crate::text::{display_width, split_label_lines, wrap_label_lines};
 
@@ -21,6 +21,7 @@ struct SequenceGroupBoxBounds {
 struct PreparedSequenceGroupBox {
     bounds: SequenceGroupBoxBounds,
     label_lines: Vec<String>,
+    background: Option<AsciiRgb>,
 }
 
 pub(super) fn render_sequence_boxes(
@@ -91,6 +92,7 @@ fn prepare_sequence_box(
     PreparedSequenceGroupBox {
         bounds,
         label_lines,
+        background: sequence_box.background,
     }
 }
 
@@ -137,6 +139,8 @@ fn draw_sequence_box(
     let top = 0;
     let bottom = canvas.len() - 1;
 
+    paint_sequence_box_background(canvas, bounds, top, bottom, sequence_box.background);
+
     for x in bounds.left..=bounds.right {
         canvas[top].set_role(x, chars.horizontal, AsciiColorRole::SequenceFrame);
         canvas[bottom].set_role(x, chars.horizontal, AsciiColorRole::SequenceFrame);
@@ -164,6 +168,24 @@ fn draw_sequence_box(
             break;
         };
         draw_sequence_box_label(row, line, bounds);
+    }
+}
+
+fn paint_sequence_box_background(
+    canvas: &mut [SequenceLine],
+    bounds: SequenceGroupBoxBounds,
+    top: usize,
+    bottom: usize,
+    background: Option<AsciiRgb>,
+) {
+    let Some(background) = background else {
+        return;
+    };
+
+    for row in canvas.iter_mut().take(bottom + 1).skip(top) {
+        for x in bounds.left..=bounds.right {
+            row.set_background_color_if_unset(x, background);
+        }
     }
 }
 

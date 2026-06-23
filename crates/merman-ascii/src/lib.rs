@@ -15,6 +15,7 @@ mod options;
 mod relation_graph;
 mod sequence;
 mod state;
+mod style_color;
 mod terminal;
 mod text;
 mod xychart;

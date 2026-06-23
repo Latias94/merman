@@ -30,7 +30,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Sequence control blocks | Supported subset | `loop`, `opt`, `break`, `rect`, and `par_over` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. Nested control blocks render as nested frames with stable row ownership. |
 | Control-block combinations | Supported subset | Notes, activations, create/destroy lifecycle rows, and participant boxes are covered with control-block frames. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
-| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit foreground roles for participants, lifelines, activations, messages, notes, boxes, and control frames. Mermaid `rect` and box fill/background colors remain deferred. |
+| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit foreground roles for participants, lifelines, activations, messages, notes, boxes, and control frames. Parseable Mermaid `box` fill and `rect` background colors also render as terminal/HTML backgrounds; browser-only alpha/transparency forms remain deferred when the terminal cannot represent them faithfully. |
 
 ## Explicitly Unsupported
 
@@ -66,10 +66,11 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
   opt-in in `merman-ascii` instead of part of the default golden fixture contract.
 - Sequence messages and notes wrap with deterministic terminal display-width heuristics; this is a
   text rendering approximation rather than Mermaid's browser font measurement path.
-- Sequence box fill colors are intentionally not represented in plain text output. Box labels render
-  in the border when present.
-- Mermaid `rect` style/color expressions are preserved as frame labels but are not interpreted as
-  terminal color or background fill.
+- Sequence box fill colors render as terminal/HTML backgrounds only when Mermaid supplies a color
+  the terminal can represent faithfully; otherwise they remain plain text boxes with labels.
+- Mermaid `rect` style/color expressions render as frame backgrounds when the value is a parseable
+  terminal color. Browser-only transparency/alpha forms stay visible as labels rather than being
+  approximated.
 - Mermaid actor declarations and extended actor types render as terminal participant boxes instead
   of SVG-specific actor shapes. Actor links are accepted as SVG metadata and are intentionally not
   emitted in ASCII output; actor properties remain unsupported.
