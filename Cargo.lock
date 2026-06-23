@@ -2655,6 +2655,8 @@ dependencies = [
 name = "merman-analysis"
 version = "0.8.0-alpha.2"
 dependencies = [
+ "chrono",
+ "merman-core",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

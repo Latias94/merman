@@ -88,3 +88,12 @@ fn payload_summary_counts_all_severities() {
     assert_eq!(payload.summary.infos, 1);
     assert_eq!(payload.summary.hints, 1);
 }
+
+#[test]
+fn diagnostic_category_internal_serializes_as_internal() {
+    assert_eq!(DiagnosticCategory::Internal.as_str(), "internal");
+    assert_eq!(
+        serde_json::to_value(DiagnosticCategory::Internal).unwrap(),
+        json!("internal")
+    );
+}

@@ -79,6 +79,7 @@ pub enum DiagnosticCategory {
     Compatibility,
     Layout,
     Render,
+    Internal,
 }
 
 impl DiagnosticCategory {
@@ -91,6 +92,7 @@ impl DiagnosticCategory {
             Self::Compatibility => "compatibility",
             Self::Layout => "layout",
             Self::Render => "render",
+            Self::Internal => "internal",
         }
     }
 }
@@ -166,14 +168,15 @@ pub struct AnalysisDiagnostic {
 }
 
 impl AnalysisDiagnostic {
-    pub fn error(
+    pub fn new(
         id: impl Into<String>,
+        severity: DiagnosticSeverity,
         category: DiagnosticCategory,
         message: impl Into<String>,
     ) -> Self {
         Self {
             id: id.into(),
-            severity: DiagnosticSeverity::Error,
+            severity,
             category,
             message: message.into(),
             code: None,
@@ -183,6 +186,14 @@ impl AnalysisDiagnostic {
             related: Vec::new(),
             help: None,
         }
+    }
+
+    pub fn error(
+        id: impl Into<String>,
+        category: DiagnosticCategory,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::new(id, DiagnosticSeverity::Error, category, message)
     }
 
     pub fn with_code(mut self, code: i32, code_name: impl Into<String>) -> Self {

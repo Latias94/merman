@@ -13,7 +13,14 @@ readme = "README.md"
 keywords = ["mermaid", "diagnostics", "lint", "lsp", "parser"]
 categories = ["parser-implementations", "development-tools"]
 
+[features]
+default = ["core-full", "core-host"]
+core-full = ["merman-core/full"]
+core-host = ["merman-core/host"]
+
 [dependencies]
+chrono.workspace = true
+merman-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
