@@ -1,8 +1,9 @@
 use crate::completion::completion_for_snapshot;
 use crate::document_store::DocumentStore;
 use merman_analysis::{
-    Analyzer, lsp::analysis_payload_to_diagnostics, markdown::analyze_markdown_source,
-    markdown::markdown_source_descriptor,
+    Analyzer,
+    lsp::{analysis_payload_to_diagnostics, uri_is_markdown},
+    markdown::{analyze_markdown_source, markdown_source_descriptor},
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -49,16 +50,15 @@ impl MermanLanguageServer {
             return;
         };
 
-        let payload =
-            if snapshot.uri.path().ends_with(".md") || snapshot.uri.path().ends_with(".mdx") {
-                analyze_markdown_source(
-                    &snapshot.text,
-                    &self.analyzer,
-                    markdown_source_descriptor(Some(snapshot.uri.as_str())),
-                )
-            } else {
-                self.analyzer.analyze(&snapshot.text)
-            };
+        let payload = if uri_is_markdown(&snapshot.uri) {
+            analyze_markdown_source(
+                &snapshot.text,
+                &self.analyzer,
+                markdown_source_descriptor(Some(snapshot.uri.as_str())),
+            )
+        } else {
+            self.analyzer.analyze(&snapshot.text)
+        };
 
         let diagnostics = analysis_payload_to_diagnostics(&payload, uri);
         self.client

@@ -75,7 +75,6 @@ crates/
       document_store.rs
       snapshot.rs
       completion.rs
-      diagnostics.rs
     tests/
       server_smoke.rs
       completion.rs
@@ -168,7 +167,6 @@ This introduces the first explicit LSP transport in the workspace and likely the
   - `crates/merman-analysis/src/source_map.rs`
   - `crates/merman-analysis/src/payload.rs`
   - `crates/merman-analysis/tests/lsp_positions.rs`
-  - `crates/merman-lsp/src/diagnostics.rs`
   - `crates/merman-lsp/tests/diagnostics.rs`
 - **Approach:** Keep UTF-16 conversion and Markdown fence remapping in one shared seam so the server does not carry its own coordinate math. Map severity, codes, and related spans from the canonical payload instead of rebuilding them from string output.
 - **Patterns to follow:** `SourceMap` and `DiagnosticSpan` in `merman-analysis`, plus the payload shape already used by bindings.
@@ -225,17 +223,14 @@ This introduces the first explicit LSP transport in the workspace and likely the
 - **Dependencies:** U1, U2, U3, U4
 - **Files:**
   - `crates/merman-lsp/tests/*.rs`
-  - `fixtures/lsp/*.json`
-  - `fixtures/lsp/*.mmd`
-  - `fixtures/lsp/*.md`
 - **Approach:** Snapshot representative valid, invalid, Markdown-fenced, and stale-version cases so the server can be checked without comparing raw protocol noise. Cover completion item shape and diagnostic positions together where that proves the shared seam.
-- **Patterns to follow:** Existing golden-fixture style used elsewhere in the repo.
+- **Patterns to follow:** Existing Rust unit and integration test style used elsewhere in the repo.
 - **Test scenarios:**
   - A valid standalone diagram stays clean under diagnostics snapshots.
   - A fenced diagram reports the host-document range, not a raw fenced blob.
   - A versioned edit invalidates the old snapshot before the next publish.
   - Completion snapshots stay stable for the same document context.
-- **Verification:** The fixture set proves the LSP surface stays consistent across the expected editor workflows.
+- **Verification:** The focused test set proves the LSP surface stays consistent across the expected editor workflows.
 
 ### U6. Document the server contract and handoff
 

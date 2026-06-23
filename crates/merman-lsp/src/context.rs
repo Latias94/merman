@@ -33,18 +33,40 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_diagram_headers(&self) -> bool {
-        self.prefix.is_empty()
-            || self.prefix == "flowchart"
-            || self.prefix == "sequenceDiagram"
-            || self.prefix == "stateDiagram"
+        let prefix = self.prefix.trim_end();
+
+        prefix.is_empty()
+            || prefix == "flowchart"
+            || prefix == "sequenceDiagram"
+            || prefix == "stateDiagram"
     }
 
     pub fn offer_operator_items(&self) -> bool {
-        self.prefix.ends_with('-') || self.prefix.ends_with("--") || self.prefix.ends_with("->")
+        let prefix = self.prefix.trim_end();
+
+        prefix.ends_with('-') || prefix.ends_with("--") || prefix.ends_with("->")
     }
 
     pub fn offer_directive_items(&self) -> bool {
-        self.prefix.contains("class") || self.prefix.contains(":::")
+        let prefix = self.prefix.trim_end();
+
+        prefix.contains("class") || prefix.contains(":::")
+    }
+
+    pub fn offer_direction_items(&self) -> bool {
+        self.prefix.trim_end() == "direction"
+    }
+
+    pub fn offer_shape_items(&self) -> bool {
+        let prefix = self.prefix.trim_end();
+
+        prefix.contains("@{ shape:")
+            || prefix.ends_with("((")
+            || prefix.ends_with("{{")
+            || prefix.ends_with('[')
+            || prefix.ends_with("[/")
+            || prefix.ends_with("[\\")
+            || prefix.ends_with('>')
     }
 }
 
@@ -101,9 +123,18 @@ mod tests {
             CompletionContext::from_snapshot(&operator, Position::new(1, 3)).unwrap();
         assert!(operator_context.offer_operator_items());
 
-        let directive = store.upsert(uri, 3, "classDef foo fill:#f00".to_string());
+        let directive = store.upsert(uri.clone(), 3, "classDef foo fill:#f00".to_string());
         let directive_context =
             CompletionContext::from_snapshot(&directive, Position::new(0, 21)).unwrap();
         assert!(directive_context.offer_directive_items());
+
+        let direction = store.upsert(uri.clone(), 4, "direction".to_string());
+        let direction_context =
+            CompletionContext::from_snapshot(&direction, Position::new(0, 9)).unwrap();
+        assert!(direction_context.offer_direction_items());
+
+        let shape = store.upsert(uri.clone(), 5, "A@{ shape: ".to_string());
+        let shape_context = CompletionContext::from_snapshot(&shape, Position::new(0, 11)).unwrap();
+        assert!(shape_context.offer_shape_items());
     }
 }

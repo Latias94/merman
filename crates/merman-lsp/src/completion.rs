@@ -23,8 +23,16 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
         items.extend(operator_items());
     }
 
+    if context.offer_direction_items() {
+        items.extend(direction_items());
+    }
+
     if context.offer_directive_items() {
         items.extend(directive_items());
+    }
+
+    if context.offer_shape_items() {
+        items.extend(shape_items());
     }
 
     items.extend(node_items(context.fence(), context.uri()));
@@ -62,6 +70,30 @@ fn directive_items() -> Vec<CompletionItem> {
         keyword_completion(":::className", "node class directive"),
         keyword_completion("::icon(name)", "node icon directive"),
         keyword_completion("%% comment", "comment"),
+    ]
+}
+
+fn direction_items() -> Vec<CompletionItem> {
+    vec![
+        keyword_completion("direction TB", "top to bottom"),
+        keyword_completion("direction BT", "bottom to top"),
+        keyword_completion("direction LR", "left to right"),
+        keyword_completion("direction RL", "right to left"),
+    ]
+}
+
+fn shape_items() -> Vec<CompletionItem> {
+    vec![
+        keyword_completion("@{ shape: circle }", "circle shape"),
+        keyword_completion("@{ shape: rounded }", "rounded shape"),
+        keyword_completion("@{ shape: diamond }", "diamond shape"),
+        keyword_completion("@{ shape: hexagon }", "hexagon shape"),
+        keyword_completion("@{ shape: stadium }", "stadium shape"),
+        keyword_completion("@{ shape: subroutine }", "subroutine shape"),
+        keyword_completion("@{ shape: cylinder }", "cylinder shape"),
+        keyword_completion("@{ shape: trapezoid }", "trapezoid shape"),
+        keyword_completion("@{ shape: inv_trapezoid }", "inverse trapezoid shape"),
+        keyword_completion("@{ shape: doublecircle }", "double circle shape"),
     ]
 }
 

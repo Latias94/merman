@@ -49,7 +49,7 @@ pub fn position_from_utf16(value: Utf16Position) -> Position {
 }
 
 pub fn uri_is_markdown(uri: &Url) -> bool {
-    crate::markdown::is_markdown_path(std::path::Path::new(uri.as_str()))
+    crate::markdown::is_markdown_path(std::path::Path::new(uri.path()))
 }
 
 fn related_information(
@@ -102,10 +102,12 @@ mod tests {
     #[test]
     fn markdown_uri_detection_matches_expected_extensions() {
         let md = Url::parse("file:///tmp/example.md").unwrap();
+        let markdown = Url::parse("file:///tmp/example.markdown").unwrap();
         let mdx = Url::parse("file:///tmp/example.mdx").unwrap();
         let mmd = Url::parse("file:///tmp/example.mmd").unwrap();
 
         assert!(uri_is_markdown(&md));
+        assert!(uri_is_markdown(&markdown));
         assert!(uri_is_markdown(&mdx));
         assert!(!uri_is_markdown(&mmd));
     }

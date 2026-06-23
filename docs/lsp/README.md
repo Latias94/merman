@@ -12,7 +12,7 @@ status: active
 - Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, and `completion`.
 - Publish diagnostics from `merman-analysis`.
 - Keep document state versioned so stale diagnostics are not republished.
-- Provide the first completion surface for diagram structure and local identifiers.
+- Provide the first completion surface for diagram structure, directions, shapes, and local identifiers.
 
 ## Deferred
 
@@ -23,6 +23,7 @@ status: active
 - Semantic tokens
 - Workspace symbols
 - Formatting
+- Completion resolution payloads
 
 ## Notes
 
