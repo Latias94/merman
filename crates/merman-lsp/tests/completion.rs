@@ -1,16 +1,26 @@
 use merman_lsp::completion::completion_for_snapshot;
 use merman_lsp::document_store::DocumentStore;
-use tower_lsp::lsp_types::{Position, Url};
+use tower_lsp::lsp_types::{CompletionTextEdit, Position, Url};
 
 #[test]
 fn completion_offers_known_node_ids_for_plain_mermaid_documents() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nB-->C\n".to_string());
-    let list = completion_for_snapshot(&snapshot, Position::new(1, 0));
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 1));
 
     assert!(list.items.iter().any(|item| item.label == "A"));
     assert!(list.items.iter().any(|item| item.label == "B"));
+
+    let item = list.items.iter().find(|item| item.label == "B").unwrap();
+    match item.text_edit.as_ref().unwrap() {
+        CompletionTextEdit::Edit(edit) => {
+            assert_eq!(edit.new_text, "B");
+            assert_eq!(edit.range.start.line, 1);
+            assert_eq!(edit.range.start.character, 0);
+        }
+        other => panic!("unexpected text edit: {other:?}"),
+    }
 }
 
 #[test]
@@ -52,6 +62,19 @@ fn completion_offers_shape_keywords() {
             .iter()
             .any(|item| item.label == "@{ shape: stadium }")
     );
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "@{ shape: circle }")
+        .unwrap();
+    match item.text_edit.as_ref().unwrap() {
+        CompletionTextEdit::Edit(edit) => {
+            assert_eq!(edit.new_text, "circle }");
+            assert_eq!(edit.range.start.character, 11);
+        }
+        other => panic!("unexpected text edit: {other:?}"),
+    }
 }
 
 #[test]
@@ -76,5 +99,27 @@ fn completion_offers_shape_keywords_for_classic_shapes() {
                 .any(|item| item.label == "@{ shape: circle }"),
             "missing shape completion for {source:?}"
         );
+    }
+}
+
+#[test]
+fn completion_offers_header_edit_ranges() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "flow".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "flowchart TD")
+        .unwrap();
+    match item.text_edit.as_ref().unwrap() {
+        CompletionTextEdit::Edit(edit) => {
+            assert_eq!(edit.new_text, "flowchart TD");
+            assert_eq!(edit.range.start.character, 0);
+            assert_eq!(edit.range.end.character, 4);
+        }
+        other => panic!("unexpected text edit: {other:?}"),
     }
 }

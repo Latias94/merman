@@ -29,3 +29,5 @@ status: active
 
 - Plain Mermaid files and Markdown/MDX fenced Mermaid blocks are both supported.
 - Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
+- Completion now uses snapshot-derived replacement ranges, so header, operator, direction, shape,
+  and node completions replace the current token instead of blindly inserting at the cursor.

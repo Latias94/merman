@@ -7,14 +7,14 @@ git_branch: feat/diagnostics-analysis-contract
 
 # Summary
 
-`merman-lsp` 已经从纯骨架推进到可用的 diagnostics + completion 基线：诊断投递走 `merman-analysis`，Markdown fence 重映射统一，completion 现在覆盖 diagram header、direction、operator、directive、shape 和本地 node id。`DocumentStore` 与 `CompletionContext` 已经形成可继续深挖的 snapshot seam，`server_smoke` 也验证了 initialize/open/change/save 的当前版本诊断发布。
+`merman-lsp` 已经从纯骨架推进到可用的 diagnostics + completion 基线：诊断投递走 `merman-analysis`，Markdown fence 重映射统一，completion 现在覆盖 diagram header、direction、operator、directive、shape 和本地 node id，并且开始使用 snapshot 驱动的替换范围而不是裸插入。`DocumentStore` 与 `CompletionContext` 已经形成可继续深挖的 snapshot seam，`server_smoke` 也验证了 initialize/open/change/save 的当前版本诊断发布。
 
 # Details
 
 - `merman-analysis` 统一提供 LSP 诊断位置转换与 Markdown URI 判断。
-- `merman-lsp` 的 completion 逻辑已经从 ad hoc 字符串判断收进 snapshot/context。
+- `merman-lsp` 的 completion 逻辑已经从 ad hoc 字符串判断收进 snapshot/context，并开始用上下文计算 text edit range。
 - `server` 端不再自己猜 Markdown 扩展名，而是复用共享判断。
-- `completion`、`document_store`、`diagnostics` 和 `server_smoke` 测试现在覆盖 plain `.mmd` 与 Markdown fence 两条路径。
+- `completion`、`document_store`、`diagnostics` 和 `server_smoke` 测试现在覆盖 plain `.mmd` 与 Markdown fence 两条路径，completion 还覆盖了替换范围。
 
 # Next Action
 

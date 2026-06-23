@@ -23,4 +23,5 @@ analysis path.
 ## Residuals
 
 - Client font metrics, rendering, and HTML label behavior are not part of the LSP contract.
-- Completion is shallow and structural in this first pass, but now covers diagram structure, directions, shapes, and local identifiers.
+- Completion is shallow and structural in this first pass, but now covers diagram structure,
+  directions, operators, shapes, directives, and local identifiers with stable replacement edits.
