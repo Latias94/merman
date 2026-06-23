@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone)]
 pub(crate) struct MarkdownChart {
     pub(crate) start: usize,
+    pub(crate) body_start: usize,
     pub(crate) end: usize,
     pub(crate) definition: String,
 }
@@ -22,11 +23,15 @@ pub(crate) struct MarkdownImage {
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
-        Some("md" | "markdown")
+        Some("md" | "markdown" | "mdx")
     )
 }
 
 pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
+    extract_charts_with_spans(source)
+}
+
+pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
     chart_regex()
         .captures_iter(source)
         .filter_map(|captures| {
@@ -34,6 +39,7 @@ pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
             let definition = captures.get(2)?;
             Some(MarkdownChart {
                 start: whole.start(),
+                body_start: definition.start(),
                 end: whole.end(),
                 definition: definition.as_str().to_string(),
             })

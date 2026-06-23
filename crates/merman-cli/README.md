@@ -190,6 +190,22 @@ merman-cli completion bash
 `render` writes SVG to stdout by default. Use `--out` for files, `--format ascii|unicode` for
 terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 
+### Lint
+
+`lint` analyzes Mermaid source and emits canonical diagnostics JSON by default:
+
+```sh
+merman-cli lint path/to/diagram.mmd
+merman-cli lint --markdown path/to/README.md
+printf "flowchart TD\nA -->\n" | merman-cli lint --format text - 
+printf "```mermaid\nflowchart TD\nA -->\n```" | \
+  merman-cli lint --markdown --stdin-file-name notes.md --format text -
+```
+
+Use `--format text` for a compact human-readable summary or `--format json` for machine
+consumers. Markdown and MDX input files are scanned for Mermaid fences, and `--stdin-file-name`
+provides a stable display path when linting from stdin.
+
 ## Common Options
 
 - `-t, --theme <theme>` sets the Mermaid theme.

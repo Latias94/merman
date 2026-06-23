@@ -10,8 +10,14 @@ use clap::Parser;
 
 fn main() {
     let cli = cli::Cli::parse();
-    if let Err(err) = commands::run(cli) {
-        eprintln!("{err}");
-        std::process::exit(1);
+    let exit_code = match commands::run(cli) {
+        Ok(exit_code) => exit_code,
+        Err(err) => {
+            eprintln!("{err}");
+            1
+        }
+    };
+    if exit_code != 0 {
+        std::process::exit(exit_code);
     }
 }

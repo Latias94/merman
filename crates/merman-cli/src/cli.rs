@@ -10,7 +10,7 @@ use merman::render::FlowchartElkBackend as RenderFlowchartElkBackend;
     about = "Headless Mermaid renderer compatible with common mmdc workflows.",
     long_about = "Headless Mermaid renderer compatible with common mmdc workflows.\n\n\
 Top-level usage functionally mirrors common mmdc workflows:\n  merman-cli -i input.mmd -o output.svg\n  merman-cli -i input.mmd -o output.png -t dark -b transparent\n\n\
-Developer subcommands expose merman internals:\n  merman-cli parse --pretty input.mmd\n  merman-cli layout --pretty input.mmd\n  merman-cli render --format unicode input.mmd"
+Developer subcommands expose merman internals:\n  merman-cli parse --pretty input.mmd\n  merman-cli layout --pretty input.mmd\n  merman-cli lint --format json input.mmd\n  merman-cli render --format unicode input.mmd"
 )]
 pub(crate) struct Cli {
     #[command(subcommand)]
@@ -33,6 +33,8 @@ pub(crate) enum Command {
     Parse(ParseArgs),
     /// Parse and layout Mermaid source, then print layout JSON.
     Layout(LayoutArgs),
+    /// Analyze Mermaid source and print diagnostics JSON or text.
+    Lint(LintArgs),
     /// Render Mermaid source to SVG/PNG/JPG/PDF/ASCII/Unicode.
     Render(RenderArgs),
     /// Generate shell completion scripts.
@@ -82,6 +84,79 @@ pub(crate) struct LayoutArgs {
 
     #[command(flatten)]
     pub(crate) render: RenderCliArgs,
+}
+
+#[derive(Debug, ClapArgs)]
+pub(crate) struct LintArgs {
+    /// Input Mermaid or Markdown file. Use `-` for stdin.
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
+    pub(crate) input: Option<String>,
+
+    /// Optional file name to use when linting stdin.
+    #[arg(
+        long = "stdin-file-name",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Input handling"
+    )]
+    pub(crate) stdin_file_name: Option<String>,
+
+    /// Output format for diagnostics.
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = LintOutputFormat::Json,
+        help_heading = "Output"
+    )]
+    pub(crate) format: LintOutputFormat,
+
+    /// Pretty-print JSON output.
+    #[arg(long)]
+    pub(crate) pretty: bool,
+
+    /// Include Markdown fence diagnostics by scanning `.md`, `.markdown`, or `.mdx` input.
+    #[arg(long = "markdown", help_heading = "Analysis options")]
+    pub(crate) markdown: bool,
+
+    /// JSON Mermaid configuration file.
+    #[arg(
+        short = 'c',
+        long = "configFile",
+        alias = "config-file",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Mermaid configuration"
+    )]
+    pub(crate) config_file: Option<String>,
+
+    /// Override the local "today" date for time-dependent diagrams.
+    #[arg(
+        long = "fixed-today",
+        value_parser = parse_naive_date,
+        help_heading = "Deterministic rendering"
+    )]
+    pub(crate) fixed_today: Option<chrono::NaiveDate>,
+
+    /// Override the local timezone offset in minutes for time-dependent diagrams.
+    #[arg(
+        long = "fixed-local-offset-minutes",
+        value_parser = parse_fixed_local_offset_minutes,
+        help_heading = "Deterministic rendering"
+    )]
+    pub(crate) fixed_local_offset_minutes: Option<i32>,
+
+    /// Maximum source bytes accepted by the analyzer.
+    #[arg(
+        long = "max-source-bytes",
+        value_parser = parse_positive_usize,
+        help_heading = "Analysis options"
+    )]
+    pub(crate) max_source_bytes: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub(crate) enum LintOutputFormat {
+    #[default]
+    Json,
+    Text,
 }
 
 #[derive(Debug, ClapArgs)]

@@ -25,6 +25,7 @@ clap.workspace = true
 clap_complete.workspace = true
 chrono.workspace = true
 merman = { workspace = true, features = ["core-full", "core-host", "raster"] }
+merman-analysis.workspace = true
 rayon.workspace = true
 regex.workspace = true
 reqwest.workspace = true

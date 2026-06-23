@@ -20,6 +20,26 @@ fn run_with_stdin(args: &[&str], input: &str) -> Output {
     run_with_stdin_in_dir(args, input, None)
 }
 
+fn run_with_stdin_input(args: &[&str], stdin: &[u8]) -> Output {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut command = Command::new(exe);
+    command
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().expect("spawn cli");
+
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(stdin)
+        .expect("write stdin");
+
+    child.wait_with_output().expect("wait cli")
+}
+
 fn run_with_stdin_in_dir(args: &[&str], input: &str, cwd: Option<&Path>) -> Output {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let mut command = Command::new(exe);
@@ -272,6 +292,56 @@ fn cli_rejects_invalid_fixed_time_options() {
             "unexpected stderr for {flag} {value}:\n{stderr}"
         );
     }
+}
+
+#[test]
+fn cli_lint_valid_mermaid_returns_zero_and_json_payload() {
+    let output = run_with_stdin(
+        &["lint", "--format", "json", "-"],
+        "flowchart TD\nA[Hello] --> B[World]\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["version"], 1);
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["errors"], 0);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
+    let output = run_with_stdin_input(
+        &[
+            "lint",
+            "--markdown",
+            "--stdin-file-name",
+            "notes.md",
+            "--format",
+            "text",
+            "-",
+        ],
+        b"before\n```mermaid\nflowchart TD\nA -->\n```\nafter\n",
+    );
+
+    assert!(
+        !output.status.success(),
+        "lint should fail on invalid markdown"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("notes.md:3:1"),
+        "unexpected lint output:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("merman.parse.diagram_parse"),
+        "unexpected lint output:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("1 error(s)"),
+        "unexpected lint summary:\n{stdout}"
+    );
 }
 
 #[test]

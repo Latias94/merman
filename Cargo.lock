@@ -2692,6 +2692,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "merman",
+ "merman-analysis",
  "png 0.17.16",
  "rayon",
  "regex",
