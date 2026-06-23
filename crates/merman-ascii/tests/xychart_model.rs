@@ -53,6 +53,13 @@ fn strip_html_spans(input: &str) -> String {
     output
 }
 
+fn cjk_test_width(input: &str) -> usize {
+    input
+        .chars()
+        .map(|ch| if ch.is_ascii() { 1 } else { 2 })
+        .sum()
+}
+
 #[test]
 fn xychart_color_truecolor_emits_axis_text_and_series_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
@@ -283,6 +290,33 @@ bar [2, 5]
             "0 ┼───────\n",
             "    A   B\n",
         )
+    );
+}
+
+#[test]
+fn xychart_parser_vertical_categories_respect_display_width_for_cjk() {
+    let rendered = render_xychart(
+        r#"xychart
+x-axis [中, B]
+y-axis 0 --> 5
+bar [2, 5]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("CJK xychart categories should render");
+
+    let axis_line = rendered
+        .lines()
+        .find(|line| line.contains('+'))
+        .expect("axis line should render");
+    let category_line = rendered
+        .lines()
+        .find(|line| line.contains('中'))
+        .expect("CJK category should render");
+
+    assert!(
+        cjk_test_width(category_line) <= cjk_test_width(axis_line),
+        "category labels must stay inside the plot width:\n{rendered}"
     );
 }
 

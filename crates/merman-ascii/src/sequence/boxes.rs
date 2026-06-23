@@ -1,5 +1,6 @@
 use super::{BOX_BORDER_WIDTH, SEQUENCE_BOX_CONTENT_OFFSET, SEQUENCE_BOX_LABEL_MARGIN};
 use crate::color::AsciiColorRole;
+use crate::terminal::char_display_width;
 use crate::text::display_width;
 
 use super::layout::SequenceLayout;
@@ -114,12 +115,13 @@ fn draw_sequence_box(
 
     if let Some(label) = &sequence_box.label {
         let label = format!(" {label} ");
-        let start = bounds.left + SEQUENCE_BOX_LABEL_MARGIN;
-        for (offset, ch) in label.chars().enumerate() {
-            let index = start + offset;
-            if index < bounds.right {
+        let mut index = bounds.left + SEQUENCE_BOX_LABEL_MARGIN;
+        for ch in label.chars() {
+            let ch_width = char_display_width(ch);
+            if index + ch_width <= bounds.right {
                 canvas[top].set_role(index, ch, AsciiColorRole::Text);
             }
+            index += ch_width;
         }
     }
 }

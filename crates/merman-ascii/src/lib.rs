@@ -14,6 +14,7 @@ mod graph;
 mod options;
 mod relation_graph;
 mod sequence;
+mod terminal;
 mod text;
 mod xychart;
 

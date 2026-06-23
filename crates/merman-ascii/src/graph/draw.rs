@@ -7,6 +7,7 @@ use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
+use crate::terminal::char_display_width;
 use crate::text::display_width;
 use std::collections::HashSet;
 
@@ -177,7 +178,7 @@ impl OutputTransform {
                 let Some(ch) = source.get(x, y) else {
                     continue;
                 };
-                let coord = self.coord(CanvasCoord { x, y }, width, height);
+                let coord = self.coord_for_char(CanvasCoord { x, y }, ch, width, height);
                 let ch = self.map_char(ch);
                 if let Some(color) = source.get_color(x, y) {
                     canvas.set_canvas_color(coord.x, coord.y, ch, color);
@@ -189,9 +190,27 @@ impl OutputTransform {
         canvas
     }
 
+    fn coord_for_char(
+        self,
+        coord: CanvasCoord,
+        ch: char,
+        width: usize,
+        height: usize,
+    ) -> CanvasCoord {
+        match self {
+            Self::HorizontalMirror => CanvasCoord {
+                x: width
+                    .saturating_sub(coord.x)
+                    .saturating_sub(char_display_width(ch)),
+                y: coord.y,
+            },
+            Self::Identity | Self::VerticalMirror => self.coord(coord, width, height),
+        }
+    }
+
     fn text_x(self, x: usize, text: &str, width: usize) -> usize {
         match self {
-            Self::HorizontalMirror => width.saturating_sub(x).saturating_sub(text.chars().count()),
+            Self::HorizontalMirror => width.saturating_sub(x).saturating_sub(display_width(text)),
             Self::Identity | Self::VerticalMirror => x,
         }
     }
@@ -646,7 +665,7 @@ fn redraw_transformed_node_label(
 }
 
 fn clear_text_span(canvas: &mut Canvas, x: usize, y: usize, text: &str) {
-    for offset in 0..text.chars().count() {
+    for offset in 0..display_width(text) {
         canvas.set(x + offset, y, ' ');
     }
 }

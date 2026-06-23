@@ -17,6 +17,306 @@ pub(crate) struct RelationGraphBox {
     width: usize,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RelationStackPlan<'a> {
+    top: &'a RelationGraphBox,
+    bottom: &'a RelationGraphBox,
+    center: usize,
+    relation_lines: Vec<RelationGraphLine>,
+}
+
+impl<'a> RelationStackPlan<'a> {
+    pub(crate) fn from_centered_rows(
+        top: &'a RelationGraphBox,
+        bottom: &'a RelationGraphBox,
+        extra_half_widths: &[usize],
+        build_rows: impl FnOnce(usize) -> Vec<RelationGraphLine>,
+    ) -> Self {
+        let center = vertical_center(top, bottom, extra_half_widths);
+        let relation_lines = build_rows(center);
+        Self {
+            top,
+            bottom,
+            center,
+            relation_lines,
+        }
+    }
+
+    pub(crate) fn render_with_options(&self, options: &AsciiRenderOptions) -> String {
+        render_vertical_stack_with_options(
+            self.top,
+            self.bottom,
+            self.center,
+            self.relation_lines.clone(),
+            options,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RelationParallelPlan<'a> {
+    top: &'a RelationGraphBox,
+    bottom: &'a RelationGraphBox,
+    center: usize,
+    lane_left: usize,
+    lane_gap: usize,
+    lane_widths: Vec<usize>,
+    lanes: Vec<Vec<RelationGraphLine>>,
+}
+
+impl<'a> RelationParallelPlan<'a> {
+    pub(crate) fn new(
+        top: &'a RelationGraphBox,
+        bottom: &'a RelationGraphBox,
+        lanes: Vec<Vec<RelationGraphLine>>,
+        lane_gap: usize,
+    ) -> Self {
+        let lane_widths = lanes
+            .iter()
+            .map(|lane| {
+                lane.iter()
+                    .map(|line| display_width(line.text()))
+                    .max()
+                    .unwrap_or(1)
+                    .max(1)
+            })
+            .collect::<Vec<_>>();
+        let lanes_width = lane_widths.iter().sum::<usize>()
+            + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
+        let lane_center = lanes_width / 2;
+        let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
+        let lane_left = center.saturating_sub(lane_center);
+
+        Self {
+            top,
+            bottom,
+            center,
+            lane_left,
+            lane_gap,
+            lane_widths,
+            lanes,
+        }
+    }
+
+    pub(crate) fn render_with_options(&self, options: &AsciiRenderOptions) -> String {
+        if options.color_mode == AsciiColorMode::Plain {
+            let mut relation_lines = Vec::new();
+            let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
+            for row_index in 0..row_count {
+                let mut line = String::new();
+                line.extend(std::iter::repeat_n(' ', self.lane_left));
+                for (lane_index, lane) in self.lanes.iter().enumerate() {
+                    if lane_index > 0 {
+                        line.extend(std::iter::repeat_n(' ', self.lane_gap));
+                    }
+                    let text = lane.get(row_index).map(|line| line.text()).unwrap_or("");
+                    line.push_str(&centered_cell(text, self.lane_widths[lane_index]));
+                }
+                while line.ends_with(' ') {
+                    line.pop();
+                }
+                relation_lines.push(line);
+            }
+
+            return render_vertical_stack(self.top, self.bottom, self.center, relation_lines);
+        }
+
+        let mut relation_lines = Vec::new();
+        let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
+        for row_index in 0..row_count {
+            let mut parts = Vec::new();
+            parts.push(RelationGraphLine::plain(" ".repeat(self.lane_left)));
+            for (lane_index, lane) in self.lanes.iter().enumerate() {
+                if lane_index > 0 {
+                    parts.push(RelationGraphLine::plain(" ".repeat(self.lane_gap)));
+                }
+                let cell = lane
+                    .get(row_index)
+                    .cloned()
+                    .unwrap_or_else(|| RelationGraphLine::plain(String::new()));
+                parts.push(centered_cell_line(&cell, self.lane_widths[lane_index]));
+            }
+            relation_lines.push(concat_relation_lines(parts));
+        }
+
+        render_vertical_stack_with_options(
+            self.top,
+            self.bottom,
+            self.center,
+            relation_lines,
+            options,
+        )
+    }
+
+    #[allow(dead_code)]
+    fn render_plain(&self) -> String {
+        let mut relation_lines = Vec::new();
+        let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
+        for row_index in 0..row_count {
+            let mut line = String::new();
+            line.extend(std::iter::repeat_n(' ', self.lane_left));
+            for (lane_index, lane) in self.lanes.iter().enumerate() {
+                if lane_index > 0 {
+                    line.extend(std::iter::repeat_n(' ', self.lane_gap));
+                }
+                let text = lane.get(row_index).map(|line| line.text()).unwrap_or("");
+                line.push_str(&centered_cell(text, self.lane_widths[lane_index]));
+            }
+            while line.ends_with(' ') {
+                line.pop();
+            }
+            relation_lines.push(line);
+        }
+
+        render_vertical_stack(self.top, self.bottom, self.center, relation_lines)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RelationOverlay {
+    Glyph {
+        x: usize,
+        y: usize,
+        ch: char,
+        role: AsciiColorRole,
+    },
+    Text {
+        center_x: usize,
+        y: usize,
+        text: String,
+        role: AsciiColorRole,
+    },
+}
+
+impl RelationOverlay {
+    pub(crate) fn glyph(x: usize, y: usize, ch: char, role: AsciiColorRole) -> Self {
+        Self::Glyph { x, y, ch, role }
+    }
+
+    pub(crate) fn text(center_x: usize, y: usize, text: String, role: AsciiColorRole) -> Self {
+        Self::Text {
+            center_x,
+            y,
+            text,
+            role,
+        }
+    }
+
+    fn draw_at(&self, canvas: &mut Canvas) {
+        match self {
+            RelationOverlay::Glyph { x, y, ch, role } => canvas.set_role(*x, *y, *ch, *role),
+            RelationOverlay::Text {
+                center_x,
+                y,
+                text,
+                role,
+            } => write_centered_relation_text(canvas, *center_x, *y, text, *role),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LayeredRelationRouteGeometry {
+    from_x: usize,
+    from_y: usize,
+    to_x: usize,
+    to_y: usize,
+    source_path_start_y: usize,
+    route_y: usize,
+    target_path_end_y: usize,
+}
+
+impl LayeredRelationRouteGeometry {
+    pub(crate) fn from_x(&self) -> usize {
+        self.from_x
+    }
+
+    pub(crate) fn from_y(&self) -> usize {
+        self.from_y
+    }
+
+    pub(crate) fn to_x(&self) -> usize {
+        self.to_x
+    }
+
+    pub(crate) fn to_y(&self) -> usize {
+        self.to_y
+    }
+
+    pub(crate) fn route_y(&self) -> usize {
+        self.route_y
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LayeredRelationRoutePlan {
+    geometry: LayeredRelationRouteGeometry,
+    vertical_char: char,
+    horizontal_char: char,
+    relation_chars: RelationLineChars,
+    overlays: Vec<RelationOverlay>,
+}
+
+impl LayeredRelationRoutePlan {
+    pub(crate) fn new(
+        geometry: LayeredRelationRouteGeometry,
+        vertical_char: char,
+        horizontal_char: char,
+        relation_chars: RelationLineChars,
+        overlays: Vec<RelationOverlay>,
+    ) -> Self {
+        Self {
+            geometry,
+            vertical_char,
+            horizontal_char,
+            relation_chars,
+            overlays,
+        }
+    }
+
+    pub(crate) fn draw_at(&self, canvas: &mut Canvas) {
+        if self.geometry.source_path_start_y <= self.geometry.route_y {
+            for y in self.geometry.source_path_start_y..=self.geometry.route_y {
+                put_relation_char(
+                    canvas,
+                    self.geometry.from_x,
+                    y,
+                    self.vertical_char,
+                    self.relation_chars,
+                );
+            }
+        }
+        if self.geometry.from_x != self.geometry.to_x {
+            let left = self.geometry.from_x.min(self.geometry.to_x);
+            let right = self.geometry.from_x.max(self.geometry.to_x);
+            for x in left..=right {
+                put_relation_char(
+                    canvas,
+                    x,
+                    self.geometry.route_y,
+                    self.horizontal_char,
+                    self.relation_chars,
+                );
+            }
+        }
+        if self.geometry.route_y < self.geometry.target_path_end_y {
+            for y in self.geometry.route_y..self.geometry.target_path_end_y {
+                put_relation_char(
+                    canvas,
+                    self.geometry.to_x,
+                    y,
+                    self.vertical_char,
+                    self.relation_chars,
+                );
+            }
+        }
+
+        for overlay in &self.overlays {
+            overlay.draw_at(canvas);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LayeredRelationEdge<'a> {
     top_id: &'a str,
@@ -341,110 +641,32 @@ pub(crate) fn render_vertical_stack_with_options(
     render_lines_with_options(&lines, options)
 }
 
-pub(crate) fn render_parallel_vertical_stack(
-    top: &RelationGraphBox,
-    bottom: &RelationGraphBox,
-    lanes: &[Vec<String>],
-    lane_gap: usize,
-) -> String {
-    let lane_widths = lanes
-        .iter()
-        .map(|lane| {
-            lane.iter()
-                .map(|text| display_width(text))
-                .max()
-                .unwrap_or(1)
-                .max(1)
-        })
-        .collect::<Vec<_>>();
-    let lanes_width = lane_widths.iter().sum::<usize>()
-        + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
-    let lane_center = lanes_width / 2;
-    let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
-    let lane_left = center.saturating_sub(lane_center);
-    let row_count = lanes.iter().map(Vec::len).max().unwrap_or(0);
-
-    let mut relation_lines = Vec::new();
-    for row_index in 0..row_count {
-        let mut line = String::new();
-        line.extend(std::iter::repeat_n(' ', lane_left));
-        for (lane_index, lane) in lanes.iter().enumerate() {
-            if lane_index > 0 {
-                line.extend(std::iter::repeat_n(' ', lane_gap));
-            }
-            let text = lane.get(row_index).map(String::as_str).unwrap_or("");
-            line.push_str(&centered_cell(text, lane_widths[lane_index]));
-        }
-        while line.ends_with(' ') {
-            line.pop();
-        }
-        relation_lines.push(line);
-    }
-
-    render_vertical_stack(top, bottom, center, relation_lines)
-}
-
-pub(crate) fn render_parallel_vertical_stack_with_options(
-    top: &RelationGraphBox,
-    bottom: &RelationGraphBox,
-    lanes: &[Vec<RelationGraphLine>],
-    lane_gap: usize,
-    options: &AsciiRenderOptions,
-) -> String {
-    if options.color_mode == AsciiColorMode::Plain {
-        let plain_lanes = lanes
-            .iter()
-            .map(|lane| {
-                lane.iter()
-                    .map(|line| line.text().to_string())
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        return render_parallel_vertical_stack(top, bottom, &plain_lanes, lane_gap);
-    }
-
-    let lane_widths = lanes
-        .iter()
-        .map(|lane| {
-            lane.iter()
-                .map(|line| display_width(line.text()))
-                .max()
-                .unwrap_or(1)
-                .max(1)
-        })
-        .collect::<Vec<_>>();
-    let lanes_width = lane_widths.iter().sum::<usize>()
-        + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
-    let lane_center = lanes_width / 2;
-    let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
-    let lane_left = center.saturating_sub(lane_center);
-    let row_count = lanes.iter().map(Vec::len).max().unwrap_or(0);
-
-    let mut relation_lines = Vec::new();
-    for row_index in 0..row_count {
-        let mut parts = Vec::new();
-        parts.push(RelationGraphLine::plain(" ".repeat(lane_left)));
-        for (lane_index, lane) in lanes.iter().enumerate() {
-            if lane_index > 0 {
-                parts.push(RelationGraphLine::plain(" ".repeat(lane_gap)));
-            }
-            let cell = lane
-                .get(row_index)
-                .cloned()
-                .unwrap_or_else(|| RelationGraphLine::plain(String::new()));
-            parts.push(centered_cell_line(&cell, lane_widths[lane_index]));
-        }
-        relation_lines.push(concat_relation_lines(parts));
-    }
-
-    render_vertical_stack_with_options(top, bottom, center, relation_lines, options)
-}
-
 pub(crate) fn parallel_lane_offset(index: usize, count: usize) -> isize {
     if count <= 1 {
         return 0;
     }
     (index as isize * 2 - (count as isize - 1)) * 3
+}
+
+pub(crate) fn parallel_relation_lane_offsets<'a>(
+    endpoints: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<isize> {
+    let endpoints = endpoints.into_iter().collect::<Vec<_>>();
+    let mut counts = HashMap::<(&str, &str), usize>::new();
+    for endpoint in &endpoints {
+        *counts.entry(*endpoint).or_insert(0) += 1;
+    }
+
+    let mut seen = HashMap::<(&str, &str), usize>::new();
+    endpoints
+        .into_iter()
+        .map(|endpoint| {
+            let index = seen.entry(endpoint).or_insert(0);
+            let offset = parallel_lane_offset(*index, counts[&endpoint]);
+            *index += 1;
+            offset
+        })
+        .collect()
 }
 
 pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
@@ -500,6 +722,37 @@ pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
         }
         (false, false) => route_column_right_of_intermediate_boxes(top, &intermediate_boxes),
     }
+}
+
+pub(crate) fn plan_layered_relation_route(
+    placed_boxes: &[PlacedRelationGraphBox<'_>],
+    top: &PlacedRelationGraphBox<'_>,
+    bottom: &PlacedRelationGraphBox<'_>,
+    lane_offset: isize,
+    min_vertical_gap: usize,
+    source_path_start_offset: usize,
+    route_y_offset_from_target: usize,
+    target_path_end_offset_from_target: usize,
+) -> Option<LayeredRelationRouteGeometry> {
+    let lane_offset =
+        spanning_lane_offset_around_intermediate_boxes(placed_boxes, top, bottom, lane_offset);
+    let from_x = offset_center(top.center_x(), lane_offset);
+    let from_y = top.bottom();
+    let to_x = offset_center(bottom.center_x(), lane_offset);
+    let to_y = bottom.y();
+    if to_y <= from_y.saturating_add(min_vertical_gap) {
+        return None;
+    }
+
+    Some(LayeredRelationRouteGeometry {
+        from_x,
+        from_y,
+        to_x,
+        to_y,
+        source_path_start_y: from_y.saturating_add(source_path_start_offset),
+        route_y: to_y.saturating_sub(route_y_offset_from_target),
+        target_path_end_y: to_y.saturating_sub(target_path_end_offset_from_target),
+    })
 }
 
 fn route_column_crosses_any_box(
@@ -961,7 +1214,7 @@ fn render_lines_with_options(lines: &[RelationGraphLine], options: &AsciiRenderO
 }
 
 fn line_char_width(line: &RelationGraphLine) -> usize {
-    line.text().chars().count()
+    display_width(line.text())
 }
 
 fn centered_cell(text: &str, width: usize) -> String {
@@ -1090,6 +1343,77 @@ mod tests {
         assert_eq!(
             canvas.get_color(0, 0),
             Some(crate::canvas::CanvasColor::Role(AsciiColorRole::Junction))
+        );
+    }
+
+    #[test]
+    fn parallel_relation_lane_offsets_group_by_endpoint_pair() {
+        let offsets =
+            parallel_relation_lane_offsets([("A", "B"), ("A", "B"), ("A", "C"), ("A", "B")]);
+
+        assert_eq!(offsets, vec![-6, 0, 0, 6]);
+    }
+
+    #[test]
+    fn layered_relation_route_plan_draws_route_and_overlays() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 4,
+            },
+        ];
+        let geometry = plan_layered_relation_route(&placed, &placed[0], &placed[1], 0, 1, 1, 1, 0)
+            .expect("route has enough vertical space");
+        let route = LayeredRelationRoutePlan::new(
+            geometry.clone(),
+            '|',
+            '-',
+            RelationLineChars::new(['-', '|', '.', ':'], '+'),
+            vec![
+                RelationOverlay::text(
+                    geometry.from_x(),
+                    geometry.from_y() + 1,
+                    "T".to_string(),
+                    AsciiColorRole::EdgeArrow,
+                ),
+                RelationOverlay::text(
+                    (geometry.from_x() + geometry.to_x()) / 2,
+                    geometry.route_y().saturating_sub(1),
+                    "L".to_string(),
+                    AsciiColorRole::EdgeLabel,
+                ),
+                RelationOverlay::text(
+                    geometry.to_x(),
+                    geometry.to_y().saturating_sub(1),
+                    "B".to_string(),
+                    AsciiColorRole::EdgeArrow,
+                ),
+            ],
+        );
+        let mut canvas = Canvas::new(3, 5);
+
+        route.draw_at(&mut canvas);
+
+        assert_eq!(canvas.get(1, 1), Some('T'));
+        assert_eq!(canvas.get(1, 2), Some('L'));
+        assert_eq!(canvas.get(1, 3), Some('B'));
+        assert_eq!(
+            canvas.get_color(1, 1),
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeArrow))
+        );
+        assert_eq!(
+            canvas.get_color(1, 2),
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
         );
     }
 }

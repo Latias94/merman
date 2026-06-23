@@ -2,6 +2,7 @@ use super::model::SequenceControlKind;
 use super::render::SequenceChars;
 use super::text::{SequenceLine, padded_line, trim_right};
 use crate::color::AsciiColorRole;
+use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceControlFrame {
@@ -109,11 +110,11 @@ fn frame_width(frame: &SequenceControlFrame, lines: &[SequenceLine]) -> usize {
         })
         .max()
         .unwrap_or(0);
-    let title_width = frame_title(frame).chars().count();
+    let title_width = display_width(&frame_title(frame));
     let separator_width = frame
         .separators
         .iter()
-        .map(|separator| separator_title(frame, separator).chars().count())
+        .map(|separator| display_width(&separator_title(frame, separator)))
         .max()
         .unwrap_or(0);
 

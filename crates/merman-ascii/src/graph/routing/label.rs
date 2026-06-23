@@ -1,6 +1,7 @@
 use super::super::layout::CanvasCoord;
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorRole, AsciiRgb};
+use crate::terminal::char_display_width;
 use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,7 +83,8 @@ fn write_label_overlay(
     label: &str,
     color: Option<AsciiRgb>,
 ) {
-    for (offset, ch) in label.chars().enumerate() {
+    let mut offset = 0;
+    for ch in label.chars() {
         if ch != ' ' {
             if let Some(color) = color {
                 canvas.set_color(x + offset, y, ch, color);
@@ -90,5 +92,6 @@ fn write_label_overlay(
                 canvas.set_role(x + offset, y, ch, AsciiColorRole::EdgeLabel);
             }
         }
+        offset += char_display_width(ch);
     }
 }

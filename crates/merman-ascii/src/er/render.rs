@@ -4,7 +4,8 @@ use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, RelationGraphLine, RelationLineChars,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRoutePlan, RelationGraphLine,
+    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -312,7 +313,7 @@ fn render_vertical_relationship(
     } else {
         display_width(label) / 2
     };
-    let center = relation_graph::vertical_center(
+    let plan = RelationStackPlan::from_centered_rows(
         top,
         bottom,
         &[
@@ -320,8 +321,19 @@ fn render_vertical_relationship(
             display_width(bottom_cardinality) / 2,
             label_half_width,
         ],
+        |center| er_relationship_rows(top_cardinality, bottom_cardinality, line, label, center),
     );
 
+    Ok(plan.render_with_options(options))
+}
+
+fn er_relationship_rows(
+    top_cardinality: &str,
+    bottom_cardinality: &str,
+    line: char,
+    label: &str,
+    center: usize,
+) -> Vec<RelationGraphLine> {
     let mut relation_lines = Vec::new();
     relation_lines.push(relation_graph::centered_text_line_with_role(
         top_cardinality,
@@ -345,14 +357,7 @@ fn render_vertical_relationship(
         center,
         AsciiColorRole::EdgeArrow,
     ));
-
-    Ok(relation_graph::render_vertical_stack_with_options(
-        top,
-        bottom,
-        center,
-        relation_lines,
-        options,
-    ))
+    relation_lines
 }
 
 type PlacedEntityBox<'a> = relation_graph::PlacedRelationGraphBox<'a>;
@@ -380,10 +385,9 @@ fn render_parallel_vertical_relationships(
         .iter()
         .map(|relationship| parallel_er_lane_rows(relationship, charset))
         .collect::<Result<Vec<_>>>()?;
+    let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
-    Ok(relation_graph::render_parallel_vertical_stack_with_options(
-        top, bottom, &lanes, 2, options,
-    ))
+    Ok(plan.render_with_options(options))
 }
 
 fn parallel_er_lane_rows(
@@ -436,9 +440,16 @@ fn render_layered_relationships(
         .iter()
         .map(|placed_box| (placed_box.id(), placed_box))
         .collect::<HashMap<_, _>>();
+    let lane_offsets =
+        relation_graph::parallel_relation_lane_offsets(relationships.iter().map(|relationship| {
+            (
+                relationship.entity_a.as_str(),
+                relationship.entity_b.as_str(),
+            )
+        }));
     let mut draw_order = relationships
         .iter()
-        .zip(parallel_lane_offsets(relationships))
+        .zip(lane_offsets)
         .enumerate()
         .collect::<Vec<_>>();
     draw_order.sort_by_key(|(index, (_, lane_offset))| (lane_offset.unsigned_abs(), *index));
@@ -454,33 +465,6 @@ fn render_layered_relationships(
     }
 
     Ok(canvas.finish_trimmed_with_options(options))
-}
-
-fn parallel_lane_offsets(relationships: &[ErRelationshipRenderModel]) -> Vec<isize> {
-    let mut counts = HashMap::<(&str, &str), usize>::new();
-    for relationship in relationships {
-        *counts
-            .entry((
-                relationship.entity_a.as_str(),
-                relationship.entity_b.as_str(),
-            ))
-            .or_insert(0) += 1;
-    }
-
-    let mut seen = HashMap::<(&str, &str), usize>::new();
-    relationships
-        .iter()
-        .map(|relationship| {
-            let key = (
-                relationship.entity_a.as_str(),
-                relationship.entity_b.as_str(),
-            );
-            let index = seen.entry(key).or_insert(0);
-            let offset = relation_graph::parallel_lane_offset(*index, counts[&key]);
-            *index += 1;
-            offset
-        })
-        .collect()
 }
 
 fn er_layered_edge(relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge<'_> {
@@ -520,67 +504,50 @@ fn draw_layered_relationship(
     let Some(bottom) = placed_by_id.get(relationship.entity_b.as_str()) else {
         return Ok(());
     };
-    let lane_offset = relation_graph::spanning_lane_offset_around_intermediate_boxes(
-        placed_boxes,
-        top,
-        bottom,
-        lane_offset,
-    );
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let vertical = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let horizontal = relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?;
     let label = relationship.role_a.trim();
     let relation_chars = relation_line_chars(charset);
-
-    let from_x = relation_graph::offset_center(top.center_x(), lane_offset);
-    let from_y = top.bottom();
-    let to_x = relation_graph::offset_center(bottom.center_x(), lane_offset);
-    let to_y = bottom.y();
-    if to_y <= from_y + 2 {
+    let Some(geometry) = relation_graph::plan_layered_relation_route(
+        placed_boxes,
+        top,
+        bottom,
+        lane_offset,
+        2,
+        2,
+        2,
+        1,
+    ) else {
         return Ok(());
-    }
+    };
 
-    let route_y = to_y - 2;
-
-    for y in (from_y + 2)..=route_y {
-        relation_graph::put_relation_char(canvas, from_x, y, vertical, relation_chars);
-    }
-    if from_x != to_x {
-        let left = from_x.min(to_x);
-        let right = from_x.max(to_x);
-        for x in left..=right {
-            relation_graph::put_relation_char(canvas, x, route_y, horizontal, relation_chars);
-        }
-    }
-    for y in route_y..(to_y - 1) {
-        relation_graph::put_relation_char(canvas, to_x, y, vertical, relation_chars);
-    }
-
-    relation_graph::write_centered_relation_text(
-        canvas,
-        from_x,
-        from_y + 1,
-        top_cardinality,
+    let mut overlays = Vec::new();
+    overlays.push(RelationOverlay::text(
+        geometry.from_x(),
+        geometry.from_y() + 1,
+        top_cardinality.to_string(),
         AsciiColorRole::EdgeArrow,
-    );
+    ));
     if !label.is_empty() {
-        let label_y = (from_y + 2).min(route_y);
-        relation_graph::write_centered_relation_text(
-            canvas,
-            (from_x + to_x) / 2,
+        let label_y = geometry.from_y().saturating_add(2).min(geometry.route_y());
+        overlays.push(RelationOverlay::text(
+            (geometry.from_x() + geometry.to_x()) / 2,
             label_y,
-            label,
+            label.to_string(),
             AsciiColorRole::EdgeLabel,
-        );
+        ));
     }
-    relation_graph::write_centered_relation_text(
-        canvas,
-        to_x,
-        to_y - 1,
-        bottom_cardinality,
+    overlays.push(RelationOverlay::text(
+        geometry.to_x(),
+        geometry.to_y().saturating_sub(1),
+        bottom_cardinality.to_string(),
         AsciiColorRole::EdgeArrow,
-    );
+    ));
+
+    LayeredRelationRoutePlan::new(geometry, vertical, horizontal, relation_chars, overlays)
+        .draw_at(canvas);
 
     Ok(())
 }

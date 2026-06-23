@@ -1,32 +1,11 @@
-use crate::canvas::{Canvas, CanvasColor};
+use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use crate::terminal::{
+    CanvasColor, TerminalCell, char_display_width, display_width as terminal_display_width,
+    push_primary_cell, write_primary_cell,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StyledCell {
-    ch: char,
-    color: Option<CanvasColor>,
-}
-
-impl StyledCell {
-    pub(crate) fn blank() -> Self {
-        Self {
-            ch: ' ',
-            color: None,
-        }
-    }
-
-    fn plain(ch: char) -> Self {
-        Self { ch, color: None }
-    }
-
-    pub(crate) fn with_role(ch: char, role: AsciiColorRole) -> Self {
-        Self {
-            ch,
-            color: Some(CanvasColor::Role(role)),
-        }
-    }
-}
+pub(crate) type StyledCell = TerminalCell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StyledLine {
@@ -60,15 +39,14 @@ impl StyledLine {
 
     pub(crate) fn text_with_roles(text: &str, roles: Vec<Option<AsciiColorRole>>) -> Self {
         assert_eq!(text.chars().count(), roles.len());
-        let cells = text
-            .chars()
-            .zip(roles)
-            .map(|(ch, role)| match role {
-                Some(role) => StyledCell::with_role(ch, role),
-                None => StyledCell::plain(ch),
-            })
-            .collect();
-        Self { cells }
+        let mut line = Self::new();
+        for (ch, role) in text.chars().zip(roles) {
+            match role {
+                Some(role) => line.push_role_char(ch, role),
+                None => line.push_plain_char(ch),
+            }
+        }
+        line
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -76,15 +54,21 @@ impl StyledLine {
     }
 
     pub(crate) fn get(&self, index: usize) -> Option<char> {
-        self.cells.get(index).map(|cell| cell.ch)
+        self.cells.get(index).and_then(|cell| cell.output_char())
     }
 
     pub(crate) fn text(&self) -> String {
-        self.cells.iter().map(|cell| cell.ch).collect()
+        self.cells
+            .iter()
+            .filter_map(|cell| cell.output_char())
+            .collect()
     }
 
     pub(crate) fn into_text(self) -> String {
-        self.cells.into_iter().map(|cell| cell.ch).collect()
+        self.cells
+            .into_iter()
+            .filter_map(|cell| cell.output_char())
+            .collect()
     }
 
     pub(crate) fn pad_to(&mut self, width: usize) {
@@ -94,7 +78,7 @@ impl StyledLine {
     }
 
     pub(crate) fn push_plain_char(&mut self, ch: char) {
-        self.cells.push(StyledCell::plain(ch));
+        push_primary_cell(&mut self.cells, ch, None);
     }
 
     pub(crate) fn push_spaces(&mut self, count: usize) {
@@ -107,7 +91,7 @@ impl StyledLine {
     }
 
     pub(crate) fn push_role_char(&mut self, ch: char, role: AsciiColorRole) {
-        self.cells.push(StyledCell::with_role(ch, role));
+        push_primary_cell(&mut self.cells, ch, Some(CanvasColor::Role(role)));
     }
 
     pub(crate) fn push_role_text(&mut self, text: &str, role: AsciiColorRole) {
@@ -138,7 +122,7 @@ impl StyledLine {
         width: usize,
         role: AsciiColorRole,
     ) {
-        let len = text.chars().count();
+        let len = display_width(text);
         self.push_spaces(width.saturating_sub(len));
         self.push_role_text(text, role);
     }
@@ -148,14 +132,14 @@ impl StyledLine {
     }
 
     pub(crate) fn set_role(&mut self, index: usize, ch: char, role: AsciiColorRole) {
-        if let Some(cell) = self.cells.get_mut(index) {
-            *cell = StyledCell::with_role(ch, role);
-        }
+        write_primary_cell(&mut self.cells, index, ch, Some(CanvasColor::Role(role)));
     }
 
     pub(crate) fn write_text_role(&mut self, start: usize, text: &str, role: AsciiColorRole) {
-        for (offset, ch) in text.chars().enumerate() {
+        let mut offset = 0;
+        for ch in text.chars() {
             self.set_role(start + offset, ch, role);
+            offset += char_display_width(ch);
         }
     }
 
@@ -168,7 +152,11 @@ impl StyledLine {
     }
 
     pub(crate) fn trim_right(mut self) -> Self {
-        while self.cells.last().is_some_and(|cell| cell.ch == ' ') {
+        while self
+            .cells
+            .last()
+            .is_some_and(|cell| cell.output_char() == Some(' '))
+        {
             self.cells.pop();
         }
         self
@@ -180,17 +168,20 @@ impl StyledLine {
 
     pub(crate) fn write_to_at(&self, canvas: &mut Canvas, x_offset: usize, y: usize) {
         for (x, cell) in self.cells.iter().enumerate() {
-            if let Some(color) = cell.color {
-                canvas.set_canvas_color(x_offset + x, y, cell.ch, color);
+            if cell.is_continuation() {
+                continue;
+            }
+            if let Some(color) = cell.color() {
+                canvas.set_canvas_color(x_offset + x, y, cell.output_char().unwrap_or(' '), color);
             } else {
-                canvas.set(x_offset + x, y, cell.ch);
+                canvas.set(x_offset + x, y, cell.output_char().unwrap_or(' '));
             }
         }
     }
 }
 
 pub(crate) fn display_width(text: &str) -> usize {
-    UnicodeWidthStr::width(text)
+    terminal_display_width(text)
 }
 
 pub(crate) fn wrap_display_lines(text: &str, max_width: usize) -> Vec<String> {
@@ -243,7 +234,7 @@ fn push_wrapped_word(word: &str, max_width: usize, lines: &mut Vec<String>) {
     let mut current_width = 0;
 
     for ch in word.chars() {
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0).max(1);
+        let ch_width = char_display_width(ch);
         if current_width + ch_width > max_width && !current.is_empty() {
             lines.push(std::mem::take(&mut current));
             current_width = 0;
@@ -279,6 +270,29 @@ mod tests {
                 .with_color_theme(theme),
         );
         assert_eq!(output, "\u{1b}[38;2;1;2;3mAB\u{1b}[0m!\n");
+    }
+
+    #[test]
+    fn styled_line_counts_wide_chars_by_display_width() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let mut line = StyledLine::new();
+        line.push_role_text("中A", AsciiColorRole::Text);
+        let mut canvas = Canvas::new(3, 1);
+
+        assert_eq!(line.len(), 3);
+        assert_eq!(line.get(0), Some('中'));
+        assert_eq!(line.get(1), None);
+        assert_eq!(line.get(2), Some('A'));
+
+        line.write_to(&mut canvas, 0);
+
+        let output = canvas.finish_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::TrueColor)
+                .with_color_theme(theme),
+        );
+        assert_eq!(output, "\u{1b}[38;2;1;2;3m中A\u{1b}[0m\n");
     }
 
     #[test]

@@ -145,6 +145,13 @@ fn strip_html_spans(input: &str) -> String {
     output
 }
 
+fn cjk_test_width(input: &str) -> usize {
+    input
+        .chars()
+        .map(|ch| if ch.is_ascii() { 1 } else { 2 })
+        .sum()
+}
+
 #[test]
 fn sequence_color_truecolor_emits_participant_lifeline_activation_and_message_roles() {
     let theme = AsciiColorTheme::default_light()
@@ -555,6 +562,30 @@ fn sequence_wrapped_messages_respect_display_width_for_cjk() {
     assert!(
         !rendered.contains("数据数据数据数据"),
         "wide text without spaces should wrap by display width:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_message_labels_reserve_display_cells_for_cjk() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: 数据",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("CJK sequence messages should render");
+
+    let label_line = rendered
+        .lines()
+        .find(|line| line.contains("数据"))
+        .expect("message label should be rendered");
+    let arrow_line = rendered
+        .lines()
+        .find(|line| line.contains('>'))
+        .expect("message arrow should be rendered");
+
+    assert_eq!(
+        cjk_test_width(label_line),
+        cjk_test_width(arrow_line),
+        "message labels should reserve the same terminal columns as the arrow row:\n{rendered}"
     );
 }
 

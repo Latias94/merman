@@ -1,30 +1,17 @@
 use crate::color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
 use crate::options::AsciiRenderOptions;
+use crate::terminal::{TerminalCell, char_display_width, write_primary_cell};
 use std::env;
 use std::fmt::Write as _;
 use std::io::{self, IsTerminal};
+
+pub(crate) use crate::terminal::CanvasColor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Canvas {
     width: usize,
     height: usize,
-    cells: Vec<char>,
-    colors: Vec<Option<CanvasColor>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CanvasColor {
-    Role(AsciiColorRole),
-    Direct(AsciiRgb),
-}
-
-impl CanvasColor {
-    fn resolve(self, theme: AsciiColorTheme) -> AsciiRgb {
-        match self {
-            Self::Role(role) => theme.color_for(role),
-            Self::Direct(color) => color,
-        }
-    }
+    cells: Vec<TerminalCell>,
 }
 
 impl Canvas {
@@ -33,15 +20,13 @@ impl Canvas {
         Self {
             width,
             height,
-            cells: vec![' '; cell_count],
-            colors: vec![None; cell_count],
+            cells: vec![TerminalCell::blank(); cell_count],
         }
     }
 
     pub(crate) fn set(&mut self, x: usize, y: usize, ch: char) {
         if let Some(index) = self.index(x, y) {
-            self.cells[index] = ch;
-            self.colors[index] = None;
+            write_primary_cell(&mut self.cells, index, ch, None);
         }
     }
 
@@ -55,35 +40,41 @@ impl Canvas {
 
     pub(crate) fn set_canvas_color(&mut self, x: usize, y: usize, ch: char, color: CanvasColor) {
         if let Some(index) = self.index(x, y) {
-            self.cells[index] = ch;
-            self.colors[index] = Some(color);
+            write_primary_cell(&mut self.cells, index, ch, Some(color));
         }
     }
 
     pub(crate) fn get(&self, x: usize, y: usize) -> Option<char> {
-        self.index(x, y).map(|index| self.cells[index])
+        self.index(x, y)
+            .and_then(|index| self.cells[index].output_char())
     }
 
     pub(crate) fn get_color(&self, x: usize, y: usize) -> Option<CanvasColor> {
-        self.index(x, y).and_then(|index| self.colors[index])
+        self.index(x, y).and_then(|index| self.cells[index].color())
     }
 
     #[allow(dead_code)]
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
-        for (offset, ch) in text.chars().enumerate() {
+        let mut offset = 0;
+        for ch in text.chars() {
             self.set(x + offset, y, ch);
+            offset += char_display_width(ch);
         }
     }
 
     pub(crate) fn write_text_role(&mut self, x: usize, y: usize, text: &str, role: AsciiColorRole) {
-        for (offset, ch) in text.chars().enumerate() {
+        let mut offset = 0;
+        for ch in text.chars() {
             self.set_role(x + offset, y, ch, role);
+            offset += char_display_width(ch);
         }
     }
 
     pub(crate) fn write_text_color(&mut self, x: usize, y: usize, text: &str, color: AsciiRgb) {
-        for (offset, ch) in text.chars().enumerate() {
+        let mut offset = 0;
+        for ch in text.chars() {
             self.set_color(x + offset, y, ch, color);
+            offset += char_display_width(ch);
         }
     }
 
@@ -118,8 +109,10 @@ impl Canvas {
             } else {
                 row_start + self.width
             };
-            for index in row_start..row_end {
-                out.push(self.cells[index]);
+            for cell in &self.cells[row_start..row_end] {
+                if let Some(ch) = cell.output_char() {
+                    out.push(ch);
+                }
             }
             out.push('\n');
         }
@@ -165,8 +158,11 @@ impl Canvas {
                 row_start + self.width
             };
             let mut active_color = None;
-            for index in row_start..row_end {
-                let desired_color = self.colors[index].map(|color| color.resolve(theme));
+            for cell in &self.cells[row_start..row_end] {
+                let Some(ch) = cell.output_char() else {
+                    continue;
+                };
+                let desired_color = cell.color().map(|color| color.resolve(theme));
                 if desired_color != active_color {
                     if active_color.is_some() {
                         out.push_str("\u{1b}[0m");
@@ -176,7 +172,7 @@ impl Canvas {
                     }
                     active_color = desired_color;
                 }
-                out.push(self.cells[index]);
+                out.push(ch);
             }
             if active_color.is_some() {
                 out.push_str("\u{1b}[0m");
@@ -199,8 +195,11 @@ impl Canvas {
                 row_start + self.width
             };
             let mut active_color = None;
-            for index in row_start..row_end {
-                let desired_color = self.colors[index].map(|color| color.resolve(theme));
+            for cell in &self.cells[row_start..row_end] {
+                let Some(ch) = cell.output_char() else {
+                    continue;
+                };
+                let desired_color = cell.color().map(|color| color.resolve(theme));
                 if desired_color != active_color {
                     if active_color.is_some() {
                         out.push_str("</span>");
@@ -210,7 +209,7 @@ impl Canvas {
                     }
                     active_color = desired_color;
                 }
-                push_html_escaped_char(&mut out, self.cells[index]);
+                push_html_escaped_char(&mut out, ch);
             }
             if active_color.is_some() {
                 out.push_str("</span>");
@@ -223,10 +222,7 @@ impl Canvas {
     fn trimmed_row_end(&self, row_start: usize, mut row_end: usize, preserve_roles: bool) -> usize {
         while row_end > row_start {
             let index = row_end - 1;
-            if self.cells[index] != ' ' {
-                break;
-            }
-            if preserve_roles && self.colors[index].is_some() {
+            if !self.cells[index].is_trimmable_blank(preserve_roles) {
                 break;
             }
             row_end -= 1;
@@ -389,6 +385,28 @@ mod tests {
     }
 
     #[test]
+    fn wide_text_reserves_continuation_cells() {
+        let mut canvas = Canvas::new(4, 1);
+        canvas.write_text_role(0, 0, "中A", AsciiColorRole::Text);
+        canvas.set_role(1, 0, 'X', AsciiColorRole::EdgeLine);
+
+        assert_eq!(canvas.get(0, 0), Some('中'));
+        assert_eq!(canvas.get(1, 0), None);
+        assert_eq!(canvas.get(2, 0), Some('A'));
+        assert_eq!(canvas.finish(), "中A \n");
+    }
+
+    #[test]
+    fn overwriting_wide_text_clears_old_continuation_cell() {
+        let mut canvas = Canvas::new(3, 1);
+        canvas.write_text(0, 0, "中");
+        canvas.set(0, 0, 'A');
+        canvas.set(1, 0, 'B');
+
+        assert_eq!(canvas.finish(), "AB \n");
+    }
+
+    #[test]
     fn finish_trimmed_truecolor_trims_unstyled_trailing_spaces() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
@@ -402,6 +420,22 @@ mod tests {
         );
 
         assert_eq!(output, "\u{1b}[38;2;1;2;3mAB\u{1b}[0m\n");
+    }
+
+    #[test]
+    fn finish_truecolor_keeps_role_run_across_wide_text() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let mut canvas = Canvas::new(3, 1);
+        canvas.write_text_role(0, 0, "中A", AsciiColorRole::Text);
+
+        let output = canvas.finish_trimmed_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::TrueColor)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(output, "\u{1b}[38;2;1;2;3m中A\u{1b}[0m\n");
     }
 
     #[test]

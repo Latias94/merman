@@ -1,6 +1,7 @@
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
-use crate::text::{StyledCell, StyledLine};
+use crate::terminal::char_display_width;
+use crate::text::{StyledCell, StyledLine, display_width};
 use crate::{AsciiCharset, AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
@@ -129,7 +130,7 @@ fn render_vertical(
     let gutter = tick_labels
         .iter()
         .chain(std::iter::once(&min_label))
-        .map(|s| s.chars().count())
+        .map(|s| display_width(s))
         .max()
         .unwrap_or(1);
 
@@ -180,7 +181,7 @@ fn render_horizontal(
 
     let gutter = categories
         .iter()
-        .map(|c| c.chars().count())
+        .map(|c| display_width(c))
         .max()
         .unwrap_or(1);
 
@@ -533,7 +534,7 @@ fn horizontal_tick_labels(y_range: ValueRange) -> String {
         cells[idx] = ch;
     }
 
-    let max_len = max.chars().count();
+    let max_len = display_width(&max);
     let max_start = HORIZONTAL_PLOT_WIDTH.saturating_sub(max_len);
     for (idx, ch) in max.chars().enumerate() {
         if let Some(cell) = cells.get_mut(max_start + idx) {
@@ -553,20 +554,27 @@ fn category_axis_labels(categories: &[String]) -> String {
 }
 
 fn fit_centered(value: &str, width: usize) -> String {
-    let mut chars = value.chars().collect::<Vec<_>>();
-    if chars.len() > width {
-        chars.truncate(width);
-        return chars.into_iter().collect();
+    let value = truncate_display_width(value, width);
+    let value_width = display_width(&value);
+    let left = (width - value_width) / 2;
+    let right = width - value_width - left;
+    format!("{}{}{}", " ".repeat(left), value, " ".repeat(right))
+}
+
+fn truncate_display_width(value: &str, width: usize) -> String {
+    let mut out = String::new();
+    let mut used = 0;
+
+    for ch in value.chars() {
+        let ch_width = char_display_width(ch);
+        if used + ch_width > width {
+            break;
+        }
+        out.push(ch);
+        used += ch_width;
     }
 
-    let left = (width - chars.len()) / 2;
-    let right = width - chars.len() - left;
-    format!(
-        "{}{}{}",
-        " ".repeat(left),
-        chars.into_iter().collect::<String>(),
-        " ".repeat(right)
-    )
+    out
 }
 
 fn bar_height(value: f64, range: ValueRange, height: usize) -> usize {
