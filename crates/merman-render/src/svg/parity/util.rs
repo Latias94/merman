@@ -5,6 +5,8 @@
 use std::borrow::Cow;
 use std::str::FromStr as _;
 
+use roughr::Color;
+
 pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
 
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
@@ -160,7 +162,7 @@ impl<'a> SvgTheme<'a> {
 }
 
 pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> Option<String> {
-    let color = svgtypes::Color::from_str(color.trim()).ok()?;
+    let color = Color::from_str(color.trim()).ok()?;
     Some(format!(
         "rgba({}, {}, {}, {})",
         color.red,

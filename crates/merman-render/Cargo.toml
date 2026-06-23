@@ -52,7 +52,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
-svgtypes = "0.16.1"
 unicode-width.workspace = true
 
 [dev-dependencies]

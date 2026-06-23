@@ -105,6 +105,19 @@ jobs:
             cargo pkgid -p "$crate" | sed 's/.*@//'
           }
 
+          dry_run_crate_version() {
+            local crate="$1"
+            local crate_version="$2"
+
+            if crate_version_available "$crate" "$crate_version"; then
+              echo "Skipping dry-run for $crate $crate_version because it is already published"
+              return 0
+            fi
+
+            echo "Dry-running $crate $crate_version"
+            cargo publish -p "$crate" --locked --dry-run --registry crates-io
+          }
+
           publish_crate_version() {
             local crate="$1"
             local crate_version="$2"
@@ -113,6 +126,8 @@ jobs:
               echo "Skipping $crate $crate_version because it is already published"
               return 0
             fi
+
+            dry_run_crate_version "$crate" "$crate_version"
 
             echo "Publishing $crate $crate_version"
             for attempt in 1 2 3; do

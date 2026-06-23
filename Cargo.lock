@@ -2765,7 +2765,6 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
- "svgtypes 0.16.1",
  "thiserror 2.0.18",
  "unicode-width",
 ]

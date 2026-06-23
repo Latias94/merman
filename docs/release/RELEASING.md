@@ -27,7 +27,9 @@ tag without moving the tag. Flutter is the exception: pub.dev automated publishi
 GitHub Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes from the `v*`
 tag push and uses manual runs for validation only. The crates.io workflow is idempotent for
 already-published crate versions, so a rerun can continue after a partial publish caused by registry
-propagation delays.
+propagation delays. For unpublished crates, it performs `cargo publish --dry-run --locked`
+immediately before the real publish, after upstream workspace dependencies in the same release have
+become visible in crates.io.
 
 ## Required Credentials
 
@@ -87,8 +89,9 @@ Before tagging or publishing, run:
 gh workflow run release-preflight.yml -f version=0.8.0-alpha.2 -f source_ref=main
 ```
 
-The preflight workflow verifies release versions, package file lists, Python wheels, Android AAR
-builds, Apple XCFramework builds, the web npm package dry-run, and Flutter
+The preflight workflow verifies release versions, package file lists, registry-independent Rust
+crate publish dry-runs, Python wheels, Android AAR builds, Apple XCFramework builds, the web npm
+package dry-run, and Flutter
 `dart pub publish --dry-run`. It does not publish to any registry.
 
 For local spot checks, run the normal Rust and platform gates:

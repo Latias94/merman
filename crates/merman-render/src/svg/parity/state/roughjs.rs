@@ -1,6 +1,6 @@
 //! Rough.js helpers used by multiple parity renderers.
 
-use svgtypes::{PathParser, PathSegment};
+use roughr::{PathParser, PathSegment};
 
 use super::super::roughjs_common::{
     closed_path_d_from_points as roughjs_closed_path_d_from_points,

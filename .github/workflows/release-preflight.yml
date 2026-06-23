@@ -65,13 +65,50 @@ jobs:
             cargo package -p "$crate" --list > "target/package-lists/$crate.txt"
           done
 
-      - name: Verify root publishable crates
+      - name: Verify registry-independent crate dry-runs
         run: |
-          cargo package -p roughr-merman
-          cargo package -p dugong-graphlib
-          cargo package -p manatee
-          cargo package -p merman-core
-          cargo package -p merman-elk-layered
+          set -euo pipefail
+
+          crate_version_available() {
+            local crate="$1"
+            local version="$2"
+            local tmpdir="${RUNNER_TEMP:-/tmp}"
+
+            (
+              cd "$tmpdir"
+              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
+            )
+          }
+
+          workspace_crate_version() {
+            local crate="$1"
+
+            cargo pkgid -p "$crate" | sed 's/.*@//'
+          }
+
+          publish_dry_run() {
+            local crate="$1"
+            local crate_version="$2"
+
+            if crate_version_available "$crate" "$crate_version"; then
+              echo "Skipping dry-run for $crate $crate_version because it is already published"
+              return 0
+            fi
+
+            cargo publish -p "$crate" --locked --dry-run --registry crates-io
+          }
+
+          registry_independent_crates=(
+            roughr-merman
+            dugong-graphlib
+            manatee
+            merman-core
+            merman-elk-layered
+          )
+
+          for crate in "${registry_independent_crates[@]}"; do
+            publish_dry_run "$crate" "$(workspace_crate_version "$crate")"
+          done
 
       - name: Upload package lists
         uses: actions/upload-artifact@v6

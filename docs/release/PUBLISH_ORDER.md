@@ -67,20 +67,19 @@ cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
 cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 ```
 
-For packaging, distinguish file-list checks from full crates.io dependency verification:
+For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The
+release workflow runs this gate automatically for every unpublished crate immediately before the
+real publish, so it also covers `merman-bindings-core`, `merman-ffi`, and `merman-uniffi`.
 
 ```bash
-cargo package -p merman-elk-layered --allow-dirty
-cargo package -p merman-layout-elk --allow-dirty --list
-cargo package -p merman-render --allow-dirty
-cargo package -p merman-rustdoc --allow-dirty --list
-cargo package -p merman-bindings-core --allow-dirty --list
-cargo package -p merman-ffi --allow-dirty --list
-cargo package -p merman-uniffi --allow-dirty --list
+cargo publish -p merman-render --locked --dry-run --registry crates-io
+cargo publish -p merman-bindings-core --locked --dry-run --registry crates-io
+cargo publish -p merman-ffi --locked --dry-run --registry crates-io
+cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
 ```
 
-After each upstream crate is published and the index is updated, full package verification can move
-one step farther down the dependency chain.
+Before upstream crates for the same release are visible in crates.io, keep using `cargo package
+--list` only as a file-list check. It does not replace publish dry-run verification.
 
 ## Current Package Matrix
 
@@ -88,25 +87,20 @@ As of 2026-06-23:
 
 | Crate | Gate | Current result |
 | --- | --- | --- |
-| `dugong-graphlib` | `cargo package -p dugong-graphlib --allow-dirty` | Pass |
-| `manatee` | `cargo package -p manatee --allow-dirty` | Pass |
-| `merman-core` | `cargo package -p merman-core --allow-dirty` | Pass |
-| `dugong` | `cargo package -p dugong --allow-dirty` | Blocked until `dugong-graphlib 0.8.0-alpha.2` is published |
-| `merman-elk-layered` | `cargo package -p merman-elk-layered --allow-dirty` | Pass |
-| `merman-layout-elk` | `cargo package -p merman-layout-elk --allow-dirty --list` | Pass |
-| `merman-layout-elk` | `cargo package -p merman-layout-elk --allow-dirty` | Blocked until `merman-elk-layered 0.8.0-alpha.2` is published |
-| `merman-render` | `cargo package -p merman-render --allow-dirty` | Blocked until `dugong 0.8.0-alpha.2` and `merman-layout-elk 0.8.0-alpha.2` are published |
-| `merman-ascii` | `cargo package -p merman-ascii --allow-dirty --list` | Pass |
-| `merman` | `cargo package -p merman --allow-dirty --list` | Pass |
-| `merman-rustdoc` | `cargo package -p merman-rustdoc --allow-dirty --list` | Pass |
-| `merman-rustdoc` | `cargo package -p merman-rustdoc --allow-dirty` | Blocked until `merman 0.8.0-alpha.2` is published |
-| `merman-bindings-core` | `cargo package -p merman-bindings-core --allow-dirty --list` | Pass |
-| `merman-bindings-core` | `cargo package -p merman-bindings-core --allow-dirty` | Blocked until `merman 0.8.0-alpha.2` is published |
-| `merman-ffi` | `cargo package -p merman-ffi --allow-dirty --list` | Pass |
-| `merman-ffi` | `cargo package -p merman-ffi --allow-dirty` | Blocked until `merman-bindings-core 0.8.0-alpha.2` is published |
-| `merman-uniffi` | `cargo package -p merman-uniffi --allow-dirty --list` | Pass |
-| `merman-uniffi` | `cargo package -p merman-uniffi --allow-dirty` | Blocked until `merman-bindings-core 0.8.0-alpha.2` is published |
-| `merman-cli` | `cargo package -p merman-cli --allow-dirty --list` | Pass |
+| `dugong-graphlib` | crates.io lookup | Published |
+| `dugong` | crates.io lookup | Published |
+| `manatee` | crates.io lookup | Published |
+| `merman-core` | crates.io lookup | Published |
+| `merman-elk-layered` | crates.io lookup | Published |
+| `merman-layout-elk` | crates.io lookup | Published |
+| `merman-render` | `cargo publish -p merman-render --locked --dry-run --allow-dirty --registry crates-io` | Pass locally after release-source fix; not yet published |
+| `merman-ascii` | `cargo publish -p merman-ascii --locked --dry-run --allow-dirty --registry crates-io` | Pass locally; not yet published |
+| `merman` | release workflow dry-run before publish | Pending after `merman-render` is published |
+| `merman-rustdoc` | release workflow dry-run before publish | Pending after `merman` is published |
+| `merman-bindings-core` | release workflow dry-run before publish | Pending after `merman` is published |
+| `merman-ffi` | release workflow dry-run before publish | Pending after `merman-bindings-core` is published |
+| `merman-uniffi` | release workflow dry-run before publish | Pending after `merman-bindings-core` is published |
+| `merman-cli` | release workflow dry-run before publish | Pending after `merman` is published |
 
 ## Publish Guardrail
 
