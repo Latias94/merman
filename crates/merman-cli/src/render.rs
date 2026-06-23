@@ -1,4 +1,6 @@
-use crate::cli::{ExportArgs, ParseCliArgs, RenderArgs, RenderCliArgs, RenderFormat};
+use crate::cli::{
+    ExportArgs, ParseCliArgs, RasterCliArgs, RenderArgs, RenderCliArgs, RenderFormat,
+};
 use crate::config::{engine_for, layout_options, math_renderer, parse_options};
 use crate::error::CliError;
 use crate::io::{
@@ -76,7 +78,10 @@ pub(crate) fn render_plan_for_mmdc(
     let input = merge_input(export.input_file.clone(), positional_input)?;
     let artefacts = prepare_artefacts_dir(export.artefacts.as_deref(), input.as_deref())?;
     validate_mmdc_output_path(export.output.as_deref())?;
-    let icon_registry = load_icon_registry(&export.icon_packs, &export.icon_packs_names_and_urls)?;
+    let icon_registry = load_icon_registry(
+        &export.icons.icon_packs,
+        &export.icons.icon_packs_names_and_urls,
+    )?;
     let format = infer_output_format(export.output.as_deref(), export.output_format)
         .unwrap_or(RenderFormat::Svg);
     let output = Some(OutputTarget::from_cli(
@@ -86,23 +91,8 @@ pub(crate) fn render_plan_for_mmdc(
             .unwrap_or_else(|| default_mmdc_output_path(input.as_deref(), format)),
     ));
 
-    let mut parse = ParseCliArgs {
-        suppress_errors: export.suppress_errors,
-        config_file: export.config_file.clone(),
-        theme: export.theme.clone(),
-        fixed_today: export.fixed_today,
-        fixed_local_offset_minutes: export.fixed_local_offset_minutes,
-    };
-    let mut render = RenderCliArgs {
-        text_measurer: export.text_measurer,
-        math_renderer: export.math_renderer,
-        flowchart_elk_backend: export.flowchart_elk_backend,
-        width: export.width,
-        height: export.height,
-        svg_id: export.svg_id.clone(),
-        hand_drawn_seed: export.hand_drawn_seed,
-        resource_profile: export.resource_profile,
-    };
+    let mut parse = export.parse.clone();
+    let mut render = export.render.clone();
 
     apply_official_defaults(&mut parse, &mut render);
     validate_puppeteer_config_file(export.puppeteer_config_file.as_deref())?;
@@ -113,8 +103,8 @@ pub(crate) fn render_plan_for_mmdc(
         format,
         parse,
         render,
-        scale: export.scale.unwrap_or(1.0),
-        raster: RasterCliOptions::from_export(&export)?,
+        scale: export.raster.scale.unwrap_or(1.0),
+        raster: RasterCliOptions::from_args(&export.raster)?,
         background: Some(
             export
                 .background_color
@@ -127,7 +117,7 @@ pub(crate) fn render_plan_for_mmdc(
         jobs: export.jobs.unwrap_or_else(default_jobs),
         pdf_fit: export.pdf_fit,
         quiet: export.quiet,
-        sequence_mirror_actors: export.sequence_mirror_actors,
+        sequence_mirror_actors: export.text.sequence_mirror_actors,
         mode: RenderMode::MmdcCompat,
     })
 }
@@ -138,42 +128,26 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         .unwrap_or(RenderFormat::Svg);
     let output = subcommand_output_target(args.export.output.clone(), input.as_deref(), format);
     let icon_registry = load_icon_registry(
-        &args.export.icon_packs,
-        &args.export.icon_packs_names_and_urls,
+        &args.export.icons.icon_packs,
+        &args.export.icons.icon_packs_names_and_urls,
     )?;
-    validate_puppeteer_config_file(args.export.puppeteer_config_file.as_deref())?;
 
     Ok(RenderPlan {
         input,
         output,
         format,
-        parse: ParseCliArgs {
-            suppress_errors: args.export.suppress_errors,
-            config_file: args.export.config_file.clone(),
-            theme: args.export.theme.clone(),
-            fixed_today: args.export.fixed_today,
-            fixed_local_offset_minutes: args.export.fixed_local_offset_minutes,
-        },
-        render: RenderCliArgs {
-            text_measurer: args.export.text_measurer,
-            math_renderer: args.export.math_renderer,
-            flowchart_elk_backend: args.export.flowchart_elk_backend,
-            width: args.export.width,
-            height: args.export.height,
-            svg_id: args.export.svg_id.clone(),
-            hand_drawn_seed: args.export.hand_drawn_seed,
-            resource_profile: args.export.resource_profile,
-        },
-        scale: args.export.scale.unwrap_or(1.0),
-        raster: RasterCliOptions::from_export(&args.export)?,
+        parse: args.export.parse.clone(),
+        render: args.export.render.clone(),
+        scale: args.export.raster.scale.unwrap_or(1.0),
+        raster: RasterCliOptions::from_args(&args.export.raster)?,
         background: args.export.background_color.clone(),
         css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
         icon_registry,
         artefacts: None,
-        jobs: args.export.jobs.unwrap_or_else(default_jobs),
+        jobs: 1,
         pdf_fit: true,
         quiet: args.export.quiet,
-        sequence_mirror_actors: args.export.sequence_mirror_actors,
+        sequence_mirror_actors: args.export.text.sequence_mirror_actors,
         mode: RenderMode::Subcommand,
     })
 }
@@ -503,11 +477,11 @@ impl RenderPlan {
 }
 
 impl RasterCliOptions {
-    fn from_export(export: &ExportArgs) -> Result<Self, CliError> {
-        if export.raster_unbounded
-            && (export.raster_max_width.is_some()
-                || export.raster_max_height.is_some()
-                || export.raster_max_pixels.is_some())
+    fn from_args(args: &RasterCliArgs) -> Result<Self, CliError> {
+        if args.raster_unbounded
+            && (args.raster_max_width.is_some()
+                || args.raster_max_height.is_some()
+                || args.raster_max_pixels.is_some())
         {
             return Err(CliError::InvalidInput(
                 "--raster-unbounded cannot be combined with --raster-max-* limits".to_string(),
@@ -515,12 +489,12 @@ impl RasterCliOptions {
         }
 
         Ok(Self {
-            fit_width: export.raster_fit_width,
-            fit_height: export.raster_fit_height,
-            max_width: export.raster_max_width,
-            max_height: export.raster_max_height,
-            max_pixels: export.raster_max_pixels,
-            unbounded: export.raster_unbounded,
+            fit_width: args.raster_fit_width,
+            fit_height: args.raster_fit_height,
+            max_width: args.raster_max_width,
+            max_height: args.raster_max_height,
+            max_pixels: args.raster_max_pixels,
+            unbounded: args.raster_unbounded,
         })
     }
 }

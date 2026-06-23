@@ -8,13 +8,17 @@
 
 This document is the source of truth for making `merman-cli` behave like the official Mermaid CLI
 where a pure-Rust implementation can reasonably do so. It tracks both the public command surface and
-the observable file/stdout/Markdown behavior.
+the observable file/stdout/Markdown behavior. Compatibility here means functional behavior under the
+`merman-cli` command name; the crate does not install an `mmdc` binary alias.
 
 ## Goals
 
-- Make top-level `merman-cli` render/export usage behave like `mmdc`.
+- Make top-level `merman-cli` render/export usage behave like `mmdc` after changing the command
+  name.
 - Keep `detect`, `parse`, `layout`, and `render` developer subcommands available without blocking
   official CLI compatibility.
+- Keep CLI help organized so compatibility flags, Rust-only extensions, and developer subcommands
+  are not presented as one flat surface.
 - Document deliberate divergence where upstream behavior is browser-specific or not compatible with
   this Rust renderer.
 - Keep every official behavior backed by an integration test or a documented unsupported decision.

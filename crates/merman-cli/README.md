@@ -9,8 +9,8 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 `merman-cli` is a browserless Mermaid command-line renderer for SVG, PNG, JPG, PDF, and
-ASCII/Unicode text output. The top-level command follows common `mmdc` workflows, while developer
-subcommands expose merman's parse, layout, and render internals.
+ASCII/Unicode text output. The top-level command functionally mirrors common `mmdc` workflows,
+while developer subcommands expose merman's parse, layout, and render internals.
 
 ## Install
 
@@ -21,6 +21,8 @@ cargo install merman-cli
 The default binary includes SVG/PNG/JPG/PDF export, ASCII/Unicode text output, and RaTeX math
 rendering.
 
+This crate installs `merman-cli`, not `mmdc`.
+
 From a local checkout:
 
 ```sh
@@ -29,7 +31,7 @@ cargo install --path crates/merman-cli
 
 ## Quick Start
 
-Top-level usage renders like `mmdc`:
+Top-level usage mirrors common `mmdc` workflows:
 
 ```sh
 merman-cli -i diagram.mmd -o diagram.svg
@@ -180,7 +182,10 @@ merman-cli render path/to/diagram.mmd --out out.svg
 merman-cli render --format png --out out.png path/to/diagram.mmd
 merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
 merman-cli render --format pdf --out out.pdf path/to/diagram.mmd
+merman-cli completion bash
 ```
+
+`completion` emits shell completion scripts for `merman-cli`.
 
 `render` writes SVG to stdout by default. Use `--out` for files, `--format ascii|unicode` for
 terminal text, and `--format png|jpg|pdf` for raster or PDF export.
@@ -248,4 +253,5 @@ intended to be pixel-identical to browser PDF output. The top-level default appr
 upstream default page behavior; `--pdfFit` emits a chart-sized page.
 
 The repository tracks the detailed `mmdc` compatibility matrix in
-`docs/alignment/CLI_COMPATIBILITY.md`.
+`docs/alignment/CLI_COMPATIBILITY.md`. For migration, replace the command name with
+`merman-cli`; the repo does not install a second `mmdc` binary.

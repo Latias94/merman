@@ -1,8 +1,9 @@
-use crate::cli::{Cli, Command, DetectArgs, LayoutArgs, ParseArgs, RenderCliArgs};
+use crate::cli::{Cli, Command, CompletionArgs, DetectArgs, LayoutArgs, ParseArgs, RenderCliArgs};
 use crate::config::{engine_for, layout_options, math_renderer, parse_options};
 use crate::error::CliError;
 use crate::io::read_input;
 use crate::render::{render_plan_for_mmdc, render_plan_for_subcommand, run_render};
+use clap::CommandFactory;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -29,6 +30,7 @@ pub(crate) fn run(cli: Cli) -> Result<(), CliError> {
             let plan = render_plan_for_subcommand(args)?;
             run_render(plan)
         }
+        Some(Command::Completion(args)) => run_completion(args),
         None => {
             let plan = render_plan_for_mmdc(cli.input, cli.export)?;
             run_render(plan)
@@ -80,6 +82,17 @@ fn run_layout(args: LayoutArgs) -> Result<(), CliError> {
         return Err(CliError::NoDiagram);
     };
     print_json(&layouted, args.pretty)
+}
+
+fn run_completion(args: CompletionArgs) -> Result<(), CliError> {
+    let mut command = Cli::command();
+    clap_complete::generate(
+        args.shell,
+        &mut command,
+        "merman-cli",
+        &mut std::io::stdout(),
+    );
+    Ok(())
 }
 
 fn print_json<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {

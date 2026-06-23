@@ -1,13 +1,15 @@
-use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
+use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 use merman::render::FlowchartElkBackend as RenderFlowchartElkBackend;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "merman-cli",
     version,
+    subcommand_precedence_over_arg = true,
+    override_usage = "merman-cli [OPTIONS] [INPUT]\n       merman-cli <COMMAND> [ARGS]",
     about = "Headless Mermaid renderer compatible with common mmdc workflows.",
     long_about = "Headless Mermaid renderer compatible with common mmdc workflows.\n\n\
-Top-level usage renders like mmdc:\n  merman-cli -i input.mmd -o output.svg\n  merman-cli -i input.mmd -o output.png -t dark -b transparent\n\n\
+Top-level usage functionally mirrors common mmdc workflows:\n  merman-cli -i input.mmd -o output.svg\n  merman-cli -i input.mmd -o output.png -t dark -b transparent\n\n\
 Developer subcommands expose merman internals:\n  merman-cli parse --pretty input.mmd\n  merman-cli layout --pretty input.mmd\n  merman-cli render --format unicode input.mmd"
 )]
 pub(crate) struct Cli {
@@ -18,7 +20,7 @@ pub(crate) struct Cli {
     pub(crate) export: ExportArgs,
 
     /// Input Mermaid file for top-level render mode. Use `-` for stdin.
-    #[arg(value_name = "INPUT")]
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
     pub(crate) input: Option<String>,
 }
 
@@ -33,12 +35,14 @@ pub(crate) enum Command {
     Layout(LayoutArgs),
     /// Render Mermaid source to SVG/PNG/JPG/PDF/ASCII/Unicode.
     Render(RenderArgs),
+    /// Generate shell completion scripts.
+    Completion(CompletionArgs),
 }
 
 #[derive(Debug, ClapArgs)]
 pub(crate) struct DetectArgs {
     /// Input Mermaid file. Use `-` for stdin.
-    #[arg(value_name = "INPUT")]
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
     pub(crate) input: Option<String>,
 
     #[command(flatten)]
@@ -48,7 +52,7 @@ pub(crate) struct DetectArgs {
 #[derive(Debug, ClapArgs)]
 pub(crate) struct ParseArgs {
     /// Input Mermaid file. Use `-` for stdin.
-    #[arg(value_name = "INPUT")]
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
     pub(crate) input: Option<String>,
 
     /// Pretty-print JSON output.
@@ -66,7 +70,7 @@ pub(crate) struct ParseArgs {
 #[derive(Debug, ClapArgs)]
 pub(crate) struct LayoutArgs {
     /// Input Mermaid file. Use `-` for stdin.
-    #[arg(value_name = "INPUT")]
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
     pub(crate) input: Option<String>,
 
     /// Pretty-print JSON output.
@@ -83,68 +87,127 @@ pub(crate) struct LayoutArgs {
 #[derive(Debug, ClapArgs)]
 pub(crate) struct RenderArgs {
     /// Input Mermaid file. Use `-` for stdin.
-    #[arg(value_name = "INPUT")]
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
     pub(crate) input: Option<String>,
 
     #[command(flatten)]
-    pub(crate) export: ExportArgs,
+    pub(crate) export: RenderExportArgs,
+}
+
+#[derive(Debug, ClapArgs)]
+pub(crate) struct CompletionArgs {
+    /// Shell to generate completions for.
+    #[arg(value_enum)]
+    pub(crate) shell: clap_complete::Shell,
 }
 
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct ParseCliArgs {
     /// Emit an error diagram instead of failing on parse errors.
-    #[arg(long = "suppress-errors")]
+    #[arg(long = "suppress-errors", help_heading = "Mermaid configuration")]
     pub(crate) suppress_errors: bool,
 
     /// JSON Mermaid configuration file.
-    #[arg(short = 'c', long = "configFile", alias = "config-file")]
+    #[arg(
+        short = 'c',
+        long = "configFile",
+        alias = "config-file",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Mermaid configuration"
+    )]
     pub(crate) config_file: Option<String>,
 
     /// Mermaid theme override.
-    #[arg(short = 't', long)]
+    #[arg(short = 't', long, help_heading = "Mermaid configuration")]
     pub(crate) theme: Option<String>,
 
     /// Override the local "today" date for time-dependent diagrams.
-    #[arg(long = "fixed-today", value_parser = parse_naive_date)]
+    #[arg(
+        long = "fixed-today",
+        value_parser = parse_naive_date,
+        help_heading = "Deterministic rendering"
+    )]
     pub(crate) fixed_today: Option<chrono::NaiveDate>,
 
     /// Override the local timezone offset in minutes for time-dependent diagrams.
-    #[arg(long = "fixed-local-offset-minutes", value_parser = parse_fixed_local_offset_minutes)]
+    #[arg(
+        long = "fixed-local-offset-minutes",
+        value_parser = parse_fixed_local_offset_minutes,
+        help_heading = "Deterministic rendering"
+    )]
     pub(crate) fixed_local_offset_minutes: Option<i32>,
 }
 
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct RenderCliArgs {
     /// Text measurement strategy.
-    #[arg(long = "text-measurer", value_enum, default_value_t = TextMeasurerKind::Vendored)]
+    #[arg(
+        long = "text-measurer",
+        value_enum,
+        default_value_t = TextMeasurerKind::Vendored,
+        help_heading = "Rust renderer controls"
+    )]
     pub(crate) text_measurer: TextMeasurerKind,
 
     /// Math renderer for $$...$$ labels.
-    #[arg(long = "math-renderer", value_enum, default_value_t = MathRendererKind::None)]
+    #[arg(
+        long = "math-renderer",
+        value_enum,
+        default_value_t = MathRendererKind::None,
+        help_heading = "Rust renderer controls"
+    )]
     pub(crate) math_renderer: MathRendererKind,
 
     /// Flowchart ELK layout backend.
-    #[arg(long = "flowchart-elk-backend", value_enum, default_value_t = FlowchartElkBackend::SourcePorted)]
+    #[arg(
+        long = "flowchart-elk-backend",
+        value_enum,
+        default_value_t = FlowchartElkBackend::SourcePorted,
+        help_heading = "Rust renderer controls"
+    )]
     pub(crate) flowchart_elk_backend: FlowchartElkBackend,
 
-    /// Viewport width for viewport-sensitive layouts.
-    #[arg(short = 'w', long = "width", alias = "viewport-width", value_parser = parse_positive_f64)]
+    /// Viewport width for viewport-sensitive layouts. Top-level mmdc-compatible mode defaults to 800.
+    #[arg(
+        short = 'w',
+        long = "width",
+        alias = "viewport-width",
+        value_parser = parse_positive_f64,
+        help_heading = "Rust renderer controls"
+    )]
     pub(crate) width: Option<f64>,
 
-    /// Viewport height for viewport-sensitive layouts.
-    #[arg(short = 'H', long = "height", alias = "viewport-height", value_parser = parse_positive_f64)]
+    /// Viewport height for viewport-sensitive layouts. Top-level mmdc-compatible mode defaults to 600.
+    #[arg(
+        short = 'H',
+        long = "height",
+        alias = "viewport-height",
+        value_parser = parse_positive_f64,
+        help_heading = "Rust renderer controls"
+    )]
     pub(crate) height: Option<f64>,
 
     /// Root SVG id and internal marker prefix.
-    #[arg(short = 'I', long = "svgId", alias = "svg-id", alias = "id")]
+    #[arg(
+        short = 'I',
+        long = "svgId",
+        alias = "svg-id",
+        alias = "id",
+        help_heading = "Rust renderer controls"
+    )]
     pub(crate) svg_id: Option<String>,
 
     /// Stabilize rough/hand-drawn rendering where supported.
-    #[arg(long = "hand-drawn-seed")]
+    #[arg(long = "hand-drawn-seed", help_heading = "Deterministic rendering")]
     pub(crate) hand_drawn_seed: Option<u64>,
 
     /// Render resource profile for source, layout model, and SVG output budgets.
-    #[arg(long = "resource-profile", value_enum, default_value_t = ResourceProfile::TrustedNative)]
+    #[arg(
+        long = "resource-profile",
+        value_enum,
+        default_value_t = ResourceProfile::TrustedNative,
+        help_heading = "Rust renderer controls"
+    )]
     pub(crate) resource_profile: ResourceProfile,
 }
 
@@ -166,19 +229,43 @@ impl Default for RenderCliArgs {
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct ExportArgs {
     /// Input Mermaid file. Use `-` for stdin.
-    #[arg(short = 'i', long = "input", value_name = "INPUT")]
+    #[arg(
+        short = 'i',
+        long = "input",
+        value_name = "INPUT",
+        value_hint = ValueHint::FilePath,
+        help_heading = "mmdc-compatible export"
+    )]
     pub(crate) input_file: Option<String>,
 
     /// Output file. Use `-` for stdout.
-    #[arg(short = 'o', long = "output", alias = "out", value_name = "OUTPUT")]
+    #[arg(
+        short = 'o',
+        long = "output",
+        alias = "out",
+        value_name = "OUTPUT",
+        value_hint = ValueHint::FilePath,
+        help_heading = "mmdc-compatible export"
+    )]
     pub(crate) output: Option<String>,
 
     /// Output artefacts directory for Markdown input.
-    #[arg(short = 'a', long = "artefacts", alias = "artifacts")]
+    #[arg(
+        short = 'a',
+        long = "artefacts",
+        alias = "artifacts",
+        value_hint = ValueHint::DirPath,
+        help_heading = "Markdown batch export"
+    )]
     pub(crate) artefacts: Option<String>,
 
-    /// Parallel jobs for Markdown input. Accepted for mmdc compatibility.
-    #[arg(short = 'j', long = "jobs", value_parser = parse_positive_usize)]
+    /// Parallel jobs for Markdown input. Defaults to half available CPUs, minimum 1.
+    #[arg(
+        short = 'j',
+        long = "jobs",
+        value_parser = parse_positive_usize,
+        help_heading = "Markdown batch export"
+    )]
     pub(crate) jobs: Option<usize>,
 
     /// Output format. Defaults to the output extension, then SVG.
@@ -186,8 +273,102 @@ pub(crate) struct ExportArgs {
         short = 'e',
         long = "outputFormat",
         alias = "output-format",
-        alias = "format",
-        value_enum
+        visible_alias = "format",
+        value_enum,
+        help_heading = "mmdc-compatible export"
+    )]
+    pub(crate) output_format: Option<RenderFormat>,
+
+    /// Background color for SVG/PNG/JPG output. Top-level mmdc-compatible mode defaults to white.
+    #[arg(
+        short = 'b',
+        long = "backgroundColor",
+        alias = "background-color",
+        alias = "background",
+        help_heading = "Raster and PDF export"
+    )]
+    pub(crate) background_color: Option<String>,
+
+    /// CSS file injected into SVG output before export.
+    #[arg(
+        short = 'C',
+        long = "cssFile",
+        alias = "css-file",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Mermaid configuration"
+    )]
+    pub(crate) css_file: Option<String>,
+
+    /// Scale PDF to fit chart. Accepted for mmdc compatibility.
+    #[arg(
+        short = 'f',
+        long = "pdfFit",
+        alias = "pdf-fit",
+        help_heading = "Raster and PDF export"
+    )]
+    pub(crate) pdf_fit: bool,
+
+    /// Suppress non-error log output.
+    #[arg(short = 'q', long = "quiet", help_heading = "mmdc-compatible export")]
+    pub(crate) quiet: bool,
+
+    /// JSON Puppeteer configuration file. Accepted for mmdc compatibility.
+    #[arg(
+        short = 'p',
+        long = "puppeteerConfigFile",
+        alias = "puppeteer-config-file",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Accepted browser compatibility flags"
+    )]
+    pub(crate) puppeteer_config_file: Option<String>,
+
+    #[command(flatten)]
+    pub(crate) raster: RasterCliArgs,
+
+    #[command(flatten)]
+    pub(crate) icons: IconCliArgs,
+
+    #[command(flatten)]
+    pub(crate) parse: ParseCliArgs,
+
+    #[command(flatten)]
+    pub(crate) render: RenderCliArgs,
+
+    #[command(flatten)]
+    pub(crate) text: TextOutputCliArgs,
+}
+
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct RenderExportArgs {
+    /// Input Mermaid file. Use `-` for stdin.
+    #[arg(
+        short = 'i',
+        long = "input",
+        value_name = "INPUT",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Render input and output"
+    )]
+    pub(crate) input_file: Option<String>,
+
+    /// Output file. Use `-` for stdout.
+    #[arg(
+        short = 'o',
+        long = "output",
+        alias = "out",
+        value_name = "OUTPUT",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Render input and output"
+    )]
+    pub(crate) output: Option<String>,
+
+    /// Output format. Defaults to the output extension, then SVG.
+    #[arg(
+        short = 'e',
+        long = "outputFormat",
+        alias = "output-format",
+        visible_alias = "format",
+        value_enum,
+        help_heading = "Render input and output"
     )]
     pub(crate) output_format: Option<RenderFormat>,
 
@@ -196,121 +377,121 @@ pub(crate) struct ExportArgs {
         short = 'b',
         long = "backgroundColor",
         alias = "background-color",
-        alias = "background"
+        alias = "background",
+        help_heading = "Raster and PDF export"
     )]
     pub(crate) background_color: Option<String>,
 
-    /// JSON Mermaid configuration file.
-    #[arg(short = 'c', long = "configFile", alias = "config-file")]
-    pub(crate) config_file: Option<String>,
-
     /// CSS file injected into SVG output before export.
-    #[arg(short = 'C', long = "cssFile", alias = "css-file")]
+    #[arg(
+        short = 'C',
+        long = "cssFile",
+        alias = "css-file",
+        value_hint = ValueHint::FilePath,
+        help_heading = "Mermaid configuration"
+    )]
     pub(crate) css_file: Option<String>,
 
-    /// Root SVG id and internal marker prefix.
-    #[arg(short = 'I', long = "svgId", alias = "svg-id", alias = "id")]
-    pub(crate) svg_id: Option<String>,
+    /// Suppress non-error log output.
+    #[arg(short = 'q', long = "quiet", help_heading = "Render input and output")]
+    pub(crate) quiet: bool,
 
-    /// Raster/PDF scale factor.
-    #[arg(short = 's', long = "scale", value_parser = parse_positive_f32)]
+    #[command(flatten)]
+    pub(crate) raster: RasterCliArgs,
+
+    #[command(flatten)]
+    pub(crate) icons: IconCliArgs,
+
+    #[command(flatten)]
+    pub(crate) parse: ParseCliArgs,
+
+    #[command(flatten)]
+    pub(crate) render: RenderCliArgs,
+
+    #[command(flatten)]
+    pub(crate) text: TextOutputCliArgs,
+}
+
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct RasterCliArgs {
+    /// Raster/PDF scale factor. Defaults to 1.
+    #[arg(
+        short = 's',
+        long = "scale",
+        value_parser = parse_positive_f32,
+        help_heading = "Raster and PDF export"
+    )]
     pub(crate) scale: Option<f32>,
 
     /// Fit PNG/JPG raster output to this CSS-pixel width before applying --scale.
-    #[arg(long = "raster-fit-width", value_parser = parse_positive_u32)]
+    #[arg(
+        long = "raster-fit-width",
+        value_parser = parse_positive_u32,
+        help_heading = "Raster and PDF export"
+    )]
     pub(crate) raster_fit_width: Option<u32>,
 
     /// Fit PNG/JPG raster output to this CSS-pixel height before applying --scale.
-    #[arg(long = "raster-fit-height", value_parser = parse_positive_u32)]
+    #[arg(
+        long = "raster-fit-height",
+        value_parser = parse_positive_u32,
+        help_heading = "Raster and PDF export"
+    )]
     pub(crate) raster_fit_height: Option<u32>,
 
     /// Maximum PNG/JPG output width after scale and fit. Defaults to 8192.
-    #[arg(long = "raster-max-width", value_parser = parse_positive_u32)]
+    #[arg(
+        long = "raster-max-width",
+        value_parser = parse_positive_u32,
+        help_heading = "Raster and PDF export"
+    )]
     pub(crate) raster_max_width: Option<u32>,
 
     /// Maximum PNG/JPG output height after scale and fit. Defaults to 8192.
-    #[arg(long = "raster-max-height", value_parser = parse_positive_u32)]
+    #[arg(
+        long = "raster-max-height",
+        value_parser = parse_positive_u32,
+        help_heading = "Raster and PDF export"
+    )]
     pub(crate) raster_max_height: Option<u32>,
 
     /// Maximum PNG/JPG output pixels after scale and fit. Defaults to 8192*8192.
-    #[arg(long = "raster-max-pixels", value_parser = parse_positive_u64)]
+    #[arg(
+        long = "raster-max-pixels",
+        value_parser = parse_positive_u64,
+        help_heading = "Raster and PDF export"
+    )]
     pub(crate) raster_max_pixels: Option<u64>,
 
     /// Disable PNG/JPG raster size limits. Use only for trusted oversized exports.
-    #[arg(long = "raster-unbounded")]
-    pub(crate) raster_unbounded: bool,
-
-    /// Scale PDF to fit chart. Accepted for mmdc compatibility.
-    #[arg(short = 'f', long = "pdfFit", alias = "pdf-fit")]
-    pub(crate) pdf_fit: bool,
-
-    /// Suppress non-error log output.
-    #[arg(short = 'q', long = "quiet")]
-    pub(crate) quiet: bool,
-
-    /// JSON Puppeteer configuration file. Accepted for mmdc compatibility.
     #[arg(
-        short = 'p',
-        long = "puppeteerConfigFile",
-        alias = "puppeteer-config-file"
+        long = "raster-unbounded",
+        conflicts_with_all = ["raster_max_width", "raster_max_height", "raster_max_pixels"],
+        help_heading = "Raster and PDF export"
     )]
-    pub(crate) puppeteer_config_file: Option<String>,
+    pub(crate) raster_unbounded: bool,
+}
 
-    /// Iconify package names. Accepted for mmdc compatibility.
-    #[arg(long = "iconPacks", num_args = 1..)]
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct IconCliArgs {
+    /// Iconify package names.
+    #[arg(long = "iconPacks", num_args = 1.., help_heading = "Icon packs")]
     pub(crate) icon_packs: Vec<String>,
 
-    /// Iconify prefix#url definitions. Accepted for mmdc compatibility.
-    #[arg(long = "iconPacksNamesAndUrls", num_args = 1..)]
+    /// Iconify prefix#url definitions.
+    #[arg(
+        long = "iconPacksNamesAndUrls",
+        num_args = 1..,
+        help_heading = "Icon packs"
+    )]
     pub(crate) icon_packs_names_and_urls: Vec<String>,
+}
 
-    /// Mermaid theme override.
-    #[arg(short = 't', long)]
-    pub(crate) theme: Option<String>,
-
-    /// Viewport width for viewport-sensitive layouts.
-    #[arg(short = 'w', long = "width", alias = "viewport-width", value_parser = parse_positive_f64)]
-    pub(crate) width: Option<f64>,
-
-    /// Viewport height for viewport-sensitive layouts.
-    #[arg(short = 'H', long = "height", alias = "viewport-height", value_parser = parse_positive_f64)]
-    pub(crate) height: Option<f64>,
-
-    /// Text measurement strategy.
-    #[arg(long = "text-measurer", value_enum, default_value_t = TextMeasurerKind::Vendored)]
-    pub(crate) text_measurer: TextMeasurerKind,
-
-    /// Math renderer for $$...$$ labels.
-    #[arg(long = "math-renderer", value_enum, default_value_t = MathRendererKind::None)]
-    pub(crate) math_renderer: MathRendererKind,
-
-    /// Flowchart ELK layout backend.
-    #[arg(long = "flowchart-elk-backend", value_enum, default_value_t = FlowchartElkBackend::SourcePorted)]
-    pub(crate) flowchart_elk_backend: FlowchartElkBackend,
-
-    /// Emit an error diagram instead of failing on parse errors.
-    #[arg(long = "suppress-errors")]
-    pub(crate) suppress_errors: bool,
-
-    /// Override the local "today" date for time-dependent diagrams.
-    #[arg(long = "fixed-today", value_parser = parse_naive_date)]
-    pub(crate) fixed_today: Option<chrono::NaiveDate>,
-
-    /// Override the local timezone offset in minutes for time-dependent diagrams.
-    #[arg(long = "fixed-local-offset-minutes", value_parser = parse_fixed_local_offset_minutes)]
-    pub(crate) fixed_local_offset_minutes: Option<i32>,
-
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct TextOutputCliArgs {
     /// Mirror sequence participants below lifelines for ASCII/Unicode output.
-    #[arg(long = "sequence-mirror-actors")]
+    #[arg(long = "sequence-mirror-actors", help_heading = "Text output")]
     pub(crate) sequence_mirror_actors: bool,
-
-    /// Stabilize rough/hand-drawn rendering where supported.
-    #[arg(long = "hand-drawn-seed")]
-    pub(crate) hand_drawn_seed: Option<u64>,
-
-    /// Render resource profile for source, layout model, and SVG output budgets.
-    #[arg(long = "resource-profile", value_enum, default_value_t = ResourceProfile::TrustedNative)]
-    pub(crate) resource_profile: ResourceProfile,
 }
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]

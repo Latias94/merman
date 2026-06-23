@@ -103,6 +103,84 @@ fn cli_prints_help_successfully() {
 }
 
 #[test]
+fn cli_help_groups_top_level_surfaces() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe).arg("--help").output().expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+
+    for heading in [
+        "mmdc-compatible export:",
+        "Markdown batch export:",
+        "Raster and PDF export:",
+        "Mermaid configuration:",
+        "Rust renderer controls:",
+        "Accepted browser compatibility flags:",
+    ] {
+        assert!(
+            stdout.contains(heading),
+            "help should include `{heading}` heading:\n{stdout}"
+        );
+    }
+
+    for flag in [
+        "--input",
+        "--output",
+        "--outputFormat",
+        "--configFile",
+        "--cssFile",
+        "--pdfFit",
+        "--iconPacks",
+        "--iconPacksNamesAndUrls",
+    ] {
+        assert!(
+            stdout.contains(flag),
+            "top-level help should include {flag}:\n{stdout}"
+        );
+    }
+}
+
+#[test]
+fn render_help_excludes_top_level_only_options() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .args(["render", "--help"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+
+    for absent in [
+        "--artefacts",
+        "--artifacts",
+        "--jobs",
+        "--puppeteerConfigFile",
+        "--pdfFit",
+    ] {
+        assert!(
+            !stdout.contains(absent),
+            "render help should not include top-level-only {absent}:\n{stdout}"
+        );
+    }
+
+    for present in [
+        "--output",
+        "--format",
+        "--cssFile",
+        "--raster-max-width",
+        "--iconPacks",
+        "--sequence-mirror-actors",
+    ] {
+        assert!(
+            stdout.contains(present),
+            "render help should include direct rendering option {present}:\n{stdout}"
+        );
+    }
+}
+
+#[test]
 fn cli_prints_version_successfully() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
@@ -331,8 +409,26 @@ fn cli_rejects_conflicting_raster_unbounded_and_limits() {
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("--raster-unbounded cannot be combined with --raster-max-* limits"),
+        stderr.contains("--raster-unbounded")
+            && stderr.contains("--raster-max-width")
+            && (stderr.contains("cannot be combined") || stderr.contains("cannot be used with")),
         "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn completion_subcommand_generates_bash_script() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .args(["completion", "bash"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("merman-cli") && stdout.contains("--input") && stdout.contains("render"),
+        "unexpected completion output:\n{stdout}"
     );
 }
 
