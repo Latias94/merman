@@ -93,9 +93,16 @@ pub(crate) struct GraphEdgeStyle {
 pub(super) struct AsciiGraphGroup {
     pub(super) id: String,
     pub(super) title: String,
+    pub(super) kind: GraphGroupKind,
     pub(super) direction: Option<GraphDirection>,
     pub(super) nodes: Vec<String>,
     pub(super) style: GraphGroupStyle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphGroupKind {
+    Container,
+    Divider,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -191,9 +198,29 @@ impl AsciiGraph {
         nodes: Vec<String>,
         style: GraphGroupStyle,
     ) {
+        self.add_group_with_kind_and_style(
+            id,
+            title,
+            direction,
+            nodes,
+            GraphGroupKind::Container,
+            style,
+        );
+    }
+
+    pub(crate) fn add_group_with_kind_and_style(
+        &mut self,
+        id: impl Into<String>,
+        title: impl Into<String>,
+        direction: Option<GraphDirection>,
+        nodes: Vec<String>,
+        kind: GraphGroupKind,
+        style: GraphGroupStyle,
+    ) {
         self.groups.push(AsciiGraphGroup {
             id: id.into(),
             title: title.into(),
+            kind,
             direction,
             nodes,
             style,

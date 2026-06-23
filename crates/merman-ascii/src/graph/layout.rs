@@ -1,6 +1,7 @@
 use super::label::GraphLabel;
 use super::model::{
-    AsciiGraph, AsciiGraphNode, GraphDirection, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, AsciiGraphGroup, AsciiGraphNode, GraphDirection, GraphGroupKind, GraphGroupStyle,
+    GraphNodeShape, GraphNodeStyle,
 };
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
@@ -71,8 +72,10 @@ pub(super) struct CanvasCoord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GroupLayout {
     pub(super) id: String,
+    pub(super) kind: GraphGroupKind,
     pub(super) title: GraphLabel,
     pub(super) style: GraphGroupStyle,
+    pub(super) divider_span: Option<DividerSpan>,
     pub(super) x: usize,
     pub(super) y: usize,
     pub(super) width: usize,
@@ -87,6 +90,12 @@ impl GroupLayout {
     pub(super) fn bottom(&self) -> usize {
         self.y + self.height - 1
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DividerSpan {
+    pub(super) x_start: usize,
+    pub(super) x_end: usize,
 }
 
 pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> GraphLayout {
@@ -294,6 +303,7 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
         .collect::<Vec<_>>();
     apply_subgraph_direction_overrides(graph, &mut placements);
+    stack_divider_sections(graph, &mut placements);
     separate_external_nodes_from_groups(graph, &mut placements);
     placements
 }
@@ -530,6 +540,7 @@ fn place_top_down_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
         .collect::<Vec<_>>();
     apply_subgraph_direction_overrides(graph, &mut placements);
+    stack_divider_sections(graph, &mut placements);
     separate_external_nodes_from_groups(graph, &mut placements);
     placements
 }
@@ -644,21 +655,7 @@ fn group_bounds_for_placements(
         }
     }
 
-    let member_bounds = member_bounds?;
-    let title_width = (member_bounds.right - member_bounds.x + 3).max(1) as usize;
-    let title = GraphLabel::wrapped(&group.title, title_width);
-    let title_space = title.content_height() + 3;
-    let x = member_bounds.x - 2;
-    let y = member_bounds.y - title_space as isize;
-    let right = member_bounds.right + 2;
-    let bottom = member_bounds.bottom + 2;
-
-    Some(RawBounds {
-        x,
-        y,
-        right,
-        bottom,
-    })
+    Some(raw_group_bounds_for_members(group, member_bounds?))
 }
 
 fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [GridCoord]) {
@@ -707,6 +704,127 @@ fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [Grid
         }
         if let Some(bounds) = group_bounds {
             shift_external_nodes_away_from_group(graph, &member_indices, bounds, placements);
+        }
+    }
+}
+
+fn stack_divider_sections(graph: &AsciiGraph, placements: &mut [GridCoord]) {
+    if graph.groups.is_empty() || placements.is_empty() {
+        return;
+    }
+
+    let divider_groups = graph
+        .groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| group.kind == GraphGroupKind::Divider)
+        .collect::<Vec<_>>();
+    if divider_groups.len() < 2 {
+        return;
+    }
+
+    for parent in &graph.groups {
+        let child_dividers = divider_groups
+            .iter()
+            .copied()
+            .filter(|(_, child)| parent.nodes.iter().any(|member| member == &child.id))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if child_dividers.len() < 2 {
+            continue;
+        }
+
+        let sections = child_dividers
+            .into_iter()
+            .filter_map(|child_index| {
+                let member_indices = group_member_indices(graph, child_index);
+                if member_indices.is_empty() {
+                    return None;
+                }
+                let bounds = member_grid_bounds(&member_indices, placements)?;
+                Some((member_indices, bounds))
+            })
+            .collect::<Vec<_>>();
+        if sections.len() < 2 {
+            continue;
+        }
+
+        let anchor_left = sections
+            .iter()
+            .map(|(_, bounds)| bounds.x)
+            .min()
+            .unwrap_or(0);
+        let mut next_top: Option<isize> = None;
+        for (member_indices, _) in sections {
+            let Some(bounds) = member_grid_bounds(&member_indices, placements) else {
+                continue;
+            };
+            let delta_x = anchor_left - bounds.x;
+            if delta_x != 0 {
+                shift_member_indices_x(placements, &member_indices, delta_x);
+            }
+
+            let Some(bounds) = member_grid_bounds(&member_indices, placements) else {
+                continue;
+            };
+
+            if let Some(desired_top) = next_top {
+                if bounds.y < desired_top {
+                    shift_member_indices_y(
+                        placements,
+                        &member_indices,
+                        (desired_top - bounds.y) as usize,
+                    );
+                }
+            }
+
+            let Some(updated_bounds) = member_grid_bounds(&member_indices, placements) else {
+                continue;
+            };
+            next_top = Some(updated_bounds.bottom + 4);
+        }
+    }
+}
+
+fn member_grid_bounds(member_indices: &[usize], placements: &[GridCoord]) -> Option<RawBounds> {
+    let mut bounds = None::<RawBounds>;
+
+    for index in member_indices {
+        let current = node_bounds(*placements.get(*index)?);
+        if let Some(existing) = &mut bounds {
+            existing.include(current);
+        } else {
+            bounds = Some(current);
+        }
+    }
+
+    bounds
+}
+
+fn shift_member_indices_y(placements: &mut [GridCoord], member_indices: &[usize], delta: usize) {
+    if delta == 0 {
+        return;
+    }
+
+    for index in member_indices {
+        if let Some(coord) = placements.get_mut(*index) {
+            coord.y += delta;
+        }
+    }
+}
+
+fn shift_member_indices_x(placements: &mut [GridCoord], member_indices: &[usize], delta: isize) {
+    if delta == 0 {
+        return;
+    }
+
+    for index in member_indices {
+        if let Some(coord) = placements.get_mut(*index) {
+            if delta.is_positive() {
+                coord.x += delta as usize;
+            } else {
+                coord.x = coord.x.saturating_sub(delta.unsigned_abs());
+            }
         }
     }
 }
@@ -917,21 +1035,7 @@ fn group_bounds_for_offset(
         }
     }
 
-    let member_bounds = member_bounds?;
-    let title_width = (member_bounds.right - member_bounds.x + 3).max(1) as usize;
-    let title = GraphLabel::wrapped(&group.title, title_width);
-    let title_space = title.content_height() + 3;
-    let x = member_bounds.x - 2;
-    let y = member_bounds.y - title_space as isize;
-    let right = member_bounds.right + 2;
-    let bottom = member_bounds.bottom + 2;
-
-    Some(RawBounds {
-        x,
-        y,
-        right,
-        bottom,
-    })
+    Some(raw_group_bounds_for_members(group, member_bounds?))
 }
 
 fn node_overlaps_any_other(index: usize, placements: &[GridCoord]) -> bool {
@@ -1146,6 +1250,31 @@ impl RawBounds {
     }
 }
 
+fn raw_group_bounds_for_members(group: &AsciiGraphGroup, member_bounds: RawBounds) -> RawBounds {
+    let x = member_bounds.x - 2;
+    let right = member_bounds.right + 2;
+
+    match group.kind {
+        GraphGroupKind::Container => {
+            let title_width = (member_bounds.right - member_bounds.x + 3).max(1) as usize;
+            let title = GraphLabel::wrapped(&group.title, title_width);
+            let title_space = title.content_height() + 3;
+            RawBounds {
+                x,
+                y: member_bounds.y - title_space as isize,
+                right,
+                bottom: member_bounds.bottom + 2,
+            }
+        }
+        GraphGroupKind::Divider => RawBounds {
+            x,
+            y: member_bounds.y - 1,
+            right,
+            bottom: member_bounds.bottom,
+        },
+    }
+}
+
 fn raw_group_bounds(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
@@ -1250,21 +1379,7 @@ fn raw_group_bounds_from_completed_children(
         };
     }
 
-    let member_bounds = member_bounds?;
-    let title_width = (member_bounds.right - member_bounds.x + 3).max(1) as usize;
-    let title = GraphLabel::wrapped(&group.title, title_width);
-    let title_space = title.content_height() + 3;
-    let x = member_bounds.x - 2;
-    let y = member_bounds.y - title_space as isize;
-    let right = member_bounds.right + 2;
-    let bottom = member_bounds.bottom + 2;
-
-    Some(RawBounds {
-        x,
-        y,
-        right,
-        bottom,
-    })
+    Some(raw_group_bounds_for_members(group, member_bounds?))
 }
 
 pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<GroupLayout> {
@@ -1307,27 +1422,111 @@ pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<G
             .chain(child_members.iter().map(|layout| layout.bottom()))
             .max()
             .unwrap_or(0);
-        let x = min_x.saturating_sub(2);
-        let title = GraphLabel::wrapped(&group.title, (max_right.saturating_sub(min_x) + 3).max(1));
-        let title_space = title.content_height() + 3;
-        let y = min_y.saturating_sub(title_space);
-        let right = max_right + 2;
-        let bottom = max_bottom + 2;
-        let width = right - x + 1;
-        let height = bottom - y + 1;
+        let title = group_title_for_layout(group, min_x, max_right);
+        let bounds =
+            group_layout_bounds_for_members(group, &title, min_x, min_y, max_right, max_bottom);
+        let width = bounds.right - bounds.x + 1;
+        let height = bounds.bottom - bounds.y + 1;
 
         groups.push(GroupLayout {
             id: group.id.clone(),
+            kind: group.kind,
             title,
             style: group.style,
-            x,
-            y,
+            divider_span: None,
+            x: bounds.x,
+            y: bounds.y,
             width,
             height,
         });
     }
 
+    assign_divider_spans(graph, &mut groups);
     groups
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GroupLayoutBounds {
+    x: usize,
+    y: usize,
+    right: usize,
+    bottom: usize,
+}
+
+fn group_title_for_layout(group: &AsciiGraphGroup, min_x: usize, max_right: usize) -> GraphLabel {
+    match group.kind {
+        GraphGroupKind::Container => {
+            GraphLabel::wrapped(&group.title, (max_right.saturating_sub(min_x) + 3).max(1))
+        }
+        GraphGroupKind::Divider => GraphLabel::new(""),
+    }
+}
+
+fn group_layout_bounds_for_members(
+    group: &AsciiGraphGroup,
+    title: &GraphLabel,
+    min_x: usize,
+    min_y: usize,
+    max_right: usize,
+    max_bottom: usize,
+) -> GroupLayoutBounds {
+    let x = min_x.saturating_sub(2);
+    let right = max_right.saturating_add(2);
+
+    match group.kind {
+        GraphGroupKind::Container => {
+            let title_space = title.content_height() + 3;
+            GroupLayoutBounds {
+                x,
+                y: min_y.saturating_sub(title_space),
+                right,
+                bottom: max_bottom.saturating_add(2),
+            }
+        }
+        GraphGroupKind::Divider => GroupLayoutBounds {
+            x,
+            y: min_y.saturating_sub(1),
+            right,
+            bottom: max_bottom,
+        },
+    }
+}
+
+fn assign_divider_spans(graph: &AsciiGraph, groups: &mut [GroupLayout]) {
+    for graph_group in graph
+        .groups
+        .iter()
+        .filter(|group| group.kind == GraphGroupKind::Divider)
+    {
+        let Some(layout_index) = groups.iter().position(|layout| layout.id == graph_group.id)
+        else {
+            continue;
+        };
+        let span = divider_parent_span(graph, groups, &graph_group.id)
+            .or_else(|| divider_inner_span(&groups[layout_index]));
+        groups[layout_index].divider_span = span;
+    }
+}
+
+fn divider_parent_span(
+    graph: &AsciiGraph,
+    groups: &[GroupLayout],
+    divider_id: &str,
+) -> Option<DividerSpan> {
+    let parent = graph
+        .groups
+        .iter()
+        .find(|group| group.nodes.iter().any(|member| member == divider_id))?;
+    groups
+        .iter()
+        .find(|layout| layout.id == parent.id)
+        .and_then(divider_inner_span)
+}
+
+fn divider_inner_span(group: &GroupLayout) -> Option<DividerSpan> {
+    let x_start = group.x.saturating_add(1);
+    let x_end = group.right().saturating_sub(1);
+    (x_start <= x_end).then_some(DividerSpan { x_start, x_end })
 }
 
 fn node_width(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {

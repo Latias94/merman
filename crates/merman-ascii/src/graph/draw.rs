@@ -1,7 +1,9 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
 use super::layout::{CanvasCoord, GroupLayout, NodeLayout, layout_graph};
-use super::model::{AsciiGraph, GraphDirection, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
+use super::model::{
+    AsciiGraph, GraphDirection, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
+};
 use super::routing;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
@@ -291,6 +293,13 @@ fn draw_node(
 }
 
 fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) {
+    match group.kind {
+        GraphGroupKind::Container => draw_group_box(canvas, group, charset),
+        GraphGroupKind::Divider => draw_group_divider(canvas, group, charset),
+    }
+}
+
+fn draw_group_box(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) {
     let right = group.right();
     let bottom = group.bottom();
 
@@ -310,7 +319,19 @@ fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) 
     }
 }
 
+fn draw_group_divider(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) {
+    let Some(span) = group.divider_span else {
+        return;
+    };
+    for x in span.x_start..=span.x_end {
+        set_group_border(canvas, x, group.y, charset.dotted_horizontal, group.style);
+    }
+}
+
 fn draw_group_title(canvas: &mut Canvas, group: &GroupLayout) {
+    if group.kind == GraphGroupKind::Divider {
+        return;
+    }
     for (line_index, line) in group.title.lines().iter().enumerate() {
         let Some((title_x, title_y)) = group_title_line_position(group, line, line_index) else {
             continue;
@@ -326,6 +347,9 @@ fn draw_transformed_group_title(
     width: usize,
     height: usize,
 ) {
+    if group.kind == GraphGroupKind::Divider {
+        return;
+    }
     let line_step = GRAPH_LABEL_LINE_GAP + 1;
     let content_y = group.y + 1;
     let last_line_y = content_y + group.title.lines().len().saturating_sub(1) * line_step;

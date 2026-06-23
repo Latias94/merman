@@ -1,4 +1,4 @@
-use merman_ascii::{AsciiColorMode, AsciiError, AsciiRenderOptions, render_model};
+use merman_ascii::{AsciiColorMode, AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
 
 fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -9,18 +9,6 @@ fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Resu
 
     assert_eq!(parsed.meta.diagram_type, "stateDiagram");
     render_model(&parsed.model, options)
-}
-
-fn assert_unsupported_state(input: &str, feature: &'static str) {
-    let err = render_state(input, &AsciiRenderOptions::ascii()).unwrap_err();
-
-    assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "state",
-            feature,
-        }
-    );
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -275,9 +263,27 @@ fn state_composite_entry_transition_attaches_to_group_boundary() {
 }
 
 #[test]
-fn state_dividers_are_explicitly_unsupported() {
-    assert_unsupported_state(
+fn state_dividers_render_as_stacked_sections() {
+    let rendered = render_state(
         "stateDiagram-v2\nstate Active {\n  A\n  --\n  B\n}",
-        "state dividers",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("state dividers should render as stacked sections");
+
+    assert!(
+        rendered.contains("Active"),
+        "parent composite state should render:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("A") && rendered.contains("B"),
+        "divider sections should keep their child states visible:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().filter(|line| line.contains("...")).count() >= 2,
+        "divider sections should render horizontal separators:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("divider-id") && !rendered.contains("id-"),
+        "divider implementation ids should not leak into ASCII output:\n{rendered}"
     );
 }

@@ -15,6 +15,7 @@ This document describes the current `merman-ascii` state support boundary. The r
 | Start/end pseudo states | Supported approximation | `[*]` start and end states render as visible `*` nodes so transitions remain inspectable in text output. |
 | Transitions | Supported subset | Directed transitions and non-empty labels render through the shared graph route planner. |
 | Composite states | Supported subset | Composite states render as group boxes when their children can be mapped cleanly to graph members. Transitions may attach to composite group boundaries. |
+| Divider/concurrency regions | Supported approximation | Mermaid divider groups render as vertically stacked terminal sections with horizontal separator lines. Section children keep their own graph layout and divider implementation ids are omitted. |
 | State notes | Supported approximation | Inline and block notes render as terminal note nodes connected with open note edges. Multiline note text is preserved. Mermaid's exact note side placement is approximated by the shared graph layout. |
 | Click/href links | Accepted metadata | State link URLs and tooltips are SVG/interaction metadata. They do not block ASCII rendering and are not emitted in terminal output. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -26,7 +27,6 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 | Feature | Error feature |
 | --- | --- |
-| Divider/concurrency regions | `state dividers` |
 | State node shapes outside `rect`, `rectWithTitle`, `stateStart`, `stateEnd`, `roundedWithTitle`, and note-backed `noteGroup` | `state node shapes` |
 | State edge arrow types outside Mermaid's normal state arrowheads | `state arrow types` |
 | Directions outside Mermaid's supported direction set | `unsupported state directions` |
@@ -38,6 +38,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 - Start and end pseudo states both render as `*`; their direction is communicated by transitions.
 - Composite groups currently require child-member mapping. Boundary-entry routing is a terminal graph
   approximation and does not attempt SVG cluster-edge parity.
+- Divider/concurrency regions are a terminal graph approximation. Sections stack vertically and
+  separators span the parent composite state, but spacing is not SVG layout parity.
 - State note side placement is terminal-graph approximate. The note text and note relationship are
   preserved, but Mermaid's exact SVG note offsets are not.
 - State links are accepted as interaction metadata and intentionally omitted from terminal output.

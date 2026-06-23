@@ -4,8 +4,8 @@ use crate::graph::style::{
     apply_node_declarations,
 };
 use crate::graph::{
-    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupStyle, GraphNodeShape,
-    GraphNodeStyle,
+    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
+    GraphNodeShape, GraphNodeStyle,
 };
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
@@ -39,15 +39,16 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
 
     for node in sorted_group_nodes(model, &group_members) {
         let members = group_members.get(&node.id).cloned().unwrap_or_default();
-        graph.add_group_with_style(
+        graph.add_group_with_kind_and_style(
             &node.id,
-            state_node_label(node),
+            state_group_title(node),
             node.dir
                 .as_deref()
                 .map(parse_state_direction)
                 .transpose()?
                 .map(GraphDirection::canonical),
             members,
+            state_group_kind(node),
             state_group_style(node),
         );
     }
@@ -95,8 +96,8 @@ fn validate_supported_state_node(node: &StateDiagramRenderNode) -> Result<()> {
     if node.position.is_some() {
         return Err(unsupported("state node positions"));
     }
-    if node.shape == "divider" {
-        return Err(unsupported("state dividers"));
+    if is_state_divider_group(node) {
+        return Ok(());
     }
     state_node_shape(node)?;
     Ok(())
@@ -206,12 +207,32 @@ fn state_group_style(node: &StateDiagramRenderNode) -> GraphGroupStyle {
     style
 }
 
+fn state_group_kind(node: &StateDiagramRenderNode) -> GraphGroupKind {
+    if is_state_divider_group(node) {
+        GraphGroupKind::Divider
+    } else {
+        GraphGroupKind::Container
+    }
+}
+
+fn state_group_title(node: &StateDiagramRenderNode) -> String {
+    if is_state_divider_group(node) {
+        String::new()
+    } else {
+        state_node_label(node)
+    }
+}
+
 fn is_state_note_group(node: &StateDiagramRenderNode) -> bool {
     node.shape == "noteGroup"
 }
 
 fn is_state_note_node(node: &StateDiagramRenderNode) -> bool {
     node.shape == "note"
+}
+
+fn is_state_divider_group(node: &StateDiagramRenderNode) -> bool {
+    node.shape == "divider"
 }
 
 fn state_node_label(node: &StateDiagramRenderNode) -> String {

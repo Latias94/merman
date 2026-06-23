@@ -47,8 +47,8 @@ descriptions, start/end pseudo states, labeled transitions, root directions, and
 boxes through `render_state` or `render_model`; inline and block state notes render as terminal note
 nodes with open note edges, and state click/href metadata is accepted but omitted from ASCII output.
 State `classDef`, `class`, and `style` foreground colors map to terminal node/group text and border
-colors; transitions directly targeting composite groups attach to group boundaries, while dividers
-remain an explicit follow-on gap.
+colors; transitions directly targeting composite groups attach to group boundaries, and
+divider/concurrency regions render as stacked sections with horizontal separators.
 The XYChart slice
 can render deterministic compact vertical bars, stair-step lines, mixed bar/line overlays,
 horizontal bars, inferred numeric x labels, and ASCII/Unicode chart characters through

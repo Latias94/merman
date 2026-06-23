@@ -116,7 +116,7 @@ Out of scope:
 
 - Copying reference parser code into `merman-ascii`.
 - Pixel-perfect output matching with `beautiful-mermaid`.
-- Hiding unsupported state semantics by approximating links, note groups, or divider behavior
+- Hiding unsupported state semantics by approximating links, note groups, or uncommon shape behavior
   without a documented rule.
 
 ---
@@ -129,11 +129,12 @@ Out of scope:
 - KTD2. Treat `beautiful-mermaid` as a capability map, not an oracle. Its broad family support helps
   prioritize state, but local Mermaid model semantics decide the implementation boundary.
 - KTD3. Keep state unsupported cases precise. Replacing `UnsupportedDiagram { state }` with a broad
-  renderer must not silently drop dividers or unsupported shapes. State note edges are
-  representable as open terminal connectors once their internal note node is collapsed into the
-  visible note group. State links are interaction metadata and can be accepted when their omission
-  is documented. State style metadata can map only the foreground subset that the graph renderer can
-  express. Composite-group transitions attach to group boundaries through the shared graph router.
+  renderer must not silently drop dividers or unsupported shapes. State dividers render as stacked
+  terminal sections with horizontal separators; state note edges are representable as open terminal
+  connectors once their internal note node is collapsed into the visible note group. State links are
+  interaction metadata and can be accepted when their omission is documented. State style metadata
+  can map only the foreground subset that the graph renderer can express. Composite-group
+  transitions attach to group boundaries through the shared graph router.
 - KTD4. Do documentation truthing first. A stale gap registry makes later fearless refactors riskier
   because implementers cannot tell whether a gap is real, solved, or intentionally deferred.
 - KTD5. Preserve the copied `mermaid-ascii` fixture gate. Broader state/class/ER/XYChart support is
@@ -202,9 +203,9 @@ Out of scope:
     membership.
   - Transitions targeting composite states attach to the group boundary, including entry transitions
     into composite states with internal transitions.
-  - Unsupported state divider behavior returns `UnsupportedFeature` with `diagram_type: "state"`,
-    while state notes render as terminal note nodes, state links are accepted as omitted metadata,
-    and foreground state styles map to node/group text and border colors.
+  - State divider/concurrency behavior renders as stacked sections with horizontal separators, while
+    state notes render as terminal note nodes, state links are accepted as omitted metadata, and
+    foreground state styles map to node/group text and border colors.
 - **Verification:** `render_model` no longer returns `UnsupportedDiagram { diagram_type: "state" }`
   for the supported state subset.
 
@@ -231,8 +232,8 @@ Out of scope:
   - Start and end pseudo states.
   - State alias/description syntax from `crates/merman-core/src/tests/state.rs`.
   - Composite state group with one or more child states.
-  - State notes, links, and foreground style metadata render through the public parser-backed path,
-    while unsupported divider metadata stays explicit.
+  - State notes, links, foreground style metadata, and divider/concurrency regions render through
+    the public parser-backed path, while unsupported state metadata stays explicit.
 - **Verification:** `cargo nextest run -p merman-ascii state` exercises the new state family, and
   `cargo nextest run -p merman-ascii` keeps existing families stable.
 
