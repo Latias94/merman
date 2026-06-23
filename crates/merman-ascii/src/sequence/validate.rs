@@ -6,11 +6,11 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
     if model
         .actors
         .values()
-        .any(|actor| !matches!(actor.actor_type.as_str(), "participant" | "actor"))
+        .any(|actor| !is_supported_sequence_actor_type(&actor.actor_type))
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "extended actor types",
+            feature: "actor types",
         });
     }
 
@@ -73,4 +73,18 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
     }
 
     Ok(())
+}
+
+fn is_supported_sequence_actor_type(actor_type: &str) -> bool {
+    matches!(
+        actor_type,
+        "participant"
+            | "actor"
+            | "boundary"
+            | "control"
+            | "entity"
+            | "database"
+            | "collections"
+            | "queue"
+    )
 }

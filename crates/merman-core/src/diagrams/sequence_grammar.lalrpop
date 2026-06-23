@@ -158,9 +158,12 @@ ActorId: String = {
 
 ParticipantDecl: (String, Option<String>, String, Option<String>) = {
   "participant" <id:ActorId> "as" <desc:RestOfLine> => (id, Some(desc), "participant".to_string(), None),
+  "participant" <id:ActorId> <cfg:Config> "as" <desc:RestOfLine> => (id, Some(desc), "participant".to_string(), Some(cfg)),
   "participant" <id:ActorId> <cfg:Config> => (id, None, "participant".to_string(), Some(cfg)),
   "participant" <id:ActorId> => (id, None, "participant".to_string(), None),
   "actor" <id:ActorId> "as" <desc:RestOfLine> => (id, Some(desc), "actor".to_string(), None),
+  "actor" <id:ActorId> <cfg:Config> "as" <desc:RestOfLine> => (id, Some(desc), "actor".to_string(), Some(cfg)),
+  "actor" <id:ActorId> <cfg:Config> => (id, None, "actor".to_string(), Some(cfg)),
   "actor" <id:ActorId> => (id, None, "actor".to_string(), None),
 };
 

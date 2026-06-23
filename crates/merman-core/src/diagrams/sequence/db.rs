@@ -130,6 +130,7 @@ impl SequenceDb {
         config: Option<String>,
     ) -> std::result::Result<(), String> {
         let mut actor_type = actor_type.to_string();
+        let mut config_alias = None;
         if let Some(config) = config.as_deref() {
             let meta = parse_participant_meta(config)?;
             if let Some(obj) = meta.as_object()
@@ -138,6 +139,11 @@ impl SequenceDb {
                     .and_then(crate::inline_config::value_to_string)
             {
                 actor_type = t;
+            }
+            if let Some(obj) = meta.as_object() {
+                config_alias = obj
+                    .get("alias")
+                    .and_then(crate::inline_config::value_to_string);
             }
         }
 
@@ -161,6 +167,7 @@ impl SequenceDb {
         }
 
         let description = description
+            .or(config_alias)
             .map(|s| self.parse_message(&s))
             .unwrap_or_else(|| ParsedText {
                 text: id.to_string(),
