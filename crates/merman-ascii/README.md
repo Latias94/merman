@@ -44,8 +44,10 @@ distinct lanes, and simple spanning-level relationships route through side lanes
 unresolved dense graph shapes remain explicit diagnostics. Unrelated standalone entities render as
 separate components beside the relationship layout. The stateDiagram slice can render simple states,
 descriptions, start/end pseudo states, labeled transitions, root directions, and composite-state
-boxes through `render_state` or `render_model`; state notes, links, style metadata, dividers, and
-transitions directly targeting composite groups remain explicit follow-on gaps. The XYChart slice
+boxes through `render_state` or `render_model`; inline and block state notes render as terminal note
+nodes with open note edges, and state click/href metadata is accepted but omitted from ASCII output.
+State style metadata, dividers, and transitions directly targeting composite groups remain explicit
+follow-on gaps. The XYChart slice
 can render deterministic compact vertical bars, stair-step lines, mixed bar/line overlays,
 horizontal bars, inferred numeric x labels, and ASCII/Unicode chart characters through
 `render_xychart` or `render_model`; richer legends and full terminal graph layout remain follow-on
@@ -71,7 +73,7 @@ validation gates.
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, core control blocks, and opt-in ANSI/HTML foreground color roles. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
-| stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes for cleanly mapped groups, and opt-in ANSI/HTML foreground color roles. |
+| stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, and opt-in ANSI/HTML foreground color roles. |
 | xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, inferred numeric labels, and opt-in ANSI/HTML foreground color roles. |
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the

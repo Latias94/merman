@@ -10,7 +10,8 @@ mod style;
 pub(crate) use adapter::from_flowchart_model;
 pub(crate) use draw::render_graph;
 pub(crate) use model::{
-    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupStyle, GraphNodeShape,
+    GraphNodeStyle,
 };
 
 #[cfg(test)]

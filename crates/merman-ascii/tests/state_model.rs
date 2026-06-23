@@ -109,18 +109,72 @@ fn state_composite_without_group_transition_renders_group_box() {
 }
 
 #[test]
-fn state_notes_are_explicitly_unsupported() {
-    assert_unsupported_state(
+fn state_notes_render_as_note_nodes() {
+    let rendered = render_state(
         "stateDiagram-v2\nA --> B\nnote right of A : note text",
-        "state notes",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("state notes should render as terminal note nodes");
+
+    assert!(
+        rendered.contains("note text"),
+        "note text should render in the ASCII output:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("----note") && !rendered.contains("----parent"),
+        "state note implementation ids should not leak into ASCII output:\n{rendered}"
     );
 }
 
 #[test]
-fn state_links_are_explicitly_unsupported() {
-    assert_unsupported_state(
+fn state_note_edges_render_without_arrowheads() {
+    let rendered = render_state(
+        "stateDiagram-v2\nS1\nnote right of S1 : note text",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("state note edges should render as open connectors");
+
+    assert!(
+        rendered.contains("S1") && rendered.contains("note text"),
+        "state and note should both render:\n{rendered}"
+    );
+    assert!(
+        !rendered
+            .chars()
+            .any(|ch| matches!(ch, '>' | '<' | '^' | 'v')),
+        "note-only state output should not contain arrowheads:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_block_notes_render_multiline_note_nodes() {
+    let rendered = render_state(
+        "stateDiagram-v2\nA --> B\nnote right of A\n  line1\n  line2\nend note",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("state block notes should render as multiline terminal note nodes");
+
+    assert!(
+        rendered.contains("line1") && rendered.contains("line2"),
+        "block note lines should render in the ASCII output:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_links_do_not_block_ascii_rendering() {
+    let rendered = render_state(
         "stateDiagram-v2\nS1\nclick S1 \"https://example.com\" \"Go\"",
-        "state links",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("state links should not block ASCII rendering");
+
+    assert!(
+        rendered.contains("S1"),
+        "linked states should keep state nodes renderable:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("example.com"),
+        "state link URLs are SVG metadata and should not leak into ASCII output:\n{rendered}"
     );
 }
 

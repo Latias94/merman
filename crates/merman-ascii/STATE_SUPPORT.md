@@ -15,6 +15,8 @@ This document describes the current `merman-ascii` state support boundary. The r
 | Start/end pseudo states | Supported approximation | `[*]` start and end states render as visible `*` nodes so transitions remain inspectable in text output. |
 | Transitions | Supported subset | Directed transitions and non-empty labels render through the shared graph route planner. |
 | Composite states | Supported subset | Composite states render as group boxes when their children can be mapped cleanly to graph members and transitions do not target the composite group itself. |
+| State notes | Supported approximation | Inline and block notes render as terminal note nodes connected with open note edges. Multiline note text is preserved. Mermaid's exact note side placement is approximated by the shared graph layout. |
+| Click/href links | Accepted metadata | State link URLs and tooltips are SVG/interaction metadata. They do not block ASCII rendering and are not emitted in terminal output. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 | ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit renderer-owned foreground roles for state nodes, groups, transitions, and labels. Mermaid state style/class metadata remains deferred. |
 
@@ -24,12 +26,10 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 | Feature | Error feature |
 | --- | --- |
-| State notes and note edges | `state notes` |
-| Click/href links | `state links` |
 | `classDef`, `class`, `style`, compiled CSS, and label styles | `state styles` |
 | Divider/concurrency regions | `state dividers` |
 | Transitions whose endpoint is a composite group container | `state group transition endpoints` |
-| State node shapes outside `rect`, `rectWithTitle`, `stateStart`, `stateEnd`, and `roundedWithTitle` | `state node shapes` |
+| State node shapes outside `rect`, `rectWithTitle`, `stateStart`, `stateEnd`, `roundedWithTitle`, and note-backed `noteGroup` | `state node shapes` |
 | State edge arrow types outside Mermaid's normal state arrowheads | `state arrow types` |
 | Directions outside Mermaid's supported direction set | `unsupported state directions` |
 | Graph routes the shared route planner cannot represent | `unroutable graph edges` |
@@ -40,8 +40,11 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 - Start and end pseudo states both render as `*`; their direction is communicated by transitions.
 - Composite groups currently require child-member mapping. Edges to or from a composite group
   container are rejected until graph routing can attach to group boundaries honestly.
-- State notes, links, and styles are model metadata in the typed state model, but are not represented
-  in the initial terminal output.
+- State note side placement is terminal-graph approximate. The note text and note relationship are
+  preserved, but Mermaid's exact SVG note offsets are not.
+- State links are accepted as interaction metadata and intentionally omitted from terminal output.
+- State styles are model metadata in the typed state model, but are not represented in the terminal
+  output.
 - Broader state-specific shape support should be added one semantic shape at a time with
   parser-backed tests.
 

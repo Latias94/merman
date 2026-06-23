@@ -1,8 +1,11 @@
 use crate::error::{AsciiError, Result};
 use crate::graph::{
-    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupStyle, GraphNodeShape,
+    GraphNodeStyle,
 };
-use merman_core::diagrams::state::{StateDiagramRenderModel, StateDiagramRenderNode};
+use merman_core::diagrams::state::{
+    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
+};
 use std::collections::{HashMap, HashSet};
 
 const STATE_DIAGRAM_TYPE: &str = "state";
@@ -11,11 +14,15 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
     validate_supported_state_model(model)?;
 
     let group_members = group_members_by_id(model);
+    let note_node_parent_by_id = note_node_parent_by_id(model);
     let direction = parse_state_direction(&model.direction)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
 
     for node in &model.nodes {
         if is_group_container(node, &group_members) {
+            continue;
+        }
+        if is_state_note_node(node) {
             continue;
         }
         graph.add_node_with_shape_and_style(
@@ -42,11 +49,14 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
     }
 
     for edge in &model.edges {
+        let from = remap_note_endpoint(&edge.start, &note_node_parent_by_id);
+        let to = remap_note_endpoint(&edge.end, &note_node_parent_by_id);
         graph.add_edge_with_attrs(
-            &edge.start,
-            &edge.end,
+            from,
+            to,
             GraphEdgeAttrs {
                 label: edge_label(&edge.label),
+                arrow: edge_arrow(edge),
                 ..GraphEdgeAttrs::default()
             },
         );
@@ -56,16 +66,9 @@ pub(crate) fn from_state_model(model: &StateDiagramRenderModel) -> Result<AsciiG
 }
 
 fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()> {
-    if !model.links.is_empty() {
-        return Err(unsupported("state links"));
-    }
     if !model.style_classes.is_empty() {
         return Err(unsupported("state styles"));
     }
-    if model.states.values().any(|state| state.note.is_some()) {
-        return Err(unsupported("state notes"));
-    }
-
     let group_members = group_members_by_id(model);
     let group_container_ids = model
         .nodes
@@ -79,13 +82,6 @@ fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()>
     }
 
     for edge in &model.edges {
-        if edge
-            .classes
-            .split_whitespace()
-            .any(|class| class == "note-edge")
-        {
-            return Err(unsupported("state notes"));
-        }
         if group_container_ids.contains(edge.start.as_str())
             || group_container_ids.contains(edge.end.as_str())
         {
@@ -105,8 +101,11 @@ fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()>
 }
 
 fn validate_supported_state_node(node: &StateDiagramRenderNode) -> Result<()> {
-    if matches!(node.shape.as_str(), "note" | "noteGroup") || node.position.is_some() {
-        return Err(unsupported("state notes"));
+    if is_state_note_node(node) || is_state_note_group(node) {
+        return Ok(());
+    }
+    if node.position.is_some() {
+        return Err(unsupported("state node positions"));
     }
     if node.shape == "divider" {
         return Err(unsupported("state dividers"));
@@ -140,6 +139,18 @@ fn group_members_by_id(model: &StateDiagramRenderModel) -> HashMap<String, Vec<S
             .push(node.id.clone());
     }
     members
+}
+
+fn note_node_parent_by_id(model: &StateDiagramRenderModel) -> HashMap<String, String> {
+    model
+        .nodes
+        .iter()
+        .filter(|node| is_state_note_node(node))
+        .filter_map(|node| {
+            let parent_id = node.parent_id.as_ref()?;
+            Some((node.id.clone(), parent_id.clone()))
+        })
+        .collect()
 }
 
 fn sorted_group_nodes<'a>(
@@ -180,6 +191,9 @@ fn is_group_container(
     node: &StateDiagramRenderNode,
     group_members: &HashMap<String, Vec<String>>,
 ) -> bool {
+    if is_state_note_group(node) {
+        return false;
+    }
     node.is_group
         && group_members
             .get(&node.id)
@@ -189,9 +203,17 @@ fn is_group_container(
 fn state_node_shape(node: &StateDiagramRenderNode) -> Result<GraphNodeShape> {
     match node.shape.as_str() {
         "rect" | "rectWithTitle" => Ok(GraphNodeShape::Rect),
-        "roundedWithTitle" | "stateStart" | "stateEnd" => Ok(GraphNodeShape::Rounded),
+        "roundedWithTitle" | "stateStart" | "stateEnd" | "noteGroup" => Ok(GraphNodeShape::Rounded),
         _ => Err(unsupported("state node shapes")),
     }
+}
+
+fn is_state_note_group(node: &StateDiagramRenderNode) -> bool {
+    node.shape == "noteGroup"
+}
+
+fn is_state_note_node(node: &StateDiagramRenderNode) -> bool {
+    node.shape == "note"
 }
 
 fn state_node_label(node: &StateDiagramRenderNode) -> String {
@@ -234,6 +256,30 @@ fn push_nonempty_label_line(lines: &mut Vec<String>, line: &str) {
 fn edge_label(label: &str) -> Option<String> {
     let label = label.trim();
     (!label.is_empty()).then(|| label.to_string())
+}
+
+fn edge_arrow(edge: &StateDiagramRenderEdge) -> GraphEdgeArrow {
+    if is_note_edge(edge) {
+        GraphEdgeArrow::Open
+    } else {
+        GraphEdgeArrow::Point
+    }
+}
+
+fn is_note_edge(edge: &StateDiagramRenderEdge) -> bool {
+    edge.classes
+        .split_whitespace()
+        .any(|class| class == "note-edge")
+}
+
+fn remap_note_endpoint<'a>(
+    endpoint: &'a str,
+    note_node_parent_by_id: &'a HashMap<String, String>,
+) -> &'a str {
+    note_node_parent_by_id
+        .get(endpoint)
+        .map(String::as_str)
+        .unwrap_or(endpoint)
 }
 
 fn parse_state_direction(direction: &str) -> Result<GraphDirection> {
