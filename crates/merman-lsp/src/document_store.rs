@@ -1,5 +1,9 @@
 use crate::snapshot::{DocumentSnapshot, FenceCompletionIndex, FenceSnapshot};
-use merman_analysis::{SourceMap, lsp::uri_is_markdown, markdown::extract_charts_with_spans};
+use merman_analysis::{
+    SourceMap,
+    lsp::{diagram_type_for_text, uri_is_markdown},
+    markdown::extract_charts_with_spans,
+};
 use std::collections::HashMap;
 use tower_lsp::lsp_types::Url;
 
@@ -28,6 +32,7 @@ impl DocumentStore {
                         body_start: chart.body_start,
                         end: chart.end,
                         text: definition.clone(),
+                        diagram_type: diagram_type_for_text(&definition),
                         completion: FenceCompletionIndex::from_text(&definition),
                     }
                 })
@@ -39,6 +44,7 @@ impl DocumentStore {
                 body_start: 0,
                 end: text.len(),
                 text: text.clone(),
+                diagram_type: diagram_type_for_text(&text),
                 completion: FenceCompletionIndex::from_text(&text),
             }]
         };

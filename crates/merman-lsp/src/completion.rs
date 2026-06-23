@@ -33,7 +33,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     }
 
     if context.offer_directive_items() {
-        items.extend(directive_items(context.prefix_range()));
+        items.extend(directive_items(&context));
     }
 
     if context.offer_shape_items() {
@@ -81,9 +81,19 @@ fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
     ]
 }
 
-fn directive_items(range: Option<Range>) -> Vec<CompletionItem> {
+fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
+    let range = context.prefix_range();
+    let has_directives = context.fence().completion.has_directive_prefix("classDef")
+        || context.fence().completion.has_directive_prefix(":::")
+        || context.fence().completion.has_directive_prefix("init")
+        || context.fence().completion.has_directive_prefix("wrap");
+    let directive_label = if has_directives {
+        "node class directive"
+    } else {
+        "comment"
+    };
     vec![
-        keyword_completion(":::className", "node class directive", range.clone(), None),
+        keyword_completion(":::className", directive_label, range.clone(), None),
         keyword_completion("::icon(name)", "node icon directive", range.clone(), None),
         keyword_completion("%% comment", "comment", range, None),
     ]

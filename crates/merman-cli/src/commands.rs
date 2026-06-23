@@ -7,7 +7,7 @@ use crate::error::CliError;
 use crate::io::read_input;
 use crate::render::{render_plan_for_mmdc, render_plan_for_subcommand, run_render};
 use clap::CommandFactory;
-use merman_analysis::markdown as analysis_markdown;
+use merman_analysis::document::analyze_document;
 use merman_analysis::{AnalysisPayload, Analyzer, SourceDescriptor};
 use serde::Serialize;
 use serde_json::Value;
@@ -113,11 +113,7 @@ fn run_lint(args: LintArgs) -> Result<i32, CliError> {
     let source = lint_source_descriptor(markdown_mode, source_path.as_deref());
     let analyzer = Analyzer::with_options(lint_analyzer_options(&args, source.clone())?);
 
-    let payload = if markdown_mode {
-        analysis_markdown::analyze_markdown_source(&text, &analyzer, source)
-    } else {
-        analyzer.analyze(&text)
-    };
+    let payload = analyze_document(&text, &analyzer, source);
 
     match args.format {
         LintOutputFormat::Json => print_json(&payload, args.pretty)?,
@@ -220,7 +216,7 @@ fn lint_input_path<'a>(args: &'a LintArgs) -> Option<&'a str> {
 
 fn lint_source_descriptor(markdown_mode: bool, path: Option<&str>) -> SourceDescriptor {
     if markdown_mode {
-        return analysis_markdown::markdown_source_descriptor(path);
+        return merman_analysis::markdown::markdown_source_descriptor(path);
     }
 
     let mut source = SourceDescriptor::diagram();
@@ -233,6 +229,6 @@ fn lint_source_descriptor(markdown_mode: bool, path: Option<&str>) -> SourceDesc
 fn is_markdown_input(input: Option<&str>) -> bool {
     input
         .map(Path::new)
-        .map(analysis_markdown::is_markdown_path)
+        .map(merman_analysis::markdown::is_markdown_path)
         .unwrap_or(false)
 }

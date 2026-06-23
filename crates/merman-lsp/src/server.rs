@@ -2,8 +2,9 @@ use crate::completion::completion_for_snapshot;
 use crate::document_store::DocumentStore;
 use merman_analysis::{
     Analyzer,
+    document::analyze_document,
     lsp::{analysis_payload_to_diagnostics, uri_is_markdown},
-    markdown::{analyze_markdown_source, markdown_source_descriptor},
+    markdown::markdown_source_descriptor,
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -50,15 +51,12 @@ impl MermanLanguageServer {
             return;
         };
 
-        let payload = if uri_is_markdown(&snapshot.uri) {
-            analyze_markdown_source(
-                &snapshot.text,
-                &self.analyzer,
-                markdown_source_descriptor(Some(snapshot.uri.as_str())),
-            )
+        let source = if uri_is_markdown(&snapshot.uri) {
+            markdown_source_descriptor(Some(snapshot.uri.as_str()))
         } else {
-            self.analyzer.analyze(&snapshot.text)
+            merman_analysis::SourceDescriptor::diagram().with_path(snapshot.uri.as_str())
         };
+        let payload = analyze_document(&snapshot.text, &self.analyzer, source);
 
         let diagnostics = analysis_payload_to_diagnostics(&payload, uri);
         self.client

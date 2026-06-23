@@ -3,6 +3,8 @@ use lsp_types::{
     Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity as LspSeverity, Location,
     NumberOrString, Position, Range, Url,
 };
+use merman_core::{Engine, ParseOptions};
+use std::sync::OnceLock;
 
 pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload, uri: &Url) -> Vec<Diagnostic> {
     payload
@@ -50,6 +52,19 @@ pub fn position_from_utf16(value: Utf16Position) -> Position {
 
 pub fn uri_is_markdown(uri: &Url) -> bool {
     crate::markdown::is_markdown_path(std::path::Path::new(uri.path()))
+}
+
+pub fn diagram_type_for_text(text: &str) -> Option<String> {
+    analysis_engine()
+        .parse_metadata_sync(text, ParseOptions::strict())
+        .ok()
+        .flatten()
+        .map(|meta| meta.diagram_type)
+}
+
+fn analysis_engine() -> &'static Engine {
+    static ENGINE: OnceLock<Engine> = OnceLock::new();
+    ENGINE.get_or_init(Engine::new)
 }
 
 fn related_information(
@@ -110,5 +125,18 @@ mod tests {
         assert!(uri_is_markdown(&markdown));
         assert!(uri_is_markdown(&mdx));
         assert!(!uri_is_markdown(&mmd));
+    }
+
+    #[test]
+    fn diagram_type_detection_matches_core_metadata() {
+        assert_eq!(
+            diagram_type_for_text("flowchart TD\nA-->B\n").as_deref(),
+            Some("flowchart-v2")
+        );
+        assert_eq!(
+            diagram_type_for_text("sequenceDiagram\nAlice->>Bob: Hi\n").as_deref(),
+            Some("sequence")
+        );
+        assert_eq!(diagram_type_for_text("").as_deref(), None);
     }
 }

@@ -5,11 +5,27 @@ use tower_lsp::lsp_types::Url;
 fn plain_mermaid_documents_create_single_snapshot_fence() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-    let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "flowchart TD\nclassDef highlight fill:#f00\nA-->B\n".to_string(),
+    );
 
     assert_eq!(snapshot.fences.len(), 1);
     assert_eq!(snapshot.fences[0].body_start, 0);
-    assert_eq!(snapshot.fences[0].text, "flowchart TD\nA-->B\n");
+    assert_eq!(
+        snapshot.fences[0].text,
+        "flowchart TD\nclassDef highlight fill:#f00\nA-->B\n"
+    );
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert!(
+        snapshot.fences[0]
+            .completion
+            .has_directive_prefix("classDef")
+    );
 }
 
 #[test]
@@ -19,10 +35,16 @@ fn markdown_documents_create_fences_for_markdown_extensions() {
     let snapshot = store.upsert(
         uri,
         1,
-        "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+        "before\n```mermaid\n%%{init: {\"theme\": \"dark\"}}%%\nflowchart TD\nA-->B\n```\nafter\n"
+            .to_string(),
     );
 
     assert_eq!(snapshot.fences.len(), 1);
     assert!(snapshot.fences[0].text.contains("flowchart TD"));
     assert!(snapshot.fences[0].completion.node_ids().any(|id| id == "A"));
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert!(snapshot.fences[0].completion.has_directive_prefix("init"));
 }
