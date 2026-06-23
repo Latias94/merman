@@ -2845,6 +2845,7 @@ name = "merman-lsp"
 version = "0.8.0-alpha.2"
 dependencies = [
  "assert_cmd",
+ "futures",
  "lsp-types 0.97.0",
  "merman-analysis",
  "serde",
@@ -2852,6 +2853,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tower 0.4.13",
  "tower-lsp",
  "tracing",
  "tracing-subscriber",
@@ -5472,6 +5474,7 @@ dependencies = [
  "pin-project-lite",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]

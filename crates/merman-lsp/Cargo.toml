@@ -27,4 +27,6 @@ tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
+futures.workspace = true
 tempfile = "3.27.0"
+tower = "0.4.13"

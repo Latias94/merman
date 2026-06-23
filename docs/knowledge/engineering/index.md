@@ -7,8 +7,8 @@
 
 ## Concepts
 
-* [Decisions](decisions/) - Durable engineering choices and rationale.
 * [Progress](progress/) - Work progress tied to plans, branches, or commits.
+* [Decisions](decisions/) - Durable engineering choices and rationale.
 * [Sessions](sessions/) - Compaction, interruption, and handoff summaries.
 * [Subagents](subagents/) - Distilled findings from spawned agents.
 * [Verification](verification/) - Test, build, lint, benchmark, and manual evidence.

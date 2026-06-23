@@ -32,6 +32,14 @@ impl MermanLanguageServer {
         }
     }
 
+    pub fn capabilities() -> ServerCapabilities {
+        ServerCapabilities {
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            completion_provider: Some(CompletionOptions::default()),
+            ..ServerCapabilities::default()
+        }
+    }
+
     async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url, version: Option<i32>) {
         let snapshot = {
             let store = self.store.lock().await;
@@ -63,13 +71,7 @@ impl MermanLanguageServer {
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
-            capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
-                )),
-                completion_provider: Some(CompletionOptions::default()),
-                ..ServerCapabilities::default()
-            },
+            capabilities: Self::capabilities(),
             ..InitializeResult::default()
         })
     }
@@ -132,5 +134,22 @@ impl LanguageServer for MermanLanguageServer {
 
         Ok(snapshot
             .map(|snapshot| CompletionResponse::List(completion_for_snapshot(&snapshot, position))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MermanLanguageServer;
+    use tower_lsp::lsp_types::{TextDocumentSyncCapability, TextDocumentSyncKind};
+
+    #[test]
+    fn capabilities_advertise_completion_and_full_sync() {
+        let capabilities = MermanLanguageServer::capabilities();
+
+        assert!(matches!(
+            capabilities.text_document_sync,
+            Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL))
+        ));
+        assert!(capabilities.completion_provider.is_some());
     }
 }

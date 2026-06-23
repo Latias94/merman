@@ -5,6 +5,11 @@ status: active
 
 # Log
 
+## 2026-06-24
+- Continued the LSP completion foundations follow-up on `feat/diagnostics-analysis-contract`.
+- Verified the new `merman-lsp` crate compiles and its focused tests pass, including completion, diagnostics, and document-store coverage.
+- Recorded durable engineering memory for the current plan so later sessions can resume without rereading the full chat.
+
 ## 2026-06-23
 - Confirmed alpha-stage fearless refactor scope for diagnostics-first analysis: canonical `analyze_json`, legacy `validate_json` projection, CLI lint, Markdown fence diagnostics, LSP-ready position mapping, ADR, and engineering memory are in scope.
 - Wrote `docs/plans/2026-06-23-002-refactor-diagnostics-first-analysis-plan.md` as the execution plan for the diagnostics-first analysis core.
