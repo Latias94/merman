@@ -1368,14 +1368,42 @@ fn sequence_rect_par_over_control_blocks_support_created_and_destroyed_actors() 
 }
 
 #[test]
-fn sequence_rect_par_over_nested_control_blocks_are_explicitly_unsupported() {
+fn sequence_rect_par_over_nested_control_blocks_render() {
     let cases = [
-        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\npar_over Everyone\nA->>B: Work\nend\nend",
-        "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nrect rgba(0,0,0,0.1)\nA->>B: Work\nend\nend",
+        (
+            "rect contains par_over",
+            "rect rgba(0,0,0,0.1)",
+            "par_over Everyone",
+            "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\npar_over Everyone\nA->>B: Work\nend\nend",
+        ),
+        (
+            "par_over contains rect",
+            "par_over Everyone",
+            "rect rgba(0,0,0,0.1)",
+            "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nrect rgba(0,0,0,0.1)\nA->>B: Work\nend\nend",
+        ),
     ];
 
-    for input in cases {
-        assert_unsupported_sequence_input(input, "nested control blocks");
+    for (name, outer, inner, input) in cases {
+        let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("{name} should render: {err}"));
+
+        assert!(
+            rendered.contains(outer),
+            "{name} should render the outer frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with("│┌") && line.contains(inner)),
+            "{name} should render the inner frame inside the outer frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with("││") && line.contains("Work")),
+            "{name} should keep messages inside both nested frames:\n{rendered}"
+        );
     }
 }
 
@@ -1432,10 +1460,30 @@ fn sequence_rect_par_over_malformed_ordering_is_explicitly_unsupported() {
 }
 
 #[test]
-fn sequence_nested_control_blocks_are_explicitly_unsupported() {
-    assert_unsupported_sequence_input(
+fn sequence_nested_control_blocks_render() {
+    let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nloop Outer\nopt Inner\nA->>B: Work\nend\nend",
-        "nested control blocks",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("nested control blocks should render");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("┌ loop Outer ")),
+        "outer frame should render:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("│┌ opt Inner ")),
+        "inner frame should render inside the outer frame:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("││") && line.contains("Work")),
+        "message rows should stay inside both frames:\n{rendered}"
     );
 }
 

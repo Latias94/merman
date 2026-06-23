@@ -22,7 +22,7 @@ struct SequenceEventPlan {
     active_counts: Vec<usize>,
     visible_actors: Vec<bool>,
     control_frames: Vec<SequenceControlFrame>,
-    active_control_frame: Option<usize>,
+    active_control_frames: Vec<usize>,
 }
 
 impl SequenceEventPlan {
@@ -31,7 +31,7 @@ impl SequenceEventPlan {
             active_counts: vec![0usize; diagram.participants.len()],
             visible_actors: initial_visible_actors(diagram),
             control_frames: Vec::new(),
-            active_control_frame: None,
+            active_control_frames: Vec::new(),
         }
     }
 
@@ -64,10 +64,7 @@ impl SequenceEventPlan {
                 Ok(SequencePlanStep::StateOnly)
             }
             SequenceEvent::ControlStart(start) => {
-                if self.active_control_frame.is_some() {
-                    return Err(unsupported("nested control blocks"));
-                }
-                self.active_control_frame = Some(self.control_frames.len());
+                let frame_index = self.control_frames.len();
                 self.control_frames.push(SequenceControlFrame {
                     kind: start.kind,
                     label: start.label.clone(),
@@ -75,10 +72,11 @@ impl SequenceEventPlan {
                     separators: Vec::new(),
                     end_row: None,
                 });
+                self.active_control_frames.push(frame_index);
                 Ok(SequencePlanStep::StateOnly)
             }
             SequenceEvent::ControlSeparator(separator) => {
-                let Some(frame_index) = self.active_control_frame else {
+                let Some(frame_index) = self.active_control_frames.last().copied() else {
                     return Err(unsupported("control block ordering"));
                 };
                 let frame = &mut self.control_frames[frame_index];
@@ -122,24 +120,28 @@ impl SequenceEventPlan {
     }
 
     fn finish(self) -> Result<Vec<SequenceControlFrame>> {
-        if self.active_control_frame.is_some() {
+        if !self.active_control_frames.is_empty() {
             return Err(unsupported("control block ordering"));
         }
         Ok(self.control_frames)
     }
 
     fn end_control_frame(&mut self, kind: SequenceControlKind, current_row: usize) -> Result<()> {
-        let Some(frame_index) = self.active_control_frame.take() else {
+        let Some(frame_index) = self.active_control_frames.last().copied() else {
             return Err(unsupported("control block ordering"));
         };
-        let frame = &mut self.control_frames[frame_index];
-        if !frame.kind.accepts_end(kind) {
-            return Err(unsupported("control block ordering"));
+
+        {
+            let frame = &mut self.control_frames[frame_index];
+            if !frame.kind.accepts_end(kind) {
+                return Err(unsupported("control block ordering"));
+            }
+            if frame.current_section_start_row() == current_row {
+                return Err(unsupported("empty control block sections"));
+            }
+            frame.end_row = Some(current_row - 1);
         }
-        if frame.current_section_start_row() == current_row {
-            return Err(unsupported("empty control block sections"));
-        }
-        frame.end_row = Some(current_row - 1);
+        self.active_control_frames.pop();
         Ok(())
     }
 }
@@ -514,6 +516,43 @@ mod tests {
                 feature: "empty control block sections",
             }
         ));
+    }
+
+    #[test]
+    fn event_plan_tracks_nested_control_frames() {
+        let diagram = diagram(2);
+        let mut plan = SequenceEventPlan::new(&diagram);
+
+        plan.handle_event(
+            &SequenceEvent::ControlStart(SequenceControlStart {
+                model_index: 0,
+                kind: SequenceControlKind::Loop,
+                label: "outer".to_string(),
+            }),
+            3,
+        )
+        .unwrap();
+        plan.handle_event(
+            &SequenceEvent::ControlStart(SequenceControlStart {
+                model_index: 1,
+                kind: SequenceControlKind::Opt,
+                label: "inner".to_string(),
+            }),
+            3,
+        )
+        .unwrap();
+        plan.end_control_frame(SequenceControlKind::Opt, 4).unwrap();
+        plan.end_control_frame(SequenceControlKind::Loop, 4)
+            .unwrap();
+
+        let frames = plan.finish().unwrap();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0].kind, SequenceControlKind::Loop);
+        assert_eq!(frames[0].start_row, 3);
+        assert_eq!(frames[0].end_row, Some(3));
+        assert_eq!(frames[1].kind, SequenceControlKind::Opt);
+        assert_eq!(frames[1].start_row, 3);
+        assert_eq!(frames[1].end_row, Some(3));
     }
 
     #[test]
