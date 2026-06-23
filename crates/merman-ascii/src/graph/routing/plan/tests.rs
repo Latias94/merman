@@ -266,8 +266,16 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     })
     .expect("entering boundary route should use the grid path stub");
 
-    let expected = plan_left_right_grid_path_route(&layout, from, to, &edge, &charset)
-        .expect("grid path should exist");
+    let expected = plan_left_right_grid_path_route_with_ports(
+        &layout,
+        from,
+        to,
+        &edge,
+        &charset,
+        Some(crate::graph::routing::path::Port::Right),
+        Some(crate::graph::routing::path::Port::Left),
+    )
+    .expect("grid path should exist");
     assert_eq!(plan, expected);
 }
 
@@ -470,6 +478,7 @@ fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() 
             start: CanvasCoord { x: 5, y: 1 },
             end: CanvasCoord { x: 9, y: 1 },
             text: "label".to_string(),
+            color: None,
         }]
     );
 }
@@ -555,6 +564,7 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
             start: CanvasCoord { x: 5, y: 2 },
             end: CanvasCoord { x: 9, y: 2 },
             text: "go".to_string(),
+            color: None,
         }]
     );
 }
@@ -755,6 +765,7 @@ fn left_right_bottom_lane_route_plans_reverse_lane_and_label() {
             start: CanvasCoord { x: 1, y: 4 },
             end: CanvasCoord { x: 11, y: 4 },
             text: "back".to_string(),
+            color: None,
         }]
     );
 }
@@ -789,6 +800,7 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
             start: CanvasCoord { x: 3, y: 1 },
             end: CanvasCoord { x: 9, y: 1 },
             text: "rev".to_string(),
+            color: None,
         }]
     );
 }
@@ -850,6 +862,7 @@ fn top_down_bent_route_plans_right_bend_arrow_and_label() {
             start: CanvasCoord { x: 7, y: 2 },
             end: CanvasCoord { x: 7, y: 4 },
             text: "bend".to_string(),
+            color: None,
         }]
     );
 }
@@ -966,6 +979,7 @@ fn top_down_back_route_plans_lane_arrow_and_label() {
             start: CanvasCoord { x: 6, y: 1 },
             end: CanvasCoord { x: 6, y: 7 },
             text: "back".to_string(),
+            color: None,
         }]
     );
 }
@@ -994,6 +1008,7 @@ fn top_down_direct_route_plans_connector_line_arrow_and_label() {
             start: CanvasCoord { x: 4, y: 3 },
             end: CanvasCoord { x: 4, y: 5 },
             text: "label".to_string(),
+            color: None,
         }]
     );
 }
@@ -1030,6 +1045,7 @@ fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRout
         ch,
         kind,
         segment: PlannedRouteSegment::Direct,
+        color: None,
     }
 }
 

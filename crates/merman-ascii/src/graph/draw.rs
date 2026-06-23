@@ -82,7 +82,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
                     edge,
                     charset: &charset,
                 },
-            );
+            )?;
         }
         for (edge_index, edge) in graph
             .edges
@@ -100,7 +100,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
                     edge,
                     charset: &charset,
                 },
-            );
+            )?;
         }
     }
 

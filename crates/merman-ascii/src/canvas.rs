@@ -68,14 +68,6 @@ impl Canvas {
         self.index(x, y).and_then(|index| self.colors[index])
     }
 
-    pub(crate) fn width(&self) -> usize {
-        self.width
-    }
-
-    pub(crate) fn height(&self) -> usize {
-        self.height
-    }
-
     #[allow(dead_code)]
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
         for (offset, ch) in text.chars().enumerate() {

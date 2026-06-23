@@ -32,6 +32,7 @@ pub(super) fn plan_left_right_direct_route(
             ch: charset.right_connector,
             kind: PlannedRouteCellKind::EdgeLine,
             segment: PlannedRouteSegment::Direct,
+            color: None,
         });
     }
     for x in start..end {
@@ -40,6 +41,7 @@ pub(super) fn plan_left_right_direct_route(
             ch: line,
             kind: PlannedRouteCellKind::RouteCell,
             segment: PlannedRouteSegment::Direct,
+            color: None,
         });
     }
     cells.push(PlannedRouteCell {
@@ -53,6 +55,7 @@ pub(super) fn plan_left_right_direct_route(
             GraphEdgeArrow::Point => PlannedRouteCellKind::EdgeArrow,
         },
         segment: PlannedRouteSegment::Direct,
+        color: None,
     });
 
     let labels = planned_label(
