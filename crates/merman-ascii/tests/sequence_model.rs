@@ -492,7 +492,7 @@ fn sequence_notes_render_from_typed_model() {
 }
 
 #[test]
-fn sequence_multiline_notes_are_explicitly_unsupported() {
+fn sequence_multiline_notes_render_from_typed_model() {
     let mut model = basic_sequence_model();
     model.notes.push(SequenceNote {
         actor: "A".into(),
@@ -512,7 +512,57 @@ fn sequence_multiline_notes_are_explicitly_unsupported() {
         central_connection: 0,
     });
 
-    assert_unsupported_sequence_model(model, "multiline notes");
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("sequence should render");
+    let lines = normalize_sequence_output(&rendered)
+        .lines()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    let line_1 = lines
+        .iter()
+        .position(|line| line.contains("line 1"))
+        .expect("first note line should render");
+    let line_2 = lines
+        .iter()
+        .position(|line| line.contains("line 2"))
+        .expect("second note line should render");
+
+    assert_eq!(
+        line_2,
+        line_1 + 1,
+        "multiline notes should render as adjacent note content rows:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_note_html_breaks_render_multiline_note_boxes() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nA->>A: Ping\nNote right of A: First<br/>Second",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence should render");
+    let lines = normalize_sequence_output(&rendered)
+        .lines()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    let first = lines
+        .iter()
+        .position(|line| line.contains("First"))
+        .expect("first note line should render");
+    let second = lines
+        .iter()
+        .position(|line| line.contains("Second"))
+        .expect("second note line should render");
+
+    assert_eq!(
+        second,
+        first + 1,
+        "HTML line breaks should become adjacent note content rows:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("<br"),
+        "HTML break markup should not leak into ASCII output:\n{rendered}"
+    );
 }
 
 #[test]

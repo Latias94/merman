@@ -336,12 +336,6 @@ pub(crate) fn from_sequence_model(
         if message.message_type == NOTE_MESSAGE_TYPE {
             let placement = SequenceNotePlacement::from_model(message.placement)?;
             let label = message.message_text();
-            if label.contains(['\r', '\n']) {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "sequence",
-                    feature: "multiline notes",
-                });
-            }
             events.push(SequenceEvent::Note(SequenceNote {
                 model_index,
                 from,
