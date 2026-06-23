@@ -115,7 +115,16 @@ jobs:
       - name: Publish to npm
         if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists != 'true' }}
         working-directory: platforms/web
-        run: npm publish --access public
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease="${VERSION#*-}"
+            npm_tag="${prerelease%%.*}"
+            npm publish --access public --tag "$npm_tag"
+          else
+            npm publish --access public
+          fi
 
       - name: Skip existing npm version
         if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists == 'true' }}
