@@ -1,16 +1,31 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
+    render_model,
 };
+use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagrams::er::ErDiagramRenderModel;
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 
-fn render_er(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+fn parse_er_render_model(input: &str) -> RenderSemanticModel {
+    Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("ER diagram should parse")
-        .expect("ER diagram should be detected");
+        .expect("ER diagram should be detected")
+        .model
+}
 
-    render_model(&parsed.model, options)
+fn parse_er_model(input: &str) -> ErDiagramRenderModel {
+    match parse_er_render_model(input) {
+        RenderSemanticModel::Er(model) => model,
+        other => panic!("expected ER render model, got {}", other.kind()),
+    }
+}
+
+fn render_er(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
+    let model = parse_er_render_model(input);
+
+    render_model(&model, options)
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -60,6 +75,19 @@ fn read_local_semantic_fixture(path: &str) -> String {
         .join(path);
     std::fs::read_to_string(&fixture_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
+}
+
+fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
+    let err = merman_ascii::render_er(model, &AsciiRenderOptions::ascii())
+        .expect_err("ER model should be rejected as unsupported");
+
+    assert_eq!(
+        err,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature,
+        }
+    );
 }
 
 #[test]
@@ -269,6 +297,32 @@ fn er_parser_zero_or_one_cardinality_renders_marker() {
             "| B |\n", "+---+\n",
         )
     );
+}
+
+#[test]
+fn er_render_model_rejects_unknown_cardinality_markers() {
+    let mut model = parse_er_model("erDiagram\nA ||--|| B : relates");
+    model
+        .relationships
+        .first_mut()
+        .expect("fixture should contain one relationship")
+        .rel_spec
+        .card_a = "MANY".to_string();
+
+    assert_unsupported_er_model(&model, "unknown ER cardinality markers");
+}
+
+#[test]
+fn er_render_model_rejects_unknown_relationship_identification_types() {
+    let mut model = parse_er_model("erDiagram\nA ||--|| B : relates");
+    model
+        .relationships
+        .first_mut()
+        .expect("fixture should contain one relationship")
+        .rel_spec
+        .rel_type = "NEITHER".to_string();
+
+    assert_unsupported_er_model(&model, "unknown ER relationship identification types");
 }
 
 #[test]

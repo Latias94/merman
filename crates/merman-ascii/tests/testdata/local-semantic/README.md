@@ -39,6 +39,8 @@ Class and ER relation fixtures are split by topology readability:
 | Structured summary | Dense crossings or grid budget make a routed grid misleading. | Every endpoint, connector, and label line is visible under `relations:`; `<br>` does not leak. |
 | Unsupported boundary | Mermaid syntax has semantics the ASCII renderer cannot honestly represent yet. | Prefer focused parser/model tests that assert `UnsupportedFeature`; add a fixture only when the input itself documents a durable boundary. |
 
+Current explicit unsupported boundaries are covered by typed-model tests for Class endpoint labels and lollipop relations, plus ER unknown cardinality markers and unknown relationship identification types.
+
 Current examples:
 
 - `class/dense_relations.mmd`

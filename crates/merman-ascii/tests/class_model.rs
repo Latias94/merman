@@ -1,16 +1,31 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
+    render_model,
 };
+use merman_core::diagram::RenderSemanticModel;
+use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 
-fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
-    let parsed = Engine::new()
+fn parse_class_render_model(input: &str) -> RenderSemanticModel {
+    Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("class diagram should parse")
-        .expect("class diagram should be detected");
+        .expect("class diagram should be detected")
+        .model
+}
 
-    render_model(&parsed.model, options)
+fn parse_class_model(input: &str) -> ClassDiagram {
+    match parse_class_render_model(input) {
+        RenderSemanticModel::Class(model) => model,
+        other => panic!("expected class render model, got {}", other.kind()),
+    }
+}
+
+fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
+    let model = parse_class_render_model(input);
+
+    render_model(&model, options)
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -60,6 +75,19 @@ fn read_local_semantic_fixture(path: &str) -> String {
         .join(path);
     std::fs::read_to_string(&fixture_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
+}
+
+fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
+    let err = merman_ascii::render_class(model, &AsciiRenderOptions::ascii())
+        .expect_err("class model should be rejected as unsupported");
+
+    assert_eq!(
+        err,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature,
+        }
+    );
 }
 
 #[test]
@@ -695,6 +723,37 @@ fn class_parser_dependency_relation_renders_dotted_arrow_marker() {
             " | Repo |\n",
             " +------+\n",
         )
+    );
+}
+
+#[test]
+fn class_render_model_rejects_relationship_endpoint_labels() {
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
+    let relation = model
+        .relations
+        .first_mut()
+        .expect("fixture should contain one relation");
+    relation.relation_title_1 = "left".to_string();
+    relation.relation_title_2 = "right".to_string();
+
+    assert_unsupported_class_model(&model, "relationship endpoint labels");
+}
+
+#[test]
+fn class_render_model_rejects_lollipop_relations() {
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
+    let lollipop = model.constants.relation_type.lollipop;
+    let none = model.constants.relation_type.none;
+    let relation = model
+        .relations
+        .first_mut()
+        .expect("fixture should contain one relation");
+    relation.relation.type1 = lollipop;
+    relation.relation.type2 = none;
+
+    assert_unsupported_class_model(
+        &model,
+        "class relationship types other than extension, dependency, aggregation, or composition",
     );
 }
 
