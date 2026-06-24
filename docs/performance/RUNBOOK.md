@@ -36,11 +36,25 @@ This keeps correctness gates and noisy benchmark evidence independent.
   `tools/bench/compare_self.py`. Pull requests only run this lane when the PR carries a `perf`
   label; they default to `canary + quick`. Manual runs can select the suite and preset. Reports are
   uploaded as `perf-regression` artifacts. Labeled PR runs also update one sticky performance
-  comment with the gate status, threshold crossings, and a link to the run artifact.
+  comment with the gate status, threshold crossings, and a link to the run artifact. For manual
+  PR-style comparisons, set `base_ref` and `head_ref`; set `base_repository` or `head_repository`
+  when comparing across forks.
 - `perf-reference`: explicitly checks out the pinned `mermaid-rs-renderer` reference under
   `repo-ref/mermaid-rs-renderer` and runs `compare_mermaid_renderers.py`. It runs on the weekly
   schedule or manual `reference`/`full` dispatch. Mermaid JS is skipped by default; enable it with
   the workflow input, which installs `tools/mermaid-cli` via `npm ci`.
+
+Manual PR-style regression example:
+
+```bash
+gh workflow run performance.yml \
+  --ref main \
+  -f run=regression \
+  -f base_ref=main \
+  -f head_ref=my-perf-branch \
+  -f preset=long \
+  -f suite=full
+```
 
 ## 1. Choose the question
 

@@ -52,6 +52,18 @@ on:
         description: "Base ref for regression comparisons"
         required: false
         default: main
+      base_repository:
+        description: "Base repository for manual regression comparisons"
+        required: false
+        default: ""
+      head_ref:
+        description: "Head ref for manual runs; set this when head_repository differs"
+        required: false
+        default: ""
+      head_repository:
+        description: "Head repository for manual runs"
+        required: false
+        default: ""
       warn_threshold_percent:
         description: "Warn threshold percentage"
         required: false
@@ -90,8 +102,8 @@ jobs:
         with:
           path: head
           fetch-depth: 1
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Check Python performance scripts
         working-directory: head
@@ -127,8 +139,8 @@ jobs:
         with:
           path: head
           fetch-depth: 1
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Checkout base
         uses: actions/checkout@v6
@@ -136,7 +148,7 @@ jobs:
           path: base
           fetch-depth: 1
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
-          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || github.repository }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -149,11 +161,15 @@ jobs:
           suite="${{ github.event_name == 'pull_request' && 'canary' || inputs.suite }}"
           warn_threshold="${{ inputs.warn_threshold_percent || '5' }}"
           fail_threshold="${{ inputs.fail_threshold_percent || '10' }}"
+          base_label="${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}"
+          head_label="${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}"
           python3 tools/bench/compare_self.py \
             --base-dir ../base \
             --head-dir . \
             --base-target-dir target/performance/base \
             --head-target-dir target/performance/head \
+            --base-label "$base_label" \
+            --head-label "$head_label" \
             --preset "$preset" \
             --suite "$suite" \
             --warn-threshold-percent "$warn_threshold" \
@@ -226,8 +242,8 @@ jobs:
         with:
           path: head
           fetch-depth: 1
-          ref: ${{ github.sha }}
-          repository: ${{ github.repository }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'workflow_dispatch' && inputs.head_repository || github.repository }}
 
       - name: Checkout mermaid-rs-renderer
         uses: actions/checkout@v6

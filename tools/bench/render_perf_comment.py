@@ -96,9 +96,14 @@ def render_comment(
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     method = report.get("method") if isinstance(report.get("method"), dict) else {}
     selection = report.get("selection") if isinstance(report.get("selection"), dict) else {}
+    comparison = report.get("comparison") if isinstance(report.get("comparison"), dict) else {}
 
     lines.append(f"Status: `{status_label(summary)}`")
     lines.append("")
+    lines.append(
+        f"- Comparison: `{comparison.get('base_label') or 'base'}` -> "
+        f"`{comparison.get('head_label') or 'head'}`"
+    )
     lines.append(
         f"- Suite: `{selection.get('suite') or selection.get('filter') or 'unknown'}`"
     )

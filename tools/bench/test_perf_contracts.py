@@ -8,9 +8,11 @@ import sys
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 import perf_runner
 import compare_self
+import compare_mermaid_renderers
 import render_perf_comment
 from corpus_utils import fixture_names_for_suite, load_corpus, select_corpus_fixtures
 
@@ -133,6 +135,91 @@ class CompareSelfContractsTest(unittest.TestCase):
         self.assertEqual(rows[0].status, "fail")
         self.assertIn("head benchmark is missing", rows[0].reason)
 
+    def test_markdown_includes_manual_comparison_labels_and_preset(self) -> None:
+        buf = io.StringIO()
+        report = {
+            "generated_at": "2026-06-24 00:00:00 +0000",
+            "summary": {
+                "gate_status": "pass",
+                "comparable": 1,
+                "failures": 0,
+                "warnings": 0,
+                "improvements": 0,
+                "geomean_change_percent": 0.0,
+            },
+            "method": {
+                "preset": "long",
+                "sample_size": 30,
+                "warm_up_seconds": 2,
+                "measurement_seconds": 3,
+                "warn_threshold_percent": 5.0,
+                "fail_threshold_percent": 10.0,
+            },
+            "selection": {"suite": "full", "group": "end_to_end"},
+            "comparison": {
+                "base_label": "Latias94/merman@main",
+                "head_label": "Latias94/merman@perf-branch",
+            },
+            "environment": {
+                "os": "test-os",
+                "machine": "test-machine",
+                "cpu": "test-cpu",
+                "python": "test-python",
+                "rust": "test-rust",
+            },
+            "runners": {
+                "base": {
+                    "label": "base",
+                    "revision": "base-sha",
+                    "coverage": {
+                        "requested": 1,
+                        "available": 1,
+                        "measured": 1,
+                        "missing": 0,
+                        "errors": 0,
+                        "skipped": 0,
+                    },
+                },
+                "head": {
+                    "label": "head",
+                    "revision": "head-sha",
+                    "coverage": {
+                        "requested": 1,
+                        "available": 1,
+                        "measured": 1,
+                        "missing": 0,
+                        "errors": 0,
+                        "skipped": 0,
+                    },
+                },
+            },
+        }
+        rows = [
+            compare_self.ComparisonRow(
+                benchmark="end_to_end/flowchart_medium",
+                family="flowchart",
+                base_ns=100.0,
+                head_ns=99.0,
+                change_percent=-1.0,
+                status="ok",
+                reason="head changed by -1.00%",
+            )
+        ]
+
+        with mock.patch("pathlib.Path.write_text", lambda _self, text, encoding=None: buf.write(text)):
+            compare_self.write_markdown(Path("unused.md"), report, rows)
+
+        body = buf.getvalue()
+        self.assertIn("- Preset: `long`", body)
+        self.assertIn("- Base label: `Latias94/merman@main`", body)
+        self.assertIn("- Head label: `Latias94/merman@perf-branch`", body)
+
+
+class RendererComparisonContractsTest(unittest.TestCase):
+    def test_formats_tiny_ratios_as_less_than_one_percent(self) -> None:
+        self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.0025), "<0.01x")
+        self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.025), "0.03x")
+
 
 class PerfCommentContractsTest(unittest.TestCase):
     def test_renders_warning_signal_rows(self) -> None:
@@ -147,6 +234,10 @@ class PerfCommentContractsTest(unittest.TestCase):
                     "geomean_change_percent": 1.23,
                 },
                 "selection": {"suite": "canary"},
+                "comparison": {
+                    "base_label": "Latias94/merman@main",
+                    "head_label": "Latias94/merman@perf-branch",
+                },
                 "method": {
                     "preset": "quick",
                     "warn_threshold_percent": 5.0,
@@ -175,6 +266,7 @@ class PerfCommentContractsTest(unittest.TestCase):
 
         self.assertIn(render_perf_comment.MARKER, body)
         self.assertIn("Status: `passed with warnings`", body)
+        self.assertIn("`Latias94/merman@main` -> `Latias94/merman@perf-branch`", body)
         self.assertIn("`end_to_end/flowchart_medium`", body)
         self.assertIn("+6.20%", body)
         self.assertIn("https://example.test/run", body)

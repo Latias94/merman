@@ -246,6 +246,7 @@ def write_markdown(path: Path, report: dict[str, Any], rows: list[ComparisonRow]
     lines.append(f"- Sample size: `{method['sample_size']}`")
     lines.append(f"- Warm-up: `{method['warm_up_seconds']}s`")
     lines.append(f"- Measurement: `{method['measurement_seconds']}s`")
+    lines.append(f"- Preset: `{method['preset']}`")
     lines.append(f"- Warn threshold: `+{method['warn_threshold_percent']:.2f}%`")
     lines.append(f"- Fail threshold: `+{method['fail_threshold_percent']:.2f}%`")
     lines.append("")
@@ -256,6 +257,8 @@ def write_markdown(path: Path, report: dict[str, Any], rows: list[ComparisonRow]
     lines.append(f"- Machine: `{env['machine']}`")
     lines.append(f"- CPU: `{env['cpu']}`")
     lines.append(f"- Python: `{env['python']}`")
+    lines.append(f"- Base label: `{report['comparison']['base_label']}`")
+    lines.append(f"- Head label: `{report['comparison']['head_label']}`")
     lines.append(f"- Base revision: `{report['runners']['base'].get('revision') or 'unknown'}`")
     lines.append(f"- Head revision: `{report['runners']['head'].get('revision') or 'unknown'}`")
     lines.append("")
@@ -320,6 +323,8 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Compare merman Criterion results between two checkouts.")
     ap.add_argument("--base-dir", required=True, help="Base checkout path.")
     ap.add_argument("--head-dir", required=True, help="Head checkout path.")
+    ap.add_argument("--base-label", default="base", help="Human-readable base ref label.")
+    ap.add_argument("--head-label", default="head", help="Human-readable head ref label.")
     ap.add_argument("--base-target-dir", default="", help="Optional Cargo target dir for base.")
     ap.add_argument("--head-target-dir", default="", help="Optional Cargo target dir for head.")
     ap.add_argument("--corpus", default=DEFAULT_CORPUS, help=f"Corpus path relative to head (default: {DEFAULT_CORPUS}).")
@@ -423,6 +428,10 @@ def main(argv: list[str]) -> int:
     report: dict[str, Any] = {
         "schema_version": 1,
         "generated_at": generated_at,
+        "comparison": {
+            "base_label": args.base_label,
+            "head_label": args.head_label,
+        },
         "selection": selection,
         "method": {
             "preset": args.preset,
