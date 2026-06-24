@@ -2,6 +2,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
     LinkStyleStmt, StyleStmt, TitleKind,
 };
+use crate::SourceSpan;
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let trimmed = raw.trim();
@@ -174,7 +175,10 @@ pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, Lex
     let styles = parse_styles_list(styles_raw);
     Ok(StyleStmt {
         target: target.trim().to_string(),
+        target_span: None,
         styles,
+        styles_text: None,
+        styles_span: None,
     })
 }
 
@@ -190,7 +194,13 @@ pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStm
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>();
     let styles = parse_styles_list(styles_raw);
-    Ok(ClassDefStmt { ids, styles })
+    Ok(ClassDefStmt {
+        ids,
+        id_spans: Vec::new(),
+        styles,
+        styles_text: None,
+        styles_span: None,
+    })
 }
 
 pub(super) fn parse_class_assign_stmt(
@@ -214,8 +224,119 @@ pub(super) fn parse_class_assign_stmt(
     }
     Ok(ClassAssignStmt {
         targets,
+        target_spans: Vec::new(),
         class_name,
+        class_name_span: None,
     })
+}
+
+pub(super) fn attach_style_stmt_spans(stmt: &mut StyleStmt, rest: &str, rest_start: usize) {
+    let Some((target, styles)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.target_span = Some(target.span);
+    if let Some(styles) = trim_spanned_slice(styles) {
+        stmt.styles_text = Some(styles.text.to_string());
+        stmt.styles_span = Some(styles.span);
+    }
+}
+
+pub(super) fn attach_classdef_stmt_spans(stmt: &mut ClassDefStmt, rest: &str, rest_start: usize) {
+    let Some((ids, styles)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.id_spans = split_comma_value_spans(ids.text, ids.span.start);
+    if let Some(styles) = trim_spanned_slice(styles) {
+        stmt.styles_text = Some(styles.text.to_string());
+        stmt.styles_span = Some(styles.span);
+    }
+}
+
+pub(super) fn attach_class_assign_stmt_spans(
+    stmt: &mut ClassAssignStmt,
+    rest: &str,
+    rest_start: usize,
+) {
+    let Some((targets, class_name)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.target_spans = split_comma_value_spans(targets.text, targets.span.start);
+    stmt.class_name_span = trim_spanned_slice(class_name).map(|class_name| class_name.span);
+}
+
+#[derive(Clone, Copy)]
+struct SpannedSlice<'a> {
+    text: &'a str,
+    span: SourceSpan,
+}
+
+fn split_first_word_with_span(
+    rest: &str,
+    rest_start: usize,
+) -> Option<(SpannedSlice<'_>, SpannedSlice<'_>)> {
+    let leading = rest.len().saturating_sub(rest.trim_start().len());
+    let trimmed = &rest[leading..];
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut first_len = 0usize;
+    while first_len < trimmed.len() && !trimmed.as_bytes()[first_len].is_ascii_whitespace() {
+        first_len += 1;
+    }
+
+    let first_start = rest_start + leading;
+    let rest_after_first_start = first_start + first_len;
+    Some((
+        SpannedSlice {
+            text: &trimmed[..first_len],
+            span: SourceSpan::new(first_start, rest_after_first_start),
+        },
+        SpannedSlice {
+            text: &trimmed[first_len..],
+            span: SourceSpan::new(rest_after_first_start, rest_start + rest.len()),
+        },
+    ))
+}
+
+fn trim_spanned_slice(slice: SpannedSlice<'_>) -> Option<SpannedSlice<'_>> {
+    let leading = slice
+        .text
+        .len()
+        .saturating_sub(slice.text.trim_start().len());
+    let text = &slice.text[leading..];
+    let trimmed_len = text.trim_end().len();
+    if trimmed_len == 0 {
+        return None;
+    }
+    let start = slice.span.start + leading;
+    Some(SpannedSlice {
+        text: &text[..trimmed_len],
+        span: SourceSpan::new(start, start + trimmed_len),
+    })
+}
+
+fn split_comma_value_spans(text: &str, text_start: usize) -> Vec<SourceSpan> {
+    let mut out = Vec::new();
+    let mut value_start = 0usize;
+    let bytes = text.as_bytes();
+
+    for idx in 0..=bytes.len() {
+        if idx != bytes.len() && bytes[idx] != b',' {
+            continue;
+        }
+
+        let value = &text[value_start..idx];
+        if let Some(value) = trim_spanned_slice(SpannedSlice {
+            text: value,
+            span: SourceSpan::new(text_start + value_start, text_start + idx),
+        }) {
+            out.push(value.span);
+        }
+        value_start = idx.saturating_add(1);
+    }
+
+    out
 }
 
 #[derive(Clone)]

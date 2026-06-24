@@ -39,6 +39,9 @@ partial parse results instead of raw-text heuristic scans.
   preserved through the lexer, AST, and recovered-token paths, with edge-label payloads
   deduplicated across expanded chain edges so a single source label does not become multiple
   semantic occurrences.
+- Flowchart `style`, `classDef`, and `class` directives now expose parser-backed target,
+  class-definition, style, and class-name spans. Style/class targets remain entity references,
+  classDef names are outline-only, and style/class-name values are payload-only.
 - Sequence is the second migrated family: its lexer token stream now emits parser-backed
   participant, actor, message-endpoint, note-actor, and box facts, while the existing LALRPOP
   parser result determines whether facts are `Complete` or `Recovered`.
@@ -145,6 +148,9 @@ partial parse results instead of raw-text heuristic scans.
 - `merman-core` flowchart editor facts now expose node-label and edge-label payload spans with
   exact selections for both complete and recovered parses, keeping those payloads out of
   completion while preserving them for future lint and hover consumers.
+- Flowchart directive payloads now follow the same role split: `style` targets are entity facts,
+  `classDef` names are outline facts, `style`/`classDef` style strings and `class` class names are
+  payload facts, and recovered buffers preserve the same spans from the lexer token stream.
 - Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
   `cargo nextest run -p merman-core parse_sequence_editor_facts`,
   `cargo nextest run -p merman-core parse_state_editor_facts`,

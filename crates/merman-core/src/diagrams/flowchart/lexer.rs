@@ -380,9 +380,12 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "style".len();
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        let (rest_start, rest, end) = self.capture_to_stmt_end();
         match lex::parse_style_stmt(&rest) {
-            Ok(stmt) => Some(Ok((start, Tok::StyleStmt(stmt), end))),
+            Ok(mut stmt) => {
+                lex::attach_style_stmt_spans(&mut stmt, &rest, rest_start);
+                Some(Ok((start, Tok::StyleStmt(stmt), end)))
+            }
             Err(e) => Some(Err(e)),
         }
     }
@@ -396,9 +399,12 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "classDef".len();
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        let (rest_start, rest, end) = self.capture_to_stmt_end();
         match lex::parse_classdef_stmt(&rest) {
-            Ok(stmt) => Some(Ok((start, Tok::ClassDefStmt(stmt), end))),
+            Ok(mut stmt) => {
+                lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
+                Some(Ok((start, Tok::ClassDefStmt(stmt), end)))
+            }
             Err(e) => Some(Err(e)),
         }
     }
@@ -412,9 +418,12 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "class".len();
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        let (rest_start, rest, end) = self.capture_to_stmt_end();
         match lex::parse_class_assign_stmt(&rest) {
-            Ok(stmt) => Some(Ok((start, Tok::ClassAssignStmt(stmt), end))),
+            Ok(mut stmt) => {
+                lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
+                Some(Ok((start, Tok::ClassAssignStmt(stmt), end)))
+            }
             Err(e) => Some(Err(e)),
         }
     }

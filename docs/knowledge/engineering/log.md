@@ -6,6 +6,11 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened flowchart directive facts so `style`, `classDef`, and `class` statements now preserve
+  parser-backed spans for style targets, class targets, class definitions, style strings, and class
+  names with entity/outline/payload roles.
+- Added regressions proving complete and recovered flowchart parses preserve those directive
+  payload spans while keeping style/class values out of completion.
 - Deepened flowchart editor facts so node labels and edge labels now carry span-rich payload
   facts through the lexer, LALRPOP AST, and recovered token stream; edge-label payloads are
   deduplicated across expanded chain edges to avoid repeated semantic occurrences.

@@ -1,7 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
+    MermaidConfig, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -380,9 +380,9 @@ fn collect_editor_fact_from_token(
             Some(SourceSpan::new(start, end)),
             "flowchart edge label",
         ),
-        Tok::StyleStmt(_) => facts.push_directive_prefix("style"),
-        Tok::ClassDefStmt(_) => facts.push_directive_prefix("classDef"),
-        Tok::ClassAssignStmt(_) => facts.push_directive_prefix("class"),
+        Tok::StyleStmt(stmt) => push_flowchart_style_stmt_facts(facts, &stmt),
+        Tok::ClassDefStmt(stmt) => push_flowchart_classdef_stmt_facts(facts, &stmt),
+        Tok::ClassAssignStmt(stmt) => push_flowchart_class_assign_stmt_facts(facts, &stmt),
         Tok::ClickStmt(_) => facts.push_directive_prefix("click"),
         Tok::LinkStyleStmt(_) => facts.push_directive_prefix("linkStyle"),
         Tok::KwGraph
@@ -434,9 +434,9 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                     emitted_edge_label_spans,
                 );
             }
-            Stmt::Style(_) => facts.push_directive_prefix("style"),
-            Stmt::ClassDef(_) => facts.push_directive_prefix("classDef"),
-            Stmt::ClassAssign(_) => facts.push_directive_prefix("class"),
+            Stmt::Style(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
+            Stmt::ClassDef(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
+            Stmt::ClassAssign(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
             Stmt::Click(_) => facts.push_directive_prefix("click"),
             Stmt::LinkStyle(_) => facts.push_directive_prefix("linkStyle"),
             Stmt::Direction(_) | Stmt::ShapeData { .. } => {}
@@ -487,6 +487,90 @@ fn push_flowchart_edge_label_symbol(
         Some(span),
         edge.label_selection,
     );
+}
+
+fn push_flowchart_style_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &StyleStmt) {
+    facts.push_directive_prefix("style");
+    push_flowchart_span_symbol(
+        facts,
+        &stmt.target,
+        "flowchart style target",
+        EditorSemanticKind::Module,
+        stmt.target_span,
+        EditorSemanticRole::Entity,
+    );
+    if let (Some(text), Some(span)) = (stmt.styles_text.as_deref(), stmt.styles_span) {
+        push_flowchart_payload_symbol(facts, text, "flowchart style", Some(span), Some(span));
+    }
+}
+
+fn push_flowchart_classdef_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClassDefStmt) {
+    facts.push_directive_prefix("classDef");
+    for (id, span) in stmt.ids.iter().zip(stmt.id_spans.iter().copied()) {
+        push_flowchart_span_symbol(
+            facts,
+            id,
+            "flowchart class definition",
+            EditorSemanticKind::Property,
+            Some(span),
+            EditorSemanticRole::Outline,
+        );
+    }
+    if let (Some(text), Some(span)) = (stmt.styles_text.as_deref(), stmt.styles_span) {
+        push_flowchart_payload_symbol(
+            facts,
+            text,
+            "flowchart class definition style",
+            Some(span),
+            Some(span),
+        );
+    }
+}
+
+fn push_flowchart_class_assign_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClassAssignStmt) {
+    facts.push_directive_prefix("class");
+    for (target, span) in stmt.targets.iter().zip(stmt.target_spans.iter().copied()) {
+        push_flowchart_span_symbol(
+            facts,
+            target,
+            "flowchart class target",
+            EditorSemanticKind::Module,
+            Some(span),
+            EditorSemanticRole::Entity,
+        );
+    }
+    push_flowchart_span_symbol(
+        facts,
+        &stmt.class_name,
+        "flowchart class name",
+        EditorSemanticKind::Property,
+        stmt.class_name_span,
+        EditorSemanticRole::Payload,
+    );
+}
+
+fn push_flowchart_span_symbol(
+    facts: &mut EditorSemanticFacts,
+    name: &str,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+    span: Option<SourceSpan>,
+    role: EditorSemanticRole,
+) {
+    let Some(span) = span else {
+        return;
+    };
+    if name.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::with_role(
+        name.to_string(),
+        Some(detail.to_string()),
+        kind,
+        role,
+        span,
+        span,
+    ));
 }
 
 fn push_flowchart_labeled_payload_symbol(
