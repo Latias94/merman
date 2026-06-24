@@ -24,6 +24,14 @@ impl<'a> LayeredRelationEdge<'a> {
             label_line_count,
         }
     }
+
+    pub(crate) fn top_id(&self) -> &'a str {
+        self.top_id
+    }
+
+    pub(crate) fn bottom_id(&self) -> &'a str {
+        self.bottom_id
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

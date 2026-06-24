@@ -4,15 +4,15 @@ use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRoutePlan, RelationGraphLabel,
-    RelationGraphLine, RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
+    RelationGraphLabel, RelationGraphLine, RelationLineChars, RelationOverlay,
+    RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
     ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelationshipRenderModel,
 };
-use std::collections::HashMap;
 
 const ER_LEVEL_HORIZONTAL_GAP: usize = 4;
 
@@ -367,8 +367,6 @@ fn er_relationship_rows(
     relation_lines
 }
 
-type PlacedEntityBox<'a> = relation_graph::PlacedRelationGraphBox<'a>;
-
 fn is_same_endpoint_parallel_relationship(relationships: &[ErRelationshipRenderModel]) -> bool {
     let Some(first) = relationships.first() else {
         return false;
@@ -438,46 +436,22 @@ fn render_layered_relationships(
         .iter()
         .map(er_layered_edge)
         .collect::<Vec<_>>();
-    let plan = relation_graph::plan_layered_relation_boxes(boxes, &edges, ER_LEVEL_HORIZONTAL_GAP)
+    let scene = LayeredRelationScene::new(boxes, edges, ER_LEVEL_HORIZONTAL_GAP)
         .map_err(er_layered_error)?;
-    let width = plan.width();
-    let height = plan.height();
-    let actual_cells = width.saturating_mul(height);
-    if actual_cells > options.max_grid_cells {
+    if scene.cell_count() > options.max_grid_cells {
         return Err(AsciiError::RenderLimitExceeded {
-            actual: actual_cells,
+            actual: scene.cell_count(),
             limit: options.max_grid_cells,
         });
     }
 
-    let mut canvas = Canvas::new(width, height);
-    for placed_box in plan.placed_boxes() {
-        placed_box.draw_at(&mut canvas);
-    }
-
-    let placed_by_id = plan
-        .placed_boxes()
-        .iter()
-        .map(|placed_box| (placed_box.id(), placed_box))
-        .collect::<HashMap<_, _>>();
-    let lane_offsets =
-        relation_graph::parallel_relation_lane_offsets(relationships.iter().map(|relationship| {
-            (
-                relationship.entity_a.as_str(),
-                relationship.entity_b.as_str(),
-            )
-        }));
-    let mut draw_order = relationships
-        .iter()
-        .zip(lane_offsets)
-        .enumerate()
-        .collect::<Vec<_>>();
-    draw_order.sort_by_key(|(index, (_, lane_offset))| (lane_offset.unsigned_abs(), *index));
-    for (_, (relationship, lane_offset)) in draw_order {
+    let mut canvas = scene.canvas_with_boxes();
+    for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
+        let relationship = &relationships[edge_index];
         draw_layered_relationship(
+            &scene,
             &mut canvas,
-            plan.placed_boxes(),
-            &placed_by_id,
+            edge_index,
             relationship,
             lane_offset,
             charset,
@@ -516,63 +490,54 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
 }
 
 fn draw_layered_relationship(
+    scene: &LayeredRelationScene<'_, '_>,
     canvas: &mut Canvas,
-    placed_boxes: &[PlacedEntityBox<'_>],
-    placed_by_id: &HashMap<&str, &PlacedEntityBox<'_>>,
+    edge_index: usize,
     relationship: &ErRelationshipRenderModel,
     lane_offset: isize,
     charset: ErCharset,
 ) -> Result<()> {
-    let Some(top) = placed_by_id.get(relationship.entity_a.as_str()) else {
-        return Ok(());
-    };
-    let Some(bottom) = placed_by_id.get(relationship.entity_b.as_str()) else {
-        return Ok(());
-    };
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let vertical = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let horizontal = relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?;
     let label = RelationGraphLabel::new(&relationship.role_a);
     let relation_chars = relation_line_chars(charset);
-    let geometry = relation_graph::plan_layered_relation_route(
-        relation_graph::LayeredRelationRouteRequest::new(
-            placed_boxes,
-            top,
-            bottom,
-            lane_offset,
-            relation_graph::LayeredRelationRouteProfile::er(),
-        ),
+    let style = LayeredRelationRouteStyle::new(
+        vertical,
+        horizontal,
+        relation_chars,
+        relation_graph::LayeredRelationRouteProfile::er(),
     );
 
-    let mut overlays = Vec::new();
-    overlays.push(RelationOverlay::text(
-        geometry.from_x(),
-        geometry.source_marker_y(),
-        top_cardinality.to_string(),
-        AsciiColorRole::EdgeArrow,
-    ));
-    if let Some(label) = label.as_ref() {
-        let label_y = geometry
-            .source_marker_y()
-            .saturating_add(1)
-            .min(geometry.route_y());
-        overlays.push(RelationOverlay::label(
-            (geometry.from_x() + geometry.to_x()) / 2,
-            label_y,
-            label.clone(),
-            AsciiColorRole::EdgeLabel,
+    scene.draw_edge(canvas, edge_index, lane_offset, style, |geometry| {
+        let mut overlays = Vec::new();
+        overlays.push(RelationOverlay::text(
+            geometry.from_x(),
+            geometry.source_marker_y(),
+            top_cardinality.to_string(),
+            AsciiColorRole::EdgeArrow,
         ));
-    }
-    overlays.push(RelationOverlay::text(
-        geometry.to_x(),
-        geometry.target_marker_y(),
-        bottom_cardinality.to_string(),
-        AsciiColorRole::EdgeArrow,
-    ));
-
-    LayeredRelationRoutePlan::new(geometry, vertical, horizontal, relation_chars, overlays)
-        .draw_at(canvas);
+        if let Some(label) = label.as_ref() {
+            let label_y = geometry
+                .source_marker_y()
+                .saturating_add(1)
+                .min(geometry.route_y());
+            overlays.push(RelationOverlay::label(
+                (geometry.from_x() + geometry.to_x()) / 2,
+                label_y,
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
+        }
+        overlays.push(RelationOverlay::text(
+            geometry.to_x(),
+            geometry.target_marker_y(),
+            bottom_cardinality.to_string(),
+            AsciiColorRole::EdgeArrow,
+        ));
+        overlays
+    });
 
     Ok(())
 }

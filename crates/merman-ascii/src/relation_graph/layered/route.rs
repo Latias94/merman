@@ -205,6 +205,34 @@ impl LayeredRelationRouteProfile {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LayeredRelationRouteStyle {
+    vertical_char: char,
+    horizontal_char: char,
+    relation_chars: RelationLineChars,
+    profile: LayeredRelationRouteProfile,
+}
+
+impl LayeredRelationRouteStyle {
+    pub(crate) const fn new(
+        vertical_char: char,
+        horizontal_char: char,
+        relation_chars: RelationLineChars,
+        profile: LayeredRelationRouteProfile,
+    ) -> Self {
+        Self {
+            vertical_char,
+            horizontal_char,
+            relation_chars,
+            profile,
+        }
+    }
+
+    pub(crate) const fn profile(self) -> LayeredRelationRouteProfile {
+        self.profile
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LayeredRelationRouteRequest<'boxes, 'graph> {
     placed_boxes: &'boxes [PlacedRelationGraphBox<'graph>],
@@ -230,6 +258,24 @@ impl<'boxes, 'graph> LayeredRelationRouteRequest<'boxes, 'graph> {
             profile,
         }
     }
+}
+
+pub(crate) fn draw_layered_relation_route(
+    canvas: &mut Canvas,
+    request: LayeredRelationRouteRequest<'_, '_>,
+    style: LayeredRelationRouteStyle,
+    build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Vec<RelationOverlay>,
+) {
+    let geometry = plan_layered_relation_route(request);
+    let overlays = build_overlays(&geometry);
+    LayeredRelationRoutePlan::new(
+        geometry,
+        style.vertical_char,
+        style.horizontal_char,
+        style.relation_chars,
+        overlays,
+    )
+    .draw_at(canvas);
 }
 
 pub(crate) fn parallel_lane_offset(index: usize, count: usize) -> isize {
