@@ -506,8 +506,8 @@ adjacent-layer crossing layouts resolved by layer reordering. Same-endpoint and 
 mixed-parallel relationships render as distinct lanes, simple spanning-level relationships route
 through side lanes, and isolated unrelated classes/entities render as standalone components beside
 the relationship layout. Cyclic and denser graph shapes still return clear diagnostics. XYChart
-renders deterministic compact bars, lines, mixed plots, titles, and axes instead of SVG
-coordinates.
+renders deterministic compact bars, lines, mixed plots, titles, axes, legends, and configurable
+compact plot areas instead of SVG coordinates.
 
 ```rust
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};

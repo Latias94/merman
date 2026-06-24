@@ -182,6 +182,10 @@ mod tests {
         assert_eq!(options.sequence_message_spacing, 1);
         assert_eq!(options.sequence_self_message_width, 4);
         assert!(!options.sequence_mirror_actors);
+        assert_eq!(options.xychart_vertical_plot_height, 5);
+        assert_eq!(options.xychart_category_band_width, 3);
+        assert_eq!(options.xychart_horizontal_plot_width, 10);
+        assert_eq!(options.max_grid_cells, 250_000);
     }
 
     #[test]
@@ -215,6 +219,18 @@ mod tests {
     }
 
     #[test]
+    fn options_builder_sets_xychart_plot_area_dimensions() {
+        let options = AsciiRenderOptions::ascii()
+            .with_xychart_vertical_plot_height(8)
+            .with_xychart_category_band_width(4)
+            .with_xychart_horizontal_plot_width(24);
+
+        assert_eq!(options.xychart_vertical_plot_height, 8);
+        assert_eq!(options.xychart_category_band_width, 4);
+        assert_eq!(options.xychart_horizontal_plot_width, 24);
+    }
+
+    #[test]
     fn validates_sequence_self_message_width() {
         let options = AsciiRenderOptions {
             sequence_self_message_width: 1,
@@ -228,6 +244,43 @@ mod tests {
                 message: "must be at least 2",
             })
         );
+    }
+
+    #[test]
+    fn validates_xychart_plot_area_dimensions() {
+        let cases = [
+            (
+                AsciiRenderOptions {
+                    xychart_vertical_plot_height: 1,
+                    ..AsciiRenderOptions::default()
+                },
+                "xychart_vertical_plot_height",
+                "must be at least 2",
+            ),
+            (
+                AsciiRenderOptions {
+                    xychart_category_band_width: 0,
+                    ..AsciiRenderOptions::default()
+                },
+                "xychart_category_band_width",
+                "must be greater than 0",
+            ),
+            (
+                AsciiRenderOptions {
+                    xychart_horizontal_plot_width: 1,
+                    ..AsciiRenderOptions::default()
+                },
+                "xychart_horizontal_plot_width",
+                "must be at least 2",
+            ),
+        ];
+
+        for (options, field, message) in cases {
+            assert_eq!(
+                options.validate(),
+                Err(AsciiError::InvalidOption { field, message })
+            );
+        }
     }
 
     #[test]

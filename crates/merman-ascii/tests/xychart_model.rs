@@ -1,5 +1,6 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
+    render_model,
 };
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
@@ -292,6 +293,79 @@ bar [4, 8]
             "  +----------\n",
             "   0       10\n",
         )
+    );
+}
+
+#[test]
+fn xychart_plot_area_options_scale_vertical_chart() {
+    let options = AsciiRenderOptions::ascii()
+        .with_xychart_vertical_plot_height(4)
+        .with_xychart_category_band_width(4);
+
+    let rendered = render_xychart(
+        r#"xychart
+x-axis [Jan, Feb]
+y-axis 0 --> 8
+bar [4, 8]
+"#,
+        &options,
+    )
+    .expect("xychart should render with custom vertical plot area");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "8 |     ####\n",
+            "6 |     ####\n",
+            "4 |#### ####\n",
+            "2 |#### ####\n",
+            "0 +---------\n",
+            "   Jan  Feb\n",
+        )
+    );
+}
+
+#[test]
+fn xychart_plot_area_options_scale_horizontal_chart() {
+    let options = AsciiRenderOptions::ascii().with_xychart_horizontal_plot_width(5);
+
+    let rendered = render_xychart(
+        r#"xychart horizontal
+x-axis [A, B]
+y-axis 0 --> 10
+bar [4, 8]
+"#,
+        &options,
+    )
+    .expect("xychart should render with custom horizontal plot area");
+
+    assert_eq!(
+        rendered,
+        concat!("A |##    4\n", "B |####  8\n", "  +-----\n", "   0  10\n",)
+    );
+}
+
+#[test]
+fn xychart_plot_area_respects_max_grid_cells() {
+    let mut options = AsciiRenderOptions::ascii();
+    options.max_grid_cells = 3;
+
+    let err = render_xychart(
+        r#"xychart
+x-axis [A, B]
+y-axis 0 --> 10
+bar [4, 8]
+"#,
+        &options,
+    )
+    .expect_err("xychart plot area should respect max_grid_cells");
+
+    assert_eq!(
+        err,
+        AsciiError::RenderLimitExceeded {
+            actual: 35,
+            limit: 3,
+        }
     );
 }
 

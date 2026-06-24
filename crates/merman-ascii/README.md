@@ -54,9 +54,9 @@ attach to group boundaries, and divider/concurrency regions render as stacked se
 horizontal separators.
 The XYChart slice
 can render deterministic compact vertical bars, stair-step lines, mixed bar/line overlays,
-horizontal bars, inferred numeric x labels, multi-series legend rows, and ASCII/Unicode chart
-characters through `render_xychart` or `render_model`; full terminal graph layout remains follow-on
-work. Shipped
+horizontal bars, inferred numeric x labels, configurable compact plot areas, multi-series legend
+rows, and ASCII/Unicode chart characters through `render_xychart` or `render_model`; full terminal
+graph layout remains follow-on work. Shipped
 diagram families have opt-in ANSI/HTML foreground color roles through `AsciiColorMode`; flowchart
 also maps Mermaid `classDef`, `class`, inline `style`, and `linkStyle` colors for `color`,
 `stroke`, and node/subgraph `fill`/`background`; state maps node/group text, border, and
@@ -82,22 +82,26 @@ copied, normalized, and self-authored cases.
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
 | stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground/background `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML color roles. |
-| xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, inferred numeric labels, multi-series legend rows, and opt-in ANSI/HTML foreground color roles. |
+| xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, inferred numeric labels, configurable compact plot areas, multi-series legend rows, and opt-in ANSI/HTML foreground color roles. |
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the
 typed `render_model` path.
 
 ## XYChart ASCII Contract
 
-The XYChart renderer uses a terminal-native scale instead of SVG coordinates. Vertical charts use a
-fixed five-row value area, three-character category bands, and evenly divided y ticks from the typed
-y-axis range. Bar heights are rounded into that five-row area. Line plots use the same scale and are
-drawn as compact stair-step lines, then overlaid after bars so mixed plots remain visible.
+The XYChart renderer uses a terminal-native scale instead of SVG coordinates. By default, vertical
+charts use a five-row value area, three-character category bands, and evenly divided y ticks from the
+typed y-axis range. `AsciiRenderOptions::with_xychart_vertical_plot_height` and
+`AsciiRenderOptions::with_xychart_category_band_width` can widen that compact plot policy without
+changing the typed model contract. Bar heights are rounded into the configured value area. Line
+plots use the same scale and are drawn as compact stair-step lines, then overlaid after bars so
+mixed plots remain visible.
 
-Horizontal charts use a ten-character value axis and the same typed y-axis range for bar width and
-line marker placement. Category labels come from the typed band x-axis when present; otherwise the
-renderer infers numeric labels from the typed linear x-axis. Output is trimmed per line and remains
-stable for snapshot tests.
+Horizontal charts use a ten-character value axis by default and the same typed y-axis range for bar
+width and line marker placement. `AsciiRenderOptions::with_xychart_horizontal_plot_width` adjusts
+that axis. Category labels come from the typed band x-axis when present; otherwise the renderer
+infers numeric labels from the typed linear x-axis. Output is trimmed per line and remains stable for
+snapshot tests.
 
 Charts with more than one series render a compact legend row before the plot. Because the current
 typed render model does not preserve user-authored series titles, legend labels use stable terminal

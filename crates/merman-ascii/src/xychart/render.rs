@@ -1,9 +1,10 @@
 use super::plot::{
-    ChartChars, HORIZONTAL_PLOT_WIDTH, VERTICAL_PLOT_HEIGHT, ValueRange,
-    build_horizontal_plot_rows, build_vertical_plot, category_axis_labels, format_number,
+    ChartChars, ValueRange, XyChartPlotArea, build_horizontal_plot_rows, build_vertical_plot,
+    format_number,
 };
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
+use crate::error::AsciiError;
 use crate::text::{StyledLine, display_width};
 use crate::{AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
@@ -27,17 +28,39 @@ pub(crate) fn render_xychart_diagram(
     }
 
     let y_range = y_value_range(model);
+    let plot_area = XyChartPlotArea::from_options(options);
     if model.orientation.eq_ignore_ascii_case("horizontal") {
+        enforce_plot_cell_limit(plot_area.horizontal_cell_count(categories.len()), options)?;
         return Ok(render_horizontal(
             model,
             &categories,
             y_range,
             chars,
+            plot_area,
             options,
         ));
     }
 
-    Ok(render_vertical(model, &categories, y_range, chars, options))
+    enforce_plot_cell_limit(plot_area.vertical_cell_count(categories.len()), options)?;
+    Ok(render_vertical(
+        model,
+        &categories,
+        y_range,
+        chars,
+        plot_area,
+        options,
+    ))
+}
+
+fn enforce_plot_cell_limit(actual: usize, options: &AsciiRenderOptions) -> Result<()> {
+    if actual > options.max_grid_cells {
+        return Err(AsciiError::RenderLimitExceeded {
+            actual,
+            limit: options.max_grid_cells,
+        });
+    }
+
+    Ok(())
 }
 
 fn render_vertical(
@@ -45,15 +68,16 @@ fn render_vertical(
     categories: &[String],
     y_range: ValueRange,
     chars: ChartChars,
+    plot_area: XyChartPlotArea,
     options: &AsciiRenderOptions,
 ) -> String {
-    let plot = build_vertical_plot(model, categories.len(), y_range, chars);
+    let plot = build_vertical_plot(model, categories.len(), y_range, chars, plot_area);
 
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
     push_legend_line(&mut out, model, chars);
 
-    let tick_labels = vertical_tick_labels(y_range);
+    let tick_labels = vertical_tick_labels(y_range, plot_area);
     let min_label = format_number(y_range.min);
     let gutter = tick_labels
         .iter()
@@ -82,7 +106,7 @@ fn render_vertical(
     let mut category_line = ChartLine::new();
     category_line.push_spaces(gutter + 2);
     category_line.push_role_text_with_unstyled_trailing_spaces(
-        &category_axis_labels(categories),
+        &plot_area.category_axis_labels(categories),
         AsciiColorRole::Text,
     );
     out.push(category_line);
@@ -102,12 +126,13 @@ fn render_horizontal(
     categories: &[String],
     y_range: ValueRange,
     chars: ChartChars,
+    plot_area: XyChartPlotArea,
     options: &AsciiRenderOptions,
 ) -> String {
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
     push_legend_line(&mut out, model, chars);
-    let plot_rows = build_horizontal_plot_rows(model, categories.len(), y_range, chars);
+    let plot_rows = build_horizontal_plot_rows(model, categories.len(), y_range, chars, plot_area);
 
     let gutter = categories
         .iter()
@@ -135,14 +160,17 @@ fn render_horizontal(
     axis_line.push_role_char(chars.origin, AsciiColorRole::ChartAxis);
     axis_line.push_role_repeat(
         chars.horizontal_axis,
-        HORIZONTAL_PLOT_WIDTH,
+        plot_area.horizontal_width,
         AsciiColorRole::ChartAxis,
     );
     out.push(axis_line);
 
     let mut tick_line = ChartLine::new();
     tick_line.push_spaces(gutter + 2);
-    tick_line.push_role_text(&horizontal_tick_labels(y_range), AsciiColorRole::Text);
+    tick_line.push_role_text(
+        &horizontal_tick_labels(y_range, plot_area),
+        AsciiColorRole::Text,
+    );
     out.push(tick_line);
 
     finish_chart_lines(out, options)
@@ -293,28 +321,28 @@ fn non_empty(value: &str) -> Option<&str> {
     (!trimmed.is_empty()).then_some(trimmed)
 }
 
-fn vertical_tick_labels(y_range: ValueRange) -> Vec<String> {
-    (1..=VERTICAL_PLOT_HEIGHT)
+fn vertical_tick_labels(y_range: ValueRange, plot_area: XyChartPlotArea) -> Vec<String> {
+    (1..=plot_area.vertical_height)
         .rev()
         .map(|level| {
             let value =
-                y_range.min + (y_range.span() * (level as f64) / VERTICAL_PLOT_HEIGHT as f64);
+                y_range.min + (y_range.span() * (level as f64) / plot_area.vertical_height as f64);
             format_number(value)
         })
         .collect()
 }
 
-fn horizontal_tick_labels(y_range: ValueRange) -> String {
+fn horizontal_tick_labels(y_range: ValueRange, plot_area: XyChartPlotArea) -> String {
     let min = format_number(y_range.min);
     let max = format_number(y_range.max);
-    let mut cells = vec![' '; HORIZONTAL_PLOT_WIDTH];
+    let mut cells = vec![' '; plot_area.horizontal_width];
 
-    for (idx, ch) in min.chars().take(HORIZONTAL_PLOT_WIDTH).enumerate() {
+    for (idx, ch) in min.chars().take(plot_area.horizontal_width).enumerate() {
         cells[idx] = ch;
     }
 
     let max_len = display_width(&max);
-    let max_start = HORIZONTAL_PLOT_WIDTH.saturating_sub(max_len);
+    let max_start = plot_area.horizontal_width.saturating_sub(max_len);
     for (idx, ch) in max.chars().enumerate() {
         if let Some(cell) = cells.get_mut(max_start + idx) {
             *cell = ch;
