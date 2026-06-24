@@ -562,6 +562,60 @@ fn er_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
 }
 
 #[test]
+fn er_color_html_wraps_dense_relation_summary_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))
+        .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x202020))
+        .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x303030))
+        .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x505050));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::Html)
+        .with_color_theme(theme);
+
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba\nA ||--|| C : ac\nC ||--|| A : ca\nB ||--|| C : bc\nC ||--|| B : cb",
+        &options,
+    )
+    .expect("dense ER diagram should render");
+
+    assert_eq!(
+        strip_html_spans(&rendered),
+        concat!(
+            "+---+\n",
+            "| A |\n",
+            "+---+\n",
+            "\n",
+            "+---+\n",
+            "| B |\n",
+            "+---+\n",
+            "\n",
+            "+---+\n",
+            "| C |\n",
+            "+---+\n",
+            "\n",
+            "relations:\n",
+            "A ||--|| B : ab\n",
+            "B ||--|| A : ba\n",
+            "A ||--|| C : ac\n",
+            "C ||--|| A : ca\n",
+            "B ||--|| C : bc\n",
+            "C ||--|| B : cb\n",
+        )
+    );
+    for expected_fragment in [
+        "<span style=\"color:#101010\">+---+</span>",
+        "<span style=\"color:#202020\">A</span>",
+        "<span style=\"color:#303030\">relations:</span>",
+        "<span style=\"color:#505050\">A ||--|| B : ab</span>",
+    ] {
+        assert!(
+            rendered.contains(expected_fragment),
+            "missing {expected_fragment:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
 fn er_local_semantic_fixture_covers_dense_relationships() {
     let input = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR"))

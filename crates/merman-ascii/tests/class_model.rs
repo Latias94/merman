@@ -725,6 +725,60 @@ fn class_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
 }
 
 #[test]
+fn class_color_truecolor_marks_dense_relation_summary_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))
+        .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x202020))
+        .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x303030))
+        .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x505050));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::TrueColor)
+        .with_color_theme(theme);
+
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb",
+        &options,
+    )
+    .expect("dense class diagram should render");
+
+    assert_eq!(
+        strip_ansi(&rendered),
+        concat!(
+            "+---+\n",
+            "| A |\n",
+            "+---+\n",
+            "\n",
+            "+---+\n",
+            "| B |\n",
+            "+---+\n",
+            "\n",
+            "+---+\n",
+            "| C |\n",
+            "+---+\n",
+            "\n",
+            "relations:\n",
+            "A --> B : ab\n",
+            "B --> A : ba\n",
+            "A --> C : ac\n",
+            "C --> A : ca\n",
+            "B --> C : bc\n",
+            "C --> B : cb\n",
+        )
+    );
+    for expected_fragment in [
+        "\u{1b}[38;2;16;16;16m",
+        "\u{1b}[38;2;32;32;32m",
+        "\u{1b}[38;2;48;48;48mrelations:",
+        "\u{1b}[38;2;80;80;80mA --> B : ab",
+    ] {
+        assert!(
+            rendered.contains(expected_fragment),
+            "missing {expected_fragment:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
 fn class_local_semantic_fixture_covers_dense_relationships() {
     let input = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR"))

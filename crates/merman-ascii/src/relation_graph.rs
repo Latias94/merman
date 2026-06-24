@@ -336,6 +336,16 @@ pub(crate) fn render_stacked_boxes_with_section(
     section_lines: &[String],
     options: &AsciiRenderOptions,
 ) -> String {
+    if options.color_mode != AsciiColorMode::Plain {
+        let title_line =
+            RelationGraphLine::with_role(section_title.to_string(), AsciiColorRole::MutedText);
+        let section_lines = section_lines
+            .iter()
+            .map(|line| RelationGraphLine::with_role(line.clone(), AsciiColorRole::EdgeLabel))
+            .collect::<Vec<_>>();
+        return render_stacked_boxes_with_section_lines(boxes, title_line, &section_lines, options);
+    }
+
     let mut rendered = render_stacked_boxes_with_options(boxes, options);
     if section_lines.is_empty() {
         return rendered;
@@ -351,6 +361,31 @@ pub(crate) fn render_stacked_boxes_with_section(
         rendered.push('\n');
     }
     rendered
+}
+
+fn render_stacked_boxes_with_section_lines(
+    boxes: &[RelationGraphBox],
+    section_title: RelationGraphLine,
+    section_lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+) -> String {
+    let mut lines = Vec::new();
+    for (index, relation_box) in boxes.iter().enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::plain(String::new()));
+        }
+        lines.extend(relation_box.lines.iter().cloned());
+    }
+
+    if !section_lines.is_empty() {
+        if !lines.is_empty() {
+            lines.push(RelationGraphLine::plain(String::new()));
+        }
+        lines.push(section_title);
+        lines.extend(section_lines.iter().cloned());
+    }
+
+    render_lines_with_options(&lines, options)
 }
 
 pub(crate) fn find_box<'a>(
@@ -531,6 +566,42 @@ mod tests {
                 &AsciiRenderOptions::ascii(),
             ),
             "A\n\nB\n\nrelations:\nA --> B\nB --> A\n"
+        );
+    }
+
+    #[test]
+    fn render_stacked_boxes_with_section_colors_title_and_summary_lines() {
+        let boxes = vec![RelationGraphBox::new_with_lines(
+            "a".to_string(),
+            vec![RelationGraphLine::with_role(
+                "A".to_string(),
+                AsciiColorRole::Text,
+            )],
+            1,
+        )];
+        let section_lines = vec!["A --> B".to_string()];
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x111111))
+            .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x222222))
+            .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x333333));
+
+        let rendered = render_stacked_boxes_with_section(
+            &boxes,
+            "relations:",
+            &section_lines,
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::Html)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(
+            rendered,
+            concat!(
+                "<span style=\"color:#111111\">A</span>\n",
+                "\n",
+                "<span style=\"color:#222222\">relations:</span>\n",
+                "<span style=\"color:#333333\">A --&gt; B</span>\n",
+            )
         );
     }
 
