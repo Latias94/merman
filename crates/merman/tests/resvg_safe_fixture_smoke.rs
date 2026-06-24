@@ -4,6 +4,7 @@ use merman::MermaidConfig;
 use merman::render::HeadlessRenderer;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -388,11 +389,15 @@ fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
 
 #[cfg(feature = "raster")]
 fn assert_png_has_visible_non_background_ink(name: &str, png_bytes: &[u8]) {
-    let decoder = png::Decoder::new(png_bytes);
+    let cursor = Cursor::new(png_bytes);
+    let decoder = png::Decoder::new(cursor);
     let mut reader = decoder
         .read_info()
         .unwrap_or_else(|err| panic!("{name}: expected decodable PNG output: {err}"));
-    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let size = reader
+        .output_buffer_size()
+        .expect("invalid PNG output buffer size");
+    let mut buf = vec![0u8; size];
     let info = reader
         .next_frame(&mut buf)
         .unwrap_or_else(|err| panic!("{name}: expected readable PNG frame: {err}"));

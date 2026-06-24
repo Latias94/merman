@@ -9,6 +9,8 @@ pub enum RasterError {
     Headless(#[from] HeadlessError),
     #[error("failed to parse SVG")]
     SvgParse,
+    #[error("failed to set SVG Document size from tree")]
+    SvgDocSize,
     #[error("failed to allocate pixmap for raster rendering")]
     PixmapAlloc,
     #[error("invalid raster scale; expected a finite positive number")]
@@ -287,17 +289,32 @@ pub fn validate_svg_pdf_size(svg: &str, options: &RasterOptions) -> Result<Raste
 }
 
 fn svg_to_pdf_unchecked(svg: &str) -> Result<Vec<u8>> {
-    let mut opt = svg2pdf::usvg::Options::default();
-    configure_usvg_options_for_pdf(&mut opt);
+    use krilla_svg::SurfaceExt;
+    use std::sync::Arc;
 
-    let tree = svg2pdf::usvg::Tree::from_str(svg, &opt).map_err(|_| RasterError::SvgParse)?;
+    let mut fontdb = usvg::fontdb::Database::new();
+    fontdb.load_system_fonts();
+    let opts = usvg::Options {
+        fontdb: Arc::new(fontdb),
+        font_family: "Arial".to_string(),
+        ..Default::default()
+    };
+    let svg_tree = usvg::Tree::from_str(svg, &opts).map_err(|_| RasterError::SvgParse)?;
+    let mut document = krilla::Document::new();
+    let Some(svg_size) =
+        krilla::geom::Size::from_wh(svg_tree.size().width(), svg_tree.size().height())
+    else {
+        return Err(RasterError::SvgDocSize);
+    };
+    let mut page = document.start_page_with(krilla::page::PageSettings::new(svg_size));
+    let mut surface = page.surface();
+    surface.draw_svg(&svg_tree, svg_size, krilla_svg::SvgSettings::default());
+    surface.finish();
+    page.finish();
 
-    svg2pdf::to_pdf(
-        &tree,
-        svg2pdf::ConversionOptions::default(),
-        svg2pdf::PageOptions::default(),
-    )
-    .map_err(|_| RasterError::PdfConvert)
+    let pdf = document.finish().map_err(|_| RasterError::PdfConvert)?;
+
+    Ok(pdf)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -594,7 +611,7 @@ fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, svg: &str) {
     opt.font_resolver = browser_like_font_resolver();
 }
 
-fn configure_usvg_options_for_pdf(opt: &mut svg2pdf::usvg::Options<'_>) {
+fn configure_usvg_options_for_pdf(opt: &mut usvg::Options<'_>) {
     opt.fontdb_mut().load_system_fonts();
     configure_fontdb_generic_families(opt.fontdb_mut());
     opt.font_family =
@@ -615,16 +632,16 @@ fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
     }
 }
 
-fn browser_like_pdf_font_resolver() -> svg2pdf::usvg::FontResolver<'static> {
-    let default_select = svg2pdf::usvg::FontResolver::default_font_selector();
+fn browser_like_pdf_font_resolver() -> usvg::FontResolver<'static> {
+    let default_select = usvg::FontResolver::default_font_selector();
 
-    svg2pdf::usvg::FontResolver {
+    usvg::FontResolver {
         select_font: Box::new(move |font, fontdb| {
             default_select(font, fontdb)
                 .or_else(|| query_browser_like_pdf_fallback_font(font, fontdb.as_ref()))
                 .or_else(|| fontdb.faces().next().map(|face| face.id))
         }),
-        select_fallback: svg2pdf::usvg::FontResolver::default_fallback_selector(),
+        select_fallback: usvg::FontResolver::default_fallback_selector(),
     }
 }
 
@@ -681,23 +698,23 @@ fn query_browser_like_fallback_font(
 }
 
 fn query_browser_like_pdf_fallback_font(
-    font: &svg2pdf::usvg::Font,
-    fontdb: &svg2pdf::usvg::fontdb::Database,
-) -> Option<svg2pdf::usvg::fontdb::ID> {
+    font: &usvg::Font,
+    fontdb: &usvg::fontdb::Database,
+) -> Option<usvg::fontdb::ID> {
     let mut families = Vec::with_capacity(3);
     if pdf_font_requests_monospace(font) {
-        families.push(svg2pdf::usvg::fontdb::Family::Monospace);
-        families.push(svg2pdf::usvg::fontdb::Family::SansSerif);
-        families.push(svg2pdf::usvg::fontdb::Family::Serif);
+        families.push(usvg::fontdb::Family::Monospace);
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
     } else {
-        families.push(svg2pdf::usvg::fontdb::Family::SansSerif);
-        families.push(svg2pdf::usvg::fontdb::Family::Serif);
-        families.push(svg2pdf::usvg::fontdb::Family::Monospace);
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
+        families.push(usvg::fontdb::Family::Monospace);
     }
 
-    let query = svg2pdf::usvg::fontdb::Query {
+    let query = usvg::fontdb::Query {
         families: &families,
-        weight: svg2pdf::usvg::fontdb::Weight(font.weight()),
+        weight: usvg::fontdb::Weight(font.weight()),
         stretch: font.stretch().into(),
         style: font.style().into(),
     };
@@ -753,10 +770,10 @@ fn font_requests_monospace(font: &usvg::Font) -> bool {
     })
 }
 
-fn pdf_font_requests_monospace(font: &svg2pdf::usvg::Font) -> bool {
+fn pdf_font_requests_monospace(font: &usvg::Font) -> bool {
     font.families().iter().any(|family| match family {
-        svg2pdf::usvg::FontFamily::Monospace => true,
-        svg2pdf::usvg::FontFamily::Named(name) => {
+        usvg::FontFamily::Monospace => true,
+        usvg::FontFamily::Named(name) => {
             let name = name.to_ascii_lowercase();
             name.contains("mono")
                 || name.contains("courier")

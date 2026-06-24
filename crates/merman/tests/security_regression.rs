@@ -2,6 +2,7 @@
 
 use merman::MermaidConfig;
 use merman::render::{HeadlessRenderer, RenderResourceLimits};
+use std::io::Cursor;
 use std::sync::Arc;
 
 fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
@@ -265,7 +266,8 @@ fn default_pdf_conversion_rejects_oversized_intrinsic_svg() {
 
 #[cfg(feature = "raster")]
 fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
-    let decoder = png::Decoder::new(bytes);
+    let cursor = Cursor::new(bytes);
+    let decoder = png::Decoder::new(cursor);
     let reader = decoder.read_info().expect("valid PNG header");
     let info = reader.info();
     (info.width, info.height)

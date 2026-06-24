@@ -26,7 +26,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 criterion = "0.8.2"
-gag = "1.0.0"
 
 [[bench]]
 name = "network_simplex"
