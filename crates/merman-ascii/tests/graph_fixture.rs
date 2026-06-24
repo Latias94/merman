@@ -207,6 +207,14 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "tight_arrow.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "tight_arrow_mixed.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "two_layer_single_graph.txt",
     },
     GraphFixture {
@@ -296,6 +304,14 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     GraphFixture {
         directory: "extended-chars",
         name: "three_nodes.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "tight_arrow.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "tight_arrow_mixed.txt",
     },
     GraphFixture {
         directory: "extended-chars",

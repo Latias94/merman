@@ -15,6 +15,10 @@ The v1 gate is the tracked fixture corpus copied from:
 - Source path: `cmd/testdata`
 - Tracked copy: `crates/merman-ascii/tests/testdata/mermaid-ascii`
 
+The tracked graph copy also includes the later upstream no-whitespace edge fixtures
+`tight_arrow.txt` and `tight_arrow_mixed.txt`, copied from local `repo-ref/mermaid-ascii` commit
+`876b5b4` after upstream renamed those cases.
+
 `repo-ref/` is a research checkout and is not required by CI or downstream users. The tracked copy
 is the executable source of truth for the v1 coverage contract.
 
@@ -22,14 +26,14 @@ is the executable source of truth for the v1 coverage contract.
 
 | Reference fixture group | Diagram scope | Current v1 status | Gate |
 | --- | --- | --- | --- |
-| `ascii` | `graph` / `flowchart` LR, TD, TB fixtures with ASCII characters | 52 / 52 exact output matches | `cargo nextest run -p merman-ascii graph_fixture` |
-| `extended-chars` | `graph` / `flowchart` LR, TD, TB fixtures with Unicode box drawing characters | 23 / 23 exact output matches | `cargo nextest run -p merman-ascii graph_fixture` |
+| `ascii` | `graph` / `flowchart` LR, TD, TB fixtures with ASCII characters | 54 / 54 exact output matches | `cargo nextest run -p merman-ascii graph_fixture` |
+| `extended-chars` | `graph` / `flowchart` LR, TD, TB fixtures with Unicode box drawing characters | 25 / 25 exact output matches | `cargo nextest run -p merman-ascii graph_fixture` |
 | `sequence` | `sequenceDiagram` fixtures with Unicode box drawing characters | 12 / 12 normalized exact output matches | `cargo nextest run -p merman-ascii sequence_golden` |
 | `sequence-ascii` | `sequenceDiagram` fixtures with ASCII characters | 5 / 5 normalized exact output matches | `cargo nextest run -p merman-ascii sequence_golden` |
 
 Summary:
 
-- Graph/flowchart copied fixture parity: 75 / 75.
+- Graph/flowchart copied fixture parity: 79 / 79.
 - Sequence copied fixture parity: 17 / 17.
 - Named copied fixture gaps: none.
 

@@ -103,4 +103,4 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii flowchart`
 
 Golden tests compare against copied `mermaid-ascii` fixtures for the supported subset. The current
-graph fixture allowlist covers 75 exact graph matches: 52 ASCII and 23 Unicode.
+graph fixture allowlist covers 79 exact graph matches: 54 ASCII and 25 Unicode.

@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const EXPECTED_FIXTURE_COUNTS: &[(&str, usize)] = &[
-    ("ascii", 52),
-    ("extended-chars", 23),
+    ("ascii", 54),
+    ("extended-chars", 25),
     ("sequence", 12),
     ("sequence-ascii", 5),
 ];
@@ -64,11 +64,11 @@ fn fixture_inventory_documents_v1_coverage_contract() {
 
     for expected in [
         "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
-        "52 / 52 exact output matches",
-        "23 / 23 exact output matches",
+        "54 / 54 exact output matches",
+        "25 / 25 exact output matches",
         "12 / 12 normalized exact output matches",
         "5 / 5 normalized exact output matches",
-        "Graph/flowchart copied fixture parity: 75 / 75.",
+        "Graph/flowchart copied fixture parity: 79 / 79.",
         "Sequence copied fixture parity: 17 / 17.",
         "Named copied fixture gaps: none.",
         "cargo nextest run -p merman-ascii fixture_inventory graph_fixture sequence_golden",

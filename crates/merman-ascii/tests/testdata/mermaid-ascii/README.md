@@ -4,6 +4,8 @@ These fixtures are copied from the MIT-licensed
 [`AlexanderGrooff/mermaid-ascii`](https://github.com/AlexanderGrooff/mermaid-ascii) project.
 
 - Source commit: `6fffb8e`
+- Supplemental graph fixtures: `tight_arrow.txt` and `tight_arrow_mixed.txt` copied from local
+  `repo-ref/mermaid-ascii` commit `876b5b4` after upstream renamed the no-whitespace edge cases.
 - Source path: `cmd/testdata`
 - License: MIT
 - Local license copy: `crates/merman-ascii/LICENSES/mermaid-ascii-MIT.txt`
@@ -24,7 +26,7 @@ Expected inventory:
 
 | Directory | Fixture count | Purpose |
 | --- | ---: | --- |
-| `ascii` | 52 | Graph diagrams rendered with ASCII characters. |
-| `extended-chars` | 23 | Graph diagrams rendered with Unicode box drawing characters. |
+| `ascii` | 54 | Graph diagrams rendered with ASCII characters. |
+| `extended-chars` | 25 | Graph diagrams rendered with Unicode box drawing characters. |
 | `sequence` | 12 | Sequence diagrams rendered with Unicode box drawing characters. |
 | `sequence-ascii` | 5 | Sequence diagrams rendered with ASCII characters. |
