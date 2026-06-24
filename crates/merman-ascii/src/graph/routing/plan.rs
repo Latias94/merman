@@ -3,12 +3,15 @@ use super::super::layout::CanvasCoord;
 use super::path::StepDirection;
 
 mod boundary;
+mod edges;
+mod extent;
 mod grid;
 mod left_right;
 mod select;
 mod top_down;
 
-pub(super) use select::{EdgeRouteRequest, plan_edge_route, route_canvas_extent};
+pub(super) use extent::route_canvas_extent;
+pub(super) use select::{EdgeRouteRequest, plan_edge_route};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RoutePlan {
