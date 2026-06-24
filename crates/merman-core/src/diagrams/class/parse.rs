@@ -105,6 +105,7 @@ struct ClassEditorFactCollector<'a> {
     callback_statement_function_seen: bool,
     line_payload: Option<ClassLinePayloadKind>,
     note_text_pending: bool,
+    class_label_pending: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +153,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             callback_statement_function_seen: false,
             line_payload: None,
             note_text_pending: false,
+            class_label_pending: false,
         }
     }
 
@@ -271,6 +273,18 @@ impl<'a> ClassEditorFactCollector<'a> {
                     return;
                 }
 
+                if self.class_label_pending {
+                    self.class_label_pending = false;
+                    self.push_string_payload_symbol(
+                        facts,
+                        &text,
+                        SourceSpan::new(start, end),
+                        "class display label",
+                        EditorSemanticKind::String,
+                    );
+                    return;
+                }
+
                 if self.note_text_pending {
                     self.note_text_pending = false;
                     self.push_string_payload_symbol(
@@ -278,6 +292,19 @@ impl<'a> ClassEditorFactCollector<'a> {
                         &text,
                         SourceSpan::new(start, end),
                         "class note",
+                        EditorSemanticKind::String,
+                    );
+                    return;
+                }
+
+                if self.pending_relation_source.is_some()
+                    || matches!(self.expected_name, Some(ExpectedClassName::RelationTarget))
+                {
+                    self.push_string_payload_symbol(
+                        facts,
+                        &text,
+                        SourceSpan::new(start, end),
+                        "class relation multiplicity",
                         EditorSemanticKind::String,
                     );
                     return;
@@ -379,11 +406,13 @@ impl<'a> ClassEditorFactCollector<'a> {
                     EditorSemanticKind::String,
                 );
             }
-            Tok::Direction(_)
-            | Tok::HrefKw
-            | Tok::StructStart
-            | Tok::SquareStart
-            | Tok::SquareStop => {}
+            Tok::Direction(_) | Tok::HrefKw | Tok::StructStart => {}
+            Tok::SquareStart => {
+                self.class_label_pending = true;
+            }
+            Tok::SquareStop => {
+                self.class_label_pending = false;
+            }
             Tok::StyleSeparator => {
                 self.expect_name(ExpectedClassName::InlineClassReference);
             }
@@ -399,6 +428,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         self.callback_statement_function_seen = false;
         self.line_payload = None;
         self.note_text_pending = false;
+        self.class_label_pending = false;
     }
 
     fn expect_name(&mut self, expected: ExpectedClassName) {

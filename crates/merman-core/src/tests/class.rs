@@ -466,7 +466,9 @@ namespace Company {
 }
 User <|-- Admin
 User: email
+class Visible["Visible label"]
 User <|-- Admin : manages
+Class1 "1" *-- "many" Class02 : contains
 <<interface>> User
 note for User "Primary user"
 note "Floating note"
@@ -535,6 +537,16 @@ style User fill:#fff
     assert_eq!(email.role, EditorSemanticRole::Outline);
     assert_eq!(email.detail.as_deref(), Some("class member"));
 
+    let display_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Visible label"
+                && symbol.detail.as_deref() == Some("class display label")
+        })
+        .unwrap();
+    assert_eq!(display_label.role, EditorSemanticRole::Payload);
+
     let annotation_start = text.find("interface").unwrap();
     let annotation = symbol_at("interface", annotation_start);
     assert_eq!(annotation.role, EditorSemanticRole::Payload);
@@ -548,6 +560,24 @@ style User fill:#fff
         })
         .unwrap();
     assert_eq!(relation_label.role, EditorSemanticRole::Payload);
+
+    let left_multiplicity = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "1" && symbol.detail.as_deref() == Some("class relation multiplicity")
+        })
+        .unwrap();
+    assert_eq!(left_multiplicity.role, EditorSemanticRole::Payload);
+
+    let right_multiplicity = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "many" && symbol.detail.as_deref() == Some("class relation multiplicity")
+        })
+        .unwrap();
+    assert_eq!(right_multiplicity.role, EditorSemanticRole::Payload);
 
     let note_for = facts
         .symbols

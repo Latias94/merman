@@ -6,6 +6,11 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened `classDiagram` display-label and relation-multiplicity facts so quoted class labels and
+  relation cardinality strings are payload-only parser facts without polluting completion or
+  outline.
+- Recorded the remaining class break as recovered diagnostics and broader parser event-stream/lint
+  work, not more class-string heuristics.
 - Deepened `stateDiagram` payload facts so state display labels, colon descriptions, relation
   labels, positioned/floating note text, class/style/click payloads, and accessibility text are all
   parser-backed payload-only spans.

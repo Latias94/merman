@@ -301,11 +301,10 @@ partial buffers and downstream migration.
 - Class is migrated at the class/reference-owner level, and member outline plus annotation payload
   spans are now parser-backed. Interaction string/link target payloads, callback payloads,
   style/classDef raw style payloads, inline class references, note text, accessibility text,
-  relation labels, and cssClass target/reference projection are parser-backed. A useful break
-  already landed here: style class names are no longer graph-node entities for completion/rename.
-  Full product-grade lint can still decide whether class display-label strings and quoted relation
-  multiplicity/cardinality strings deserve payload facts, and should expose recovered diagnostics
-  rather than adding LSP-side scans.
+  relation labels, class display labels, relation multiplicity strings, and cssClass target/
+  reference projection are parser-backed. A useful break already landed here: style class names are
+  no longer graph-node entities for completion/rename. Full product-grade lint should expose
+  recovered diagnostics rather than adding LSP-side scans.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
   This preserves behavior while removing duplicated scan logic.
