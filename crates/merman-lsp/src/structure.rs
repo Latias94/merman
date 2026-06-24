@@ -1,5 +1,5 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
-use merman_analysis::{ByteSpan, EditorSymbolKind, FenceLineItem, SourceMap};
+use merman_analysis::{ByteSpan, EditorSymbolKind, FenceLineItem, FenceSemanticItem, SourceMap};
 use std::collections::HashMap;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
@@ -89,10 +89,16 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
 }
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
-    let offset = snapshot.byte_offset_for_position(position)?;
     let fence = snapshot.fence_at_position(position)?;
+    let absolute_offset = snapshot.byte_offset_for_position(position)?;
+    let relative_offset = fence_relative_offset(snapshot, fence, position)?;
     let outline = outline_for_fence(fence);
-    let item = outline.find_deepest(offset).unwrap_or(&outline);
+    let item = fence
+        .text_index
+        .semantic_item_at_offset(relative_offset)
+        .map(|item| outline_item_from_semantic(fence, item))
+        .or_else(|| outline.find_deepest(absolute_offset).cloned())
+        .unwrap_or(outline);
     let range = range_from_span(&snapshot.source_map, item.selection).or_else(|| {
         range_from_span(
             &snapshot.source_map,
@@ -115,8 +121,8 @@ pub fn goto_definition(
 ) -> Option<GotoDefinitionResponse> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let (name, _) = fence.text_index.symbol_at_offset(offset)?;
-    let span = absolute_span(fence, fence.text_index.first_reference_span(&name)?);
+    let item = fence.text_index.entity_item_at_offset(offset)?;
+    let span = absolute_span(fence, fence.text_index.first_reference_span_for_item(item)?);
     let range = range_from_span(&snapshot.source_map, span)?;
     Some(Location::new(snapshot.uri.clone(), range).into())
 }
@@ -128,10 +134,10 @@ pub fn references(
 ) -> Option<Vec<Location>> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let (name, _selection) = fence.text_index.symbol_at_offset(offset)?;
+    let item = fence.text_index.entity_item_at_offset(offset)?;
     let mut locations = fence
         .text_index
-        .reference_spans(&name)
+        .reference_spans_for_item(item)
         .iter()
         .copied()
         .filter_map(|span| {
@@ -142,7 +148,7 @@ pub fn references(
         .collect::<Vec<_>>();
 
     if !include_declaration {
-        if let Some(def_span) = fence.text_index.first_reference_span(&name) {
+        if let Some(def_span) = fence.text_index.first_reference_span_for_item(item) {
             let def_span = absolute_span(fence, def_span);
             locations.retain(|location| !same_span(&snapshot.source_map, location.range, def_span));
         }
@@ -158,8 +164,8 @@ pub fn prepare_rename(
 ) -> Option<PrepareRenameResponse> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let (_, selection) = fence.text_index.symbol_at_offset(offset)?;
-    let selection = absolute_span(fence, selection);
+    let item = fence.text_index.entity_item_at_offset(offset)?;
+    let selection = absolute_span(fence, item.selection);
     let range = range_from_span(&snapshot.source_map, selection)?;
     let placeholder = snapshot
         .text
@@ -180,20 +186,20 @@ pub fn rename(snapshot: &DocumentSnapshot, params: RenameParams) -> Result<Optio
         .ok_or_else(|| Error::invalid_params("position is outside a Mermaid fence"))?;
     let offset = fence_relative_offset(snapshot, fence, position)
         .ok_or_else(|| Error::invalid_params("no renameable symbol at the requested position"))?;
-    let (name, _) = fence
+    let item = fence
         .text_index
-        .symbol_at_offset(offset)
+        .entity_item_at_offset(offset)
         .ok_or_else(|| Error::invalid_params("no renameable symbol at the requested position"))?;
-    Ok(rename_edits(snapshot, fence, &name, &params.new_name))
+    Ok(rename_edits(snapshot, fence, item, &params.new_name))
 }
 
 fn rename_edits(
     snapshot: &DocumentSnapshot,
     fence: &FenceSnapshot,
-    name: &str,
+    item: &FenceSemanticItem,
     new_name: &str,
 ) -> Option<WorkspaceEdit> {
-    let spans = fence.text_index.reference_spans(name);
+    let spans = fence.text_index.reference_spans_for_item(item);
     let mut edits = spans
         .iter()
         .copied()
@@ -241,6 +247,17 @@ fn outline_children(fence: &FenceSnapshot) -> Vec<OutlineItem> {
 }
 
 fn outline_item_from_index(fence: &FenceSnapshot, item: &FenceLineItem) -> OutlineItem {
+    OutlineItem {
+        name: item.name.clone(),
+        detail: item.detail.clone(),
+        kind: symbol_kind(item.kind),
+        span: absolute_span(fence, item.span),
+        selection: absolute_span(fence, item.selection),
+        children: Vec::new(),
+    }
+}
+
+fn outline_item_from_semantic(fence: &FenceSnapshot, item: &FenceSemanticItem) -> OutlineItem {
     OutlineItem {
         name: item.name.clone(),
         detail: item.detail.clone(),
@@ -418,6 +435,9 @@ mod tests {
         outline_references, outline_rename,
     };
     use crate::document_store::DocumentStore;
+    use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
+    use merman_analysis::{FenceTextIndex, SourceMap};
+    use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
     use tower_lsp::lsp_types::{
         DocumentSymbolResponse, GotoDefinitionResponse, HoverContents, Position,
         PrepareRenameResponse, RenameParams, TextDocumentIdentifier, TextDocumentPositionParams,
@@ -469,6 +489,42 @@ mod tests {
     }
 
     #[test]
+    fn hover_reports_payload_semantic_items() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            "sequenceDiagram\ntitle: Diagram Title\nAlice->>Bob: Hello\n".to_string(),
+        );
+
+        let hover = outline_hover(&snapshot, Position::new(1, 8)).unwrap();
+        let text = match hover.contents {
+            HoverContents::Markup(markup) => markup.value,
+            other => panic!("unexpected hover contents: {other:?}"),
+        };
+
+        assert!(text.contains("Diagram Title"));
+        assert!(text.contains("sequence title"));
+    }
+
+    #[test]
+    fn payload_semantic_items_are_not_navigation_targets() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            "sequenceDiagram\ntitle: Diagram Title\nAlice->>Bob: Hello\n".to_string(),
+        );
+
+        let position = Position::new(1, 8);
+        assert!(outline_definition(&snapshot, position).is_none());
+        assert!(outline_references(&snapshot, position, true).is_none());
+        assert!(outline_prepare_rename(&snapshot, position).is_none());
+    }
+
+    #[test]
     fn rename_and_references_track_simple_identifiers() {
         let mut store = DocumentStore::new();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
@@ -513,5 +569,74 @@ mod tests {
 
         let def = outline_definition(&snapshot, position).unwrap();
         assert!(matches!(def, GotoDefinitionResponse::Scalar(_)));
+    }
+
+    fn typed_reference_snapshot() -> DocumentSnapshot {
+        let text = "Shared\nShared\n".to_string();
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "Shared",
+            Some("module entity".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(0, 6),
+            SourceSpan::new(0, 6),
+        ));
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "Shared",
+            Some("property entity".to_string()),
+            EditorSemanticKind::Property,
+            SourceSpan::new(7, 13),
+            SourceSpan::new(7, 13),
+        ));
+
+        let text_index = FenceTextIndex::from_core_facts(facts);
+        DocumentSnapshot {
+            uri: Url::parse("file:///tmp/example.mmd").unwrap(),
+            version: 1,
+            text: text.clone(),
+            source_map: SourceMap::new(text.clone()),
+            fences: vec![FenceSnapshot {
+                index: 0,
+                start: 0,
+                body_start: 0,
+                end: text.len(),
+                text,
+                diagram_type: Some("flowchart-v2".to_string()),
+                text_index,
+            }],
+        }
+    }
+
+    #[test]
+    fn typed_reference_groups_keep_same_name_different_kinds_separate() {
+        let snapshot = typed_reference_snapshot();
+
+        let module_refs = outline_references(&snapshot, Position::new(0, 0), true).unwrap();
+        let property_refs = outline_references(&snapshot, Position::new(1, 0), true).unwrap();
+
+        assert_eq!(module_refs.len(), 1);
+        assert_eq!(property_refs.len(), 1);
+
+        let module_rename = outline_rename(
+            &snapshot,
+            RenameParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier {
+                        uri: snapshot.uri.clone(),
+                    },
+                    Position::new(0, 0),
+                ),
+                new_name: "ModuleShared".to_string(),
+                work_done_progress_params: Default::default(),
+            },
+        )
+        .unwrap()
+        .unwrap();
+        let module_edits = module_rename.changes.unwrap();
+        assert_eq!(
+            module_edits.get(&snapshot.uri).unwrap().len(),
+            1,
+            "rename should only touch the module group"
+        );
     }
 }

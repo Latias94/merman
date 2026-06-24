@@ -1,5 +1,7 @@
+use crate::code_actions::code_actions_for_params;
 use crate::completion::completion_for_snapshot;
 use crate::document_store::DocumentStore;
+use crate::semantic_tokens::{semantic_tokens_for_snapshot, semantic_tokens_options};
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
     document_symbols as structure_document_symbols, goto_definition as structure_goto_definition,
@@ -16,12 +18,15 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
-    Hover, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, MessageType,
-    OneOf, PrepareRenameResponse, ReferenceParams, RenameParams, ServerCapabilities,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceEdit,
+    CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
+    CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams, RenameParams,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -50,6 +55,14 @@ impl MermanLanguageServer {
             references_provider: Some(OneOf::Left(true)),
             rename_provider: Some(OneOf::Left(true)),
             document_symbol_provider: Some(OneOf::Left(true)),
+            code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
+                code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+                work_done_progress_options: Default::default(),
+                resolve_provider: Some(false),
+            })),
+            semantic_tokens_provider: Some(
+                SemanticTokensServerCapabilities::SemanticTokensOptions(semantic_tokens_options()),
+            ),
             ..ServerCapabilities::default()
         }
     }
@@ -146,6 +159,20 @@ impl LanguageServer for MermanLanguageServer {
             .map(|snapshot| CompletionResponse::List(completion_for_snapshot(&snapshot, position))))
     }
 
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        Ok(code_actions_for_params(&params))
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
+        let snapshot = self.snapshot_for_uri(&uri).await;
+
+        Ok(snapshot.map(|snapshot| semantic_tokens_for_snapshot(&snapshot).into()))
+    }
+
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
@@ -217,11 +244,18 @@ mod tests {
     use crate::structure::{
         document_symbols, goto_definition, hover, prepare_rename, references, rename,
     };
+    use merman_analysis::{
+        AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, SourceMap,
+        lsp::analysis_diagnostic_to_lsp,
+    };
     use tower_lsp::LanguageServer;
+    use tower_lsp::lsp_types::SemanticTokensResult;
     use tower_lsp::lsp_types::{
-        DocumentSymbolResponse, GotoDefinitionResponse, HoverContents, HoverParams, Position,
-        RenameParams, TextDocumentIdentifier, TextDocumentPositionParams,
-        TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+        CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+        CodeActionProviderCapability, DocumentSymbolResponse, GotoDefinitionResponse,
+        HoverContents, HoverParams, Position, Range, RenameParams, SemanticTokensFullOptions,
+        SemanticTokensParams, SemanticTokensServerCapabilities, TextDocumentIdentifier,
+        TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -254,6 +288,23 @@ mod tests {
             Some(OneOf::Left(true))
         ));
         assert!(capabilities.completion_provider.is_some());
+        assert!(matches!(
+            capabilities.semantic_tokens_provider,
+            Some(SemanticTokensServerCapabilities::SemanticTokensOptions(ref options))
+                if matches!(options.full, Some(SemanticTokensFullOptions::Bool(true)))
+                    && options.range.is_none()
+                    && !options.legend.token_types.is_empty()
+                    && !options.legend.token_modifiers.is_empty()
+        ));
+        assert!(matches!(
+            capabilities.code_action_provider,
+            Some(CodeActionProviderCapability::Options(ref options))
+                if options
+                    .code_action_kinds
+                    .as_ref()
+                    .is_some_and(|kinds| kinds.contains(&CodeActionKind::QUICKFIX))
+                    && options.resolve_provider == Some(false)
+        ));
     }
 
     #[test]
@@ -352,6 +403,60 @@ mod tests {
             .await
             .unwrap();
         assert!(hover.is_some());
+
+        let semantic_tokens = server
+            .semantic_tokens_full(SemanticTokensParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(
+            semantic_tokens,
+            Some(SemanticTokensResult::Tokens(tokens)) if !tokens.data.is_empty()
+        ));
+
+        let map = SourceMap::new("bad");
+        let fix_span = map.whole_source_span().unwrap();
+        let diagnostic = AnalysisDiagnostic::error(
+            "merman.test.fix",
+            DiagnosticCategory::Semantic,
+            "test diagnostic",
+        )
+        .with_fix(
+            DiagnosticFix::new(
+                "Replace invalid text",
+                vec![DiagnosticFixEdit::new(fix_span, "fixed")],
+            )
+            .preferred(),
+        );
+        let code_actions = server
+            .code_action(CodeActionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 3),
+                },
+                context: CodeActionContext {
+                    diagnostics: vec![analysis_diagnostic_to_lsp(&diagnostic, &uri)],
+                    only: Some(vec![CodeActionKind::QUICKFIX]),
+                    trigger_kind: None,
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .await
+            .unwrap()
+            .expect("expected code action response");
+        assert_eq!(code_actions.len(), 1);
+        assert!(matches!(
+            &code_actions[0],
+            CodeActionOrCommand::CodeAction(action)
+                if action.title == "Replace invalid text"
+                    && action.kind == Some(CodeActionKind::QUICKFIX)
+                    && action.is_preferred == Some(true)
+        ));
 
         let document_symbols = server
             .document_symbol(tower_lsp::lsp_types::DocumentSymbolParams {

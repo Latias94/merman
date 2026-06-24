@@ -1,9 +1,13 @@
-use crate::{AnalysisDiagnostic, AnalysisPayload, DiagnosticSeverity, Utf16Position};
+use crate::{
+    AnalysisDiagnostic, AnalysisPayload, DiagnosticFix, DiagnosticSeverity, Utf16Position,
+};
 use lsp_types::{
     Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity as LspSeverity, Location,
     NumberOrString, Position, Range, Url,
 };
 use merman_core::{Engine, ParseOptions};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::OnceLock;
 
 pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload, uri: &Url) -> Vec<Diagnostic> {
@@ -39,7 +43,7 @@ pub fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) ->
         related_information: related_information(diagnostic, uri),
         tags: None,
         code_description: None,
-        data: None,
+        data: diagnostic_data(diagnostic),
     }
 }
 
@@ -65,6 +69,26 @@ pub fn diagram_type_for_text(text: &str) -> Option<String> {
 fn analysis_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(Engine::new)
+}
+
+pub fn diagnostic_code_action_data(
+    diagnostic: &AnalysisDiagnostic,
+) -> Option<DiagnosticCodeActionData> {
+    (!diagnostic.fixes.is_empty()).then(|| DiagnosticCodeActionData {
+        id: diagnostic.id.clone(),
+        fixes: diagnostic.fixes.clone(),
+    })
+}
+
+fn diagnostic_data(diagnostic: &AnalysisDiagnostic) -> Option<Value> {
+    diagnostic_code_action_data(diagnostic).and_then(|data| serde_json::to_value(data).ok())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticCodeActionData {
+    pub id: String,
+    pub fixes: Vec<DiagnosticFix>,
 }
 
 fn related_information(
@@ -95,7 +119,10 @@ fn related_information(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, SourceDescriptor};
+    use crate::{
+        AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
+        SourceDescriptor, SourceMap,
+    };
 
     #[test]
     fn payload_projection_preserves_message_and_uri() {
@@ -112,6 +139,34 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].message, "no Mermaid diagram detected");
+    }
+
+    #[test]
+    fn payload_projection_preserves_fix_metadata_in_diagnostic_data() {
+        let map = SourceMap::new("bad");
+        let span = map.whole_source_span().unwrap();
+        let diagnostic = AnalysisDiagnostic::error(
+            "merman.test.fix",
+            DiagnosticCategory::Semantic,
+            "test diagnostic",
+        )
+        .with_fix(
+            DiagnosticFix::new(
+                "Replace invalid text",
+                vec![DiagnosticFixEdit::new(span, "fixed")],
+            )
+            .preferred(),
+        );
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let projected = analysis_diagnostic_to_lsp(&diagnostic, &uri);
+        let data: DiagnosticCodeActionData =
+            serde_json::from_value(projected.data.expect("diagnostic data")).unwrap();
+
+        assert_eq!(data.id, "merman.test.fix");
+        assert_eq!(data.fixes.len(), 1);
+        assert_eq!(data.fixes[0].title, "Replace invalid text");
+        assert!(data.fixes[0].is_preferred);
+        assert_eq!(data.fixes[0].edits[0].replacement, "fixed");
     }
 
     #[test]

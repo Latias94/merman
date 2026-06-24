@@ -39,13 +39,17 @@ Bob-->Alice: I am good thanks!"#;
 fn parse_sequence_editor_facts_preserve_actor_and_box_spans() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram
+title: Diagram Title
+accTitle: Accessible Title
+accDescr: Accessible Description
 participant Alice
 actor Bob
 box rgb(240,240,240) Team
 participant Carol
 end
 Alice->>Bob: Hello
-Note over Alice,Bob: Review"#;
+Note over Alice,Bob: Review
+details Alice: {"owner": "platform"}"#;
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
         .unwrap()
@@ -80,6 +84,71 @@ Note over Alice,Bob: Review"#;
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
     }));
+
+    let payload_symbol = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing payload {name:?} / {detail:?}"))
+    };
+
+    for (name, detail) in [
+        ("Diagram Title", "sequence title"),
+        ("Accessible Title", "sequence accessibility title"),
+        (
+            "Accessible Description",
+            "sequence accessibility description",
+        ),
+        ("Hello", "sequence message"),
+        ("Review", "sequence note"),
+        (r#"{"owner": "platform"}"#, "sequence interaction payload"),
+    ] {
+        let symbol = payload_symbol(name, detail);
+        let start = text.find(name).unwrap();
+        assert_eq!(symbol.role, EditorSemanticRole::Payload);
+        assert_eq!(symbol.kind, EditorSemanticKind::String);
+        assert_eq!(symbol.selection.start, start);
+        assert_eq!(symbol.selection.end, start + name.len());
+    }
+
+    for prefix in ["title", "accTitle", "accDescr", "details"] {
+        assert!(facts.directive_prefixes.iter().any(|p| p == prefix));
+    }
+}
+
+#[test]
+fn parse_sequence_editor_payload_spans_skip_directive_prefix_text() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+title: title
+accTitle: Title
+accDescr: accDescr
+Alice->>Bob: Alice"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    for (name, detail) in [
+        ("title", "sequence title"),
+        ("Title", "sequence accessibility title"),
+        ("accDescr", "sequence accessibility description"),
+        ("Alice", "sequence message"),
+    ] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing payload {name:?} / {detail:?}"));
+        let start = text.rfind(name).unwrap();
+        assert_eq!(symbol.role, EditorSemanticRole::Payload);
+        assert_eq!(symbol.kind, EditorSemanticKind::String);
+        assert_eq!(symbol.selection.start, start);
+        assert_eq!(symbol.selection.end, start + name.len());
+    }
 }
 
 #[test]

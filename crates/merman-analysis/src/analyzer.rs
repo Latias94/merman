@@ -107,19 +107,25 @@ impl Analyzer {
             }
         }
 
+        let source_lints = crate::rules::source_lint_diagnostics(source, &source_map);
+
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine.parse_diagram_sync(source, self.options.parse)
         }));
 
         match parse_result {
-            Err(panic_payload) => self.payload(vec![panic_diagnostic(panic_payload, &source_map)]),
+            Err(panic_payload) => self.payload(with_source_lints(
+                vec![panic_diagnostic(panic_payload, &source_map)],
+                source_lints,
+            )),
             Ok(parse_result) => match parse_result {
                 Ok(Some(parsed)) => {
-                    let mut diagnostics = crate::rules::semantic_warning_diagnostics(
+                    let mut diagnostics = source_lints;
+                    diagnostics.extend(crate::rules::semantic_warning_diagnostics(
                         &parsed.meta.diagram_type,
                         &parsed.model,
                         &source_map,
-                    );
+                    ));
                     diagnostics.extend(self.editor_recovery_diagnostics(
                         source,
                         &parsed.meta.diagram_type,
@@ -127,9 +133,15 @@ impl Analyzer {
                     ));
                     self.payload(diagnostics)
                 }
-                Ok(None) => self.payload(vec![no_diagram_diagnostic(&source_map)]),
+                Ok(None) => self.payload(with_source_lints(
+                    vec![no_diagram_diagnostic(&source_map)],
+                    source_lints,
+                )),
                 Err(error) => {
-                    let mut diagnostics = vec![core_error_diagnostic(error, &source_map)];
+                    let mut diagnostics = with_source_lints(
+                        vec![core_error_diagnostic(error, &source_map)],
+                        source_lints,
+                    );
                     let diagram_type = diagnostics
                         .first()
                         .and_then(|diagnostic| diagnostic.diagram_type.as_deref())
@@ -179,6 +191,14 @@ impl Analyzer {
             Ok(Ok(None) | Err(_)) => Vec::new(),
         }
     }
+}
+
+fn with_source_lints(
+    mut diagnostics: Vec<AnalysisDiagnostic>,
+    source_lints: Vec<AnalysisDiagnostic>,
+) -> Vec<AnalysisDiagnostic> {
+    diagnostics.extend(source_lints);
+    diagnostics
 }
 
 fn engine_from_options(options: &AnalysisOptions) -> Engine {
@@ -371,5 +391,26 @@ mod tests {
                 .contains("state parser recovered after parse error")
         );
         assert!(recovery.span.is_some());
+    }
+
+    #[test]
+    fn analyze_init_directive_alias_emits_safe_fix() {
+        let analyzer = Analyzer::new();
+        let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let payload = analyzer.analyze(source);
+
+        assert!(payload.valid);
+        assert_eq!(payload.summary.hints, 1);
+        let diagnostic = payload
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == "merman.config.prefer_init_directive")
+            .expect("init directive alias diagnostic");
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+        let span = diagnostic.span.as_ref().expect("keyword span");
+        assert_eq!(&source[span.byte_start..span.byte_end], "initialize");
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(diagnostic.fixes[0].edits[0].replacement, "init");
     }
 }

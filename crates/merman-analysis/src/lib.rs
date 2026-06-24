@@ -16,10 +16,14 @@ mod source_map;
 mod status;
 
 pub use analyzer::{AnalysisOptions, Analyzer};
-pub use editor::{ByteSpan, EditorSymbolKind, FenceLineItem, FenceTextIndex, FenceTextIndexSource};
+pub use editor::{
+    ByteSpan, EditorSymbolKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,
+    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+};
 pub use payload::{
-    AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticRelated, DiagnosticSeverity,
-    DiagnosticSpan, SourceDescriptor, SourceKind, Summary, Utf16Position,
+    AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
+    DiagnosticRelated, DiagnosticSeverity, DiagnosticSpan, SourceDescriptor, SourceKind, Summary,
+    Utf16Position,
 };
 pub use source_map::{LineCol, SourceMap, SourceMapError};
 pub use status::AnalysisStatus;

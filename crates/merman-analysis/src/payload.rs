@@ -153,6 +153,48 @@ pub struct DiagnosticRelated {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticFixEdit {
+    pub span: DiagnosticSpan,
+    pub replacement: String,
+}
+
+impl DiagnosticFixEdit {
+    pub fn new(span: DiagnosticSpan, replacement: impl Into<String>) -> Self {
+        Self {
+            span,
+            replacement: replacement.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticFix {
+    pub title: String,
+    pub edits: Vec<DiagnosticFixEdit>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub is_preferred: bool,
+}
+
+impl DiagnosticFix {
+    pub fn new(title: impl Into<String>, edits: Vec<DiagnosticFixEdit>) -> Self {
+        Self {
+            title: title.into(),
+            edits,
+            is_preferred: false,
+        }
+    }
+
+    pub fn preferred(mut self) -> Self {
+        self.is_preferred = true;
+        self
+    }
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisDiagnostic {
     pub id: String,
     pub severity: DiagnosticSeverity,
@@ -165,6 +207,8 @@ pub struct AnalysisDiagnostic {
     #[serde(default)]
     pub related: Vec<DiagnosticRelated>,
     pub help: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixes: Vec<DiagnosticFix>,
 }
 
 impl AnalysisDiagnostic {
@@ -185,6 +229,7 @@ impl AnalysisDiagnostic {
             span: None,
             related: Vec::new(),
             help: None,
+            fixes: Vec::new(),
         }
     }
 
@@ -214,6 +259,16 @@ impl AnalysisDiagnostic {
 
     pub fn with_help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
+        self
+    }
+
+    pub fn with_fix(mut self, fix: DiagnosticFix) -> Self {
+        self.fixes.push(fix);
+        self
+    }
+
+    pub fn with_fixes(mut self, fixes: impl IntoIterator<Item = DiagnosticFix>) -> Self {
+        self.fixes.extend(fixes);
         self
     }
 }

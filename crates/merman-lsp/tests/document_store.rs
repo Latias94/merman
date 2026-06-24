@@ -1,4 +1,4 @@
-use merman_analysis::FenceTextIndexSource;
+use merman_analysis::{FenceSemanticRole, FenceTextIndexSource};
 use merman_lsp::document_store::DocumentStore;
 use tower_lsp::lsp_types::Url;
 
@@ -109,6 +109,102 @@ fn sequence_documents_use_parser_facts() {
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "Alice"));
     assert!(index.node_ids().any(|id| id == "Bob"));
+}
+
+#[test]
+fn sequence_payload_facts_do_not_pollute_completion_ids() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "sequenceDiagram\n",
+            "title: Diagram Title\n",
+            "accTitle: Accessible Title\n",
+            "accDescr: Accessible Description\n",
+            "participant Alice\n",
+            "actor Bob\n",
+            "Alice->>Bob: Hello\n",
+            "Note over Alice,Bob: Review\n",
+            "details Alice: {\"owner\": \"platform\"}\n",
+            "links Alice: { \"Repo\": \"https://example.com/\" }\n",
+            "link Alice: Endpoint @ https://alice.example.com\n",
+            "properties Alice: {\"class\": \"internal-service-actor\"}\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "Alice"));
+    assert!(index.node_ids().any(|id| id == "Bob"));
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "Alice" && item.role == FenceSemanticRole::Entity)
+    );
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "Bob" && item.role == FenceSemanticRole::Entity)
+    );
+    for payload in [
+        "Diagram Title",
+        "Accessible Title",
+        "Accessible Description",
+        "Hello",
+        "Review",
+        r#"{"owner": "platform"}"#,
+        r#"{ "Repo": "https://example.com/" }"#,
+        "Endpoint @ https://alice.example.com",
+        r#"{"class": "internal-service-actor"}"#,
+    ] {
+        assert!(
+            index
+                .semantic_items()
+                .iter()
+                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+            "sequence payload {payload:?} was not retained as a semantic item"
+        );
+    }
+
+    for leaked in [
+        "Diagram Title",
+        "Accessible Title",
+        "Accessible Description",
+        "Hello",
+        "Review",
+        r#"{"owner": "platform"}"#,
+        "Repo",
+        "Endpoint",
+        "https://example.com/",
+        "https://alice.example.com",
+        "internal-service-actor",
+    ] {
+        assert!(
+            !index.node_ids().any(|id| id == leaked),
+            "sequence payload leaked {leaked:?} into completion ids"
+        );
+        assert!(
+            !index.outline_items().iter().any(|item| item.name == leaked),
+            "sequence payload leaked {leaked:?} into outline items"
+        );
+    }
+
+    for prefix in [
+        "title",
+        "accTitle",
+        "accDescr",
+        "details",
+        "links",
+        "link",
+        "properties",
+    ] {
+        assert!(index.has_directive_prefix(prefix));
+    }
 }
 
 #[test]

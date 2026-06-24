@@ -93,6 +93,7 @@ fn collect_sequence_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts 
 #[derive(Debug, Default)]
 struct SequenceEditorFactCollector {
     expected_actor: Option<ExpectedSequenceActor>,
+    expected_text: Option<ExpectedSequenceText>,
     pending_message_source: Option<PendingSequenceActor>,
     after_box_keyword: bool,
 }
@@ -112,6 +113,13 @@ enum ExpectedSequenceActor {
     InteractionTarget,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ExpectedSequenceText {
+    Message,
+    Note,
+    Interaction,
+}
+
 impl SequenceEditorFactCollector {
     fn accept(
         &mut self,
@@ -126,12 +134,25 @@ impl SequenceEditorFactCollector {
             Tok::Participant => self.expect_actor(ExpectedSequenceActor::Participant),
             Tok::ActorKw => self.expect_actor(ExpectedSequenceActor::Actor),
             Tok::Create | Tok::Destroy => self.expect_actor(ExpectedSequenceActor::Participant),
-            Tok::Activate
-            | Tok::Deactivate
-            | Tok::Links
-            | Tok::Link
-            | Tok::Properties
-            | Tok::Details => self.expect_actor(ExpectedSequenceActor::InteractionTarget),
+            Tok::Activate | Tok::Deactivate => {
+                self.expect_actor(ExpectedSequenceActor::InteractionTarget)
+            }
+            Tok::Links => {
+                facts.push_directive_prefix("links");
+                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+            }
+            Tok::Link => {
+                facts.push_directive_prefix("link");
+                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+            }
+            Tok::Properties => {
+                facts.push_directive_prefix("properties");
+                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+            }
+            Tok::Details => {
+                facts.push_directive_prefix("details");
+                self.expect_actor(ExpectedSequenceActor::InteractionTarget);
+            }
             Tok::Note => {
                 self.pending_message_source = None;
             }
@@ -161,9 +182,37 @@ impl SequenceEditorFactCollector {
                     self.after_box_keyword = false;
                 }
             }
-            Tok::Title(_) | Tok::CompatTitle(_) => facts.push_directive_prefix("title"),
-            Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
-            Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
+            Tok::Text(text) => {
+                if let Some(expected) = self.expected_text.take() {
+                    push_sequence_text_payload(text, expected, start, end, code, facts);
+                }
+            }
+            Tok::Title(text) | Tok::CompatTitle(text) => {
+                facts.push_directive_prefix("title");
+                push_sequence_named_payload(text, "sequence title", start, end, code, facts);
+            }
+            Tok::AccTitle(text) => {
+                facts.push_directive_prefix("accTitle");
+                push_sequence_named_payload(
+                    text,
+                    "sequence accessibility title",
+                    start,
+                    end,
+                    code,
+                    facts,
+                );
+            }
+            Tok::AccDescr(text) | Tok::AccDescrMultiline(text) => {
+                facts.push_directive_prefix("accDescr");
+                push_sequence_named_payload(
+                    text,
+                    "sequence accessibility description",
+                    start,
+                    end,
+                    code,
+                    facts,
+                );
+            }
             Tok::End
             | Tok::Loop
             | Tok::Rect
@@ -183,13 +232,13 @@ impl SequenceEditorFactCollector {
             | Tok::Minus
             | Tok::Central
             | Tok::Num(_)
-            | Tok::Text(_)
             | Tok::Config(_) => {}
         }
     }
 
     fn reset_line_state(&mut self) {
         self.expected_actor = None;
+        self.expected_text = None;
         self.pending_message_source = None;
         self.after_box_keyword = false;
     }
@@ -228,6 +277,12 @@ impl SequenceEditorFactCollector {
             span,
             span,
         ));
+        self.expected_text = match expected {
+            ExpectedSequenceActor::MessageTarget => Some(ExpectedSequenceText::Message),
+            ExpectedSequenceActor::NoteActor => Some(ExpectedSequenceText::Note),
+            ExpectedSequenceActor::InteractionTarget => Some(ExpectedSequenceText::Interaction),
+            ExpectedSequenceActor::Participant | ExpectedSequenceActor::Actor => None,
+        };
         self.expected_actor = None;
     }
 
@@ -242,6 +297,59 @@ impl SequenceEditorFactCollector {
             ));
         }
     }
+}
+
+fn push_sequence_text_payload(
+    text: String,
+    expected: ExpectedSequenceText,
+    start: usize,
+    end: usize,
+    code: &str,
+    facts: &mut EditorSemanticFacts,
+) {
+    let detail = match expected {
+        ExpectedSequenceText::Message => "sequence message",
+        ExpectedSequenceText::Note => "sequence note",
+        ExpectedSequenceText::Interaction => "sequence interaction payload",
+    };
+    push_sequence_named_payload(text, detail, start, end, code, facts);
+}
+
+fn push_sequence_named_payload(
+    text: String,
+    detail: &str,
+    start: usize,
+    end: usize,
+    code: &str,
+    facts: &mut EditorSemanticFacts,
+) {
+    let Some(selection) = sequence_payload_selection(&text, start, end, code) else {
+        return;
+    };
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text,
+        Some(detail.to_string()),
+        EditorSemanticKind::String,
+        SourceSpan::new(start, end),
+        selection,
+    ));
+}
+
+fn sequence_payload_selection(
+    text: &str,
+    start: usize,
+    end: usize,
+    code: &str,
+) -> Option<SourceSpan> {
+    if text.is_empty() {
+        return None;
+    }
+    let raw = code.get(start..end)?;
+    let local_start = raw.rfind(text)?;
+    Some(SourceSpan::new(
+        start + local_start,
+        start + local_start + text.len(),
+    ))
 }
 
 fn push_sequence_box_symbol(

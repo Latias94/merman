@@ -22,6 +22,8 @@ async fn lsp_service_smoke_handles_initialize() {
             .unwrap();
 
     assert!(response.capabilities.completion_provider.is_some());
+    assert!(response.capabilities.code_action_provider.is_some());
+    assert!(response.capabilities.semantic_tokens_provider.is_some());
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
         Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Kind(

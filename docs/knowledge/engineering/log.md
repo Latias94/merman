@@ -6,6 +6,90 @@ status: active
 # Log
 
 ## 2026-06-24
+- Added protocol-independent `DiagnosticFix` and `DiagnosticFixEdit` metadata to
+  `AnalysisDiagnostic`, keeping empty fixes out of the JSON payload so the existing ADR-0070 schema
+  shape remains stable for diagnostics without safe edits.
+- Preserved fix metadata in LSP `Diagnostic.data` and added a `merman-lsp::code_actions` provider
+  that returns quickfix actions only for diagnostics carrying explicit safe fixes.
+- Advertised `textDocument/codeAction` quickfix capability, wired the server handler, and added
+  regressions proving actions appear for fix-backed diagnostics and are absent without fix metadata
+  or when non-quickfix actions are requested.
+- Added the first fix-backed lint rule, `merman.config.prefer_init_directive`, which reports
+  `%%{ initialize: ... }%%` directive aliases and offers a preferred source edit to replace
+  `initialize` with canonical `init`.
+- Remapped Markdown-fence fix edits back into host-document coordinates so quickfixes edit the
+  source document rather than fence-local byte ranges.
+- Re-verified the code-action foundation with `cargo test -p merman-analysis -p merman-lsp --lib
+  --tests`.
+- Replaced the analysis index's name-only reference table with typed `FenceReferenceGroup`
+  entries keyed by symbol name plus `EditorSymbolKind`.
+- Routed LSP definition, references, prepare-rename, and rename through item-based typed reference
+  group queries so same-name entities with different semantic kinds no longer collide.
+- Added analysis and LSP regressions proving same-name different-kind entities stay in separate
+  reference/rename groups.
+- Re-verified the typed-reference slice with `cargo test -p merman-analysis -p merman-lsp --lib
+  --tests`; `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast` currently stalls
+  while listing the `merman-lsp` binary target, so cargo test is the authoritative package-level
+  verification for this slice.
+- Added the first U6 semantic-token provider: `merman-lsp` now advertises
+  `textDocument/semanticTokens/full` and serves full-document tokens from parser-backed
+  `FenceSemanticItem` records.
+- Defined a stable semantic-token legend from `EditorSymbolKind` plus `mermanEntity`,
+  `mermanOutline`, and `mermanPayload` role modifiers so syntax highlighting does not need
+  LSP-local parsing or text heuristics.
+- Added semantic-token regressions for entity/outline/payload roles, Markdown absolute UTF-16
+  ranges, multiline payload splitting, initialize capability wiring, and the full-document handler.
+- Re-verified the semantic-token slice with `cargo nextest run -p merman-analysis -p merman-lsp
+  --no-fail-fast`; 82 tests passed.
+- Started U3 from the mature LSP/lint roadmap by adding role-aware parser-backed semantic items to
+  `merman-analysis::FenceTextIndex`; entity, outline, and payload facts are now retained after the
+  existing completion/outline/reference projections are derived.
+- Exported `FenceSemanticItem` and `FenceSemanticRole` so future lint, semantic-token, and
+  code-action providers can consume parser-backed payload spans without LSP-local parsing.
+- Added `FenceTextIndex::semantic_item_at_offset` and wired hover to prefer parser-backed semantic
+  items before falling back to outline/fence hover, so payload spans can now produce hover content.
+- Added `FenceTextIndex::entity_item_at_offset` and routed definition/references/prepareRename/
+  rename through entity-only semantic queries so payload facts stay out of navigation targets.
+- Strengthened sequence LSP regression coverage so payload facts must be retained as semantic
+  payload items while staying out of completion IDs and outline items.
+- Added a structure regression proving sequence title payload hover reports the parser-backed
+  payload detail.
+- Added a structure regression proving payload semantic items are not navigation targets.
+- Focus-verified with `cargo nextest run -p merman-analysis editor::tests -p merman-lsp
+  sequence_payload_facts_do_not_pollute_completion_ids --no-fail-fast`.
+- Re-verified the current U2/U3 worktree with `cargo nextest run -p merman-core --no-fail-fast`,
+  `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast`, `cargo fmt --all --check`,
+  `git diff --check`, and engineering wiki validation.
+- Re-ran `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast` after wiring payload
+  hover; 78 tests passed.
+- Re-ran `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast` after wiring
+  entity-only navigation queries; 79 tests passed.
+- Deepened sequence editor facts so `title`, `accTitle`, `accDescr`, message text, note text, and
+  `links`/`link`/`properties`/`details` interaction bodies are parser-backed payload-only spans,
+  with `links`/`link`/`properties`/`details` directive prefix tracking.
+- Fixed sequence payload selection so payloads named like their directive prefix, such as
+  `title: title` or `accTitle: Title`, select the payload text rather than the directive keyword.
+- Added core and LSP regressions proving sequence payload facts preserve exact spans while staying
+  out of completion IDs and outline items.
+- Re-verified with `cargo nextest run -p merman-core --no-fail-fast` and `cargo nextest run -p
+  merman-analysis -p merman-lsp --no-fail-fast`.
+- Continued U2 from the mature LSP/lint roadmap by shrinking `FenceTextIndex::from_text` so
+  payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, and `title`
+  no longer project into node IDs or outline entries; only their directive prefixes are retained.
+- Added a regression proving the text-scan fallback records those payload directive prefixes
+  without leaking payload symbols into the node-id or outline surfaces.
+- Re-verified the analysis and LSP suites with `cargo nextest run -p merman-analysis -p merman-lsp
+  --no-fail-fast`, plus `cargo fmt --all`.
+- Created `docs/plans/2026-06-24-003-refactor-mature-mermaid-lsp-roadmap-plan.md` as the umbrella
+  plan for product-grade Mermaid LSP and lint maturity across semantic facts, lint rules, code
+  actions, semantic tokens, configuration, packaging, and readiness gates.
+- Updated current engineering memory so the active long-term goal now points at the mature LSP/lint
+  roadmap, with U1 capability tracking as the next implementation slice.
+- Added `progress/2026-06-24-mature-lsp-roadmap.md` to preserve the new roadmap state and external
+  reference context for future sessions.
+- Implemented the first U1 slice by adding `docs/lsp/README.md`, `docs/lsp/CAPABILITIES.md`, and a
+  parser-backed family capability matrix test in `crates/merman-lsp/tests/capabilities.rs`.
+- Verified U1 with `cargo nextest run -p merman-lsp --no-fail-fast` and `cargo fmt --all --check`.
 - Deepened flowchart directive facts so `style`, `classDef`, and `class` statements now preserve
   parser-backed spans for style targets, class targets, class definitions, style strings, and class
   names with entity/outline/payload roles.

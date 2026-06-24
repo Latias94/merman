@@ -134,6 +134,18 @@ pub fn remap_markdown_diagnostic(
         .and_then(|span| remap_span_to_document(document_map, span, body_start))
         .or(fence_span.clone());
 
+    for fix in &mut diagnostic.fixes {
+        fix.edits = fix
+            .edits
+            .drain(..)
+            .filter_map(|mut edit| {
+                edit.span = remap_span_to_document(document_map, edit.span, body_start)?;
+                Some(edit)
+            })
+            .collect();
+    }
+    diagnostic.fixes.retain(|fix| !fix.edits.is_empty());
+
     if let Some(span) = fence_span {
         diagnostic.related.push(DiagnosticRelated {
             message: format!("Mermaid fence {}", diagram_index + 1),
@@ -193,7 +205,7 @@ fn next_line_end(source: &str, start: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AnalysisDiagnostic, DiagnosticCategory};
+    use crate::{AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit};
 
     #[test]
     fn extracts_backtick_and_colon_mermaid_blocks() {
@@ -233,5 +245,45 @@ mod tests {
 
         assert_eq!(remapped.span.unwrap().line, 4);
         assert_eq!(remapped.related.len(), 1);
+    }
+
+    #[test]
+    fn remaps_fix_edits_back_into_host_document_coordinates() {
+        let source = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter";
+        let document_map = SourceMap::new(source);
+        let chart = extract_charts_with_spans(source)
+            .into_iter()
+            .next()
+            .unwrap();
+        let local_map = SourceMap::new(&chart.definition);
+        let start = local_map.source().find("initialize").unwrap();
+        let end = start + "initialize".len();
+        let local_span = local_map.span(start, end).unwrap();
+        let diagnostic = AnalysisDiagnostic::error(
+            "merman.config.prefer_init_directive",
+            DiagnosticCategory::Config,
+            "prefer init",
+        )
+        .with_span(local_span.clone())
+        .with_fix(DiagnosticFix::new(
+            "Replace `initialize` with `init`",
+            vec![DiagnosticFixEdit::new(local_span, "init")],
+        ));
+
+        let remapped = remap_markdown_diagnostic(
+            diagnostic,
+            &document_map,
+            chart.body_start,
+            document_map.span(chart.start, chart.end).ok(),
+            0,
+        );
+        let edit_span = &remapped.fixes[0].edits[0].span;
+
+        assert_eq!(
+            &source[edit_span.byte_start..edit_span.byte_end],
+            "initialize"
+        );
+        assert_eq!(edit_span.line, 3);
+        assert_eq!(remapped.fixes[0].edits[0].replacement, "init");
     }
 }
