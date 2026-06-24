@@ -99,6 +99,7 @@ struct ClassEditorFactCollector {
     expected_name: Option<ExpectedClassName>,
     pending_relation_source: Option<ClassTokenSymbol>,
     after_annotation_start: bool,
+    in_interaction: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +153,7 @@ impl ClassEditorFactCollector {
                     Tok::CallbackKw => "callback",
                     _ => "click",
                 });
+                self.in_interaction = true;
                 self.expect_name(ExpectedClassName::ClickTarget);
             }
             Tok::AnnotationStart => {
@@ -200,6 +202,24 @@ impl ClassEditorFactCollector {
             Tok::Member(member) => {
                 self.push_member_symbol(facts, member, SourceSpan::new(start, end));
             }
+            Tok::Str(text) => {
+                if self.in_interaction {
+                    self.push_interaction_string_payload(facts, &text, SourceSpan::new(start, end));
+                }
+            }
+            Tok::LinkTarget(target) => {
+                if self.in_interaction {
+                    self.push_payload_symbol(
+                        facts,
+                        ClassTokenSymbol {
+                            name: target,
+                            span: SourceSpan::new(start, end),
+                        },
+                        "class link target",
+                        EditorSemanticKind::String,
+                    );
+                }
+            }
             Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
             Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
             Tok::Direction(_)
@@ -209,9 +229,7 @@ impl ClassEditorFactCollector {
             | Tok::SquareStart
             | Tok::SquareStop
             | Tok::StyleSeparator
-            | Tok::Str(_)
             | Tok::RestOfLine(_)
-            | Tok::LinkTarget(_)
             | Tok::CallbackName(_)
             | Tok::CallbackArgs(_) => {}
         }
@@ -221,6 +239,7 @@ impl ClassEditorFactCollector {
         self.expected_name = None;
         self.pending_relation_source = None;
         self.after_annotation_start = false;
+        self.in_interaction = false;
     }
 
     fn expect_name(&mut self, expected: ExpectedClassName) {
@@ -305,6 +324,29 @@ impl ClassEditorFactCollector {
             name,
             Some("class member".to_string()),
             EditorSemanticKind::Property,
+            span,
+            selection,
+        ));
+    }
+
+    fn push_interaction_string_payload(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        text: &str,
+        span: SourceSpan,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        let selection = if span.end >= span.start + text.len() + 2 {
+            SourceSpan::new(span.start + 1, span.start + 1 + text.len())
+        } else {
+            span
+        };
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            text,
+            Some("class interaction string".to_string()),
+            EditorSemanticKind::String,
             span,
             selection,
         ));

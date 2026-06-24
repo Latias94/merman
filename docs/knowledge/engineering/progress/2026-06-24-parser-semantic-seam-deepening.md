@@ -49,6 +49,10 @@ partial parse results instead of raw-text heuristic scans.
 - Class member facts are now role-aware: class-body members and inline `Class: member` entries are
   outline-only symbols, while annotation names are payload-only spans. This preserves data needed
   by future lint/semantic consumers without adding members or annotations to node-id completion.
+- Class interaction strings and link targets are now payload-only parser facts. Class ids targeted
+  by `click`/`link`/`callback` remain entity facts, while quoted URLs/tooltips and `_blank`-style
+  link targets are retained for future lint/semantic consumers without entering completion or
+  outline.
 - ER is the fifth migrated family: `IdList` is now span-rich internally, editor facts cover
   entities, relationship endpoints, attribute names, inline classes, class/style/classDef targets,
   and incomplete ER buffers recover from the ER lexer token stream instead of raw-text scans.
@@ -110,9 +114,10 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: deepen class/state/mindmap directive payload spans,
-design cross-line payload spans for Gantt multiline `accDescr`, or expose recovered parser
-diagnostics alongside recovered facts. Do not add new heuristic parsing in LSP for covered
+Choose the next parser seam slice deliberately: calibrate class callback/style payload spans, deepen
+state/mindmap directive payload spans, design cross-line payload spans for Gantt multiline
+`accDescr`, or expose recovered parser diagnostics alongside recovered facts. Do not add new
+heuristic parsing in LSP for covered
 flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations

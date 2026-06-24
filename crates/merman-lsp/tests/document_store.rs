@@ -201,7 +201,7 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
             "}\n",
             "<<interface>> User\n",
             "User: email\n",
-            "click User href \"https://example.com\"\n",
+            "click User href \"https://example.com\" \"Open user\" _blank\n",
         )
         .to_string(),
     );
@@ -213,6 +213,9 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
     assert!(!index.node_ids().any(|id| id == "-password: String"));
     assert!(!index.node_ids().any(|id| id == "email"));
     assert!(!index.node_ids().any(|id| id == "interface"));
+    assert!(!index.node_ids().any(|id| id == "https://example.com"));
+    assert!(!index.node_ids().any(|id| id == "Open user"));
+    assert!(!index.node_ids().any(|id| id == "_blank"));
 
     assert!(
         index
@@ -238,6 +241,24 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
             .outline_items()
             .iter()
             .any(|item| item.name == "interface")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "https://example.com")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Open user")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "_blank")
     );
 }
 

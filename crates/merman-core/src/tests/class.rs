@@ -467,7 +467,7 @@ namespace Company {
 User <|-- Admin
 User: email
 <<interface>> User
-click User href "https://example.com"
+click User href "https://example.com" "Open user" _blank
 classDef service fill:#eee
 "#;
     let facts = engine
@@ -522,6 +522,21 @@ classDef service fill:#eee
     let annotation = symbol_at("interface", annotation_start);
     assert_eq!(annotation.role, EditorSemanticRole::Payload);
     assert_eq!(annotation.detail.as_deref(), Some("class annotation"));
+
+    let href_start = text.find("https://example.com").unwrap();
+    let href = symbol_at("https://example.com", href_start);
+    assert_eq!(href.role, EditorSemanticRole::Payload);
+    assert_eq!(href.detail.as_deref(), Some("class interaction string"));
+
+    let tooltip_start = text.find("Open user").unwrap();
+    let tooltip = symbol_at("Open user", tooltip_start);
+    assert_eq!(tooltip.role, EditorSemanticRole::Payload);
+    assert_eq!(tooltip.detail.as_deref(), Some("class interaction string"));
+
+    let target_start = text.find("_blank").unwrap();
+    let target = symbol_at("_blank", target_start);
+    assert_eq!(target.role, EditorSemanticRole::Payload);
+    assert_eq!(target.detail.as_deref(), Some("class link target"));
 
     let service_start = text.find("service").unwrap();
     assert_eq!(
