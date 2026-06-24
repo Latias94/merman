@@ -64,6 +64,8 @@ partial parse results instead of raw-text heuristic scans.
   references, `click` targets, and directive prefixes now come from the Gantt statement parser
   rules with complete/recovered provenance. The relative-reference matcher now has a range
   projection so editor facts reuse the same Mermaid-backed dependency grammar as render semantics.
+- Gantt section titles are now outline-only parser facts. They feed document-symbol/hover style
+  structure through the shared index without becoming task-id completion candidates.
 - Gantt editor completeness is tolerant of original-source YAML front matter and Mermaid init
   directives, so parser-backed facts preserve original byte spans without misclassifying valid
   editor buffers as recovered.
@@ -92,15 +94,16 @@ partial parse results instead of raw-text heuristic scans.
   `cargo nextest run -p merman-core parse_er_editor_facts`,
   `cargo nextest run -p merman-core state`, `cargo nextest run -p merman-core class`,
   `cargo nextest run -p merman-core er`, `cargo nextest run -p merman-core mindmap`,
-  `cargo nextest run -p merman-core gantt`, `cargo nextest run -p merman-core editor_facts`,
-  `cargo nextest run -p merman-analysis`, and `cargo nextest run -p merman-lsp`.
+  `cargo nextest run -p merman-core gantt`,
+  `cargo nextest run -p merman-core gantt_editor_facts_preserve_parser_symbol_spans`,
+  `cargo nextest run -p merman-core editor_facts`, `cargo nextest run -p merman-analysis`,
+  and `cargo nextest run -p merman-lsp`.
 
 # Next Action
 
 Choose the next parser seam slice deliberately: deepen class/state/mindmap/gantt directive payload
-spans for rename and references, add role-aware outline facts for constructs like Gantt sections,
-or expose recovered parser diagnostics alongside recovered facts. Do not add new heuristic parsing
-in LSP for covered
+spans for rename and references, or expose recovered parser diagnostics alongside recovered facts.
+Do not add new heuristic parsing in LSP for covered
 flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations

@@ -325,6 +325,12 @@ fn gantt_documents_use_parser_facts() {
     assert!(index.node_ids().any(|id| id == "id1"));
     assert!(index.node_ids().any(|id| id == "id2"));
     assert!(!index.node_ids().any(|id| id == "Demo"));
+    assert!(
+        index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Demo" && item.detail.as_deref() == Some("gantt section"))
+    );
     assert!(index.has_directive_prefix("dateFormat"));
     assert!(index.has_directive_prefix("section"));
     assert!(index.has_directive_prefix("click"));

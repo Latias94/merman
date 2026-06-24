@@ -1,5 +1,8 @@
 use super::*;
-use crate::{EditorSemanticCompleteness, Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
+use crate::{
+    EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig, ParseOptions,
+    RenderSemanticModel,
+};
 use chrono::NaiveDate;
 use futures::executor::block_on;
 use serde_json::json;
@@ -62,6 +65,15 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             .iter()
             .any(|prefix| prefix == "click")
     );
+
+    let section_start = text.find("Demo").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Demo"
+            && symbol.role == EditorSemanticRole::Outline
+            && symbol.detail.as_deref() == Some("gantt section")
+            && symbol.selection.start == section_start
+            && symbol.selection.end == section_start + "Demo".len()
+    }));
 
     let id1_def_start = text.find("id1,2014").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {

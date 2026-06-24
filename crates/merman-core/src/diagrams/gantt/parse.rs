@@ -335,8 +335,9 @@ fn collect_gantt_statement_editor_facts(
         facts.push_directive_prefix("title");
         return true;
     }
-    if parse_keyword_arg_full_line(stripped, "section").is_some() {
+    if let Some(section) = parse_keyword_arg_full_line(stripped, "section") {
         facts.push_directive_prefix("section");
+        collect_gantt_section_symbol(stripped, line_start, section, facts);
         return true;
     }
     if parse_key_colon_value(stripped, "accTitle").is_some() {
@@ -407,6 +408,39 @@ fn collect_gantt_click_target_symbols(
         statement_span,
         facts,
     );
+}
+
+fn collect_gantt_section_symbol(
+    line: &str,
+    line_start: usize,
+    section: &str,
+    facts: &mut EditorSemanticFacts,
+) {
+    let trimmed_line = line.trim_start();
+    let leading = line.len().saturating_sub(trimmed_line.len());
+    let Some(raw_section_start) = trimmed_line.find(section) else {
+        return;
+    };
+    let raw_start = line_start + leading + raw_section_start;
+    let Some(section) = (SpannedText {
+        text: section,
+        start: raw_start,
+        end: raw_start + section.len(),
+    })
+    .trim() else {
+        return;
+    };
+
+    facts.push_symbol(EditorSemanticSymbol::outline(
+        section.text,
+        Some("gantt section".to_string()),
+        EditorSemanticKind::Namespace,
+        SourceSpan::new(
+            line_start + leading,
+            line_start + leading + trimmed_line.len(),
+        ),
+        section.span(),
+    ));
 }
 
 fn collect_gantt_task_symbols(

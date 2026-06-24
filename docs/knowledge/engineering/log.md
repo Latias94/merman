@@ -46,6 +46,8 @@ status: active
 - Added regressions proving ER payload facts do not pollute completion ids while core facts still preserve the spans for future lint consumers.
 - Deepened Class editor facts so class-body members and inline `Class: member` entries are outline-only symbols, while annotation names are payload-only spans for future lint/semantic consumers.
 - Added LSP regressions proving class member outline facts and annotation payload facts do not pollute completion ids, and re-verified class/core editor facts plus analysis/LSP suites.
+- Deepened Gantt editor facts so `section` titles are parser-backed outline-only symbols while remaining excluded from task-id completion.
+- Re-verified Gantt core tests plus `merman-analysis` and `merman-lsp` after the Gantt section outline projection landed.
 
 ## 2026-06-23
 - Confirmed alpha-stage fearless refactor scope for diagnostics-first analysis: canonical `analyze_json`, legacy `validate_json` projection, CLI lint, Markdown fence diagnostics, LSP-ready position mapping, ADR, and engineering memory are in scope.

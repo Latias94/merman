@@ -185,13 +185,13 @@ partial buffers and downstream migration.
   produces an internal event stream shared by render DB construction and editor facts, preserving
   node spans, class/icon directive prefixes, class/icon decoration semantics, inline-header spans,
   multiline-node behavior, and recovered facts for incomplete node delimiters. Gantt now emits
-  parser-backed task id, `after`/`until` dependency, `click` target, and directive-prefix facts
-  from the same statement grammar used by the render parser. Its relative-reference matcher now
-  exposes source ranges so editor facts reuse the Mermaid-backed dependency grammar instead of
-  reimplementing it downstream. Gantt editor completeness also tolerates original-source front
-  matter and Mermaid init directives while preserving original byte spans. Gantt `section` remains
-  a directive prefix, not a node id, so task completion stays focused on task identifiers; section
-  outline support should use a role-aware or outline-only fact rather than polluting `node_ids()`.
+  parser-backed task id, `after`/`until` dependency, `click` target, `section` outline, and
+  directive-prefix facts from the same statement grammar used by the render parser. Its
+  relative-reference matcher now exposes source ranges so editor facts reuse the Mermaid-backed
+  dependency grammar instead of reimplementing it downstream. Gantt editor completeness also
+  tolerates original-source front matter and Mermaid init directives while preserving original byte
+  spans. Gantt `section` is an outline-only fact, not a node id, so task completion stays focused
+  on task identifiers.
 - **Goal:** Bring `mindmap`, `gantt`, and the other line- or indentation-driven families that matter
   to the same contract.
 - **Files:** `crates/merman-core/src/diagrams/mindmap/*`,
@@ -215,9 +215,10 @@ partial buffers and downstream migration.
   unavailable. Mindmap now follows the same complete/recovered provenance path, and `merman-lsp`
   explicitly enables the core full/host feature profile so product LSP detection does not silently
   run with the tiny registry. Gantt now follows the same `ParserComplete`/`ParserRecovered`
-  provenance path in `DocumentStore`, and header completion includes `gantt`. The migration index
-  now respects semantic roles: entity facts feed completion/navigation/outline, outline facts feed
-  outline only, and payload facts stay out of LSP completion/navigation.
+  provenance path in `DocumentStore`, exposes Gantt sections as outline-only symbols, and header
+  completion includes `gantt`. The migration index now respects semantic roles: entity facts feed
+  completion/navigation/outline, outline facts feed outline only, and payload facts stay out of LSP
+  completion/navigation.
   Class member facts now use the outline role for class-body and inline `Class: member` entries,
   while annotation names are payload spans reserved for lint/future semantic consumers.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
@@ -287,9 +288,8 @@ partial buffers and downstream migration.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
   This preserves behavior while removing duplicated scan logic.
-- Gantt is the next high-value hand-written candidate because product LSP/lint needs task ids,
-  sections, dependencies, dates, and partial-line recovery; doing it parser-first avoids a large
-  completion/lint heuristic layer.
+- Gantt now exposes parser-backed task ids, section outlines, dependencies, and click targets for
+  editor consumers without adding section names to task-id completion.
 - LSP package profiles are now part of the architecture surface: editor products should opt into
   `core-full`/`core-host` unless they are deliberately shipping a reduced registry.
 - `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced
