@@ -38,6 +38,10 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
         "title Roadmap\n",
         "accTitle: Roadmap chart\n",
         "accDescr: Shows release tasks\n",
+        "accDescr {\n",
+        "  Shows release tasks\n",
+        "  across releases\n",
+        "}\n",
         "dateFormat YYYY-MM-DD\n",
         "section Demo\n",
         "Task 1: id1,2014-01-01,1d\n",
@@ -103,6 +107,16 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             && symbol.detail.as_deref() == Some("gantt accessibility description")
             && symbol.selection.start == acc_descr_start
             && symbol.selection.end == acc_descr_start + "Shows release tasks".len()
+    }));
+
+    let multiline_acc_descr_start = text.rfind("Shows release tasks").unwrap();
+    let multiline_acc_descr_end = text.find("across releases").unwrap() + "across releases".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Shows release tasks\n  across releases"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility description")
+            && symbol.selection.start == multiline_acc_descr_start
+            && symbol.selection.end == multiline_acc_descr_end
     }));
 
     let section_start = text.find("Demo").unwrap();
@@ -179,6 +193,25 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             && symbol.detail.as_deref() == Some("gantt click href")
             && symbol.selection.start == href_start
             && symbol.selection.end == href_start + "https://example.com/".len()
+    }));
+}
+
+#[test]
+fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
+    let text = concat!("gantt\n", "accDescr {\n", "  Draft release notes\n");
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let note_start = text.find("Draft release notes").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Draft release notes"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility description")
+            && symbol.selection.start == note_start
+            && symbol.selection.end == note_start + "Draft release notes".len()
     }));
 }
 

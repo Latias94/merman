@@ -474,6 +474,10 @@ fn gantt_documents_use_parser_facts() {
             "title Roadmap\n",
             "accTitle: Roadmap chart\n",
             "accDescr: Shows release tasks\n",
+            "accDescr {\n",
+            "  Shows release tasks\n",
+            "  across releases\n",
+            "}\n",
             "dateFormat YYYY-MM-DD\n",
             "section Demo\n",
             "Task 1: id1,2014-01-01,1d\n",
@@ -492,6 +496,11 @@ fn gantt_documents_use_parser_facts() {
     assert!(!index.node_ids().any(|id| id == "Roadmap"));
     assert!(!index.node_ids().any(|id| id == "Roadmap chart"));
     assert!(!index.node_ids().any(|id| id == "Shows release tasks"));
+    assert!(
+        !index
+            .node_ids()
+            .any(|id| id == "Shows release tasks\n  across releases")
+    );
     assert!(!index.node_ids().any(|id| id == "YYYY-MM-DD"));
     assert!(!index.node_ids().any(|id| id == "open"));
     assert!(!index.node_ids().any(|id| id == "userId"));
@@ -519,6 +528,12 @@ fn gantt_documents_use_parser_facts() {
             .outline_items()
             .iter()
             .any(|item| item.name == "Shows release tasks")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Shows release tasks\n  across releases")
     );
     assert!(
         !index

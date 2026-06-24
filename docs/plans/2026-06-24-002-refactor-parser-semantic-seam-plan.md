@@ -201,10 +201,9 @@ partial buffers and downstream migration.
   spans. Gantt directive payloads such as `title`, `dateFormat`, `axisFormat`, `tickInterval`,
   `includes`, `excludes`, `todayMarker`, `weekday`, and `weekend` are now parser-backed payload
   facts, `click` URLs/callback names/callback args are payload-only spans from the same click parser
-  used by render semantics, and single-line `accTitle:` / `accDescr:` values are payload-only spans.
-  Gantt `section` is an outline-only fact, not a node id, so task completion stays focused on task
-  identifiers. Multiline `accDescr { ... }` still needs a cross-line span representation before it
-  should become an editor fact.
+  used by render semantics, and `accTitle:` plus single-line/multiline `accDescr` values are
+  payload-only spans. Gantt `section` is an outline-only fact, not a node id, so task completion
+  stays focused on task identifiers.
 - **Goal:** Bring `mindmap`, `gantt`, and the other line- or indentation-driven families that matter
   to the same contract.
 - **Files:** `crates/merman-core/src/diagrams/mindmap/*`,
@@ -308,9 +307,9 @@ partial buffers and downstream migration.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
   This preserves behavior while removing duplicated scan logic.
-- Gantt now exposes parser-backed task ids, section outlines, directive/click/single-line
-  accessibility payloads, dependencies, and click targets for editor consumers without adding
-  section names or directive values to task-id completion.
+- Gantt now exposes parser-backed task ids, section outlines, directive/click/single-line and
+  multiline accessibility payloads, dependencies, and click targets for editor consumers without
+  adding section names or directive values to task-id completion.
 - LSP package profiles are now part of the architecture surface: editor products should opt into
   `core-full`/`core-host` unless they are deliberately shipping a reduced registry.
 - `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced

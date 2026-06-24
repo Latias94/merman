@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened `gantt` multiline accessibility facts so `accDescr { ... }` blocks now produce
+  payload-only parser facts with cross-line spans; unterminated blocks preserve recovered payload
+  facts for partial editor buffers.
 - Deepened `classDiagram` display-label and relation-multiplicity facts so quoted class labels and
   relation cardinality strings are payload-only parser facts without polluting completion or
   outline.
@@ -91,7 +94,8 @@ status: active
 - Deepened Gantt click facts by making the existing click parser span-aware and preserving `href` URLs, callback names, and callback args as payload-only facts while keeping click task ids as entity references.
 - Re-verified Gantt, core editor facts, `merman-analysis`, and `merman-lsp` after the click payload projection landed.
 - Deepened Gantt single-line accessibility facts so `accTitle:` and `accDescr:` values are payload-only parser spans while remaining out of completion and outline projection.
-- Left multiline `accDescr { ... }` as a future cross-line span design instead of forcing it into the current single-line fact collector.
+- Replaced the old Gantt multiline `accDescr { ... }` future note with a cross-line payload span
+  collector.
 - Deepened Class interaction facts so quoted URLs/tooltips and link targets are payload-only parser spans while class interaction targets remain entity facts.
 - Re-verified Class, core editor facts, `merman-analysis`, and `merman-lsp` after class interaction payload projection landed.
 

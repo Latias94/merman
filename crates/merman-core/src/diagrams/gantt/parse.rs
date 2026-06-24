@@ -250,7 +250,7 @@ fn collect_gantt_editor_facts_from_lines(code: &str) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let mut header_seen = false;
     let mut in_frontmatter = false;
-    let mut in_acc_descr_block = false;
+    let mut acc_descr_block = None;
     let mut offset = 0usize;
 
     for segment in code.split_inclusive('\n') {
@@ -260,10 +260,15 @@ fn collect_gantt_editor_facts_from_lines(code: &str) -> EditorSemanticFacts {
             offset,
             &mut header_seen,
             &mut in_frontmatter,
-            &mut in_acc_descr_block,
+            &mut acc_descr_block,
             &mut facts,
         );
         offset += segment.len();
+    }
+
+    if let Some(block) = acc_descr_block.take() {
+        block.emit_symbol(&mut facts);
+        facts.mark_recovered();
     }
 
     facts
@@ -279,7 +284,7 @@ fn collect_gantt_editor_line(
     line_start: usize,
     header_seen: &mut bool,
     in_frontmatter: &mut bool,
-    in_acc_descr_block: &mut bool,
+    acc_descr_block: &mut Option<GanttAccDescrBlock>,
     facts: &mut EditorSemanticFacts,
 ) {
     let raw_trimmed = line.trim();
@@ -294,9 +299,11 @@ fn collect_gantt_editor_line(
         return;
     }
 
-    if *in_acc_descr_block {
-        if line.contains('}') {
-            *in_acc_descr_block = false;
+    if let Some(block) = acc_descr_block.as_mut() {
+        if block.accept_continuation_line(line, line_start) {
+            if let Some(block) = acc_descr_block.take() {
+                block.emit_symbol(facts);
+            }
         }
         return;
     }
@@ -316,7 +323,7 @@ fn collect_gantt_editor_line(
             && !rest.trim().is_empty()
         {
             let recognized =
-                collect_gantt_statement_editor_facts(rest, rest_start, in_acc_descr_block, facts);
+                collect_gantt_statement_editor_facts(rest, rest_start, acc_descr_block, facts);
             if !recognized {
                 facts.mark_recovered();
             }
@@ -329,7 +336,7 @@ fn collect_gantt_editor_line(
     }
 
     let recognized =
-        collect_gantt_statement_editor_facts(stripped, line_start, in_acc_descr_block, facts);
+        collect_gantt_statement_editor_facts(stripped, line_start, acc_descr_block, facts);
     if !recognized {
         facts.mark_recovered();
     }
@@ -358,7 +365,7 @@ fn gantt_header_rest(line: &str, line_start: usize) -> Option<(&str, usize)> {
 fn collect_gantt_statement_editor_facts(
     line: &str,
     line_start: usize,
-    in_acc_descr_block: &mut bool,
+    acc_descr_block: &mut Option<GanttAccDescrBlock>,
     facts: &mut EditorSemanticFacts,
 ) -> bool {
     let stripped = strip_inline_comment(line);
@@ -531,9 +538,13 @@ fn collect_gantt_statement_editor_facts(
         );
         return true;
     }
-    if let Some(block_open) = gantt_acc_descr_block_open(stripped) {
+    if let Some(block) = GanttAccDescrBlock::start(stripped, line_start) {
         facts.push_directive_prefix("accDescr");
-        *in_acc_descr_block = block_open;
+        if block.is_complete() {
+            block.emit_symbol(facts);
+        } else {
+            *acc_descr_block = Some(block);
+        }
         return true;
     }
     if let Some(click) = parse_click_statement(stripped, line_start) {
@@ -576,15 +587,103 @@ fn parse_gantt_keyword_arg_spanned<'a>(
     })
 }
 
-fn gantt_acc_descr_block_open(line: &str) -> Option<bool> {
-    let trimmed = line.trim_start();
-    if !starts_with_ci(trimmed, "accDescr") {
-        return None;
+#[derive(Debug)]
+struct GanttAccDescrBlock {
+    statement_start: usize,
+    statement_end: usize,
+    body: String,
+    first_content_start: Option<usize>,
+    last_content_end: Option<usize>,
+    complete: bool,
+}
+
+impl GanttAccDescrBlock {
+    fn start(line: &str, line_start: usize) -> Option<Self> {
+        let trimmed = line.trim_start();
+        if !starts_with_ci(trimmed, "accDescr") {
+            return None;
+        }
+
+        let leading = line.len().saturating_sub(trimmed.len());
+        let after_key = &trimmed["accDescr".len()..];
+        let after_key_ws = leading_whitespace_len(after_key);
+        let open_offset = leading + "accDescr".len() + after_key_ws;
+        if !line[open_offset..].starts_with('{') {
+            return None;
+        }
+
+        let body_start = open_offset + '{'.len_utf8();
+        let mut block = Self {
+            statement_start: line_start + leading,
+            statement_end: line_start + line.len(),
+            body: String::new(),
+            first_content_start: None,
+            last_content_end: None,
+            complete: false,
+        };
+        block.accept_body_slice(&line[body_start..], line_start + body_start);
+        Some(block)
     }
 
-    let rest = trimmed["accDescr".len()..].trim_start();
-    let rest = rest.strip_prefix('{')?;
-    Some(!rest.contains('}'))
+    fn accept_continuation_line(&mut self, line: &str, line_start: usize) -> bool {
+        self.accept_body_slice(line, line_start);
+        self.complete
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    fn accept_body_slice(&mut self, text: &str, start: usize) {
+        let Some(close_offset) = text.find('}') else {
+            self.append_text(text, start);
+            self.body.push('\n');
+            self.statement_end = start + text.len();
+            return;
+        };
+
+        self.append_text(&text[..close_offset], start);
+        self.statement_end = start + close_offset + '}'.len_utf8();
+        self.complete = true;
+    }
+
+    fn append_text(&mut self, text: &str, start: usize) {
+        self.body.push_str(text);
+
+        if self.first_content_start.is_none() {
+            let leading = leading_whitespace_len(text);
+            if leading < text.len() {
+                self.first_content_start = Some(start + leading);
+            }
+        }
+
+        let trimmed_len = text.trim_end().len();
+        if trimmed_len > 0 {
+            self.last_content_end = Some(start + trimmed_len);
+        }
+    }
+
+    fn emit_symbol(self, facts: &mut EditorSemanticFacts) {
+        let text = self.body.trim();
+        if text.is_empty() {
+            return;
+        }
+
+        let Some(selection_start) = self.first_content_start else {
+            return;
+        };
+        let Some(selection_end) = self.last_content_end else {
+            return;
+        };
+
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            text.to_string(),
+            Some("gantt accessibility description".to_string()),
+            EditorSemanticKind::String,
+            SourceSpan::new(self.statement_start, self.statement_end),
+            SourceSpan::new(selection_start, selection_end),
+        ));
+    }
 }
 
 fn collect_gantt_click_symbols(
