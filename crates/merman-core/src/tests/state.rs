@@ -446,7 +446,13 @@ Idle --> Running
 state Running {
   [*] --> Active
 }
-state "Paused State" as Paused"#;
+state "Paused State" as Paused
+classDef activeStyle fill:#0f0,border:#333
+class Idle, Running activeStyle
+style Running fill:#f00
+accTitle: Lifecycle chart
+accDescr: Shows state transitions
+click Running "https://example.com/run" "Run details""#;
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
         .unwrap()
@@ -485,6 +491,75 @@ state "Paused State" as Paused"#;
         symbol_at("Paused", paused_start).selection.end,
         paused_start + "Paused".len()
     );
+
+    let active_style_start = text.find("activeStyle").unwrap();
+    let active_style = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "activeStyle"
+                && symbol.detail.as_deref() == Some("state class definition")
+        })
+        .unwrap();
+    assert_eq!(active_style.role, EditorSemanticRole::Outline);
+    assert_eq!(active_style.selection.start, active_style_start);
+
+    let idle_class_target = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Idle" && symbol.detail.as_deref() == Some("state class target")
+        })
+        .unwrap();
+    assert_eq!(idle_class_target.role, EditorSemanticRole::Entity);
+
+    let running_style = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "fill:#f00" && symbol.detail.as_deref() == Some("state style")
+        })
+        .unwrap();
+    assert_eq!(running_style.role, EditorSemanticRole::Payload);
+    assert!(running_style.selection.start > running_style.span.start);
+
+    let acc_title = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Lifecycle chart")
+        .unwrap();
+    assert_eq!(acc_title.role, EditorSemanticRole::Payload);
+    assert_eq!(
+        acc_title.detail.as_deref(),
+        Some("state accessibility title")
+    );
+
+    let acc_descr = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Shows state transitions")
+        .unwrap();
+    assert_eq!(acc_descr.role, EditorSemanticRole::Payload);
+    assert_eq!(
+        acc_descr.detail.as_deref(),
+        Some("state accessibility description")
+    );
+
+    let click_url = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "https://example.com/run")
+        .unwrap();
+    assert_eq!(click_url.role, EditorSemanticRole::Payload);
+    assert_eq!(click_url.detail.as_deref(), Some("state click url"));
+
+    let click_tooltip = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Run details")
+        .unwrap();
+    assert_eq!(click_tooltip.role, EditorSemanticRole::Payload);
+    assert_eq!(click_tooltip.detail.as_deref(), Some("state click tooltip"));
 }
 
 #[test]

@@ -134,13 +134,50 @@ fn state_documents_use_parser_facts() {
     let snapshot = store.upsert(
         uri,
         1,
-        "stateDiagram-v2\n[*] --> Idle\nIdle --> Running\n".to_string(),
+        concat!(
+            "stateDiagram-v2\n",
+            "[*] --> Idle\n",
+            "Idle --> Running\n",
+            "classDef activeStyle fill:#0f0,border:#333\n",
+            "class Idle, Running activeStyle\n",
+            "style Running fill:#f00\n",
+            "accTitle: Lifecycle chart\n",
+            "accDescr: Shows state transitions\n",
+            "click Running \"https://example.com/run\" \"Run details\"\n",
+        )
+        .to_string(),
     );
     let index = &snapshot.fences[0].text_index;
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "Idle"));
     assert!(index.node_ids().any(|id| id == "Running"));
+    assert!(!index.node_ids().any(|id| id == "activeStyle"));
+    assert!(!index.node_ids().any(|id| id == "fill:#0f0,border:#333"));
+    assert!(!index.node_ids().any(|id| id == "fill:#f00"));
+    assert!(!index.node_ids().any(|id| id == "Lifecycle chart"));
+    assert!(!index.node_ids().any(|id| id == "Shows state transitions"));
+    assert!(!index.node_ids().any(|id| id == "https://example.com/run"));
+    assert!(!index.node_ids().any(|id| id == "Run details"));
+    assert!(
+        index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "activeStyle"
+                && item.detail.as_deref() == Some("state class definition"))
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Lifecycle chart")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "https://example.com/run")
+    );
 }
 
 #[test]

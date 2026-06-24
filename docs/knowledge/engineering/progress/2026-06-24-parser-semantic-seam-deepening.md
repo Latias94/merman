@@ -42,6 +42,10 @@ partial parse results instead of raw-text heuristic scans.
   productions preserve spans for state ids, relation endpoints, nested states, note-bound states,
   and typed fork/join/choice states, and incomplete editor buffers recover symbols from the state
   lexer token stream rather than from free-form text scanning.
+- State parser facts now also supplement complete parses with token-backed class/style/click and
+  accessibility payload spans, plus class/style/click target references. These facts preserve
+  source coordinates for lint and future semantic consumers without adding LSP-side heuristics or
+  polluting node-id completion with directive values.
 - Class is the fourth migrated family: editor facts now come from the class lexer token stream with
   LALRPOP complete/recovered provenance, covering class declarations, namespaces, relation
   endpoints, member owners, annotation targets, style/classDef/cssClass targets, and click/link/
@@ -114,11 +118,11 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: calibrate class callback/style payload spans, deepen
-state/mindmap directive payload spans, design cross-line payload spans for Gantt multiline
-`accDescr`, or expose recovered parser diagnostics alongside recovered facts. Do not add new
-heuristic parsing in LSP for covered
-flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: calibrate class callback/style payload spans, move
+state toward a shared parser event stream or deepen state description/note payloads, deepen mindmap
+directive payload spans, design cross-line payload spans for Gantt multiline `accDescr`, or expose
+recovered parser diagnostics alongside recovered facts. Do not add new heuristic parsing in LSP for
+covered flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations
 

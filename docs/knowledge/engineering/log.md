@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened `stateDiagram` editor facts so `classDef` ids become outline facts, `class`/`style`
+  state targets remain entity references, and `class`/`style`/`click`/`accTitle`/`accDescr`
+  payloads stay span-rich for future lint and semantic consumers without polluting LSP
+  completion.
+- Re-verified the state slice with `cargo nextest run -p merman-core parse_state_editor_facts_preserve_parser_state_spans --no-fail-fast`,
+  `cargo nextest run -p merman-lsp state_documents_use_parser_facts --no-fail-fast`,
+  `cargo nextest run -p merman-core state --no-fail-fast`,
+  `cargo nextest run -p merman-core editor_facts --no-fail-fast`,
+  `cargo nextest run -p merman-analysis --no-fail-fast`,
+  `cargo nextest run -p merman-lsp --no-fail-fast`, and `cargo fmt --all --check`.
 - Continued the LSP completion foundations follow-up on `feat/diagnostics-analysis-contract`.
 - Verified the new `merman-lsp` crate compiles and its focused tests pass, including completion, diagnostics, and document-store coverage.
 - Recorded durable engineering memory for the current plan so later sessions can resume without rereading the full chat.

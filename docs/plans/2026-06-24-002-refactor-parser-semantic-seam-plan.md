@@ -157,8 +157,11 @@ partial buffers and downstream migration.
   Sequence now emits parser-backed participant, actor, message-endpoint, note-actor, and box facts
   from its lexer token stream with complete/recovered provenance. State now carries state id spans
   in its LALRPOP AST, emits parser-backed state/reference/fork/join/choice facts, and recovers facts
-  from the state lexer token stream for incomplete buffers. Class now emits class/namespace/
-  relation, member-owner, member-outline, annotation-target, annotation-payload, directive-target,
+  from the state lexer token stream for incomplete buffers. State now also runs a token-backed
+  supplemental fact pass for complete parses so `class`/`style`/`click` state targets are entity
+  references, `classDef` ids are outline-only facts, and style, class reference, click URL/tooltip,
+  and accessibility text values are payload-only spans. Class now emits class/namespace/relation,
+  member-owner, member-outline, annotation-target, annotation-payload, directive-target,
   interaction-target, interaction string, and link-target payload facts from its lexer token stream
   with complete/recovered provenance. ER now emits entity, relationship endpoint,
   attribute, class/style/classDef target, and inline class facts with recovered token-stream output
@@ -305,6 +308,7 @@ partial buffers and downstream migration.
 - `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced
   parser-generator rewrite; the useful break is the shared semantic contract, not parser
   monoculture.
-- State class/style/click references are now directive-aware but not yet fully reference-spanned;
-  when rename/reference quality becomes the target, extend the state lexer/AST to preserve spans for
-  those directive payloads instead of adding LSP-side heuristics.
+- State class/style/click references and directive payloads are now span-backed through a
+  supplemental lexer pass. A higher-return future break is to move state to an explicit parser
+  event stream so render semantics and editor facts share one span-preserving intermediate form
+  instead of splitting across AST fields and supplemental token facts.
