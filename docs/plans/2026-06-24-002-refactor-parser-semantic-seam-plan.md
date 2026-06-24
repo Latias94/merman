@@ -176,6 +176,10 @@ partial buffers and downstream migration.
 
 ### U3. Retrofit the hand-written families that feed editor-visible structure
 
+- **Status:** Mindmap landed as the first hand-written-family tracer bullet. Its line parser now
+  produces an internal event stream shared by render DB construction and editor facts, preserving
+  node spans, class/icon directive prefixes, class/icon decoration semantics, inline-header spans,
+  multiline-node behavior, and recovered facts for incomplete node delimiters.
 - **Goal:** Bring `mindmap`, `gantt`, and the other line- or indentation-driven families that matter
   to the same contract.
 - **Files:** `crates/merman-core/src/diagrams/mindmap/*`,
@@ -196,7 +200,9 @@ partial buffers and downstream migration.
   parser-backed complete/recovered facts; class fences now do the same for parser-backed token
   facts; ER fences now do the same for parser-backed entity/attribute/relation facts. Raw-text
   fallback remains only when a family has no core fact extraction path or the extraction itself is
-  unavailable.
+  unavailable. Mindmap now follows the same complete/recovered provenance path, and `merman-lsp`
+  explicitly enables the core full/host feature profile so product LSP detection does not silently
+  run with the tiny registry.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,
@@ -258,6 +264,14 @@ partial buffers and downstream migration.
   of reparsing class/style/classDef lines.
 - Class is migrated at the class/reference-owner level, but full product-grade rename/lint will
   still benefit from deeper member, annotation payload, and directive payload span facts.
+- Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
+  parser event stream, then project the same events into DB/render semantics and editor facts.
+  This preserves behavior while removing duplicated scan logic.
+- Gantt is the next high-value hand-written candidate because product LSP/lint needs task ids,
+  sections, dependencies, dates, and partial-line recovery; doing it parser-first avoids a large
+  completion/lint heuristic layer.
+- LSP package profiles are now part of the architecture surface: editor products should opt into
+  `core-full`/`core-host` unless they are deliberately shipping a reduced registry.
 - `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced
   parser-generator rewrite; the useful break is the shared semantic contract, not parser
   monoculture.

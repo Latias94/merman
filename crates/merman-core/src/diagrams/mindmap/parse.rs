@@ -1,7 +1,10 @@
 use serde_json::{Map, Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorSemanticCompleteness, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
+    Error, ParseMetadata, Result, SourceSpan,
+};
 
 use super::db::{MindmapDb, MindmapParseConfig};
 use super::render_model::MindmapDiagramRenderModel;
@@ -32,16 +35,107 @@ pub fn parse_mindmap_model_for_render(
     })
 }
 
+#[derive(Debug, Clone)]
+struct MindmapParsedNodeLine {
+    indent: usize,
+    id_raw: String,
+    descr_raw: String,
+    descr_is_markdown: bool,
+    ty: i32,
+    span: SourceSpan,
+    selection: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+enum MindmapParsedEvent {
+    Node(MindmapParsedNodeLine),
+    Class(String),
+    Icon(String),
+}
+
+#[derive(Debug, Default)]
+struct MindmapParsedLines {
+    events: Vec<MindmapParsedEvent>,
+    directive_prefixes: Vec<String>,
+    completeness: EditorSemanticCompleteness,
+}
+
 fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
     let mut db = MindmapDb::default();
     db.clear();
     let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
+    let parsed = parse_mindmap_lines(code, meta, false)?;
 
-    let mut lines = code.lines();
+    for event in parsed.events {
+        match event {
+            MindmapParsedEvent::Node(node) => {
+                db.add_node(
+                    super::db::MindmapNodeInput {
+                        indent_level: node.indent as i32,
+                        id_raw: &node.id_raw,
+                        descr_raw: &node.descr_raw,
+                        descr_is_markdown: node.descr_is_markdown,
+                        ty: node.ty,
+                        diagram_type: &meta.diagram_type,
+                    },
+                    &meta.effective_config,
+                    parse_config,
+                )?;
+            }
+            MindmapParsedEvent::Class(class) => {
+                db.decorate_last(Some(class), None, &meta.effective_config);
+            }
+            MindmapParsedEvent::Icon(icon) => {
+                db.decorate_last(None, Some(icon), &meta.effective_config);
+            }
+        }
+    }
+
+    Ok(db)
+}
+
+pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    let parsed = match parse_mindmap_lines(code, meta, true) {
+        Ok(parsed) => parsed,
+        Err(_) => return EditorSemanticFacts::new(),
+    };
+    let mut facts = EditorSemanticFacts {
+        completeness: parsed.completeness,
+        symbols: Vec::new(),
+        directive_prefixes: Vec::new(),
+    };
+    for prefix in parsed.directive_prefixes {
+        facts.push_directive_prefix(prefix);
+    }
+    for event in parsed.events {
+        if let MindmapParsedEvent::Node(node) = event {
+            facts.push_symbol(EditorSemanticSymbol::new(
+                node.id_raw,
+                Some("mindmap node".to_string()),
+                EditorSemanticKind::Namespace,
+                node.span,
+                node.selection,
+            ));
+        }
+    }
+    facts
+}
+
+fn parse_mindmap_lines(
+    code: &str,
+    meta: &ParseMetadata,
+    recover: bool,
+) -> Result<MindmapParsedLines> {
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
     let mut found_header = false;
     let mut header_tail: Option<String> = None;
+    let mut header_tail_offset = 0usize;
     for line in lines.by_ref() {
-        let t = strip_inline_comment(line);
+        let line_start = offset;
+        offset += line.len();
+        let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
+        let t = strip_inline_comment(line_no_newline);
         let trimmed = t.trim();
         if trimmed.is_empty() {
             continue;
@@ -58,6 +152,7 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
                 .is_some_and(|c| c.is_whitespace())
         {
             found_header = true;
+            let trimmed_offset = t.len().saturating_sub(t.trim_start().len());
             let after_keyword = &trimmed["mindmap".len()..];
             let indent = after_keyword
                 .chars()
@@ -66,6 +161,9 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
             let rest = after_keyword.trim_start();
             if !rest.is_empty() {
                 header_tail = Some(format!("{}{}", " ".repeat(indent), rest));
+                let rest_offset_in_trimmed =
+                    "mindmap".len() + after_keyword.len().saturating_sub(rest.len());
+                header_tail_offset = line_start + trimmed_offset + rest_offset_in_trimmed - indent;
             }
             break;
         }
@@ -79,100 +177,134 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
         });
     }
 
+    let mut out = MindmapParsedLines::default();
+
     enum HandleOutcome {
         Done,
         NeedMoreInput,
     }
 
-    let mut handle_line = |line: &str| -> Result<HandleOutcome> {
-        if line.trim().is_empty() {
-            return Ok(HandleOutcome::Done);
-        }
-
-        let (indent, rest) = split_indent(line);
-        let rest = rest.trim_end();
-        if rest.is_empty() {
-            return Ok(HandleOutcome::Done);
-        }
-
-        if starts_with_case_insensitive(rest, "::icon(") {
-            let after = &rest["::icon(".len()..];
-            let Some(end) = after.find(')') else {
+    let handle_line =
+        |line: &str, line_start: usize, out: &mut MindmapParsedLines| -> Result<HandleOutcome> {
+            if line.trim().is_empty() {
                 return Ok(HandleOutcome::Done);
+            }
+
+            let (indent, rest) = split_indent(line);
+            let rest_offset = line.len().saturating_sub(rest.len());
+            let rest = rest.trim_end();
+            if rest.is_empty() {
+                return Ok(HandleOutcome::Done);
+            }
+
+            if starts_with_case_insensitive(rest, "::icon(") {
+                let after = &rest["::icon(".len()..];
+                let Some(end) = after.find(')') else {
+                    return Ok(HandleOutcome::Done);
+                };
+                let icon = after[..end].to_string();
+                out.directive_prefixes.push("::icon".to_string());
+                out.events.push(MindmapParsedEvent::Icon(icon));
+                return Ok(HandleOutcome::Done);
+            }
+
+            if let Some(after) = rest.strip_prefix(":::") {
+                // Mermaid mindmap does not treat `%% ...` as an inline comment inside `:::` class
+                // directives (the entire remainder is interpreted as space-separated class names).
+                out.directive_prefixes.push(":::".to_string());
+                out.events
+                    .push(MindmapParsedEvent::Class(after.trim().to_string()));
+                return Ok(HandleOutcome::Done);
+            }
+
+            let rest = strip_inline_comment(rest).trim_end();
+            if rest.is_empty() {
+                return Ok(HandleOutcome::Done);
+            }
+
+            let (id_raw, descr_raw, ty, descr_is_markdown) = match parse_node_spec(rest) {
+                Ok(v) => v,
+                Err(message) if message == "unterminated node delimiter" => {
+                    return Ok(HandleOutcome::NeedMoreInput);
+                }
+                Err(message) => {
+                    return Err(Error::DiagramParse {
+                        diagram_type: meta.diagram_type.clone(),
+                        message,
+                    });
+                }
             };
-            let icon = after[..end].to_string();
-            db.decorate_last(None, Some(icon), &meta.effective_config);
-            return Ok(HandleOutcome::Done);
-        }
-
-        if let Some(after) = rest.strip_prefix(":::") {
-            // Mermaid mindmap does not treat `%% ...` as an inline comment inside `:::` class
-            // directives (the entire remainder is interpreted as space-separated class names).
-            db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
-            return Ok(HandleOutcome::Done);
-        }
-
-        let rest = strip_inline_comment(rest).trim_end();
-        if rest.is_empty() {
-            return Ok(HandleOutcome::Done);
-        }
-
-        let (id_raw, descr_raw, ty, descr_is_markdown) = match parse_node_spec(rest) {
-            Ok(v) => v,
-            Err(message) if message == "unterminated node delimiter" => {
-                return Ok(HandleOutcome::NeedMoreInput);
-            }
-            Err(message) => {
-                return Err(Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message,
-                });
-            }
+            let local_selection = rest.find(&id_raw).unwrap_or(0);
+            let selection_start = line_start + rest_offset + local_selection;
+            let selection = SourceSpan::new(selection_start, selection_start + id_raw.len());
+            let span = SourceSpan::new(
+                line_start + rest_offset,
+                line_start + rest_offset + rest.len(),
+            );
+            out.events
+                .push(MindmapParsedEvent::Node(MindmapParsedNodeLine {
+                    indent,
+                    id_raw,
+                    descr_raw,
+                    descr_is_markdown,
+                    ty,
+                    span,
+                    selection,
+                }));
+            Ok(HandleOutcome::Done)
         };
-        db.add_node(
-            super::db::MindmapNodeInput {
-                indent_level: indent as i32,
-                id_raw: &id_raw,
-                descr_raw: &descr_raw,
-                descr_is_markdown,
-                ty,
-                diagram_type: &meta.diagram_type,
-            },
-            &meta.effective_config,
-            parse_config,
-        )?;
-        Ok(HandleOutcome::Done)
-    };
 
-    let mut pending: Option<String> = None;
-    let mut push_and_try = |physical_line: &str| -> Result<()> {
-        match pending.as_mut() {
-            Some(buf) => {
-                buf.push('\n');
-                buf.push_str(physical_line);
-            }
-            None => pending = Some(physical_line.to_string()),
-        }
+    struct PendingMindmapLine {
+        text: String,
+        start: usize,
+    }
 
-        let current = pending.as_deref().unwrap_or_default();
-        match handle_line(current)? {
-            HandleOutcome::Done => {
-                pending = None;
+    let mut pending: Option<PendingMindmapLine> = None;
+    let mut push_and_try =
+        |physical_line: &str, line_start: usize, out: &mut MindmapParsedLines| -> Result<()> {
+            match pending.as_mut() {
+                Some(PendingMindmapLine { text, .. }) => {
+                    let buf = text;
+                    buf.push('\n');
+                    buf.push_str(physical_line);
+                }
+                None => {
+                    pending = Some(PendingMindmapLine {
+                        text: physical_line.to_string(),
+                        start: line_start,
+                    })
+                }
             }
-            HandleOutcome::NeedMoreInput => {}
-        }
-        Ok(())
-    };
+
+            let (current, current_start) = pending
+                .as_ref()
+                .map(|p| (p.text.as_str(), p.start))
+                .unwrap_or(("", line_start));
+            match handle_line(current, current_start, out)? {
+                HandleOutcome::Done => {
+                    pending = None;
+                }
+                HandleOutcome::NeedMoreInput => {}
+            }
+            Ok(())
+        };
 
     if let Some(tail) = &header_tail {
-        push_and_try(tail)?;
+        push_and_try(tail, header_tail_offset, &mut out)?;
     }
     for line in lines {
-        push_and_try(line)?;
+        let line_start = offset;
+        offset += line.len();
+        let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
+        push_and_try(line_no_newline, line_start, &mut out)?;
     }
-    if let Some(buf) = pending {
-        let line = strip_inline_comment(&buf);
+    if let Some(PendingMindmapLine { text, .. }) = pending {
+        let line = strip_inline_comment(&text);
         if !line.trim().is_empty() {
+            if recover {
+                out.completeness = EditorSemanticCompleteness::Recovered;
+                return Ok(out);
+            }
             return Err(Error::DiagramParse {
                 diagram_type: meta.diagram_type.clone(),
                 message: "unterminated node delimiter".to_string(),
@@ -180,7 +312,7 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
         }
     }
 
-    Ok(db)
+    Ok(out)
 }
 
 fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {

@@ -13,6 +13,11 @@ readme = "README.md"
 keywords = ["mermaid", "lsp", "language-server", "completion", "diagnostics"]
 categories = ["development-tools", "text-editors"]
 
+[features]
+default = ["core-full", "core-host"]
+core-full = ["merman-analysis/core-full", "merman-core/full"]
+core-host = ["merman-analysis/core-host", "merman-core/host"]
+
 [dependencies]
 lsp-types.workspace = true
 tower-lsp.workspace = true

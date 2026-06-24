@@ -137,6 +137,10 @@ mod tests {
             diagram_type_for_text("sequenceDiagram\nAlice->>Bob: Hi\n").as_deref(),
             Some("sequence")
         );
+        assert_eq!(
+            diagram_type_for_text("mindmap\nroot\n child\n").as_deref(),
+            Some("mindmap")
+        );
         assert_eq!(diagram_type_for_text("").as_deref(), None);
     }
 }

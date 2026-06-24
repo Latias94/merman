@@ -31,6 +31,9 @@ status: active
 - Recorded the next class-specific deepening opportunities: member-level spans, annotation payload spans, and directive payload reference spans should be modeled in core facts before improving product-grade rename/lint for those constructs.
 - Migrated ER as the fifth family onto `EditorSemanticFacts`: `IdList` now preserves per-id spans, entity/relation/attribute/class/style/classDef facts come from the ER lexer token stream, and LSP regressions prove ER fences use `ParserComplete`/`ParserRecovered` instead of text scans.
 - Fixed ER incomplete attribute block recovery so the lexer emits the EOF error once and exits block mode, preventing editor fact recovery from hanging on partial buffers.
+- Migrated Mindmap as the first hand-written-family tracer bullet onto `EditorSemanticFacts`: its line parser now produces a shared event stream for DB/render semantics and editor facts, preserving node spans, class/icon directives, inline-header spans, multiline labels, and recovered incomplete-delimiter facts.
+- Fixed `merman-lsp` feature profile drift by giving the LSP crate default `core-full`/`core-host` feature passthroughs, so product LSP detection includes mindmap and no longer silently uses the tiny core registry.
+- Recorded the next high-return fearless-refactor candidates: `gantt` should follow the mindmap event-stream pattern, while class/ER/state/mindmap can be deepened with payload spans and recovered diagnostics before product-grade lint/rename work.
 
 ## 2026-06-23
 - Confirmed alpha-stage fearless refactor scope for diagnostics-first analysis: canonical `analyze_json`, legacy `validate_json` projection, CLI lint, Markdown fence diagnostics, LSP-ready position mapping, ADR, and engineering memory are in scope.

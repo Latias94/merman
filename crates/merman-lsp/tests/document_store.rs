@@ -213,3 +213,32 @@ fn incomplete_er_documents_use_recovered_parser_facts() {
     assert!(index.node_ids().any(|id| id == "CUSTOMER"));
     assert!(index.node_ids().any(|id| id == "ORDER"));
 }
+
+#[test]
+fn mindmap_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "mindmap\nroot(Root Node)\n child1(Child 1)\n child2\n".to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "root"));
+    assert!(index.node_ids().any(|id| id == "child1"));
+    assert!(index.node_ids().any(|id| id == "child2"));
+}
+
+#[test]
+fn incomplete_mindmap_documents_use_recovered_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "mindmap\nroot\n child[unterminated".to_string());
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
+    assert!(index.node_ids().any(|id| id == "root"));
+    assert!(!index.node_ids().any(|id| id == "child"));
+}
