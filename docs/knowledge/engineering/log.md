@@ -19,6 +19,8 @@ status: active
   `initialize` with canonical `init`.
 - Remapped Markdown-fence fix edits back into host-document coordinates so quickfixes edit the
   source document rather than fence-local byte ranges.
+- Added stable lint rule descriptors and a shared rule-config surface to `merman-analysis`, then
+  wired CLI lint to disable rules or override severities through the same analysis config.
 - Re-verified the code-action foundation with `cargo test -p merman-analysis -p merman-lsp --lib
   --tests`.
 - Replaced the analysis index's name-only reference table with typed `FenceReferenceGroup`

@@ -25,5 +25,6 @@ pub use payload::{
     DiagnosticRelated, DiagnosticSeverity, DiagnosticSpan, SourceDescriptor, SourceKind, Summary,
     Utf16Position,
 };
+pub use rules::{AnalysisRuleConfig, RuleDescriptor, rule_descriptors};
 pub use source_map::{LineCol, SourceMap, SourceMapError};
 pub use status::AnalysisStatus;

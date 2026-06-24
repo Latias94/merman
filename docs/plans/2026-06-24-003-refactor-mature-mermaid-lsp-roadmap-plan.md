@@ -378,8 +378,10 @@ and performance fixtures before marking a family or feature product-ready.
   `textDocument/semanticTokens/full` from parser-backed `FenceSemanticItem` roles. Quickfix code
   actions are wired from source-span-backed `DiagnosticFix` metadata in `AnalysisDiagnostic`.
   The first fix-backed lint rule, `merman.config.prefer_init_directive`, replaces the directive
-  alias `initialize` with `init` and remaps fixes correctly for Markdown fences. Range/delta
-  semantic tokens and broader rule-generated fix metadata remain outstanding.
+  alias `initialize` with `init` and remaps fixes correctly for Markdown fences. `merman-analysis`
+  now also exposes stable rule descriptors and a shared rule-config surface, and CLI lint can
+  disable rules or override severities through the same analysis config. Range/delta semantic
+  tokens and broader rule coverage remain outstanding.
 - **Patterns to follow:** `tower-lsp` capability wiring in `server.rs` and shared range conversion
   in `merman-analysis::lsp`.
 - **Test scenarios:**

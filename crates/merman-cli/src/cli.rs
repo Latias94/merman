@@ -1,5 +1,6 @@
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 use merman::render::FlowchartElkBackend as RenderFlowchartElkBackend;
+use merman_analysis::DiagnosticSeverity;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -150,6 +151,23 @@ pub(crate) struct LintArgs {
         help_heading = "Analysis options"
     )]
     pub(crate) max_source_bytes: Option<usize>,
+
+    /// Disable a lint rule by stable rule id. Can be repeated.
+    #[arg(
+        long = "disable-rule",
+        value_name = "RULE_ID",
+        help_heading = "Lint rules"
+    )]
+    pub(crate) disable_rules: Vec<String>,
+
+    /// Override a lint rule severity as RULE_ID=error|warning|info|hint. Can be repeated.
+    #[arg(
+        long = "rule-severity",
+        value_name = "RULE_ID=SEVERITY",
+        value_parser = parse_lint_rule_severity_override,
+        help_heading = "Lint rules"
+    )]
+    pub(crate) rule_severities: Vec<LintRuleSeverityOverride>,
 }
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
@@ -157,6 +175,12 @@ pub(crate) enum LintOutputFormat {
     #[default]
     Json,
     Text,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LintRuleSeverityOverride {
+    pub(crate) rule_id: String,
+    pub(crate) severity: DiagnosticSeverity,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -662,6 +686,31 @@ fn parse_positive_usize(value: &str) -> Result<usize, String> {
         return Err("expected a positive integer".to_string());
     }
     Ok(parsed)
+}
+
+fn parse_lint_rule_severity_override(value: &str) -> Result<LintRuleSeverityOverride, String> {
+    let Some((rule_id, severity)) = value.split_once('=') else {
+        return Err("expected RULE_ID=SEVERITY".to_string());
+    };
+    let rule_id = rule_id.trim();
+    if rule_id.is_empty() {
+        return Err("rule id must not be empty".to_string());
+    }
+
+    Ok(LintRuleSeverityOverride {
+        rule_id: rule_id.to_string(),
+        severity: parse_lint_severity(severity.trim())?,
+    })
+}
+
+fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, String> {
+    match value.to_ascii_lowercase().as_str() {
+        "error" => Ok(DiagnosticSeverity::Error),
+        "warning" | "warn" => Ok(DiagnosticSeverity::Warning),
+        "info" => Ok(DiagnosticSeverity::Info),
+        "hint" => Ok(DiagnosticSeverity::Hint),
+        _ => Err("expected severity error, warning, info, or hint".to_string()),
+    }
 }
 
 fn parse_positive_u32(value: &str) -> Result<u32, String> {

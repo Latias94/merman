@@ -311,6 +311,58 @@ fn cli_lint_valid_mermaid_returns_zero_and_json_payload() {
 }
 
 #[test]
+fn cli_lint_can_disable_rule_diagnostics() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--disable-rule",
+            "merman.config.prefer_init_directive",
+            "-",
+        ],
+        "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 0);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_can_override_rule_severity() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--rule-severity",
+            "merman.config.prefer_init_directive=warning",
+            "-",
+        ],
+        "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 0);
+    assert_eq!(payload["summary"]["warnings"], 1);
+    assert_eq!(
+        payload["diagnostics"][0]["id"].as_str(),
+        Some("merman.config.prefer_init_directive")
+    );
+    assert_eq!(
+        payload["diagnostics"][0]["severity"].as_str(),
+        Some("warning")
+    );
+}
+
+#[test]
 fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
     let output = run_with_stdin_input(
         &[

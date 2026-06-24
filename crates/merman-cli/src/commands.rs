@@ -8,7 +8,7 @@ use crate::io::read_input;
 use crate::render::{render_plan_for_mmdc, render_plan_for_subcommand, run_render};
 use clap::CommandFactory;
 use merman_analysis::document::analyze_document;
-use merman_analysis::{AnalysisPayload, Analyzer, SourceDescriptor};
+use merman_analysis::{AnalysisPayload, AnalysisRuleConfig, Analyzer, SourceDescriptor};
 use serde::Serialize;
 use serde_json::Value;
 use std::path::Path;
@@ -196,7 +196,19 @@ fn lint_analyzer_options(
         .with_site_config(site_config)
         .with_fixed_today(args.fixed_today)
         .with_fixed_local_offset_minutes(args.fixed_local_offset_minutes)
-        .with_max_source_bytes(args.max_source_bytes))
+        .with_max_source_bytes(args.max_source_bytes)
+        .with_rule_config(lint_rule_config(args)))
+}
+
+fn lint_rule_config(args: &LintArgs) -> AnalysisRuleConfig {
+    let mut config = AnalysisRuleConfig::default();
+    for rule_id in &args.disable_rules {
+        config.disable_rule(rule_id.clone());
+    }
+    for override_ in &args.rule_severities {
+        config.set_rule_severity(override_.rule_id.clone(), override_.severity);
+    }
+    config
 }
 
 fn lint_display_path(input: Option<&str>, stdin_file_name: Option<&str>) -> Option<String> {

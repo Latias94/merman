@@ -1,3 +1,4 @@
+use crate::rules::AnalysisRuleConfig;
 use crate::{
     AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, DiagnosticCategory, DiagnosticSeverity,
     SourceDescriptor, SourceMap,
@@ -17,6 +18,7 @@ pub struct AnalysisOptions {
     pub fixed_today: Option<chrono::NaiveDate>,
     pub fixed_local_offset_minutes: Option<i32>,
     pub max_source_bytes: Option<usize>,
+    pub rule_config: AnalysisRuleConfig,
 }
 
 impl Default for AnalysisOptions {
@@ -28,6 +30,7 @@ impl Default for AnalysisOptions {
             fixed_today: None,
             fixed_local_offset_minutes: None,
             max_source_bytes: None,
+            rule_config: AnalysisRuleConfig::default(),
         }
     }
 }
@@ -60,6 +63,11 @@ impl AnalysisOptions {
 
     pub fn with_max_source_bytes(mut self, max_source_bytes: Option<usize>) -> Self {
         self.max_source_bytes = max_source_bytes;
+        self
+    }
+
+    pub fn with_rule_config(mut self, rule_config: AnalysisRuleConfig) -> Self {
+        self.rule_config = rule_config;
         self
     }
 }
@@ -107,7 +115,8 @@ impl Analyzer {
             }
         }
 
-        let source_lints = crate::rules::source_lint_diagnostics(source, &source_map);
+        let source_lints =
+            crate::rules::source_lint_diagnostics(source, &source_map, &self.options.rule_config);
 
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine.parse_diagram_sync(source, self.options.parse)
@@ -355,7 +364,8 @@ fn diagnostic(
 
 #[cfg(test)]
 mod tests {
-    use super::Analyzer;
+    use super::{AnalysisOptions, Analyzer};
+    use crate::rules::AnalysisRuleConfig;
     use crate::{DiagnosticCategory, DiagnosticSeverity};
 
     #[test]
@@ -412,5 +422,40 @@ mod tests {
         assert_eq!(&source[span.byte_start..span.byte_end], "initialize");
         assert_eq!(diagnostic.fixes.len(), 1);
         assert_eq!(diagnostic.fixes[0].edits[0].replacement, "init");
+    }
+
+    #[test]
+    fn analysis_rule_config_can_disable_source_lints() {
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_disabled(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID),
+            ),
+        );
+        let payload =
+            analyzer.analyze("%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n");
+
+        assert!(payload.valid);
+        assert!(payload.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn analysis_rule_config_can_override_source_lint_severity() {
+        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_rule_severity(
+                crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
+                DiagnosticSeverity::Warning,
+            ),
+        ));
+        let payload =
+            analyzer.analyze("%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n");
+
+        assert!(payload.valid);
+        assert_eq!(payload.summary.hints, 0);
+        assert_eq!(payload.summary.warnings, 1);
+        assert_eq!(
+            payload.diagnostics[0].id,
+            crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID
+        );
     }
 }

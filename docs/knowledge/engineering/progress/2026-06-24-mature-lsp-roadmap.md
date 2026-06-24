@@ -65,12 +65,14 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 - The first fix-backed lint rule is `merman.config.prefer_init_directive`, which reports the
   Mermaid directive alias `initialize` and offers a preferred source edit to replace it with
   canonical `init`. Markdown fences remap the fix edit back into host-document coordinates.
+- `merman-analysis` now exposes stable rule descriptors plus a shared rule-config surface, and
+  CLI lint can disable rules or override severities through the same analysis config.
 
 # Next Action
 
-Continue U4 by broadening lint rule descriptors and configuration around the first fix-backed rule,
-then add more source-span-backed `DiagnosticFix` rules and continue U2 family fact deepening where
-the capability matrix still shows partial rename/lint readiness.
+Continue U4 by adding more stable lint rule descriptors and source-span-backed `DiagnosticFix`
+rules, then continue U2 family fact deepening where the capability matrix still shows partial
+rename/lint readiness.
 
 # Citations
 
