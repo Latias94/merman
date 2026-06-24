@@ -126,3 +126,35 @@ fn incomplete_sequence_documents_use_recovered_parser_facts() {
     assert!(index.node_ids().any(|id| id == "Alice"));
     assert!(index.node_ids().any(|id| id == "Bob"));
 }
+
+#[test]
+fn state_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "stateDiagram-v2\n[*] --> Idle\nIdle --> Running\n".to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "Idle"));
+    assert!(index.node_ids().any(|id| id == "Running"));
+}
+
+#[test]
+fn incomplete_state_documents_use_recovered_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "stateDiagram-v2\nIdle --> Running\nRunning -->".to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
+    assert!(index.node_ids().any(|id| id == "Idle"));
+    assert!(index.node_ids().any(|id| id == "Running"));
+}

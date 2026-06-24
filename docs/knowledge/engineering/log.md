@@ -25,6 +25,8 @@ status: active
 - Added `EditorSemanticCompleteness` and `FenceTextIndexSource` provenance so recovered parser facts can be distinguished from complete parser facts and old text scans.
 - Flowchart editor fact extraction now recovers symbols from the masked lexer token stream when LALRPOP parsing fails on incomplete buffers, and LSP has a regression proving incomplete flowcharts use `ParserRecovered` rather than `TextScan`.
 - Migrated Sequence as the second family onto `EditorSemanticFacts`: actor/participant/message/note/box symbols now come from the sequence lexer token stream with complete/recovered provenance, and LSP has regressions proving sequence fences use parser facts instead of text scans.
+- Migrated State as the third family onto `EditorSemanticFacts`: `StateStmt` now carries source spans, state grammar preserves spans for parser-backed state symbols, incomplete buffers recover from the state lexer token stream, and LSP regressions prove state fences use `ParserComplete`/`ParserRecovered` instead of text scans.
+- Recorded the current fearless-refactor rule: for families with deterministic lexer/parser seams, old raw-text editor scans are only a migration fallback; future class/ER/state-reference work should extend core facts rather than adding LSP heuristics.
 
 ## 2026-06-23
 - Confirmed alpha-stage fearless refactor scope for diagnostics-first analysis: canonical `analyze_json`, legacy `validate_json` projection, CLI lint, Markdown fence diagnostics, LSP-ready position mapping, ADR, and engineering memory are in scope.

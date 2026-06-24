@@ -436,3 +436,67 @@ fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
         .expect("diagram detected");
     assert_eq!(parsed.meta.diagram_type, "stateDiagram");
 }
+
+#[test]
+fn parse_state_editor_facts_preserve_parser_state_spans() {
+    let engine = Engine::new();
+    let text = r#"stateDiagram-v2
+[*] --> Idle
+Idle --> Running
+state Running {
+  [*] --> Active
+}
+state "Paused State" as Paused"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("state editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+
+    let idle_start = text.find("Idle").unwrap();
+    assert_eq!(
+        symbol_at("Idle", idle_start).selection.end,
+        idle_start + "Idle".len()
+    );
+
+    let running_start = text.find("Running").unwrap();
+    assert_eq!(
+        symbol_at("Running", running_start).selection.end,
+        running_start + "Running".len()
+    );
+
+    let active_start = text.find("Active").unwrap();
+    assert_eq!(
+        symbol_at("Active", active_start).selection.end,
+        active_start + "Active".len()
+    );
+
+    let paused_start = text.rfind("Paused").unwrap();
+    assert_eq!(
+        symbol_at("Paused", paused_start).selection.end,
+        paused_start + "Paused".len()
+    );
+}
+
+#[test]
+fn parse_state_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "stateDiagram-v2\nIdle --> Running\nRunning -->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("state editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Idle"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Running"));
+}

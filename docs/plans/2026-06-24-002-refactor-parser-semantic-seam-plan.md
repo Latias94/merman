@@ -149,12 +149,14 @@ partial buffers and downstream migration.
 
 ### U2. Retrofit the parser-generator-backed families
 
-- **Status:** Flowchart and Sequence tracer bullets landed. Flowchart now preserves parser-backed
-  node id spans and subgraph header/selection spans through its lexer/LALRPOP AST path, and falls
-  back to recoverable token-stream facts for incomplete editor buffers. Sequence now emits
-  parser-backed participant, actor, message-endpoint, note-actor, and box facts from its lexer
-  token stream with complete/recovered provenance. More parser-generator families still need the
-  same treatment.
+- **Status:** Flowchart, Sequence, and State tracer bullets landed. Flowchart now preserves
+  parser-backed node id spans and subgraph header/selection spans through its lexer/LALRPOP AST
+  path, and falls back to recoverable token-stream facts for incomplete editor buffers. Sequence
+  now emits parser-backed participant, actor, message-endpoint, note-actor, and box facts from its
+  lexer token stream with complete/recovered provenance. State now carries state id spans in its
+  LALRPOP AST, emits parser-backed state/reference/fork/join/choice facts, and recovers facts from
+  the state lexer token stream for incomplete buffers. More parser-generator families still need
+  the same treatment.
 - **Goal:** Lift span and recovery facts into the families already using deterministic lexer plus
   LALRPOP.
 - **Files:** `crates/merman-core/src/diagrams/flowchart.rs`,
@@ -184,11 +186,12 @@ partial buffers and downstream migration.
 
 ### U4. Move consumers onto the semantic seam
 
-- **Status:** Flowchart and Sequence paths migrated. LSP now consumes
+- **Status:** Flowchart, Sequence, and State paths migrated. LSP now consumes
   `merman-analysis::FenceTextIndex` instead of maintaining separate completion, outline,
   navigation, and rename scans, and covered flowchart/sequence fences use parser-backed core
-  editor facts for both complete and recovered parser output; raw-text fallback remains only when a
-  family has no core fact extraction path or the extraction itself is unavailable.
+  editor facts for both complete and recovered parser output; state fences now do the same through
+  parser-backed complete/recovered facts. Raw-text fallback remains only when a family has no core
+  fact extraction path or the extraction itself is unavailable.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,
@@ -238,3 +241,17 @@ partial buffers and downstream migration.
 - `crates/merman-lsp/src/structure.rs`
 - `crates/merman-lsp/src/snapshot.rs`
 - Jason Worden, "Introducing mermaid-lint": https://jasonworden.com/blog/introducing-mermaid-lint/
+
+## Fearless Refactor Opportunities
+
+- For parser-backed families that already have deterministic lexer/parser boundaries, the old
+  text-scan editor experience is no longer a reasonable target behavior. Keep it only as a
+  migration fallback for families without `EditorSemanticFacts`.
+- `class` and `er` are the next high-value parser-generator families for LSP/lint readiness because
+  they carry rich symbols and references that text scanning cannot model reliably.
+- `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced
+  parser-generator rewrite; the useful break is the shared semantic contract, not parser
+  monoculture.
+- State class/style/click references are now directive-aware but not yet fully reference-spanned;
+  when rename/reference quality becomes the target, extend the state lexer/AST to preserve spans for
+  those directive payloads instead of adding LSP-side heuristics.

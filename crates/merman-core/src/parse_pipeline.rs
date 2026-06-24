@@ -93,6 +93,9 @@ impl<'a> ParsePipeline<'a> {
                 crate::diagrams::flowchart::parse_flowchart_editor_facts(self.text, &meta)?
             }
             "sequence" => crate::diagrams::sequence::parse_sequence_editor_facts(self.text, &meta),
+            "state" | "stateDiagram" => {
+                crate::diagrams::state::parse_state_editor_facts(self.text, &meta)
+            }
             _ => return Ok(None),
         };
 

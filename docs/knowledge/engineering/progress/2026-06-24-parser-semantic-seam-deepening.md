@@ -35,6 +35,10 @@ partial parse results instead of raw-text heuristic scans.
 - Sequence is the second migrated family: its lexer token stream now emits parser-backed
   participant, actor, message-endpoint, note-actor, and box facts, while the existing LALRPOP
   parser result determines whether facts are `Complete` or `Recovered`.
+- State is the third migrated family: `StateStmt` now carries parser source spans, state grammar
+  productions preserve spans for state ids, relation endpoints, nested states, note-bound states,
+  and typed fork/join/choice states, and incomplete editor buffers recover symbols from the state
+  lexer token stream rather than from free-form text scanning.
 - `merman-analysis::FenceTextIndex::from_core_facts` projects core editor facts into the shared
   LSP/lint migration index, including directive prefixes used by completion.
 - `FenceTextIndex` now records whether its source is `TextScan`, `ParserComplete`, or
@@ -42,16 +46,19 @@ partial parse results instead of raw-text heuristic scans.
   return to heuristic scans.
 - `merman-lsp::DocumentStore` now tries parser-backed core facts for known diagram types and falls
   back to the centralized text index only when parser-backed facts are unavailable or fail; LSP
-  regressions cover both flowchart and sequence complete/recovered provenance.
+  regressions cover flowchart, sequence, and state complete/recovered provenance.
 - Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
-  `cargo nextest run -p merman-analysis editor::tests`, and `cargo nextest run -p merman-lsp`.
+  `cargo nextest run -p merman-core parse_sequence_editor_facts`,
+  `cargo nextest run -p merman-core parse_state_editor_facts`,
+  `cargo nextest run -p merman-core state`, `cargo nextest run -p merman-analysis editor::tests`,
+  and `cargo nextest run -p merman-lsp`.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: migrate the next high-value family (`state` or
-`class`) to `EditorSemanticFacts`, or expose recovered parser diagnostics alongside recovered
-flowchart/sequence facts. Do not add new heuristic parsing in LSP for covered flowchart/sequence
-symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: migrate the next high-value parser-generator family
+(`class` or `er`) to `EditorSemanticFacts`, deepen state directive payload spans for rename and
+references, or expose recovered parser diagnostics alongside recovered facts. Do not add new
+heuristic parsing in LSP for covered flowchart/sequence/state symbols; extend core facts instead.
 
 # Citations
 
