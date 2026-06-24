@@ -17,6 +17,18 @@ pub(crate) struct LayeredRelationScene<'boxes, 'edges> {
     draw_order: Vec<(usize, isize)>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum LayeredRelationScenePlan<'boxes, 'edges> {
+    Routed(LayeredRelationScene<'boxes, 'edges>),
+    Summary(LayeredRelationSummaryReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LayeredRelationSummaryReason {
+    Crossing,
+    GridBudget { actual: usize, limit: usize },
+}
+
 impl<'boxes, 'edges> LayeredRelationScene<'boxes, 'edges> {
     pub(crate) fn new(
         boxes: &'boxes [RelationGraphBox],
@@ -107,6 +119,35 @@ impl<'boxes, 'edges> LayeredRelationScene<'boxes, 'edges> {
     }
 }
 
+pub(crate) fn plan_layered_relation_scene<'boxes, 'edges>(
+    boxes: &'boxes [RelationGraphBox],
+    edges: Vec<LayeredRelationEdge<'edges>>,
+    horizontal_gap: usize,
+    max_grid_cells: usize,
+) -> std::result::Result<LayeredRelationScenePlan<'boxes, 'edges>, LayeredRelationError> {
+    let scene = match LayeredRelationScene::new(boxes, edges, horizontal_gap) {
+        Ok(scene) => scene,
+        Err(LayeredRelationError::Crossing) => {
+            return Ok(LayeredRelationScenePlan::Summary(
+                LayeredRelationSummaryReason::Crossing,
+            ));
+        }
+        Err(error) => return Err(error),
+    };
+
+    let actual = scene.cell_count();
+    if actual > max_grid_cells {
+        return Ok(LayeredRelationScenePlan::Summary(
+            LayeredRelationSummaryReason::GridBudget {
+                actual,
+                limit: max_grid_cells,
+            },
+        ));
+    }
+
+    Ok(LayeredRelationScenePlan::Routed(scene))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +168,64 @@ mod tests {
         let scene = LayeredRelationScene::new(&boxes, edges, 1).expect("scene should be buildable");
 
         assert_eq!(scene.draw_order(), &[(1, 0), (2, 0), (0, -6), (3, 6)]);
+    }
+
+    #[test]
+    fn layered_relation_scene_plan_routes_when_readable_and_within_budget() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let edges = vec![LayeredRelationEdge::new("a", "b", 0, 0)];
+
+        let plan = plan_layered_relation_scene(&boxes, edges, 1, 100)
+            .expect("readable relation should plan");
+
+        assert!(matches!(plan, LayeredRelationScenePlan::Routed(_)));
+    }
+
+    #[test]
+    fn layered_relation_scene_plan_uses_summary_for_crossing_layouts() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+        ];
+        let edges = vec![
+            LayeredRelationEdge::new("a", "b", 0, 0),
+            LayeredRelationEdge::new("b", "a", 0, 0),
+            LayeredRelationEdge::new("a", "c", 0, 0),
+            LayeredRelationEdge::new("c", "a", 0, 0),
+            LayeredRelationEdge::new("b", "c", 0, 0),
+            LayeredRelationEdge::new("c", "b", 0, 0),
+        ];
+
+        let plan = plan_layered_relation_scene(&boxes, edges, 1, 100)
+            .expect("crossing relation should be summarized");
+
+        assert!(matches!(
+            plan,
+            LayeredRelationScenePlan::Summary(LayeredRelationSummaryReason::Crossing)
+        ));
+    }
+
+    #[test]
+    fn layered_relation_scene_plan_uses_summary_when_grid_budget_is_tight() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let edges = vec![LayeredRelationEdge::new("a", "b", 0, 0)];
+
+        let plan = plan_layered_relation_scene(&boxes, edges, 1, 1)
+            .expect("oversized relation should be summarized");
+
+        assert!(matches!(
+            plan,
+            LayeredRelationScenePlan::Summary(LayeredRelationSummaryReason::GridBudget {
+                actual: 5,
+                limit: 1
+            })
+        ));
     }
 }

@@ -29,6 +29,11 @@ product boundary.
 - Use self-authored local fixtures when the diagram is dense, family-specific, or semantically
   clearer than a copied render. Those fixtures live under `tests/testdata/local-semantic/`, and they
   are intentionally outside the copied fixture inventory gate.
+- Class/ER fixtures are local semantic fixtures by default: `mermaid-ascii` does not cover those
+  families, and `beautiful-mermaid` is capability prior art rather than an official output oracle.
+  Admit routed-grid Class/ER cases when the topology remains readable; admit structured
+  relation-summary cases when dense crossings or grid budgets make the honest terminal view a
+  summary.
 - Prefer semantic assertions for local fixtures: visible labels, direction relationships, grouping,
   routing reachability, unsupported-feature diagnostics, and absence of leaked implementation ids.
   Use exact ASCII snapshots only when the shape itself is the behavior under review.

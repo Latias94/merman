@@ -114,6 +114,29 @@ fn local_semantic_fixture_inventory_matches_readme() {
     );
 }
 
+#[test]
+fn local_semantic_fixture_readme_documents_admission_policy() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let readme_path = manifest_dir.join("tests/testdata/local-semantic/README.md");
+    let readme = fs::read_to_string(&readme_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", readme_path.display()));
+
+    for expected in [
+        "Copied fixtures",
+        "`mermaid-ascii` graph and sequence fixtures",
+        "`beautiful-mermaid` is capability evidence",
+        "Class and ER relation fixtures are split by topology readability",
+        "routed-grid fixtures",
+        "structured relation-summary fixtures",
+        "`AsciiRenderOptions::max_grid_cells`",
+    ] {
+        assert!(
+            readme.contains(expected),
+            "local semantic fixture policy must mention `{expected}`"
+        );
+    }
+}
+
 fn collect_local_semantic_fixtures(root: &Path, dir: &Path, fixtures: &mut Vec<PathBuf>) {
     let mut entries = fs::read_dir(dir)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", dir.display()))

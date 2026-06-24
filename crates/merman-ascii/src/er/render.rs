@@ -455,9 +455,17 @@ fn render_layered_relationships(
         .iter()
         .map(er_layered_edge)
         .collect::<Vec<_>>();
-    let scene = match LayeredRelationScene::new(boxes, edges, ER_LEVEL_HORIZONTAL_GAP) {
-        Ok(scene) => scene,
-        Err(LayeredRelationError::Crossing) => {
+    let scene = match relation_graph::plan_layered_relation_scene(
+        boxes,
+        edges,
+        ER_LEVEL_HORIZONTAL_GAP,
+        options.max_grid_cells,
+    )
+    .map_err(er_layered_error)?
+    {
+        relation_graph::LayeredRelationScenePlan::Routed(scene) => scene,
+        relation_graph::LayeredRelationScenePlan::Summary(reason) => {
+            let _ = reason;
             return render_dense_relationship_fallback(
                 boxes,
                 relationships,
@@ -466,17 +474,7 @@ fn render_layered_relationships(
                 charset,
             );
         }
-        Err(error) => return Err(er_layered_error(error)),
     };
-    if scene.cell_count() > options.max_grid_cells {
-        return render_dense_relationship_fallback(
-            boxes,
-            relationships,
-            entity_labels,
-            options,
-            charset,
-        );
-    }
 
     let mut canvas = scene.canvas_with_boxes();
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
