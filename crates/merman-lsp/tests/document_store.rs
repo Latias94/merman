@@ -23,7 +23,7 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
     );
     assert!(
         snapshot.fences[0]
-            .completion
+            .text_index
             .has_directive_prefix("classDef")
     );
 }
@@ -41,12 +41,12 @@ fn markdown_documents_create_fences_for_markdown_extensions() {
 
     assert_eq!(snapshot.fences.len(), 1);
     assert!(snapshot.fences[0].text.contains("flowchart TD"));
-    assert!(snapshot.fences[0].completion.node_ids().any(|id| id == "A"));
+    assert!(snapshot.fences[0].text_index.node_ids().any(|id| id == "A"));
     assert_eq!(
         snapshot.fences[0].diagram_type.as_deref(),
         Some("flowchart-v2")
     );
-    assert!(snapshot.fences[0].completion.has_directive_prefix("init"));
+    assert!(snapshot.fences[0].text_index.has_directive_prefix("init"));
 }
 
 #[test]

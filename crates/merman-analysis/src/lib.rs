@@ -7,6 +7,7 @@
 
 mod analyzer;
 pub mod document;
+pub mod editor;
 pub mod lsp;
 pub mod markdown;
 mod payload;
@@ -15,6 +16,7 @@ mod source_map;
 mod status;
 
 pub use analyzer::{AnalysisOptions, Analyzer};
+pub use editor::{ByteSpan, EditorSymbolKind, FenceLineItem, FenceTextIndex};
 pub use payload::{
     AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticRelated, DiagnosticSeverity,
     DiagnosticSpan, SourceDescriptor, SourceKind, Summary, Utf16Position,

@@ -22,7 +22,7 @@ git_branch: feat/diagnostics-analysis-contract
 
 # Next Action
 
-决定下一步是继续沿着同一条 structure/navigation seam 做 code actions、linked editing、workspace symbol，还是拆出新的 lint/LSP 产品化计划 slice。
+Parser/semantic seam deepening is now tracked separately in `docs/plans/2026-06-24-002-refactor-parser-semantic-seam-plan.md`; keep the current LSP baseline stable and do not expand this slice further.
 
 # Citations
 

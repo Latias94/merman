@@ -83,10 +83,10 @@ fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
 
 fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
     let range = context.prefix_range();
-    let has_directives = context.fence().completion.has_directive_prefix("classDef")
-        || context.fence().completion.has_directive_prefix(":::")
-        || context.fence().completion.has_directive_prefix("init")
-        || context.fence().completion.has_directive_prefix("wrap");
+    let has_directives = context.fence().text_index.has_directive_prefix("classDef")
+        || context.fence().text_index.has_directive_prefix(":::")
+        || context.fence().text_index.has_directive_prefix("init")
+        || context.fence().text_index.has_directive_prefix("wrap");
     let directive_label = if has_directives {
         "node class directive"
     } else {
@@ -129,7 +129,7 @@ fn node_items(
     range: Option<Range>,
 ) -> Vec<CompletionItem> {
     fence
-        .completion
+        .text_index
         .node_ids()
         .into_iter()
         .map(|id| CompletionItem {

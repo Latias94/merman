@@ -1,24 +1,12 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
-use merman_analysis::SourceMap;
-use std::collections::{BTreeMap, HashMap};
+use merman_analysis::{ByteSpan, EditorSymbolKind, FenceLineItem, SourceMap};
+use std::collections::HashMap;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolResponse, GotoDefinitionResponse, Hover, HoverContents, Location,
     MarkupContent, MarkupKind, Position, PrepareRenameResponse, Range, RenameParams, SymbolKind,
     TextEdit, WorkspaceEdit,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ByteSpan {
-    start: usize,
-    end: usize,
-}
-
-impl ByteSpan {
-    fn contains(self, offset: usize) -> bool {
-        offset >= self.start && offset <= self.end
-    }
-}
 
 #[derive(Debug, Clone)]
 struct OutlineItem {
@@ -28,125 +16,6 @@ struct OutlineItem {
     span: ByteSpan,
     selection: ByteSpan,
     children: Vec<OutlineItem>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct FenceNavigationIndex {
-    references: BTreeMap<String, Vec<ByteSpan>>,
-}
-
-impl FenceNavigationIndex {
-    fn from_text(text: &str, body_start: usize, diagram_type: Option<&str>) -> Self {
-        let mut index = Self::default();
-        let mut relative_start = 0usize;
-
-        for line in text.split_inclusive('\n') {
-            let line_end = relative_start + line.len();
-            let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
-            let trimmed = line_no_newline.trim_start();
-            let leading = line_no_newline.len().saturating_sub(trimmed.len());
-            let abs_line_start = body_start + relative_start + leading;
-            let abs_line_end = body_start + line_end;
-
-            index.record_line(diagram_type, trimmed, abs_line_start, abs_line_end);
-            relative_start = line_end;
-        }
-
-        if !text.ends_with('\n') && relative_start < text.len() {
-            let line_no_newline = &text[relative_start..];
-            let trimmed = line_no_newline.trim_start();
-            let leading = line_no_newline.len().saturating_sub(trimmed.len());
-            index.record_line(
-                diagram_type,
-                trimmed,
-                body_start + relative_start + leading,
-                body_start + text.len(),
-            );
-        }
-
-        index
-    }
-
-    fn record_line(
-        &mut self,
-        diagram_type: Option<&str>,
-        trimmed: &str,
-        abs_start: usize,
-        abs_end: usize,
-    ) {
-        if trimmed.is_empty()
-            || is_header_line(trimmed)
-            || trimmed.starts_with("%%")
-            || trimmed.starts_with(":::")
-        {
-            return;
-        }
-
-        if let Some((name, selection)) =
-            special_navigation_item(diagram_type, trimmed, abs_start, abs_end)
-        {
-            self.record_symbol(name, selection);
-            return;
-        }
-
-        let Some((name, selection)) = first_symbol_token(trimmed, abs_start) else {
-            return;
-        };
-        self.record_symbol(name, selection);
-    }
-
-    fn record_symbol(&mut self, name: String, selection: ByteSpan) {
-        self.references
-            .entry(name.clone())
-            .or_default()
-            .push(selection);
-    }
-
-    fn first_reference_span(&self, name: &str) -> Option<ByteSpan> {
-        self.references
-            .get(name)
-            .and_then(|spans| spans.first().copied())
-    }
-
-    fn reference_spans(&self, name: &str) -> &[ByteSpan] {
-        self.references.get(name).map(Vec::as_slice).unwrap_or(&[])
-    }
-
-    fn symbol_at_offset(&self, offset: usize) -> Option<(String, ByteSpan)> {
-        self.references.iter().find_map(|(name, spans)| {
-            spans
-                .iter()
-                .copied()
-                .find(|span| span.contains(offset))
-                .map(|span| (name.clone(), span))
-        })
-    }
-
-    fn rename_edits(
-        &self,
-        snapshot: &DocumentSnapshot,
-        name: &str,
-        new_name: &str,
-    ) -> Option<WorkspaceEdit> {
-        let spans = self.references.get(name)?;
-        let mut edits = spans
-            .iter()
-            .filter_map(|span| range_from_span(&snapshot.source_map, *span))
-            .map(|range| TextEdit::new(range, new_name.to_string()))
-            .collect::<Vec<_>>();
-        if edits.is_empty() {
-            return None;
-        }
-        edits.sort_by(|a, b| compare_range(&a.range, &b.range));
-
-        let mut changes = HashMap::new();
-        changes.insert(snapshot.uri.clone(), edits);
-        Some(WorkspaceEdit {
-            changes: Some(changes),
-            document_changes: None,
-            change_annotations: None,
-        })
-    }
 }
 
 impl OutlineItem {
@@ -212,7 +81,7 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
     let symbols = snapshot
         .fences
         .iter()
-        .filter_map(|fence| outline_for_fence(snapshot, fence))
+        .map(outline_for_fence)
         .filter_map(|item| item.to_document_symbol(&snapshot.source_map))
         .collect::<Vec<_>>();
 
@@ -222,7 +91,7 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
     let offset = snapshot.byte_offset_for_position(position)?;
     let fence = snapshot.fence_at_position(position)?;
-    let outline = outline_for_fence(snapshot, fence)?;
+    let outline = outline_for_fence(fence);
     let item = outline.find_deepest(offset).unwrap_or(&outline);
     let range = range_from_span(&snapshot.source_map, item.selection).or_else(|| {
         range_from_span(
@@ -245,10 +114,9 @@ pub fn goto_definition(
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
     let fence = snapshot.fence_at_position(position)?;
-    let navigation = fence_navigation(fence);
-    let offset = snapshot.byte_offset_for_position(position)?;
-    let (name, _) = navigation.symbol_at_offset(offset)?;
-    let span = navigation.first_reference_span(&name)?;
+    let offset = fence_relative_offset(snapshot, fence, position)?;
+    let (name, _) = fence.text_index.symbol_at_offset(offset)?;
+    let span = absolute_span(fence, fence.text_index.first_reference_span(&name)?);
     let range = range_from_span(&snapshot.source_map, span)?;
     Some(Location::new(snapshot.uri.clone(), range).into())
 }
@@ -259,21 +127,23 @@ pub fn references(
     include_declaration: bool,
 ) -> Option<Vec<Location>> {
     let fence = snapshot.fence_at_position(position)?;
-    let navigation = fence_navigation(fence);
-    let offset = snapshot.byte_offset_for_position(position)?;
-    let (name, _selection) = navigation.symbol_at_offset(offset)?;
-    let mut locations = navigation
+    let offset = fence_relative_offset(snapshot, fence, position)?;
+    let (name, _selection) = fence.text_index.symbol_at_offset(offset)?;
+    let mut locations = fence
+        .text_index
         .reference_spans(&name)
         .iter()
         .copied()
         .filter_map(|span| {
+            let span = absolute_span(fence, span);
             range_from_span(&snapshot.source_map, span)
                 .map(|range| Location::new(snapshot.uri.clone(), range))
         })
         .collect::<Vec<_>>();
 
     if !include_declaration {
-        if let Some(def_span) = navigation.first_reference_span(&name) {
+        if let Some(def_span) = fence.text_index.first_reference_span(&name) {
+            let def_span = absolute_span(fence, def_span);
             locations.retain(|location| !same_span(&snapshot.source_map, location.range, def_span));
         }
     }
@@ -287,9 +157,9 @@ pub fn prepare_rename(
     position: Position,
 ) -> Option<PrepareRenameResponse> {
     let fence = snapshot.fence_at_position(position)?;
-    let navigation = fence_navigation(fence);
-    let offset = snapshot.byte_offset_for_position(position)?;
-    let (_, selection) = navigation.symbol_at_offset(offset)?;
+    let offset = fence_relative_offset(snapshot, fence, position)?;
+    let (_, selection) = fence.text_index.symbol_at_offset(offset)?;
+    let selection = absolute_span(fence, selection);
     let range = range_from_span(&snapshot.source_map, selection)?;
     let placeholder = snapshot
         .text
@@ -308,399 +178,97 @@ pub fn rename(snapshot: &DocumentSnapshot, params: RenameParams) -> Result<Optio
     let fence = snapshot
         .fence_at_position(position)
         .ok_or_else(|| Error::invalid_params("position is outside a Mermaid fence"))?;
-    let navigation = fence_navigation(fence);
-    let offset = snapshot
-        .byte_offset_for_position(position)
-        .ok_or_else(|| Error::invalid_params("position could not be mapped to a byte offset"))?;
-    let (name, _) = navigation
+    let offset = fence_relative_offset(snapshot, fence, position)
+        .ok_or_else(|| Error::invalid_params("no renameable symbol at the requested position"))?;
+    let (name, _) = fence
+        .text_index
         .symbol_at_offset(offset)
         .ok_or_else(|| Error::invalid_params("no renameable symbol at the requested position"))?;
-    Ok(navigation.rename_edits(snapshot, &name, &params.new_name))
+    Ok(rename_edits(snapshot, fence, &name, &params.new_name))
 }
 
-fn fence_navigation(fence: &FenceSnapshot) -> FenceNavigationIndex {
-    FenceNavigationIndex::from_text(&fence.text, fence.body_start, fence.diagram_type.as_deref())
+fn rename_edits(
+    snapshot: &DocumentSnapshot,
+    fence: &FenceSnapshot,
+    name: &str,
+    new_name: &str,
+) -> Option<WorkspaceEdit> {
+    let spans = fence.text_index.reference_spans(name);
+    let mut edits = spans
+        .iter()
+        .copied()
+        .filter_map(|span| range_from_span(&snapshot.source_map, absolute_span(fence, span)))
+        .map(|range| TextEdit::new(range, new_name.to_string()))
+        .collect::<Vec<_>>();
+    if edits.is_empty() {
+        return None;
+    }
+    edits.sort_by(|a, b| compare_range(&a.range, &b.range));
+
+    let mut changes = HashMap::new();
+    changes.insert(snapshot.uri.clone(), edits);
+    Some(WorkspaceEdit {
+        changes: Some(changes),
+        document_changes: None,
+        change_annotations: None,
+    })
 }
 
-fn outline_for_fence(snapshot: &DocumentSnapshot, fence: &FenceSnapshot) -> Option<OutlineItem> {
-    let root_span = ByteSpan {
-        start: fence.start,
-        end: fence.end,
-    };
-    let selection = ByteSpan {
-        start: fence.body_start,
-        end: fence.body_start.saturating_add(fence.text.len()),
-    };
-
-    let children = outline_children(snapshot, fence);
-    let name = fence_name(fence);
-
-    Some(OutlineItem {
-        name,
+fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
+    OutlineItem {
+        name: fence_name(fence),
         detail: fence_detail(fence),
         kind: fence_kind(fence),
-        span: root_span,
-        selection,
-        children,
-    })
-}
-
-fn outline_children(snapshot: &DocumentSnapshot, fence: &FenceSnapshot) -> Vec<OutlineItem> {
-    let mut items = Vec::new();
-    let mut relative_start = 0usize;
-
-    for line in fence.text.split_inclusive('\n') {
-        let line_end = relative_start + line.len();
-        let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
-        let trimmed = line_no_newline.trim_start();
-        let leading = line_no_newline.len().saturating_sub(trimmed.len());
-
-        if let Some(item) = outline_item_for_line(
-            fence.diagram_type.as_deref(),
-            trimmed,
-            fence.body_start + relative_start + leading,
-            fence.body_start + line_end,
-        ) {
-            if item.span.start <= item.span.end {
-                items.push(item);
-            }
-        }
-
-        relative_start = line_end;
-    }
-
-    if !fence.text.ends_with('\n') && relative_start < fence.text.len() {
-        let line_no_newline = &fence.text[relative_start..];
-        let trimmed = line_no_newline.trim_start();
-        let leading = line_no_newline.len().saturating_sub(trimmed.len());
-        if let Some(item) = outline_item_for_line(
-            fence.diagram_type.as_deref(),
-            trimmed,
-            fence.body_start + relative_start + leading,
-            fence.body_start + fence.text.len(),
-        ) {
-            if item.span.start <= item.span.end {
-                items.push(item);
-            }
-        }
-    }
-
-    items.sort_by_key(|item| (item.span.start, item.span.end, item.name.clone()));
-    items.dedup_by(|left, right| {
-        left.span.start == right.span.start
-            && left.span.end == right.span.end
-            && left.name == right.name
-    });
-    let _ = snapshot;
-    items
-}
-
-fn outline_item_for_line(
-    diagram_type: Option<&str>,
-    trimmed: &str,
-    abs_start: usize,
-    abs_end: usize,
-) -> Option<OutlineItem> {
-    if trimmed.is_empty()
-        || is_header_line(trimmed)
-        || trimmed.starts_with("%%")
-        || trimmed.starts_with(":::")
-    {
-        return None;
-    }
-
-    if let Some(item) = special_line_item(diagram_type, trimmed, abs_start, abs_end) {
-        return Some(item);
-    }
-
-    let (name, selection) = first_symbol_token(trimmed, abs_start)?;
-    Some(OutlineItem {
-        name,
-        detail: Some("diagram element".to_string()),
-        kind: SymbolKind::VARIABLE,
         span: ByteSpan {
-            start: abs_start,
-            end: abs_end,
+            start: fence.start,
+            end: fence.end,
         },
-        selection,
+        selection: ByteSpan {
+            start: fence.body_start,
+            end: fence.body_start.saturating_add(fence.text.len()),
+        },
+        children: outline_children(fence),
+    }
+}
+
+fn outline_children(fence: &FenceSnapshot) -> Vec<OutlineItem> {
+    fence
+        .text_index
+        .outline_items()
+        .iter()
+        .map(|item| outline_item_from_index(fence, item))
+        .collect()
+}
+
+fn outline_item_from_index(fence: &FenceSnapshot, item: &FenceLineItem) -> OutlineItem {
+    OutlineItem {
+        name: item.name.clone(),
+        detail: item.detail.clone(),
+        kind: symbol_kind(item.kind),
+        span: absolute_span(fence, item.span),
+        selection: absolute_span(fence, item.selection),
         children: Vec::new(),
-    })
+    }
 }
 
-fn special_line_item(
-    diagram_type: Option<&str>,
-    trimmed: &str,
-    abs_start: usize,
-    abs_end: usize,
-) -> Option<OutlineItem> {
-    if let Some(rest) = trimmed.strip_prefix("subgraph ") {
-        let (name, selection) = token_after_prefix(trimmed, "subgraph", abs_start)?;
-        return Some(OutlineItem {
-            name: if rest.trim().is_empty() {
-                "subgraph".to_string()
-            } else {
-                name
-            },
-            detail: Some("subgraph".to_string()),
-            kind: SymbolKind::NAMESPACE,
-            span: ByteSpan {
-                start: abs_start,
-                end: abs_end,
-            },
-            selection,
-            children: Vec::new(),
-        });
-    }
-
-    if let Some((keyword, kind, detail)) = [
-        ("participant", SymbolKind::VARIABLE, "sequence participant"),
-        ("actor", SymbolKind::VARIABLE, "sequence actor"),
-        ("box", SymbolKind::PACKAGE, "sequence box"),
-        ("note", SymbolKind::EVENT, "note"),
-        ("state", SymbolKind::CLASS, "state"),
-        ("classDef", SymbolKind::PROPERTY, "class definition"),
-        ("class", SymbolKind::CLASS, "class assignment"),
-        ("style", SymbolKind::PROPERTY, "style"),
-        ("click", SymbolKind::FUNCTION, "interaction"),
-        ("linkStyle", SymbolKind::PROPERTY, "link style"),
-        ("accTitle", SymbolKind::STRING, "accessibility title"),
-        ("accDescr", SymbolKind::STRING, "accessibility description"),
-        ("title", SymbolKind::STRING, "title"),
-    ]
-    .into_iter()
-    .find_map(|(keyword, kind, detail)| {
-        trimmed
-            .strip_prefix(keyword)
-            .map(|_| (keyword, kind, detail))
-    }) {
-        let (name, selection) = token_after_prefix(trimmed, keyword, abs_start)?;
-        return Some(OutlineItem {
-            name,
-            detail: Some(detail.to_string()),
-            kind,
-            span: ByteSpan {
-                start: abs_start,
-                end: abs_end,
-            },
-            selection,
-            children: Vec::new(),
-        });
-    }
-
-    if matches!(diagram_type, Some("mindmap")) {
-        let (name, selection) = first_symbol_token(trimmed, abs_start)?;
-        return Some(OutlineItem {
-            name,
-            detail: Some("mindmap node".to_string()),
-            kind: SymbolKind::STRING,
-            span: ByteSpan {
-                start: abs_start,
-                end: abs_end,
-            },
-            selection,
-            children: Vec::new(),
-        });
-    }
-
-    let (name, selection) = first_symbol_token(trimmed, abs_start)?;
-    Some(OutlineItem {
-        name,
-        detail: Some("diagram element".to_string()),
-        kind: generic_kind(diagram_type),
-        span: ByteSpan {
-            start: abs_start,
-            end: abs_end,
-        },
-        selection,
-        children: Vec::new(),
-    })
+fn fence_relative_offset(
+    snapshot: &DocumentSnapshot,
+    fence: &FenceSnapshot,
+    position: Position,
+) -> Option<usize> {
+    let offset = snapshot.byte_offset_for_position(position)?;
+    (offset >= fence.body_start).then_some(offset - fence.body_start)
 }
 
-fn special_navigation_item(
-    diagram_type: Option<&str>,
-    trimmed: &str,
-    abs_start: usize,
-    _abs_end: usize,
-) -> Option<(String, ByteSpan)> {
-    if let Some(rest) = trimmed.strip_prefix("subgraph ") {
-        let (name, selection) = token_after_prefix(trimmed, "subgraph", abs_start)?;
-        return Some((
-            if rest.trim().is_empty() {
-                "subgraph".to_string()
-            } else {
-                name
-            },
-            selection,
-        ));
-    }
-
-    if let Some((keyword, _, _)) = [
-        ("participant", SymbolKind::VARIABLE, "sequence participant"),
-        ("actor", SymbolKind::VARIABLE, "sequence actor"),
-        ("box", SymbolKind::PACKAGE, "sequence box"),
-        ("note", SymbolKind::EVENT, "note"),
-        ("state", SymbolKind::CLASS, "state"),
-        ("classDef", SymbolKind::PROPERTY, "class definition"),
-        ("class", SymbolKind::CLASS, "class assignment"),
-        ("style", SymbolKind::PROPERTY, "style"),
-        ("click", SymbolKind::FUNCTION, "interaction"),
-        ("linkStyle", SymbolKind::PROPERTY, "link style"),
-        ("accTitle", SymbolKind::STRING, "accessibility title"),
-        ("accDescr", SymbolKind::STRING, "accessibility description"),
-        ("title", SymbolKind::STRING, "title"),
-    ]
-    .into_iter()
-    .find_map(|(keyword, kind, detail)| {
-        trimmed
-            .strip_prefix(keyword)
-            .map(|_| (keyword, kind, detail))
-    }) {
-        let (name, selection) = token_after_prefix(trimmed, keyword, abs_start)?;
-        return Some((name, selection));
-    }
-
-    if matches!(diagram_type, Some("mindmap")) {
-        let (name, selection) = first_symbol_token(trimmed, abs_start)?;
-        return Some((name, selection));
-    }
-
-    let (name, selection) = first_symbol_token(trimmed, abs_start)?;
-    Some((name, selection))
-}
-
-fn first_symbol_token(trimmed: &str, abs_start: usize) -> Option<(String, ByteSpan)> {
-    let mut token_end = 0usize;
-    for (idx, ch) in trimmed.char_indices() {
-        if idx == 0 && matches!(ch, '[' | '(' | '{' | '<' | ':' | '%' | ';') {
-            token_end = ch.len_utf8();
-            break;
-        }
-        if ch.is_whitespace()
-            || matches!(
-                ch,
-                '[' | ']'
-                    | '('
-                    | ')'
-                    | '{'
-                    | '}'
-                    | '-'
-                    | '='
-                    | '.'
-                    | '<'
-                    | '>'
-                    | '|'
-                    | ':'
-                    | ','
-                    | ';'
-            )
-        {
-            token_end = idx;
-            break;
-        }
-        token_end = idx + ch.len_utf8();
-    }
-
-    if token_end == 0 {
-        token_end = trimmed.len();
-    }
-
-    let token = trimmed[..token_end].trim_matches(|ch: char| matches!(ch, '[' | ']' | '(' | ')'));
-    if token.is_empty() || token.starts_with('%') || is_header_line(token) {
-        return None;
-    }
-
-    let leading = trimmed.len().saturating_sub(trimmed.trim_start().len());
-    Some((
-        token.to_string(),
-        ByteSpan {
-            start: abs_start + leading,
-            end: abs_start + leading + token.len(),
-        },
-    ))
-}
-
-fn token_after_prefix(trimmed: &str, prefix: &str, abs_start: usize) -> Option<(String, ByteSpan)> {
-    let rest = trimmed.strip_prefix(prefix)?.trim_start();
-    let rest_offset = trimmed.len().saturating_sub(rest.len());
-    let token = rest
-        .split(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '{' | '(' | '['))
-        .next()
-        .filter(|token| !token.is_empty())?;
-
-    Some((
-        token.to_string(),
-        ByteSpan {
-            start: abs_start + rest_offset,
-            end: abs_start + rest_offset + token.len(),
-        },
-    ))
-}
-
-fn is_header_line(trimmed: &str) -> bool {
-    matches!(
-        trimmed,
-        "flowchart"
-            | "flowchart TD"
-            | "flowchart TB"
-            | "flowchart BT"
-            | "flowchart LR"
-            | "flowchart RL"
-            | "graph"
-            | "graph TD"
-            | "graph TB"
-            | "graph BT"
-            | "graph LR"
-            | "graph RL"
-            | "sequenceDiagram"
-            | "stateDiagram"
-            | "stateDiagram-v2"
-            | "mindmap"
-            | "classDiagram"
-            | "erDiagram"
-            | "gantt"
-            | "block-beta"
-            | "journey"
-            | "timeline"
-            | "pie"
-            | "quadrantChart"
-            | "xychart-beta"
-            | "C4Context"
-            | "C4Container"
-            | "C4Component"
-            | "C4Dynamic"
-    ) || trimmed.starts_with("flowchart ")
-        || trimmed.starts_with("graph ")
-        || trimmed.starts_with("sequenceDiagram ")
-        || trimmed.starts_with("stateDiagram ")
-        || trimmed.starts_with("stateDiagram-v2 ")
-        || trimmed.starts_with("classDiagram ")
-        || trimmed.starts_with("erDiagram ")
-        || trimmed.starts_with("mindmap ")
-        || trimmed.starts_with("gantt ")
-        || trimmed.starts_with("block-beta ")
-        || trimmed.starts_with("journey ")
-        || trimmed.starts_with("timeline ")
-        || trimmed.starts_with("pie ")
-        || trimmed.starts_with("quadrantChart ")
-        || trimmed.starts_with("xychart-beta ")
-        || trimmed.starts_with("C4")
-}
-
-fn generic_kind(diagram_type: Option<&str>) -> SymbolKind {
-    match diagram_type {
-        Some("sequence") => SymbolKind::EVENT,
-        Some("state") => SymbolKind::CLASS,
-        Some("mindmap") => SymbolKind::NAMESPACE,
-        Some("class") => SymbolKind::CLASS,
-        Some("er") => SymbolKind::STRUCT,
-        Some("block") => SymbolKind::OBJECT,
-        Some("flowchart-v2") | Some("flowchart-elk") => SymbolKind::MODULE,
-        _ => SymbolKind::VARIABLE,
+fn absolute_span(fence: &FenceSnapshot, span: ByteSpan) -> ByteSpan {
+    ByteSpan {
+        start: fence.body_start + span.start,
+        end: fence.body_start + span.end,
     }
 }
 
 fn fence_kind(fence: &FenceSnapshot) -> SymbolKind {
-    generic_kind(fence.diagram_type.as_deref())
+    symbol_kind(generic_kind(fence.diagram_type.as_deref()))
 }
 
 fn fence_name(fence: &FenceSnapshot) -> String {
@@ -716,21 +284,49 @@ fn fence_detail(fence: &FenceSnapshot) -> Option<String> {
     if let Some(kind) = fence.diagram_type.as_deref() {
         parts.push(format!("diagram type `{kind}`"));
     }
-    if fence.completion.directive_prefixes().next().is_some() {
-        let prefixes = fence
-            .completion
-            .directive_prefixes()
-            .cloned()
-            .collect::<Vec<_>>();
-        if !prefixes.is_empty() {
-            parts.push(format!("directives {}", prefixes.join(", ")));
-        }
+
+    let prefixes = fence
+        .text_index
+        .directive_prefixes()
+        .cloned()
+        .collect::<Vec<_>>();
+    if !prefixes.is_empty() {
+        parts.push(format!("directives {}", prefixes.join(", ")));
     }
 
     if parts.is_empty() {
         None
     } else {
         Some(parts.join(" · "))
+    }
+}
+
+fn generic_kind(diagram_type: Option<&str>) -> EditorSymbolKind {
+    match diagram_type {
+        Some("sequence") => EditorSymbolKind::Event,
+        Some("state") => EditorSymbolKind::Class,
+        Some("mindmap") => EditorSymbolKind::Namespace,
+        Some("class") => EditorSymbolKind::Class,
+        Some("er") => EditorSymbolKind::Struct,
+        Some("block") => EditorSymbolKind::Object,
+        Some("flowchart-v2") | Some("flowchart-elk") => EditorSymbolKind::Module,
+        _ => EditorSymbolKind::Variable,
+    }
+}
+
+fn symbol_kind(kind: EditorSymbolKind) -> SymbolKind {
+    match kind {
+        EditorSymbolKind::Class => SymbolKind::CLASS,
+        EditorSymbolKind::Event => SymbolKind::EVENT,
+        EditorSymbolKind::Function => SymbolKind::FUNCTION,
+        EditorSymbolKind::Module => SymbolKind::MODULE,
+        EditorSymbolKind::Namespace => SymbolKind::NAMESPACE,
+        EditorSymbolKind::Object => SymbolKind::OBJECT,
+        EditorSymbolKind::Package => SymbolKind::PACKAGE,
+        EditorSymbolKind::Property => SymbolKind::PROPERTY,
+        EditorSymbolKind::String => SymbolKind::STRING,
+        EditorSymbolKind::Struct => SymbolKind::STRUCT,
+        EditorSymbolKind::Variable => SymbolKind::VARIABLE,
     }
 }
 

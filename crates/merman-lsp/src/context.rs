@@ -229,7 +229,7 @@ mod tests {
 
         assert_eq!(context.prefix(), "flowchart");
         assert_eq!(context.uri().as_str(), "file:///tmp/example.mmd");
-        assert_eq!(context.fence().completion.node_ids().count(), 2);
+        assert_eq!(context.fence().text_index.node_ids().count(), 2);
         assert!(context.prefix_range().is_some());
     }
 

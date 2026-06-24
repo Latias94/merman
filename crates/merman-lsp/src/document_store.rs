@@ -1,6 +1,6 @@
-use crate::snapshot::{DocumentSnapshot, FenceCompletionIndex, FenceSnapshot};
+use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use merman_analysis::{
-    SourceMap,
+    FenceTextIndex, SourceMap,
     lsp::{diagram_type_for_text, uri_is_markdown},
     markdown::extract_charts_with_spans,
 };
@@ -26,26 +26,31 @@ impl DocumentStore {
                 .enumerate()
                 .map(|(index, chart)| {
                     let definition = chart.definition;
+                    let diagram_type = diagram_type_for_text(&definition);
+                    let text_index =
+                        FenceTextIndex::from_text(&definition, diagram_type.as_deref());
                     FenceSnapshot {
                         index,
                         start: chart.start,
                         body_start: chart.body_start,
                         end: chart.end,
                         text: definition.clone(),
-                        diagram_type: diagram_type_for_text(&definition),
-                        completion: FenceCompletionIndex::from_text(&definition),
+                        diagram_type,
+                        text_index,
                     }
                 })
                 .collect::<Vec<_>>()
         } else {
+            let diagram_type = diagram_type_for_text(&text);
+            let text_index = FenceTextIndex::from_text(&text, diagram_type.as_deref());
             vec![FenceSnapshot {
                 index: 0,
                 start: 0,
                 body_start: 0,
                 end: text.len(),
                 text: text.clone(),
-                diagram_type: diagram_type_for_text(&text),
-                completion: FenceCompletionIndex::from_text(&text),
+                diagram_type,
+                text_index,
             }]
         };
         let snapshot = DocumentSnapshot {
