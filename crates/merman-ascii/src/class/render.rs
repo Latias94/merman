@@ -654,10 +654,7 @@ fn render_layered_relations(
         Err(error) => return Err(class_layered_error(error)),
     };
     if scene.cell_count() > options.max_grid_cells {
-        return Err(AsciiError::RenderLimitExceeded {
-            actual: scene.cell_count(),
-            limit: options.max_grid_cells,
-        });
+        return Ok(render_dense_relation_fallback(boxes, layouts, options));
     }
 
     let mut canvas = scene.canvas_with_boxes();

@@ -562,6 +562,38 @@ fn er_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
 }
 
 #[test]
+fn er_parser_relationship_layout_falls_back_to_summary_when_grid_budget_is_tight() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_er(
+        "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : \"places<br>orders\"\nORDER ||--|| INVOICE : bills",
+        &options,
+    )
+    .expect("ER relationships should fall back to relation summary when grid budget is tight");
+
+    for expected in [
+        "CUSTOMER",
+        "ORDER",
+        "INVOICE",
+        "relations:",
+        "CUSTOMER ||--o{ ORDER",
+        "||--|| INVOICE",
+        "places",
+        "bills",
+        "orders",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "tight-budget ER relation summary should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains(" / "),
+        "tight-budget ER relation summary should keep multiline labels as continuation rows:\n{rendered}"
+    );
+}
+
+#[test]
 fn er_color_html_wraps_dense_relation_summary_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))

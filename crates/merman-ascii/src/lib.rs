@@ -231,6 +231,13 @@ mod tests {
     }
 
     #[test]
+    fn options_builder_sets_max_grid_cells() {
+        let options = AsciiRenderOptions::ascii().with_max_grid_cells(42);
+
+        assert_eq!(options.max_grid_cells, 42);
+    }
+
+    #[test]
     fn validates_sequence_self_message_width() {
         let options = AsciiRenderOptions {
             sequence_self_message_width: 1,

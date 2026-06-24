@@ -725,6 +725,37 @@ fn class_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
 }
 
 #[test]
+fn class_parser_relation_layout_falls_back_to_summary_when_grid_budget_is_tight() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_class(
+        "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes<br>through\nService --> Repo : stores",
+        &options,
+    )
+    .expect("class relationships should fall back to relation summary when grid budget is tight");
+
+    for expected in [
+        "Gateway",
+        "Service",
+        "Repo",
+        "relations:",
+        "Gateway --> Service : routes",
+        "Service --> Repo",
+        "stores",
+        "through",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "tight-budget class relation summary should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains(" / "),
+        "tight-budget class relation summary should keep multiline labels as continuation rows:\n{rendered}"
+    );
+}
+
+#[test]
 fn class_color_truecolor_marks_dense_relation_summary_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))

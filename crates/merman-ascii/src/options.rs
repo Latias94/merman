@@ -101,6 +101,11 @@ impl AsciiRenderOptions {
         self
     }
 
+    pub fn with_max_grid_cells(mut self, max_grid_cells: usize) -> Self {
+        self.max_grid_cells = max_grid_cells;
+        self
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.sequence_self_message_width < 2 {
             return Err(AsciiError::InvalidOption {
