@@ -762,3 +762,74 @@ fn parse_diagram_er_multibyte_attribute_does_not_panic() {
     assert_eq!(attr["type"], json!("文字列"));
     assert_eq!(attr["name"], json!("名前"));
 }
+
+#[test]
+fn parse_er_editor_facts_preserve_parser_symbol_spans() {
+    let engine = Engine::new();
+    let text = r#"erDiagram
+CUSTOMER ||--o{ ORDER : places
+CUSTOMER {
+  string customer_id PK
+}
+ORDER:::important
+class CUSTOMER vip
+classDef important fill:#f9f
+style ORDER fill:#eee
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("er editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+
+    let customer_start = text.find("CUSTOMER").unwrap();
+    assert_eq!(
+        symbol_at("CUSTOMER", customer_start).selection.end,
+        customer_start + "CUSTOMER".len()
+    );
+
+    let order_start = text.find("ORDER :").unwrap();
+    assert_eq!(
+        symbol_at("ORDER", order_start).selection.end,
+        order_start + "ORDER".len()
+    );
+
+    let attribute_start = text.find("customer_id").unwrap();
+    assert_eq!(
+        symbol_at("customer_id", attribute_start).selection.end,
+        attribute_start + "customer_id".len()
+    );
+
+    let important_start = text.find("important").unwrap();
+    assert_eq!(
+        symbol_at("important", important_start).selection.end,
+        important_start + "important".len()
+    );
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "class"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
+}
+
+#[test]
+fn parse_er_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "erDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("er editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "CUSTOMER"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "ORDER"));
+}

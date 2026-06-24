@@ -1,4 +1,7 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
+    SourceSpan,
+};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
@@ -125,6 +128,23 @@ enum Action {
     SetDirection(String),
     SetAccTitle(String),
     SetAccDescr(String),
+}
+
+#[derive(Debug, Clone)]
+struct SpannedId {
+    name: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedIdList {
+    ids: Vec<SpannedId>,
+}
+
+impl SpannedIdList {
+    fn into_names(self) -> Vec<String> {
+        self.ids.into_iter().map(|id| id.name).collect()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -355,6 +375,218 @@ pub fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
     db.into_model(meta)
 }
 
+pub fn parse_er_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let complete = er_grammar::ActionsParser::new()
+        .parse(Lexer::new(code))
+        .is_ok();
+    let mut facts = collect_er_editor_facts_from_tokens(code);
+    if !complete {
+        facts.mark_recovered();
+    }
+
+    facts
+}
+
+fn collect_er_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut collector = ErEditorFactCollector::default();
+
+    let mut lexer = Lexer::new(code);
+    while let Some(result) = lexer.next() {
+        match result {
+            Ok((start, token, end)) => collector.accept(token, start, end, &mut facts),
+            Err(_) => facts.mark_recovered(),
+        }
+    }
+
+    facts
+}
+
+#[derive(Debug, Default)]
+struct ErEditorFactCollector {
+    pending_entity: Option<ErTokenSymbol>,
+    expected_id_list: Option<ExpectedErIdList>,
+    in_attribute_block: bool,
+    attr_word_index: usize,
+}
+
+#[derive(Debug, Clone)]
+struct ErTokenSymbol {
+    name: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExpectedErIdList {
+    StyleEntities,
+    ClassDef,
+    ClassEntities,
+    ClassNames,
+    InlineClasses,
+}
+
+impl ErEditorFactCollector {
+    fn accept(&mut self, token: Tok, start: usize, end: usize, facts: &mut EditorSemanticFacts) {
+        match token {
+            Tok::ErDiagram | Tok::Newline => self.reset_line_state(),
+            Tok::StyleKw => {
+                facts.push_directive_prefix("style");
+                self.expected_id_list = Some(ExpectedErIdList::StyleEntities);
+            }
+            Tok::ClassDefKw => {
+                facts.push_directive_prefix("classDef");
+                self.expected_id_list = Some(ExpectedErIdList::ClassDef);
+            }
+            Tok::ClassKw => {
+                facts.push_directive_prefix("class");
+                self.expected_id_list = Some(ExpectedErIdList::ClassEntities);
+            }
+            Tok::StyleSeparator => {
+                self.push_pending_entity(facts);
+                self.expected_id_list = Some(ExpectedErIdList::InlineClasses);
+            }
+            Tok::IdList(ids) => self.push_id_list(ids, facts),
+            Tok::Name(name) => {
+                if self.in_attribute_block {
+                    return;
+                }
+                let symbol = ErTokenSymbol {
+                    name,
+                    span: SourceSpan::new(start, end),
+                };
+                if let Some(entity) = self.pending_entity.replace(symbol) {
+                    self.push_entity_symbol(facts, entity, "er entity reference");
+                }
+            }
+            Tok::ZeroOrOne
+            | Tok::ZeroOrMore
+            | Tok::OneOrMore
+            | Tok::OnlyOne
+            | Tok::MdParent
+            | Tok::Identifying
+            | Tok::NonIdentifying => self.push_pending_entity(facts),
+            Tok::Colon => self.push_pending_entity(facts),
+            Tok::BlockStart => {
+                self.push_pending_entity(facts);
+                self.in_attribute_block = true;
+                self.attr_word_index = 0;
+            }
+            Tok::BlockStop => {
+                self.in_attribute_block = false;
+                self.attr_word_index = 0;
+            }
+            Tok::AttrWord(word) => {
+                if !self.in_attribute_block {
+                    return;
+                }
+                if self.attr_word_index % 2 == 1 {
+                    self.push_attribute_symbol(facts, word, SourceSpan::new(start, end));
+                }
+                self.attr_word_index += 1;
+            }
+            Tok::Comma => {
+                if self.in_attribute_block && self.attr_word_index > 2 {
+                    self.attr_word_index = 2;
+                }
+            }
+            Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
+            Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
+            Tok::Direction(_)
+            | Tok::Str(_)
+            | Tok::RestOfLine(_)
+            | Tok::SquareStart
+            | Tok::SquareStop
+            | Tok::AttrKey(_)
+            | Tok::Comment(_) => {}
+        }
+    }
+
+    fn reset_line_state(&mut self) {
+        self.pending_entity = None;
+        self.expected_id_list = None;
+        if !self.in_attribute_block {
+            self.attr_word_index = 0;
+        }
+    }
+
+    fn push_pending_entity(&mut self, facts: &mut EditorSemanticFacts) {
+        if let Some(entity) = self.pending_entity.take() {
+            self.push_entity_symbol(facts, entity, "er entity");
+        }
+    }
+
+    fn push_id_list(&mut self, ids: SpannedIdList, facts: &mut EditorSemanticFacts) {
+        let expected = self.expected_id_list.take();
+        let detail = match expected {
+            Some(ExpectedErIdList::StyleEntities) => "er style target",
+            Some(ExpectedErIdList::ClassDef) => "er class definition",
+            Some(ExpectedErIdList::ClassEntities) => "er class target",
+            Some(ExpectedErIdList::ClassNames) => "er class name",
+            Some(ExpectedErIdList::InlineClasses) => "er inline class",
+            None => "er id",
+        };
+        let kind = match expected {
+            Some(ExpectedErIdList::ClassDef)
+            | Some(ExpectedErIdList::ClassNames)
+            | Some(ExpectedErIdList::InlineClasses) => EditorSemanticKind::Property,
+            _ => EditorSemanticKind::Struct,
+        };
+
+        for id in ids.ids {
+            if id.name.is_empty() {
+                continue;
+            }
+            facts.push_symbol(EditorSemanticSymbol::new(
+                id.name,
+                Some(detail.to_string()),
+                kind,
+                id.span,
+                id.span,
+            ));
+        }
+
+        if matches!(expected, Some(ExpectedErIdList::ClassEntities)) {
+            self.expected_id_list = Some(ExpectedErIdList::ClassNames);
+        }
+    }
+
+    fn push_entity_symbol(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        symbol: ErTokenSymbol,
+        detail: &'static str,
+    ) {
+        if symbol.name.is_empty() {
+            return;
+        }
+        facts.push_symbol(EditorSemanticSymbol::new(
+            symbol.name,
+            Some(detail.to_string()),
+            EditorSemanticKind::Struct,
+            symbol.span,
+            symbol.span,
+        ));
+    }
+
+    fn push_attribute_symbol(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        name: String,
+        span: SourceSpan,
+    ) {
+        if name.is_empty() {
+            return;
+        }
+        facts.push_symbol(EditorSemanticSymbol::new(
+            name,
+            Some("er attribute".to_string()),
+            EditorSemanticKind::Property,
+            span,
+            span,
+        ));
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Tok {
     ErDiagram,
@@ -362,7 +594,7 @@ enum Tok {
 
     Name(String),
     Str(String),
-    IdList(Vec<String>),
+    IdList(SpannedIdList),
     RestOfLine(String),
 
     AccTitle(String),
@@ -624,7 +856,7 @@ impl<'input> Lexer<'input> {
         }
         let start = self.pos;
         self.skip_ws_default();
-        let mut ids: Vec<String> = Vec::new();
+        let mut ids: Vec<SpannedId> = Vec::new();
         loop {
             let id_start = self.pos;
             let mut id_end = self.pos;
@@ -639,7 +871,10 @@ impl<'input> Lexer<'input> {
             if id_end == id_start {
                 break;
             }
-            ids.push(self.input[id_start..id_end].to_string());
+            ids.push(SpannedId {
+                name: self.input[id_start..id_end].to_string(),
+                span: SourceSpan::new(id_start, id_end),
+            });
             self.pos = id_end;
 
             self.skip_ws_default();
@@ -659,7 +894,7 @@ impl<'input> Lexer<'input> {
             Mode::NeedClassSecondIdList => Mode::Default,
             _ => Mode::Default,
         };
-        Some((start, Tok::IdList(ids), self.pos))
+        Some((start, Tok::IdList(SpannedIdList { ids }), self.pos))
     }
 
     fn lex_rest_of_line(&mut self) -> Option<(usize, Tok, usize)> {
@@ -824,6 +1059,7 @@ impl<'input> Lexer<'input> {
         let start = self.pos;
         self.skip_ws_block();
         if self.pos >= self.input.len() {
+            self.mode = Mode::Default;
             return Some(Err(LexError {
                 message: "EOF inside attribute block".to_string(),
             }));
@@ -969,6 +1205,7 @@ impl<'input> Iterator for Lexer<'input> {
 
             if self.pos >= self.input.len() {
                 if self.mode == Mode::Block {
+                    self.mode = Mode::Default;
                     return Some(Err(LexError {
                         message: "EOF inside attribute block".to_string(),
                     }));

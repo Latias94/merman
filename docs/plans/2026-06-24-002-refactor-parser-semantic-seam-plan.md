@@ -149,16 +149,17 @@ partial buffers and downstream migration.
 
 ### U2. Retrofit the parser-generator-backed families
 
-- **Status:** Flowchart, Sequence, State, and Class tracer bullets landed. Flowchart now preserves
-  parser-backed node id spans and subgraph header/selection spans through its lexer/LALRPOP AST
-  path, and falls back to recoverable token-stream facts for incomplete editor buffers. Sequence
-  now emits parser-backed participant, actor, message-endpoint, note-actor, and box facts from its
-  lexer token stream with complete/recovered provenance. State now carries state id spans in its
-  LALRPOP AST, emits parser-backed state/reference/fork/join/choice facts, and recovers facts from
-  the state lexer token stream for incomplete buffers. Class now emits class/namespace/relation,
-  member-owner, annotation-target, directive-target, and interaction-target facts from its lexer
-  token stream with complete/recovered provenance. More parser-generator families still need the
-  same treatment.
+- **Status:** Flowchart, Sequence, State, Class, and ER tracer bullets landed. Flowchart now
+  preserves parser-backed node id spans and subgraph header/selection spans through its lexer/
+  LALRPOP AST path, and falls back to recoverable token-stream facts for incomplete editor buffers.
+  Sequence now emits parser-backed participant, actor, message-endpoint, note-actor, and box facts
+  from its lexer token stream with complete/recovered provenance. State now carries state id spans
+  in its LALRPOP AST, emits parser-backed state/reference/fork/join/choice facts, and recovers facts
+  from the state lexer token stream for incomplete buffers. Class now emits class/namespace/
+  relation, member-owner, annotation-target, directive-target, and interaction-target facts from its
+  lexer token stream with complete/recovered provenance. ER now emits entity, relationship endpoint,
+  attribute, class/style/classDef target, and inline class facts with recovered token-stream output
+  for incomplete buffers.
 - **Goal:** Lift span and recovery facts into the families already using deterministic lexer plus
   LALRPOP.
 - **Files:** `crates/merman-core/src/diagrams/flowchart.rs`,
@@ -188,13 +189,14 @@ partial buffers and downstream migration.
 
 ### U4. Move consumers onto the semantic seam
 
-- **Status:** Flowchart, Sequence, State, and Class paths migrated. LSP now consumes
+- **Status:** Flowchart, Sequence, State, Class, and ER paths migrated. LSP now consumes
   `merman-analysis::FenceTextIndex` instead of maintaining separate completion, outline,
   navigation, and rename scans, and covered flowchart/sequence fences use parser-backed core
   editor facts for both complete and recovered parser output; state fences now do the same through
   parser-backed complete/recovered facts; class fences now do the same for parser-backed token
-  facts. Raw-text fallback remains only when a family has no core fact extraction path or the
-  extraction itself is unavailable.
+  facts; ER fences now do the same for parser-backed entity/attribute/relation facts. Raw-text
+  fallback remains only when a family has no core fact extraction path or the extraction itself is
+  unavailable.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,
@@ -250,8 +252,10 @@ partial buffers and downstream migration.
 - For parser-backed families that already have deterministic lexer/parser boundaries, the old
   text-scan editor experience is no longer a reasonable target behavior. Keep it only as a
   migration fallback for families without `EditorSemanticFacts`.
-- `er` is the next high-value parser-generator family for LSP/lint readiness because it carries rich
-  entity and relationship facts that text scanning cannot model reliably.
+- The initial parser-backed set now covers the high-value parser/lexer-backed families that feed
+  current LSP navigation: flowchart, sequence, state, class, and ER.
+- ER `IdList` is now span-rich internally; future ER lint can use directive payload spans instead
+  of reparsing class/style/classDef lines.
 - Class is migrated at the class/reference-owner level, but full product-grade rename/lint will
   still benefit from deeper member, annotation payload, and directive payload span facts.
 - `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced

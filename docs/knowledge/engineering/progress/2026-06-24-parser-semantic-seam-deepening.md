@@ -43,6 +43,11 @@ partial parse results instead of raw-text heuristic scans.
   LALRPOP complete/recovered provenance, covering class declarations, namespaces, relation
   endpoints, member owners, annotation targets, style/classDef/cssClass targets, and click/link/
   callback targets without returning to raw-text scans.
+- ER is the fifth migrated family: `IdList` is now span-rich internally, editor facts cover
+  entities, relationship endpoints, attribute names, inline classes, class/style/classDef targets,
+  and incomplete ER buffers recover from the ER lexer token stream instead of raw-text scans.
+- ER incomplete attribute blocks no longer make the lexer repeatedly emit the same EOF error; the
+  lexer reports the block EOF once, exits block mode, and lets editor fact recovery finish.
 - `merman-analysis::FenceTextIndex::from_core_facts` projects core editor facts into the shared
   LSP/lint migration index, including directive prefixes used by completion.
 - `FenceTextIndex` now records whether its source is `TextScan`, `ParserComplete`, or
@@ -50,21 +55,24 @@ partial parse results instead of raw-text heuristic scans.
   return to heuristic scans.
 - `merman-lsp::DocumentStore` now tries parser-backed core facts for known diagram types and falls
   back to the centralized text index only when parser-backed facts are unavailable or fail; LSP
-  regressions cover flowchart, sequence, state, and class complete/recovered provenance.
+  regressions cover flowchart, sequence, state, class, and ER complete/recovered provenance.
 - Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
   `cargo nextest run -p merman-core parse_sequence_editor_facts`,
   `cargo nextest run -p merman-core parse_state_editor_facts`,
   `cargo nextest run -p merman-core parse_class_editor_facts`,
+  `cargo nextest run -p merman-core parse_er_editor_facts`,
   `cargo nextest run -p merman-core state`, `cargo nextest run -p merman-core class`,
-  `cargo nextest run -p merman-analysis editor::tests`, and `cargo nextest run -p merman-lsp`.
+  `cargo nextest run -p merman-core er`, `cargo nextest run -p merman-analysis editor::tests`,
+  and `cargo nextest run -p merman-lsp`.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: migrate the next high-value parser-generator family
-(`er`) to `EditorSemanticFacts`, deepen class member/annotation/directive payload spans, deepen
+Choose the next parser seam slice deliberately: migrate editor-visible hand-written families
+(`mindmap`, then `gantt` if useful) to `EditorSemanticFacts`, deepen class member/annotation/
+directive payload spans, deepen ER attribute type/key/comment facts if lint needs them, deepen
 state directive payload spans for rename and references, or expose recovered parser diagnostics
 alongside recovered facts. Do not add new heuristic parsing in LSP for covered
-flowchart/sequence/state/class symbols; extend core facts instead.
+flowchart/sequence/state/class/ER symbols; extend core facts instead.
 
 # Citations
 

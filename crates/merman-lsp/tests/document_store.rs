@@ -185,3 +185,31 @@ fn incomplete_class_documents_use_recovered_parser_facts() {
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "User"));
 }
+
+#[test]
+fn er_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "erDiagram\nCUSTOMER ||--o{ ORDER : places\n".to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "CUSTOMER"));
+    assert!(index.node_ids().any(|id| id == "ORDER"));
+}
+
+#[test]
+fn incomplete_er_documents_use_recovered_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "erDiagram\nCUSTOMER ||--o{ ORDER :".to_string());
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
+    assert!(index.node_ids().any(|id| id == "CUSTOMER"));
+    assert!(index.node_ids().any(|id| id == "ORDER"));
+}

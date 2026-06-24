@@ -99,6 +99,7 @@ impl<'a> ParsePipeline<'a> {
             "class" | "classDiagram" => {
                 crate::diagrams::class::parse_class_editor_facts(self.text, &meta)
             }
+            "er" | "erDiagram" => crate::diagrams::er::parse_er_editor_facts(self.text, &meta),
             _ => return Ok(None),
         };
 
