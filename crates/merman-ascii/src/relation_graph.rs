@@ -330,6 +330,29 @@ pub(crate) fn render_stacked_boxes_with_options(
     render_lines_with_options(&lines, options)
 }
 
+pub(crate) fn render_stacked_boxes_with_section(
+    boxes: &[RelationGraphBox],
+    section_title: &str,
+    section_lines: &[String],
+    options: &AsciiRenderOptions,
+) -> String {
+    let mut rendered = render_stacked_boxes_with_options(boxes, options);
+    if section_lines.is_empty() {
+        return rendered;
+    }
+
+    if !rendered.is_empty() {
+        rendered.push('\n');
+    }
+    rendered.push_str(section_title);
+    rendered.push('\n');
+    for line in section_lines {
+        rendered.push_str(line);
+        rendered.push('\n');
+    }
+    rendered
+}
+
 pub(crate) fn find_box<'a>(
     boxes: &'a [RelationGraphBox],
     id: &str,
@@ -490,6 +513,25 @@ mod tests {
         ];
 
         assert_eq!(render_stacked_boxes(&boxes), "A\n|\n\nB\n|\n");
+    }
+
+    #[test]
+    fn render_stacked_boxes_with_section_appends_summary() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let section_lines = vec!["A --> B".to_string(), "B --> A".to_string()];
+
+        assert_eq!(
+            render_stacked_boxes_with_section(
+                &boxes,
+                "relations:",
+                &section_lines,
+                &AsciiRenderOptions::ascii(),
+            ),
+            "A\n\nB\n\nrelations:\nA --> B\nB --> A\n"
+        );
     }
 
     #[test]

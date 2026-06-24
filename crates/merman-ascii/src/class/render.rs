@@ -681,18 +681,11 @@ fn render_dense_relation_fallback(
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
 ) -> String {
-    let mut rendered = relation_graph::render_stacked_boxes_with_options(boxes, options);
-    if layouts.is_empty() {
-        return rendered;
-    }
-
-    rendered.push('\n');
-    rendered.push_str("relations:\n");
-    for layout in layouts {
-        rendered.push_str(&class_relation_summary(layout));
-        rendered.push('\n');
-    }
-    rendered
+    let summaries = layouts
+        .iter()
+        .map(class_relation_summary)
+        .collect::<Vec<_>>();
+    relation_graph::render_stacked_boxes_with_section(boxes, "relations:", &summaries, options)
 }
 
 fn class_relation_summary(layout: &RelationLayout<'_>) -> String {

@@ -498,22 +498,21 @@ fn render_dense_relationship_fallback(
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
-    let mut rendered = relation_graph::render_stacked_boxes_with_options(boxes, options);
-    if relationships.is_empty() {
-        return Ok(rendered);
-    }
-
-    rendered.push('\n');
-    rendered.push_str("relations:\n");
+    let mut summaries = Vec::with_capacity(relationships.len());
     for relationship in relationships {
-        rendered.push_str(&er_relationship_summary(
+        summaries.push(er_relationship_summary(
             relationship,
             entity_labels,
             charset,
         )?);
-        rendered.push('\n');
     }
-    Ok(rendered)
+
+    Ok(relation_graph::render_stacked_boxes_with_section(
+        boxes,
+        "relations:",
+        &summaries,
+        options,
+    ))
 }
 
 fn er_relationship_summary(
