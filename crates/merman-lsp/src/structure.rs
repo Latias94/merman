@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolResponse, GotoDefinitionResponse, Hover, HoverContents, Location,
-    MarkupContent, MarkupKind, Position, PrepareRenameResponse, Range, RenameParams, SymbolKind,
-    TextEdit, WorkspaceEdit,
+    MarkupContent, MarkupKind, Position, PrepareRenameResponse, Range, RenameParams,
+    SymbolInformation, SymbolKind, TextEdit, WorkspaceEdit,
 };
 
 #[derive(Debug, Clone)]
@@ -86,6 +86,36 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
         .collect::<Vec<_>>();
 
     DocumentSymbolResponse::Nested(symbols)
+}
+
+#[allow(deprecated)]
+pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<SymbolInformation> {
+    let query = query.trim();
+    let query = if query.is_empty() {
+        None
+    } else {
+        Some(query.to_lowercase())
+    };
+    let mut symbols = Vec::new();
+    for fence in &snapshot.fences {
+        let outline = outline_for_fence(fence);
+        collect_workspace_symbols(snapshot, &outline, None, query.as_deref(), &mut symbols);
+    }
+
+    sort_workspace_symbols(&mut symbols);
+    symbols
+}
+
+pub fn workspace_symbols_for_snapshots(
+    snapshots: &[DocumentSnapshot],
+    query: &str,
+) -> Vec<SymbolInformation> {
+    let mut symbols = snapshots
+        .iter()
+        .flat_map(|snapshot| workspace_symbols(snapshot, query))
+        .collect::<Vec<_>>();
+    sort_workspace_symbols(&mut symbols);
+    symbols
 }
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
@@ -268,6 +298,54 @@ fn outline_item_from_semantic(fence: &FenceSnapshot, item: &FenceSemanticItem) -
     }
 }
 
+fn collect_workspace_symbols(
+    snapshot: &DocumentSnapshot,
+    item: &OutlineItem,
+    container_name: Option<&str>,
+    query: Option<&str>,
+    symbols: &mut Vec<SymbolInformation>,
+) {
+    if query.is_none_or(|query| workspace_symbol_matches(&item.name, query))
+        && let Some(location) = workspace_symbol_location(snapshot, item)
+    {
+        #[allow(deprecated)]
+        {
+            symbols.push(SymbolInformation {
+                name: item.name.clone(),
+                kind: item.kind,
+                tags: None,
+                deprecated: None,
+                location,
+                container_name: container_name.map(str::to_string),
+            });
+        }
+    }
+
+    let container_name = Some(item.name.as_str());
+    for child in &item.children {
+        collect_workspace_symbols(snapshot, child, container_name, query, symbols);
+    }
+}
+
+fn workspace_symbol_matches(name: &str, query: &str) -> bool {
+    name.to_lowercase().contains(query)
+}
+
+fn workspace_symbol_location(snapshot: &DocumentSnapshot, item: &OutlineItem) -> Option<Location> {
+    let range = range_from_span(&snapshot.source_map, item.selection)?;
+    Some(Location::new(snapshot.uri.clone(), range))
+}
+
+pub(crate) fn sort_workspace_symbols(symbols: &mut [SymbolInformation]) {
+    symbols.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.location.uri.as_str().cmp(right.location.uri.as_str()))
+            .then_with(|| compare_range(&left.location.range, &right.location.range))
+            .then_with(|| left.container_name.cmp(&right.container_name))
+    });
+}
+
 fn fence_relative_offset(
     snapshot: &DocumentSnapshot,
     fence: &FenceSnapshot,
@@ -432,7 +510,7 @@ pub fn outline_rename(
 mod tests {
     use super::{
         outline_definition, outline_document_symbols, outline_hover, outline_prepare_rename,
-        outline_references, outline_rename,
+        outline_references, outline_rename, workspace_symbols,
     };
     use crate::document_store::DocumentStore;
     use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
@@ -569,6 +647,25 @@ mod tests {
 
         let def = outline_definition(&snapshot, position).unwrap();
         assert!(matches!(def, GotoDefinitionResponse::Scalar(_)));
+    }
+
+    #[test]
+    fn workspace_symbols_filter_and_include_outline_items() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
+        );
+
+        let all_symbols = workspace_symbols(&snapshot, "");
+        assert!(all_symbols.iter().any(|symbol| symbol.name == "group"));
+        assert!(all_symbols.iter().any(|symbol| symbol.name == "A"));
+
+        let group_symbols = workspace_symbols(&snapshot, "group");
+        assert_eq!(group_symbols.len(), 1);
+        assert_eq!(group_symbols[0].name, "group");
     }
 
     fn typed_reference_snapshot() -> DocumentSnapshot {

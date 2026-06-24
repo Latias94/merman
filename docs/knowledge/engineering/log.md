@@ -6,6 +6,14 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added a workspace/symbol LSP handler that reuses the existing outline projection from tracked
+  document snapshots, so product-wide symbol lookup now works without introducing a new parser
+  path.
+- Advertised `workspace/symbol` in server capabilities and added focused regressions for the
+  handler, capability flag, and workspace-symbol filtering over outline items.
+- Re-verified the slice with `cargo fmt --all --check`, `cargo check -p merman-lsp`, and focused
+  `cargo test -p merman-lsp` runs for workspace symbol filtering, capabilities, and the LSP smoke
+  path.
 - Removed the last message-based heuristic fallback from `merman-analysis` semantic warning
   projection. The analysis layer now derives warning diagnostics from `warningFacts.ruleId`
   directly, so warning routing no longer depends on diagram-specific message text.

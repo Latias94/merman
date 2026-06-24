@@ -7,6 +7,7 @@ use crate::structure::{
     document_symbols as structure_document_symbols, goto_definition as structure_goto_definition,
     hover as structure_hover, prepare_rename as structure_prepare_rename,
     references as structure_references, rename as structure_rename,
+    workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
     AnalysisOptions, Analyzer,
@@ -27,7 +28,7 @@ use tower_lsp::lsp_types::{
     InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams, RenameParams,
     SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
     ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, WorkspaceEdit,
+    TextDocumentSyncKind, WorkspaceEdit, WorkspaceSymbolParams,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -56,6 +57,7 @@ impl MermanLanguageServer {
             references_provider: Some(OneOf::Left(true)),
             rename_provider: Some(OneOf::Left(true)),
             document_symbol_provider: Some(OneOf::Left(true)),
+            workspace_symbol_provider: Some(OneOf::Left(true)),
             code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
                 code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
                 work_done_progress_options: Default::default(),
@@ -299,6 +301,21 @@ impl LanguageServer for MermanLanguageServer {
             None => Ok(None),
         }
     }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
+        let snapshots = {
+            let store = self.store.lock().await;
+            store.snapshots()
+        };
+
+        Ok(Some(structure_workspace_symbols_for_snapshots(
+            &snapshots,
+            &params.query,
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -320,6 +337,7 @@ mod tests {
         HoverContents, HoverParams, Position, Range, RenameParams, SemanticTokensFullOptions,
         SemanticTokensParams, SemanticTokensServerCapabilities, TextDocumentIdentifier,
         TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+        WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -349,6 +367,10 @@ mod tests {
         ));
         assert!(matches!(
             capabilities.rename_provider,
+            Some(OneOf::Left(true))
+        ));
+        assert!(matches!(
+            capabilities.workspace_symbol_provider,
             Some(OneOf::Left(true))
         ));
         assert!(capabilities.completion_provider.is_some());
@@ -534,5 +556,21 @@ mod tests {
             document_symbols,
             Some(DocumentSymbolResponse::Nested(_))
         ));
+
+        let workspace_symbols = server
+            .symbol(WorkspaceSymbolParams {
+                partial_result_params: Default::default(),
+                work_done_progress_params: Default::default(),
+                query: "group".to_string(),
+            })
+            .await
+            .unwrap()
+            .expect("expected workspace symbol response");
+        assert!(!workspace_symbols.is_empty());
+        assert!(
+            workspace_symbols
+                .iter()
+                .any(|symbol| symbol.name == "group")
+        );
     }
 }
