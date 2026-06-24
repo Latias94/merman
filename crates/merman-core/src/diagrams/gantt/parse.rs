@@ -78,6 +78,34 @@ fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
     Some(rest.trim().to_string())
 }
 
+fn parse_key_colon_value_spanned<'a>(
+    line: &'a str,
+    line_start: usize,
+    key: &str,
+) -> Option<SpannedText<'a>> {
+    let trimmed = line.trim_start();
+    if !starts_with_ci(trimmed, key) {
+        return None;
+    }
+    let leading = line.len().saturating_sub(trimmed.len());
+    let after_key_start = key.len();
+    let after_key = &trimmed[after_key_start..];
+    let after_key_ws = leading_whitespace_len(after_key);
+    let colon_start = after_key_start + after_key_ws;
+    let rest_start = colon_start + ':'.len_utf8();
+    if !trimmed[colon_start..].starts_with(':') {
+        return None;
+    }
+    let rest = &trimmed[rest_start..];
+    let rest_ws = leading_whitespace_len(rest);
+    let value_start = rest_start + rest_ws;
+    Some(SpannedText {
+        text: &trimmed[value_start..],
+        start: line_start + leading + value_start,
+        end: line_start + leading + trimmed.len(),
+    })
+}
+
 fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {
     let t = first_line.trim_start();
     if !starts_with_ci(t, "accDescr") {
@@ -479,12 +507,28 @@ fn collect_gantt_statement_editor_facts(
         collect_gantt_section_symbol(stripped, line_start, section, facts);
         return true;
     }
-    if parse_key_colon_value(stripped, "accTitle").is_some() {
+    if let Some(acc_title) = parse_key_colon_value_spanned(stripped, line_start, "accTitle") {
         facts.push_directive_prefix("accTitle");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            acc_title,
+            "gantt accessibility title",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
-    if parse_key_colon_value(stripped, "accDescr").is_some() {
+    if let Some(acc_descr) = parse_key_colon_value_spanned(stripped, line_start, "accDescr") {
         facts.push_directive_prefix("accDescr");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            acc_descr,
+            "gantt accessibility description",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
     if let Some(block_open) = gantt_acc_descr_block_open(stripped) {

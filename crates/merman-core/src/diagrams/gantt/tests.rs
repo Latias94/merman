@@ -36,6 +36,8 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let text = concat!(
         "gantt\n",
         "title Roadmap\n",
+        "accTitle: Roadmap chart\n",
+        "accDescr: Shows release tasks\n",
         "dateFormat YYYY-MM-DD\n",
         "section Demo\n",
         "Task 1: id1,2014-01-01,1d\n",
@@ -83,6 +85,24 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             && symbol.detail.as_deref() == Some("gantt date format")
             && symbol.selection.start == date_format_start
             && symbol.selection.end == date_format_start + "YYYY-MM-DD".len()
+    }));
+
+    let acc_title_start = text.find("Roadmap chart").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Roadmap chart"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility title")
+            && symbol.selection.start == acc_title_start
+            && symbol.selection.end == acc_title_start + "Roadmap chart".len()
+    }));
+
+    let acc_descr_start = text.find("Shows release tasks").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Shows release tasks"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility description")
+            && symbol.selection.start == acc_descr_start
+            && symbol.selection.end == acc_descr_start + "Shows release tasks".len()
     }));
 
     let section_start = text.find("Demo").unwrap();

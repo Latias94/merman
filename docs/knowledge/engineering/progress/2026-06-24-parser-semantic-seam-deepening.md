@@ -73,6 +73,8 @@ partial parse results instead of raw-text heuristic scans.
 - The existing Gantt click parser is now span-aware. Click task ids remain entity references, while
   `href` URLs, callback names, and callback args are payload-only parser spans for future lint and
   semantic consumers.
+- Gantt single-line accessibility directives now emit payload-only spans for `accTitle:` and
+  `accDescr:` values. Multiline `accDescr { ... }` still needs a cross-line payload span design.
 - Gantt editor completeness is tolerant of original-source YAML front matter and Mermaid init
   directives, so parser-backed facts preserve original byte spans without misclassifying valid
   editor buffers as recovered.
@@ -109,8 +111,8 @@ partial parse results instead of raw-text heuristic scans.
 # Next Action
 
 Choose the next parser seam slice deliberately: deepen class/state/mindmap directive payload spans,
-add Gantt accessibility payload spans for lint, or expose recovered parser diagnostics alongside
-recovered facts. Do not add new heuristic parsing in LSP for covered
+design cross-line payload spans for Gantt multiline `accDescr`, or expose recovered parser
+diagnostics alongside recovered facts. Do not add new heuristic parsing in LSP for covered
 flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations
