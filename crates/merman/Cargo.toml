@@ -13,10 +13,10 @@ readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
 exclude = [
-  "tests/mindmap_br_variants_031.rs",
-  "tests/resvg_safe_fixture_smoke.rs",
-  "tests/zed_mermaid_issue_fixtures.rs",
-  "tests/zed_pr_57644_corpus.rs",
+    "tests/mindmap_br_variants_031.rs",
+    "tests/resvg_safe_fixture_smoke.rs",
+    "tests/zed_mermaid_issue_fixtures.rs",
+    "tests/zed_pr_57644_corpus.rs",
 ]
 
 [package.metadata.docs.rs]
@@ -38,7 +38,8 @@ raster = [
     "dep:resvg",
     "dep:usvg",
     "dep:tiny-skia",
-    "dep:svg2pdf",
+    "dep:krilla",
+    "dep:krilla-svg",
 ]
 
 [dependencies]
@@ -52,7 +53,8 @@ image = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
-svg2pdf = { workspace = true, optional = true }
+krilla = { workspace = true, optional = true }
+krilla-svg = { workspace = true, optional = true }
 
 [dev-dependencies]
 base64.workspace = true

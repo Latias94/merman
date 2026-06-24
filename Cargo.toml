@@ -1,28 +1,28 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/merman",
-  "crates/merman-core",
-  "crates/merman-ascii",
-  "crates/merman-bindings-core",
-  "crates/merman-cli",
-  "crates/merman-ffi",
-  "crates/merman-elk-layered",
-  "crates/merman-layout-elk",
-  "crates/merman-rustdoc",
-  "crates/merman-render",
-  "crates/merman-typst-plugin",
-  "crates/merman-uniffi",
-  "crates/merman-wasm",
-  "crates/dugong",
-  "crates/dugong-graphlib",
-  "crates/manatee",
-  "crates/roughr",
-  "crates/xtask",
+    "crates/merman",
+    "crates/merman-core",
+    "crates/merman-ascii",
+    "crates/merman-bindings-core",
+    "crates/merman-cli",
+    "crates/merman-ffi",
+    "crates/merman-elk-layered",
+    "crates/merman-layout-elk",
+    "crates/merman-rustdoc",
+    "crates/merman-render",
+    "crates/merman-typst-plugin",
+    "crates/merman-uniffi",
+    "crates/merman-wasm",
+    "crates/dugong",
+    "crates/dugong-graphlib",
+    "crates/manatee",
+    "crates/roughr",
+    "crates/xtask",
 ]
 exclude = [
-  "repo-ref/dear-imgui-rs",
-  "repo-ref/mermaid-rs-renderer",
+    "repo-ref/dear-imgui-rs",
+    "repo-ref/mermaid-rs-renderer",
 ]
 
 [workspace.package]
@@ -41,11 +41,10 @@ euclid = "0.22.14"
 flate2 = "1.1.9"
 htmlize = { version = "1.1.0", features = ["unescape"] }
 indexmap = { version = "2.2.6", features = ["serde"] }
-lalrpop = "0.20.2"
-lalrpop-util = "0.20.2"
-logos = "0.14.4"
+lalrpop = "0.23.1"
+lalrpop-util = "0.23.1"
 nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
-pulldown-cmark = "0.12.2"
+pulldown-cmark = "0.13.4"
 ratex-layout = "0.1.11"
 ratex-parser = "0.1.11"
 ratex-svg = { version = "0.1.11", default-features = false }
@@ -68,23 +67,24 @@ tracing = "0.1.41"
 uniffi = "0.31.1"
 futures = "0.3.31"
 hashbrown = "0.16.1"
-lol_html = "2.7.1"
+lol_html = "2.8"
 url = "2.5.4"
-uuid = { version = "1.12.1", default-features = false, features = ["std"] }
-chrono = { version = "0.4.40", default-features = false, features = ["std"] }
-clap = { version = "4.5", features = ["derive"] }
-clap_complete = "4.5"
+uuid = { version = "1.23", default-features = false, features = ["std"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+clap = { version = "4.6", features = ["derive"] }
+clap_complete = "4.6"
 console_error_panic_hook = "0.1"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
-png = "0.17.16"
+png = "0.18"
 proc-macro2 = "1"
 quote = "1"
-resvg = "0.46.0"
+resvg = "0.47"
 serde-wasm-bindgen = "0.6"
 syn = { version = "2", features = ["full", "parsing"] }
-usvg = "0.46.0"
-tiny-skia = "0.11.4"
-svg2pdf = "0.13.0"
+usvg = "0.47"
+tiny-skia = "0.12"
+krilla = "0.8"
+krilla-svg = "0.8"
 unicode-width = "0.2.2"
 wasm-bindgen = "0.2"
 web-time = "1.1.0"
