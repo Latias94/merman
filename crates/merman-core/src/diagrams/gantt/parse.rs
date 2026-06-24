@@ -267,8 +267,12 @@ fn collect_gantt_editor_facts_from_lines(code: &str) -> EditorSemanticFacts {
     }
 
     if let Some(block) = acc_descr_block.take() {
+        let diagnostic_span = SourceSpan::new(block.statement_start, block.statement_end);
         block.emit_symbol(&mut facts);
-        facts.mark_recovered();
+        facts.mark_recovered_with_diagnostic(
+            "gantt parser recovered from unterminated accDescr block",
+            Some(diagnostic_span),
+        );
     }
 
     facts
@@ -325,21 +329,46 @@ fn collect_gantt_editor_line(
             let recognized =
                 collect_gantt_statement_editor_facts(rest, rest_start, acc_descr_block, facts);
             if !recognized {
-                facts.mark_recovered();
+                mark_gantt_recovered_statement(
+                    facts,
+                    "gantt parser recovered from unrecognized statement after header",
+                    rest,
+                    rest_start,
+                );
             }
         }
         return;
     }
 
+    let missing_header = !*header_seen;
     if !*header_seen {
-        facts.mark_recovered();
+        mark_gantt_recovered_statement(
+            facts,
+            "gantt parser recovered before gantt header",
+            stripped,
+            line_start,
+        );
     }
 
     let recognized =
         collect_gantt_statement_editor_facts(stripped, line_start, acc_descr_block, facts);
-    if !recognized {
-        facts.mark_recovered();
+    if !recognized && !missing_header {
+        mark_gantt_recovered_statement(
+            facts,
+            "gantt parser recovered from unrecognized statement",
+            stripped,
+            line_start,
+        );
     }
+}
+
+fn mark_gantt_recovered_statement(
+    facts: &mut EditorSemanticFacts,
+    message: &'static str,
+    line: &str,
+    line_start: usize,
+) {
+    facts.mark_recovered_with_diagnostic(message, Some(gantt_statement_span(line, line_start)));
 }
 
 fn gantt_header_rest(line: &str, line_start: usize) -> Option<(&str, usize)> {
@@ -472,12 +501,18 @@ fn collect_gantt_statement_editor_facts(
             EditorSemanticKind::String,
             facts,
         );
-        let day = day.text.trim().to_lowercase();
+        let day_value = day.trim();
+        let day_text = day_value
+            .map(|value| value.text.to_lowercase())
+            .unwrap_or_default();
         if !matches!(
-            day.as_str(),
+            day_text.as_str(),
             "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
         ) {
-            facts.mark_recovered();
+            facts.mark_recovered_with_diagnostic(
+                "gantt parser recovered from invalid weekday",
+                day_value.map(SpannedText::span),
+            );
         }
         return true;
     }
@@ -491,9 +526,15 @@ fn collect_gantt_statement_editor_facts(
             EditorSemanticKind::String,
             facts,
         );
-        let day = day.text.trim().to_lowercase();
-        if !matches!(day.as_str(), "friday" | "saturday") {
-            facts.mark_recovered();
+        let day_value = day.trim();
+        let day_text = day_value
+            .map(|value| value.text.to_lowercase())
+            .unwrap_or_default();
+        if !matches!(day_text.as_str(), "friday" | "saturday") {
+            facts.mark_recovered_with_diagnostic(
+                "gantt parser recovered from invalid weekend",
+                day_value.map(SpannedText::span),
+            );
         }
         return true;
     }

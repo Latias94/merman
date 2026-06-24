@@ -40,6 +40,52 @@ fn invalid_syntax_returns_parse_error_with_diagram_type() {
 }
 
 #[test]
+fn recovered_gantt_editor_diagnostic_is_projected() {
+    let source = "gantt\nweekday foo\n";
+    let payload = analyze(source);
+
+    assert!(!payload.valid);
+    assert_eq!(payload.summary.errors, 1);
+    assert_eq!(payload.summary.warnings, 1);
+    let diagnostic = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
+        .expect("recovered editor diagnostic");
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+    assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
+    assert_eq!(diagnostic.diagram_type.as_deref(), Some("gantt"));
+    assert!(diagnostic.message.contains("invalid weekday"));
+    assert_eq!(
+        diagnostic.span.as_ref().map(|span| span.byte_start),
+        source.find("foo")
+    );
+}
+
+#[test]
+fn recovered_mindmap_editor_diagnostic_is_projected() {
+    let source = "mindmap\nroot\n child[unterminated";
+    let payload = analyze(source);
+
+    assert!(!payload.valid);
+    assert_eq!(payload.summary.errors, 1);
+    assert_eq!(payload.summary.warnings, 1);
+    let diagnostic = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
+        .expect("recovered editor diagnostic");
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+    assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
+    assert_eq!(diagnostic.diagram_type.as_deref(), Some("mindmap"));
+    assert!(diagnostic.message.contains("unterminated node delimiter"));
+    assert_eq!(
+        diagnostic.span.as_ref().map(|span| span.byte_start),
+        source.find("child")
+    );
+}
+
+#[test]
 fn valid_flowchart_returns_no_diagnostics() {
     let payload = analyze("flowchart TD\nA[Hello] --> B[World]\n");
 

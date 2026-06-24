@@ -6,6 +6,15 @@ status: active
 # Log
 
 ## 2026-06-24
+- Added source-backed recovery diagnostics for hand-written/line-scanned editor facts: Gantt now
+  reports invalid weekday/weekend values, unrecognized statements, missing-header recovery, and
+  unterminated multiline `accDescr` blocks; Mindmap now reports unterminated node delimiters.
+- Added analyzer regressions proving Gantt/Mindmap recovered editor diagnostics are projected as
+  `merman.parse.recovered_editor_facts` warnings through the shared diagnostics payload.
+- Re-verified with `cargo nextest run -p merman-core gantt mindmap --no-fail-fast`,
+  `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast`,
+  `cargo nextest run -p merman-ffi -p merman-wasm -p merman-cli --no-fail-fast`,
+  `cargo fmt --all --check`, and `git diff --check`.
 - Added parser-backed recovery diagnostics to `EditorSemanticFacts`, so grammar-backed flowchart/sequence/state/class/ER editor parsers now attach LALRPOP error messages plus parser-token/EOF byte spans when they recover from partial input.
 - Projected those recovery diagnostics through `merman-analysis` as `merman.parse.recovered_editor_facts` warnings, keeping the existing parse error and letting LSP/CLI/FFI/WASM consume the same payload seam.
 - Fixed the Rust FFI smoke-test mirror to include the existing `analyze_json` field, and split the wasm `analyze_json` smoke test by target so native nextest uses the binding-core byte payload while wasm32 keeps the `JsValue` path.

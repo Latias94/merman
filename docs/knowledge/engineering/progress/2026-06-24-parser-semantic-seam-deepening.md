@@ -123,6 +123,10 @@ partial parse results instead of raw-text heuristic scans.
 - `EditorSemanticFacts` now also carries parser-backed recovery diagnostics. Grammar-backed
   flowchart, sequence, state, class, and ER editor parsers attach the LALRPOP parse error message
   and parser-token/EOF byte span when a partial buffer forces recovered facts.
+- Hand-written/line-scanned recovery sites now use the same diagnostics carrier. Gantt reports
+  invalid weekday/weekend values, missing-header recovery, unrecognized statements, and
+  unterminated multiline `accDescr` blocks with source spans; Mindmap reports unterminated node
+  delimiters with source spans.
 - `merman-analysis::Analyzer` projects those core recovery diagnostics as
   `merman.parse.recovered_editor_facts` parse warnings. This keeps diagnostics, LSP publishing,
   CLI lint, FFI, and WASM on the same payload seam instead of adding a private LSP diagnostic scan.
@@ -151,14 +155,18 @@ partial parse results instead of raw-text heuristic scans.
   `cargo test --workspace --no-run`, `cargo fmt --all --check`, and `git diff --check`.
   `cargo nextest run --workspace --no-fail-fast` was interrupted after the test binary listing
   phase hung for several minutes.
+- Re-verified the Gantt/Mindmap recovery-diagnostics slice with
+  `cargo nextest run -p merman-core gantt mindmap --no-fail-fast`,
+  `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast`,
+  `cargo nextest run -p merman-ffi -p merman-wasm -p merman-cli --no-fail-fast`,
+  `cargo fmt --all --check`, and `git diff --check`.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: deepen remaining flowchart/sequence/ER payloads,
-add recovered diagnostics to hand-written/line-scanned families such as Gantt/Mindmap where the
-parser has source-backed recovery evidence, or mirror the state event stream into render-side
-locality if that becomes the next high-return break. Do not add new heuristic parsing in LSP for
-covered flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: deepen remaining flowchart/sequence/ER payloads, or
+mirror the state event stream into render-side locality if that becomes the next high-return break.
+Do not add new heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt
+symbols; extend core facts instead.
 
 # Citations
 

@@ -2,8 +2,8 @@ use serde_json::{Map, Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
-    EditorSemanticCompleteness, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
-    Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 
 use super::db::{MindmapDb, MindmapParseConfig};
@@ -65,6 +65,7 @@ struct MindmapParsedLines {
     events: Vec<MindmapParsedEvent>,
     directive_prefixes: Vec<String>,
     completeness: EditorSemanticCompleteness,
+    diagnostics: Vec<EditorSemanticDiagnostic>,
 }
 
 fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
@@ -110,7 +111,7 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
         completeness: parsed.completeness,
         symbols: Vec::new(),
         directive_prefixes: Vec::new(),
-        diagnostics: Vec::new(),
+        diagnostics: parsed.diagnostics,
     };
     for prefix in parsed.directive_prefixes {
         facts.push_directive_prefix(prefix);
@@ -354,11 +355,17 @@ fn parse_mindmap_lines(
         let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
         push_and_try(line_no_newline, line_start, &mut out)?;
     }
-    if let Some(PendingMindmapLine { text, .. }) = pending {
+    if let Some(PendingMindmapLine { text, start }) = pending {
         let line = strip_inline_comment(&text);
         if !line.trim().is_empty() {
             if recover {
                 out.completeness = EditorSemanticCompleteness::Recovered;
+                let leading = line.len().saturating_sub(line.trim_start().len());
+                let trimmed = line.trim_end();
+                out.diagnostics.push(EditorSemanticDiagnostic::new(
+                    "mindmap parser recovered from unterminated node delimiter",
+                    Some(SourceSpan::new(start + leading, start + trimmed.len())),
+                ));
                 return Ok(out);
             }
             return Err(Error::DiagramParse {

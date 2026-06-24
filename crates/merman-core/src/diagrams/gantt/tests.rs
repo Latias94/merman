@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig, ParseOptions,
-    RenderSemanticModel,
+    RenderSemanticModel, SourceSpan,
 };
 use chrono::NaiveDate;
 use futures::executor::block_on;
@@ -205,6 +205,12 @@ fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
         .expect("gantt editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(facts.diagnostics.len(), 1);
+    let diagnostic = &facts.diagnostics[0];
+    assert!(diagnostic.message.contains("unterminated accDescr block"));
+    let block_start = text.find("accDescr").unwrap();
+    assert_eq!(diagnostic.span.unwrap().start, block_start);
+
     let note_start = text.find("Draft release notes").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Draft release notes"
@@ -229,6 +235,11 @@ fn gantt_editor_facts_recovers_from_incomplete_input() {
         .expect("gantt editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let task_start = text.find("Task 2").unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains("unrecognized statement")
+            && diagnostic.span == Some(SourceSpan::new(task_start, text.len()))
+    }));
     assert!(
         facts.symbols.iter().any(|symbol| {
             symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
@@ -266,6 +277,22 @@ fn gantt_editor_facts_skip_leading_mermaid_directives() {
             symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
         })
     );
+}
+
+#[test]
+fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
+    let text = "gantt\nweekday foo\n";
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let value_start = text.find("foo").unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains("invalid weekday")
+            && diagnostic.span == Some(SourceSpan::new(value_start, value_start + "foo".len()))
+    }));
 }
 
 #[test]

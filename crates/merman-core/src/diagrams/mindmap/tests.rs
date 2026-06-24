@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     EditorSemanticCompleteness, EditorSemanticRole, Engine, ParseOptions, RenderSemanticModel,
+    SourceSpan,
 };
 use futures::executor::block_on;
 use serde_json::Value;
@@ -332,6 +333,11 @@ fn mindmap_editor_facts_recovers_from_incomplete_input() {
         .expect("mindmap editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let child_start = text.find("child").unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains("unterminated node delimiter")
+            && diagnostic.span == Some(SourceSpan::new(child_start, text.len()))
+    }));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
     assert!(!facts.symbols.iter().any(|symbol| symbol.name == "child"));
 }
