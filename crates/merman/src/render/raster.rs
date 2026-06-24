@@ -969,18 +969,36 @@ mod tests {
     }
 
     fn png_size(bytes: &[u8]) -> (u32, u32) {
-        let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
-            .unwrap()
-            .to_rgba8();
-        img.dimensions()
+        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        let reader = decoder.read_info().expect("png read_info");
+        let info = reader.info();
+        (info.width, info.height)
     }
 
     fn assert_png_has_visible_non_background_ink(bytes: &[u8]) {
-        let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
-            .unwrap()
-            .to_rgba8();
-        let pixels = img.as_raw();
-        let background = &pixels[..4];
+        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        let mut reader = decoder.read_info().expect("png read_info");
+        let size = reader
+            .output_buffer_size()
+            .expect("invalid png output buffer size");
+        let mut buf = vec![0u8; size];
+        let info = reader.next_frame(&mut buf).expect("png next_frame");
+
+        assert_eq!(
+            info.color_type,
+            png::ColorType::Rgba,
+            "expected RGBA PNG output"
+        );
+        assert_eq!(
+            info.bit_depth,
+            png::BitDepth::Eight,
+            "expected 8-bit PNG output"
+        );
+
+        let pixels = &buf[..info.buffer_size()];
+        let Some(background) = pixels.chunks_exact(4).next() else {
+            panic!("expected at least one PNG pixel");
+        };
         let differing_pixels = pixels
             .chunks_exact(4)
             .filter(|px| {
