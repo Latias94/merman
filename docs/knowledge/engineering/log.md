@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added LSP smoke regressions proving the shared rule config contract also handles source-byte-limit severity
+  overrides on both initialize and didChangeConfiguration, so the server surface now matches the
+  CLI/library behavior for `merman.resource.source_bytes_exceeded`.
 - Added LSP smoke regressions proving the shared rule config contract also handles severity
   overrides on both initialize and didChangeConfiguration, so the server surface now matches the
   CLI/library behavior for `merman.parse.no_diagram`.

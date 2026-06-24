@@ -498,6 +498,28 @@ mod tests {
     }
 
     #[test]
+    fn analysis_rule_config_can_override_resource_limit_severity() {
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default()
+                .with_max_source_bytes(Some(8))
+                .with_rule_config(AnalysisRuleConfig::default().with_rule_severity(
+                    crate::rules::RESOURCE_LIMIT_RULE_ID,
+                    DiagnosticSeverity::Hint,
+                )),
+        );
+        let payload = analyzer.analyze("flowchart TD\nA-->B\n");
+
+        assert!(payload.valid);
+        assert_eq!(payload.summary.hints, 1);
+        assert_eq!(payload.summary.errors, 0);
+        assert_eq!(
+            payload.diagnostics[0].id,
+            crate::rules::RESOURCE_LIMIT_RULE_ID
+        );
+        assert_eq!(payload.diagnostics[0].severity, DiagnosticSeverity::Hint);
+    }
+
+    #[test]
     fn analysis_rule_config_can_override_source_lint_severity() {
         let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default().with_rule_severity(

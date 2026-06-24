@@ -409,6 +409,35 @@ fn cli_lint_can_disable_resource_limit_rule() {
 }
 
 #[test]
+fn cli_lint_can_override_resource_limit_severity() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--max-source-bytes",
+            "8",
+            "--rule-severity",
+            "merman.resource.source_bytes_exceeded=hint",
+            "-",
+        ],
+        "flowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 1);
+    assert_eq!(payload["summary"]["errors"], 0);
+    assert_eq!(
+        payload["diagnostics"][0]["id"].as_str(),
+        Some("merman.resource.source_bytes_exceeded")
+    );
+    assert_eq!(payload["diagnostics"][0]["severity"].as_str(), Some("hint"));
+}
+
+#[test]
 fn cli_lint_can_disable_block_warning_rules() {
     let output = run_with_stdin(
         &[
