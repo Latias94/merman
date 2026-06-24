@@ -11,9 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.config.prefer_init_directive";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
-pub const BLOCK_WARNING_RULE_ID: &str = "merman.block.warning";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
-pub const GIT_GRAPH_WARNING_RULE_ID: &str = "merman.git_graph.warning";
 pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,22 +38,8 @@ const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     default_enabled: true,
     fixable: false,
 };
-const BLOCK_WARNING_RULE: RuleDescriptor = RuleDescriptor {
-    id: BLOCK_WARNING_RULE_ID,
-    default_severity: DiagnosticSeverity::Warning,
-    category: DiagnosticCategory::Semantic,
-    default_enabled: true,
-    fixable: false,
-};
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
-    default_severity: DiagnosticSeverity::Warning,
-    category: DiagnosticCategory::Semantic,
-    default_enabled: true,
-    fixable: false,
-};
-const GIT_GRAPH_WARNING_RULE: RuleDescriptor = RuleDescriptor {
-    id: GIT_GRAPH_WARNING_RULE_ID,
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
@@ -72,9 +56,7 @@ const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
 const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PREFER_INIT_DIRECTIVE_RULE,
     BLOCK_WIDTH_RULE,
-    BLOCK_WARNING_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
-    GIT_GRAPH_WARNING_RULE,
     SEMANTIC_WARNING_RULE,
 ];
 
@@ -159,8 +141,7 @@ fn semantic_warning_fact_diagnostics(
     warning_facts
         .into_iter()
         .filter_map(|fact| {
-            let descriptor =
-                warning_fact_rule_descriptor(diagram_type, &fact.rule_id, &fact.message);
+            let descriptor = warning_fact_rule_descriptor(&fact.rule_id);
             rule_config
                 .is_rule_enabled(descriptor)
                 .then_some((descriptor, fact))
@@ -193,36 +174,12 @@ fn warning_for_fact(
     diagnostic
 }
 
-fn semantic_warning_rule_descriptor(diagram_type: &str, message: &str) -> RuleDescriptor {
-    match diagram_type {
-        "block" | "block-beta" if is_block_width_warning(message) => BLOCK_WIDTH_RULE,
-        "block" | "block-beta" => BLOCK_WARNING_RULE,
-        "gitGraph" if is_git_graph_duplicate_commit_warning(message) => {
-            GIT_GRAPH_DUPLICATE_COMMIT_RULE
-        }
-        "gitGraph" => GIT_GRAPH_WARNING_RULE,
-        _ => SEMANTIC_WARNING_RULE,
-    }
-}
-
-fn warning_fact_rule_descriptor(
-    diagram_type: &str,
-    rule_id: &str,
-    message: &str,
-) -> RuleDescriptor {
+fn warning_fact_rule_descriptor(rule_id: &str) -> RuleDescriptor {
     match rule_id {
         BLOCK_WIDTH_WARNING_RULE_ID => BLOCK_WIDTH_RULE,
         GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => GIT_GRAPH_DUPLICATE_COMMIT_RULE,
-        _ => semantic_warning_rule_descriptor(diagram_type, message),
+        _ => SEMANTIC_WARNING_RULE,
     }
-}
-
-fn is_block_width_warning(message: &str) -> bool {
-    message.starts_with("Block ") && message.contains(" exceeds configured column width ")
-}
-
-fn is_git_graph_duplicate_commit_warning(message: &str) -> bool {
-    message.starts_with("Commit ID ") && message.ends_with(" already exists")
 }
 
 fn init_directive_alias_diagnostics(
@@ -466,7 +423,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 6);
+        assert_eq!(descriptors.len(), 4);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
         assert_eq!(descriptors[0].category, DiagnosticCategory::Config);
@@ -482,6 +439,34 @@ mod tests {
                 .iter()
                 .any(|descriptor| descriptor.id == GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID)
         );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == SEMANTIC_WARNING_RULE_ID)
+        );
+    }
+
+    #[test]
+    fn semantic_warning_facts_use_rule_ids_even_when_messages_differ() {
+        let source = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics = semantic_warning_diagnostics(
+            "block",
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
+                        "message": "this message does not need to mention width"
+                    }
+                ]
+            }),
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, BLOCK_WIDTH_RULE_ID);
     }
 
     #[test]

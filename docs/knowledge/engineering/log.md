@@ -6,6 +6,13 @@ status: active
 # Log
 
 ## 2026-06-25
+- Removed the last message-based heuristic fallback from `merman-analysis` semantic warning
+  projection. The analysis layer now derives warning diagnostics from `warningFacts.ruleId`
+  directly, so warning routing no longer depends on diagram-specific message text.
+- Tightened the semantic warning rule surface so only fact-backed rule IDs remain in the stable
+  descriptor table; the generic "block warning" and "gitGraph warning" descriptors were removed.
+- Re-verified the slice with `cargo fmt --all --check`, `cargo check -p merman-analysis`, and a
+  focused `cargo test -p merman-analysis semantic_warning_facts_use_rule_ids_even_when_messages_differ -- --nocapture`.
 - Removed the legacy string-based semantic warning projection for block and gitGraph. Those
   families now emit structured `warningFacts`, and `merman-analysis` projects warnings from the
   shared rule IDs instead of matching message text.
