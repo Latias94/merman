@@ -190,7 +190,9 @@ partial buffers and downstream migration.
   relative-reference matcher now exposes source ranges so editor facts reuse the Mermaid-backed
   dependency grammar instead of reimplementing it downstream. Gantt editor completeness also
   tolerates original-source front matter and Mermaid init directives while preserving original byte
-  spans. Gantt `section` is an outline-only fact, not a node id, so task completion stays focused
+  spans. Gantt directive payloads such as `title`, `dateFormat`, `axisFormat`, `tickInterval`,
+  `includes`, `excludes`, `todayMarker`, `weekday`, and `weekend` are now parser-backed payload
+  facts. Gantt `section` is an outline-only fact, not a node id, so task completion stays focused
   on task identifiers.
 - **Goal:** Bring `mindmap`, `gantt`, and the other line- or indentation-driven families that matter
   to the same contract.
@@ -218,7 +220,8 @@ partial buffers and downstream migration.
   provenance path in `DocumentStore`, exposes Gantt sections as outline-only symbols, and header
   completion includes `gantt`. The migration index now respects semantic roles: entity facts feed
   completion/navigation/outline, outline facts feed outline only, and payload facts stay out of LSP
-  completion/navigation.
+  completion/navigation. Gantt directive payloads are preserved for future lint and semantic
+  consumers without leaking into node-id completion or outline surfaces.
   Class member facts now use the outline role for class-body and inline `Class: member` entries,
   while annotation names are payload spans reserved for lint/future semantic consumers.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
@@ -288,8 +291,9 @@ partial buffers and downstream migration.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
   This preserves behavior while removing duplicated scan logic.
-- Gantt now exposes parser-backed task ids, section outlines, dependencies, and click targets for
-  editor consumers without adding section names to task-id completion.
+- Gantt now exposes parser-backed task ids, section outlines, directive payloads, dependencies, and
+  click targets for editor consumers without adding section names or directive values to task-id
+  completion.
 - LSP package profiles are now part of the architecture surface: editor products should opt into
   `core-full`/`core-host` unless they are deliberately shipping a reduced registry.
 - `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced

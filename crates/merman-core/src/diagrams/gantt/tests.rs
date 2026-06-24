@@ -35,6 +35,7 @@ fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
 fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let text = concat!(
         "gantt\n",
+        "title Roadmap\n",
         "dateFormat YYYY-MM-DD\n",
         "section Demo\n",
         "Task 1: id1,2014-01-01,1d\n",
@@ -65,6 +66,24 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             .iter()
             .any(|prefix| prefix == "click")
     );
+
+    let title_start = text.find("Roadmap").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Roadmap"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt title")
+            && symbol.selection.start == title_start
+            && symbol.selection.end == title_start + "Roadmap".len()
+    }));
+
+    let date_format_start = text.find("YYYY-MM-DD").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "YYYY-MM-DD"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt date format")
+            && symbol.selection.start == date_format_start
+            && symbol.selection.end == date_format_start + "YYYY-MM-DD".len()
+    }));
 
     let section_start = text.find("Demo").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {

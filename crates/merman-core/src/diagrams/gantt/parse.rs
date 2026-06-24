@@ -280,8 +280,17 @@ fn collect_gantt_statement_editor_facts(
         return true;
     }
 
-    if parse_keyword_arg(stripped, "dateFormat").is_some() {
+    if let Some(format) = parse_gantt_keyword_arg_spanned(stripped, line_start, "dateFormat", true)
+    {
         facts.push_directive_prefix("dateFormat");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            format,
+            "gantt date format",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
     if starts_with_ci(trimmed, "inclusiveEndDates") {
@@ -292,29 +301,84 @@ fn collect_gantt_statement_editor_facts(
         facts.push_directive_prefix("topAxis");
         return true;
     }
-    if parse_keyword_arg(stripped, "axisFormat").is_some() {
+    if let Some(format) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true)
+    {
         facts.push_directive_prefix("axisFormat");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            format,
+            "gantt axis format",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
-    if parse_keyword_arg(stripped, "tickInterval").is_some() {
+    if let Some(interval) =
+        parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true)
+    {
         facts.push_directive_prefix("tickInterval");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            interval,
+            "gantt tick interval",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
-    if parse_keyword_arg(stripped, "includes").is_some() {
+    if let Some(includes) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true)
+    {
         facts.push_directive_prefix("includes");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            includes,
+            "gantt includes",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
-    if parse_keyword_arg(stripped, "excludes").is_some() {
+    if let Some(excludes) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true)
+    {
         facts.push_directive_prefix("excludes");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            excludes,
+            "gantt excludes",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
-    if parse_keyword_arg_full_line(stripped, "todayMarker").is_some() {
+    if let Some(marker) =
+        parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false)
+    {
         facts.push_directive_prefix("todayMarker");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            marker,
+            "gantt today marker",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
-    if let Some(day) = parse_keyword_arg_full_line(stripped, "weekday") {
+    if let Some(day) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
         facts.push_directive_prefix("weekday");
-        let day = day.trim().to_lowercase();
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            day,
+            "gantt weekday",
+            EditorSemanticKind::String,
+            facts,
+        );
+        let day = day.text.trim().to_lowercase();
         if !matches!(
             day.as_str(),
             "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
@@ -323,19 +387,35 @@ fn collect_gantt_statement_editor_facts(
         }
         return true;
     }
-    if let Some(day) = parse_keyword_arg_full_line(stripped, "weekend") {
+    if let Some(day) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
         facts.push_directive_prefix("weekend");
-        let day = day.trim().to_lowercase();
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            day,
+            "gantt weekend",
+            EditorSemanticKind::String,
+            facts,
+        );
+        let day = day.text.trim().to_lowercase();
         if !matches!(day.as_str(), "friday" | "saturday") {
             facts.mark_recovered();
         }
         return true;
     }
-    if parse_keyword_arg_full_line(stripped, "title").is_some() {
+    if let Some(title) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
         facts.push_directive_prefix("title");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            title,
+            "gantt title",
+            EditorSemanticKind::String,
+            facts,
+        );
         return true;
     }
-    if let Some(section) = parse_keyword_arg_full_line(stripped, "section") {
+    if let Some(section) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
         facts.push_directive_prefix("section");
         collect_gantt_section_symbol(stripped, line_start, section, facts);
         return true;
@@ -360,6 +440,37 @@ fn collect_gantt_statement_editor_facts(
     }
 
     collect_gantt_task_symbols(stripped, line_start, facts)
+}
+
+fn parse_gantt_keyword_arg_spanned<'a>(
+    line: &'a str,
+    line_start: usize,
+    keyword: &str,
+    terminates_at_statement_suffix: bool,
+) -> Option<SpannedText<'a>> {
+    let trimmed = line.trim_start();
+    if !starts_with_ci(trimmed, keyword) {
+        return None;
+    }
+    let after = &trimmed[keyword.len()..];
+    let ws = after.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let rest_start = keyword.len() + ws.len_utf8();
+    let rest = &after[ws.len_utf8()..];
+    let text = if terminates_at_statement_suffix {
+        split_statement_suffix(rest)
+    } else {
+        rest
+    };
+    let leading = line.len().saturating_sub(trimmed.len());
+    let start = line_start + leading + rest_start;
+    Some(SpannedText {
+        text,
+        start,
+        end: start + text.len(),
+    })
 }
 
 fn gantt_acc_descr_block_open(line: &str) -> Option<bool> {
@@ -413,21 +524,10 @@ fn collect_gantt_click_target_symbols(
 fn collect_gantt_section_symbol(
     line: &str,
     line_start: usize,
-    section: &str,
+    section: SpannedText<'_>,
     facts: &mut EditorSemanticFacts,
 ) {
-    let trimmed_line = line.trim_start();
-    let leading = line.len().saturating_sub(trimmed_line.len());
-    let Some(raw_section_start) = trimmed_line.find(section) else {
-        return;
-    };
-    let raw_start = line_start + leading + raw_section_start;
-    let Some(section) = (SpannedText {
-        text: section,
-        start: raw_start,
-        end: raw_start + section.len(),
-    })
-    .trim() else {
+    let Some(section) = section.trim() else {
         return;
     };
 
@@ -435,12 +535,38 @@ fn collect_gantt_section_symbol(
         section.text,
         Some("gantt section".to_string()),
         EditorSemanticKind::Namespace,
-        SourceSpan::new(
-            line_start + leading,
-            line_start + leading + trimmed_line.len(),
-        ),
+        gantt_statement_span(line, line_start),
         section.span(),
     ));
+}
+
+fn push_gantt_payload_symbol(
+    line: &str,
+    line_start: usize,
+    field: SpannedText<'_>,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+    facts: &mut EditorSemanticFacts,
+) {
+    let Some(field) = field.trim() else {
+        return;
+    };
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        field.text,
+        Some(detail.to_string()),
+        kind,
+        gantt_statement_span(line, line_start),
+        field.span(),
+    ));
+}
+
+fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
+    let trimmed_line = line.trim_start();
+    let leading = line.len().saturating_sub(trimmed_line.len());
+    SourceSpan::new(
+        line_start + leading,
+        line_start + leading + trimmed_line.len(),
+    )
 }
 
 fn collect_gantt_task_symbols(

@@ -310,6 +310,7 @@ fn gantt_documents_use_parser_facts() {
         1,
         concat!(
             "gantt\n",
+            "title Roadmap\n",
             "dateFormat YYYY-MM-DD\n",
             "section Demo\n",
             "Task 1: id1,2014-01-01,1d\n",
@@ -325,12 +326,27 @@ fn gantt_documents_use_parser_facts() {
     assert!(index.node_ids().any(|id| id == "id1"));
     assert!(index.node_ids().any(|id| id == "id2"));
     assert!(!index.node_ids().any(|id| id == "Demo"));
+    assert!(!index.node_ids().any(|id| id == "Roadmap"));
+    assert!(!index.node_ids().any(|id| id == "YYYY-MM-DD"));
     assert!(
         index
             .outline_items()
             .iter()
             .any(|item| item.name == "Demo" && item.detail.as_deref() == Some("gantt section"))
     );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Roadmap")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "YYYY-MM-DD")
+    );
+    assert!(index.has_directive_prefix("title"));
     assert!(index.has_directive_prefix("dateFormat"));
     assert!(index.has_directive_prefix("section"));
     assert!(index.has_directive_prefix("click"));
