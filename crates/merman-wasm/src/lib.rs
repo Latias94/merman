@@ -456,11 +456,22 @@ mod tests {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn analyze_json_exposes_diagnostics_payload() {
+        let value: Value = serde_wasm_bindgen::from_value(analyze_json("", None).unwrap()).unwrap();
+        assert_no_diagram_analysis_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn analyze_json_exposes_diagnostics_payload() {
         let value: Value =
-            serde_json::from_value(analyze_json("".as_bytes(), None).unwrap()).unwrap();
+            serde_json::from_slice(&merman_bindings_core::analyze_json(b"", b"").unwrap()).unwrap();
+        assert_no_diagram_analysis_payload(&value);
+    }
 
+    fn assert_no_diagram_analysis_payload(value: &Value) {
         assert_eq!(value["version"], 1);
         assert_eq!(value["valid"], false);
         assert_eq!(value["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");

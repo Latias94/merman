@@ -1,6 +1,6 @@
 use crate::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan,
+    SourceSpan, editor::lalrpop_recovery_span,
 };
 use serde_json::Value;
 
@@ -43,12 +43,14 @@ pub fn parse_state_model_for_render(
 }
 
 pub fn parse_state_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let complete = super::state_grammar::RootParser::new()
-        .parse(Lexer::new(code))
-        .is_ok();
+    let parse_result = super::state_grammar::RootParser::new().parse(Lexer::new(code));
     let mut facts = state_editor_facts_from_events(collect_state_editor_events(code));
-    if !complete {
-        facts.mark_recovered();
+    if let Err(error) = parse_result {
+        let span = lalrpop_recovery_span(&error, code.len());
+        facts.mark_recovered_with_diagnostic(
+            format!("state parser recovered after parse error: {error:?}"),
+            Some(span),
+        );
     }
     facts
 }

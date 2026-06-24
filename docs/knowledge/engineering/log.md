@@ -6,6 +6,10 @@ status: active
 # Log
 
 ## 2026-06-24
+- Added parser-backed recovery diagnostics to `EditorSemanticFacts`, so grammar-backed flowchart/sequence/state/class/ER editor parsers now attach LALRPOP error messages plus parser-token/EOF byte spans when they recover from partial input.
+- Projected those recovery diagnostics through `merman-analysis` as `merman.parse.recovered_editor_facts` warnings, keeping the existing parse error and letting LSP/CLI/FFI/WASM consume the same payload seam.
+- Fixed the Rust FFI smoke-test mirror to include the existing `analyze_json` field, and split the wasm `analyze_json` smoke test by target so native nextest uses the binding-core byte payload while wasm32 keeps the `JsValue` path.
+- Verified with `cargo nextest run -p merman-core --no-fail-fast`, `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast`, `cargo nextest run -p merman-ffi -p merman-wasm -p merman-cli --no-fail-fast`, `cargo test --workspace --no-run`, `cargo fmt --all --check`, and `git diff --check`; `cargo nextest run --workspace --no-fail-fast` was interrupted after test binary listing hung for several minutes, but package-level coverage passed and workspace compilation succeeded.
 - Replaced the `stateDiagram` AST-plus-supplemental-token editor fact split with a single
   token-backed `StateEditorEvent` stream; complete parses now use the same entity/payload
   projection as recovered buffers, with the grammar parse result only selecting provenance.

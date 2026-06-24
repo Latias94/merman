@@ -1,7 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseMetadata, Result,
+    ParseMetadata, Result, editor::lalrpop_recovery_span,
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -95,12 +95,20 @@ pub fn parse_flowchart_model_for_render(
 
 pub fn parse_flowchart_editor_facts(
     code: &str,
-    meta: &ParseMetadata,
+    _meta: &ParseMetadata,
 ) -> Result<EditorSemanticFacts> {
     let code = mask_flowchart_editor_parse_input(code);
-    match parse_flowchart_ast(&code, meta) {
+    match flowchart_grammar::FlowchartAstParser::new().parse(Lexer::new(&code)) {
         Ok(ast) => Ok(editor_facts_from_flowchart_ast(&ast)),
-        Err(_) => Ok(recover_flowchart_editor_facts_from_tokens(&code)),
+        Err(error) => {
+            let span = lalrpop_recovery_span(&error, code.len());
+            let mut facts = recover_flowchart_editor_facts_from_tokens(&code);
+            facts.mark_recovered_with_diagnostic(
+                format!("flowchart parser recovered after parse error: {error:?}"),
+                Some(span),
+            );
+            Ok(facts)
+        }
     }
 }
 

@@ -136,6 +136,22 @@ impl EditorSemanticSymbol {
     }
 }
 
+/// Parser-backed diagnostic emitted while producing editor-visible semantic facts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditorSemanticDiagnostic {
+    pub message: String,
+    pub span: Option<SourceSpan>,
+}
+
+impl EditorSemanticDiagnostic {
+    pub fn new(message: impl Into<String>, span: Option<SourceSpan>) -> Self {
+        Self {
+            message: message.into(),
+            span,
+        }
+    }
+}
+
 /// Whether editor-facing facts came from a complete family parse or a recoverable partial parse.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EditorSemanticCompleteness {
@@ -150,6 +166,7 @@ pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
     pub symbols: Vec<EditorSemanticSymbol>,
     pub directive_prefixes: Vec<String>,
+    pub diagnostics: Vec<EditorSemanticDiagnostic>,
 }
 
 impl EditorSemanticFacts {
@@ -165,10 +182,41 @@ impl EditorSemanticFacts {
         self.completeness = EditorSemanticCompleteness::Recovered;
     }
 
+    pub fn mark_recovered_with_diagnostic(
+        &mut self,
+        message: impl Into<String>,
+        span: Option<SourceSpan>,
+    ) {
+        self.mark_recovered();
+        self.push_diagnostic(message, span);
+    }
+
+    pub fn push_diagnostic(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {
+        self.diagnostics
+            .push(EditorSemanticDiagnostic::new(message, span));
+    }
+
     pub fn push_directive_prefix(&mut self, prefix: impl Into<String>) {
         let prefix = prefix.into();
         if !self.directive_prefixes.contains(&prefix) {
             self.directive_prefixes.push(prefix);
         }
+    }
+}
+
+pub(crate) fn lalrpop_recovery_span<T, E>(
+    error: &lalrpop_util::ParseError<usize, T, E>,
+    fallback_offset: usize,
+) -> SourceSpan {
+    match error {
+        lalrpop_util::ParseError::InvalidToken { location } => {
+            SourceSpan::new(*location, *location)
+        }
+        lalrpop_util::ParseError::UnrecognizedEof { location, .. } => {
+            SourceSpan::new(*location, *location)
+        }
+        lalrpop_util::ParseError::UnrecognizedToken { token, .. }
+        | lalrpop_util::ParseError::ExtraToken { token } => SourceSpan::new(token.0, token.2),
+        lalrpop_util::ParseError::User { .. } => SourceSpan::new(fallback_offset, fallback_offset),
     }
 }

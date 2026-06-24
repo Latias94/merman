@@ -36,6 +36,7 @@ struct MermanApi {
         unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
     render_svg: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     render_ascii: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
+    analyze_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     parse_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     layout_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     validate_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,

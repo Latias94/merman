@@ -1,6 +1,6 @@
 use crate::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan,
+    SourceSpan, editor::lalrpop_recovery_span,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -376,12 +376,14 @@ pub fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 pub fn parse_er_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let complete = er_grammar::ActionsParser::new()
-        .parse(Lexer::new(code))
-        .is_ok();
+    let parse_result = er_grammar::ActionsParser::new().parse(Lexer::new(code));
     let mut facts = collect_er_editor_facts_from_tokens(code);
-    if !complete {
-        facts.mark_recovered();
+    if let Err(error) = parse_result {
+        let span = lalrpop_recovery_span(&error, code.len());
+        facts.mark_recovered_with_diagnostic(
+            format!("er parser recovered after parse error: {error:?}"),
+            Some(span),
+        );
     }
 
     facts

@@ -2,7 +2,9 @@ use crate::{
     AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, DiagnosticCategory, DiagnosticSeverity,
     SourceDescriptor, SourceMap,
 };
-use merman_core::{Engine, Error as CoreError, MermaidConfig, ParseOptions};
+use merman_core::{
+    EditorSemanticDiagnostic, Engine, Error as CoreError, MermaidConfig, ParseOptions,
+};
 use std::panic::{self, AssertUnwindSafe};
 
 const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
@@ -113,15 +115,34 @@ impl Analyzer {
             Err(panic_payload) => self.payload(vec![panic_diagnostic(panic_payload, &source_map)]),
             Ok(parse_result) => match parse_result {
                 Ok(Some(parsed)) => {
-                    let diagnostics = crate::rules::semantic_warning_diagnostics(
+                    let mut diagnostics = crate::rules::semantic_warning_diagnostics(
                         &parsed.meta.diagram_type,
                         &parsed.model,
                         &source_map,
                     );
+                    diagnostics.extend(self.editor_recovery_diagnostics(
+                        source,
+                        &parsed.meta.diagram_type,
+                        &source_map,
+                    ));
                     self.payload(diagnostics)
                 }
                 Ok(None) => self.payload(vec![no_diagram_diagnostic(&source_map)]),
-                Err(error) => self.payload(vec![core_error_diagnostic(error, &source_map)]),
+                Err(error) => {
+                    let mut diagnostics = vec![core_error_diagnostic(error, &source_map)];
+                    let diagram_type = diagnostics
+                        .first()
+                        .and_then(|diagnostic| diagnostic.diagram_type.as_deref())
+                        .map(str::to_owned);
+                    if let Some(diagram_type) = diagram_type {
+                        diagnostics.extend(self.editor_recovery_diagnostics(
+                            source,
+                            &diagram_type,
+                            &source_map,
+                        ));
+                    }
+                    self.payload(diagnostics)
+                }
             },
         }
     }
@@ -132,6 +153,31 @@ impl Analyzer {
 
     fn payload(&self, diagnostics: Vec<AnalysisDiagnostic>) -> AnalysisPayload {
         AnalysisPayload::new(self.options.source.clone(), diagnostics)
+    }
+
+    fn editor_recovery_diagnostics(
+        &self,
+        source: &str,
+        diagram_type: &str,
+        source_map: &SourceMap,
+    ) -> Vec<AnalysisDiagnostic> {
+        let facts_result = panic::catch_unwind(AssertUnwindSafe(|| {
+            self.engine.parse_editor_semantic_facts_with_type_sync(
+                diagram_type,
+                source,
+                self.options.parse,
+            )
+        }));
+
+        match facts_result {
+            Err(panic_payload) => vec![panic_diagnostic(panic_payload, source_map)],
+            Ok(Ok(Some(facts))) => facts
+                .diagnostics
+                .into_iter()
+                .map(|diagnostic| recovered_editor_diagnostic(diagnostic, diagram_type, source_map))
+                .collect(),
+            Ok(Ok(None) | Err(_)) => Vec::new(),
+        }
     }
 }
 
@@ -244,6 +290,33 @@ fn panic_diagnostic(
     )
 }
 
+fn recovered_editor_diagnostic(
+    diagnostic: EditorSemanticDiagnostic,
+    diagram_type: &str,
+    source_map: &SourceMap,
+) -> AnalysisDiagnostic {
+    let mut out = AnalysisDiagnostic::new(
+        "merman.parse.recovered_editor_facts",
+        DiagnosticSeverity::Warning,
+        DiagnosticCategory::Parse,
+        diagnostic.message,
+    )
+    .with_code(
+        AnalysisStatus::ParseError.code(),
+        AnalysisStatus::ParseError.code_name(),
+    )
+    .with_diagram_type(diagram_type);
+
+    if let Some(span) = diagnostic
+        .span
+        .and_then(|span| source_map.span(span.start, span.end).ok())
+    {
+        out = out.with_span(span);
+    }
+
+    out
+}
+
 fn diagnostic(
     id: impl Into<String>,
     severity: DiagnosticSeverity,
@@ -258,4 +331,45 @@ fn diagnostic(
         diagnostic = diagnostic.with_span(span);
     }
     diagnostic
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Analyzer;
+    use crate::{DiagnosticCategory, DiagnosticSeverity};
+
+    #[test]
+    fn analyze_state_parse_failure_surfaces_recovery_diagnostic() {
+        let analyzer = Analyzer::new();
+        let source = "stateDiagram-v2\nIdle --> Running\nRunning -->";
+        let payload = analyzer.analyze(source);
+
+        assert!(!payload.valid);
+        assert_eq!(payload.summary.errors, 1);
+        assert_eq!(payload.summary.warnings, 1);
+
+        let parse_error = payload
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+            .expect("parse error diagnostic");
+        assert_eq!(parse_error.severity, DiagnosticSeverity::Error);
+        assert_eq!(parse_error.category, DiagnosticCategory::Parse);
+        assert_eq!(parse_error.diagram_type.as_deref(), Some("stateDiagram"));
+
+        let recovery = payload
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
+            .expect("recovery diagnostic");
+        assert_eq!(recovery.severity, DiagnosticSeverity::Warning);
+        assert_eq!(recovery.category, DiagnosticCategory::Parse);
+        assert_eq!(recovery.diagram_type.as_deref(), Some("stateDiagram"));
+        assert!(
+            recovery
+                .message
+                .contains("state parser recovered after parse error")
+        );
+        assert!(recovery.span.is_some());
+    }
 }

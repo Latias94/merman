@@ -636,6 +636,13 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
         .expect("state editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(facts.diagnostics.len(), 1);
+    let diagnostic = &facts.diagnostics[0];
+    assert!(diagnostic.message.contains("state parser recovered"));
+    assert_eq!(
+        diagnostic.span,
+        Some(SourceSpan::new(text.len(), text.len()))
+    );
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Idle"));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Running"));
 }
