@@ -1,7 +1,9 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::completion_for_snapshot;
 use crate::document_store::DocumentStore;
-use crate::semantic_tokens::{semantic_tokens_for_snapshot, semantic_tokens_options};
+use crate::semantic_tokens::{
+    semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range, semantic_tokens_options,
+};
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
     document_symbols as structure_document_symbols, goto_definition as structure_goto_definition,
@@ -26,9 +28,10 @@ use tower_lsp::lsp_types::{
     DidSaveTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
     InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams, RenameParams,
-    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, WorkspaceEdit, WorkspaceSymbolParams,
+    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceEdit,
+    WorkspaceSymbolParams,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -239,6 +242,17 @@ impl LanguageServer for MermanLanguageServer {
         Ok(snapshot.map(|snapshot| semantic_tokens_for_snapshot(&snapshot).into()))
     }
 
+    async fn semantic_tokens_range(
+        &self,
+        params: SemanticTokensRangeParams,
+    ) -> Result<Option<SemanticTokensRangeResult>> {
+        let uri = params.text_document.uri;
+        let snapshot = self.snapshot_for_uri(&uri).await;
+
+        Ok(snapshot
+            .map(|snapshot| semantic_tokens_for_snapshot_range(&snapshot, params.range).into()))
+    }
+
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
@@ -335,9 +349,9 @@ mod tests {
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
         CodeActionProviderCapability, DocumentSymbolResponse, GotoDefinitionResponse,
         HoverContents, HoverParams, Position, Range, RenameParams, SemanticTokensFullOptions,
-        SemanticTokensParams, SemanticTokensServerCapabilities, TextDocumentIdentifier,
-        TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-        WorkspaceSymbolParams,
+        SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
+        SemanticTokensServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
+        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -378,7 +392,7 @@ mod tests {
             capabilities.semantic_tokens_provider,
             Some(SemanticTokensServerCapabilities::SemanticTokensOptions(ref options))
                 if matches!(options.full, Some(SemanticTokensFullOptions::Bool(true)))
-                    && options.range.is_none()
+                    && options.range == Some(true)
                     && !options.legend.token_types.is_empty()
                     && !options.legend.token_modifiers.is_empty()
         ));
@@ -501,6 +515,23 @@ mod tests {
         assert!(matches!(
             semantic_tokens,
             Some(SemanticTokensResult::Tokens(tokens)) if !tokens.data.is_empty()
+        ));
+
+        let semantic_tokens_range = server
+            .semantic_tokens_range(SemanticTokensRangeParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                range: Range {
+                    start: Position::new(1, 0),
+                    end: Position::new(2, 7),
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(
+            semantic_tokens_range,
+            Some(SemanticTokensRangeResult::Tokens(tokens)) if !tokens.data.is_empty()
         ));
 
         let map = SourceMap::new("bad");

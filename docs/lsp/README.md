@@ -11,8 +11,8 @@ navigation, code-action, and semantic-token foundations.
 ## Responsibilities
 
 - Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
-  `documentSymbol`, `definition`, `references`, `prepareRename`, `rename`, `codeAction`, and
-  `semanticTokens/full`.
+  `documentSymbol`, `definition`, `references`, `prepareRename`, `rename`, `codeAction`,
+  `semanticTokens/full`, and `semanticTokens/range`.
 - Publish diagnostics from `merman-analysis`.
 - Keep document state versioned so stale diagnostics are never republished.
 - Provide the first completion surface for diagram structure, directions, shapes, and local
@@ -33,7 +33,7 @@ navigation, code-action, and semantic-token foundations.
 ## Deferred
 
 - Additional fix-producing lint rules and configuration
-- Range and delta semantic tokens
+- Delta semantic tokens
 - Formatting
 - Completion resolution payloads
 
@@ -51,8 +51,8 @@ navigation, code-action, and semantic-token foundations.
   safe fixes.
 - The first fix-backed lint rule is `merman.config.prefer_init_directive`, which replaces the
   Mermaid directive alias `initialize` with the canonical `init` keyword.
-- Full-document semantic tokens are role-aware and parser-backed; range/delta support should wait
-  until snapshot invalidation and client capability negotiation are explicit.
+- Full-document and range semantic tokens are role-aware and parser-backed; delta support should
+  wait until snapshot invalidation and client capability negotiation are explicit.
 - Capability maturity is tracked in `CAPABILITIES.md`.
 
 ## Notes

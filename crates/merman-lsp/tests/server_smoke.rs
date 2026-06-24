@@ -8,9 +8,10 @@ use tower_lsp::lsp_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, DocumentSymbolParams, GotoDefinitionParams, HoverContents,
     HoverParams, InitializeParams, Position, PrepareRenameResponse, PublishDiagnosticsParams,
-    ReferenceContext, ReferenceParams, RenameParams, SymbolInformation,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
+    Range, ReferenceContext, ReferenceParams, RenameParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, SymbolInformation, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+    VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -455,6 +456,69 @@ async fn lsp_service_smoke_applies_resource_limit_severity_override_on_configura
         second_params.diagnostics[0].severity,
         Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_serves_semantic_tokens_range() {
+    let (mut service, _socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({"capabilities": {}}))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let request = Request::build("textDocument/semanticTokens/range")
+        .params(
+            serde_json::to_value(SemanticTokensRangeParams {
+                text_document: TextDocumentIdentifier { uri },
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(10, 0),
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service.ready().await.unwrap().call(request).await.unwrap();
+    let value = response
+        .as_ref()
+        .and_then(|response| response.result().clone())
+        .expect("expected semantic tokens range result");
+    let _: SemanticTokensRangeResult = serde_json::from_value(value.clone()).unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]

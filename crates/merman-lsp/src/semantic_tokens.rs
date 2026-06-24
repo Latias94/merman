@@ -3,7 +3,7 @@ use merman_analysis::{
     ByteSpan, EditorSymbolKind, FenceSemanticItem, FenceSemanticRole, SourceMap,
 };
 use tower_lsp::lsp_types::{
-    SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
+    Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
     SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
 };
 
@@ -40,7 +40,7 @@ pub fn semantic_tokens_options() -> SemanticTokensOptions {
     SemanticTokensOptions {
         work_done_progress_options: Default::default(),
         legend: semantic_tokens_legend(),
-        range: None,
+        range: Some(true),
         full: Some(SemanticTokensFullOptions::Bool(true)),
     }
 }
@@ -66,6 +66,29 @@ pub fn semantic_tokens_legend() -> SemanticTokensLegend {
 }
 
 pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> SemanticTokens {
+    semantic_tokens_from_absolute_tokens(absolute_tokens_for_snapshot(snapshot))
+}
+
+pub fn semantic_tokens_for_snapshot_range(
+    snapshot: &DocumentSnapshot,
+    range: Range,
+) -> SemanticTokens {
+    let absolute_tokens = absolute_tokens_for_snapshot(snapshot)
+        .into_iter()
+        .filter(|token| token_overlaps_range(token, &range))
+        .collect();
+
+    semantic_tokens_from_absolute_tokens(absolute_tokens)
+}
+
+fn semantic_tokens_from_absolute_tokens(absolute_tokens: Vec<AbsoluteToken>) -> SemanticTokens {
+    SemanticTokens {
+        result_id: None,
+        data: encode_relative_tokens(absolute_tokens),
+    }
+}
+
+fn absolute_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<AbsoluteToken> {
     let mut absolute_tokens = Vec::new();
 
     for fence in &snapshot.fences {
@@ -91,11 +114,7 @@ pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> SemanticToke
             ))
     });
     absolute_tokens.dedup();
-
-    SemanticTokens {
-        result_id: None,
-        data: encode_relative_tokens(absolute_tokens),
-    }
+    absolute_tokens
 }
 
 fn tokens_for_item(
@@ -162,6 +181,36 @@ fn token_pieces_for_span(source_map: &SourceMap, span: ByteSpan) -> Vec<TokenPie
     }
 
     pieces
+}
+
+fn token_overlaps_range(token: &AbsoluteToken, range: &Range) -> bool {
+    let range_start_line = range.start.line;
+    let range_start_character = range.start.character;
+    let range_end_line = range.end.line;
+    let range_end_character = range.end.character;
+    let token_line = token.line;
+    let token_start = token.start;
+    let token_end = token.start + token.length;
+
+    if token_line < range_start_line || token_line > range_end_line {
+        return false;
+    }
+
+    if range_start_line == range_end_line {
+        return token_line == range_start_line
+            && token_end > range_start_character
+            && token_start < range_end_character;
+    }
+
+    if token_line == range_start_line {
+        return token_end > range_start_character;
+    }
+
+    if token_line == range_end_line {
+        return token_start < range_end_character;
+    }
+
+    true
 }
 
 fn encode_relative_tokens(absolute_tokens: Vec<AbsoluteToken>) -> Vec<SemanticToken> {
