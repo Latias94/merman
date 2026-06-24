@@ -119,6 +119,8 @@ pub(crate) struct Node {
     pub id_span: Option<SourceSpan>,
     pub label: Option<String>,
     pub label_type: TitleKind,
+    pub label_span: Option<SourceSpan>,
+    pub label_selection: Option<SourceSpan>,
     pub shape: Option<String>,
     pub shape_data: Option<String>,
     pub icon: Option<String>,
@@ -143,6 +145,8 @@ pub(crate) struct Edge {
     pub link: LinkToken,
     pub label: Option<String>,
     pub label_type: TitleKind,
+    pub label_span: Option<SourceSpan>,
+    pub label_selection: Option<SourceSpan>,
     pub style: Vec<String>,
     pub classes: Vec<String>,
     pub interpolate: Option<String>,
@@ -176,6 +180,8 @@ pub(crate) enum TitleKind {
 pub(crate) struct LabeledText {
     pub text: String,
     pub kind: TitleKind,
+    pub span: Option<SourceSpan>,
+    pub selection: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

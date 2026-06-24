@@ -6,6 +6,15 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened flowchart editor facts so node labels and edge labels now carry span-rich payload
+  facts through the lexer, LALRPOP AST, and recovered token stream; edge-label payloads are
+  deduplicated across expanded chain edges to avoid repeated semantic occurrences.
+- Added regressions proving complete and recovered flowchart parses preserve label payload spans
+  and selections without polluting completion.
+- Re-verified with `cargo nextest run -p merman-core parse_flowchart_editor_facts --no-fail-fast`,
+  `cargo nextest run -p merman-core flowchart --no-fail-fast`,
+  `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast`, `cargo fmt --all --check`,
+  and `git diff --check`.
 - Added source-backed recovery diagnostics for hand-written/line-scanned editor facts: Gantt now
   reports invalid weekday/weekend values, unrecognized statements, missing-header recovery, and
   unterminated multiline `accDescr` blocks; Mindmap now reports unterminated node delimiters.

@@ -1,11 +1,11 @@
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseMetadata, Result, editor::lalrpop_recovery_span,
+    ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 lalrpop_util::lalrpop_mod!(
     #[allow(
@@ -368,6 +368,18 @@ fn collect_editor_fact_from_token(
         Tok::SubgraphHeader(header) => {
             push_flowchart_header_symbol(facts, &header);
         }
+        Tok::NodeLabel(label) => push_flowchart_labeled_payload_symbol(
+            facts,
+            &label.text,
+            Some(SourceSpan::new(start, end)),
+            "flowchart node label",
+        ),
+        Tok::EdgeLabel(label) => push_flowchart_labeled_payload_symbol(
+            facts,
+            &label,
+            Some(SourceSpan::new(start, end)),
+            "flowchart edge label",
+        ),
         Tok::StyleStmt(_) => facts.push_directive_prefix("style"),
         Tok::ClassDefStmt(_) => facts.push_directive_prefix("classDef"),
         Tok::ClassAssignStmt(_) => facts.push_directive_prefix("class"),
@@ -381,28 +393,46 @@ fn collect_editor_fact_from_token(
         | Tok::Sep
         | Tok::Amp
         | Tok::StyleSep
-        | Tok::NodeLabel(_)
         | Tok::Direction(_)
         | Tok::DirectionStmt(_)
         | Tok::Arrow(_)
-        | Tok::EdgeLabel(_)
         | Tok::EdgeId(_)
         | Tok::ShapeData(_) => {}
     }
 }
 
 fn collect_editor_facts_from_statements(statements: &[Stmt], facts: &mut EditorSemanticFacts) {
+    let mut emitted_edge_label_spans = HashSet::new();
+    collect_editor_facts_from_statements_with_seen_edges(
+        statements,
+        facts,
+        &mut emitted_edge_label_spans,
+    );
+}
+
+fn collect_editor_facts_from_statements_with_seen_edges(
+    statements: &[Stmt],
+    facts: &mut EditorSemanticFacts,
+    emitted_edge_label_spans: &mut HashSet<(usize, usize)>,
+) {
     for stmt in statements {
         match stmt {
-            Stmt::Chain { nodes, .. } => {
+            Stmt::Chain { nodes, edges } => {
                 for node in nodes {
                     push_flowchart_node_symbol(facts, node);
+                }
+                for edge in edges {
+                    push_flowchart_edge_label_symbol(facts, edge, emitted_edge_label_spans);
                 }
             }
             Stmt::Node(node) => push_flowchart_node_symbol(facts, node),
             Stmt::Subgraph(subgraph) => {
                 push_flowchart_subgraph_symbol(facts, subgraph);
-                collect_editor_facts_from_statements(&subgraph.statements, facts);
+                collect_editor_facts_from_statements_with_seen_edges(
+                    &subgraph.statements,
+                    facts,
+                    emitted_edge_label_spans,
+                );
             }
             Stmt::Style(_) => facts.push_directive_prefix("style"),
             Stmt::ClassDef(_) => facts.push_directive_prefix("classDef"),
@@ -424,6 +454,76 @@ fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
             span,
         ));
     }
+
+    if let Some(label) = node.label.as_deref() {
+        push_flowchart_payload_symbol(
+            facts,
+            label,
+            "flowchart node label",
+            node.label_span,
+            node.label_selection,
+        );
+    }
+}
+
+fn push_flowchart_edge_label_symbol(
+    facts: &mut EditorSemanticFacts,
+    edge: &Edge,
+    emitted_spans: &mut HashSet<(usize, usize)>,
+) {
+    let Some(label) = edge.label.as_deref() else {
+        return;
+    };
+    let Some(span) = edge.label_span else {
+        return;
+    };
+    if !emitted_spans.insert((span.start, span.end)) {
+        return;
+    }
+    push_flowchart_payload_symbol(
+        facts,
+        label,
+        "flowchart edge label",
+        Some(span),
+        edge.label_selection,
+    );
+}
+
+fn push_flowchart_labeled_payload_symbol(
+    facts: &mut EditorSemanticFacts,
+    label: &LabeledText,
+    fallback_span: Option<SourceSpan>,
+    detail: &'static str,
+) {
+    push_flowchart_payload_symbol(
+        facts,
+        &label.text,
+        detail,
+        label.span.or(fallback_span),
+        label.selection,
+    );
+}
+
+fn push_flowchart_payload_symbol(
+    facts: &mut EditorSemanticFacts,
+    name: &str,
+    detail: &'static str,
+    span: Option<SourceSpan>,
+    selection: Option<SourceSpan>,
+) {
+    if name.is_empty() {
+        return;
+    }
+    let Some(span) = span else {
+        return;
+    };
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        name.to_string(),
+        Some(detail.to_string()),
+        EditorSemanticKind::String,
+        span,
+        selection.unwrap_or(span),
+    ));
 }
 
 fn push_flowchart_subgraph_symbol(facts: &mut EditorSemanticFacts, subgraph: &SubgraphBlock) {

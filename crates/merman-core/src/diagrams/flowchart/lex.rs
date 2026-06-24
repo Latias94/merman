@@ -64,23 +64,30 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
         TitleKind::Markdown => {}
     }
 
-    Ok(LabeledText { text, kind })
+    Ok(LabeledText {
+        text,
+        kind,
+        span: None,
+        selection: None,
+    })
 }
 
-pub(super) fn parse_rect_border_label(raw: &str) -> (&'static str, &str) {
+pub(super) fn parse_rect_border_label(raw: &str) -> (&'static str, &str, usize) {
     // Mermaid supports a special "rect" variant via `[|borders:...|Label]`.
     // We only need the shape name and the actual label payload here.
+    let leading = raw.len().saturating_sub(raw.trim_start().len());
     let trimmed = raw.trim();
     let Some(rest) = trimmed.strip_prefix('|') else {
-        return ("square", trimmed);
+        return ("square", trimmed, leading);
     };
     let Some((prefix, label)) = rest.split_once('|') else {
-        return ("square", trimmed);
+        return ("square", trimmed, leading);
     };
     if prefix.trim_start().starts_with("borders:") {
-        return ("rect", label);
+        let offset = leading + 1 + prefix.len() + 1;
+        return ("rect", label, offset);
     }
-    ("square", trimmed)
+    ("square", trimmed, leading)
 }
 
 pub(super) fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Option<usize> {

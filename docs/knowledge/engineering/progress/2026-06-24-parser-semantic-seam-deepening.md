@@ -35,6 +35,10 @@ partial parse results instead of raw-text heuristic scans.
   LALRPOP parsing fails, it uses the same masked input and lexer token stream to return
   `EditorSemanticCompleteness::Recovered` facts for already recognized node ids, subgraph headers,
   and directive prefixes.
+- Flowchart label facts now carry span-rich payload mappings too: node labels and edge labels are
+  preserved through the lexer, AST, and recovered-token paths, with edge-label payloads
+  deduplicated across expanded chain edges so a single source label does not become multiple
+  semantic occurrences.
 - Sequence is the second migrated family: its lexer token stream now emits parser-backed
   participant, actor, message-endpoint, note-actor, and box facts, while the existing LALRPOP
   parser result determines whether facts are `Complete` or `Recovered`.
@@ -138,6 +142,9 @@ partial parse results instead of raw-text heuristic scans.
   builds use the full detector/parser profile. This fixed a silent mindmap regression where LSP
   detection used the tiny registry and fell back to `TextScan`.
 - `merman-lsp` now offers the `gantt` diagram header completion.
+- `merman-core` flowchart editor facts now expose node-label and edge-label payload spans with
+  exact selections for both complete and recovered parses, keeping those payloads out of
+  completion while preserving them for future lint and hover consumers.
 - Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
   `cargo nextest run -p merman-core parse_sequence_editor_facts`,
   `cargo nextest run -p merman-core parse_state_editor_facts`,

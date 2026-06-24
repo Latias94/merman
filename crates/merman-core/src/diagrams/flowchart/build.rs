@@ -90,6 +90,8 @@ impl FlowchartBuildState {
                             id_span: None,
                             label: None,
                             label_type: TitleKind::Text,
+                            label_span: None,
+                            label_selection: None,
                             shape: None,
                             shape_data: None,
                             icon: None,
@@ -126,6 +128,8 @@ impl FlowchartBuildState {
                                 id_span: None,
                                 label: None,
                                 label_type: TitleKind::Text,
+                                label_span: None,
+                                label_selection: None,
                                 shape: None,
                                 shape_data: None,
                                 icon: None,
@@ -155,6 +159,8 @@ impl FlowchartBuildState {
             if n.label.is_some() {
                 self.nodes[idx].label = n.label;
                 self.nodes[idx].label_type = n.label_type;
+                self.nodes[idx].label_span = n.label_span;
+                self.nodes[idx].label_selection = n.label_selection;
             }
             if n.shape.is_some() {
                 self.nodes[idx].shape = n.shape;

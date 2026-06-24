@@ -803,14 +803,24 @@ impl<'input> Lexer<'input> {
                         self.pos += 1;
                     }
                     if self.pos < self.input.len() && bytes[self.pos] == b'|' {
-                        let raw = self.input[label_start..self.pos].trim();
+                        let (raw, raw_span) =
+                            trimmed_slice_with_span(self.input, label_start, self.pos);
                         let (text, kind) = parse_edge_label_text(raw);
                         self.pos += 1;
-                        self.pending.push_back((
-                            pipe_pos,
-                            Tok::EdgeLabel(LabeledText { text, kind }),
-                            self.pos,
-                        ));
+                        let token_span = SourceSpan::new(pipe_pos, self.pos);
+                        let label = labeled_text_with_spans(
+                            self.input,
+                            LabeledText {
+                                text,
+                                kind,
+                                span: None,
+                                selection: None,
+                            },
+                            token_span,
+                            raw_span,
+                        );
+                        self.pending
+                            .push_back((pipe_pos, Tok::EdgeLabel(label), self.pos));
                     } else {
                         return Some(Ok((start, Tok::Arrow(link), arrow_end)));
                     }
@@ -864,7 +874,8 @@ impl<'input> Lexer<'input> {
         let mut scan = edge_text_start;
         while scan < self.input.len() {
             if let Some((match_start, match_end, arrow)) = match_link_end(scan, family, true) {
-                let raw_text = self.input[edge_text_start..match_start].trim();
+                let (raw_text, raw_span) =
+                    trimmed_slice_with_span(self.input, edge_text_start, match_start);
                 let (text, kind) = parse_edge_label_text(raw_text);
                 self.pos = match_end;
 
@@ -873,11 +884,19 @@ impl<'input> Lexer<'input> {
                 }
 
                 if !text.is_empty() {
-                    self.pending.push_back((
-                        edge_text_start,
-                        Tok::EdgeLabel(LabeledText { text, kind }),
-                        match_start,
-                    ));
+                    let label = labeled_text_with_spans(
+                        self.input,
+                        LabeledText {
+                            text,
+                            kind,
+                            span: None,
+                            selection: None,
+                        },
+                        SourceSpan::new(edge_text_start, match_start),
+                        raw_span,
+                    );
+                    self.pending
+                        .push_back((edge_text_start, Tok::EdgeLabel(label), match_start));
                 }
                 let link = match compute_link(arrow, Some(start_link)) {
                     Ok(v) => v,
@@ -922,20 +941,18 @@ impl<'input> Lexer<'input> {
                 }
             };
 
-            let raw = self.input[content_start..end_start].trim();
-            let lt = match lex::parse_node_label_text(raw) {
+            let token_end = end_start + close.len();
+            let token = match build_node_label_token(
+                self.input,
+                shape,
+                SourceSpan::new(start, token_end),
+                SourceSpan::new(content_start, end_start),
+            ) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
-            self.pos = end_start + close.len();
-            return Some(Ok((
-                start,
-                Tok::NodeLabel(NodeLabelToken {
-                    shape: shape.to_string(),
-                    text: lt,
-                }),
-                self.pos,
-            )));
+            self.pos = token_end;
+            return Some(Ok((start, token, self.pos)));
         }
 
         if rest.starts_with("[/") {
@@ -961,20 +978,18 @@ impl<'input> Lexer<'input> {
                 }
             };
 
-            let raw = self.input[content_start..end_start].trim();
-            let lt = match lex::parse_node_label_text(raw) {
+            let token_end = end_start + close.len();
+            let token = match build_node_label_token(
+                self.input,
+                shape,
+                SourceSpan::new(start, token_end),
+                SourceSpan::new(content_start, end_start),
+            ) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
-            self.pos = end_start + close.len();
-            return Some(Ok((
-                start,
-                Tok::NodeLabel(NodeLabelToken {
-                    shape: shape.to_string(),
-                    text: lt,
-                }),
-                self.pos,
-            )));
+            self.pos = token_end;
+            return Some(Ok((start, token, self.pos)));
         }
 
         let candidates: [(&str, &str, &str); 8] = [
@@ -998,20 +1013,18 @@ impl<'input> Lexer<'input> {
                     message: format!("Unterminated node label (missing `{close}`)"),
                 }));
             };
-            let raw = self.input[content_start..end_start].trim();
-            let lt = match lex::parse_node_label_text(raw) {
+            let token_end = end_start + close.len();
+            let token = match build_node_label_token(
+                self.input,
+                shape,
+                SourceSpan::new(start, token_end),
+                SourceSpan::new(content_start, end_start),
+            ) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
-            self.pos = end_start + close.len();
-            return Some(Ok((
-                start,
-                Tok::NodeLabel(NodeLabelToken {
-                    shape: shape.to_string(),
-                    text: lt,
-                }),
-                self.pos,
-            )));
+            self.pos = token_end;
+            return Some(Ok((start, token, self.pos)));
         }
 
         if rest.starts_with("[") {
@@ -1021,21 +1034,25 @@ impl<'input> Lexer<'input> {
                     message: "Unterminated node label (missing `]`)".to_string(),
                 }));
             };
-            let raw = self.input[content_start..end_start].trim();
-            let (shape, label_raw) = lex::parse_rect_border_label(raw);
-            let lt = match lex::parse_node_label_text(label_raw) {
+            let token_end = end_start + 1;
+            let (raw, raw_span) = trimmed_slice_with_span(self.input, content_start, end_start);
+            let (shape, label_raw, label_offset) = lex::parse_rect_border_label(raw);
+            let label_span = SourceSpan::new(
+                raw_span.start + label_offset,
+                raw_span.start + label_offset + label_raw.len(),
+            );
+            let token = match build_node_label_token_from_raw(
+                self.input,
+                shape,
+                SourceSpan::new(start, token_end),
+                label_raw,
+                label_span,
+            ) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
-            self.pos = end_start + 1;
-            return Some(Ok((
-                start,
-                Tok::NodeLabel(NodeLabelToken {
-                    shape: shape.to_string(),
-                    text: lt,
-                }),
-                self.pos,
-            )));
+            self.pos = token_end;
+            return Some(Ok((start, token, self.pos)));
         }
 
         if rest.starts_with("{") {
@@ -1045,20 +1062,18 @@ impl<'input> Lexer<'input> {
                     message: "Unterminated node label (missing `}`)".to_string(),
                 }));
             };
-            let raw = self.input[content_start..end_start].trim();
-            let lt = match lex::parse_node_label_text(raw) {
+            let token_end = end_start + 1;
+            let token = match build_node_label_token(
+                self.input,
+                "diamond",
+                SourceSpan::new(start, token_end),
+                SourceSpan::new(content_start, end_start),
+            ) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
-            self.pos = end_start + 1;
-            return Some(Ok((
-                start,
-                Tok::NodeLabel(NodeLabelToken {
-                    shape: "diamond".to_string(),
-                    text: lt,
-                }),
-                self.pos,
-            )));
+            self.pos = token_end;
+            return Some(Ok((start, token, self.pos)));
         }
 
         if rest.starts_with("(") {
@@ -1068,22 +1083,79 @@ impl<'input> Lexer<'input> {
                     message: "Unterminated node label (missing `)`)".to_string(),
                 }));
             };
-            let raw = self.input[content_start..end_start].trim();
-            let lt = match lex::parse_node_label_text(raw) {
+            let token_end = end_start + 1;
+            let token = match build_node_label_token(
+                self.input,
+                "round",
+                SourceSpan::new(start, token_end),
+                SourceSpan::new(content_start, end_start),
+            ) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
-            self.pos = end_start + 1;
-            return Some(Ok((
-                start,
-                Tok::NodeLabel(NodeLabelToken {
-                    shape: "round".to_string(),
-                    text: lt,
-                }),
-                self.pos,
-            )));
+            self.pos = token_end;
+            return Some(Ok((start, token, self.pos)));
         }
 
         None
     }
+}
+
+fn build_node_label_token(
+    input: &str,
+    shape: &str,
+    token_span: SourceSpan,
+    content_span: SourceSpan,
+) -> std::result::Result<Tok, LexError> {
+    let (raw, raw_span) = trimmed_slice_with_span(input, content_span.start, content_span.end);
+    build_node_label_token_from_raw(input, shape, token_span, raw, raw_span)
+}
+
+fn build_node_label_token_from_raw(
+    input: &str,
+    shape: &str,
+    token_span: SourceSpan,
+    raw: &str,
+    raw_span: SourceSpan,
+) -> std::result::Result<Tok, LexError> {
+    let text = lex::parse_node_label_text(raw)?;
+    Ok(Tok::NodeLabel(NodeLabelToken {
+        shape: shape.to_string(),
+        text: labeled_text_with_spans(input, text, token_span, raw_span),
+    }))
+}
+
+fn labeled_text_with_spans(
+    input: &str,
+    mut text: LabeledText,
+    token_span: SourceSpan,
+    content_span: SourceSpan,
+) -> LabeledText {
+    text.span = Some(token_span);
+    text.selection = label_value_selection(input, content_span, &text.text).or(Some(content_span));
+    text
+}
+
+fn label_value_selection(input: &str, content_span: SourceSpan, value: &str) -> Option<SourceSpan> {
+    if value.is_empty() {
+        return None;
+    }
+    let slice = input.get(content_span.start..content_span.end)?;
+    let relative_start = slice.find(value)?;
+    Some(SourceSpan::new(
+        content_span.start + relative_start,
+        content_span.start + relative_start + value.len(),
+    ))
+}
+
+fn trimmed_slice_with_span(input: &str, start: usize, end: usize) -> (&str, SourceSpan) {
+    let slice = &input[start..end];
+    let leading = slice.len().saturating_sub(slice.trim_start().len());
+    let text = &slice[leading..];
+    let trimmed_len = text.trim_end().len();
+    let start = start + leading;
+    (
+        &text[..trimmed_len],
+        SourceSpan::new(start, start + trimmed_len),
+    )
 }

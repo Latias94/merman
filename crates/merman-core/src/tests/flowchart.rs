@@ -2130,6 +2130,121 @@ fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_emit_label_payload_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA[\"Start node\"] & C -->|go| B{\"Decision\"} & D\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_with_detail = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail}"))
+    };
+
+    let start_label = symbol_with_detail("Start node", "flowchart node label");
+    let start_label_open = text.find("[\"Start node\"]").unwrap();
+    let start_label_text = text.find("Start node").unwrap();
+    assert_eq!(start_label.role, EditorSemanticRole::Payload);
+    assert_eq!(start_label.kind, EditorSemanticKind::String);
+    assert_eq!(start_label.span.start, start_label_open);
+    assert_eq!(start_label.selection.start, start_label_text);
+    assert_eq!(
+        start_label.selection.end,
+        start_label_text + "Start node".len()
+    );
+
+    let edge_label = symbol_with_detail("go", "flowchart edge label");
+    let edge_label_open = text.find("|go|").unwrap();
+    let edge_label_text = text.find("go").unwrap();
+    assert_eq!(edge_label.role, EditorSemanticRole::Payload);
+    assert_eq!(edge_label.kind, EditorSemanticKind::String);
+    assert_eq!(edge_label.span.start, edge_label_open);
+    assert_eq!(edge_label.selection.start, edge_label_text);
+    assert_eq!(edge_label.selection.end, edge_label_text + "go".len());
+
+    let decision_label = symbol_with_detail("Decision", "flowchart node label");
+    let decision_label_open = text.find("{\"Decision\"}").unwrap();
+    let decision_label_text = text.find("Decision").unwrap();
+    assert_eq!(decision_label.role, EditorSemanticRole::Payload);
+    assert_eq!(decision_label.kind, EditorSemanticKind::String);
+    assert_eq!(decision_label.span.start, decision_label_open);
+    assert_eq!(decision_label.selection.start, decision_label_text);
+    assert_eq!(
+        decision_label.selection.end,
+        decision_label_text + "Decision".len()
+    );
+
+    assert_eq!(
+        facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.detail.as_deref() == Some("flowchart edge label"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_recover_label_payload_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA[\"Start node\"] -->|go| B{\"Decision\"}\nC-->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let symbol_with_detail = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail}"))
+    };
+
+    let start_label = symbol_with_detail("Start node", "flowchart node label");
+    let start_label_open = text.find("[\"Start node\"]").unwrap();
+    let start_label_text = text.find("Start node").unwrap();
+    assert_eq!(start_label.role, EditorSemanticRole::Payload);
+    assert_eq!(start_label.kind, EditorSemanticKind::String);
+    assert_eq!(start_label.span.start, start_label_open);
+    assert_eq!(start_label.selection.start, start_label_text);
+    assert_eq!(
+        start_label.selection.end,
+        start_label_text + "Start node".len()
+    );
+
+    let edge_label = symbol_with_detail("go", "flowchart edge label");
+    let edge_label_open = text.find("|go|").unwrap();
+    let edge_label_text = text.find("go").unwrap();
+    assert_eq!(edge_label.role, EditorSemanticRole::Payload);
+    assert_eq!(edge_label.kind, EditorSemanticKind::String);
+    assert_eq!(edge_label.span.start, edge_label_open);
+    assert_eq!(edge_label.selection.start, edge_label_text);
+    assert_eq!(edge_label.selection.end, edge_label_text + "go".len());
+
+    let decision_label = symbol_with_detail("Decision", "flowchart node label");
+    let decision_label_open = text.find("{\"Decision\"}").unwrap();
+    let decision_label_text = text.find("Decision").unwrap();
+    assert_eq!(decision_label.role, EditorSemanticRole::Payload);
+    assert_eq!(decision_label.kind, EditorSemanticKind::String);
+    assert_eq!(decision_label.span.start, decision_label_open);
+    assert_eq!(decision_label.selection.start, decision_label_text);
+    assert_eq!(
+        decision_label.selection.end,
+        decision_label_text + "Decision".len()
+    );
+}
+
+#[test]
 fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
     let engine = Engine::new();
     let text = "%%{init: {\"theme\": \"dark\"}}%%\nflowchart TD\nclassDef hot fill:#f00\nA-->B\n";

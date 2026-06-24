@@ -222,6 +222,8 @@ impl<'a> FlowchartSemanticContext<'a> {
             id_span: None,
             label: None,
             label_type: TitleKind::Text,
+            label_span: None,
+            label_selection: None,
             shape: None,
             shape_data: None,
             icon: None,
