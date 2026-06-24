@@ -1,5 +1,5 @@
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, ResourceOptionsJson,
+    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson,
     binding_fixed_local_offset_minutes, binding_fixed_today, binding_site_config,
     css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
     normalize_option,
@@ -186,6 +186,7 @@ fn build_renderer(
     }
 
     if options
+        .analysis
         .parse
         .as_ref()
         .and_then(|parse| parse.suppress_errors)
@@ -208,7 +209,7 @@ fn build_renderer(
     }
 
     let mut layout = LayoutOptions::headless_svg_defaults();
-    if let Some(resources) = options.resources.as_ref() {
+    if let Some(resources) = options.analysis.resources.as_ref() {
         layout.resource_limits = binding_resource_limits(resources)?;
     }
     if let Some(layout_json) = options.layout.as_ref() {
@@ -465,7 +466,7 @@ fn binding_host_theme(
 }
 
 fn binding_resource_limits(
-    resources: &ResourceOptionsJson,
+    resources: &merman_analysis::ResourceOptionsJson,
 ) -> Result<merman::render::RenderResourceLimits, BindingError> {
     let mut limits = match resources.profile.as_deref() {
         None => merman::render::RenderResourceLimits::interactive(),

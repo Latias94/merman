@@ -74,6 +74,10 @@ impl DocumentStore {
         self.documents.remove(uri);
     }
 
+    pub fn snapshots(&self) -> Vec<DocumentSnapshot> {
+        self.documents.values().cloned().collect()
+    }
+
     fn text_index(&self, text: &str, diagram_type: Option<&str>) -> FenceTextIndex {
         if let Some(diagram_type) = diagram_type
             && let Ok(Some(facts)) = self.engine.parse_editor_semantic_facts_with_type_sync(

@@ -211,7 +211,7 @@ fn with_source_lints(
     diagnostics
 }
 
-fn engine_from_options(options: &AnalysisOptions) -> Engine {
+pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
     let mut engine = Engine::new()
         .with_fixed_today(options.fixed_today)
         .with_fixed_local_offset_minutes(options.fixed_local_offset_minutes);

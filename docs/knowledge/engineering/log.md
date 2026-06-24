@@ -6,6 +6,14 @@ status: active
 # Log
 
 ## 2026-06-25
+- Centralized the analysis options JSON contract in `merman-analysis`, so bindings-core and
+  `merman-lsp` now share the same lint/config parsing path for `initialize` and
+  `workspace/didChangeConfiguration`.
+- Added a namespaced-wrapper regression for the shared analysis options contract and kept the
+  existing lint configuration coverage in both bindings-core and LSP smoke tests.
+- Re-verified the slice with `cargo fmt --all --check`, `cargo check -p merman-analysis
+  -p merman-lsp -p merman-bindings-core`, and the focused bindings/LSP tests for initialization
+  and configuration replay.
 - Added shared lint rule configuration to `BindingOptions`/`options_json`, including rule
   disablement and severity overrides, so FFI/UniFFI/WASM can drive the same analysis config as CLI.
 - Added binding-core regressions proving `analyze_json` honors lint rule configuration and severity

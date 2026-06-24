@@ -85,12 +85,8 @@ struct RenderPayload<'a> {
 pub(crate) struct BindingOptions {
     #[allow(dead_code)]
     pub(crate) version: Option<u32>,
-    pub(crate) fixed_today: Option<String>,
-    pub(crate) fixed_local_offset_minutes: Option<i32>,
-    pub(crate) site_config: Option<serde_json::Value>,
-    pub(crate) parse: Option<ParseOptionsJson>,
-    pub(crate) resources: Option<ResourceOptionsJson>,
-    pub(crate) lint: Option<LintOptionsJson>,
+    #[serde(flatten)]
+    pub(crate) analysis: merman_analysis::AnalysisOptionsJson,
     #[cfg(feature = "render")]
     pub(crate) host_theme: Option<HostThemeOptionsJson>,
     #[cfg(feature = "render")]
@@ -100,45 +96,12 @@ pub(crate) struct BindingOptions {
 }
 
 #[derive(Debug, Default, Deserialize)]
-pub(crate) struct ParseOptionsJson {
-    pub(crate) suppress_errors: Option<bool>,
-}
-
-#[derive(Debug, Default, Deserialize)]
 pub(crate) struct LayoutOptionsJson {
     pub(crate) viewport_width: Option<f64>,
     pub(crate) viewport_height: Option<f64>,
     pub(crate) text_measurer: Option<String>,
     pub(crate) math_renderer: Option<String>,
     pub(crate) flowchart_elk_backend: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct ResourceOptionsJson {
-    pub(crate) profile: Option<String>,
-    pub(crate) max_source_bytes: Option<usize>,
-    pub(crate) max_svg_bytes: Option<usize>,
-    pub(crate) max_flowchart_nodes: Option<usize>,
-    pub(crate) max_flowchart_edges: Option<usize>,
-    pub(crate) max_flowchart_subgraphs: Option<usize>,
-    pub(crate) max_class_nodes: Option<usize>,
-    pub(crate) max_class_edges: Option<usize>,
-    pub(crate) max_class_namespaces: Option<usize>,
-    pub(crate) max_label_bytes: Option<usize>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct LintOptionsJson {
-    #[serde(default)]
-    pub(crate) disable_rules: Vec<String>,
-    #[serde(default)]
-    pub(crate) rule_severities: Vec<LintRuleSeverityOverrideJson>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct LintRuleSeverityOverrideJson {
-    pub(crate) rule_id: String,
-    pub(crate) severity: String,
 }
 
 #[cfg(feature = "render")]
@@ -315,7 +278,7 @@ pub(crate) fn source_text(bytes: &[u8]) -> Result<&str, BindingError> {
 pub(crate) fn binding_site_config(
     options: &BindingOptions,
 ) -> Result<Option<merman::MermaidConfig>, BindingError> {
-    let Some(site_config) = options.site_config.as_ref() else {
+    let Some(site_config) = options.analysis.site_config.as_ref() else {
         return Ok(None);
     };
     if !site_config.is_object() {
@@ -330,7 +293,7 @@ pub(crate) fn binding_site_config(
 pub(crate) fn binding_fixed_today(
     options: &BindingOptions,
 ) -> Result<Option<chrono::NaiveDate>, BindingError> {
-    let Some(today) = options.fixed_today.as_deref() else {
+    let Some(today) = options.analysis.fixed_today.as_deref() else {
         return Ok(None);
     };
     chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
@@ -346,7 +309,7 @@ pub(crate) fn binding_fixed_today(
 pub(crate) fn binding_fixed_local_offset_minutes(
     options: &BindingOptions,
 ) -> Result<Option<i32>, BindingError> {
-    let Some(offset_minutes) = options.fixed_local_offset_minutes else {
+    let Some(offset_minutes) = options.analysis.fixed_local_offset_minutes else {
         return Ok(None);
     };
     let valid = offset_minutes
@@ -365,79 +328,15 @@ pub(crate) fn binding_fixed_local_offset_minutes(
 pub(crate) fn analysis_options(
     options: &BindingOptions,
 ) -> Result<merman_analysis::AnalysisOptions, BindingError> {
-    let mut analysis = merman_analysis::AnalysisOptions::default()
-        .with_parse_options(
-            if options
-                .parse
-                .as_ref()
-                .and_then(|parse| parse.suppress_errors)
-                .unwrap_or(false)
-            {
-                merman::ParseOptions::lenient()
-            } else {
-                merman::ParseOptions::strict()
-            },
-        )
-        .with_max_source_bytes(
-            options
-                .resources
-                .as_ref()
-                .and_then(|resources| resources.max_source_bytes),
-        );
-
-    if let Some(lint) = options.lint.as_ref() {
-        analysis = analysis.with_rule_config(binding_rule_config(lint)?);
-    }
-
-    if let Some(site_config) = binding_site_config(options)? {
-        analysis = analysis.with_site_config(site_config);
-    }
-    if let Some(today) = binding_fixed_today(options)? {
-        analysis = analysis.with_fixed_today(Some(today));
-    }
-    if let Some(offset_minutes) = binding_fixed_local_offset_minutes(options)? {
-        analysis = analysis.with_fixed_local_offset_minutes(Some(offset_minutes));
-    }
-
-    Ok(analysis)
+    options
+        .analysis
+        .to_analysis_options()
+        .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))
 }
 
-fn binding_rule_config(
-    lint: &LintOptionsJson,
-) -> Result<merman_analysis::AnalysisRuleConfig, BindingError> {
-    let mut config = merman_analysis::AnalysisRuleConfig::default();
-    for rule_id in &lint.disable_rules {
-        if rule_id.trim().is_empty() {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                "lint.disable_rules entries must not be empty",
-            ));
-        }
-        config.disable_rule(rule_id.clone());
-    }
-    for override_ in &lint.rule_severities {
-        let severity = parse_lint_severity(&override_.severity)?;
-        if override_.rule_id.trim().is_empty() {
-            return Err(BindingError::new(
-                BindingStatus::InvalidArgument,
-                "lint.rule_severities.rule_id must not be empty",
-            ));
-        }
-        config.set_rule_severity(override_.rule_id.clone(), severity);
-    }
-    Ok(config)
-}
-
-fn parse_lint_severity(value: &str) -> Result<merman_analysis::DiagnosticSeverity, BindingError> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "error" => Ok(merman_analysis::DiagnosticSeverity::Error),
-        "warning" | "warn" => Ok(merman_analysis::DiagnosticSeverity::Warning),
-        "info" => Ok(merman_analysis::DiagnosticSeverity::Info),
-        "hint" => Ok(merman_analysis::DiagnosticSeverity::Hint),
-        _ => Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "lint.rule_severities.severity must be error, warning, info, or hint",
-        )),
+impl From<merman_analysis::AnalysisOptionsJsonError> for BindingError {
+    fn from(error: merman_analysis::AnalysisOptionsJsonError) -> Self {
+        BindingError::new(BindingStatus::InvalidArgument, error.to_string())
     }
 }
 

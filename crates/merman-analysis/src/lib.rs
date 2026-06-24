@@ -10,6 +10,7 @@ pub mod document;
 pub mod editor;
 pub mod lsp;
 pub mod markdown;
+pub mod options_json;
 mod payload;
 mod rules;
 mod source_map;
@@ -19,6 +20,10 @@ pub use analyzer::{AnalysisOptions, Analyzer};
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,
     FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+};
+pub use options_json::{
+    AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,
+    ParseOptionsJson, ResourceOptionsJson, analysis_options_from_json_value,
 };
 pub use payload::{
     AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,

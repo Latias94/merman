@@ -9,10 +9,11 @@ use crate::structure::{
     references as structure_references, rename as structure_rename,
 };
 use merman_analysis::{
-    Analyzer,
+    AnalysisOptions, Analyzer,
     document::analyze_document,
     lsp::{analysis_payload_to_diagnostics, uri_is_markdown},
     markdown::markdown_source_descriptor,
+    options_json::analysis_options_from_json_value,
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -34,7 +35,7 @@ use tower_lsp::{Client, LanguageServer};
 pub struct MermanLanguageServer {
     client: Client,
     store: Arc<Mutex<DocumentStore>>,
-    analyzer: Analyzer,
+    analyzer: Arc<Mutex<Analyzer>>,
 }
 
 impl MermanLanguageServer {
@@ -42,7 +43,7 @@ impl MermanLanguageServer {
         Self {
             client,
             store: Arc::new(Mutex::new(DocumentStore::new())),
-            analyzer: Analyzer::new(),
+            analyzer: Arc::new(Mutex::new(Analyzer::new())),
         }
     }
 
@@ -84,18 +85,56 @@ impl MermanLanguageServer {
         } else {
             merman_analysis::SourceDescriptor::diagram().with_path(snapshot.uri.as_str())
         };
-        let payload = analyze_document(&snapshot.text, &self.analyzer, source);
+        let analyzer = self.analyzer.lock().await;
+        let payload = analyze_document(&snapshot.text, &analyzer, source);
 
         let diagnostics = analysis_payload_to_diagnostics(&payload, uri);
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, version)
             .await;
     }
+
+    async fn replace_analyzer(&self, options: AnalysisOptions) {
+        let mut analyzer = self.analyzer.lock().await;
+        *analyzer = Analyzer::with_options(options);
+    }
+
+    async fn apply_initialization_options(
+        &self,
+        initialization_options: Option<serde_json::Value>,
+    ) -> tower_lsp::jsonrpc::Result<()> {
+        match initialization_options {
+            None => {
+                self.replace_analyzer(AnalysisOptions::default()).await;
+                Ok(())
+            }
+            Some(value) => {
+                let options = analysis_options_from_json_value(&value)
+                    .map_err(|err| tower_lsp::jsonrpc::Error::invalid_params(err.to_string()))?;
+                self.replace_analyzer(options).await;
+                Ok(())
+            }
+        }
+    }
+
+    async fn republish_all(&self) {
+        let snapshots = {
+            let store = self.store.lock().await;
+            store.snapshots()
+        };
+
+        for snapshot in snapshots {
+            self.publish_for_uri(&snapshot.uri, Some(snapshot.version))
+                .await;
+        }
+    }
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for MermanLanguageServer {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        self.apply_initialization_options(params.initialization_options)
+            .await?;
         Ok(InitializeResult {
             capabilities: Self::capabilities(),
             ..InitializeResult::default()
@@ -148,6 +187,31 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         self.store.lock().await.remove(&params.text_document.uri);
+    }
+
+    async fn did_change_configuration(
+        &self,
+        params: tower_lsp::lsp_types::DidChangeConfigurationParams,
+    ) {
+        let options = if params.settings.is_null() {
+            AnalysisOptions::default()
+        } else {
+            match analysis_options_from_json_value(&params.settings) {
+                Ok(options) => options,
+                Err(err) => {
+                    self.client
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("invalid merman analysis settings: {err}"),
+                        )
+                        .await;
+                    return;
+                }
+            }
+        };
+
+        self.replace_analyzer(options).await;
+        self.republish_all().await;
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
