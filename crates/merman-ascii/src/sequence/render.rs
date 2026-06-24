@@ -1,14 +1,10 @@
-use super::boxes::render_sequence_boxes;
-use super::control::render_sequence_control_frames;
 use super::layout::{SequenceLayout, calculate_layout};
 use super::model::{AsciiSequenceDiagram, SequenceArrowHead};
 use super::plan::SequenceRowPlan;
 use super::text::{SequenceLine, padded_line, trim_right};
-use crate::canvas::Canvas;
-use crate::color::{AsciiColorMode, AsciiColorRole};
+use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiCharset, AsciiRenderOptions};
-use crate::text::display_width;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct SequenceChars {
@@ -117,18 +113,7 @@ pub(crate) fn render_sequence_diagram(
     let layout = calculate_layout(diagram, options);
     let row_plan =
         SequenceRowPlan::build(diagram, &layout, &chars, options.sequence_mirror_actors)?;
-    let (mut lines, control_frames) = row_plan.into_parts();
-
-    if !control_frames.is_empty() {
-        lines = render_sequence_control_frames(lines, &control_frames, &chars);
-    }
-    if !diagram.boxes.is_empty() {
-        lines = render_sequence_boxes(lines, diagram, &layout, &chars);
-    }
-    if let Some(title) = diagram.title.as_deref() {
-        prepend_title_line(&mut lines, title);
-    }
-    Ok(finish_sequence_lines(lines, options))
+    Ok(row_plan.render(diagram, &layout, &chars, options))
 }
 
 pub(super) fn build_lifeline_line(
@@ -181,45 +166,5 @@ pub(super) fn render_overlay_row(
         needed,
     );
     line.write_line(left, overlay);
-    trim_right(line)
-}
-
-fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions) -> String {
-    if options.color_mode == AsciiColorMode::Plain {
-        return lines
-            .into_iter()
-            .map(SequenceLine::into_text)
-            .collect::<Vec<_>>()
-            .join("\n")
-            + "\n";
-    }
-
-    if lines.is_empty() {
-        return String::new();
-    }
-
-    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
-    if width == 0 {
-        return "\n".repeat(lines.len());
-    }
-
-    let mut canvas = Canvas::new(width, lines.len());
-    for (y, line) in lines.iter().enumerate() {
-        line.write_to(&mut canvas, y);
-    }
-
-    canvas.finish_trimmed_with_options(options)
-}
-
-fn prepend_title_line(lines: &mut Vec<SequenceLine>, title: &str) {
-    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
-    lines.insert(0, render_title_line(title, width));
-}
-
-fn render_title_line(title: &str, width: usize) -> SequenceLine {
-    let title_width = display_width(title);
-    let left = width.saturating_sub(title_width) / 2;
-    let mut line = SequenceLine::blank(left);
-    line.push_role_text(title, AsciiColorRole::Text);
     trim_right(line)
 }

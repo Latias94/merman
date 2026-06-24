@@ -1,0 +1,18 @@
+sequenceDiagram
+participant A
+participant B
+participant C
+loop Outer Work
+    A->>+B: Start
+    Note over A,B: Coordinate
+    par Parallel Branches
+        B->>+C: Ship
+    and Fallback
+        C-->>-B: Return
+    end
+    rect rgba(0,0,0,0.08)
+        B->>C: Retry
+        destroy C
+        B--xC: Stop
+    end
+end

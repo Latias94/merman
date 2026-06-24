@@ -15,5 +15,6 @@ Current examples:
 - `flowchart/multi_boundary_routes.mmd`
 - `flowchart/nested_direction_boundary.mmd`
 - `flowchart/sibling_boundary_routes.mmd`
+- `sequence/dense_control_rows.mmd`
 - `state/composite_boundary.mmd`
 - `xychart/mixed_small.mmd`

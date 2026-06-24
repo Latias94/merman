@@ -1,3 +1,5 @@
+use super::boxes::render_sequence_boxes;
+use super::control::render_sequence_control_frames;
 use super::control::{SequenceControlFrame, SequenceControlFrameSeparator};
 use super::events::{ensure_message_actors_visible, render_message, render_self_message};
 use super::layout::{
@@ -7,14 +9,38 @@ use super::model::{AsciiSequenceDiagram, SequenceControlKind, SequenceEvent};
 use super::notes::{ensure_note_actors_visible, render_note};
 use super::render::{SequenceChars, build_lifeline_line};
 use super::text::{SequenceLine, padded_line, trim_right};
+use crate::canvas::Canvas;
+use crate::color::AsciiColorMode;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
+use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SequencePlanStep {
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SequenceEventEffect {
     StateOnly,
-    Render,
+    Render {
+        created_actors: Vec<usize>,
+        destroyed_actors: Vec<usize>,
+    },
+}
+
+impl SequenceEventEffect {
+    fn created_actors(&self) -> &[usize] {
+        match self {
+            Self::StateOnly => &[],
+            Self::Render { created_actors, .. } => created_actors,
+        }
+    }
+
+    fn destroyed_actors(&self) -> &[usize] {
+        match self {
+            Self::StateOnly => &[],
+            Self::Render {
+                destroyed_actors, ..
+            } => destroyed_actors,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -43,15 +69,16 @@ impl SequenceEventPlan {
         &self.visible_actors
     }
 
-    fn handle_event(
+    fn advance(
         &mut self,
+        diagram: &AsciiSequenceDiagram,
         event: &SequenceEvent,
         current_row: usize,
-    ) -> Result<SequencePlanStep> {
+    ) -> Result<SequenceEventEffect> {
         match event {
             SequenceEvent::ActivationStart { actor, .. } => {
                 self.active_counts[*actor] += 1;
-                Ok(SequencePlanStep::StateOnly)
+                Ok(SequenceEventEffect::StateOnly)
             }
             SequenceEvent::ActivationEnd { actor, .. } => {
                 let Some(count) = self.active_counts.get_mut(*actor) else {
@@ -61,7 +88,7 @@ impl SequenceEventPlan {
                     return Err(unsupported("activation underflow"));
                 }
                 *count -= 1;
-                Ok(SequencePlanStep::StateOnly)
+                Ok(SequenceEventEffect::StateOnly)
             }
             SequenceEvent::ControlStart(start) => {
                 let frame_index = self.control_frames.len();
@@ -74,7 +101,7 @@ impl SequenceEventPlan {
                     end_row: None,
                 });
                 self.active_control_frames.push(frame_index);
-                Ok(SequencePlanStep::StateOnly)
+                Ok(SequenceEventEffect::StateOnly)
             }
             SequenceEvent::ControlSeparator(separator) => {
                 let Some(frame_index) = self.active_control_frames.last().copied() else {
@@ -91,13 +118,26 @@ impl SequenceEventPlan {
                     label: separator.label.clone(),
                     row: current_row,
                 });
-                Ok(SequencePlanStep::StateOnly)
+                Ok(SequenceEventEffect::StateOnly)
             }
             SequenceEvent::ControlEnd { kind, .. } => {
                 self.end_control_frame(*kind, current_row)?;
-                Ok(SequencePlanStep::StateOnly)
+                Ok(SequenceEventEffect::StateOnly)
             }
-            SequenceEvent::Message(_) | SequenceEvent::Note(_) => Ok(SequencePlanStep::Render),
+            SequenceEvent::Message(_) | SequenceEvent::Note(_) => {
+                let model_index = event.model_index();
+                let created_actors =
+                    lifecycle_actors_at(diagram, model_index, LifecycleEdge::Created);
+                if !created_actors.is_empty() {
+                    self.record_created_actors(&created_actors);
+                }
+                let destroyed_actors =
+                    lifecycle_actors_at(diagram, model_index, LifecycleEdge::Destroyed);
+                Ok(SequenceEventEffect::Render {
+                    created_actors,
+                    destroyed_actors,
+                })
+            }
         }
     }
 
@@ -117,6 +157,15 @@ impl SequenceEventPlan {
             if let Some(count) = self.active_counts.get_mut(*actor) {
                 *count = 0;
             }
+        }
+    }
+
+    fn complete(&mut self, effect: SequenceEventEffect) {
+        if let SequenceEventEffect::Render {
+            destroyed_actors, ..
+        } = effect
+        {
+            self.record_destroyed_actors(&destroyed_actors);
         }
     }
 
@@ -172,7 +221,8 @@ impl SequenceRowPlan {
         ));
 
         for event in &diagram.events {
-            if event_plan.handle_event(event, lines.len())? == SequencePlanStep::StateOnly {
+            let effect = event_plan.advance(diagram, event, lines.len())?;
+            if matches!(effect, SequenceEventEffect::StateOnly) {
                 continue;
             }
 
@@ -185,22 +235,16 @@ impl SequenceRowPlan {
                 ));
             }
 
-            let model_index = event.model_index();
-            let created_actors = lifecycle_actors_at(diagram, model_index, LifecycleEdge::Created);
-            if !created_actors.is_empty() {
+            if !effect.created_actors().is_empty() {
                 lines.extend(render_lifecycle_participants(
                     diagram,
                     layout,
                     chars,
                     event_plan.active_counts(),
                     event_plan.visible_actors(),
-                    &created_actors,
+                    effect.created_actors(),
                 ));
-                event_plan.record_created_actors(&created_actors);
             }
-
-            let destroyed_actors =
-                lifecycle_actors_at(diagram, model_index, LifecycleEdge::Destroyed);
 
             match event {
                 SequenceEvent::Message(message) => {
@@ -212,7 +256,7 @@ impl SequenceRowPlan {
                             chars,
                             event_plan.active_counts(),
                             event_plan.visible_actors(),
-                            &destroyed_actors,
+                            effect.destroyed_actors(),
                         ));
                     } else {
                         lines.extend(render_message(
@@ -221,7 +265,7 @@ impl SequenceRowPlan {
                             chars,
                             event_plan.active_counts(),
                             event_plan.visible_actors(),
-                            &destroyed_actors,
+                            effect.destroyed_actors(),
                         ));
                     }
                 }
@@ -242,7 +286,7 @@ impl SequenceRowPlan {
                 | SequenceEvent::ControlSeparator(_) => {}
             }
 
-            event_plan.record_destroyed_actors(&destroyed_actors);
+            event_plan.complete(effect);
         }
 
         lines.push(build_lifeline_line(
@@ -267,8 +311,24 @@ impl SequenceRowPlan {
         })
     }
 
-    pub(super) fn into_parts(self) -> (Vec<SequenceLine>, Vec<SequenceControlFrame>) {
-        (self.lines, self.control_frames)
+    pub(super) fn render(
+        self,
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        options: &AsciiRenderOptions,
+    ) -> String {
+        let mut lines = self.lines;
+        if !self.control_frames.is_empty() {
+            lines = render_sequence_control_frames(lines, &self.control_frames, chars);
+        }
+        if !diagram.boxes.is_empty() {
+            lines = render_sequence_boxes(lines, diagram, layout, chars);
+        }
+        if let Some(title) = diagram.title.as_deref() {
+            prepend_title_line(&mut lines, title);
+        }
+        finish_sequence_lines(lines, options)
     }
 }
 
@@ -438,6 +498,46 @@ fn render_lifecycle_participants(
         .collect()
 }
 
+fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions) -> String {
+    if options.color_mode == AsciiColorMode::Plain {
+        return lines
+            .into_iter()
+            .map(SequenceLine::into_text)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+    }
+
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+    if width == 0 {
+        return "\n".repeat(lines.len());
+    }
+
+    let mut canvas = Canvas::new(width, lines.len());
+    for (y, line) in lines.iter().enumerate() {
+        line.write_to(&mut canvas, y);
+    }
+
+    canvas.finish_trimmed_with_options(options)
+}
+
+fn prepend_title_line(lines: &mut Vec<SequenceLine>, title: &str) {
+    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+    lines.insert(0, render_title_line(title, width));
+}
+
+fn render_title_line(title: &str, width: usize) -> SequenceLine {
+    let title_width = display_width(title);
+    let left = width.saturating_sub(title_width) / 2;
+    let mut line = SequenceLine::blank(left);
+    line.push_role_text(title, AsciiColorRole::Text);
+    trim_right(line)
+}
+
 fn unsupported(feature: &'static str) -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "sequence",
@@ -451,8 +551,9 @@ mod tests {
     use crate::options::AsciiRenderOptions;
     use crate::sequence::layout::calculate_layout;
     use crate::sequence::model::{
-        SequenceActorLifecycle, SequenceControlSeparator, SequenceControlStart,
-        SequenceParticipant, SequenceParticipantLabel,
+        SequenceActorLifecycle, SequenceArrowHead, SequenceControlSeparator, SequenceControlStart,
+        SequenceEvent, SequenceLineStyle, SequenceMessage, SequenceParticipant,
+        SequenceParticipantLabel,
     };
 
     #[test]
@@ -461,7 +562,8 @@ mod tests {
         let mut plan = SequenceEventPlan::new(&diagram);
 
         assert_eq!(
-            plan.handle_event(
+            plan.advance(
+                &diagram,
                 &SequenceEvent::ActivationStart {
                     actor: 0,
                     model_index: 0,
@@ -469,11 +571,12 @@ mod tests {
                 3,
             )
             .unwrap(),
-            SequencePlanStep::StateOnly
+            SequenceEventEffect::StateOnly
         );
         assert_eq!(plan.active_counts(), &[1]);
 
-        plan.handle_event(
+        plan.advance(
+            &diagram,
             &SequenceEvent::ActivationEnd {
                 actor: 0,
                 model_index: 1,
@@ -489,7 +592,8 @@ mod tests {
         let diagram = diagram(1);
         let mut plan = SequenceEventPlan::new(&diagram);
 
-        plan.handle_event(
+        plan.advance(
+            &diagram,
             &SequenceEvent::ControlStart(SequenceControlStart {
                 model_index: 0,
                 kind: SequenceControlKind::Alt,
@@ -501,7 +605,8 @@ mod tests {
         .unwrap();
 
         let error = plan
-            .handle_event(
+            .advance(
+                &diagram,
                 &SequenceEvent::ControlSeparator(SequenceControlSeparator {
                     model_index: 1,
                     kind: SequenceControlKind::Alt,
@@ -525,7 +630,8 @@ mod tests {
         let diagram = diagram(2);
         let mut plan = SequenceEventPlan::new(&diagram);
 
-        plan.handle_event(
+        plan.advance(
+            &diagram,
             &SequenceEvent::ControlStart(SequenceControlStart {
                 model_index: 0,
                 kind: SequenceControlKind::Loop,
@@ -535,7 +641,8 @@ mod tests {
             3,
         )
         .unwrap();
-        plan.handle_event(
+        plan.advance(
+            &diagram,
             &SequenceEvent::ControlStart(SequenceControlStart {
                 model_index: 1,
                 kind: SequenceControlKind::Opt,
@@ -545,9 +652,24 @@ mod tests {
             3,
         )
         .unwrap();
-        plan.end_control_frame(SequenceControlKind::Opt, 4).unwrap();
-        plan.end_control_frame(SequenceControlKind::Loop, 4)
-            .unwrap();
+        plan.advance(
+            &diagram,
+            &SequenceEvent::ControlEnd {
+                kind: SequenceControlKind::Opt,
+                model_index: 2,
+            },
+            4,
+        )
+        .unwrap();
+        plan.advance(
+            &diagram,
+            &SequenceEvent::ControlEnd {
+                kind: SequenceControlKind::Loop,
+                model_index: 3,
+            },
+            4,
+        )
+        .unwrap();
 
         let frames = plan.finish().unwrap();
         assert_eq!(frames.len(), 2);
@@ -562,22 +684,43 @@ mod tests {
     #[test]
     fn event_plan_updates_lifecycle_visibility_and_resets_activation() {
         let mut diagram = diagram(1);
-        diagram.lifecycles[0].created_at = Some(0);
+        diagram.lifecycles[0].created_at = Some(1);
+        diagram.lifecycles[0].destroyed_at = Some(1);
         let mut plan = SequenceEventPlan::new(&diagram);
         assert_eq!(plan.visible_actors(), &[false]);
 
-        plan.record_created_actors(&[0]);
-        assert_eq!(plan.visible_actors(), &[true]);
-        plan.handle_event(
-            &SequenceEvent::ActivationStart {
-                actor: 0,
-                model_index: 1,
-            },
-            4,
-        )
-        .unwrap();
+        let effect = plan
+            .advance(
+                &diagram,
+                &SequenceEvent::ActivationStart {
+                    actor: 0,
+                    model_index: 0,
+                },
+                3,
+            )
+            .unwrap();
+        assert_eq!(effect, SequenceEventEffect::StateOnly);
 
-        plan.record_destroyed_actors(&[0]);
+        let effect = plan
+            .advance(
+                &diagram,
+                &SequenceEvent::Message(SequenceMessage {
+                    model_index: 1,
+                    from: 0,
+                    to: 0,
+                    label: "done".to_string(),
+                    wrap: false,
+                    style: SequenceLineStyle::Solid,
+                    arrow: SequenceArrowHead::Filled,
+                }),
+                4,
+            )
+            .unwrap();
+
+        assert_eq!(effect.created_actors(), &[0]);
+        assert_eq!(effect.destroyed_actors(), &[0]);
+        assert_eq!(plan.visible_actors(), &[true]);
+        plan.complete(effect);
         assert_eq!(plan.visible_actors(), &[false]);
         assert_eq!(plan.active_counts(), &[0]);
     }
@@ -594,13 +737,8 @@ mod tests {
             options.sequence_mirror_actors,
         )
         .unwrap();
-        let (lines, control_frames) = plan.into_parts();
-
-        assert!(control_frames.is_empty());
-        let rendered = lines
-            .into_iter()
-            .map(SequenceLine::into_text)
-            .collect::<Vec<_>>();
+        let rendered = plan.render(&diagram, &layout, &ascii_chars(), &options);
+        let rendered = rendered.lines().map(str::to_string).collect::<Vec<_>>();
         assert_eq!(rendered.len(), 7);
         assert!(rendered[0].starts_with('+'));
         assert!(rendered[1].contains("P0"));
@@ -609,6 +747,19 @@ mod tests {
         assert!(rendered[4].starts_with('+'));
         assert!(rendered[5].contains("P0"));
         assert!(rendered[6].starts_with('+'));
+    }
+
+    #[test]
+    fn row_plan_renders_title_before_content() {
+        let mut diagram = diagram(1);
+        diagram.title = Some("Timeline".to_string());
+        let options = AsciiRenderOptions::ascii();
+        let layout = calculate_layout(&diagram, &options);
+        let plan = SequenceRowPlan::build(&diagram, &layout, &ascii_chars(), false).unwrap();
+
+        let rendered = plan.render(&diagram, &layout, &ascii_chars(), &options);
+
+        assert!(rendered.lines().next().unwrap_or("").contains("Timeline"));
     }
 
     fn diagram(participant_count: usize) -> AsciiSequenceDiagram {
