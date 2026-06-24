@@ -2,6 +2,7 @@ use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
 use super::path::StepDirection;
 
+mod boundary;
 mod grid;
 mod left_right;
 mod select;
