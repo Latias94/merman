@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-25
+- Expanded the analysis rule contract so core parse/resource/compatibility/internal diagnostics
+  now have stable descriptors, and `no_diagram` plus source-byte-limit diagnostics can be disabled
+  through the shared rule config without breaking the rest of the analysis pipeline.
 - Added `workspace/symbol` to the published LSP contract docs and engineering state so the
   snapshot-backed workspace lookup path is no longer described as deferred.
 - Added a workspace/symbol LSP handler that reuses the existing outline projection from tracked

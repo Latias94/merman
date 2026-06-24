@@ -10,6 +10,15 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.config.prefer_init_directive";
+pub const NO_DIAGRAM_RULE_ID: &str = "merman.parse.no_diagram";
+pub const DIAGRAM_PARSE_RULE_ID: &str = "merman.parse.diagram_parse";
+pub const UNSUPPORTED_DIAGRAM_RULE_ID: &str = "merman.compatibility.unsupported_diagram";
+pub const RECOVERED_EDITOR_FACTS_RULE_ID: &str = "merman.parse.recovered_editor_facts";
+pub const RESOURCE_LIMIT_RULE_ID: &str = "merman.resource.source_bytes_exceeded";
+pub const MALFORMED_FRONT_MATTER_RULE_ID: &str = "merman.config.malformed_front_matter";
+pub const INVALID_DIRECTIVE_JSON_RULE_ID: &str = "merman.config.invalid_directive_json";
+pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front_matter_yaml";
+pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
@@ -29,6 +38,78 @@ const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
     category: DiagnosticCategory::Config,
     default_enabled: true,
     fixable: true,
+};
+
+const NO_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
+    id: NO_DIAGRAM_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Parse,
+    default_enabled: true,
+    fixable: false,
+};
+
+const DIAGRAM_PARSE_RULE: RuleDescriptor = RuleDescriptor {
+    id: DIAGRAM_PARSE_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Parse,
+    default_enabled: true,
+    fixable: false,
+};
+
+const UNSUPPORTED_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
+    id: UNSUPPORTED_DIAGRAM_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Compatibility,
+    default_enabled: true,
+    fixable: false,
+};
+
+const RECOVERED_EDITOR_FACTS_RULE: RuleDescriptor = RuleDescriptor {
+    id: RECOVERED_EDITOR_FACTS_RULE_ID,
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Parse,
+    default_enabled: true,
+    fixable: false,
+};
+
+const RESOURCE_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
+    id: RESOURCE_LIMIT_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Resource,
+    default_enabled: true,
+    fixable: false,
+};
+
+const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
+    id: MALFORMED_FRONT_MATTER_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Config,
+    default_enabled: true,
+    fixable: false,
+};
+
+const INVALID_DIRECTIVE_JSON_RULE: RuleDescriptor = RuleDescriptor {
+    id: INVALID_DIRECTIVE_JSON_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Config,
+    default_enabled: true,
+    fixable: false,
+};
+
+const INVALID_FRONT_MATTER_YAML_RULE: RuleDescriptor = RuleDescriptor {
+    id: INVALID_FRONT_MATTER_YAML_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Config,
+    default_enabled: true,
+    fixable: false,
+};
+
+const PANIC_RULE: RuleDescriptor = RuleDescriptor {
+    id: PANIC_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Internal,
+    default_enabled: true,
+    fixable: false,
 };
 
 const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
@@ -55,6 +136,15 @@ const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
 
 const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PREFER_INIT_DIRECTIVE_RULE,
+    NO_DIAGRAM_RULE,
+    DIAGRAM_PARSE_RULE,
+    UNSUPPORTED_DIAGRAM_RULE,
+    RECOVERED_EDITOR_FACTS_RULE,
+    RESOURCE_LIMIT_RULE,
+    MALFORMED_FRONT_MATTER_RULE,
+    INVALID_DIRECTIVE_JSON_RULE,
+    INVALID_FRONT_MATTER_YAML_RULE,
+    PANIC_RULE,
     BLOCK_WIDTH_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
     SEMANTIC_WARNING_RULE,
@@ -62,6 +152,25 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
 
 pub fn rule_descriptors() -> &'static [RuleDescriptor] {
     RULE_DESCRIPTORS
+}
+
+pub fn rule_descriptor(rule_id: &str) -> RuleDescriptor {
+    match rule_id {
+        PREFER_INIT_DIRECTIVE_RULE_ID => PREFER_INIT_DIRECTIVE_RULE,
+        NO_DIAGRAM_RULE_ID => NO_DIAGRAM_RULE,
+        DIAGRAM_PARSE_RULE_ID => DIAGRAM_PARSE_RULE,
+        UNSUPPORTED_DIAGRAM_RULE_ID => UNSUPPORTED_DIAGRAM_RULE,
+        RECOVERED_EDITOR_FACTS_RULE_ID => RECOVERED_EDITOR_FACTS_RULE,
+        RESOURCE_LIMIT_RULE_ID => RESOURCE_LIMIT_RULE,
+        MALFORMED_FRONT_MATTER_RULE_ID => MALFORMED_FRONT_MATTER_RULE,
+        INVALID_DIRECTIVE_JSON_RULE_ID => INVALID_DIRECTIVE_JSON_RULE,
+        INVALID_FRONT_MATTER_YAML_RULE_ID => INVALID_FRONT_MATTER_YAML_RULE,
+        PANIC_RULE_ID => PANIC_RULE,
+        BLOCK_WIDTH_RULE_ID => BLOCK_WIDTH_RULE,
+        GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID => GIT_GRAPH_DUPLICATE_COMMIT_RULE,
+        SEMANTIC_WARNING_RULE_ID => SEMANTIC_WARNING_RULE,
+        _ => SEMANTIC_WARNING_RULE,
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -423,12 +532,57 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 4);
+        assert_eq!(descriptors.len(), 13);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
         assert_eq!(descriptors[0].category, DiagnosticCategory::Config);
         assert!(descriptors[0].default_enabled);
         assert!(descriptors[0].fixable);
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == NO_DIAGRAM_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == DIAGRAM_PARSE_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == UNSUPPORTED_DIAGRAM_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == RECOVERED_EDITOR_FACTS_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == RESOURCE_LIMIT_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == MALFORMED_FRONT_MATTER_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == INVALID_DIRECTIVE_JSON_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == INVALID_FRONT_MATTER_YAML_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == PANIC_RULE_ID)
+        );
         assert!(
             descriptors
                 .iter()

@@ -1,8 +1,11 @@
 use crate::rules::AnalysisRuleConfig;
-use crate::{
-    AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, DiagnosticCategory, DiagnosticSeverity,
-    SourceDescriptor, SourceMap,
+use crate::rules::{
+    DIAGRAM_PARSE_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID, INVALID_FRONT_MATTER_YAML_RULE_ID,
+    MALFORMED_FRONT_MATTER_RULE_ID, NO_DIAGRAM_RULE_ID, PANIC_RULE_ID,
+    RECOVERED_EDITOR_FACTS_RULE_ID, RESOURCE_LIMIT_RULE_ID, UNSUPPORTED_DIAGRAM_RULE_ID,
+    rule_descriptor,
 };
+use crate::{AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, SourceDescriptor, SourceMap};
 use merman_core::{
     EditorSemanticDiagnostic, Engine, Error as CoreError, MermaidConfig, ParseOptions,
 };
@@ -102,17 +105,18 @@ impl Analyzer {
         let source_map = SourceMap::new(source);
 
         if source.trim().is_empty() {
-            return self.payload(vec![no_diagram_diagnostic(&source_map)]);
+            let diagnostics = no_diagram_diagnostic(&source_map, &self.options.rule_config)
+                .into_iter()
+                .collect();
+            return self.payload(diagnostics);
         }
 
-        if let Some(limit) = self.options.max_source_bytes {
-            if source.len() > limit {
-                return self.payload(vec![source_limit_diagnostic(
-                    source.len(),
-                    limit,
-                    &source_map,
-                )]);
-            }
+        if let Some(limit) = self.options.max_source_bytes
+            && source.len() > limit
+            && let Some(diagnostic) =
+                source_limit_diagnostic(source.len(), limit, &source_map, &self.options.rule_config)
+        {
+            return self.payload(vec![diagnostic]);
         }
 
         let source_lints =
@@ -123,10 +127,15 @@ impl Analyzer {
         }));
 
         match parse_result {
-            Err(panic_payload) => self.payload(with_source_lints(
-                vec![panic_diagnostic(panic_payload, &source_map)],
-                source_lints,
-            )),
+            Err(panic_payload) => {
+                let mut diagnostics = source_lints;
+                if let Some(diagnostic) =
+                    panic_diagnostic(panic_payload, &source_map, &self.options.rule_config)
+                {
+                    diagnostics.push(diagnostic);
+                }
+                self.payload(diagnostics)
+            }
             Ok(parse_result) => match parse_result {
                 Ok(Some(parsed)) => {
                     let mut diagnostics = source_lints;
@@ -143,19 +152,14 @@ impl Analyzer {
                     ));
                     self.payload(diagnostics)
                 }
-                Ok(None) => self.payload(with_source_lints(
-                    vec![no_diagram_diagnostic(&source_map)],
-                    source_lints,
-                )),
+                Ok(None) => self.payload(source_lints),
                 Err(error) => {
-                    let mut diagnostics = with_source_lints(
-                        vec![core_error_diagnostic(error, &source_map)],
-                        source_lints,
-                    );
-                    let diagram_type = diagnostics
-                        .first()
-                        .and_then(|diagnostic| diagnostic.diagram_type.as_deref())
-                        .map(str::to_owned);
+                    let (core_diagnostic, diagram_type) =
+                        core_error_diagnostic(error, &source_map, &self.options.rule_config);
+                    let mut diagnostics = source_lints;
+                    if let Some(diagnostic) = core_diagnostic {
+                        diagnostics.push(diagnostic);
+                    }
                     if let Some(diagram_type) = diagram_type {
                         diagnostics.extend(self.editor_recovery_diagnostics(
                             source,
@@ -192,23 +196,26 @@ impl Analyzer {
         }));
 
         match facts_result {
-            Err(panic_payload) => vec![panic_diagnostic(panic_payload, source_map)],
+            Err(panic_payload) => {
+                panic_diagnostic(panic_payload, source_map, &self.options.rule_config)
+                    .into_iter()
+                    .collect()
+            }
             Ok(Ok(Some(facts))) => facts
                 .diagnostics
                 .into_iter()
-                .map(|diagnostic| recovered_editor_diagnostic(diagnostic, diagram_type, source_map))
+                .filter_map(|diagnostic| {
+                    recovered_editor_diagnostic(
+                        diagnostic,
+                        diagram_type,
+                        source_map,
+                        &self.options.rule_config,
+                    )
+                })
                 .collect(),
             Ok(Ok(None) | Err(_)) => Vec::new(),
         }
     }
-}
-
-fn with_source_lints(
-    mut diagnostics: Vec<AnalysisDiagnostic>,
-    source_lints: Vec<AnalysisDiagnostic>,
-) -> Vec<AnalysisDiagnostic> {
-    diagnostics.extend(source_lints);
-    diagnostics
 }
 
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
@@ -223,14 +230,16 @@ pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
     engine
 }
 
-fn no_diagram_diagnostic(source_map: &SourceMap) -> AnalysisDiagnostic {
-    diagnostic(
-        "merman.parse.no_diagram",
-        DiagnosticSeverity::Error,
-        DiagnosticCategory::Parse,
-        NO_DIAGRAM_MESSAGE,
+fn no_diagram_diagnostic(
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
+    rule_diagnostic(
+        NO_DIAGRAM_RULE_ID,
         AnalysisStatus::NoDiagram,
+        NO_DIAGRAM_MESSAGE,
         source_map,
+        rule_config,
     )
 }
 
@@ -238,64 +247,78 @@ fn source_limit_diagnostic(
     source_len: usize,
     limit: usize,
     source_map: &SourceMap,
-) -> AnalysisDiagnostic {
-    diagnostic(
-        "merman.resource.source_bytes_exceeded",
-        DiagnosticSeverity::Error,
-        DiagnosticCategory::Resource,
-        format!("source is {source_len} bytes, exceeding max_source_bytes {limit}"),
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
+    rule_diagnostic(
+        RESOURCE_LIMIT_RULE_ID,
         AnalysisStatus::ResourceLimitExceeded,
+        format!("source is {source_len} bytes, exceeding max_source_bytes {limit}"),
         source_map,
+        rule_config,
     )
 }
 
-fn core_error_diagnostic(error: CoreError, source_map: &SourceMap) -> AnalysisDiagnostic {
+fn core_error_diagnostic(
+    error: CoreError,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+) -> (Option<AnalysisDiagnostic>, Option<String>) {
     match error {
-        CoreError::DetectType(_) => no_diagram_diagnostic(source_map),
-        CoreError::UnsupportedDiagram { diagram_type } => diagnostic(
-            "merman.compatibility.unsupported_diagram",
-            DiagnosticSeverity::Error,
-            DiagnosticCategory::Compatibility,
-            format!("unsupported diagram type: {diagram_type}"),
-            AnalysisStatus::UnsupportedFormat,
-            source_map,
-        )
-        .with_diagram_type(diagram_type),
+        CoreError::DetectType(_) => (no_diagram_diagnostic(source_map, rule_config), None),
+        CoreError::UnsupportedDiagram { diagram_type } => (
+            rule_diagnostic(
+                UNSUPPORTED_DIAGRAM_RULE_ID,
+                AnalysisStatus::UnsupportedFormat,
+                format!("unsupported diagram type: {diagram_type}"),
+                source_map,
+                rule_config,
+            )
+            .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
+            Some(diagram_type),
+        ),
         CoreError::DiagramParse {
             diagram_type,
             message,
-        } => diagnostic(
-            "merman.parse.diagram_parse",
-            DiagnosticSeverity::Error,
-            DiagnosticCategory::Parse,
-            message,
-            AnalysisStatus::ParseError,
-            source_map,
-        )
-        .with_diagram_type(diagram_type),
-        CoreError::MalformedFrontMatter => diagnostic(
-            "merman.config.malformed_front_matter",
-            DiagnosticSeverity::Error,
-            DiagnosticCategory::Config,
-            CoreError::MalformedFrontMatter.to_string(),
-            AnalysisStatus::ParseError,
-            source_map,
+        } => (
+            rule_diagnostic(
+                DIAGRAM_PARSE_RULE_ID,
+                AnalysisStatus::ParseError,
+                message,
+                source_map,
+                rule_config,
+            )
+            .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
+            Some(diagram_type),
         ),
-        CoreError::InvalidDirectiveJson { message } => diagnostic(
-            "merman.config.invalid_directive_json",
-            DiagnosticSeverity::Error,
-            DiagnosticCategory::Config,
-            format!("invalid directive JSON: {message}"),
-            AnalysisStatus::ParseError,
-            source_map,
+        CoreError::MalformedFrontMatter => (
+            rule_diagnostic(
+                MALFORMED_FRONT_MATTER_RULE_ID,
+                AnalysisStatus::ParseError,
+                CoreError::MalformedFrontMatter.to_string(),
+                source_map,
+                rule_config,
+            ),
+            None,
         ),
-        CoreError::InvalidFrontMatterYaml { message } => diagnostic(
-            "merman.config.invalid_front_matter_yaml",
-            DiagnosticSeverity::Error,
-            DiagnosticCategory::Config,
-            format!("invalid YAML front-matter: {message}"),
-            AnalysisStatus::ParseError,
-            source_map,
+        CoreError::InvalidDirectiveJson { message } => (
+            rule_diagnostic(
+                INVALID_DIRECTIVE_JSON_RULE_ID,
+                AnalysisStatus::ParseError,
+                format!("invalid directive JSON: {message}"),
+                source_map,
+                rule_config,
+            ),
+            None,
+        ),
+        CoreError::InvalidFrontMatterYaml { message } => (
+            rule_diagnostic(
+                INVALID_FRONT_MATTER_YAML_RULE_ID,
+                AnalysisStatus::ParseError,
+                format!("invalid YAML front-matter: {message}"),
+                source_map,
+                rule_config,
+            ),
+            None,
         ),
     }
 }
@@ -303,20 +326,20 @@ fn core_error_diagnostic(error: CoreError, source_map: &SourceMap) -> AnalysisDi
 fn panic_diagnostic(
     panic_payload: Box<dyn std::any::Any + Send>,
     source_map: &SourceMap,
-) -> AnalysisDiagnostic {
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
     let message = panic_payload
         .downcast_ref::<&str>()
         .copied()
         .or_else(|| panic_payload.downcast_ref::<String>().map(String::as_str))
         .unwrap_or("panic while analyzing Mermaid source");
 
-    diagnostic(
-        "merman.internal.panic",
-        DiagnosticSeverity::Error,
-        DiagnosticCategory::Internal,
-        message,
+    rule_diagnostic(
+        PANIC_RULE_ID,
         AnalysisStatus::Panic,
+        message,
         source_map,
+        rule_config,
     )
 }
 
@@ -324,17 +347,15 @@ fn recovered_editor_diagnostic(
     diagnostic: EditorSemanticDiagnostic,
     diagram_type: &str,
     source_map: &SourceMap,
-) -> AnalysisDiagnostic {
-    let mut out = AnalysisDiagnostic::new(
-        "merman.parse.recovered_editor_facts",
-        DiagnosticSeverity::Warning,
-        DiagnosticCategory::Parse,
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
+    let mut out = rule_diagnostic(
+        RECOVERED_EDITOR_FACTS_RULE_ID,
+        AnalysisStatus::ParseError,
         diagnostic.message,
-    )
-    .with_code(
-        AnalysisStatus::ParseError.code(),
-        AnalysisStatus::ParseError.code_name(),
-    )
+        source_map,
+        rule_config,
+    )?
     .with_diagram_type(diagram_type);
 
     if let Some(span) = diagnostic
@@ -344,23 +365,32 @@ fn recovered_editor_diagnostic(
         out = out.with_span(span);
     }
 
-    out
+    Some(out)
 }
 
-fn diagnostic(
-    id: impl Into<String>,
-    severity: DiagnosticSeverity,
-    category: DiagnosticCategory,
-    message: impl Into<String>,
+fn rule_diagnostic(
+    rule_id: &'static str,
     status: AnalysisStatus,
+    message: impl Into<String>,
     source_map: &SourceMap,
-) -> AnalysisDiagnostic {
-    let mut diagnostic = AnalysisDiagnostic::new(id, severity, category, message)
-        .with_code(status.code(), status.code_name());
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
+    let descriptor = rule_descriptor(rule_id);
+    if !rule_config.is_rule_enabled(descriptor) {
+        return None;
+    }
+
+    let mut diagnostic = AnalysisDiagnostic::new(
+        descriptor.id,
+        rule_config.severity_for(descriptor),
+        descriptor.category,
+        message,
+    )
+    .with_code(status.code(), status.code_name());
     if let Ok(span) = source_map.whole_source_span() {
         diagnostic = diagnostic.with_span(span);
     }
-    diagnostic
+    Some(diagnostic)
 }
 
 #[cfg(test)]
@@ -435,6 +465,33 @@ mod tests {
         );
         let payload =
             analyzer.analyze("%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n");
+
+        assert!(payload.valid);
+        assert!(payload.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn analysis_rule_config_can_disable_no_diagram_rule() {
+        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_rule_disabled(crate::rules::NO_DIAGRAM_RULE_ID),
+        ));
+        let payload = analyzer.analyze("");
+
+        assert!(payload.valid);
+        assert!(payload.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn analysis_rule_config_can_disable_resource_limit_rule() {
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default()
+                .with_max_source_bytes(Some(8))
+                .with_rule_config(
+                    AnalysisRuleConfig::default()
+                        .with_rule_disabled(crate::rules::RESOURCE_LIMIT_RULE_ID),
+                ),
+        );
+        let payload = analyzer.analyze("flowchart TD\nA-->B\n");
 
         assert!(payload.valid);
         assert!(payload.diagnostics.is_empty());
