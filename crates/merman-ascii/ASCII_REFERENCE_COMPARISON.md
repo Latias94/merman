@@ -44,7 +44,7 @@ product boundary.
 | Class | Not part of the reference scope. | Full class parser/layout/ASCII, with compartments, annotations, and arrow-direction handling. | Supported subset via the layered relation planner, with same-endpoint lanes, spanning routes, dense/cyclic fallback, and typed role colors. | Extend from typed relation facts, not from parser shape. |
 | ER | Not part of the reference scope. | Full ER parser/layout/ASCII, including crow's foot notation and attribute sections. | Supported subset via the same layered relation machinery, with entity boxes, cardinality markers, and dense/cyclic fallback. | Relation layout is the seam worth deepening. |
 | State | Not part of the reference scope. | State diagram support rides the broader ASCII pipeline and gives useful layout ideas. | Supported subset with start/end, fork/join/choice, notes, composite states, divider regions, and role colors. | Keep state honest to the typed model; do not try to copy browser shapes literally. |
-| XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | Compact terminal plots with bars, lines, mixed charts, and horizontal mode. | Plot planning is now split from row rendering; legends and scalable plot-area policy remain the next obvious deepening slice. |
+| XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | Compact terminal plots with bars, lines, mixed charts, horizontal mode, and multi-series legend rows. | Plot planning is split from row rendering; scalable plot-area policy and model-backed series labels remain the next obvious deepening slice. |
 
 ## Intentional Differences
 
@@ -62,4 +62,4 @@ product boundary.
 - CJK and emoji placement across renderers.
 - Flowchart route families beyond the current layered planner.
 - Class and ER dense relation topologies beyond the current fallback.
-- XYChart legends and broader plot-area scaling.
+- XYChart broader plot-area scaling and model-backed series labels.

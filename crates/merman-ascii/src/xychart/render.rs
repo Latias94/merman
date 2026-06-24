@@ -6,7 +6,9 @@ use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::text::{StyledLine, display_width};
 use crate::{AsciiRenderOptions, Result};
-use merman_core::diagrams::xychart::{XyChartAxisRenderModel, XyChartDiagramRenderModel};
+use merman_core::diagrams::xychart::{
+    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
+};
 
 type ChartLine = StyledLine;
 
@@ -49,6 +51,7 @@ fn render_vertical(
 
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
+    push_legend_line(&mut out, model, chars);
 
     let tick_labels = vertical_tick_labels(y_range);
     let min_label = format_number(y_range.min);
@@ -103,6 +106,7 @@ fn render_horizontal(
 ) -> String {
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
+    push_legend_line(&mut out, model, chars);
     let plot_rows = build_horizontal_plot_rows(model, categories.len(), y_range, chars);
 
     let gutter = categories
@@ -155,6 +159,49 @@ fn push_title_lines(out: &mut Vec<ChartLine>, model: &XyChartDiagramRenderModel)
         line.push_role_text(title, AsciiColorRole::Text);
         out.push(line);
     }
+}
+
+fn push_legend_line(
+    out: &mut Vec<ChartLine>,
+    model: &XyChartDiagramRenderModel,
+    chars: ChartChars,
+) {
+    if model.plots.len() <= 1 {
+        return;
+    }
+
+    out.push(legend_line(&model.plots, chars));
+}
+
+fn legend_line(plots: &[XyChartPlotRenderModel], chars: ChartChars) -> ChartLine {
+    let mut line = ChartLine::new();
+    let mut bar_index = 0;
+    let mut line_index = 0;
+
+    for (series_index, plot) in plots.iter().enumerate() {
+        if series_index > 0 {
+            line.push_spaces(2);
+        }
+
+        line.push_role_char(
+            chars.legend_symbol(plot.plot_type),
+            AsciiColorRole::ChartSeries(series_index),
+        );
+        line.push_plain_char(' ');
+        let label = match plot.plot_type {
+            XyChartPlotType::Bar => {
+                bar_index += 1;
+                format!("Bar {bar_index}")
+            }
+            XyChartPlotType::Line => {
+                line_index += 1;
+                format!("Line {line_index}")
+            }
+        };
+        line.push_role_text(&label, AsciiColorRole::Text);
+    }
+
+    line
 }
 
 fn category_labels(model: &XyChartDiagramRenderModel) -> Vec<String> {

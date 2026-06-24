@@ -140,6 +140,7 @@ line [8, 2]
     assert_eq!(
         strip_html_spans(&rendered),
         concat!(
+            "# Bar 1  * Line 1\n",
             "10 |\n",
             " 8 | ***###\n",
             " 6 |   *###\n",
@@ -150,6 +151,8 @@ line [8, 2]
         )
     );
     for expected_fragment in [
+        "<span style=\"color:#303030\">#</span>",
+        "<span style=\"color:#404040\">*</span>",
         "<span style=\"color:#202020\">|</span>",
         "<span style=\"color:#202020\">+-------</span>",
         "<span style=\"color:#303030\">###</span>",
@@ -234,6 +237,7 @@ line [8, 2]
     assert_eq!(
         rendered,
         concat!(
+            "# Bar 1  * Line 1\n",
             "10 |\n",
             " 8 | ***###\n",
             " 6 |   *###\n",
@@ -243,6 +247,29 @@ line [8, 2]
             "     A   B\n",
         )
     );
+}
+
+#[test]
+fn xychart_parser_multiple_same_type_series_render_legend_labels_by_type_order() {
+    let rendered = render_xychart(
+        r#"xychart
+x-axis [A, B]
+y-axis 0 --> 10
+bar [2, 8]
+bar [5, 6]
+line [8, 2]
+line [4, 4]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("multi-series xychart should render");
+
+    let legend = rendered
+        .lines()
+        .next()
+        .expect("multi-series chart should render a legend line");
+
+    assert_eq!(legend, "# Bar 1  # Bar 2  * Line 1  * Line 2");
 }
 
 #[test]

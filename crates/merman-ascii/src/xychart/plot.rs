@@ -48,6 +48,13 @@ impl ChartChars {
             },
         }
     }
+
+    pub(super) fn legend_symbol(self, plot_type: XyChartPlotType) -> char {
+        match plot_type {
+            XyChartPlotType::Bar => self.bar,
+            XyChartPlotType::Line => self.line_point,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
