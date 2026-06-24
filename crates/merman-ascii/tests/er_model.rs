@@ -218,6 +218,26 @@ fn er_parser_attributes_render_in_entity_section() {
 }
 
 #[test]
+fn er_parser_attribute_keys_and_comments_render_in_entity_section() {
+    let rendered = render_er(
+        "erDiagram\nORDER {\n  int id PK\n  int customer_id FK \"owner id\"\n  string email UK\n}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("ER should render");
+
+    for expected in [
+        "int id PK",
+        "int customer_id FK owner id",
+        "string email UK",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "ER attribute details should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn er_parser_identifying_relationship_renders_cardinality_markers_and_label() {
     let rendered = render_er(
         "erDiagram\nCUSTOMER ||--o{ ORDER : places",

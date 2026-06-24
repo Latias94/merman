@@ -727,6 +727,54 @@ fn class_parser_dependency_relation_renders_dotted_arrow_marker() {
 }
 
 #[test]
+fn class_parser_association_relation_renders_plain_line_without_marker() {
+    let rendered = render_class(
+        "classDiagram\nclass Student\nclass Course\nStudent -- Course : enrolls",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---------+\n",
+            "| Student |\n",
+            "+---------+\n",
+            "     |\n",
+            "  enrolls\n",
+            "     |\n",
+            "+--------+\n",
+            "| Course |\n",
+            "+--------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_dotted_association_relation_renders_plain_dotted_line_without_marker() {
+    let rendered = render_class(
+        "classDiagram\nclass Student\nclass Course\nStudent .. Course : observes",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---------+\n",
+            "| Student |\n",
+            "+---------+\n",
+            "     :\n",
+            " observes\n",
+            "     :\n",
+            "+--------+\n",
+            "| Course |\n",
+            "+--------+\n",
+        )
+    );
+}
+
+#[test]
 fn class_render_model_rejects_relationship_endpoint_labels() {
     let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
     let relation = model
@@ -755,6 +803,21 @@ fn class_render_model_rejects_lollipop_relations() {
         &model,
         "class relationship types other than extension, dependency, aggregation, or composition",
     );
+}
+
+#[test]
+fn class_render_model_rejects_relationships_with_multiple_markers() {
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
+    let aggregation = model.constants.relation_type.aggregation;
+    let composition = model.constants.relation_type.composition;
+    let relation = model
+        .relations
+        .first_mut()
+        .expect("fixture should contain one relation");
+    relation.relation.type1 = aggregation;
+    relation.relation.type2 = composition;
+
+    assert_unsupported_class_model(&model, "class relationships with multiple markers");
 }
 
 #[test]
@@ -817,6 +880,30 @@ fn class_parser_dense_realization_relationships_keep_dotted_summary_connector() 
     assert!(
         !rendered.contains("<|--"),
         "dense realization summary should not collapse dotted realization to solid inheritance:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_dense_plain_associations_keep_summary_connector() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nA -- B : ab\nB -- A : ba\nA -- C : ac\nC -- A : ca\nB -- C : bc\nC -- B : cb",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("dense plain associations should render through relation summary fallback");
+
+    assert!(
+        rendered.contains("relations:"),
+        "dense plain association fixture should use relation summary:\n{rendered}"
+    );
+    for expected in ["A --", "B --", "C --", ": ab", ": ba", ": bc", ": cb"] {
+        assert!(
+            rendered.contains(expected),
+            "dense plain association summary should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("-->") && !rendered.contains("<--"),
+        "dense plain association summary should not invent arrowheads:\n{rendered}"
     );
 }
 

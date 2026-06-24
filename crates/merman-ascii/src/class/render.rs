@@ -105,6 +105,12 @@ enum MarkerSide {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RelationEndpointMarker {
+    marker: RelationMarker,
+    side: MarkerSide,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RelationLine {
     Solid,
     Dotted,
@@ -114,8 +120,7 @@ enum RelationLine {
 struct RelationLayout<'a> {
     top_id: &'a str,
     bottom_id: &'a str,
-    marker: RelationMarker,
-    marker_side: MarkerSide,
+    endpoint_marker: Option<RelationEndpointMarker>,
     line: RelationLine,
     label: Option<RelationGraphLabel>,
 }
@@ -412,34 +417,46 @@ fn relation_layout<'a>(
     let right_marker = marker_for_relation_type(model, relation.relation.type2)?;
     let none = model.constants.relation_type.none;
 
-    let (marker, marker_side) = match (left_marker, right_marker) {
-        (Some(marker), None) if relation.relation.type2 == none => (marker, MarkerSide::Top),
-        (None, Some(marker)) if relation.relation.type1 == none => (marker, MarkerSide::Bottom),
+    let endpoint_marker = match (left_marker, right_marker) {
+        (Some(marker), None) if relation.relation.type2 == none => Some(RelationEndpointMarker {
+            marker,
+            side: MarkerSide::Top,
+        }),
+        (None, Some(marker)) if relation.relation.type1 == none => Some(RelationEndpointMarker {
+            marker,
+            side: MarkerSide::Bottom,
+        }),
+        (None, None) if relation.relation.type1 == none && relation.relation.type2 == none => None,
         _ => {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "class",
-                feature: "class relationships with multiple or missing markers",
+                feature: "class relationships with multiple markers",
             });
         }
     };
 
     let label = RelationGraphLabel::new(&relation.title);
 
-    if marker == RelationMarker::Extension {
-        return Ok(match marker_side {
+    if endpoint_marker.is_some_and(|marker| marker.marker == RelationMarker::Extension) {
+        let marker = endpoint_marker.expect("extension relationship should have a marker side");
+        return Ok(match marker.side {
             MarkerSide::Top => RelationLayout {
                 top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
                 bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
-                marker,
-                marker_side: MarkerSide::Top,
+                endpoint_marker: Some(RelationEndpointMarker {
+                    marker: marker.marker,
+                    side: MarkerSide::Top,
+                }),
                 line,
                 label,
             },
             MarkerSide::Bottom => RelationLayout {
                 top_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
                 bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
-                marker,
-                marker_side: MarkerSide::Top,
+                endpoint_marker: Some(RelationEndpointMarker {
+                    marker: marker.marker,
+                    side: MarkerSide::Top,
+                }),
                 line,
                 label,
             },
@@ -449,8 +466,7 @@ fn relation_layout<'a>(
     Ok(RelationLayout {
         top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
         bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
-        marker,
-        marker_side,
+        endpoint_marker,
         line,
         label,
     })
@@ -530,27 +546,8 @@ fn class_relation_rows(
     charset: ClassCharset,
 ) -> Vec<RelationGraphLine> {
     let mut relation_lines = Vec::new();
-    match layout.marker_side {
-        MarkerSide::Top => {
-            relation_lines.push(relation_graph::marker_line_with_role(
-                marker_char(layout.marker, MarkerSide::Top, charset),
-                center,
-                AsciiColorRole::EdgeArrow,
-            ));
-            if let Some(label) = layout.label.as_ref() {
-                relation_lines.extend(relation_graph::centered_label_lines_with_role(
-                    label,
-                    center,
-                    AsciiColorRole::EdgeLabel,
-                ));
-            }
-            relation_lines.push(relation_graph::marker_line_with_role(
-                line_char(layout.line, charset),
-                center,
-                AsciiColorRole::EdgeLine,
-            ));
-        }
-        MarkerSide::Bottom => {
+    match layout.endpoint_marker {
+        None => {
             relation_lines.push(relation_graph::marker_line_with_role(
                 line_char(layout.line, charset),
                 center,
@@ -562,13 +559,53 @@ fn class_relation_rows(
                     center,
                     AsciiColorRole::EdgeLabel,
                 ));
+                relation_lines.push(relation_graph::marker_line_with_role(
+                    line_char(layout.line, charset),
+                    center,
+                    AsciiColorRole::EdgeLine,
+                ));
             }
-            relation_lines.push(relation_graph::marker_line_with_role(
-                marker_char(layout.marker, MarkerSide::Bottom, charset),
-                center,
-                AsciiColorRole::EdgeArrow,
-            ));
         }
+        Some(endpoint_marker) => match endpoint_marker.side {
+            MarkerSide::Top => {
+                relation_lines.push(relation_graph::marker_line_with_role(
+                    marker_char(endpoint_marker.marker, MarkerSide::Top, charset),
+                    center,
+                    AsciiColorRole::EdgeArrow,
+                ));
+                if let Some(label) = layout.label.as_ref() {
+                    relation_lines.extend(relation_graph::centered_label_lines_with_role(
+                        label,
+                        center,
+                        AsciiColorRole::EdgeLabel,
+                    ));
+                }
+                relation_lines.push(relation_graph::marker_line_with_role(
+                    line_char(layout.line, charset),
+                    center,
+                    AsciiColorRole::EdgeLine,
+                ));
+            }
+            MarkerSide::Bottom => {
+                relation_lines.push(relation_graph::marker_line_with_role(
+                    line_char(layout.line, charset),
+                    center,
+                    AsciiColorRole::EdgeLine,
+                ));
+                if let Some(label) = layout.label.as_ref() {
+                    relation_lines.extend(relation_graph::centered_label_lines_with_role(
+                        label,
+                        center,
+                        AsciiColorRole::EdgeLabel,
+                    ));
+                }
+                relation_lines.push(relation_graph::marker_line_with_role(
+                    marker_char(endpoint_marker.marker, MarkerSide::Bottom, charset),
+                    center,
+                    AsciiColorRole::EdgeArrow,
+                ));
+            }
+        },
     }
     relation_lines
 }
@@ -605,10 +642,6 @@ fn parallel_class_lane_rows(
     layout: &RelationLayout<'_>,
     charset: ClassCharset,
 ) -> Vec<RelationGraphLine> {
-    let marker = RelationGraphLine::with_role(
-        marker_char(layout.marker, layout.marker_side, charset).to_string(),
-        AsciiColorRole::EdgeArrow,
-    );
     let line = RelationGraphLine::with_role(
         line_char(layout.line, charset).to_string(),
         AsciiColorRole::EdgeLine,
@@ -623,18 +656,32 @@ fn parallel_class_lane_rows(
                 AsciiColorRole::EdgeLabel,
             )]
         });
-    match layout.marker_side {
-        MarkerSide::Top => {
-            let mut rows = vec![marker];
+    match layout.endpoint_marker {
+        None => {
+            let mut rows = vec![line.clone()];
             rows.extend(label_lines);
             rows.push(line);
             rows
         }
-        MarkerSide::Bottom => {
-            let mut rows = vec![line];
-            rows.extend(label_lines);
-            rows.push(marker);
-            rows
+        Some(endpoint_marker) => {
+            let marker = RelationGraphLine::with_role(
+                marker_char(endpoint_marker.marker, endpoint_marker.side, charset).to_string(),
+                AsciiColorRole::EdgeArrow,
+            );
+            match endpoint_marker.side {
+                MarkerSide::Top => {
+                    let mut rows = vec![marker];
+                    rows.extend(label_lines);
+                    rows.push(line);
+                    rows
+                }
+                MarkerSide::Bottom => {
+                    let mut rows = vec![line];
+                    rows.extend(label_lines);
+                    rows.push(marker);
+                    rows
+                }
+            }
         }
     }
 }
@@ -699,7 +746,14 @@ fn class_relation_summary_row(layout: &RelationLayout<'_>) -> RelationGraphSumma
 }
 
 fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {
-    match (layout.marker, layout.marker_side, layout.line) {
+    let Some(endpoint_marker) = layout.endpoint_marker else {
+        return match layout.line {
+            RelationLine::Solid => "--",
+            RelationLine::Dotted => "..",
+        };
+    };
+
+    match (endpoint_marker.marker, endpoint_marker.side, layout.line) {
         (RelationMarker::Extension, MarkerSide::Top, RelationLine::Solid) => "<|--",
         (RelationMarker::Extension, MarkerSide::Top, RelationLine::Dotted) => "<|..",
         (RelationMarker::Extension, MarkerSide::Bottom, RelationLine::Solid) => "--|>",
@@ -769,19 +823,21 @@ fn draw_layered_relation(
             ));
         }
 
-        match layout.marker_side {
-            MarkerSide::Top => overlays.push(RelationOverlay::glyph(
-                geometry.from_x(),
-                geometry.source_marker_y(),
-                marker_char(layout.marker, MarkerSide::Top, charset),
-                AsciiColorRole::EdgeArrow,
-            )),
-            MarkerSide::Bottom => overlays.push(RelationOverlay::glyph(
-                geometry.to_x(),
-                geometry.target_marker_y(),
-                marker_char(layout.marker, MarkerSide::Bottom, charset),
-                AsciiColorRole::EdgeArrow,
-            )),
+        if let Some(endpoint_marker) = layout.endpoint_marker {
+            match endpoint_marker.side {
+                MarkerSide::Top => overlays.push(RelationOverlay::glyph(
+                    geometry.from_x(),
+                    geometry.source_marker_y(),
+                    marker_char(endpoint_marker.marker, MarkerSide::Top, charset),
+                    AsciiColorRole::EdgeArrow,
+                )),
+                MarkerSide::Bottom => overlays.push(RelationOverlay::glyph(
+                    geometry.to_x(),
+                    geometry.target_marker_y(),
+                    marker_char(endpoint_marker.marker, MarkerSide::Bottom, charset),
+                    AsciiColorRole::EdgeArrow,
+                )),
+            }
         }
 
         overlays
