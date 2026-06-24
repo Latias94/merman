@@ -6,22 +6,22 @@ use std::collections::{HashMap, HashSet, VecDeque};
 pub(crate) struct LayeredRelationEdge<'a> {
     top_id: &'a str,
     bottom_id: &'a str,
-    has_label: bool,
     label_half_width: usize,
+    label_line_count: usize,
 }
 
 impl<'a> LayeredRelationEdge<'a> {
     pub(crate) fn new(
         top_id: &'a str,
         bottom_id: &'a str,
-        has_label: bool,
         label_half_width: usize,
+        label_line_count: usize,
     ) -> Self {
         Self {
             top_id,
             bottom_id,
-            has_label,
             label_half_width,
+            label_line_count,
         }
     }
 }
@@ -414,10 +414,18 @@ fn layered_relation_gap_height(
     levels: &HashMap<String, usize>,
     level: usize,
 ) -> usize {
-    let has_label = edges.iter().any(|edge| {
-        levels.get(edge.top_id).copied() == Some(level)
-            && levels.get(edge.bottom_id).copied() == Some(level + 1)
-            && edge.has_label
-    });
-    if has_label { 4 } else { 3 }
+    let max_label_lines = edges
+        .iter()
+        .filter(|edge| {
+            levels.get(edge.top_id).copied() == Some(level)
+                && levels.get(edge.bottom_id).copied() == Some(level + 1)
+        })
+        .map(|edge| edge.label_line_count)
+        .max()
+        .unwrap_or(0);
+    if max_label_lines > 0 {
+        max_label_lines + 3
+    } else {
+        3
+    }
 }

@@ -207,6 +207,32 @@ fn er_parser_identifying_relationship_renders_cardinality_markers_and_label() {
 }
 
 #[test]
+fn er_parser_identifying_relationship_renders_multiline_label() {
+    let rendered = render_er(
+        "erDiagram\nCUSTOMER ||--o{ ORDER : \"north<br>south\"",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("ER should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+----------+\n",
+            "| CUSTOMER |\n",
+            "+----------+\n",
+            "     ||\n",
+            "    north\n",
+            "    south\n",
+            "      |\n",
+            "     o{\n",
+            "  +-------+\n",
+            "  | ORDER |\n",
+            "  +-------+\n",
+        )
+    );
+}
+
+#[test]
 fn er_parser_non_identifying_relationship_renders_dotted_line() {
     let rendered = render_er("erDiagram\nA ||..|{ B : refs", &AsciiRenderOptions::ascii())
         .expect("ER should render");

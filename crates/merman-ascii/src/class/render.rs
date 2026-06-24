@@ -6,8 +6,8 @@ use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRoutePlan, RelationGraphLine,
-    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRoutePlan, RelationGraphLabel,
+    RelationGraphLine, RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
@@ -109,14 +109,14 @@ enum RelationLine {
     Dotted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct RelationLayout<'a> {
     top_id: &'a str,
     bottom_id: &'a str,
     marker: RelationMarker,
     marker_side: MarkerSide,
     line: RelationLine,
-    label: Option<&'a str>,
+    label: Option<RelationGraphLabel>,
 }
 
 pub(crate) fn render_class_diagram(
@@ -208,7 +208,7 @@ fn render_class_component(
         return render_parallel_vertical_relations(boxes, layouts, options, charset);
     }
     if layouts.len() == 1 {
-        let layout = layouts[0];
+        let layout = &layouts[0];
         let top = find_box(boxes, layout.top_id)?;
         let bottom = find_box(boxes, layout.bottom_id)?;
 
@@ -243,7 +243,7 @@ fn render_class_components(
         let component_layouts = component
             .edge_indices()
             .iter()
-            .map(|index| layouts[*index])
+            .map(|index| layouts[*index].clone())
             .collect::<Vec<_>>();
         rendered.push(render_class_component(
             &component_boxes,
@@ -422,8 +422,7 @@ fn relation_layout<'a>(
         }
     };
 
-    let title = relation.title.trim();
-    let label = (!title.is_empty()).then_some(title);
+    let label = RelationGraphLabel::new(&relation.title);
 
     if marker == RelationMarker::Extension {
         return Ok(match marker_side {
@@ -508,13 +507,14 @@ fn find_box<'a>(boxes: &'a [RenderedClassBox], id: &str) -> Result<&'a RenderedC
 fn render_vertical_relation(
     top: &RenderedClassBox,
     bottom: &RenderedClassBox,
-    layout: RelationLayout<'_>,
+    layout: &RelationLayout<'_>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> String {
     let label_half_width = layout
         .label
-        .map(|label| display_width(label) / 2)
+        .as_ref()
+        .map(RelationGraphLabel::half_width)
         .unwrap_or(0);
     let plan = RelationStackPlan::from_centered_rows(top, bottom, &[label_half_width], |center| {
         class_relation_rows(layout, center, charset)
@@ -524,7 +524,7 @@ fn render_vertical_relation(
 }
 
 fn class_relation_rows(
-    layout: RelationLayout<'_>,
+    layout: &RelationLayout<'_>,
     center: usize,
     charset: ClassCharset,
 ) -> Vec<RelationGraphLine> {
@@ -536,8 +536,8 @@ fn class_relation_rows(
                 center,
                 AsciiColorRole::EdgeArrow,
             ));
-            if let Some(label) = layout.label {
-                relation_lines.push(relation_graph::centered_text_line_with_role(
+            if let Some(label) = layout.label.as_ref() {
+                relation_lines.extend(relation_graph::centered_label_lines_with_role(
                     label,
                     center,
                     AsciiColorRole::EdgeLabel,
@@ -555,8 +555,8 @@ fn class_relation_rows(
                 center,
                 AsciiColorRole::EdgeLine,
             ));
-            if let Some(label) = layout.label {
-                relation_lines.push(relation_graph::centered_text_line_with_role(
+            if let Some(label) = layout.label.as_ref() {
+                relation_lines.extend(relation_graph::centered_label_lines_with_role(
                     label,
                     center,
                     AsciiColorRole::EdgeLabel,
@@ -590,12 +590,12 @@ fn render_parallel_vertical_relations(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> Result<String> {
-    let first = layouts[0];
+    let first = &layouts[0];
     let top = find_box(boxes, first.top_id)?;
     let bottom = find_box(boxes, first.bottom_id)?;
     let lanes = layouts
         .iter()
-        .map(|layout| parallel_class_lane_rows(*layout, charset))
+        .map(|layout| parallel_class_lane_rows(layout, charset))
         .collect::<Vec<_>>();
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
@@ -603,7 +603,7 @@ fn render_parallel_vertical_relations(
 }
 
 fn parallel_class_lane_rows(
-    layout: RelationLayout<'_>,
+    layout: &RelationLayout<'_>,
     charset: ClassCharset,
 ) -> Vec<RelationGraphLine> {
     let marker = RelationGraphLine::with_role(
@@ -614,13 +614,29 @@ fn parallel_class_lane_rows(
         line_char(layout.line, charset).to_string(),
         AsciiColorRole::EdgeLine,
     );
-    let label = RelationGraphLine::with_role(
-        layout.label.unwrap_or("").to_string(),
-        AsciiColorRole::EdgeLabel,
-    );
+    let label_lines = layout
+        .label
+        .as_ref()
+        .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
+        .unwrap_or_else(|| {
+            vec![RelationGraphLine::with_role(
+                String::new(),
+                AsciiColorRole::EdgeLabel,
+            )]
+        });
     match layout.marker_side {
-        MarkerSide::Top => vec![marker, label, line],
-        MarkerSide::Bottom => vec![line, label, marker],
+        MarkerSide::Top => {
+            let mut rows = vec![marker];
+            rows.extend(label_lines);
+            rows.push(line);
+            rows
+        }
+        MarkerSide::Bottom => {
+            let mut rows = vec![line];
+            rows.extend(label_lines);
+            rows.push(marker);
+            rows
+        }
     }
 }
 
@@ -680,14 +696,12 @@ fn render_layered_relations(
 }
 
 fn class_layered_edge<'a>(layout: &RelationLayout<'a>) -> LayeredRelationEdge<'a> {
+    let label = layout.label.as_ref();
     LayeredRelationEdge::new(
         layout.top_id,
         layout.bottom_id,
-        layout.label.is_some(),
-        layout
-            .label
-            .map(|label| display_width(label) / 2)
-            .unwrap_or(0),
+        label.map(RelationGraphLabel::half_width).unwrap_or(0),
+        label.map(RelationGraphLabel::line_count).unwrap_or(0),
     )
 }
 
@@ -731,15 +745,15 @@ fn draw_layered_relation(
     let relation_chars = relation_line_chars(charset);
     let mut overlays = Vec::new();
 
-    if let Some(label) = layout.label {
+    if let Some(label) = layout.label.as_ref() {
         let label_y = geometry
             .source_marker_y()
             .saturating_add(1)
             .min(geometry.route_y());
-        overlays.push(RelationOverlay::text(
+        overlays.push(RelationOverlay::label(
             (geometry.from_x() + geometry.to_x()) / 2,
             label_y,
-            label.to_string(),
+            label.clone(),
             AsciiColorRole::EdgeLabel,
         ));
     }

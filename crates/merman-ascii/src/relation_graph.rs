@@ -1,7 +1,7 @@
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::options::AsciiRenderOptions;
-use crate::text::{StyledLine, display_width};
+use crate::text::{StyledLine, display_width, split_label_lines};
 mod layered;
 
 pub(crate) use self::layered::*;
@@ -17,6 +17,42 @@ pub(crate) struct RelationGraphBox {
     id: String,
     lines: Vec<RelationGraphLine>,
     width: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RelationGraphLabel {
+    lines: Vec<String>,
+    width: usize,
+}
+
+impl RelationGraphLabel {
+    pub(crate) fn new(raw: &str) -> Option<Self> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let lines = split_label_lines(trimmed);
+        let width = lines
+            .iter()
+            .map(|line| display_width(line))
+            .max()
+            .unwrap_or_default();
+
+        Some(Self { lines, width })
+    }
+
+    pub(crate) fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    pub(crate) fn half_width(&self) -> usize {
+        self.width / 2
+    }
+
+    pub(crate) fn line_count(&self) -> usize {
+        self.lines.len()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -523,6 +559,52 @@ mod tests {
             parallel_relation_lane_offsets([("A", "B"), ("A", "B"), ("A", "C"), ("A", "B")]);
 
         assert_eq!(offsets, vec![-6, 0, 0, 6]);
+    }
+
+    #[test]
+    fn relation_graph_label_splits_breaks_and_tracks_line_count() {
+        let label = RelationGraphLabel::new("north<br>south").expect("label should be present");
+
+        assert_eq!(label.lines(), ["north", "south"]);
+        assert_eq!(label.half_width(), 2);
+        assert_eq!(label.line_count(), 2);
+    }
+
+    #[test]
+    fn write_centered_relation_label_draws_each_line() {
+        let label = RelationGraphLabel::new("A<br>B").expect("label should be present");
+        let mut canvas = Canvas::new(3, 3);
+
+        write_centered_relation_label(&mut canvas, 1, 1, &label, AsciiColorRole::EdgeLabel);
+
+        assert_eq!(canvas.get(1, 1), Some('A'));
+        assert_eq!(canvas.get(1, 2), Some('B'));
+        assert_eq!(
+            canvas.get_color(1, 1),
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
+        );
+    }
+
+    #[test]
+    fn layered_relation_gap_grows_with_label_line_count() {
+        let boxes = vec![
+            RelationGraphBox::new("top".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("bottom".to_string(), vec!["B".to_string()], 1),
+        ];
+        let no_label_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 0)];
+        let one_line_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 1)];
+        let two_line_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 2)];
+
+        let no_label_plan = plan_layered_relation_boxes(&boxes, &no_label_edges, 1)
+            .expect("unlabeled layered relation should plan");
+        let one_line_plan = plan_layered_relation_boxes(&boxes, &one_line_edges, 1)
+            .expect("single-line labeled relation should plan");
+        let two_line_plan = plan_layered_relation_boxes(&boxes, &two_line_edges, 1)
+            .expect("multiline labeled relation should plan");
+
+        assert_eq!(no_label_plan.height(), 5);
+        assert_eq!(one_line_plan.height(), 6);
+        assert_eq!(two_line_plan.height(), 7);
     }
 
     #[test]

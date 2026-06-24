@@ -279,6 +279,31 @@ fn class_parser_extension_relation_renders_label() {
 }
 
 #[test]
+fn class_parser_extension_relation_renders_multiline_label() {
+    let rendered = render_class(
+        "classDiagram\nclass Animal\nclass Dog\nAnimal <|-- Dog : north<br>south",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "     ^\n",
+            "   north\n",
+            "   south\n",
+            "     |\n",
+            "  +-----+\n",
+            "  | Dog |\n",
+            "  +-----+\n",
+        )
+    );
+}
+
+#[test]
 fn class_parser_relationship_layouts_render_unrelated_classes_as_components() {
     let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog",

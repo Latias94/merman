@@ -4,8 +4,8 @@ use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRoutePlan, RelationGraphLine,
-    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRoutePlan, RelationGraphLabel,
+    RelationGraphLine, RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -307,12 +307,11 @@ fn render_vertical_relationship(
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
-    let label = relationship.role_a.trim();
-    let label_half_width = if label.is_empty() {
-        0
-    } else {
-        display_width(label) / 2
-    };
+    let label = RelationGraphLabel::new(&relationship.role_a);
+    let label_half_width = label
+        .as_ref()
+        .map(RelationGraphLabel::half_width)
+        .unwrap_or(0);
     let plan = RelationStackPlan::from_centered_rows(
         top,
         bottom,
@@ -321,7 +320,15 @@ fn render_vertical_relationship(
             display_width(bottom_cardinality) / 2,
             label_half_width,
         ],
-        |center| er_relationship_rows(top_cardinality, bottom_cardinality, line, label, center),
+        |center| {
+            er_relationship_rows(
+                top_cardinality,
+                bottom_cardinality,
+                line,
+                label.as_ref(),
+                center,
+            )
+        },
     );
 
     Ok(plan.render_with_options(options))
@@ -331,7 +338,7 @@ fn er_relationship_rows(
     top_cardinality: &str,
     bottom_cardinality: &str,
     line: char,
-    label: &str,
+    label: Option<&RelationGraphLabel>,
     center: usize,
 ) -> Vec<RelationGraphLine> {
     let mut relation_lines = Vec::new();
@@ -340,8 +347,8 @@ fn er_relationship_rows(
         center,
         AsciiColorRole::EdgeArrow,
     ));
-    if !label.is_empty() {
-        relation_lines.push(relation_graph::centered_text_line_with_role(
+    if let Some(label) = label {
+        relation_lines.extend(relation_graph::centered_label_lines_with_role(
             label,
             center,
             AsciiColorRole::EdgeLabel,
@@ -397,15 +404,28 @@ fn parallel_er_lane_rows(
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
-    Ok(vec![
-        RelationGraphLine::with_role(top_cardinality.to_string(), AsciiColorRole::EdgeArrow),
-        RelationGraphLine::with_role(
-            relationship.role_a.trim().to_string(),
-            AsciiColorRole::EdgeLabel,
-        ),
-        RelationGraphLine::with_role(line.to_string(), AsciiColorRole::EdgeLine),
-        RelationGraphLine::with_role(bottom_cardinality.to_string(), AsciiColorRole::EdgeArrow),
-    ])
+    let label_lines = RelationGraphLabel::new(&relationship.role_a)
+        .map(|label| relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel))
+        .unwrap_or_else(|| {
+            vec![RelationGraphLine::with_role(
+                String::new(),
+                AsciiColorRole::EdgeLabel,
+            )]
+        });
+    let mut rows = vec![RelationGraphLine::with_role(
+        top_cardinality.to_string(),
+        AsciiColorRole::EdgeArrow,
+    )];
+    rows.extend(label_lines);
+    rows.push(RelationGraphLine::with_role(
+        line.to_string(),
+        AsciiColorRole::EdgeLine,
+    ));
+    rows.push(RelationGraphLine::with_role(
+        bottom_cardinality.to_string(),
+        AsciiColorRole::EdgeArrow,
+    ));
+    Ok(rows)
 }
 
 fn render_layered_relationships(
@@ -468,12 +488,18 @@ fn render_layered_relationships(
 }
 
 fn er_layered_edge(relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge<'_> {
-    let label = relationship.role_a.trim();
+    let label = RelationGraphLabel::new(&relationship.role_a);
     LayeredRelationEdge::new(
         &relationship.entity_a,
         &relationship.entity_b,
-        !label.is_empty(),
-        display_width(label) / 2,
+        label
+            .as_ref()
+            .map(RelationGraphLabel::half_width)
+            .unwrap_or(0),
+        label
+            .as_ref()
+            .map(RelationGraphLabel::line_count)
+            .unwrap_or(0),
     )
 }
 
@@ -507,7 +533,7 @@ fn draw_layered_relationship(
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let vertical = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let horizontal = relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?;
-    let label = relationship.role_a.trim();
+    let label = RelationGraphLabel::new(&relationship.role_a);
     let relation_chars = relation_line_chars(charset);
     let geometry = relation_graph::plan_layered_relation_route(
         relation_graph::LayeredRelationRouteRequest::new(
@@ -526,15 +552,15 @@ fn draw_layered_relationship(
         top_cardinality.to_string(),
         AsciiColorRole::EdgeArrow,
     ));
-    if !label.is_empty() {
+    if let Some(label) = label.as_ref() {
         let label_y = geometry
             .source_marker_y()
             .saturating_add(1)
             .min(geometry.route_y());
-        overlays.push(RelationOverlay::text(
+        overlays.push(RelationOverlay::label(
             (geometry.from_x() + geometry.to_x()) / 2,
             label_y,
-            label.to_string(),
+            label.clone(),
             AsciiColorRole::EdgeLabel,
         ));
     }

@@ -1,7 +1,8 @@
+use super::super::RelationGraphLabel;
 use super::boxes::PlacedRelationGraphBox;
 use super::draw::{
     RelationLineChars, draw_relation_span_exclusive, draw_relation_span_inclusive,
-    put_relation_char, write_centered_relation_text,
+    put_relation_char, write_centered_relation_label, write_centered_relation_text,
 };
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
@@ -21,6 +22,12 @@ pub(crate) enum RelationOverlay {
         text: String,
         role: AsciiColorRole,
     },
+    Label {
+        center_x: usize,
+        y: usize,
+        label: RelationGraphLabel,
+        role: AsciiColorRole,
+    },
 }
 
 impl RelationOverlay {
@@ -37,6 +44,20 @@ impl RelationOverlay {
         }
     }
 
+    pub(crate) fn label(
+        center_x: usize,
+        y: usize,
+        label: RelationGraphLabel,
+        role: AsciiColorRole,
+    ) -> Self {
+        Self::Label {
+            center_x,
+            y,
+            label,
+            role,
+        }
+    }
+
     fn draw_at(&self, canvas: &mut Canvas) {
         match self {
             RelationOverlay::Glyph { x, y, ch, role } => canvas.set_role(*x, *y, *ch, *role),
@@ -46,6 +67,12 @@ impl RelationOverlay {
                 text,
                 role,
             } => write_centered_relation_text(canvas, *center_x, *y, text, *role),
+            RelationOverlay::Label {
+                center_x,
+                y,
+                label,
+                role,
+            } => write_centered_relation_label(canvas, *center_x, *y, label, *role),
         }
     }
 }

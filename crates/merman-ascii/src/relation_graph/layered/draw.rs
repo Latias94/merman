@@ -1,4 +1,4 @@
-use super::super::RelationGraphLine;
+use super::super::{RelationGraphLabel, RelationGraphLine};
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::text::display_width;
@@ -86,6 +86,29 @@ pub(crate) fn centered_text_line_with_role(
     RelationGraphLine::new(line, roles)
 }
 
+pub(crate) fn centered_label_lines_with_role(
+    label: &RelationGraphLabel,
+    center: usize,
+    role: AsciiColorRole,
+) -> Vec<RelationGraphLine> {
+    label
+        .lines()
+        .iter()
+        .map(|line| centered_text_line_with_role(line, center, role))
+        .collect()
+}
+
+pub(crate) fn label_lines_with_role(
+    label: &RelationGraphLabel,
+    role: AsciiColorRole,
+) -> Vec<RelationGraphLine> {
+    label
+        .lines()
+        .iter()
+        .map(|line| RelationGraphLine::with_role(line.clone(), role))
+        .collect()
+}
+
 pub(crate) fn put_relation_char(
     canvas: &mut Canvas,
     x: usize,
@@ -115,4 +138,16 @@ pub(crate) fn write_centered_relation_text(
 ) {
     let text_half_width = display_width(text) / 2;
     canvas.write_text_role(center_x.saturating_sub(text_half_width), y, text, role);
+}
+
+pub(crate) fn write_centered_relation_label(
+    canvas: &mut Canvas,
+    center_x: usize,
+    start_y: usize,
+    label: &RelationGraphLabel,
+    role: AsciiColorRole,
+) {
+    for (offset, line) in label.lines().iter().enumerate() {
+        write_centered_relation_text(canvas, center_x, start_y + offset, line, role);
+    }
 }
