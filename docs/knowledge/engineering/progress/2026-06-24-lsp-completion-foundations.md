@@ -7,7 +7,7 @@ git_branch: feat/diagnostics-analysis-contract
 
 # Summary
 
-`merman-lsp` 已经从纯骨架推进到可用的 diagnostics + completion 基线：诊断投递走 `merman-analysis`，Markdown fence 重映射统一，completion 现在覆盖 diagram header、direction、operator、directive、shape 和本地 node id，并且开始使用 snapshot 驱动的替换范围而不是裸插入。`DocumentStore` 与 `CompletionContext` 已经形成可继续深挖的 snapshot seam，当前快照还携带 diagram type 和常见 directive prefix 事实，`server_smoke` 也验证了 initialize/open/change/save 的当前版本诊断发布。`merman-analysis::document::analyze_document` 现在把 CLI lint 和 LSP 收进同一条文档分析 seam，避免在各自适配层重复决定 markdown/plain 分支。
+`merman-lsp` 已经从纯骨架推进到可用的 diagnostics + completion + navigation 基线：诊断投递走 `merman-analysis`，Markdown fence 重映射统一，completion 现在覆盖 diagram header、direction、operator、directive、shape 和本地 node id，并且开始使用 snapshot 驱动的替换范围而不是裸插入。`DocumentStore` 与 `CompletionContext` 已经形成可继续深挖的 snapshot seam，当前快照还携带 diagram type 和常见 directive prefix 事实，`server_smoke` 也验证了 initialize/open/change/save 的当前版本诊断发布。`merman-analysis::document::analyze_document` 现在把 CLI lint 和 LSP 收进同一条文档分析 seam，避免在各自适配层重复决定 markdown/plain 分支。
 
 # Details
 
@@ -18,10 +18,11 @@ git_branch: feat/diagnostics-analysis-contract
 - `snapshot` 现在存储 fence-level 的 `diagram_type` 与 directive prefix 索引，避免 downstream 再次扫原文。
 - `server` 端不再自己猜 Markdown 扩展名，而是复用共享判断。
 - `completion`、`document_store`、`diagnostics` 和 `server_smoke` 测试现在覆盖 plain `.mmd` 与 Markdown fence 两条路径，completion 还覆盖了替换范围，document_store 也验证了快照结构事实。
+- 共享结构层已经从 hover/documentSymbol 扩到 definition/references/prepareRename/rename，并且有协议级 smoke test 证明这条导航面可用。
 
 # Next Action
 
-决定下一步是做 lint 入口、补 completion metadata，还是继续把 LSP snapshot seam 往 hover/symbol 基建方向推进。
+决定下一步是继续沿着同一条 structure/navigation seam 做 code actions、linked editing、workspace symbol，还是拆出新的 lint/LSP 产品化计划 slice。
 
 # Citations
 

@@ -1,20 +1,21 @@
 # merman-lsp
 
-`merman-lsp` is the canonical LSP transport for diagnostics and completion foundations.
+`merman-lsp` is the canonical LSP transport for diagnostics, completion, and structure-aware
+navigation foundations.
 
 ## Responsibilities
 
-- Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, and `completion`.
+- Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
+  `definition`, `references`, `prepareRename`, and `rename`.
 - Publish diagnostics from `merman-analysis`.
 - Keep document state versioned so stale diagnostics are not republished.
 - Provide the first completion surface for diagram structure, directions, shapes, and local
   identifiers with stable text edits.
+- Provide fence-local structure and navigation responses for hover, document symbols, definition,
+  references, and rename.
 
 ## Deferred
 
-- Hover
-- Go to definition
-- Rename
 - Code actions
 - Semantic tokens
 - Workspace symbols
