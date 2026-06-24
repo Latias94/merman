@@ -132,6 +132,69 @@ async fn lsp_service_smoke_applies_configuration_updates() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() {
+    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {},
+            "initializationOptions": {
+                "lint": {
+                    "rule_severities": [
+                        {
+                            "rule_id": "merman.parse.no_diagram",
+                            "severity": "hint"
+                        }
+                    ]
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: String::new(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let publish = socket.next().await.expect("expected diagnostics publish");
+    let params: PublishDiagnosticsParams =
+        from_value(publish.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.diagnostics.len(), 1);
+    assert_eq!(
+        params.diagnostics[0].severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_honors_core_rule_disablement() {
     let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
@@ -231,6 +294,91 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
         from_value(resource_publish.params().cloned().expect("publish params")).unwrap();
     assert_eq!(resource_params.uri, resource_uri);
     assert!(resource_params.diagnostics.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration_change() {
+    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({"capabilities":{}}))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: String::new(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let first = socket.next().await.expect("expected diagnostics publish");
+    let first_params: PublishDiagnosticsParams =
+        from_value(first.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(first_params.diagnostics.len(), 1);
+    assert_eq!(
+        first_params.diagnostics[0].severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::json!({
+                    "lint": {
+                        "rule_severities": [
+                            {
+                                "rule_id": "merman.parse.no_diagram",
+                                "severity": "hint"
+                            }
+                        ]
+                    }
+                }),
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(change).await.unwrap(),
+        None
+    );
+
+    let second = socket
+        .next()
+        .await
+        .expect("expected republished diagnostics");
+    let second_params: PublishDiagnosticsParams =
+        from_value(second.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(second_params.version, Some(1));
+    assert_eq!(second_params.diagnostics.len(), 1);
+    assert_eq!(
+        second_params.diagnostics[0].severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added LSP smoke regressions proving the shared rule config contract also handles severity
+  overrides on both initialize and didChangeConfiguration, so the server surface now matches the
+  CLI/library behavior for `merman.parse.no_diagram`.
 - Added an LSP smoke regression proving the shared rule config contract also survives server
   initialization, so `merman.parse.no_diagram` and source-byte-limit diagnostics can be disabled
   through `initialize` payloads as well as CLI/library entry points.
