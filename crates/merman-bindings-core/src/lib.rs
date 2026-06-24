@@ -120,4 +120,39 @@ mod tests {
         assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
         assert_eq!(json["error"], "no Mermaid diagram detected");
     }
+
+    #[test]
+    fn analyze_json_honors_lint_rule_configuration() {
+        let payload: Value = serde_json::from_slice(
+            &analyze_json(
+                b"gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n",
+                br#"{"lint":{"disable_rules":["merman.git_graph.duplicate_commit_id"]}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(payload["valid"], true);
+        assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn analyze_json_honors_lint_severity_overrides() {
+        let payload: Value = serde_json::from_slice(
+            &analyze_json(
+                b"gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n",
+                br#"{"lint":{"rule_severities":[{"rule_id":"merman.git_graph.duplicate_commit_id","severity":"hint"}]}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(payload["valid"], true);
+        assert_eq!(payload["summary"]["hints"], 1);
+        assert_eq!(
+            payload["diagnostics"][0]["id"].as_str(),
+            Some("merman.git_graph.duplicate_commit_id")
+        );
+        assert_eq!(payload["diagnostics"][0]["severity"].as_str(), Some("hint"));
+    }
 }

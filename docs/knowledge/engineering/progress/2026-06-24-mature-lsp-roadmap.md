@@ -67,6 +67,9 @@ rules, LSP protocol features, configuration, packaging, and release gates.
   canonical `init`. Markdown fences remap the fix edit back into host-document coordinates.
 - `merman-analysis` now exposes stable rule descriptors plus a shared rule-config surface, and
   CLI lint can disable rules or override severities through the same analysis config.
+- That shared rule-config surface now also flows through binding `options_json`, so FFI,
+  UniFFI, WASM, and future editor adapters can enable/disable rules and override severities
+  through the same analysis contract.
 
 # Next Action
 

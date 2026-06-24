@@ -5,6 +5,17 @@ status: active
 
 # Log
 
+## 2026-06-25
+- Added shared lint rule configuration to `BindingOptions`/`options_json`, including rule
+  disablement and severity overrides, so FFI/UniFFI/WASM can drive the same analysis config as CLI.
+- Added binding-core regressions proving `analyze_json` honors lint rule configuration and severity
+  overrides through the shared JSON surface.
+- Updated the bindings docs to describe the new `lint` section in `OPTIONS_JSON.md` and to note
+  that the shared contract spans FFI, UniFFI, WASM, and CLI.
+- Re-verified with `cargo fmt --all --check` and focused `cargo test -p merman-bindings-core`
+  lint-config regressions; the broader package test sweep still hits the pre-existing
+  `flowchart-elk` render regression.
+
 ## 2026-06-24
 - Added protocol-independent `DiagnosticFix` and `DiagnosticFixEdit` metadata to
   `AnalysisDiagnostic`, keeping empty fixes out of the JSON payload so the existing ADR-0070 schema

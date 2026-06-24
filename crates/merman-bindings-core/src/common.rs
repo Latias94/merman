@@ -90,6 +90,7 @@ pub(crate) struct BindingOptions {
     pub(crate) site_config: Option<serde_json::Value>,
     pub(crate) parse: Option<ParseOptionsJson>,
     pub(crate) resources: Option<ResourceOptionsJson>,
+    pub(crate) lint: Option<LintOptionsJson>,
     #[cfg(feature = "render")]
     pub(crate) host_theme: Option<HostThemeOptionsJson>,
     #[cfg(feature = "render")]
@@ -124,6 +125,20 @@ pub(crate) struct ResourceOptionsJson {
     pub(crate) max_class_edges: Option<usize>,
     pub(crate) max_class_namespaces: Option<usize>,
     pub(crate) max_label_bytes: Option<usize>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct LintOptionsJson {
+    #[serde(default)]
+    pub(crate) disable_rules: Vec<String>,
+    #[serde(default)]
+    pub(crate) rule_severities: Vec<LintRuleSeverityOverrideJson>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct LintRuleSeverityOverrideJson {
+    pub(crate) rule_id: String,
+    pub(crate) severity: String,
 }
 
 #[cfg(feature = "render")]
@@ -370,6 +385,10 @@ pub(crate) fn analysis_options(
                 .and_then(|resources| resources.max_source_bytes),
         );
 
+    if let Some(lint) = options.lint.as_ref() {
+        analysis = analysis.with_rule_config(binding_rule_config(lint)?);
+    }
+
     if let Some(site_config) = binding_site_config(options)? {
         analysis = analysis.with_site_config(site_config);
     }
@@ -381,6 +400,45 @@ pub(crate) fn analysis_options(
     }
 
     Ok(analysis)
+}
+
+fn binding_rule_config(
+    lint: &LintOptionsJson,
+) -> Result<merman_analysis::AnalysisRuleConfig, BindingError> {
+    let mut config = merman_analysis::AnalysisRuleConfig::default();
+    for rule_id in &lint.disable_rules {
+        if rule_id.trim().is_empty() {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "lint.disable_rules entries must not be empty",
+            ));
+        }
+        config.disable_rule(rule_id.clone());
+    }
+    for override_ in &lint.rule_severities {
+        let severity = parse_lint_severity(&override_.severity)?;
+        if override_.rule_id.trim().is_empty() {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "lint.rule_severities.rule_id must not be empty",
+            ));
+        }
+        config.set_rule_severity(override_.rule_id.clone(), severity);
+    }
+    Ok(config)
+}
+
+fn parse_lint_severity(value: &str) -> Result<merman_analysis::DiagnosticSeverity, BindingError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "error" => Ok(merman_analysis::DiagnosticSeverity::Error),
+        "warning" | "warn" => Ok(merman_analysis::DiagnosticSeverity::Warning),
+        "info" => Ok(merman_analysis::DiagnosticSeverity::Info),
+        "hint" => Ok(merman_analysis::DiagnosticSeverity::Hint),
+        _ => Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "lint.rule_severities.severity must be error, warning, info, or hint",
+        )),
+    }
 }
 
 #[cfg(any(feature = "render", feature = "ascii"))]

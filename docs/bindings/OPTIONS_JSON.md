@@ -63,6 +63,18 @@ numeric values return binding errors instead of panicking.
     "max_flowchart_subgraphs": 2000,
     "max_label_bytes": 2097152
   },
+  "lint": {
+    "disable_rules": [
+      "merman.config.prefer_init_directive",
+      "merman.git_graph.duplicate_commit_id"
+    ],
+    "rule_severities": [
+      {
+        "rule_id": "merman.block.width_exceeds_columns",
+        "severity": "hint"
+      }
+    ]
+  },
   "svg": {
     "diagram_id": "my-diagram",
     "pipeline": "parity",
@@ -88,6 +100,7 @@ Every field is optional.
 | `parse` | object | defaults | Parse behavior. |
 | `layout` | object | defaults | Layout and text measurement behavior. |
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
+| `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
 
 ## Fixed Time Options
@@ -96,6 +109,20 @@ Every field is optional.
 whose semantics depend on local time. Gantt uses them for date parsing, relative fallback dates,
 and render-model generation. They apply to parse JSON, layout JSON, SVG rendering, validation, and
 ASCII render entry points that parse Mermaid source through the shared engine.
+
+## Lint Options
+
+`lint` controls shared analysis rule configuration for diagnostics-first consumers. It uses stable
+rule ids from `merman-analysis`.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `lint.disable_rules` | array of strings | none | Rule ids to disable. Unknown ids are ignored. |
+| `lint.rule_severities` | array of objects | none | Per-rule severity overrides as `{ "rule_id": "...", "severity": "error|warning|info|hint" }`. |
+
+`disable_rules` and `rule_severities` apply to source lint rules and semantic warnings alike. They
+are additive overrides on top of the built-in rule defaults and can be used by FFI, UniFFI, WASM,
+CLI lint, and future editor adapters.
 
 `fixed_today` must be a `YYYY-MM-DD` date. `fixed_local_offset_minutes` must be an integer offset
 accepted by the fixed-offset timezone model, currently `-1439` through `1439`. Invalid values return

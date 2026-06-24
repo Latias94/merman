@@ -31,6 +31,8 @@ The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a 
 Swift, Kotlin, Python, and Ruby package lanes.
 The optional `options_json` argument uses the shared contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
+That contract includes the shared `lint` section for disabling rules or overriding severities, so
+UniFFI, CLI lint, FFI, and WASM can all drive the same analysis behavior.
 
 ## Analysis And Validation
 

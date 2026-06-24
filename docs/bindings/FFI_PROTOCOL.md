@@ -41,6 +41,10 @@ protocol extension reserves diagnostics-first analysis JSON as the canonical val
 payload. All source-processing functions accept the shared `options_json` contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
+That shared options contract now also carries a `lint` section for rule enable/disable and severity
+overrides. Hosts that consume analysis or validation diagnostics should treat those rule ids as the
+stable shared contract, not as transport-local behavior.
+
 ## Stability
 
 The protocol is pre-1.0. Hosts should still treat these rules as the compatibility baseline for the
