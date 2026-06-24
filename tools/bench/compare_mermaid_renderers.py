@@ -83,6 +83,8 @@ def fmt_ratio(v: float | None) -> str:
         return "-"
     if not (v > 0) or v == float("inf"):
         return "inf"
+    if v < 0.01:
+        return "<0.01x"
     if v < 0.1:
         return f"{v:.2f}x"
     return f"{v:.1f}x"
