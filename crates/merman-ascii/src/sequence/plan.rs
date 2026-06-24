@@ -197,6 +197,148 @@ impl SequenceEventPlan {
 }
 
 #[derive(Debug, Clone)]
+struct SequenceRowEmitter<'diagram, 'layout, 'chars> {
+    diagram: &'diagram AsciiSequenceDiagram,
+    layout: &'layout SequenceLayout,
+    chars: &'chars SequenceChars,
+    lines: Vec<SequenceLine>,
+}
+
+impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
+    fn new(
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &'layout SequenceLayout,
+        chars: &'chars SequenceChars,
+        visible_actors: &[bool],
+    ) -> Self {
+        let lines = render_participant_box_rows(
+            diagram,
+            layout,
+            chars,
+            visible_actors,
+            ParticipantBoxFrame::Header,
+        );
+        Self {
+            diagram,
+            layout,
+            chars,
+            lines,
+        }
+    }
+
+    fn current_row(&self) -> usize {
+        self.lines.len()
+    }
+
+    fn emit_event(
+        &mut self,
+        event: &SequenceEvent,
+        event_plan: &SequenceEventPlan,
+        effect: &SequenceEventEffect,
+    ) -> Result<()> {
+        if matches!(effect, SequenceEventEffect::StateOnly) {
+            return Ok(());
+        }
+
+        self.emit_message_spacing(event_plan);
+        self.emit_created_actors(event_plan, effect.created_actors());
+        self.emit_message_or_note(event, event_plan, effect.destroyed_actors())
+    }
+
+    fn emit_message_spacing(&mut self, event_plan: &SequenceEventPlan) {
+        for _ in 0..self.layout.message_spacing {
+            self.lines.push(self.lifeline_line(event_plan));
+        }
+    }
+
+    fn emit_created_actors(&mut self, event_plan: &SequenceEventPlan, actor_indices: &[usize]) {
+        if actor_indices.is_empty() {
+            return;
+        }
+
+        self.lines.extend(render_lifecycle_participants(
+            self.diagram,
+            self.layout,
+            self.chars,
+            event_plan.active_counts(),
+            event_plan.visible_actors(),
+            actor_indices,
+        ));
+    }
+
+    fn emit_message_or_note(
+        &mut self,
+        event: &SequenceEvent,
+        event_plan: &SequenceEventPlan,
+        destroyed_actors: &[usize],
+    ) -> Result<()> {
+        match event {
+            SequenceEvent::Message(message) => {
+                ensure_message_actors_visible(message, event_plan.visible_actors())?;
+                if message.from == message.to {
+                    self.lines.extend(render_self_message(
+                        message,
+                        self.layout,
+                        self.chars,
+                        event_plan.active_counts(),
+                        event_plan.visible_actors(),
+                        destroyed_actors,
+                    ));
+                } else {
+                    self.lines.extend(render_message(
+                        message,
+                        self.layout,
+                        self.chars,
+                        event_plan.active_counts(),
+                        event_plan.visible_actors(),
+                        destroyed_actors,
+                    ));
+                }
+            }
+            SequenceEvent::Note(note) => {
+                ensure_note_actors_visible(note, event_plan.visible_actors())?;
+                self.lines.extend(render_note(
+                    note,
+                    self.layout,
+                    self.chars,
+                    event_plan.active_counts(),
+                    event_plan.visible_actors(),
+                ));
+            }
+            SequenceEvent::ActivationStart { .. }
+            | SequenceEvent::ActivationEnd { .. }
+            | SequenceEvent::ControlStart(_)
+            | SequenceEvent::ControlEnd { .. }
+            | SequenceEvent::ControlSeparator(_) => {}
+        }
+        Ok(())
+    }
+
+    fn finish(mut self, event_plan: &SequenceEventPlan, mirror_actors: bool) -> Vec<SequenceLine> {
+        self.lines.push(self.lifeline_line(event_plan));
+        if mirror_actors {
+            self.lines.extend(render_participant_box_rows(
+                self.diagram,
+                self.layout,
+                self.chars,
+                event_plan.visible_actors(),
+                ParticipantBoxFrame::Mirror,
+            ));
+        }
+        self.lines
+    }
+
+    fn lifeline_line(&self, event_plan: &SequenceEventPlan) -> SequenceLine {
+        build_lifeline_line(
+            self.layout,
+            self.chars,
+            event_plan.active_counts(),
+            event_plan.visible_actors(),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct SequenceRowPlan {
     lines: Vec<SequenceLine>,
     control_frames: Vec<SequenceControlFrame>,
@@ -209,104 +351,18 @@ impl SequenceRowPlan {
         chars: &SequenceChars,
         mirror_actors: bool,
     ) -> Result<Self> {
-        let mut lines = Vec::new();
         let mut event_plan = SequenceEventPlan::new(diagram);
-
-        lines.extend(render_participant_box_rows(
-            diagram,
-            layout,
-            chars,
-            event_plan.visible_actors(),
-            ParticipantBoxFrame::Header,
-        ));
+        let mut emitter =
+            SequenceRowEmitter::new(diagram, layout, chars, event_plan.visible_actors());
 
         for event in &diagram.events {
-            let effect = event_plan.advance(diagram, event, lines.len())?;
-            if matches!(effect, SequenceEventEffect::StateOnly) {
-                continue;
-            }
-
-            for _ in 0..layout.message_spacing {
-                lines.push(build_lifeline_line(
-                    layout,
-                    chars,
-                    event_plan.active_counts(),
-                    event_plan.visible_actors(),
-                ));
-            }
-
-            if !effect.created_actors().is_empty() {
-                lines.extend(render_lifecycle_participants(
-                    diagram,
-                    layout,
-                    chars,
-                    event_plan.active_counts(),
-                    event_plan.visible_actors(),
-                    effect.created_actors(),
-                ));
-            }
-
-            match event {
-                SequenceEvent::Message(message) => {
-                    ensure_message_actors_visible(message, event_plan.visible_actors())?;
-                    if message.from == message.to {
-                        lines.extend(render_self_message(
-                            message,
-                            layout,
-                            chars,
-                            event_plan.active_counts(),
-                            event_plan.visible_actors(),
-                            effect.destroyed_actors(),
-                        ));
-                    } else {
-                        lines.extend(render_message(
-                            message,
-                            layout,
-                            chars,
-                            event_plan.active_counts(),
-                            event_plan.visible_actors(),
-                            effect.destroyed_actors(),
-                        ));
-                    }
-                }
-                SequenceEvent::Note(note) => {
-                    ensure_note_actors_visible(note, event_plan.visible_actors())?;
-                    lines.extend(render_note(
-                        note,
-                        layout,
-                        chars,
-                        event_plan.active_counts(),
-                        event_plan.visible_actors(),
-                    ));
-                }
-                SequenceEvent::ActivationStart { .. }
-                | SequenceEvent::ActivationEnd { .. }
-                | SequenceEvent::ControlStart(_)
-                | SequenceEvent::ControlEnd { .. }
-                | SequenceEvent::ControlSeparator(_) => {}
-            }
-
+            let effect = event_plan.advance(diagram, event, emitter.current_row())?;
+            emitter.emit_event(event, &event_plan, &effect)?;
             event_plan.complete(effect);
         }
 
-        lines.push(build_lifeline_line(
-            layout,
-            chars,
-            event_plan.active_counts(),
-            event_plan.visible_actors(),
-        ));
-        if mirror_actors {
-            lines.extend(render_participant_box_rows(
-                diagram,
-                layout,
-                chars,
-                event_plan.visible_actors(),
-                ParticipantBoxFrame::Mirror,
-            ));
-        }
-
         Ok(Self {
-            lines,
+            lines: emitter.finish(&event_plan, mirror_actors),
             control_frames: event_plan.finish()?,
         })
     }
