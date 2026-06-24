@@ -215,6 +215,38 @@ fn incomplete_er_documents_use_recovered_parser_facts() {
 }
 
 #[test]
+fn er_attribute_payload_facts_do_not_pollute_completion_ids() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "erDiagram\n",
+            "BOOK {\n",
+            "  string title PK, FK \"primary title\"\n",
+            "}\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "BOOK"));
+    assert!(!index.node_ids().any(|id| id == "title"));
+    assert!(!index.node_ids().any(|id| id == "string"));
+    assert!(!index.node_ids().any(|id| id == "PK"));
+    assert!(!index.node_ids().any(|id| id == "FK"));
+    assert!(!index.node_ids().any(|id| id == "primary title"));
+    assert!(
+        index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "title" && item.detail.as_deref() == Some("er attribute"))
+    );
+}
+
+#[test]
 fn gantt_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

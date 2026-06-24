@@ -18,6 +18,10 @@ in `merman-lsp` are useful as a bootstrap, but they are not a product-grade cont
 - Keep parser technology family-local.
 - Define a span-rich semantic seam between family parsers and downstream consumers.
 - Treat recoverable partial parsing as a first-class contract for editor inputs.
+- Classify parser facts by projection role. Entity facts may feed completion, references, and
+  outline surfaces; outline facts may feed document symbols and hover without becoming completion
+  candidates; payload facts preserve source spans for lint and future semantic consumers without
+  being projected into the LSP migration index.
 - Route analysis, lint, and LSP features through semantic facts instead of raw-text structure scans.
 - Keep render-model generation as a downstream projection, not the public parsing contract.
 
@@ -28,6 +32,11 @@ As of 2026-06-24, the migration shim is centralized as `merman-analysis::FenceTe
 consumes that shared index and no longer owns separate completion, outline, navigation, and rename
 scans. This is an intermediate consolidation step; family parsers still need to produce the
 span-rich facts that will replace the shim.
+
+`FenceTextIndex` must respect semantic roles when it projects parser facts. It should not treat
+every parser-produced span as a graph-node completion id. For example, ER attribute names can be
+outline facts, while attribute types, keys, and comments can be payload facts for lint without
+polluting node-id completion.
 
 ## Consequences
 

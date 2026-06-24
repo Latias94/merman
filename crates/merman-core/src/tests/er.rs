@@ -769,7 +769,7 @@ fn parse_er_editor_facts_preserve_parser_symbol_spans() {
     let text = r#"erDiagram
 CUSTOMER ||--o{ ORDER : places
 CUSTOMER {
-  string customer_id PK
+  string customer_id PK, FK "primary key"
 }
 ORDER:::important
 class CUSTOMER vip
@@ -804,9 +804,37 @@ style ORDER fill:#eee
     );
 
     let attribute_start = text.find("customer_id").unwrap();
+    let attribute = symbol_at("customer_id", attribute_start);
     assert_eq!(
-        symbol_at("customer_id", attribute_start).selection.end,
+        attribute.selection.end,
         attribute_start + "customer_id".len()
+    );
+    assert_eq!(attribute.role, EditorSemanticRole::Outline);
+
+    let type_start = text.find("string customer_id").unwrap();
+    let ty = symbol_at("string", type_start);
+    assert_eq!(ty.role, EditorSemanticRole::Payload);
+    assert_eq!(ty.detail.as_deref(), Some("er attribute type"));
+
+    let pk_start = text.find("PK").unwrap();
+    let pk = symbol_at("PK", pk_start);
+    assert_eq!(pk.role, EditorSemanticRole::Payload);
+    assert_eq!(pk.detail.as_deref(), Some("er attribute key"));
+
+    let fk_start = text.find("FK").unwrap();
+    let fk = symbol_at("FK", fk_start);
+    assert_eq!(fk.role, EditorSemanticRole::Payload);
+    assert_eq!(fk.detail.as_deref(), Some("er attribute key"));
+
+    let comment_start = text.find("\"primary key\"").unwrap();
+    let comment = symbol_at("primary key", comment_start + 1);
+    assert_eq!(comment.role, EditorSemanticRole::Payload);
+    assert_eq!(comment.detail.as_deref(), Some("er attribute comment"));
+    assert_eq!(comment.span.start, comment_start);
+    assert_eq!(comment.selection.start, comment_start + 1);
+    assert_eq!(
+        comment.selection.end,
+        comment_start + "\"primary key\"".len() - 1
     );
 
     let important_start = text.find("important").unwrap();

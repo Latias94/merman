@@ -134,9 +134,11 @@ partial buffers and downstream migration.
 ### U1. Define the span-rich core contract
 
 - **Status:** Initial contract landed. `merman-core` now exposes `EditorSemanticFacts`,
-  `EditorSemanticSymbol`, `EditorSemanticKind`, `EditorSemanticCompleteness`, and `SourceSpan`;
-  spans are byte offsets in the caller-provided diagram text and facts distinguish complete versus
-  recovered parser output.
+  `EditorSemanticSymbol`, `EditorSemanticKind`, `EditorSemanticRole`,
+  `EditorSemanticCompleteness`, and `SourceSpan`; spans are byte offsets in the caller-provided
+  diagram text, facts distinguish complete versus recovered parser output, and roles distinguish
+  entity facts from outline-only and payload-only facts so parser-backed spans can deepen without
+  polluting completion ids.
 - **Goal:** Add shared parser result types and semantic index interfaces in `merman-core`.
 - **Files:** `crates/merman-core/src/lib.rs`, `crates/merman-core/src/parse_pipeline.rs`,
   `crates/merman-core/src/diagram/mod.rs`, and a new internal module under
@@ -159,7 +161,9 @@ partial buffers and downstream migration.
   relation, member-owner, annotation-target, directive-target, and interaction-target facts from its
   lexer token stream with complete/recovered provenance. ER now emits entity, relationship endpoint,
   attribute, class/style/classDef target, and inline class facts with recovered token-stream output
-  for incomplete buffers.
+  for incomplete buffers; ER attribute names are now outline facts and attribute type/key/comment
+  payload spans are preserved for lint/future semantic consumers without becoming node completion
+  candidates.
 - **Goal:** Lift span and recovery facts into the families already using deterministic lexer plus
   LALRPOP.
 - **Files:** `crates/merman-core/src/diagrams/flowchart.rs`,
@@ -210,7 +214,9 @@ partial buffers and downstream migration.
   unavailable. Mindmap now follows the same complete/recovered provenance path, and `merman-lsp`
   explicitly enables the core full/host feature profile so product LSP detection does not silently
   run with the tiny registry. Gantt now follows the same `ParserComplete`/`ParserRecovered`
-  provenance path in `DocumentStore`, and header completion includes `gantt`.
+  provenance path in `DocumentStore`, and header completion includes `gantt`. The migration index
+  now respects semantic roles: entity facts feed completion/navigation/outline, outline facts feed
+  outline only, and payload facts stay out of LSP completion/navigation.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,

@@ -36,8 +36,8 @@ pub use diagram::{
     RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
 };
 pub use editor::{
-    EditorSemanticCompleteness, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
-    SourceSpan,
+    EditorSemanticCompleteness, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, Result};
 pub use family::DiagramFamilyCapability;

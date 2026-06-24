@@ -122,6 +122,7 @@ impl FenceTextIndex {
         index.directive_prefixes.extend(facts.directive_prefixes);
 
         for symbol in facts.symbols {
+            let role = symbol.role;
             let item = FenceLineItem {
                 name: symbol.name,
                 detail: symbol.detail,
@@ -135,13 +136,19 @@ impl FenceTextIndex {
                     end: symbol.selection.end,
                 },
             };
-            index
-                .references
-                .entry(item.name.clone())
-                .or_default()
-                .push(item.selection);
-            index.node_ids.insert(item.name.clone());
-            index.outline_items.push(item);
+            if role.contributes_references() {
+                index
+                    .references
+                    .entry(item.name.clone())
+                    .or_default()
+                    .push(item.selection);
+            }
+            if role.contributes_completion() {
+                index.node_ids.insert(item.name.clone());
+            }
+            if role.contributes_outline() {
+                index.outline_items.push(item);
+            }
         }
 
         index.outline_items.sort_by(|left, right| {
@@ -631,5 +638,36 @@ mod tests {
             Some("flowchart node")
         );
         assert!(index.has_directive_prefix("classDef"));
+    }
+
+    #[test]
+    fn text_index_skips_payload_only_core_facts_for_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::outline(
+            "section",
+            Some("gantt section".to_string()),
+            EditorSemanticKind::Namespace,
+            SourceSpan::new(0, 7),
+            SourceSpan::new(0, 7),
+        ));
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            "PK",
+            Some("er attribute key".to_string()),
+            EditorSemanticKind::Property,
+            SourceSpan::new(8, 10),
+            SourceSpan::new(8, 10),
+        ));
+
+        let index = FenceTextIndex::from_core_facts(facts);
+
+        assert!(!index.node_ids().any(|id| id == "PK"));
+        assert!(!index.node_ids().any(|id| id == "section"));
+        assert!(
+            index
+                .outline_items()
+                .iter()
+                .any(|item| item.name == "section")
+        );
+        assert!(!index.outline_items().iter().any(|item| item.name == "PK"));
     }
 }

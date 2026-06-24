@@ -479,8 +479,18 @@ impl ErEditorFactCollector {
                 if !self.in_attribute_block {
                     return;
                 }
-                if self.attr_word_index % 2 == 1 {
-                    self.push_attribute_symbol(facts, word, SourceSpan::new(start, end));
+                let span = SourceSpan::new(start, end);
+                if self.attr_word_index % 2 == 0 {
+                    self.push_payload_symbol(
+                        facts,
+                        word,
+                        "er attribute type",
+                        EditorSemanticKind::String,
+                        span,
+                        span,
+                    );
+                } else {
+                    self.push_attribute_symbol(facts, word, span);
                 }
                 self.attr_word_index += 1;
             }
@@ -489,15 +499,43 @@ impl ErEditorFactCollector {
                     self.attr_word_index = 2;
                 }
             }
+            Tok::AttrKey(key) => {
+                if self.in_attribute_block {
+                    self.push_payload_symbol(
+                        facts,
+                        key,
+                        "er attribute key",
+                        EditorSemanticKind::Property,
+                        SourceSpan::new(start, end),
+                        SourceSpan::new(start, end),
+                    );
+                }
+            }
+            Tok::Comment(comment) => {
+                if self.in_attribute_block {
+                    let span = SourceSpan::new(start, end);
+                    let selection = if end.saturating_sub(start) >= 2 {
+                        SourceSpan::new(start + 1, end - 1)
+                    } else {
+                        span
+                    };
+                    self.push_payload_symbol(
+                        facts,
+                        comment,
+                        "er attribute comment",
+                        EditorSemanticKind::String,
+                        span,
+                        selection,
+                    );
+                }
+            }
             Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
             Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
             Tok::Direction(_)
             | Tok::Str(_)
             | Tok::RestOfLine(_)
             | Tok::SquareStart
-            | Tok::SquareStop
-            | Tok::AttrKey(_)
-            | Tok::Comment(_) => {}
+            | Tok::SquareStop => {}
         }
     }
 
@@ -577,12 +615,33 @@ impl ErEditorFactCollector {
         if name.is_empty() {
             return;
         }
-        facts.push_symbol(EditorSemanticSymbol::new(
+        facts.push_symbol(EditorSemanticSymbol::outline(
             name,
             Some("er attribute".to_string()),
             EditorSemanticKind::Property,
             span,
             span,
+        ));
+    }
+
+    fn push_payload_symbol(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        name: String,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) {
+        if name.is_empty() {
+            return;
+        }
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            name,
+            Some(detail.to_string()),
+            kind,
+            span,
+            selection,
         ));
     }
 }

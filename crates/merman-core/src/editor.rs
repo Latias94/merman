@@ -27,12 +27,40 @@ pub enum EditorSemanticKind {
     Variable,
 }
 
+/// How downstream editor indexes should project a parser-produced symbol.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EditorSemanticRole {
+    /// Addressable diagram entity: appears in completion, navigation, and outline surfaces.
+    #[default]
+    Entity,
+    /// Structural symbol that belongs in outline/hover, but is not a graph-node completion item.
+    Outline,
+    /// Span-rich parser payload for lint or future semantic consumers; not projected into LSP
+    /// outline/completion/navigation by the migration index.
+    Payload,
+}
+
+impl EditorSemanticRole {
+    pub fn contributes_completion(self) -> bool {
+        matches!(self, Self::Entity)
+    }
+
+    pub fn contributes_references(self) -> bool {
+        matches!(self, Self::Entity)
+    }
+
+    pub fn contributes_outline(self) -> bool {
+        matches!(self, Self::Entity | Self::Outline)
+    }
+}
+
 /// A parser-produced symbol occurrence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorSemanticSymbol {
     pub name: String,
     pub detail: Option<String>,
     pub kind: EditorSemanticKind,
+    pub role: EditorSemanticRole,
     pub span: SourceSpan,
     pub selection: SourceSpan,
 }
@@ -45,10 +73,63 @@ impl EditorSemanticSymbol {
         span: SourceSpan,
         selection: SourceSpan,
     ) -> Self {
+        Self::with_role(
+            name,
+            detail,
+            kind,
+            EditorSemanticRole::Entity,
+            span,
+            selection,
+        )
+    }
+
+    pub fn outline(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSemanticKind,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) -> Self {
+        Self::with_role(
+            name,
+            detail,
+            kind,
+            EditorSemanticRole::Outline,
+            span,
+            selection,
+        )
+    }
+
+    pub fn payload(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSemanticKind,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) -> Self {
+        Self::with_role(
+            name,
+            detail,
+            kind,
+            EditorSemanticRole::Payload,
+            span,
+            selection,
+        )
+    }
+
+    pub fn with_role(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSemanticKind,
+        role: EditorSemanticRole,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) -> Self {
         Self {
             name: name.into(),
             detail,
             kind,
+            role,
             span,
             selection,
         }

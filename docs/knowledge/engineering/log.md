@@ -40,6 +40,10 @@ status: active
 - Made Gantt editor completeness tolerant of original-source YAML front matter and Mermaid init directives, preserving complete provenance while still using original byte spans.
 - Added Gantt LSP regressions proving complete and incomplete documents use `ParserComplete`/`ParserRecovered`, and added `gantt` diagram-header completion.
 - Re-verified `cargo fmt --all`, `cargo nextest run -p merman-core editor_facts --no-fail-fast`, `cargo nextest run -p merman-core gantt --no-fail-fast`, `cargo nextest run -p merman-analysis --no-fail-fast`, and `cargo nextest run -p merman-lsp --no-fail-fast`.
+- Added `EditorSemanticRole` to the core editor semantic contract so parser facts can be projected as entity, outline-only, or payload-only symbols.
+- Updated `merman-analysis::FenceTextIndex::from_core_facts` to respect semantic roles, keeping payload facts out of completion/navigation while still projecting entity and outline facts.
+- Deepened ER editor facts so attribute names are outline-only symbols and attribute type/key/comment spans are preserved as payload facts with accurate source spans.
+- Added regressions proving ER payload facts do not pollute completion ids while core facts still preserve the spans for future lint consumers.
 
 ## 2026-06-23
 - Confirmed alpha-stage fearless refactor scope for diagnostics-first analysis: canonical `analyze_json`, legacy `validate_json` projection, CLI lint, Markdown fence diagnostics, LSP-ready position mapping, ADR, and engineering memory are in scope.

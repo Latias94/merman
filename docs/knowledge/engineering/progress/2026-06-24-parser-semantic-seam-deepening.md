@@ -22,8 +22,11 @@ partial parse results instead of raw-text heuristic scans.
 - The new plan keeps the parser choice where it already belongs: inside each family.
 - A new ADR records the seam so later lint and LSP work can use the same contract.
 - `merman-core` now exposes `EditorSemanticFacts`, `EditorSemanticSymbol`,
-  `EditorSemanticKind`, `EditorSemanticCompleteness`, and `SourceSpan` as the parser-backed
-  editor semantic contract.
+  `EditorSemanticKind`, `EditorSemanticRole`, `EditorSemanticCompleteness`, and `SourceSpan` as
+  the parser-backed editor semantic contract.
+- `EditorSemanticRole` separates entity facts from outline-only and payload-only facts. This keeps
+  deep parser spans available for lint/future consumers without turning every parser fact into a
+  graph-node completion candidate.
 - Flowchart is the first tracer bullet: its lexer/LALRPOP AST now preserves node id spans and
   subgraph header/selection spans, and editor fact extraction preserves original input byte
   offsets even when directives/frontmatter/comments/accessibility statements are masked away for
@@ -46,6 +49,8 @@ partial parse results instead of raw-text heuristic scans.
 - ER is the fifth migrated family: `IdList` is now span-rich internally, editor facts cover
   entities, relationship endpoints, attribute names, inline classes, class/style/classDef targets,
   and incomplete ER buffers recover from the ER lexer token stream instead of raw-text scans.
+- ER attribute names now project as outline-only facts, while attribute type, key, and comment
+  tokens are preserved as payload-only span facts for future lint and semantic consumers.
 - ER incomplete attribute blocks no longer make the lexer repeatedly emit the same EOF error; the
   lexer reports the block EOF once, exits block mode, and lets editor fact recovery finish.
 - Mindmap is the first migrated hand-written family: its line parser now returns an internal event
@@ -63,7 +68,9 @@ partial parse results instead of raw-text heuristic scans.
   document-symbol support should extend the semantic contract with role-aware or outline-only facts
   instead of adding section names to task-id completion.
 - `merman-analysis::FenceTextIndex::from_core_facts` projects core editor facts into the shared
-  LSP/lint migration index, including directive prefixes used by completion.
+  LSP/lint migration index, including directive prefixes used by completion. It now respects
+  semantic roles: entity facts feed completion/navigation/outline, outline facts feed outline only,
+  and payload facts are intentionally not projected into LSP completion/navigation.
 - `FenceTextIndex` now records whether its source is `TextScan`, `ParserComplete`, or
   `ParserRecovered`, giving tests and future lint/LSP logic a way to prove it did not silently
   return to heuristic scans.
@@ -88,11 +95,10 @@ partial parse results instead of raw-text heuristic scans.
 # Next Action
 
 Choose the next parser seam slice deliberately: deepen class member/annotation/directive payload
-spans, deepen ER attribute type/key/comment facts if lint needs them, deepen state/mindmap/gantt
-directive payload spans for rename and references, add role-aware outline facts for constructs like
-Gantt sections, or expose recovered parser diagnostics alongside recovered facts. Do not add new
-heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt symbols;
-extend core facts instead.
+spans, deepen state/mindmap/gantt directive payload spans for rename and references, add
+role-aware outline facts for constructs like Gantt sections, or expose recovered parser diagnostics
+alongside recovered facts. Do not add new heuristic parsing in LSP for covered
+flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations
 
