@@ -103,9 +103,9 @@ that axis. Category labels come from the typed band x-axis when present; otherwi
 infers numeric labels from the typed linear x-axis. Output is trimmed per line and remains stable for
 snapshot tests.
 
-Charts with more than one series render a compact legend row before the plot. Because the current
-typed render model does not preserve user-authored series titles, legend labels use stable terminal
-fallbacks such as `Bar 1` and `Line 1`.
+Charts with more than one series render a compact legend row before the plot. When a Mermaid plot
+statement includes a user-authored series title, the legend uses that typed model title; otherwise
+it falls back to stable terminal labels such as `Bar 1` and `Line 1`.
 
 ## Intended Use
 

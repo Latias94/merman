@@ -216,7 +216,7 @@ fn legend_line(plots: &[XyChartPlotRenderModel], chars: ChartChars) -> ChartLine
             AsciiColorRole::ChartSeries(series_index),
         );
         line.push_plain_char(' ');
-        let label = match plot.plot_type {
+        let fallback_label = match plot.plot_type {
             XyChartPlotType::Bar => {
                 bar_index += 1;
                 format!("Bar {bar_index}")
@@ -226,7 +226,13 @@ fn legend_line(plots: &[XyChartPlotRenderModel], chars: ChartChars) -> ChartLine
                 format!("Line {line_index}")
             }
         };
-        line.push_role_text(&label, AsciiColorRole::Text);
+
+        let label = plot
+            .title
+            .as_deref()
+            .and_then(non_empty)
+            .unwrap_or(&fallback_label);
+        line.push_role_text(label, AsciiColorRole::Text);
     }
 
     line

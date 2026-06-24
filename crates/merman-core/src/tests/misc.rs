@@ -1502,6 +1502,7 @@ line "Series 2" [2, 3]
             );
             assert_eq!(model.plots.len(), 2);
             assert_eq!(model.plots[0].plot_type, XyChartPlotType::Bar);
+            assert_eq!(model.plots[0].title.as_deref(), Some("Series 1"));
             assert_eq!(model.plots[0].values, vec![1.0, 2.0]);
             assert_eq!(
                 model.plots[0].data,
@@ -1511,6 +1512,7 @@ line "Series 2" [2, 3]
                 ]
             );
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
+            assert_eq!(model.plots[1].title.as_deref(), Some("Series 2"));
             model.to_compat_json(&parsed.meta)
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
@@ -1531,7 +1533,9 @@ line "Series 2" [2, 3]
     assert_eq!(parsed_json.model["yAxis"]["min"], json!(1.0));
     assert_eq!(parsed_json.model["yAxis"]["max"], json!(5.0));
     assert_eq!(parsed_json.model["plots"][0]["type"], json!("bar"));
+    assert!(parsed_json.model["plots"][0].get("title").is_none());
     assert_eq!(parsed_json.model["plots"][1]["type"], json!("line"));
+    assert!(parsed_json.model["plots"][1].get("title").is_none());
     assert!(parsed_json.model.get("config").is_some());
     assert_eq!(typed_json, parsed_json.model);
 }

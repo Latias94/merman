@@ -36,6 +36,8 @@ pub enum XyChartPlotType {
 pub struct XyChartPlotRenderModel {
     #[serde(rename = "type")]
     pub plot_type: XyChartPlotType,
+    #[serde(default)]
+    pub title: Option<String>,
     pub values: Vec<f64>,
     pub data: Vec<(String, Option<f64>)>,
 }
@@ -182,6 +184,7 @@ enum AxisData {
 #[derive(Debug, Clone)]
 struct Plot {
     plot_type: XyChartPlotType,
+    title: Option<String>,
     values: Vec<f64>,
     data: Vec<(String, Option<f64>)>,
 }
@@ -337,19 +340,21 @@ impl XyChartState {
         }
     }
 
-    fn add_line_data(&mut self, data: Vec<f64>) {
+    fn add_line_data(&mut self, title: Option<String>, data: Vec<f64>) {
         let pairs = self.transform_data_without_category(&data);
         self.plots.push(Plot {
             plot_type: XyChartPlotType::Line,
+            title,
             values: data,
             data: pairs,
         });
     }
 
-    fn add_bar_data(&mut self, data: Vec<f64>) {
+    fn add_bar_data(&mut self, title: Option<String>, data: Vec<f64>) {
         let pairs = self.transform_data_without_category(&data);
         self.plots.push(Plot {
             plot_type: XyChartPlotType::Bar,
+            title,
             values: data,
             data: pairs,
         });
@@ -373,6 +378,7 @@ impl XyChartState {
                 .into_iter()
                 .map(|p| XyChartPlotRenderModel {
                     plot_type: p.plot_type,
+                    title: p.title,
                     values: p.values,
                     data: p.data,
                 })
@@ -475,13 +481,13 @@ fn parse_xychart_model(
             continue;
         }
         if let Some(rest) = strip_keyword(stmt, "line") {
-            let (_plot_title, data) = parse_plot_stmt(rest)?;
-            state.add_line_data(data);
+            let (plot_title, data) = parse_plot_stmt(rest)?;
+            state.add_line_data(plot_title_value(&plot_title, meta), data);
             continue;
         }
         if let Some(rest) = strip_keyword(stmt, "bar") {
-            let (_plot_title, data) = parse_plot_stmt(rest)?;
-            state.add_bar_data(data);
+            let (plot_title, data) = parse_plot_stmt(rest)?;
+            state.add_bar_data(plot_title_value(&plot_title, meta), data);
             continue;
         }
 
@@ -492,6 +498,11 @@ fn parse_xychart_model(
     }
 
     Ok(Some(state.into_render_model(title, acc_title, acc_descr)))
+}
+
+fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
+    let title = sanitize_text(title.trim(), &meta.effective_config);
+    (!title.is_empty()).then_some(title)
 }
 
 fn empty_render_model() -> XyChartDiagramRenderModel {
