@@ -1,0 +1,12 @@
+flowchart TD
+Start --> Entry
+subgraph outer [Outer Pipeline]
+    direction LR
+    Entry[Entry]
+    subgraph inner [Inner Steps]
+        direction TD
+        Validate[Validate] --> Persist[Persist]
+    end
+    Entry --> Validate
+end
+Persist --> Done

@@ -1,5 +1,6 @@
+use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const EXPECTED_FIXTURE_COUNTS: &[(&str, usize)] = &[
     ("ascii", 52),
@@ -76,5 +77,65 @@ fn fixture_inventory_documents_v1_coverage_contract() {
             contract.contains(expected),
             "v1 coverage contract must mention `{expected}`"
         );
+    }
+}
+
+#[test]
+fn local_semantic_fixture_inventory_matches_readme() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_dir.join("tests/testdata/local-semantic");
+    let readme_path = root.join("README.md");
+    let readme = fs::read_to_string(&readme_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", readme_path.display()));
+
+    let documented = readme
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("- `"))
+        .filter_map(|line| line.strip_suffix('`'))
+        .filter(|path| path.ends_with(".mmd"))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+
+    let mut actual_paths = Vec::new();
+    collect_local_semantic_fixtures(&root, &root, &mut actual_paths);
+    let actual = actual_paths
+        .into_iter()
+        .map(|path| {
+            path.strip_prefix(&root)
+                .unwrap_or_else(|err| panic!("failed to relativize {}: {err}", path.display()))
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(
+        documented, actual,
+        "local semantic README must list every .mmd fixture and only existing fixtures"
+    );
+}
+
+fn collect_local_semantic_fixtures(root: &Path, dir: &Path, fixtures: &mut Vec<PathBuf>) {
+    let mut entries = fs::read_dir(dir)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", dir.display()))
+        .map(|entry| {
+            entry
+                .expect("local semantic fixture entry must be readable")
+                .path()
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+
+    for path in entries {
+        if path.is_dir() {
+            collect_local_semantic_fixtures(root, &path, fixtures);
+        } else if path.extension().is_some_and(|ext| ext == "mmd") {
+            assert!(
+                path.starts_with(root),
+                "local semantic fixture must stay under {}: {}",
+                root.display(),
+                path.display()
+            );
+            fixtures.push(path);
+        }
     }
 }

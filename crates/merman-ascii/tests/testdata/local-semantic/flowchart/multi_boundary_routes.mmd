@@ -1,0 +1,10 @@
+flowchart TD
+Source -- load --> Ingest
+Audit -- check --> Validate
+subgraph pipe [Pipeline]
+    direction LR
+    Ingest[Ingest] --> Validate[Validate]
+    Validate --> Publish[Publish]
+end
+Publish -- ok --> Success
+Publish -- fail --> Retry

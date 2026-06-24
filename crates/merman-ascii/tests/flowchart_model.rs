@@ -27,6 +27,14 @@ fn fixture_expected(directory: &str, name: &str) -> String {
     expected.to_string()
 }
 
+fn local_semantic_input(name: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/testdata/local-semantic")
+        .join(name);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
+}
+
 fn strip_ansi(input: &str) -> String {
     let mut output = String::new();
     let mut chars = input.chars().peekable();
@@ -77,6 +85,22 @@ fn strip_html_spans(input: &str) -> String {
         }
     }
     output
+}
+
+fn normalize_ascii_art(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
 }
 
 #[test]
@@ -730,6 +754,155 @@ fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_record
             "  |   |                    \n",
             "  +---+                    \n",
         )
+    );
+}
+
+#[test]
+fn flowchart_parser_nested_subgraph_direction_override_keeps_child_group_as_a_movable_block() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "subgraph outer\n",
+            "    direction LR\n",
+            "    A\n",
+            "    subgraph inner\n",
+            "        direction TD\n",
+            "        B --> C\n",
+            "    end\n",
+            "    A --> B\n",
+            "end\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("nested subgraph direction override should render as a movable child block");
+
+    assert_eq!(
+        normalize_ascii_art(&rendered),
+        normalize_ascii_art(concat!(
+            "+-------------------+\n",
+            "|       outer       |\n",
+            "|                   |\n",
+            "|                   |\n",
+            "|         +-------+ |\n",
+            "|         | inner | |\n",
+            "|         |       | |\n",
+            "|         |       | |\n",
+            "| +---+   | +---+ | |\n",
+            "| |   |   | |   | | |\n",
+            "| | A |---->| B | | |\n",
+            "| |   |   | |   | | |\n",
+            "| +---+   | +---+ | |\n",
+            "|         |   |   | |\n",
+            "|         |   |   | |\n",
+            "|         |   |   | |\n",
+            "|         |   |   | |\n",
+            "|         |   v   | |\n",
+            "|         | +---+ | |\n",
+            "|         | |   | | |\n",
+            "|         | | C | | |\n",
+            "|         | |   | | |\n",
+            "|         | +---+ | |\n",
+            "|         |       | |\n",
+            "|         +-------+ |\n",
+            "|                   |\n",
+            "+-------------------+\n",
+        ))
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_nested_direction_boundary_routes() {
+    let input = local_semantic_input("flowchart/nested_direction_boundary.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic nested flowchart fixture should render");
+
+    for expected in [
+        "Start",
+        "Outer Pipeline",
+        "Inner Steps",
+        "Entry",
+        "Validate",
+        "Persist",
+        "Done",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "nested flowchart fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+
+    assert!(
+        line_index("Start") < line_index("Entry"),
+        "root TD direction should keep Start above the outer group entry:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Entry"),
+        line_index("Validate"),
+        "outer LR override should keep Entry and Validate on the same row:\n{rendered}"
+    );
+    assert!(
+        line_index("Validate") < line_index("Persist"),
+        "inner TD override should keep Validate above Persist:\n{rendered}"
+    );
+    assert!(
+        line_index("Persist") < line_index("Done"),
+        "cross-boundary exit edge should keep Done after Persist in root TD flow:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "local semantic flowchart fixture should produce a non-trivial layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_multiple_boundary_routes() {
+    let input = local_semantic_input("flowchart/multi_boundary_routes.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic multi-boundary flowchart fixture should render");
+
+    for expected in [
+        "Source", "Audit", "Pipeline", "Ingest", "Validate", "Publish", "Success", "Retry", "load",
+        "check", "ok", "fail",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "multi-boundary flowchart fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+
+    assert!(
+        line_index("Source") < line_index("Ingest"),
+        "first entering boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert!(
+        line_index("Audit") < line_index("Validate"),
+        "second entering boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Ingest"),
+        line_index("Validate"),
+        "subgraph LR override should keep Ingest and Validate on the same row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Validate"),
+        line_index("Publish"),
+        "subgraph LR override should keep Validate and Publish on the same row:\n{rendered}"
+    );
+    assert!(
+        line_index("Publish") < line_index("Success"),
+        "first leaving boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert!(
+        line_index("Publish") < line_index("Retry"),
+        "second leaving boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "multi-boundary flowchart fixture should produce a non-trivial layout:\n{rendered}"
     );
 }
 

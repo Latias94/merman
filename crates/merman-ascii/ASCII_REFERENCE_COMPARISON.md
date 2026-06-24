@@ -23,13 +23,17 @@ product boundary.
 ## Fixture Admissibility
 
 - Use copied `mermaid-ascii` fixtures when the family is graph or sequence and the upstream corpus
-  is a good exact-output oracle.
+  is a good exact-output oracle. These are byte-level parity tests.
 - Use `beautiful-mermaid` only as capability prior art. It can suggest coverage and layout ideas,
   but it is not a byte-level standard.
 - Use self-authored local fixtures when the diagram is dense, family-specific, or semantically
-  clearer than a copied render. Those fixtures live beside the tests that use them, such as
-  `tests/testdata/local-semantic/`, and they are intentionally outside the copied fixture inventory
-  gate.
+  clearer than a copied render. Those fixtures live under `tests/testdata/local-semantic/`, and they
+  are intentionally outside the copied fixture inventory gate.
+- Prefer semantic assertions for local fixtures: visible labels, direction relationships, grouping,
+  routing reachability, unsupported-feature diagnostics, and absence of leaked implementation ids.
+  Use exact ASCII snapshots only when the shape itself is the behavior under review.
+- Reject a reference fixture as an oracle when it depends on a known reference shortcut, a browser
+  rendering artifact, or terminal choices that are not implied by Mermaid semantics.
 
 ## Family Comparison
 
