@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added CLI regressions proving the shared rule config contract also reaches `merman-cli`, so
+  `no_diagram` and source-byte-limit diagnostics can be disabled from the command surface as well
+  as from the library API.
 - Expanded the analysis rule contract so core parse/resource/compatibility/internal diagnostics
   now have stable descriptors, and `no_diagram` plus source-byte-limit diagnostics can be disabled
   through the shared rule config without breaking the rest of the analysis pipeline.

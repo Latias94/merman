@@ -333,6 +333,28 @@ fn cli_lint_can_disable_rule_diagnostics() {
 }
 
 #[test]
+fn cli_lint_can_disable_no_diagram_rule() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--disable-rule",
+            "merman.parse.no_diagram",
+            "-",
+        ],
+        "",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["errors"], 0);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
 fn cli_lint_can_override_rule_severity() {
     let output = run_with_stdin(
         &[
@@ -360,6 +382,30 @@ fn cli_lint_can_override_rule_severity() {
         payload["diagnostics"][0]["severity"].as_str(),
         Some("warning")
     );
+}
+
+#[test]
+fn cli_lint_can_disable_resource_limit_rule() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--max-source-bytes",
+            "8",
+            "--disable-rule",
+            "merman.resource.source_bytes_exceeded",
+            "-",
+        ],
+        "flowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["errors"], 0);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
 }
 
 #[test]
