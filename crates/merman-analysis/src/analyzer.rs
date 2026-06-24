@@ -134,6 +134,7 @@ impl Analyzer {
                         &parsed.meta.diagram_type,
                         &parsed.model,
                         &source_map,
+                        &self.options.rule_config,
                     ));
                     diagnostics.extend(self.editor_recovery_diagnostics(
                         source,
@@ -456,6 +457,52 @@ mod tests {
         assert_eq!(
             payload.diagnostics[0].id,
             crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID
+        );
+    }
+
+    #[test]
+    fn analysis_rule_config_can_disable_git_graph_warning_rules() {
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_disabled(crate::rules::GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID),
+            ),
+        );
+        let payload = analyzer
+            .analyze("gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n");
+
+        assert!(payload.valid);
+        assert!(payload.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn analysis_rule_config_can_override_git_graph_warning_severity() {
+        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_rule_severity(
+                crate::rules::GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
+                DiagnosticSeverity::Hint,
+            ),
+        ));
+        let payload = analyzer
+            .analyze("gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n");
+
+        assert!(payload.valid);
+        assert_eq!(payload.summary.hints, 1);
+        assert_eq!(
+            payload
+                .diagnostics
+                .iter()
+                .filter(
+                    |diagnostic| diagnostic.id == crate::rules::GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID
+                )
+                .count(),
+            1
+        );
+        assert!(
+            payload
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.severity == DiagnosticSeverity::Hint)
         );
     }
 }

@@ -363,6 +363,53 @@ fn cli_lint_can_override_rule_severity() {
 }
 
 #[test]
+fn cli_lint_can_disable_block_warning_rules() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--disable-rule",
+            "merman.block.width_exceeds_columns",
+            "-",
+        ],
+        "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_can_override_block_warning_severity() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--rule-severity",
+            "merman.block.width_exceeds_columns=hint",
+            "-",
+        ],
+        "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 2);
+    assert_eq!(
+        payload["diagnostics"][0]["id"].as_str(),
+        Some("merman.block.width_exceeds_columns")
+    );
+    assert_eq!(payload["diagnostics"][0]["severity"].as_str(), Some("hint"));
+}
+
+#[test]
 fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
     let output = run_with_stdin_input(
         &[
