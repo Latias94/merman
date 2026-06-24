@@ -97,6 +97,7 @@ impl<'a> ParsePipeline<'a> {
 
         directive_prefixes.extend(facts.directive_prefixes);
         let mut facts = EditorSemanticFacts {
+            completeness: facts.completeness,
             symbols: facts.symbols,
             directive_prefixes: Vec::new(),
         };

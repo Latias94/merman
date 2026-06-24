@@ -35,7 +35,10 @@ pub use diagram::{
     DiagramRegistry, DiagramSemanticParser, ParsedDiagram, ParsedDiagramRender,
     RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
 };
-pub use editor::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
+pub use editor::{
+    EditorSemanticCompleteness, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol,
+    SourceSpan,
+};
 pub use error::{Error, Result};
 pub use family::DiagramFamilyCapability;
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};

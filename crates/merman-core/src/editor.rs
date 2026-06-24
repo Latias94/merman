@@ -55,9 +55,18 @@ impl EditorSemanticSymbol {
     }
 }
 
+/// Whether editor-facing facts came from a complete family parse or a recoverable partial parse.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EditorSemanticCompleteness {
+    #[default]
+    Complete,
+    Recovered,
+}
+
 /// Parser-produced facts used by lint, completion, and LSP without exposing a public AST.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EditorSemanticFacts {
+    pub completeness: EditorSemanticCompleteness,
     pub symbols: Vec<EditorSemanticSymbol>,
     pub directive_prefixes: Vec<String>,
 }
@@ -69,6 +78,10 @@ impl EditorSemanticFacts {
 
     pub fn push_symbol(&mut self, symbol: EditorSemanticSymbol) {
         self.symbols.push(symbol);
+    }
+
+    pub fn mark_recovered(&mut self) {
+        self.completeness = EditorSemanticCompleteness::Recovered;
     }
 
     pub fn push_directive_prefix(&mut self, prefix: impl Into<String>) {

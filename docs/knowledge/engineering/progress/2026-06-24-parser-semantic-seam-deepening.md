@@ -22,13 +22,21 @@ partial parse results instead of raw-text heuristic scans.
 - The new plan keeps the parser choice where it already belongs: inside each family.
 - A new ADR records the seam so later lint and LSP work can use the same contract.
 - `merman-core` now exposes `EditorSemanticFacts`, `EditorSemanticSymbol`,
-  `EditorSemanticKind`, and `SourceSpan` as the parser-backed editor semantic contract.
+  `EditorSemanticKind`, `EditorSemanticCompleteness`, and `SourceSpan` as the parser-backed
+  editor semantic contract.
 - Flowchart is the first tracer bullet: its lexer/LALRPOP AST now preserves node id spans and
   subgraph header/selection spans, and editor fact extraction preserves original input byte
   offsets even when directives/frontmatter/comments/accessibility statements are masked away for
   parsing.
+- Flowchart editor fact extraction now recovers from incomplete editor buffers: when full
+  LALRPOP parsing fails, it uses the same masked input and lexer token stream to return
+  `EditorSemanticCompleteness::Recovered` facts for already recognized node ids, subgraph headers,
+  and directive prefixes.
 - `merman-analysis::FenceTextIndex::from_core_facts` projects core editor facts into the shared
   LSP/lint migration index, including directive prefixes used by completion.
+- `FenceTextIndex` now records whether its source is `TextScan`, `ParserComplete`, or
+  `ParserRecovered`, giving tests and future lint/LSP logic a way to prove it did not silently
+  return to heuristic scans.
 - `merman-lsp::DocumentStore` now tries parser-backed core facts for known diagram types and falls
   back to the centralized text index only when parser-backed facts are unavailable or fail.
 - Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
@@ -36,9 +44,9 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: either add recoverable partial editor facts for
-incomplete flowchart buffers, or migrate the next high-value family (`sequence`, `state`, or
-`class`) to `EditorSemanticFacts`. Do not add new heuristic parsing in LSP for covered flowchart
+Choose the next parser seam slice deliberately: migrate the next high-value family (`sequence`,
+`state`, or `class`) to `EditorSemanticFacts`, or expose recovered parser diagnostics alongside
+the recovered flowchart facts. Do not add new heuristic parsing in LSP for covered flowchart
 symbols; extend core facts instead.
 
 # Citations

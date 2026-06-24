@@ -16,7 +16,7 @@ mod source_map;
 mod status;
 
 pub use analyzer::{AnalysisOptions, Analyzer};
-pub use editor::{ByteSpan, EditorSymbolKind, FenceLineItem, FenceTextIndex};
+pub use editor::{ByteSpan, EditorSymbolKind, FenceLineItem, FenceTextIndex, FenceTextIndexSource};
 pub use payload::{
     AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticRelated, DiagnosticSeverity,
     DiagnosticSpan, SourceDescriptor, SourceKind, Summary, Utf16Position,

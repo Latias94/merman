@@ -1,3 +1,4 @@
+use merman_analysis::FenceTextIndexSource;
 use merman_lsp::document_store::DocumentStore;
 use tower_lsp::lsp_types::Url;
 
@@ -70,4 +71,26 @@ fn newer_versions_replace_the_stored_snapshot() {
     assert!(!stored.text.contains("flowchart TD"));
     assert_eq!(stored.fences.len(), 1);
     assert_eq!(stored.fences[0].diagram_type.as_deref(), Some("sequence"));
+}
+
+#[test]
+fn incomplete_flowchart_documents_use_recovered_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "flowchart TD\nsubgraph group\nA-->B\nC-->".to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
+    assert!(index.node_ids().any(|id| id == "A"));
+    assert!(index.node_ids().any(|id| id == "C"));
+    assert!(
+        index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "group")
+    );
 }

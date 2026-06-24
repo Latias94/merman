@@ -2160,3 +2160,31 @@ fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
     assert_eq!(a.selection.start, a_start);
     assert_eq!(a.selection.end, a_start + "A".len());
 }
+
+#[test]
+fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nsubgraph group\nA-->B\nC-->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let symbol = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("missing symbol {name}"))
+    };
+
+    let group_start = text.find("group").unwrap();
+    assert_eq!(symbol("group").selection.start, group_start);
+    assert_eq!(symbol("group").selection.end, group_start + "group".len());
+
+    let c_start = text.find("C-->").unwrap();
+    assert_eq!(symbol("C").selection.start, c_start);
+    assert_eq!(symbol("C").selection.end, c_start + "C".len());
+}

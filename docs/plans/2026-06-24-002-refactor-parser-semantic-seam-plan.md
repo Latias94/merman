@@ -134,8 +134,9 @@ partial buffers and downstream migration.
 ### U1. Define the span-rich core contract
 
 - **Status:** Initial contract landed. `merman-core` now exposes `EditorSemanticFacts`,
-  `EditorSemanticSymbol`, `EditorSemanticKind`, and `SourceSpan`; spans are byte offsets in the
-  caller-provided diagram text.
+  `EditorSemanticSymbol`, `EditorSemanticKind`, `EditorSemanticCompleteness`, and `SourceSpan`;
+  spans are byte offsets in the caller-provided diagram text and facts distinguish complete versus
+  recovered parser output.
 - **Goal:** Add shared parser result types and semantic index interfaces in `merman-core`.
 - **Files:** `crates/merman-core/src/lib.rs`, `crates/merman-core/src/parse_pipeline.rs`,
   `crates/merman-core/src/diagram/mod.rs`, and a new internal module under
@@ -149,8 +150,9 @@ partial buffers and downstream migration.
 ### U2. Retrofit the parser-generator-backed families
 
 - **Status:** Flowchart tracer bullet landed. Flowchart now preserves parser-backed node id spans
-  and subgraph header/selection spans through its lexer/LALRPOP AST path; more parser-generator
-  families still need the same treatment.
+  and subgraph header/selection spans through its lexer/LALRPOP AST path, and falls back to
+  recoverable token-stream facts for incomplete editor buffers; more parser-generator families
+  still need the same treatment.
 - **Goal:** Lift span and recovery facts into the families already using deterministic lexer plus
   LALRPOP.
 - **Files:** `crates/merman-core/src/diagrams/flowchart.rs`,
@@ -182,8 +184,9 @@ partial buffers and downstream migration.
 
 - **Status:** Flowchart path migrated. LSP now consumes `merman-analysis::FenceTextIndex` instead
   of maintaining separate completion, outline, navigation, and rename scans, and flowchart fences
-  use parser-backed core editor facts with raw-text fallback only when that family fact extraction
-  is unavailable or fails.
+  use parser-backed core editor facts for both complete and recovered parser output; raw-text
+  fallback remains only when a family has no core fact extraction path or the extraction itself is
+  unavailable.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,

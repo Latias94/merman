@@ -98,8 +98,10 @@ pub fn parse_flowchart_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<EditorSemanticFacts> {
     let code = mask_flowchart_editor_parse_input(code);
-    let ast = parse_flowchart_ast(&code, meta)?;
-    Ok(editor_facts_from_flowchart_ast(&ast))
+    match parse_flowchart_ast(&code, meta) {
+        Ok(ast) => Ok(editor_facts_from_flowchart_ast(&ast)),
+        Err(_) => Ok(recover_flowchart_editor_facts_from_tokens(&code)),
+    }
 }
 
 fn parse_flowchart_semantic_source(
@@ -330,6 +332,57 @@ fn editor_facts_from_flowchart_ast(ast: &FlowchartAst) -> EditorSemanticFacts {
     facts
 }
 
+fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    facts.mark_recovered();
+
+    let mut lexer = Lexer::new(code);
+    while let Some(result) = lexer.next() {
+        match result {
+            Ok((start, token, end)) => {
+                collect_editor_fact_from_token(token, start, end, &mut facts)
+            }
+            Err(_) => {}
+        }
+    }
+
+    facts
+}
+
+fn collect_editor_fact_from_token(
+    token: Tok,
+    start: usize,
+    end: usize,
+    facts: &mut EditorSemanticFacts,
+) {
+    match token {
+        Tok::Id(id) => push_flowchart_token_symbol(facts, id, start, end),
+        Tok::SubgraphHeader(header) => {
+            push_flowchart_header_symbol(facts, &header);
+        }
+        Tok::StyleStmt(_) => facts.push_directive_prefix("style"),
+        Tok::ClassDefStmt(_) => facts.push_directive_prefix("classDef"),
+        Tok::ClassAssignStmt(_) => facts.push_directive_prefix("class"),
+        Tok::ClickStmt(_) => facts.push_directive_prefix("click"),
+        Tok::LinkStyleStmt(_) => facts.push_directive_prefix("linkStyle"),
+        Tok::KwGraph
+        | Tok::KwFlowchart
+        | Tok::KwFlowchartElk
+        | Tok::KwSubgraph
+        | Tok::KwEnd
+        | Tok::Sep
+        | Tok::Amp
+        | Tok::StyleSep
+        | Tok::NodeLabel(_)
+        | Tok::Direction(_)
+        | Tok::DirectionStmt(_)
+        | Tok::Arrow(_)
+        | Tok::EdgeLabel(_)
+        | Tok::EdgeId(_)
+        | Tok::ShapeData(_) => {}
+    }
+}
+
 fn collect_editor_facts_from_statements(statements: &[Stmt], facts: &mut EditorSemanticFacts) {
     for stmt in statements {
         match stmt {
@@ -366,12 +419,16 @@ fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
 }
 
 fn push_flowchart_subgraph_symbol(facts: &mut EditorSemanticFacts, subgraph: &SubgraphBlock) {
-    if let Some(span) = subgraph.header.header_span.or(subgraph.header.raw_id_span) {
-        let name = subgraph.header.raw_id.trim();
+    push_flowchart_header_symbol(facts, &subgraph.header);
+}
+
+fn push_flowchart_header_symbol(facts: &mut EditorSemanticFacts, header: &SubgraphHeader) {
+    if let Some(span) = header.header_span.or(header.raw_id_span) {
+        let name = header.raw_id.trim();
         if name.is_empty() {
             return;
         }
-        let selection = subgraph.header.raw_id_span.unwrap_or(span);
+        let selection = header.raw_id_span.unwrap_or(span);
         facts.push_symbol(EditorSemanticSymbol::new(
             name.to_string(),
             Some("subgraph".to_string()),
@@ -380,6 +437,25 @@ fn push_flowchart_subgraph_symbol(facts: &mut EditorSemanticFacts, subgraph: &Su
             selection,
         ));
     }
+}
+
+fn push_flowchart_token_symbol(
+    facts: &mut EditorSemanticFacts,
+    id: String,
+    start: usize,
+    end: usize,
+) {
+    if id.is_empty() {
+        return;
+    }
+    let span = crate::SourceSpan::new(start, end);
+    facts.push_symbol(EditorSemanticSymbol::new(
+        id,
+        Some("flowchart node".to_string()),
+        EditorSemanticKind::Module,
+        span,
+        span,
+    ));
 }
 
 impl FlowchartSemanticSource {

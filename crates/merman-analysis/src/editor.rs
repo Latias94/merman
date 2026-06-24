@@ -36,12 +36,21 @@ pub struct FenceLineItem {
     pub selection: ByteSpan,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FenceTextIndexSource {
+    #[default]
+    TextScan,
+    ParserComplete,
+    ParserRecovered,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FenceTextIndex {
     node_ids: BTreeSet<String>,
     directive_prefixes: BTreeSet<String>,
     references: BTreeMap<String, Vec<ByteSpan>>,
     outline_items: Vec<FenceLineItem>,
+    source: FenceTextIndexSource,
 }
 
 impl FenceTextIndex {
@@ -102,6 +111,14 @@ impl FenceTextIndex {
     pub fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
         let mut index = Self::default();
 
+        index.source = match facts.completeness {
+            merman_core::EditorSemanticCompleteness::Complete => {
+                FenceTextIndexSource::ParserComplete
+            }
+            merman_core::EditorSemanticCompleteness::Recovered => {
+                FenceTextIndexSource::ParserRecovered
+            }
+        };
         index.directive_prefixes.extend(facts.directive_prefixes);
 
         for symbol in facts.symbols {
@@ -180,6 +197,10 @@ impl FenceTextIndex {
 
     pub fn outline_items(&self) -> &[FenceLineItem] {
         &self.outline_items
+    }
+
+    pub fn source(&self) -> FenceTextIndexSource {
+        self.source
     }
 
     fn record_line(
@@ -558,7 +579,7 @@ fn generic_kind(diagram_type: Option<&str>) -> EditorSymbolKind {
 
 #[cfg(test)]
 mod tests {
-    use super::{FenceTextIndex, is_candidate_node_id};
+    use super::{FenceTextIndex, FenceTextIndexSource, is_candidate_node_id};
     use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 
     #[test]
@@ -602,6 +623,7 @@ mod tests {
 
         let index = FenceTextIndex::from_core_facts(facts);
 
+        assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
         assert!(index.node_ids().any(|id| id == "A"));
         assert_eq!(index.first_reference_span("A").unwrap().start, 13);
         assert_eq!(
