@@ -1,6 +1,6 @@
 use super::plot::{
-    ChartChars, ValueRange, XyChartPlotArea, build_horizontal_plot_rows, build_vertical_plot,
-    format_number,
+    ChartChars, ValueRange, XyChartPlotArea, apply_vertical_bar_data_labels,
+    build_horizontal_plot_rows, build_vertical_plot, format_number, horizontal_bar_width,
 };
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
@@ -8,7 +8,8 @@ use crate::error::AsciiError;
 use crate::text::{StyledLine, display_width};
 use crate::{AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
-    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
+    XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
+    XyChartPlotRenderModel, XyChartPlotType,
 };
 
 type ChartLine = StyledLine;
@@ -71,47 +72,93 @@ fn render_vertical(
     plot_area: XyChartPlotArea,
     options: &AsciiRenderOptions,
 ) -> String {
-    let plot = build_vertical_plot(model, categories.len(), y_range, chars, plot_area);
+    let mut plot = build_vertical_plot(model, categories.len(), y_range, chars, plot_area);
 
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
     push_legend_line(&mut out, model, chars);
 
-    let tick_labels = vertical_tick_labels(y_range, plot_area);
-    let min_label = format_number(y_range.min);
-    let gutter = tick_labels
+    let show_y_labels = axis_labels_visible(model.display.y_axis);
+    let tick_labels = if show_y_labels {
+        vertical_tick_labels(y_range, plot_area)
+    } else {
+        vec![String::new(); plot_area.vertical_height]
+    };
+    let min_label = show_y_labels.then(|| format_number(y_range.min));
+    let gutter = min_label
         .iter()
-        .chain(std::iter::once(&min_label))
+        .chain(tick_labels.iter())
         .map(|s| display_width(s))
         .max()
-        .unwrap_or(1);
+        .unwrap_or(0);
+    let y_axis_mark = vertical_axis_mark(model.display.y_axis, chars);
+    let plot_prefix_width = plot_prefix_width(show_y_labels, y_axis_mark.is_some(), gutter);
+
+    if model.display.show_data_label {
+        if model.display.show_data_label_outside_bar {
+            if let Some(line) = vertical_data_label_line(model, plot_prefix_width, plot_area) {
+                out.push(line);
+            }
+        } else {
+            apply_vertical_bar_data_labels(&mut plot, model, y_range, plot_area);
+        }
+    }
 
     for (idx, row) in plot.rows.into_iter().enumerate() {
         let label = &tick_labels[idx];
         let mut line = ChartLine::new();
-        line.push_right_aligned_role_text(label, gutter, AsciiColorRole::Text);
-        line.push_plain_char(' ');
-        line.push_role_char(chars.vertical_axis, AsciiColorRole::ChartAxis);
+        push_axis_prefix(&mut line, label, gutter, show_y_labels, y_axis_mark);
         line.push_cells(&row);
         out.push(line);
     }
 
-    let mut axis_line = ChartLine::new();
-    axis_line.push_right_aligned_role_text(&min_label, gutter, AsciiColorRole::Text);
-    axis_line.push_plain_char(' ');
-    axis_line.push_role_char(chars.origin, AsciiColorRole::ChartAxis);
-    axis_line.push_role_repeat(chars.horizontal_axis, plot.width, AsciiColorRole::ChartAxis);
-    out.push(axis_line);
+    let baseline_mark = if model.display.x_axis.show_axis_line || model.display.x_axis.show_tick {
+        Some(chars.origin)
+    } else {
+        y_axis_mark
+    };
+    if show_y_labels || baseline_mark.is_some() {
+        let mut axis_line = ChartLine::new();
+        push_axis_baseline_prefix(
+            &mut axis_line,
+            min_label.as_deref().unwrap_or_default(),
+            gutter,
+            show_y_labels,
+            baseline_mark,
+        );
+        if model.display.x_axis.show_axis_line {
+            axis_line.push_role_repeat(
+                chars.horizontal_axis,
+                plot.width,
+                AsciiColorRole::ChartAxis,
+            );
+        } else if model.display.x_axis.show_tick {
+            axis_line.push_spaces(plot.width);
+        }
+        if model.display.x_axis.show_tick {
+            overlay_axis_ticks(
+                &mut axis_line,
+                plot_prefix_width,
+                vertical_category_tick_positions(categories.len(), plot_area),
+                chars.horizontal_tick,
+            );
+        }
+        out.push(axis_line);
+    }
 
-    let mut category_line = ChartLine::new();
-    category_line.push_spaces(gutter + 2);
-    category_line.push_role_text_with_unstyled_trailing_spaces(
-        &plot_area.category_axis_labels(categories),
-        AsciiColorRole::Text,
-    );
-    out.push(category_line);
+    if axis_labels_visible(model.display.x_axis) {
+        let mut category_line = ChartLine::new();
+        category_line.push_spaces(plot_prefix_width);
+        category_line.push_role_text_with_unstyled_trailing_spaces(
+            &plot_area.category_axis_labels(categories),
+            AsciiColorRole::Text,
+        );
+        out.push(category_line);
+    }
 
-    if let Some(title) = x_axis_title(model) {
+    if model.display.x_axis.show_title
+        && let Some(title) = x_axis_title(model)
+    {
         let mut line = ChartLine::new();
         line.push_role_text("x: ", AsciiColorRole::Text);
         line.push_role_text(title, AsciiColorRole::Text);
@@ -134,54 +181,102 @@ fn render_horizontal(
     push_legend_line(&mut out, model, chars);
     let plot_rows = build_horizontal_plot_rows(model, categories.len(), y_range, chars, plot_area);
 
-    let gutter = categories
-        .iter()
-        .map(|c| display_width(c))
-        .max()
-        .unwrap_or(1);
+    let show_x_labels = axis_labels_visible(model.display.x_axis);
+    let gutter = if show_x_labels {
+        categories
+            .iter()
+            .map(|c| display_width(c))
+            .max()
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let x_axis_mark = vertical_axis_mark(model.display.x_axis, chars);
+    let plot_prefix_width = plot_prefix_width(show_x_labels, x_axis_mark.is_some(), gutter);
 
     for (idx, category) in categories.iter().enumerate() {
         let plot_row = &plot_rows[idx];
 
         let mut line = ChartLine::new();
-        line.push_right_aligned_role_text(category, gutter, AsciiColorRole::Text);
-        line.push_plain_char(' ');
-        line.push_role_char(chars.vertical_axis, AsciiColorRole::ChartAxis);
+        push_axis_prefix(&mut line, category, gutter, show_x_labels, x_axis_mark);
         line.push_cells(&plot_row.cells);
-        if !plot_row.values.is_empty() {
-            line.push_plain_char(' ');
-            line.push_role_text(&plot_row.values.join("/"), AsciiColorRole::Text);
+        if model.display.show_data_label
+            && let (Some(value), Some(label)) = (plot_row.bar_value, plot_row.bar_label.as_deref())
+            && (model.display.show_data_label_outside_bar
+                || !write_horizontal_inside_data_label(
+                    &mut line,
+                    plot_prefix_width,
+                    label,
+                    value,
+                    y_range,
+                    plot_area,
+                ))
+        {
+            push_horizontal_outside_data_label(&mut line, label);
         }
         out.push(line);
     }
 
-    let mut axis_line = ChartLine::new();
-    axis_line.push_spaces(gutter + 1);
-    axis_line.push_role_char(chars.origin, AsciiColorRole::ChartAxis);
-    axis_line.push_role_repeat(
-        chars.horizontal_axis,
-        plot_area.horizontal_width,
-        AsciiColorRole::ChartAxis,
-    );
-    out.push(axis_line);
+    let baseline_mark = if model.display.y_axis.show_axis_line || model.display.y_axis.show_tick {
+        Some(chars.origin)
+    } else {
+        x_axis_mark
+    };
+    if axis_labels_visible(model.display.y_axis) || baseline_mark.is_some() {
+        let mut axis_line = ChartLine::new();
+        push_axis_baseline_prefix(&mut axis_line, "", gutter, show_x_labels, baseline_mark);
+        if model.display.y_axis.show_axis_line {
+            axis_line.push_role_repeat(
+                chars.horizontal_axis,
+                plot_area.horizontal_width,
+                AsciiColorRole::ChartAxis,
+            );
+        } else if model.display.y_axis.show_tick {
+            axis_line.push_spaces(plot_area.horizontal_width);
+        }
+        if model.display.y_axis.show_tick {
+            overlay_axis_ticks(
+                &mut axis_line,
+                plot_prefix_width,
+                horizontal_value_tick_positions(plot_area),
+                chars.horizontal_tick,
+            );
+        }
+        out.push(axis_line);
+    }
 
-    let mut tick_line = ChartLine::new();
-    tick_line.push_spaces(gutter + 2);
-    tick_line.push_role_text(
-        &horizontal_tick_labels(y_range, plot_area),
-        AsciiColorRole::Text,
-    );
-    out.push(tick_line);
+    if axis_labels_visible(model.display.y_axis) {
+        let mut tick_line = ChartLine::new();
+        tick_line.push_spaces(plot_prefix_width);
+        tick_line.push_role_text(
+            &horizontal_tick_labels(y_range, plot_area),
+            AsciiColorRole::Text,
+        );
+        out.push(tick_line);
+    }
+
+    if model.display.x_axis.show_title
+        && let Some(title) = x_axis_title(model)
+    {
+        let mut line = ChartLine::new();
+        line.push_role_text("x: ", AsciiColorRole::Text);
+        line.push_role_text(title, AsciiColorRole::Text);
+        out.push(line);
+    }
 
     finish_chart_lines(out, options)
 }
 
 fn push_title_lines(out: &mut Vec<ChartLine>, model: &XyChartDiagramRenderModel) {
-    if let Some(title) = model.title.as_deref().filter(|t| !t.trim().is_empty()) {
+    if model.display.show_title
+        && let Some(title) = model.title.as_deref().filter(|t| !t.trim().is_empty())
+    {
         out.push(ChartLine::role_text(title, AsciiColorRole::Text));
     }
 
-    if let Some(title) = y_axis_title(model) {
+    if model.display.y_axis.show_title
+        && let Some(title) = y_axis_title(model)
+    {
         let mut line = ChartLine::new();
         line.push_role_text("y: ", AsciiColorRole::Text);
         line.push_role_text(title, AsciiColorRole::Text);
@@ -236,6 +331,144 @@ fn legend_line(plots: &[XyChartPlotRenderModel], chars: ChartChars) -> ChartLine
     }
 
     line
+}
+
+fn axis_labels_visible(axis: XyChartAxisDisplayPolicy) -> bool {
+    axis.show_label
+}
+
+fn plot_prefix_width(show_axis_labels: bool, show_axis_mark: bool, gutter: usize) -> usize {
+    if show_axis_labels {
+        gutter + 1 + usize::from(show_axis_mark)
+    } else if show_axis_mark {
+        1
+    } else {
+        0
+    }
+}
+
+fn vertical_axis_mark(axis: XyChartAxisDisplayPolicy, chars: ChartChars) -> Option<char> {
+    if axis.show_tick {
+        Some(chars.vertical_tick)
+    } else if axis.show_axis_line {
+        Some(chars.vertical_axis)
+    } else {
+        None
+    }
+}
+
+fn push_axis_prefix(
+    line: &mut ChartLine,
+    label: &str,
+    gutter: usize,
+    show_axis_labels: bool,
+    axis_mark: Option<char>,
+) {
+    if show_axis_labels {
+        line.push_right_aligned_role_text(label, gutter, AsciiColorRole::Text);
+        line.push_plain_char(' ');
+    }
+
+    match axis_mark {
+        Some(axis_mark) => line.push_role_char(axis_mark, AsciiColorRole::ChartAxis),
+        None if show_axis_labels => line.push_plain_char(' '),
+        None => {}
+    }
+}
+
+fn push_axis_baseline_prefix(
+    line: &mut ChartLine,
+    label: &str,
+    gutter: usize,
+    show_axis_labels: bool,
+    origin: Option<char>,
+) {
+    if show_axis_labels {
+        line.push_right_aligned_role_text(label, gutter, AsciiColorRole::Text);
+        line.push_plain_char(' ');
+    }
+
+    if let Some(origin) = origin {
+        line.push_role_char(origin, AsciiColorRole::ChartAxis);
+    }
+}
+
+fn overlay_axis_ticks(
+    line: &mut ChartLine,
+    plot_start: usize,
+    tick_positions: impl IntoIterator<Item = usize>,
+    tick: char,
+) {
+    for position in tick_positions {
+        line.set_role(plot_start + position, tick, AsciiColorRole::ChartAxis);
+    }
+}
+
+fn vertical_category_tick_positions(
+    category_count: usize,
+    plot_area: XyChartPlotArea,
+) -> impl Iterator<Item = usize> {
+    (0..category_count)
+        .map(move |idx| plot_area.vertical_band_start(idx) + (plot_area.category_band_width / 2))
+}
+
+fn horizontal_value_tick_positions(plot_area: XyChartPlotArea) -> impl Iterator<Item = usize> {
+    [0, plot_area.horizontal_width.saturating_sub(1)].into_iter()
+}
+
+fn vertical_data_label_line(
+    model: &XyChartDiagramRenderModel,
+    plot_prefix_width: usize,
+    plot_area: XyChartPlotArea,
+) -> Option<ChartLine> {
+    let labels = first_bar_plot_value_labels(model)?;
+    if labels.is_empty() {
+        return None;
+    }
+
+    let mut line = ChartLine::new();
+    line.push_spaces(plot_prefix_width);
+    line.push_role_text_with_unstyled_trailing_spaces(
+        &plot_area.band_labels(&labels),
+        AsciiColorRole::Text,
+    );
+    Some(line)
+}
+
+fn write_horizontal_inside_data_label(
+    line: &mut ChartLine,
+    plot_prefix_width: usize,
+    label: &str,
+    value: f64,
+    y_range: ValueRange,
+    plot_area: XyChartPlotArea,
+) -> bool {
+    let bar_width = horizontal_bar_width(value, y_range, plot_area);
+    let label_width = display_width(label);
+    if bar_width == 0 || label_width == 0 || label_width > bar_width {
+        return false;
+    }
+
+    let start = plot_prefix_width + bar_width - label_width;
+    line.write_text_role(start, label, AsciiColorRole::Text);
+    true
+}
+
+fn push_horizontal_outside_data_label(line: &mut ChartLine, label: &str) {
+    if label.is_empty() {
+        return;
+    }
+
+    line.push_plain_char(' ');
+    line.push_role_text(label, AsciiColorRole::Text);
+}
+
+fn first_bar_plot_value_labels(model: &XyChartDiagramRenderModel) -> Option<Vec<String>> {
+    model
+        .plots
+        .iter()
+        .find(|plot| plot.plot_type == XyChartPlotType::Bar)
+        .map(|plot| plot.values.iter().copied().map(format_number).collect())
 }
 
 fn category_labels(model: &XyChartDiagramRenderModel) -> Vec<String> {

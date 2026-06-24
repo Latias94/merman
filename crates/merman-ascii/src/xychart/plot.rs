@@ -50,12 +50,16 @@ impl XyChartPlotArea {
         category_count.saturating_mul(self.horizontal_width)
     }
 
-    pub(super) fn category_axis_labels(self, categories: &[String]) -> String {
-        categories
+    pub(super) fn band_labels(self, labels: &[String]) -> String {
+        labels
             .iter()
-            .map(|category| fit_centered(category, self.category_band_width))
+            .map(|label| fit_centered(label, self.category_band_width))
             .collect::<Vec<_>>()
             .join(BAND_GAP_LABEL)
+    }
+
+    pub(super) fn category_axis_labels(self, categories: &[String]) -> String {
+        self.band_labels(categories)
     }
 }
 
@@ -64,6 +68,8 @@ pub(super) struct ChartChars {
     pub(super) horizontal_axis: char,
     pub(super) vertical_axis: char,
     pub(super) origin: char,
+    pub(super) horizontal_tick: char,
+    pub(super) vertical_tick: char,
     bar: char,
     line_horizontal: char,
     line_vertical: char,
@@ -77,6 +83,8 @@ impl ChartChars {
                 horizontal_axis: '-',
                 vertical_axis: '|',
                 origin: '+',
+                horizontal_tick: '+',
+                vertical_tick: '+',
                 bar: '#',
                 line_horizontal: '*',
                 line_vertical: '*',
@@ -86,6 +94,8 @@ impl ChartChars {
                 horizontal_axis: '─',
                 vertical_axis: '│',
                 origin: '┼',
+                horizontal_tick: '┬',
+                vertical_tick: '┤',
                 bar: '█',
                 line_horizontal: '─',
                 line_vertical: '│',
@@ -131,7 +141,8 @@ pub(super) struct VerticalPlot {
 #[derive(Debug, Clone)]
 pub(super) struct HorizontalPlotRow {
     pub(super) cells: Vec<ChartCell>,
-    pub(super) values: Vec<String>,
+    pub(super) bar_value: Option<f64>,
+    pub(super) bar_label: Option<String>,
 }
 
 pub(super) fn build_vertical_plot(
@@ -166,16 +177,20 @@ pub(super) fn build_horizontal_plot_rows(
     chars: ChartChars,
     plot_area: XyChartPlotArea,
 ) -> Vec<HorizontalPlotRow> {
+    let first_bar_values = model
+        .plots
+        .iter()
+        .find(|plot| plot.plot_type == XyChartPlotType::Bar)
+        .map(|plot| plot.values.as_slice());
+
     (0..category_count)
         .map(|idx| {
             let mut cells = vec![ChartCell::blank(); plot_area.horizontal_width];
-            let mut values = Vec::new();
 
             for (series_index, plot) in model.plots.iter().enumerate() {
                 let Some(value) = plot.values.get(idx).copied() else {
                     continue;
                 };
-                values.push(format_number(value));
 
                 match plot.plot_type {
                     XyChartPlotType::Bar => draw_horizontal_bar_value(
@@ -197,9 +212,50 @@ pub(super) fn build_horizontal_plot_rows(
                 }
             }
 
-            HorizontalPlotRow { cells, values }
+            let bar_value = first_bar_values.and_then(|values| values.get(idx).copied());
+            let bar_label = bar_value.map(format_number);
+
+            HorizontalPlotRow {
+                cells,
+                bar_value,
+                bar_label,
+            }
         })
         .collect()
+}
+
+pub(super) fn apply_vertical_bar_data_labels(
+    plot: &mut VerticalPlot,
+    model: &XyChartDiagramRenderModel,
+    y_range: ValueRange,
+    plot_area: XyChartPlotArea,
+) {
+    let Some(bar_plot) = model
+        .plots
+        .iter()
+        .find(|plot| plot.plot_type == XyChartPlotType::Bar)
+    else {
+        return;
+    };
+
+    for (idx, value) in bar_plot.values.iter().copied().enumerate() {
+        let height = bar_height(value, y_range, plot_area.vertical_height);
+        if height == 0 {
+            continue;
+        }
+
+        let row_idx = plot_area.vertical_height - height;
+        let band_start = plot_area.vertical_band_start(idx);
+        if let Some(row) = plot.rows.get_mut(row_idx) {
+            write_band_text(
+                row,
+                band_start,
+                plot_area.category_band_width,
+                &format_number(value),
+                AsciiColorRole::Text,
+            );
+        }
+    }
 }
 
 fn draw_vertical_bar_plot(
@@ -320,6 +376,14 @@ fn draw_horizontal_bar_value(
     }
 }
 
+pub(super) fn horizontal_bar_width(
+    value: f64,
+    y_range: ValueRange,
+    plot_area: XyChartPlotArea,
+) -> usize {
+    bar_height(value, y_range, plot_area.horizontal_width)
+}
+
 fn draw_horizontal_line_value(
     row: &mut [ChartCell],
     value: f64,
@@ -391,6 +455,21 @@ fn fill_band(
     for offset in 0..band_width {
         if let Some(cell) = row.get_mut(band_start + offset) {
             *cell = ChartCell::with_role(value, role);
+        }
+    }
+}
+
+fn write_band_text(
+    row: &mut [ChartCell],
+    band_start: usize,
+    band_width: usize,
+    value: &str,
+    role: AsciiColorRole,
+) {
+    let fitted = fit_centered(value, band_width);
+    for (offset, ch) in fitted.chars().enumerate().take(band_width) {
+        if let Some(cell) = row.get_mut(band_start + offset) {
+            *cell = ChartCell::with_role(ch, role);
         }
     }
 }

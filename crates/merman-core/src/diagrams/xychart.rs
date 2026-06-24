@@ -1,5 +1,5 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, ParseMetadata, Result};
+use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
 
@@ -42,6 +42,85 @@ pub struct XyChartPlotRenderModel {
     pub data: Vec<(String, Option<f64>)>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XyChartAxisDisplayPolicy {
+    pub show_label: bool,
+    pub show_title: bool,
+    pub show_tick: bool,
+    pub show_axis_line: bool,
+}
+
+impl Default for XyChartAxisDisplayPolicy {
+    fn default() -> Self {
+        Self {
+            show_label: true,
+            show_title: true,
+            show_tick: true,
+            show_axis_line: true,
+        }
+    }
+}
+
+impl XyChartAxisDisplayPolicy {
+    fn from_config(config: &MermaidConfig, axis_key: &str) -> Self {
+        let default = Self::default();
+        Self {
+            show_label: config
+                .get_bool(&format!("xyChart.{axis_key}.showLabel"))
+                .unwrap_or(default.show_label),
+            show_title: config
+                .get_bool(&format!("xyChart.{axis_key}.showTitle"))
+                .unwrap_or(default.show_title),
+            show_tick: config
+                .get_bool(&format!("xyChart.{axis_key}.showTick"))
+                .unwrap_or(default.show_tick),
+            show_axis_line: config
+                .get_bool(&format!("xyChart.{axis_key}.showAxisLine"))
+                .unwrap_or(default.show_axis_line),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XyChartDisplayPolicy {
+    pub show_title: bool,
+    pub show_data_label: bool,
+    pub show_data_label_outside_bar: bool,
+    pub x_axis: XyChartAxisDisplayPolicy,
+    pub y_axis: XyChartAxisDisplayPolicy,
+}
+
+impl Default for XyChartDisplayPolicy {
+    fn default() -> Self {
+        Self {
+            show_title: true,
+            show_data_label: false,
+            show_data_label_outside_bar: false,
+            x_axis: XyChartAxisDisplayPolicy::default(),
+            y_axis: XyChartAxisDisplayPolicy::default(),
+        }
+    }
+}
+
+impl XyChartDisplayPolicy {
+    fn from_config(config: &MermaidConfig) -> Self {
+        let default = Self::default();
+        Self {
+            show_title: config
+                .get_bool("xyChart.showTitle")
+                .unwrap_or(default.show_title),
+            show_data_label: config
+                .get_bool("xyChart.showDataLabel")
+                .unwrap_or(default.show_data_label),
+            show_data_label_outside_bar: config
+                .get_bool("xyChart.showDataLabelOutsideBar")
+                .unwrap_or(default.show_data_label_outside_bar),
+            x_axis: XyChartAxisDisplayPolicy::from_config(config, "xAxis"),
+            y_axis: XyChartAxisDisplayPolicy::from_config(config, "yAxis"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct XyChartDiagramRenderModel {
     #[serde(default)]
@@ -58,6 +137,8 @@ pub struct XyChartDiagramRenderModel {
     pub y_axis: XyChartAxisRenderModel,
     #[serde(default)]
     pub plots: Vec<XyChartPlotRenderModel>,
+    #[serde(skip, default)]
+    pub display: XyChartDisplayPolicy,
 }
 
 impl XyChartDiagramRenderModel {
@@ -365,6 +446,7 @@ impl XyChartState {
         title: Option<String>,
         acc_title: Option<String>,
         acc_descr: Option<String>,
+        meta: &ParseMetadata,
     ) -> XyChartDiagramRenderModel {
         XyChartDiagramRenderModel {
             orientation: self.orientation,
@@ -383,6 +465,7 @@ impl XyChartState {
                     data: p.data,
                 })
                 .collect(),
+            display: XyChartDisplayPolicy::from_config(&meta.effective_config),
         }
     }
 }
@@ -497,7 +580,9 @@ fn parse_xychart_model(
         });
     }
 
-    Ok(Some(state.into_render_model(title, acc_title, acc_descr)))
+    Ok(Some(
+        state.into_render_model(title, acc_title, acc_descr, meta),
+    ))
 }
 
 fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
@@ -521,6 +606,7 @@ fn empty_render_model() -> XyChartDiagramRenderModel {
             max: None,
         },
         plots: Vec::new(),
+        display: XyChartDisplayPolicy::default(),
     }
 }
 

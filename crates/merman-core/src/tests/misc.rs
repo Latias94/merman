@@ -1541,6 +1541,47 @@ line "Series 2" [2, 3]
 }
 
 #[test]
+fn parse_xychart_render_model_includes_display_policy_from_effective_config() {
+    let engine = Engine::new();
+    let input = r#"%%{init: {"xyChart": {"showTitle": false, "showDataLabel": true, "showDataLabelOutsideBar": true, "xAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}, "yAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}}}}%%
+xychart
+x-axis "X Axis" [Alpha, Beta]
+y-axis "Y Axis" 1 --> 5
+bar "Series 1" [1, 2]
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    let typed_json = match &parsed.model {
+        RenderSemanticModel::XyChart(model) => {
+            assert!(!model.display.show_title);
+            assert!(model.display.show_data_label);
+            assert!(model.display.show_data_label_outside_bar);
+            assert!(!model.display.x_axis.show_label);
+            assert!(!model.display.x_axis.show_title);
+            assert!(!model.display.x_axis.show_tick);
+            assert!(!model.display.x_axis.show_axis_line);
+            assert!(!model.display.y_axis.show_label);
+            assert!(!model.display.y_axis.show_title);
+            assert!(!model.display.y_axis.show_tick);
+            assert!(!model.display.y_axis.show_axis_line);
+            model.to_compat_json(&parsed.meta)
+        }
+        other => panic!("xychart render parse should return typed model, got {other:?}"),
+    };
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert!(parsed_json.model.get("display").is_none());
+    assert_eq!(typed_json, parsed_json.model);
+}
+
+#[test]
 fn parse_xychart_exposes_11_15_data_label_outside_default_and_override() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata("xychart\nbar [1]", ParseOptions::default()))

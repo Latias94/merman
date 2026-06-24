@@ -123,8 +123,7 @@ pub(crate) fn render_xychart_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
     let data_label_config = if layout.show_data_label {
         Some((
-            config_bool(_effective_config, &["xyChart", "showDataLabelOutsideBar"])
-                .unwrap_or(false),
+            layout.show_data_label_outside_bar,
             data_label_color(_effective_config),
         ))
     } else {

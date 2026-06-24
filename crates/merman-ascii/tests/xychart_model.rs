@@ -88,12 +88,12 @@ bar [2, 5, 8]
         concat!(
             "Sales\n",
             "y: Revenue\n",
-            "10 |\n",
-            " 8 |        ###\n",
-            " 6 |    ### ###\n",
-            " 4 |    ### ###\n",
-            " 2 |### ### ###\n",
-            " 0 +-----------\n",
+            "10 +\n",
+            " 8 +        ###\n",
+            " 6 +    ### ###\n",
+            " 4 +    ### ###\n",
+            " 2 +### ### ###\n",
+            " 0 +-+---+---+-\n",
             "    Jan Feb Mar\n",
             "x: Month\n",
         )
@@ -142,20 +142,19 @@ line [8, 2]
         strip_html_spans(&rendered),
         concat!(
             "# Bar 1  * Line 1\n",
-            "10 |\n",
-            " 8 | ***###\n",
-            " 6 |   *###\n",
-            " 4 |   *###\n",
-            " 2 |###***#\n",
-            " 0 +-------\n",
+            "10 +\n",
+            " 8 + ***###\n",
+            " 6 +   *###\n",
+            " 4 +   *###\n",
+            " 2 +###***#\n",
+            " 0 +-+---+-\n",
             "     A   B\n",
         )
     );
     for expected_fragment in [
         "<span style=\"color:#303030\">#</span>",
         "<span style=\"color:#404040\">*</span>",
-        "<span style=\"color:#202020\">|</span>",
-        "<span style=\"color:#202020\">+-------</span>",
+        "<span style=\"color:#202020\">+</span>",
         "<span style=\"color:#303030\">###</span>",
         "<span style=\"color:#404040\">***</span>",
     ] {
@@ -184,12 +183,12 @@ bar [2, 5, 8]
         concat!(
             "Sales\n",
             "y: Revenue\n",
-            "10 |\n",
-            " 8 |        ###\n",
-            " 6 |    ### ###\n",
-            " 4 |    ### ###\n",
-            " 2 |### ### ###\n",
-            " 0 +-----------\n",
+            "10 +\n",
+            " 8 +        ###\n",
+            " 6 +    ### ###\n",
+            " 4 +    ### ###\n",
+            " 2 +### ### ###\n",
+            " 0 +-+---+---+-\n",
             "    Jan Feb Mar\n",
             "x: Month\n",
         )
@@ -211,12 +210,12 @@ line [1, 5, 9]
     assert_eq!(
         rendered,
         concat!(
-            "10 |       ***\n",
-            " 8 |       *\n",
-            " 6 |   *****\n",
-            " 4 |   *\n",
-            " 2 | ***\n",
-            " 0 +-----------\n",
+            "10 +       ***\n",
+            " 8 +       *\n",
+            " 6 +   *****\n",
+            " 4 +   *\n",
+            " 2 + ***\n",
+            " 0 +-+---+---+-\n",
             "     A   B   C\n",
         )
     );
@@ -239,12 +238,12 @@ line [8, 2]
         rendered,
         concat!(
             "# Bar 1  * Line 1\n",
-            "10 |\n",
-            " 8 | ***###\n",
-            " 6 |   *###\n",
-            " 4 |   *###\n",
-            " 2 |###***#\n",
-            " 0 +-------\n",
+            "10 +\n",
+            " 8 + ***###\n",
+            " 6 +   *###\n",
+            " 4 +   *###\n",
+            " 2 +###***#\n",
+            " 0 +-+---+-\n",
             "     A   B\n",
         )
     );
@@ -309,9 +308,81 @@ bar [4, 8]
     assert_eq!(
         rendered,
         concat!(
-            "A |####       4\n",
-            "B |########   8\n",
-            "  +----------\n",
+            "A +####\n",
+            "B +########\n",
+            "  ++--------+\n",
+            "   0       10\n",
+        )
+    );
+}
+
+#[test]
+fn xychart_parser_horizontal_bar_shows_data_labels_when_enabled() {
+    let rendered = render_xychart(
+        r#"%%{init: {"xyChart": {"showDataLabel": true}}}%%
+xychart horizontal
+x-axis [A, B]
+y-axis 0 --> 10
+bar [4, 8]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal xychart with data labels should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "A +###4\n",
+            "B +#######8\n",
+            "  ++--------+\n",
+            "   0       10\n",
+        )
+    );
+}
+
+#[test]
+fn xychart_parser_horizontal_bar_can_place_data_labels_outside_bars() {
+    let rendered = render_xychart(
+        r#"%%{init: {"xyChart": {"showDataLabel": true, "showDataLabelOutsideBar": true}}}%%
+xychart horizontal
+x-axis [A, B]
+y-axis 0 --> 10
+bar [4, 8]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal xychart with outside data labels should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "A +####       4\n",
+            "B +########   8\n",
+            "  ++--------+\n",
+            "   0       10\n",
+        )
+    );
+}
+
+#[test]
+fn xychart_parser_horizontal_line_does_not_render_bar_data_labels() {
+    let rendered = render_xychart(
+        r#"%%{init: {"xyChart": {"showDataLabel": true}}}%%
+xychart horizontal
+x-axis [A, B]
+y-axis 0 --> 10
+line [4, 8]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal xychart line plot should render without bar data labels");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "A +   *\n",
+            "B +       *\n",
+            "  ++--------+\n",
             "   0       10\n",
         )
     );
@@ -336,11 +407,11 @@ bar [4, 8]
     assert_eq!(
         rendered,
         concat!(
-            "8 |     ####\n",
-            "6 |     ####\n",
-            "4 |#### ####\n",
-            "2 |#### ####\n",
-            "0 +---------\n",
+            "8 +     ####\n",
+            "6 +     ####\n",
+            "4 +#### ####\n",
+            "2 +#### ####\n",
+            "0 +--+----+-\n",
             "   Jan  Feb\n",
         )
     );
@@ -362,8 +433,88 @@ bar [4, 8]
 
     assert_eq!(
         rendered,
-        concat!("A |##    4\n", "B |####  8\n", "  +-----\n", "   0  10\n",)
+        concat!("A +##\n", "B +####\n", "  ++---+\n", "   0  10\n",)
     );
+}
+
+#[test]
+fn xychart_parser_vertical_bar_shows_data_labels_when_enabled() {
+    let rendered = render_xychart(
+        r#"%%{init: {"xyChart": {"showDataLabel": true}}}%%
+xychart
+x-axis [A, B]
+y-axis 0 --> 10
+bar [4, 8]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("vertical xychart with data labels should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "10 +\n",
+            " 8 +     8\n",
+            " 6 +    ###\n",
+            " 4 + 4  ###\n",
+            " 2 +### ###\n",
+            " 0 +-+---+-\n",
+            "     A   B\n",
+        )
+    );
+}
+
+#[test]
+fn xychart_parser_vertical_bar_can_place_data_labels_outside_bars() {
+    let rendered = render_xychart(
+        r#"%%{init: {"xyChart": {"showDataLabel": true, "showDataLabelOutsideBar": true}}}%%
+xychart
+x-axis [A, B]
+y-axis 0 --> 10
+bar [4, 8]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("vertical xychart with outside data labels should render");
+
+    let mut lines = rendered.lines();
+    assert_eq!(lines.next(), Some("     4   8"));
+    assert_eq!(
+        rendered,
+        concat!(
+            "     4   8\n",
+            "10 +\n",
+            " 8 +    ###\n",
+            " 6 +    ###\n",
+            " 4 +### ###\n",
+            " 2 +### ###\n",
+            " 0 +-+---+-\n",
+            "     A   B\n",
+        )
+    );
+}
+
+#[test]
+fn xychart_parser_respects_title_and_axis_visibility_config() {
+    let rendered = render_xychart(
+        r#"%%{init: {"xyChart": {"showTitle": false, "xAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}, "yAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}}}}%%
+xychart
+title "Sales"
+x-axis "Month" [A, B]
+y-axis "Revenue" 0 --> 10
+bar [4, 8]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("xychart with hidden titles and axes should render");
+
+    assert!(rendered.contains("###"));
+    for hidden in ["Sales", "Month", "Revenue", "A", "B", "|", "+", "-"] {
+        assert!(
+            !rendered.contains(hidden),
+            "hidden token {hidden:?} should not be rendered:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -405,12 +556,12 @@ bar [2, 5]
     assert_eq!(
         rendered,
         concat!(
-            "5 │    ███\n",
-            "4 │    ███\n",
-            "3 │    ███\n",
-            "2 │███ ███\n",
-            "1 │███ ███\n",
-            "0 ┼───────\n",
+            "5 ┤    ███\n",
+            "4 ┤    ███\n",
+            "3 ┤    ███\n",
+            "2 ┤███ ███\n",
+            "1 ┤███ ███\n",
+            "0 ┼─┬───┬─\n",
             "    A   B\n",
         )
     );
@@ -457,12 +608,12 @@ bar [5]
     assert_eq!(
         rendered,
         concat!(
-            "10 |\n",
-            " 8 |\n",
-            " 6 |###\n",
-            " 4 |###\n",
-            " 2 |###\n",
-            " 0 +---\n",
+            "10 +\n",
+            " 8 +\n",
+            " 6 +###\n",
+            " 4 +###\n",
+            " 2 +###\n",
+            " 0 +-+-\n",
             "     1\n",
         )
     );
