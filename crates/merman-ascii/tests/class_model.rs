@@ -802,3 +802,36 @@ fn class_local_semantic_fixture_covers_dense_relationships() {
         "dense semantic class fixture should produce a non-trivial multi-line layout:\n{rendered}"
     );
 }
+
+#[test]
+fn class_local_semantic_fixture_covers_dense_multiline_relation_summary() {
+    let input = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/local-semantic/class/dense_multiline_relations.mmd"),
+    )
+    .expect("local semantic dense multiline class fixture must be readable");
+
+    let rendered = render_class(&input, &AsciiRenderOptions::ascii())
+        .expect("dense multiline local semantic class fixture should render");
+
+    for expected in [
+        "Gateway",
+        "Service",
+        "Repo",
+        "Cache",
+        "relations:",
+        "receives / request",
+        "returns / response",
+        "persists / state",
+        "invalidates / entry",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "dense multiline semantic class fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("<br>"),
+        "dense multiline semantic class fixture should not leak Mermaid break syntax:\n{rendered}"
+    );
+}

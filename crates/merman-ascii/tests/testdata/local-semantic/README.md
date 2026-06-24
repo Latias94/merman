@@ -11,7 +11,9 @@ rather than copied upstream output.
 Current examples:
 
 - `class/dense_relations.mmd`
+- `class/dense_multiline_relations.mmd`
 - `er/dense_relations.mmd`
+- `er/dense_multiline_relations.mmd`
 - `flowchart/multi_boundary_routes.mmd`
 - `flowchart/nested_direction_boundary.mmd`
 - `flowchart/sibling_boundary_routes.mmd`

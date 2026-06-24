@@ -639,3 +639,36 @@ fn er_local_semantic_fixture_covers_dense_relationships() {
         "dense semantic ER fixture should produce a multi-line layout:\n{rendered}"
     );
 }
+
+#[test]
+fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
+    let input = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/local-semantic/er/dense_multiline_relations.mmd"),
+    )
+    .expect("local semantic dense multiline ER fixture must be readable");
+
+    let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+        .expect("dense multiline local semantic ER fixture should render");
+
+    for expected in [
+        "CUSTOMER",
+        "ORDER",
+        "INVOICE",
+        "PAYMENT",
+        "relations:",
+        "places / orders",
+        "belongs / to",
+        "reconciles / payment",
+        "captures / funds",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "dense multiline semantic ER fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("<br>"),
+        "dense multiline semantic ER fixture should not leak Mermaid break syntax:\n{rendered}"
+    );
+}

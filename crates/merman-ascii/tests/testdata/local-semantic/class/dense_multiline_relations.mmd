@@ -1,0 +1,13 @@
+classDiagram
+class Gateway
+class Service
+class Repo
+class Cache
+Gateway --> Service : receives<br>request
+Service --> Gateway : returns<br>response
+Service --> Repo : persists<br>state
+Repo --> Service : hydrates<br>state
+Service --> Cache : reads<br>fast path
+Cache --> Service : invalidates<br>entry
+Repo --> Cache : warms<br>cache
+Cache --> Repo : evicts<br>stale

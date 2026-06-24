@@ -1,0 +1,13 @@
+erDiagram
+CUSTOMER
+ORDER
+INVOICE
+PAYMENT
+CUSTOMER ||--o{ ORDER : "places<br>orders"
+ORDER ||--|| CUSTOMER : "belongs<br>to"
+CUSTOMER ||--o{ INVOICE : "billed<br>monthly"
+INVOICE ||--|| CUSTOMER : "issued<br>to"
+ORDER ||--|| INVOICE : "reconciles<br>payment"
+INVOICE ||--|| ORDER : "audits<br>order"
+ORDER ||--o{ PAYMENT : "captures<br>funds"
+PAYMENT ||--|| ORDER : "settles<br>order"
