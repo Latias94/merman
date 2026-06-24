@@ -1,3 +1,4 @@
+use futures::SinkExt;
 use futures::StreamExt;
 use merman_lsp::MermanLanguageServer;
 use serde_json::from_value;
@@ -130,6 +131,69 @@ async fn lsp_service_smoke_applies_configuration_updates() {
         second_params.diagnostics[0].severity,
         Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change() {
+    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "workspace": {
+                    "semanticTokens": {
+                        "refreshSupport": true
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::json!({
+                    "lint": {
+                        "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+                    }
+                }),
+            })
+            .unwrap(),
+        )
+        .finish();
+    let mut change_fut = Box::pin(service.ready().await.unwrap().call(change));
+    let refresh = tokio::select! {
+        result = &mut change_fut => {
+            panic!("configuration change finished before refresh request: {result:?}");
+        }
+        message = socket.next() => {
+            message.expect("expected semantic tokens refresh request")
+        }
+    };
+    assert_eq!(refresh.method(), "workspace/semanticTokens/refresh");
+
+    socket
+        .send(tower_lsp::jsonrpc::Response::from_ok(
+            refresh.id().cloned().expect("refresh request id"),
+            serde_json::Value::Null,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(change_fut.await.unwrap(), None);
 }
 
 #[tokio::test(flavor = "current_thread")]

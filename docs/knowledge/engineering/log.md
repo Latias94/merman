@@ -6,6 +6,11 @@ status: active
 # Log
 
 ## 2026-06-25
+- Wired `workspace/semanticTokens/refresh` into `merman-lsp` configuration changes when the client
+  advertises refresh support, so semantic-token consumers now get an explicit requery signal after
+  analyzer settings change.
+- Added regression coverage for the semantic-token refresh handshake, including the client
+  capability probe and the request/response roundtrip on configuration change.
 - Added LSP smoke regressions proving the shared rule config contract also handles source-byte-limit severity
   overrides on both initialize and didChangeConfiguration, so the server surface now matches the
   CLI/library behavior for `merman.resource.source_bytes_exceeded`.

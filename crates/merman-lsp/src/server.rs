@@ -19,6 +19,7 @@ use merman_analysis::{
     options_json::analysis_options_from_json_value,
 };
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
@@ -40,6 +41,7 @@ pub struct MermanLanguageServer {
     client: Client,
     store: Arc<Mutex<DocumentStore>>,
     analyzer: Arc<Mutex<Analyzer>>,
+    semantic_tokens_refresh_supported: AtomicBool,
 }
 
 impl MermanLanguageServer {
@@ -48,6 +50,7 @@ impl MermanLanguageServer {
             client,
             store: Arc::new(Mutex::new(DocumentStore::new())),
             analyzer: Arc::new(Mutex::new(Analyzer::new())),
+            semantic_tokens_refresh_supported: AtomicBool::new(false),
         }
     }
 
@@ -104,6 +107,16 @@ impl MermanLanguageServer {
         *analyzer = Analyzer::with_options(options);
     }
 
+    fn client_supports_semantic_tokens_refresh(params: &InitializeParams) -> bool {
+        params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.semantic_tokens.as_ref())
+            .and_then(|semantic_tokens| semantic_tokens.refresh_support)
+            .unwrap_or(false)
+    }
+
     async fn apply_initialization_options(
         &self,
         initialization_options: Option<serde_json::Value>,
@@ -138,6 +151,10 @@ impl MermanLanguageServer {
 #[tower_lsp::async_trait]
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        self.semantic_tokens_refresh_supported.store(
+            Self::client_supports_semantic_tokens_refresh(&params),
+            Ordering::Relaxed,
+        );
         self.apply_initialization_options(params.initialization_options)
             .await?;
         Ok(InitializeResult {
@@ -217,6 +234,12 @@ impl LanguageServer for MermanLanguageServer {
 
         self.replace_analyzer(options).await;
         self.republish_all().await;
+        if self
+            .semantic_tokens_refresh_supported
+            .load(Ordering::Relaxed)
+        {
+            let _ = self.client.semantic_tokens_refresh().await;
+        }
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -348,10 +371,11 @@ mod tests {
     use tower_lsp::lsp_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
         CodeActionProviderCapability, DocumentSymbolResponse, GotoDefinitionResponse,
-        HoverContents, HoverParams, Position, Range, RenameParams, SemanticTokensFullOptions,
-        SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
-        SemanticTokensServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
-        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+        HoverContents, HoverParams, InitializeParams, Position, Range, RenameParams,
+        SemanticTokensFullOptions, SemanticTokensParams, SemanticTokensRangeParams,
+        SemanticTokensRangeResult, SemanticTokensServerCapabilities, TextDocumentIdentifier,
+        TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+        WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -405,6 +429,38 @@ mod tests {
                     .is_some_and(|kinds| kinds.contains(&CodeActionKind::QUICKFIX))
                     && options.resolve_provider == Some(false)
         ));
+    }
+
+    #[test]
+    fn semantic_tokens_refresh_support_comes_from_client_capabilities() {
+        let mut params = InitializeParams::default();
+        assert!(!MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
+
+        params.capabilities.workspace = Some(Default::default());
+        assert!(!MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
+
+        params
+            .capabilities
+            .workspace
+            .as_mut()
+            .unwrap()
+            .semantic_tokens = Some(
+            tower_lsp::lsp_types::SemanticTokensWorkspaceClientCapabilities {
+                refresh_support: None,
+            },
+        );
+        assert!(!MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
+
+        params
+            .capabilities
+            .workspace
+            .as_mut()
+            .unwrap()
+            .semantic_tokens
+            .as_mut()
+            .unwrap()
+            .refresh_support = Some(true);
+        assert!(MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
     }
 
     #[test]

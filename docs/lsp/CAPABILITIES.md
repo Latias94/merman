@@ -30,7 +30,8 @@ facts, it is not considered mature.
   not projected into completion, outline, or rename surfaces.
 - Semantic tokens: the full-document and range providers are wired from parser-backed
   entity/outline/payload semantic items. Token types derive from `EditorSymbolKind`; token
-  modifiers preserve role categories. Delta providers remain deferred.
+  modifiers preserve role categories. Delta providers remain deferred, and configuration changes
+  ask the client to refresh semantic tokens when refresh support is advertised.
 - Text-scan fallback: may record directive prefixes for unmigrated paths, but must not project
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`
   into node IDs or outline entries. Parser-backed payload facts must likewise remain outside

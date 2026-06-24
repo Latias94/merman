@@ -51,8 +51,10 @@ navigation, code-action, and semantic-token foundations.
   safe fixes.
 - The first fix-backed lint rule is `merman.config.prefer_init_directive`, which replaces the
   Mermaid directive alias `initialize` with the canonical `init` keyword.
-- Full-document and range semantic tokens are role-aware and parser-backed; delta support should
-  wait until snapshot invalidation and client capability negotiation are explicit.
+- Full-document and range semantic tokens are role-aware and parser-backed; configuration changes
+  trigger `workspace/semanticTokens/refresh` when the client advertises refresh support, while
+  delta support should wait until snapshot invalidation and client capability negotiation are
+  explicit.
 - Capability maturity is tracked in `CAPABILITIES.md`.
 
 ## Notes
