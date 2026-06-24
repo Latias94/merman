@@ -123,6 +123,8 @@ struct RelationLayout<'a> {
     endpoint_marker: Option<RelationEndpointMarker>,
     line: RelationLine,
     label: Option<RelationGraphLabel>,
+    top_endpoint_label: Option<RelationGraphLabel>,
+    bottom_endpoint_label: Option<RelationGraphLabel>,
 }
 
 pub(crate) fn render_class_diagram(
@@ -221,6 +223,9 @@ fn render_class_component(
         return Ok(render_vertical_relation(
             top, bottom, layout, options, charset,
         ));
+    }
+    if layouts.iter().any(RelationLayout::has_endpoint_label) {
+        return Ok(render_dense_relation_fallback(boxes, layouts, options));
     }
 
     render_layered_relations(boxes, layouts, options, charset)
@@ -404,15 +409,6 @@ fn relation_layout<'a>(
         });
     };
 
-    if !relation_end_label_is_absent(&relation.relation_title_1)
-        || !relation_end_label_is_absent(&relation.relation_title_2)
-    {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "relationship endpoint labels",
-        });
-    }
-
     let left_marker = marker_for_relation_type(model, relation.relation.type1)?;
     let right_marker = marker_for_relation_type(model, relation.relation.type2)?;
     let none = model.constants.relation_type.none;
@@ -436,6 +432,8 @@ fn relation_layout<'a>(
     };
 
     let label = RelationGraphLabel::new(&relation.title);
+    let left_endpoint_label = relation_endpoint_label(&relation.relation_title_1);
+    let right_endpoint_label = relation_endpoint_label(&relation.relation_title_2);
 
     if endpoint_marker.is_some_and(|marker| marker.marker == RelationMarker::Extension) {
         let marker = endpoint_marker.expect("extension relationship should have a marker side");
@@ -449,6 +447,8 @@ fn relation_layout<'a>(
                 }),
                 line,
                 label,
+                top_endpoint_label: left_endpoint_label,
+                bottom_endpoint_label: right_endpoint_label,
             },
             MarkerSide::Bottom => RelationLayout {
                 top_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
@@ -459,6 +459,8 @@ fn relation_layout<'a>(
                 }),
                 line,
                 label,
+                top_endpoint_label: right_endpoint_label,
+                bottom_endpoint_label: left_endpoint_label,
             },
         });
     }
@@ -469,6 +471,8 @@ fn relation_layout<'a>(
         endpoint_marker,
         line,
         label,
+        top_endpoint_label: left_endpoint_label,
+        bottom_endpoint_label: right_endpoint_label,
     })
 }
 
@@ -509,9 +513,13 @@ fn marker_for_relation_type(
     })
 }
 
-fn relation_end_label_is_absent(label: &str) -> bool {
+fn relation_endpoint_label(label: &str) -> Option<RelationGraphLabel> {
     let trimmed = label.trim();
-    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none")
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
+        return None;
+    }
+
+    RelationGraphLabel::new(trimmed)
 }
 
 fn find_box<'a>(boxes: &'a [RenderedClassBox], id: &str) -> Result<&'a RenderedClassBox> {
@@ -528,16 +536,42 @@ fn render_vertical_relation(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> String {
-    let label_half_width = layout
-        .label
-        .as_ref()
-        .map(RelationGraphLabel::half_width)
-        .unwrap_or(0);
-    let plan = RelationStackPlan::from_centered_rows(top, bottom, &[label_half_width], |center| {
+    let label_half_widths = [
+        layout
+            .label
+            .as_ref()
+            .map(RelationGraphLabel::half_width)
+            .unwrap_or(0),
+        layout
+            .top_endpoint_label
+            .as_ref()
+            .map(RelationGraphLabel::half_width)
+            .unwrap_or(0),
+        layout
+            .bottom_endpoint_label
+            .as_ref()
+            .map(RelationGraphLabel::half_width)
+            .unwrap_or(0),
+    ];
+    let plan = RelationStackPlan::from_centered_rows(top, bottom, &label_half_widths, |center| {
         class_relation_rows(layout, center, charset)
     });
 
     plan.render_with_options(options)
+}
+
+fn push_centered_endpoint_label(
+    relation_lines: &mut Vec<RelationGraphLine>,
+    label: Option<&RelationGraphLabel>,
+    center: usize,
+) {
+    if let Some(label) = label {
+        relation_lines.extend(relation_graph::centered_label_lines_with_role(
+            label,
+            center,
+            AsciiColorRole::EdgeLabel,
+        ));
+    }
 }
 
 fn class_relation_rows(
@@ -546,6 +580,11 @@ fn class_relation_rows(
     charset: ClassCharset,
 ) -> Vec<RelationGraphLine> {
     let mut relation_lines = Vec::new();
+    push_centered_endpoint_label(
+        &mut relation_lines,
+        layout.top_endpoint_label.as_ref(),
+        center,
+    );
     match layout.endpoint_marker {
         None => {
             relation_lines.push(relation_graph::marker_line_with_role(
@@ -607,6 +646,11 @@ fn class_relation_rows(
             }
         },
     }
+    push_centered_endpoint_label(
+        &mut relation_lines,
+        layout.bottom_endpoint_label.as_ref(),
+        center,
+    );
     relation_lines
 }
 
@@ -629,34 +673,71 @@ fn render_parallel_vertical_relations(
     let first = &layouts[0];
     let top = find_box(boxes, first.top_id)?;
     let bottom = find_box(boxes, first.bottom_id)?;
+    let reserve_top_endpoint_label = layouts
+        .iter()
+        .any(|layout| layout.top_endpoint_label.is_some());
+    let reserve_bottom_endpoint_label = layouts
+        .iter()
+        .any(|layout| layout.bottom_endpoint_label.is_some());
     let lanes = layouts
         .iter()
-        .map(|layout| parallel_class_lane_rows(layout, charset))
+        .map(|layout| {
+            parallel_class_lane_rows(
+                layout,
+                charset,
+                reserve_top_endpoint_label,
+                reserve_bottom_endpoint_label,
+            )
+        })
         .collect::<Vec<_>>();
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
     Ok(plan.render_with_options(options))
 }
 
-fn parallel_class_lane_rows(
-    layout: &RelationLayout<'_>,
-    charset: ClassCharset,
+fn endpoint_label_lines_or_empty(
+    label: Option<&RelationGraphLabel>,
+    reserve_empty: bool,
 ) -> Vec<RelationGraphLine> {
-    let line = RelationGraphLine::with_role(
-        line_char(layout.line, charset).to_string(),
-        AsciiColorRole::EdgeLine,
-    );
-    let label_lines = layout
-        .label
-        .as_ref()
+    match label {
+        Some(label) => relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel),
+        None if reserve_empty => {
+            vec![RelationGraphLine::with_role(
+                String::new(),
+                AsciiColorRole::EdgeLabel,
+            )]
+        }
+        None => Vec::new(),
+    }
+}
+
+fn central_label_lines_or_empty(label: Option<&RelationGraphLabel>) -> Vec<RelationGraphLine> {
+    label
         .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
         .unwrap_or_else(|| {
             vec![RelationGraphLine::with_role(
                 String::new(),
                 AsciiColorRole::EdgeLabel,
             )]
-        });
-    match layout.endpoint_marker {
+        })
+}
+
+fn parallel_class_lane_rows(
+    layout: &RelationLayout<'_>,
+    charset: ClassCharset,
+    reserve_top_endpoint_label: bool,
+    reserve_bottom_endpoint_label: bool,
+) -> Vec<RelationGraphLine> {
+    let line = RelationGraphLine::with_role(
+        line_char(layout.line, charset).to_string(),
+        AsciiColorRole::EdgeLine,
+    );
+    let mut rows = endpoint_label_lines_or_empty(
+        layout.top_endpoint_label.as_ref(),
+        reserve_top_endpoint_label,
+    );
+    let label_lines = central_label_lines_or_empty(layout.label.as_ref());
+    let relation_rows = match layout.endpoint_marker {
         None => {
             let mut rows = vec![line.clone()];
             rows.extend(label_lines);
@@ -683,7 +764,13 @@ fn parallel_class_lane_rows(
                 }
             }
         }
-    }
+    };
+    rows.extend(relation_rows);
+    rows.extend(endpoint_label_lines_or_empty(
+        layout.bottom_endpoint_label.as_ref(),
+        reserve_bottom_endpoint_label,
+    ));
+    rows
 }
 
 fn render_layered_relations(
@@ -739,10 +826,41 @@ fn render_dense_relation_fallback(
 fn class_relation_summary_row(layout: &RelationLayout<'_>) -> RelationGraphSummaryRow {
     RelationGraphSummaryRow::new(
         layout.top_id,
-        class_relation_summary_symbol(layout),
+        class_relation_summary_connector(layout),
         layout.bottom_id,
     )
     .with_label(layout.label.as_ref())
+}
+
+impl RelationLayout<'_> {
+    fn has_endpoint_label(&self) -> bool {
+        self.top_endpoint_label.is_some() || self.bottom_endpoint_label.is_some()
+    }
+}
+
+fn class_relation_summary_connector(layout: &RelationLayout<'_>) -> String {
+    let symbol = class_relation_summary_symbol(layout);
+    let top_label = layout
+        .top_endpoint_label
+        .as_ref()
+        .map(endpoint_label_summary_text);
+    let bottom_label = layout
+        .bottom_endpoint_label
+        .as_ref()
+        .map(endpoint_label_summary_text);
+
+    match (top_label, bottom_label) {
+        (Some(top_label), Some(bottom_label)) => {
+            format!("\"{top_label}\" {symbol} \"{bottom_label}\"")
+        }
+        (Some(top_label), None) => format!("\"{top_label}\" {symbol}"),
+        (None, Some(bottom_label)) => format!("{symbol} \"{bottom_label}\""),
+        (None, None) => symbol.to_string(),
+    }
+}
+
+fn endpoint_label_summary_text(label: &RelationGraphLabel) -> String {
+    label.lines().join("/")
 }
 
 fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {

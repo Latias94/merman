@@ -21,7 +21,7 @@ Use `mermaid-ascii` as a historical baseline for graph/sequence output only. Use
 | Dense layouts that should collapse to relation summary | `beautiful-mermaid` ASCII tests | Supported | Structured summary fixtures |
 | Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |
 | Namespace-qualified class names | Local semantic tests | Supported | Local semantic fixtures |
-| Endpoint labels / cardinality strings attached to a relation | Not used as an ASCII oracle | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
+| Endpoint labels / cardinality strings attached to a relation | Mermaid class cardinality tests and `beautiful-mermaid` parser/renderer | Supported | Exact vertical fixtures and summary regressions |
 | Lollipop relations | Not represented in ASCII renderer | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
 | Multiple markers on one relation | Not represented in ASCII renderer | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
 
@@ -49,5 +49,5 @@ Use `mermaid-ascii` as a historical baseline for graph/sequence output only. Use
 
 ## Current Gaps Worth Watching
 
-- Any future support for endpoint cardinality rendering should be treated as a new capability,
-  not inferred from the current ASCII contract.
+- None for the baseline Class / ER comparison tracked in this document. New SVG-only affordances
+  should still be treated as new capabilities, not inferred from the current ASCII contract.

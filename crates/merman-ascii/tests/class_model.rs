@@ -775,16 +775,75 @@ fn class_parser_dotted_association_relation_renders_plain_dotted_line_without_ma
 }
 
 #[test]
-fn class_render_model_rejects_relationship_endpoint_labels() {
-    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
-    let relation = model
-        .relations
-        .first_mut()
-        .expect("fixture should contain one relation");
-    relation.relation_title_1 = "left".to_string();
-    relation.relation_title_2 = "right".to_string();
+fn class_parser_endpoint_labels_render_near_relation_endpoints() {
+    let rendered = render_class(
+        "classDiagram\nclass Customer\nclass Order\nCustomer \"1\" --> \"*\" Order : places",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
 
-    assert_unsupported_class_model(&model, "relationship endpoint labels");
+    assert_eq!(
+        rendered,
+        concat!(
+            "+----------+\n",
+            "| Customer |\n",
+            "+----------+\n",
+            "      1\n",
+            "      |\n",
+            "   places\n",
+            "      v\n",
+            "      *\n",
+            "  +-------+\n",
+            "  | Order |\n",
+            "  +-------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_reverse_extension_endpoint_labels_follow_normalized_endpoints() {
+    let rendered = render_class(
+        "classDiagram\nclass Child\nclass Parent\nChild \"*\" --|> \"1\" Parent : extends",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+--------+\n",
+            "| Parent |\n",
+            "+--------+\n",
+            "     1\n",
+            "     ^\n",
+            "  extends\n",
+            "     |\n",
+            "     *\n",
+            " +-------+\n",
+            " | Child |\n",
+            " +-------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_endpoint_labels_are_preserved_in_relation_summary() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nA \"1\" --> \"*\" B : ab\nB \"1\" --> \"*\" C : bc",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert!(
+        rendered.contains("relations:"),
+        "endpoint-label fixture should fall back to relation summary:\n{rendered}"
+    );
+    for expected in ["A \"1\" --> \"*\" B : ab", "B \"1\" --> \"*\" C : bc"] {
+        assert!(
+            rendered.contains(expected),
+            "endpoint labels should stay visible as {expected:?}:\n{rendered}"
+        );
+    }
 }
 
 #[test]
