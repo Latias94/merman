@@ -695,7 +695,6 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
     let feature = match error {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint classes",
         LayeredRelationError::UnrelatedBoxes => "class relationship layouts with unrelated classes",
-        LayeredRelationError::Cyclic => "cyclic class relationship layouts",
         LayeredRelationError::Crossing => "crossing class relationship layouts",
     };
     AsciiError::UnsupportedFeature {
@@ -736,7 +735,10 @@ fn draw_layered_relation(
     let mut overlays = Vec::new();
 
     if let Some(label) = layout.label {
-        let label_y = geometry.from_y().saturating_add(2).min(geometry.route_y());
+        let label_y = geometry
+            .source_marker_y()
+            .saturating_add(1)
+            .min(geometry.route_y());
         overlays.push(RelationOverlay::text(
             (geometry.from_x() + geometry.to_x()) / 2,
             label_y,
@@ -748,13 +750,13 @@ fn draw_layered_relation(
     match layout.marker_side {
         MarkerSide::Top => overlays.push(RelationOverlay::glyph(
             geometry.from_x(),
-            geometry.from_y() + 1,
+            geometry.source_marker_y(),
             marker_char(layout.marker, MarkerSide::Top, charset),
             AsciiColorRole::EdgeArrow,
         )),
         MarkerSide::Bottom => overlays.push(RelationOverlay::glyph(
             geometry.to_x(),
-            geometry.to_y().saturating_sub(1),
+            geometry.target_marker_y(),
             marker_char(layout.marker, MarkerSide::Bottom, charset),
             AsciiColorRole::EdgeArrow,
         )),

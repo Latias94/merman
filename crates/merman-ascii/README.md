@@ -35,14 +35,15 @@ labels, single relationship layouts, layered chain/star multi-relationship layou
 adjacent-layer crossing layouts resolved by layer reordering for extension, dependency,
 aggregation, and composition through `render_class` or `render_model`; same-endpoint and simple
 mixed-parallel relationships render as distinct lanes, and simple spanning-level relationships route
-through side lanes. Cyclic and unresolved dense graph shapes remain explicit diagnostics. Unrelated
-standalone classes render as separate components beside the relationship layout. The ER slice can
+through side lanes. Cyclic class and ER relationship shapes now render through the layered planner
+instead of failing early, while truly unrelated boxes remain separate components beside the
+relationship layout. The ER slice can
 render entity boxes, attributes, relationship labels, identifying and non-identifying lines, common
 cardinality markers, layered chain/star
 multi-relationship layouts, and adjacent-layer crossing layouts resolved by layer reordering through
 `render_er` or `render_model`; same-endpoint and simple mixed-parallel relationships render as
 distinct lanes, and simple spanning-level relationships route through side lanes. Cyclic and
-unresolved dense graph shapes remain explicit diagnostics. Unrelated standalone entities render as
+unresolved dense graph shapes now follow the same layered fallback, while unrelated standalone entities render as
 separate components beside the relationship layout. The stateDiagram slice can render simple states,
 descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, root
 directions, and composite-state boxes through `render_state` or `render_model`; inline and block
@@ -68,7 +69,9 @@ Broader flowchart and sequence compatibility is tracked under
 See `V1_MERMAID_ASCII_COVERAGE.md` for the first release's copied `mermaid-ascii` coverage
 contract. See `FLOWCHART_SUPPORT.md`, `SEQUENCE_SUPPORT.md`, and `STATE_SUPPORT.md` for the current
 support matrices. See `ASCII_GAP_REGISTRY.md` for follow-on ASCII gaps mapped to owning modules and
-validation gates.
+validation gates. See `ASCII_REFERENCE_COMPARISON.md` for a family-by-family comparison against
+`repo-ref/mermaid-ascii` and `repo-ref/beautiful-mermaid`, plus the fixture admissibility rule for
+copied, normalized, and self-authored cases.
 
 ## Shipped Diagram Matrix
 

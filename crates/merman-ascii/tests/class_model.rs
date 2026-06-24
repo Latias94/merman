@@ -2,6 +2,7 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
 };
 use merman_core::{Engine, ParseOptions};
+use std::path::Path;
 
 fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -383,6 +384,20 @@ fn class_parser_spanning_level_relationship_layout_routes_around_intermediate_bo
 }
 
 #[test]
+fn class_parser_cyclic_relationship_layout_renders_without_failing() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nA --> B\nB --> C\nC --> A",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("cyclic class relationships should render");
+
+    assert!(rendered.contains("A"));
+    assert!(rendered.contains("B"));
+    assert!(rendered.contains("C"));
+    assert!(rendered.contains("v") || rendered.contains("^"));
+}
+
+#[test]
 fn class_parser_namespace_qualified_relationships_do_not_render_duplicate_classes() {
     let rendered = render_class(
         r#"classDiagram
@@ -604,5 +619,30 @@ fn class_parser_dependency_relation_renders_dotted_arrow_marker() {
             " | Repo |\n",
             " +------+\n",
         )
+    );
+}
+
+#[test]
+fn class_local_semantic_fixture_covers_dense_relationships() {
+    let input = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/local-semantic/class/dense_relations.mmd"),
+    )
+    .expect("local semantic class fixture must be readable");
+
+    let rendered = render_class(&input, &AsciiRenderOptions::ascii())
+        .expect("dense local semantic class fixture should render");
+
+    for expected in [
+        "Service", "Repo", "Cache", "Logger", "fetch", "read", "trace",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "dense semantic class fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.lines().count() >= 6,
+        "dense semantic class fixture should produce a non-trivial multi-line layout:\n{rendered}"
     );
 }

@@ -2,7 +2,8 @@ use crate::canvas::Canvas;
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::terminal::{
     CanvasColor, CanvasStyle, TerminalCell, char_display_width,
-    display_width as terminal_display_width, push_primary_cell, write_primary_cell_style,
+    display_width as terminal_display_width, push_primary_cell, write_primary_cell_from_cell,
+    write_primary_cell_style,
 };
 
 pub(crate) type StyledCell = TerminalCell;
@@ -173,9 +174,7 @@ impl StyledLine {
 
     pub(crate) fn write_line(&mut self, start: usize, line: &StyledLine) {
         for (offset, cell) in line.cells.iter().copied().enumerate() {
-            if let Some(target) = self.cells.get_mut(start + offset) {
-                *target = cell;
-            }
+            write_primary_cell_from_cell(&mut self.cells, start + offset, cell);
         }
     }
 
@@ -416,5 +415,56 @@ mod tests {
                 .with_color_theme(theme),
         );
         assert_eq!(output, "\u{1b}[38;2;1;2;3mA\u{1b}[0m\n");
+    }
+
+    #[test]
+    fn styled_line_write_line_preserves_wide_cell_invariants() {
+        let mut target = StyledLine::plain_text("abcd");
+        let source = StyledLine::plain_text("中");
+
+        target.write_line(1, &source);
+
+        assert_eq!(target.len(), 4);
+        assert_eq!(target.text(), "a中d");
+        assert_eq!(target.get(1), Some('中'));
+        assert_eq!(target.get(2), None);
+        assert_eq!(target.get(3), Some('d'));
+    }
+
+    #[test]
+    fn styled_line_write_line_ignores_source_continuation_cells() {
+        let mut target = StyledLine::plain_text("abcd");
+        let source = StyledLine::plain_text("中Z");
+
+        target.write_line(1, &source);
+
+        assert_eq!(target.text(), "a中Z");
+        assert_eq!(target.get(1), Some('中'));
+        assert_eq!(target.get(2), None);
+        assert_eq!(target.get(3), Some('Z'));
+    }
+
+    #[test]
+    fn styled_line_write_line_preserves_wide_cell_style() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let mut target = StyledLine::plain_text("abcd");
+        let mut source = StyledLine::new();
+        source.push_role_text("中", AsciiColorRole::Text);
+        source.set_background_color(0, AsciiRgb::new(4, 5, 6));
+
+        target.write_line(1, &source);
+        let mut canvas = Canvas::new(4, 1);
+        target.write_to(&mut canvas, 0);
+
+        let output = canvas.finish_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::TrueColor)
+                .with_color_theme(theme),
+        );
+        assert_eq!(
+            output,
+            "a\u{1b}[38;2;1;2;3m\u{1b}[48;2;4;5;6m中\u{1b}[0md\n"
+        );
     }
 }

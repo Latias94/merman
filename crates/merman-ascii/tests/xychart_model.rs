@@ -2,6 +2,7 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
 };
 use merman_core::{Engine, ParseOptions};
+use std::path::Path;
 
 fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -351,4 +352,27 @@ fn xychart_parser_header_only_renders_empty_text() {
         .expect("empty xychart should render");
 
     assert_eq!(rendered, "");
+}
+
+#[test]
+fn xychart_local_semantic_fixture_covers_small_mixed_plot() {
+    let input = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/local-semantic/xychart/mixed_small.mmd"),
+    )
+    .expect("local semantic xychart fixture must be readable");
+
+    let rendered = render_xychart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic xychart fixture should render");
+
+    for expected in ["Ops", "A", "B", "C"] {
+        assert!(
+            rendered.contains(expected),
+            "local semantic xychart fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.lines().count() >= 5,
+        "local semantic xychart fixture should produce a multi-line layout:\n{rendered}"
+    );
 }

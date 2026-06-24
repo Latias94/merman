@@ -1,5 +1,6 @@
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
+use std::path::Path;
 
 fn render_state(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -347,5 +348,28 @@ fn state_dividers_render_as_stacked_sections() {
     assert!(
         !rendered.contains("divider-id") && !rendered.contains("id-"),
         "divider implementation ids should not leak into ASCII output:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_local_semantic_fixture_covers_composite_boundaries() {
+    let input = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/local-semantic/state/composite_boundary.mmd"),
+    )
+    .expect("local semantic state fixture must be readable");
+
+    let rendered = render_state(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic state fixture should render");
+
+    for expected in ["Outer", "Ready", "Busy", "Idle"] {
+        assert!(
+            rendered.contains(expected),
+            "local semantic state fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.lines().count() >= 5,
+        "local semantic state fixture should produce a multi-line layout:\n{rendered}"
     );
 }

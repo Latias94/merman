@@ -481,7 +481,6 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     let feature = match error {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint entities",
         LayeredRelationError::UnrelatedBoxes => "ER relationship layouts with unrelated entities",
-        LayeredRelationError::Cyclic => "cyclic ER relationship layouts",
         LayeredRelationError::Crossing => "crossing ER relationship layouts",
     };
     AsciiError::UnsupportedFeature {
@@ -526,12 +525,15 @@ fn draw_layered_relationship(
     let mut overlays = Vec::new();
     overlays.push(RelationOverlay::text(
         geometry.from_x(),
-        geometry.from_y() + 1,
+        geometry.source_marker_y(),
         top_cardinality.to_string(),
         AsciiColorRole::EdgeArrow,
     ));
     if !label.is_empty() {
-        let label_y = geometry.from_y().saturating_add(2).min(geometry.route_y());
+        let label_y = geometry
+            .source_marker_y()
+            .saturating_add(1)
+            .min(geometry.route_y());
         overlays.push(RelationOverlay::text(
             (geometry.from_x() + geometry.to_x()) / 2,
             label_y,
@@ -541,7 +543,7 @@ fn draw_layered_relationship(
     }
     overlays.push(RelationOverlay::text(
         geometry.to_x(),
-        geometry.to_y().saturating_sub(1),
+        geometry.target_marker_y(),
         bottom_cardinality.to_string(),
         AsciiColorRole::EdgeArrow,
     ));

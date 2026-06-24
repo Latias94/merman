@@ -15,6 +15,11 @@ named in `GRAPH_FIXTURE_GAPS.md`. Sequence fixture parity is tracked by
 `tests/sequence_model.rs`; copied upstream sequence fixture status is named in
 `SEQUENCE_FIXTURE_GAPS.md`.
 
+This directory is the copied-upstream oracle only. When a diagram is too dense, too family-specific,
+or too semantically different for the upstream output to be a meaningful baseline, the tests should
+use a local semantic fixture near the test file instead of stretching this inventory into a second
+standard.
+
 Expected inventory:
 
 | Directory | Fixture count | Purpose |

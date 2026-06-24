@@ -110,6 +110,10 @@ impl TerminalCell {
         (!self.continuation).then_some(self.ch)
     }
 
+    pub(crate) fn output_char_with_style(self) -> Option<(char, CanvasStyle)> {
+        (!self.continuation).then_some((self.ch, self.style))
+    }
+
     #[cfg(test)]
     pub(crate) fn color(self) -> Option<CanvasColor> {
         (!self.continuation)
@@ -190,6 +194,17 @@ pub(crate) fn write_primary_cell_style(
     for offset in 1..width {
         cells[index + offset] = TerminalCell::continuation();
     }
+}
+
+pub(crate) fn write_primary_cell_from_cell(
+    cells: &mut [TerminalCell],
+    index: usize,
+    cell: TerminalCell,
+) {
+    let Some((ch, style)) = cell.output_char_with_style() else {
+        return;
+    };
+    write_primary_cell_style(cells, index, ch, style);
 }
 
 fn clear_following_continuation(cells: &mut [TerminalCell], index: usize) {

@@ -218,11 +218,11 @@ impl RelationOverlay {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LayeredRelationRouteGeometry {
     from_x: usize,
-    from_y: usize,
     to_x: usize,
-    to_y: usize,
     source_path_start_y: usize,
+    source_marker_y: usize,
     route_y: usize,
+    target_marker_y: usize,
     target_path_end_y: usize,
 }
 
@@ -231,20 +231,20 @@ impl LayeredRelationRouteGeometry {
         self.from_x
     }
 
-    pub(crate) fn from_y(&self) -> usize {
-        self.from_y
-    }
-
     pub(crate) fn to_x(&self) -> usize {
         self.to_x
     }
 
-    pub(crate) fn to_y(&self) -> usize {
-        self.to_y
-    }
-
     pub(crate) fn route_y(&self) -> usize {
         self.route_y
+    }
+
+    pub(crate) fn source_marker_y(&self) -> usize {
+        self.source_marker_y
+    }
+
+    pub(crate) fn target_marker_y(&self) -> usize {
+        self.target_marker_y
     }
 }
 
@@ -275,17 +275,14 @@ impl LayeredRelationRoutePlan {
     }
 
     pub(crate) fn draw_at(&self, canvas: &mut Canvas) {
-        if self.geometry.source_path_start_y <= self.geometry.route_y {
-            for y in self.geometry.source_path_start_y..=self.geometry.route_y {
-                put_relation_char(
-                    canvas,
-                    self.geometry.from_x,
-                    y,
-                    self.vertical_char,
-                    self.relation_chars,
-                );
-            }
-        }
+        draw_relation_span_inclusive(
+            canvas,
+            self.geometry.from_x,
+            self.geometry.source_path_start_y,
+            self.geometry.route_y,
+            self.vertical_char,
+            self.relation_chars,
+        );
         if self.geometry.from_x != self.geometry.to_x {
             let left = self.geometry.from_x.min(self.geometry.to_x);
             let right = self.geometry.from_x.max(self.geometry.to_x);
@@ -299,17 +296,14 @@ impl LayeredRelationRoutePlan {
                 );
             }
         }
-        if self.geometry.route_y < self.geometry.target_path_end_y {
-            for y in self.geometry.route_y..self.geometry.target_path_end_y {
-                put_relation_char(
-                    canvas,
-                    self.geometry.to_x,
-                    y,
-                    self.vertical_char,
-                    self.relation_chars,
-                );
-            }
-        }
+        draw_relation_span_exclusive(
+            canvas,
+            self.geometry.to_x,
+            self.geometry.route_y,
+            self.geometry.target_path_end_y,
+            self.vertical_char,
+            self.relation_chars,
+        );
 
         for overlay in &self.overlays {
             overlay.draw_at(canvas);
@@ -345,7 +339,6 @@ impl<'a> LayeredRelationEdge<'a> {
 pub(crate) enum LayeredRelationError {
     MissingEndpoint,
     UnrelatedBoxes,
-    Cyclic,
     Crossing,
 }
 
@@ -687,9 +680,11 @@ pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
     bottom: &PlacedRelationGraphBox<'_>,
     lane_offset: isize,
 ) -> isize {
+    let lower_bound = top.y().min(bottom.y());
+    let upper_bound = top.bottom().max(bottom.bottom());
     let intermediate_boxes = placed_boxes
         .iter()
-        .filter(|placed_box| placed_box.y() > top.y() && placed_box.y() < bottom.y())
+        .filter(|placed_box| placed_box.y() > lower_bound && placed_box.bottom() < upper_bound)
         .collect::<Vec<_>>();
     if intermediate_boxes.is_empty() {
         return lane_offset;
@@ -737,21 +732,46 @@ pub(crate) fn plan_layered_relation_route(
     let lane_offset =
         spanning_lane_offset_around_intermediate_boxes(placed_boxes, top, bottom, lane_offset);
     let from_x = offset_center(top.center_x(), lane_offset);
-    let from_y = top.bottom();
     let to_x = offset_center(bottom.center_x(), lane_offset);
-    let to_y = bottom.y();
-    if to_y <= from_y.saturating_add(min_vertical_gap) {
-        return None;
+    let source_top = top.y();
+    let source_bottom = top.bottom();
+    let target_top = bottom.y();
+    let target_bottom = bottom.bottom();
+
+    if target_top > source_bottom.saturating_add(min_vertical_gap) {
+        return Some(LayeredRelationRouteGeometry {
+            from_x,
+            to_x,
+            source_path_start_y: source_bottom.saturating_add(source_path_start_offset),
+            source_marker_y: source_bottom.saturating_add(1),
+            route_y: target_top.saturating_sub(route_y_offset_from_target),
+            target_marker_y: target_top.saturating_sub(1),
+            target_path_end_y: target_top.saturating_sub(target_path_end_offset_from_target),
+        });
+    }
+
+    if source_top > target_bottom.saturating_add(min_vertical_gap) {
+        return Some(LayeredRelationRouteGeometry {
+            from_x,
+            to_x,
+            source_path_start_y: source_top.saturating_sub(source_path_start_offset),
+            source_marker_y: source_top.saturating_sub(1),
+            route_y: target_bottom.saturating_add(route_y_offset_from_target),
+            target_marker_y: target_bottom.saturating_add(1),
+            target_path_end_y: target_bottom.saturating_add(target_path_end_offset_from_target),
+        });
     }
 
     Some(LayeredRelationRouteGeometry {
         from_x,
-        from_y,
         to_x,
-        to_y,
-        source_path_start_y: from_y.saturating_add(source_path_start_offset),
-        route_y: to_y.saturating_sub(route_y_offset_from_target),
-        target_path_end_y: to_y.saturating_sub(target_path_end_offset_from_target),
+        source_path_start_y: source_bottom.saturating_add(source_path_start_offset),
+        source_marker_y: source_bottom.saturating_add(1),
+        route_y: source_bottom
+            .max(target_bottom)
+            .saturating_add(route_y_offset_from_target),
+        target_marker_y: target_bottom.saturating_add(1),
+        target_path_end_y: target_bottom.saturating_add(target_path_end_offset_from_target),
     })
 }
 
@@ -764,6 +784,41 @@ fn route_column_crosses_any_box(
     boxes
         .iter()
         .any(|placed_box| column >= placed_box.x() && column <= placed_box.right())
+}
+
+fn draw_relation_span_inclusive(
+    canvas: &mut Canvas,
+    x: usize,
+    start_y: usize,
+    end_y: usize,
+    ch: char,
+    chars: RelationLineChars,
+) {
+    let start = start_y.min(end_y);
+    let end = start_y.max(end_y);
+    for y in start..=end {
+        put_relation_char(canvas, x, y, ch, chars);
+    }
+}
+
+fn draw_relation_span_exclusive(
+    canvas: &mut Canvas,
+    x: usize,
+    start_y: usize,
+    end_y: usize,
+    ch: char,
+    chars: RelationLineChars,
+) {
+    if start_y <= end_y {
+        for y in start_y..end_y {
+            put_relation_char(canvas, x, y, ch, chars);
+        }
+        return;
+    }
+
+    for y in (end_y + 1)..=start_y {
+        put_relation_char(canvas, x, y, ch, chars);
+    }
 }
 
 fn top_is_left_of_intermediate_boxes(
@@ -922,10 +977,6 @@ fn layered_relation_levels(
     edges: &[LayeredRelationEdge<'_>],
 ) -> std::result::Result<HashMap<String, usize>, LayeredRelationError> {
     let mut incident = HashSet::new();
-    let mut incoming_count = boxes
-        .iter()
-        .map(|relation_box| (relation_box.id().to_string(), 0usize))
-        .collect::<HashMap<_, _>>();
     let mut outgoing = HashMap::<String, Vec<String>>::new();
 
     for edge in edges {
@@ -935,9 +986,6 @@ fn layered_relation_levels(
 
         incident.insert(edge.top_id.to_string());
         incident.insert(edge.bottom_id.to_string());
-        *incoming_count
-            .entry(edge.bottom_id.to_string())
-            .or_insert(0) += 1;
         outgoing
             .entry(edge.top_id.to_string())
             .or_default()
@@ -949,18 +997,11 @@ fn layered_relation_levels(
     }
 
     let mut levels = HashMap::<String, usize>::new();
-    let mut queue = boxes
-        .iter()
-        .filter(|relation_box| incoming_count.get(relation_box.id()).copied().unwrap_or(0) == 0)
-        .map(|relation_box| relation_box.id().to_string())
-        .collect::<VecDeque<_>>();
-
-    if queue.is_empty() {
-        return Err(LayeredRelationError::Cyclic);
-    }
-
-    for id in &queue {
+    let mut queue = VecDeque::new();
+    for relation_box in boxes {
+        let id = relation_box.id().to_string();
         levels.insert(id.clone(), 0);
+        queue.push_back(id);
     }
 
     let level_cap = boxes.len().saturating_sub(1);
@@ -972,7 +1013,7 @@ fn layered_relation_levels(
         for child_id in children {
             let next_level = current_level + 1;
             if next_level > level_cap {
-                return Err(LayeredRelationError::Cyclic);
+                continue;
             }
             let should_update = match levels.get(child_id) {
                 Some(existing_level) => *existing_level < next_level,
@@ -982,18 +1023,6 @@ fn layered_relation_levels(
                 levels.insert(child_id.clone(), next_level);
                 queue.push_back(child_id.clone());
             }
-        }
-    }
-
-    if levels.len() != boxes.len() {
-        return Err(LayeredRelationError::Cyclic);
-    }
-
-    for edge in edges {
-        let top_level = levels.get(edge.top_id).copied().unwrap_or(0);
-        let bottom_level = levels.get(edge.bottom_id).copied().unwrap_or(0);
-        if bottom_level <= top_level {
-            return Err(LayeredRelationError::Cyclic);
         }
     }
 
@@ -1382,7 +1411,7 @@ mod tests {
             vec![
                 RelationOverlay::text(
                     geometry.from_x(),
-                    geometry.from_y() + 1,
+                    geometry.source_marker_y(),
                     "T".to_string(),
                     AsciiColorRole::EdgeArrow,
                 ),
@@ -1394,7 +1423,7 @@ mod tests {
                 ),
                 RelationOverlay::text(
                     geometry.to_x(),
-                    geometry.to_y().saturating_sub(1),
+                    geometry.target_marker_y(),
                     "B".to_string(),
                     AsciiColorRole::EdgeArrow,
                 ),

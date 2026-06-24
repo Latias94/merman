@@ -1,7 +1,7 @@
 # ASCII Gap Registry
 
 Status: Active planning registry
-Last updated: 2026-06-23
+Last updated: 2026-06-24
 
 This registry maps remaining ASCII renderer gaps to owning modules, dependencies, and validation
 gates. It does not replace the support matrices:
@@ -25,7 +25,7 @@ Use this file as the first planning context for new ASCII workstreams.
 | A-SEQ-020 | Empty sequence boxes. | `sequence::validate`, `sequence::boxes`, `sequence::render` | Decide whether empty background regions should render without actor anchors; keep explicit diagnostics until a row-ownership rule exists. | `cargo nextest run -p merman-ascii sequence`; targeted empty-box tests | `SEQUENCE_SUPPORT.md` |
 | A-SEQ-030 | Richer sequence actor presentation metadata beyond terminal participant boxes. | `sequence::model`, `sequence::validate`, `sequence::render` | Actor declarations and extended actor types render as participant boxes; actor links are accepted as SVG metadata and omitted from ASCII. Actor properties and any future shape-specific terminal glyphs need explicit support rules. | `cargo nextest run -p merman-ascii sequence`; support-boundary tests | `SEQUENCE_SUPPORT.md` |
 | A-STATE-010 | Remaining state presentation metadata and future state shape variants. | `state::adapter`, `graph::model`, `graph::draw`, `graph::routing`, `color` | Start/end, fork/join, choice, notes, links, composite boundary transitions, divider/concurrency regions, and ANSI/HTML node/group backgrounds now have documented terminal behavior. Add future Mermaid state semantics only when the adapter can either render them through graph/text primitives or preserve them as precise unsupported features. | `cargo nextest run -p merman-ascii state`; `cargo nextest run -p merman-ascii` | `STATE_SUPPORT.md`; `docs/plans/2026-06-23-003-refactor-ascii-capability-parity-state-plan.md` |
-| A-CLASSER-010 | Dense, cyclic, and more complex class/ER relation graph layouts. | `relation_graph`, `class::render`, `er::render` | Extend layered planner or add another relation graph adapter; keep cyclic diagnostics where no deterministic text layout exists. | `cargo nextest run -p merman-ascii class er` | README shipped matrix; class/ER tests |
+| A-CLASSER-010 | Dense, cyclic, and more complex class/ER relation graph layouts. | `relation_graph`, `class::render`, `er::render` | Extend layered planner or add another relation graph adapter; keep unresolved dense cases explicit where no deterministic text layout exists, and allow self-authored semantic fixtures when copied parity is the wrong oracle. | `cargo nextest run -p merman-ascii class er` | README shipped matrix; `ASCII_REFERENCE_COMPARISON.md`; class/ER tests |
 | A-XY-010 | Richer XYChart legends and scalable terminal plot area. | `xychart::render` or a future `xychart::plot` module | Split plot-area planning from row rendering before adding variable-size output. | `cargo nextest run -p merman-ascii xychart` | README XYChart contract |
 | A-FAMILY-010 | Additional Mermaid families after state diagrams. | New family adapters plus shared graph/text modules | State diagrams now have a supported subset in `STATE_SUPPORT.md`; choose the next family only after confirming typed model availability and a support boundary. | `cargo nextest run -p merman-ascii render_model`; family-specific tests | ADR 0014, ADR 0065, `STATE_SUPPORT.md` |
 

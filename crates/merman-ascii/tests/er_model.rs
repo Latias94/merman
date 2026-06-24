@@ -2,6 +2,7 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
 };
 use merman_core::{Engine, ParseOptions};
+use std::path::Path;
 
 fn render_er(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -441,4 +442,43 @@ PRODUCT {
     assert!(!rendered.contains("int id P│"));
     assert!(!rendered.contains("date cre│ted_at"));
     assert!(!rendered.contains("string s│atus"));
+}
+
+#[test]
+fn er_parser_cyclic_relationship_layout_renders_without_failing() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : owns\nB ||--|| C : owns\nC ||--|| A : owns",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("cyclic ER relationships should render");
+
+    assert!(rendered.contains("A"));
+    assert!(rendered.contains("B"));
+    assert!(rendered.contains("C"));
+    assert!(rendered.contains("owns"));
+}
+
+#[test]
+fn er_local_semantic_fixture_covers_dense_relationships() {
+    let input = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/testdata/local-semantic/er/dense_relations.mmd"),
+    )
+    .expect("local semantic ER fixture must be readable");
+
+    let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+        .expect("dense local semantic ER fixture should render");
+
+    for expected in [
+        "CUSTOMER", "ORDER", "INVOICE", "places", "billed", "invoices",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "dense semantic ER fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.lines().count() >= 6,
+        "dense semantic ER fixture should produce a multi-line layout:\n{rendered}"
+    );
 }

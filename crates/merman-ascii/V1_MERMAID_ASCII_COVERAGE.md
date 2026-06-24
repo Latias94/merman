@@ -67,5 +67,9 @@ These families should keep their own parser-backed tests and support matrices, b
 required to block the first `mermaid-ascii`-coverage release unless explicitly promoted into the
 release gate.
 
+The copied upstream corpus remains the exact v1 oracle. Self-authored semantic fixtures may exist
+for complex class, ER, state, or xychart cases, but they are not part of the copied release gate
+and do not change the v1 inventory contract.
+
 `repo-ref/beautiful-mermaid` is useful as a design reference for richer terminal output and broader
 diagram families. It is not a byte-for-byte output oracle for this v1 gate.
