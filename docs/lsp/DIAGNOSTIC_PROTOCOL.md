@@ -28,6 +28,7 @@ analysis path.
   identifiers with stable replacement edits.
 - Hover, go to definition, references, prepare-rename, rename, full-document semantic tokens, and
   fix-backed code actions are wired.
+- Workspace symbols are wired from tracked document snapshots.
 - Code actions remain intentionally sparse until lint rules emit source-span-backed
   `DiagnosticFix` metadata.
-- Workspace symbols, formatting, and range/delta semantic tokens remain deferred.
+- Formatting and range/delta semantic tokens remain deferred.

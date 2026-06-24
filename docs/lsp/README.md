@@ -19,6 +19,7 @@ navigation, code-action, and semantic-token foundations.
   identifiers.
 - Provide fence-local structure and navigation responses for hover, document symbols, definition,
   references, and rename.
+- Provide workspace symbols from tracked document snapshots.
 - Preserve parser-backed semantic items from `merman-analysis` so semantic tokens, future lint, and
   code actions can consume payload roles without LSP-local parsing.
 - Use entity-only semantic queries for definition, references, prepare-rename, and rename.
@@ -33,7 +34,6 @@ navigation, code-action, and semantic-token foundations.
 
 - Additional fix-producing lint rules and configuration
 - Range and delta semantic tokens
-- Workspace symbols
 - Formatting
 - Completion resolution payloads
 
@@ -41,6 +41,8 @@ navigation, code-action, and semantic-token foundations.
 
 - LSP behavior is driven by parser-backed semantic facts.
 - Raw-text scans are migration shims, not the target architecture.
+- Workspace symbols reuse the tracked outline projection from snapshots instead of a separate
+  parser path.
 - Payload facts should be retained in the analysis index but excluded from completion, outline, and
   rename unless a role explicitly allows projection.
 - Payload facts can feed hover, lint, semantic tokens, and code actions without becoming navigation

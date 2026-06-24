@@ -1,7 +1,7 @@
 # merman-lsp
 
-`merman-lsp` is the canonical LSP transport for diagnostics, completion, and structure-aware
-navigation foundations.
+`merman-lsp` is the canonical LSP transport for diagnostics, completion, structure-aware
+navigation, and workspace symbol foundations.
 
 ## Responsibilities
 
@@ -13,12 +13,12 @@ navigation foundations.
   identifiers with stable text edits.
 - Provide fence-local structure and navigation responses for hover, document symbols, definition,
   references, and rename.
+- Provide workspace symbols from tracked document snapshots.
 
 ## Deferred
 
 - Code actions
 - Semantic tokens
-- Workspace symbols
 - Formatting
 
 ## Notes

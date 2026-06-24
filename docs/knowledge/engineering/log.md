@@ -6,6 +6,8 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added `workspace/symbol` to the published LSP contract docs and engineering state so the
+  snapshot-backed workspace lookup path is no longer described as deferred.
 - Added a workspace/symbol LSP handler that reuses the existing outline projection from tracked
   document snapshots, so product-wide symbol lookup now works without introducing a new parser
   path.
