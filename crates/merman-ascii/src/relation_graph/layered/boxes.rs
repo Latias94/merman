@@ -4,33 +4,33 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LayeredRelationEdge<'a> {
-    top_id: &'a str,
-    bottom_id: &'a str,
+    from_id: &'a str,
+    to_id: &'a str,
     label_half_width: usize,
     label_line_count: usize,
 }
 
 impl<'a> LayeredRelationEdge<'a> {
     pub(crate) fn new(
-        top_id: &'a str,
-        bottom_id: &'a str,
+        from_id: &'a str,
+        to_id: &'a str,
         label_half_width: usize,
         label_line_count: usize,
     ) -> Self {
         Self {
-            top_id,
-            bottom_id,
+            from_id,
+            to_id,
             label_half_width,
             label_line_count,
         }
     }
 
-    pub(crate) fn top_id(&self) -> &'a str {
-        self.top_id
+    pub(crate) fn from_id(&self) -> &'a str {
+        self.from_id
     }
 
-    pub(crate) fn bottom_id(&self) -> &'a str {
-        self.bottom_id
+    pub(crate) fn to_id(&self) -> &'a str {
+        self.to_id
     }
 }
 
@@ -141,12 +141,12 @@ pub(crate) fn relation_components<'a>(
     // disjoint adjacent-layer crossings; only truly isolated boxes become standalone components.
     let mut incident_ids = HashSet::new();
     for edge in edges {
-        if find_box(boxes, edge.top_id).is_none() || find_box(boxes, edge.bottom_id).is_none() {
+        if find_box(boxes, edge.from_id).is_none() || find_box(boxes, edge.to_id).is_none() {
             return Err(LayeredRelationError::MissingEndpoint);
         }
 
-        incident_ids.insert(edge.top_id);
-        incident_ids.insert(edge.bottom_id);
+        incident_ids.insert(edge.from_id);
+        incident_ids.insert(edge.to_id);
     }
 
     let mut components = Vec::new();
@@ -197,16 +197,16 @@ fn layered_relation_levels(
     let mut outgoing = HashMap::<String, Vec<String>>::new();
 
     for edge in edges {
-        if find_box(boxes, edge.top_id).is_none() || find_box(boxes, edge.bottom_id).is_none() {
+        if find_box(boxes, edge.from_id).is_none() || find_box(boxes, edge.to_id).is_none() {
             return Err(LayeredRelationError::MissingEndpoint);
         }
 
-        incident.insert(edge.top_id.to_string());
-        incident.insert(edge.bottom_id.to_string());
+        incident.insert(edge.from_id.to_string());
+        incident.insert(edge.to_id.to_string());
         outgoing
-            .entry(edge.top_id.to_string())
+            .entry(edge.from_id.to_string())
             .or_default()
-            .push(edge.bottom_id.to_string());
+            .push(edge.to_id.to_string());
     }
 
     if incident.len() != boxes.len() {
@@ -259,24 +259,24 @@ fn reject_crossing_layered_relations(
     }
 
     for (left_index, left) in edges.iter().enumerate() {
-        let left_top_level = levels.get(left.top_id).copied().unwrap_or(0);
-        let left_bottom_level = levels.get(left.bottom_id).copied().unwrap_or(0);
+        let left_from_level = levels.get(left.from_id).copied().unwrap_or(0);
+        let left_to_level = levels.get(left.to_id).copied().unwrap_or(0);
         for right in edges.iter().skip(left_index + 1) {
-            if levels.get(right.top_id).copied().unwrap_or(0) != left_top_level
-                || levels.get(right.bottom_id).copied().unwrap_or(0) != left_bottom_level
+            if levels.get(right.from_id).copied().unwrap_or(0) != left_from_level
+                || levels.get(right.to_id).copied().unwrap_or(0) != left_to_level
             {
                 continue;
             }
 
-            let left_top_order = order_by_id.get(left.top_id).copied().unwrap_or(0);
-            let left_bottom_order = order_by_id.get(left.bottom_id).copied().unwrap_or(0);
-            let right_top_order = order_by_id.get(right.top_id).copied().unwrap_or(0);
-            let right_bottom_order = order_by_id.get(right.bottom_id).copied().unwrap_or(0);
+            let left_from_order = order_by_id.get(left.from_id).copied().unwrap_or(0);
+            let left_to_order = order_by_id.get(left.to_id).copied().unwrap_or(0);
+            let right_from_order = order_by_id.get(right.from_id).copied().unwrap_or(0);
+            let right_to_order = order_by_id.get(right.to_id).copied().unwrap_or(0);
 
             let crosses_left_to_right =
-                left_top_order < right_top_order && left_bottom_order > right_bottom_order;
+                left_from_order < right_from_order && left_to_order > right_to_order;
             let crosses_right_to_left =
-                left_top_order > right_top_order && left_bottom_order < right_bottom_order;
+                left_from_order > right_from_order && left_to_order < right_to_order;
             if crosses_left_to_right || crosses_right_to_left {
                 return Err(LayeredRelationError::Crossing);
             }
@@ -315,10 +315,10 @@ fn ordered_layered_groups<'a>(
             let parent_order = edges
                 .iter()
                 .filter(|edge| {
-                    edge.bottom_id == relation_box.id()
-                        && levels.get(edge.top_id).copied() == Some(level - 1)
+                    edge.to_id == relation_box.id()
+                        && levels.get(edge.from_id).copied() == Some(level - 1)
                 })
-                .filter_map(|edge| previous_order.get(edge.top_id).copied())
+                .filter_map(|edge| previous_order.get(edge.from_id).copied())
                 .min()
                 .unwrap_or(usize::MAX);
             let original_order = original_order
@@ -400,9 +400,9 @@ fn spanning_lane_margin(
     levels: &HashMap<String, usize>,
 ) -> usize {
     let has_spanning_edge = edges.iter().any(|edge| {
-        let top_level = levels.get(edge.top_id).copied().unwrap_or(0);
-        let bottom_level = levels.get(edge.bottom_id).copied().unwrap_or(0);
-        bottom_level > top_level + 1
+        let from_level = levels.get(edge.from_id).copied().unwrap_or(0);
+        let to_level = levels.get(edge.to_id).copied().unwrap_or(0);
+        from_level.abs_diff(to_level) > 1
     });
     if !has_spanning_edge {
         return 0;
@@ -424,10 +424,7 @@ fn layered_relation_gap_height(
 ) -> usize {
     let max_label_lines = edges
         .iter()
-        .filter(|edge| {
-            levels.get(edge.top_id).copied() == Some(level)
-                && levels.get(edge.bottom_id).copied() == Some(level + 1)
-        })
+        .filter(|edge| relation_edge_crosses_level_gap(edge, levels, level))
         .map(|edge| edge.label_line_count)
         .max()
         .unwrap_or(0);
@@ -436,4 +433,17 @@ fn layered_relation_gap_height(
     } else {
         3
     }
+}
+
+fn relation_edge_crosses_level_gap(
+    edge: &LayeredRelationEdge<'_>,
+    levels: &HashMap<String, usize>,
+    level: usize,
+) -> bool {
+    let from_level = levels.get(edge.from_id).copied().unwrap_or(0);
+    let to_level = levels.get(edge.to_id).copied().unwrap_or(0);
+    let min_level = from_level.min(to_level);
+    let max_level = from_level.max(to_level);
+
+    min_level <= level && level < max_level
 }

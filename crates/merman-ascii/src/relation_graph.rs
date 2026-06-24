@@ -608,6 +608,25 @@ mod tests {
     }
 
     #[test]
+    fn layered_relation_plan_reserves_width_for_reverse_spanning_edges() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+        ];
+        let edges = vec![
+            LayeredRelationEdge::new("a", "b", 0, 0),
+            LayeredRelationEdge::new("b", "c", 0, 0),
+            LayeredRelationEdge::new("c", "a", 0, 0),
+        ];
+
+        let plan =
+            plan_layered_relation_boxes(&boxes, &edges, 1).expect("cyclic plan should render");
+
+        assert_eq!(plan.width(), 7);
+    }
+
+    #[test]
     fn layered_relation_route_plan_draws_route_and_overlays() {
         let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
         let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);

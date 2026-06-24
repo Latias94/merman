@@ -409,17 +409,33 @@ fn class_parser_spanning_level_relationship_layout_routes_around_intermediate_bo
 }
 
 #[test]
-fn class_parser_cyclic_relationship_layout_renders_without_failing() {
+fn class_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nclass C\nA --> B\nB --> C\nC --> A",
         &AsciiRenderOptions::ascii(),
     )
     .expect("cyclic class relationships should render");
 
-    assert!(rendered.contains("A"));
-    assert!(rendered.contains("B"));
-    assert!(rendered.contains("C"));
-    assert!(rendered.contains("v") || rendered.contains("^"));
+    assert_eq!(
+        rendered,
+        concat!(
+            "     +---+\n",
+            "     | A |\n",
+            "     +---+\n",
+            "       |    v\n",
+            "       |    |\n",
+            "       v    |\n",
+            "     +---+  |\n",
+            "     | B |  |\n",
+            "     +---+  |\n",
+            "       |    |\n",
+            "       |    |\n",
+            "       v    |\n",
+            "     +---+\n",
+            "     | C |\n",
+            "     +---+\n",
+        )
+    );
 }
 
 #[test]

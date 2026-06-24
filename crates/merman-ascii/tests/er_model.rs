@@ -471,17 +471,35 @@ PRODUCT {
 }
 
 #[test]
-fn er_parser_cyclic_relationship_layout_renders_without_failing() {
+fn er_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : owns\nB ||--|| C : owns\nC ||--|| A : owns",
         &AsciiRenderOptions::ascii(),
     )
     .expect("cyclic ER relationships should render");
 
-    assert!(rendered.contains("A"));
-    assert!(rendered.contains("B"));
-    assert!(rendered.contains("C"));
-    assert!(rendered.contains("owns"));
+    assert_eq!(
+        rendered,
+        concat!(
+            "     +---+\n",
+            "     | A |\n",
+            "     +---+\n",
+            "      ||   ||\n",
+            "     owns owns\n",
+            "       |    |\n",
+            "      ||    |\n",
+            "     +---+  |\n",
+            "     | B |  |\n",
+            "     +---+  |\n",
+            "      ||    |\n",
+            "     owns   |\n",
+            "       |    |\n",
+            "      ||   ||\n",
+            "     +---+\n",
+            "     | C |\n",
+            "     +---+\n",
+        )
+    );
 }
 
 #[test]
