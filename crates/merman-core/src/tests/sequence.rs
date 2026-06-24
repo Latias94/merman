@@ -36,6 +36,67 @@ Bob-->Alice: I am good thanks!"#;
 }
 
 #[test]
+fn parse_sequence_editor_facts_preserve_actor_and_box_spans() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant Alice
+actor Bob
+box rgb(240,240,240) Team
+participant Carol
+end
+Alice->>Bob: Hello
+Note over Alice,Bob: Review"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let first_symbol = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("missing symbol {name}"))
+    };
+
+    let alice_start = text.find("Alice").unwrap();
+    assert_eq!(first_symbol("Alice").selection.start, alice_start);
+    assert_eq!(
+        first_symbol("Alice").selection.end,
+        alice_start + "Alice".len()
+    );
+
+    let team_start = text.find("Team").unwrap();
+    let team = first_symbol("Team");
+    assert_eq!(team.detail.as_deref(), Some("sequence box"));
+    assert_eq!(team.selection.start, team_start);
+    assert_eq!(team.selection.end, team_start + "Team".len());
+
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence actor")
+    }));
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
+    }));
+}
+
+#[test]
+fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Alice"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Bob"));
+}
+
+#[test]
 fn parse_diagram_sequence_multibyte_actor_ids_do_not_panic() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

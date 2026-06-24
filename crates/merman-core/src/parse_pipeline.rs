@@ -92,6 +92,7 @@ impl<'a> ParsePipeline<'a> {
             "flowchart-v2" | "flowchart-elk" => {
                 crate::diagrams::flowchart::parse_flowchart_editor_facts(self.text, &meta)?
             }
+            "sequence" => crate::diagrams::sequence::parse_sequence_editor_facts(self.text, &meta),
             _ => return Ok(None),
         };
 

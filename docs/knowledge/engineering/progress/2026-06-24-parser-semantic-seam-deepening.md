@@ -32,21 +32,25 @@ partial parse results instead of raw-text heuristic scans.
   LALRPOP parsing fails, it uses the same masked input and lexer token stream to return
   `EditorSemanticCompleteness::Recovered` facts for already recognized node ids, subgraph headers,
   and directive prefixes.
+- Sequence is the second migrated family: its lexer token stream now emits parser-backed
+  participant, actor, message-endpoint, note-actor, and box facts, while the existing LALRPOP
+  parser result determines whether facts are `Complete` or `Recovered`.
 - `merman-analysis::FenceTextIndex::from_core_facts` projects core editor facts into the shared
   LSP/lint migration index, including directive prefixes used by completion.
 - `FenceTextIndex` now records whether its source is `TextScan`, `ParserComplete`, or
   `ParserRecovered`, giving tests and future lint/LSP logic a way to prove it did not silently
   return to heuristic scans.
 - `merman-lsp::DocumentStore` now tries parser-backed core facts for known diagram types and falls
-  back to the centralized text index only when parser-backed facts are unavailable or fail.
+  back to the centralized text index only when parser-backed facts are unavailable or fail; LSP
+  regressions cover both flowchart and sequence complete/recovered provenance.
 - Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
   `cargo nextest run -p merman-analysis editor::tests`, and `cargo nextest run -p merman-lsp`.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: migrate the next high-value family (`sequence`,
-`state`, or `class`) to `EditorSemanticFacts`, or expose recovered parser diagnostics alongside
-the recovered flowchart facts. Do not add new heuristic parsing in LSP for covered flowchart
+Choose the next parser seam slice deliberately: migrate the next high-value family (`state` or
+`class`) to `EditorSemanticFacts`, or expose recovered parser diagnostics alongside recovered
+flowchart/sequence facts. Do not add new heuristic parsing in LSP for covered flowchart/sequence
 symbols; extend core facts instead.
 
 # Citations

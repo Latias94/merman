@@ -149,10 +149,12 @@ partial buffers and downstream migration.
 
 ### U2. Retrofit the parser-generator-backed families
 
-- **Status:** Flowchart tracer bullet landed. Flowchart now preserves parser-backed node id spans
-  and subgraph header/selection spans through its lexer/LALRPOP AST path, and falls back to
-  recoverable token-stream facts for incomplete editor buffers; more parser-generator families
-  still need the same treatment.
+- **Status:** Flowchart and Sequence tracer bullets landed. Flowchart now preserves parser-backed
+  node id spans and subgraph header/selection spans through its lexer/LALRPOP AST path, and falls
+  back to recoverable token-stream facts for incomplete editor buffers. Sequence now emits
+  parser-backed participant, actor, message-endpoint, note-actor, and box facts from its lexer
+  token stream with complete/recovered provenance. More parser-generator families still need the
+  same treatment.
 - **Goal:** Lift span and recovery facts into the families already using deterministic lexer plus
   LALRPOP.
 - **Files:** `crates/merman-core/src/diagrams/flowchart.rs`,
@@ -182,11 +184,11 @@ partial buffers and downstream migration.
 
 ### U4. Move consumers onto the semantic seam
 
-- **Status:** Flowchart path migrated. LSP now consumes `merman-analysis::FenceTextIndex` instead
-  of maintaining separate completion, outline, navigation, and rename scans, and flowchart fences
-  use parser-backed core editor facts for both complete and recovered parser output; raw-text
-  fallback remains only when a family has no core fact extraction path or the extraction itself is
-  unavailable.
+- **Status:** Flowchart and Sequence paths migrated. LSP now consumes
+  `merman-analysis::FenceTextIndex` instead of maintaining separate completion, outline,
+  navigation, and rename scans, and covered flowchart/sequence fences use parser-backed core
+  editor facts for both complete and recovered parser output; raw-text fallback remains only when a
+  family has no core fact extraction path or the extraction itself is unavailable.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,
