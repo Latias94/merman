@@ -96,6 +96,9 @@ impl<'a> ParsePipeline<'a> {
             "state" | "stateDiagram" => {
                 crate::diagrams::state::parse_state_editor_facts(self.text, &meta)
             }
+            "class" | "classDiagram" => {
+                crate::diagrams::class::parse_class_editor_facts(self.text, &meta)
+            }
             _ => return Ok(None),
         };
 

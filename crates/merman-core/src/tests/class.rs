@@ -453,3 +453,74 @@ click Class1 call functionCall() "A tooltip"
     assert!(c["callback"].get("args").is_none());
     assert_eq!(c["callbackEffective"], json!(true));
 }
+
+#[test]
+fn parse_class_editor_facts_preserve_parser_symbol_spans() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+namespace Company {
+  class User {
+    +login()
+  }
+}
+User <|-- Admin
+User: email
+<<interface>> User
+click User href "https://example.com"
+classDef service fill:#eee
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+
+    let company_start = text.find("Company").unwrap();
+    assert_eq!(
+        symbol_at("Company", company_start).selection.end,
+        company_start + "Company".len()
+    );
+
+    let user_start = text.find("User {").unwrap();
+    assert_eq!(
+        symbol_at("User", user_start).selection.end,
+        user_start + "User".len()
+    );
+
+    let admin_start = text.find("Admin").unwrap();
+    assert_eq!(
+        symbol_at("Admin", admin_start).selection.end,
+        admin_start + "Admin".len()
+    );
+
+    let service_start = text.find("service").unwrap();
+    assert_eq!(
+        symbol_at("service", service_start).selection.end,
+        service_start + "service".len()
+    );
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "click"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
+}
+
+#[test]
+fn parse_class_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclass User\nUser <|--";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+}

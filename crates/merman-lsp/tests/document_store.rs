@@ -158,3 +158,30 @@ fn incomplete_state_documents_use_recovered_parser_facts() {
     assert!(index.node_ids().any(|id| id == "Idle"));
     assert!(index.node_ids().any(|id| id == "Running"));
 }
+
+#[test]
+fn class_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "classDiagram\nclass User\nUser <|-- Admin\n".to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "User"));
+    assert!(index.node_ids().any(|id| id == "Admin"));
+}
+
+#[test]
+fn incomplete_class_documents_use_recovered_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "classDiagram\nclass User\nUser <|--".to_string());
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
+    assert!(index.node_ids().any(|id| id == "User"));
+}
