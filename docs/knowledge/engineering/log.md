@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-24
+- Replaced the `stateDiagram` AST-plus-supplemental-token editor fact split with a single
+  token-backed `StateEditorEvent` stream; complete parses now use the same entity/payload
+  projection as recovered buffers, with the grammar parse result only selecting provenance.
 - Deepened `mindmap` directive payload facts so `:::class` and `::icon(...)` decoration values
   now ride the shared parser event stream as payload-only spans without polluting node-id
   completion or outline.
@@ -20,9 +23,9 @@ status: active
 - Deepened `stateDiagram` payload facts so state display labels, colon descriptions, relation
   labels, positioned/floating note text, class/style/click payloads, and accessibility text are all
   parser-backed payload-only spans.
-- Recorded the remaining state architecture break: replace the AST-plus-supplemental-token editor
-  fact split with an explicit parser event stream when the next state refactor needs stronger
-  locality.
+- Recorded the remaining state architecture boundary after editor fact unification: render/model
+  locality can adopt a similar event stream later if it proves higher value than recovered
+  diagnostics.
 - Deepened `classDiagram` residual payload facts so relation labels, `note` text,
   `accTitle:`/`accDescr:` values, and multiline class accessibility descriptions are retained as
   payload-only parser facts without leaking into LSP completion or outline.

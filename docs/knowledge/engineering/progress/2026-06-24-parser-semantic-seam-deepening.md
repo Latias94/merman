@@ -46,11 +46,13 @@ partial parse results instead of raw-text heuristic scans.
   accessibility payload spans, plus class/style/click target references. These facts preserve
   source coordinates for lint and future semantic consumers without adding LSP-side heuristics or
   polluting node-id completion with directive values.
-- State description and note payloads are now parser-backed too. The token collector preserves
-  `state "Display" as Id` display labels, `Id: description` state descriptions, relation labels,
-  and note text as payload-only facts, using a minimal relation context to avoid treating
-  `Id: description` and `Id --> Other: label` as the same semantic fact. A future deeper break can
-  still replace the AST-plus-supplemental-token split with an explicit state event stream.
+- State editor facts now come from a single token-backed `StateEditorEvent` stream for both complete
+  and recovered buffers; the LALRPOP parse result only selects the complete/recovered provenance for
+  editor consumers. The event stream preserves `state "Display" as Id` display labels,
+  `Id: description` state descriptions, relation labels, positioned/floating note text, state/
+  reference/fork/join/choice entities, and class/style/click/accessibility payloads without the old
+  AST-plus-supplemental-token split. Floating note aliases such as `note "text" as note1` are kept
+  out of entity completion.
 - Class display labels and relation multiplicity strings are now payload-only parser facts too.
   `class Visible["Label"]` display text and quoted relation cardinality strings like `"1"` /
   `"many"` stay out of completion and outline while remaining available to future lint and rename
@@ -140,9 +142,11 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: move state toward a shared parser event stream, or
-expose recovered parser diagnostics alongside recovered facts. Do not add new heuristic parsing in
-LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: expose recovered parser diagnostics alongside
+recovered facts, deepen remaining flowchart/sequence/ER payloads, or mirror the state event stream
+into render-side locality if that becomes the next high-return break. Do not add new heuristic
+parsing in LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core
+facts instead.
 
 # Citations
 

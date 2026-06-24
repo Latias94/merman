@@ -155,13 +155,13 @@ partial buffers and downstream migration.
   preserves parser-backed node id spans and subgraph header/selection spans through its lexer/
   LALRPOP AST path, and falls back to recoverable token-stream facts for incomplete editor buffers.
   Sequence now emits parser-backed participant, actor, message-endpoint, note-actor, and box facts
-  from its lexer token stream with complete/recovered provenance. State now carries state id spans
-  in its LALRPOP AST, emits parser-backed state/reference/fork/join/choice facts, and recovers facts
-  from the state lexer token stream for incomplete buffers. State now also runs a token-backed
-  supplemental fact pass for complete parses so `class`/`style`/`click` state targets are entity
-  references, `classDef` ids are outline-only facts, and style, class reference, click URL/tooltip,
-  accessibility text, display-label, description, relation-label, and note text values are
-  payload-only spans. Class now emits class/namespace/relation, member-owner, member-outline,
+  from its lexer token stream with complete/recovered provenance. State editor facts now come from
+  a single token-backed `StateEditorEvent` stream for both complete and recovered inputs; the
+  LALRPOP parse result only selects complete/recovered provenance for editor consumers. The state
+  event stream emits state/reference/fork/join/choice entities, `class`/`style`/`click` state
+  targets, `classDef` outline facts, and style, class reference, click URL/tooltip, accessibility
+  text, display-label, description, relation-label, and note text payload-only spans. Class now
+  emits class/namespace/relation, member-owner, member-outline,
   annotation-target, annotation-payload, directive-target,
   interaction-target, interaction string, link-target, callback function/args, relation-label,
   note, accessibility, inline class, cssClass reference, and style/classDef payload facts from its
@@ -318,7 +318,6 @@ partial buffers and downstream migration.
   parser-generator rewrite; the useful break is the shared semantic contract, not parser
   monoculture.
 - State display-labels, colon descriptions, relation labels, notes, class/style/click references,
-  and directive payloads are now span-backed through a supplemental lexer pass. A higher-return
-  future break is to move state to an explicit parser event stream so render semantics and editor
-  facts share one span-preserving intermediate form instead of splitting across AST fields and
-  supplemental token facts.
+  directive payloads, and state/reference entities now ride one editor-facing `StateEditorEvent`
+  stream. A future render-side break can mirror this pattern only if render/model locality becomes
+  more valuable than recovered diagnostics or remaining payload depth.

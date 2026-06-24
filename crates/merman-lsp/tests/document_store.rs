@@ -163,6 +163,7 @@ fn state_documents_use_parser_facts() {
     assert!(!index.node_ids().any(|id| id == "Paused State"));
     assert!(!index.node_ids().any(|id| id == "Running details"));
     assert!(!index.node_ids().any(|id| id == "Floating note"));
+    assert!(!index.node_ids().any(|id| id == "note1"));
     assert!(!index.node_ids().any(|id| id == "fill:#0f0,border:#333"));
     assert!(!index.node_ids().any(|id| id == "fill:#f00"));
     assert!(!index.node_ids().any(|id| id == "Lifecycle chart"));

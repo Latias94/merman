@@ -5,7 +5,7 @@ use crate::{
 use serde_json::Value;
 
 use super::db::StateDb;
-use super::{Lexer, StateDiagramRenderModel, StateStmt, Stmt, Tok};
+use super::{Lexer, StateDiagramRenderModel, Stmt, Tok};
 
 pub fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut doc = super::state_grammar::RootParser::new()
@@ -43,18 +43,14 @@ pub fn parse_state_model_for_render(
 }
 
 pub fn parse_state_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    match super::state_grammar::RootParser::new().parse(Lexer::new(code)) {
-        Ok(doc) => {
-            let mut facts = editor_facts_from_state_ast(&doc);
-            collect_state_editor_facts_from_tokens(
-                code,
-                StateTokenFactMode::Supplemental,
-                &mut facts,
-            );
-            facts
-        }
-        Err(_) => recover_state_editor_facts_from_tokens(code),
+    let complete = super::state_grammar::RootParser::new()
+        .parse(Lexer::new(code))
+        .is_ok();
+    let mut facts = state_editor_facts_from_events(collect_state_editor_events(code));
+    if !complete {
+        facts.mark_recovered();
     }
+    facts
 }
 
 fn assign_divider_ids(stmts: &mut [Stmt], cnt: &mut usize) {
@@ -90,31 +86,12 @@ fn assign_divider_ids(stmts: &mut [Stmt], cnt: &mut usize) {
     }
 }
 
-fn editor_facts_from_state_ast(statements: &[Stmt]) -> EditorSemanticFacts {
+fn state_editor_facts_from_events(events: Vec<StateEditorEvent>) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    collect_state_editor_facts_from_statements(statements, &mut facts);
-    facts
-}
-
-fn recover_state_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    facts.mark_recovered();
-
-    collect_state_editor_facts_from_tokens(code, StateTokenFactMode::Recovered, &mut facts);
-
-    facts
-}
-
-#[derive(Debug, Clone, Copy)]
-enum StateTokenFactMode {
-    Supplemental,
-    Recovered,
-}
-
-impl StateTokenFactMode {
-    fn includes_plain_state_symbols(self) -> bool {
-        matches!(self, Self::Recovered)
+    for event in events {
+        event.emit(&mut facts);
     }
+    facts
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,64 +103,117 @@ enum StateTokenContext {
     ClickTooltip,
 }
 
-fn collect_state_editor_facts_from_tokens(
-    code: &str,
-    mode: StateTokenFactMode,
-    facts: &mut EditorSemanticFacts,
-) {
+#[derive(Debug)]
+enum StateEditorEvent {
+    DirectivePrefix(&'static str),
+    Entity {
+        name: String,
+        selection: SourceSpan,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+    },
+    Outline {
+        name: String,
+        selection: SourceSpan,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+    },
+    Payload {
+        value: String,
+        span: SourceSpan,
+        selection: SourceSpan,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+    },
+}
+
+impl StateEditorEvent {
+    fn emit(self, facts: &mut EditorSemanticFacts) {
+        match self {
+            Self::DirectivePrefix(prefix) => facts.push_directive_prefix(prefix),
+            Self::Entity {
+                name,
+                selection,
+                detail,
+                kind,
+            } => facts.push_symbol(EditorSemanticSymbol::new(
+                name,
+                Some(detail.to_string()),
+                kind,
+                selection,
+                selection,
+            )),
+            Self::Outline {
+                name,
+                selection,
+                detail,
+                kind,
+            } => facts.push_symbol(EditorSemanticSymbol::outline(
+                name,
+                Some(detail.to_string()),
+                kind,
+                selection,
+                selection,
+            )),
+            Self::Payload {
+                value,
+                span,
+                selection,
+                detail,
+                kind,
+            } => facts.push_symbol(EditorSemanticSymbol::payload(
+                value,
+                Some(detail.to_string()),
+                kind,
+                span,
+                selection,
+            )),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct StatePendingEntity {
+    name: String,
+    selection: SourceSpan,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+}
+
+fn collect_state_editor_events(code: &str) -> Vec<StateEditorEvent> {
     let mut lexer = Lexer::new(code);
     let mut collector = StateTokenFactCollector {
         code,
-        mode,
         context: StateTokenContext::Default,
+        pending_entity: None,
         note_text_pending: false,
+        note_position_seen: false,
+        note_alias_pending: false,
         relation_label_pending: false,
         relation_target_seen: false,
     };
+    let mut events = Vec::new();
     while let Some(result) = lexer.next() {
         match result {
             Ok((start, token, end)) => {
-                collector.collect_token(token, start, end, facts);
+                collector.collect_token(token, start, end, &mut events);
             }
             Err(_) => {}
         }
     }
+    collector.flush_pending_entity(&mut events);
+    events
 }
 
 struct StateTokenFactCollector<'a> {
     code: &'a str,
-    mode: StateTokenFactMode,
     context: StateTokenContext,
+    pending_entity: Option<StatePendingEntity>,
     note_text_pending: bool,
+    note_position_seen: bool,
+    note_alias_pending: bool,
     relation_label_pending: bool,
     relation_target_seen: bool,
-}
-
-fn collect_state_editor_facts_from_statements(
-    statements: &[Stmt],
-    facts: &mut EditorSemanticFacts,
-) {
-    for statement in statements {
-        match statement {
-            Stmt::State(state) => {
-                push_state_stmt_symbol(facts, state, state_detail(state));
-                if let Some(doc) = state.doc.as_deref() {
-                    collect_state_editor_facts_from_statements(doc, facts);
-                }
-            }
-            Stmt::Relation(relation) => {
-                push_state_stmt_symbol(facts, &relation.state1, "state reference");
-                push_state_stmt_symbol(facts, &relation.state2, "state reference");
-            }
-            Stmt::ClassDef { .. } => facts.push_directive_prefix("classDef"),
-            Stmt::ApplyClass { .. } => facts.push_directive_prefix("class"),
-            Stmt::Style { .. } => facts.push_directive_prefix("style"),
-            Stmt::AccTitle(_) => facts.push_directive_prefix("accTitle"),
-            Stmt::AccDescr(_) => facts.push_directive_prefix("accDescr"),
-            Stmt::Click(_) => facts.push_directive_prefix("click"),
-            Stmt::Noop | Stmt::Direction(_) => {}
-        }
-    }
 }
 
 impl StateTokenFactCollector<'_> {
@@ -192,34 +222,33 @@ impl StateTokenFactCollector<'_> {
         token: Tok,
         start: usize,
         end: usize,
-        facts: &mut EditorSemanticFacts,
+        events: &mut Vec<StateEditorEvent>,
     ) {
         match token {
             Tok::Newline | Tok::StructStart | Tok::StructStop => {
-                self.context = StateTokenContext::Default;
-                self.note_text_pending = false;
-                self.relation_label_pending = false;
-                self.relation_target_seen = false;
+                self.finish_statement(events);
             }
             Tok::Arrow => {
+                self.flush_pending_entity_as("state reference", events);
                 self.relation_label_pending = true;
                 self.relation_target_seen = false;
             }
             Tok::Click => {
-                facts.push_directive_prefix("click");
+                self.flush_pending_entity(events);
+                events.push(StateEditorEvent::DirectivePrefix("click"));
                 self.context = StateTokenContext::ClickTarget;
             }
             Tok::Href if self.context == StateTokenContext::ClickAfterTarget => {
                 self.context = StateTokenContext::ClickAfterHref;
             }
             Tok::Id(id) if self.context == StateTokenContext::ClickTarget => {
-                push_state_token_symbol(facts, id, start, end, "state click target");
+                push_state_entity_event(events, id, start, end, "state click target");
                 self.context = StateTokenContext::ClickAfterTarget;
             }
             Tok::StyledId((id, class_id)) if self.context == StateTokenContext::ClickTarget => {
-                push_state_token_symbol(facts, id, start, end, "state click target");
-                push_state_payload_symbol_from_token(
-                    facts,
+                push_state_entity_event(events, id, start, end, "state click target");
+                push_state_payload_event_from_token(
+                    events,
                     self.code,
                     class_id.as_str(),
                     start,
@@ -233,16 +262,24 @@ impl StateTokenFactCollector<'_> {
                 self.context = StateTokenContext::ClickAfterTarget;
             }
             Tok::EdgeState => {
+                self.flush_pending_entity(events);
                 if self.relation_label_pending {
                     self.relation_target_seen = true;
                 }
             }
             Tok::Note => {
+                self.flush_pending_entity(events);
                 self.note_text_pending = true;
+                self.note_position_seen = false;
+                self.note_alias_pending = false;
+            }
+            Tok::LeftOf | Tok::RightOf => {
+                self.note_position_seen = true;
             }
             Tok::NoteText(text) if self.note_text_pending => {
-                push_state_payload_symbol_from_token(
-                    facts,
+                self.flush_pending_entity(events);
+                push_state_payload_event_from_token(
+                    events,
                     self.code,
                     text.as_str(),
                     start,
@@ -250,11 +287,13 @@ impl StateTokenFactCollector<'_> {
                     "state note",
                     EditorSemanticKind::String,
                 );
+                self.note_alias_pending = !self.note_position_seen;
                 self.note_text_pending = false;
             }
             Tok::StateDescr(text) => {
-                push_state_string_payload_symbol(
-                    facts,
+                self.flush_pending_entity(events);
+                push_state_string_payload_event(
+                    events,
                     text.as_str(),
                     start,
                     end,
@@ -263,13 +302,14 @@ impl StateTokenFactCollector<'_> {
                 );
             }
             Tok::Descr(text) => {
+                self.flush_pending_entity(events);
                 let detail = if self.relation_label_pending && self.relation_target_seen {
                     "state relation label"
                 } else {
                     "state description"
                 };
-                push_state_payload_symbol_from_token(
-                    facts,
+                push_state_payload_event_from_token(
+                    events,
                     self.code,
                     text.as_str(),
                     start,
@@ -286,8 +326,9 @@ impl StateTokenFactCollector<'_> {
                     StateTokenContext::ClickAfterTarget | StateTokenContext::ClickAfterHref
                 ) =>
             {
-                push_state_string_payload_symbol(
-                    facts,
+                self.flush_pending_entity(events);
+                push_state_string_payload_event(
+                    events,
                     text.as_str(),
                     start,
                     end,
@@ -301,8 +342,8 @@ impl StateTokenFactCollector<'_> {
                 };
             }
             Tok::StringLit(text) if self.context == StateTokenContext::ClickTooltip => {
-                push_state_string_payload_symbol(
-                    facts,
+                push_state_string_payload_event(
+                    events,
                     text.as_str(),
                     start,
                     end,
@@ -312,22 +353,12 @@ impl StateTokenFactCollector<'_> {
                 self.context = StateTokenContext::Default;
             }
             Tok::Id(id) | Tok::CompositState(id) => {
-                if self.relation_label_pending {
-                    self.relation_target_seen = true;
-                }
-                if self.mode.includes_plain_state_symbols() {
-                    push_state_token_symbol(facts, id, start, end, "state");
-                }
+                self.handle_state_entity(id, start, end, "state", events);
             }
             Tok::StyledId((id, class_id)) => {
-                if self.relation_label_pending {
-                    self.relation_target_seen = true;
-                }
-                if self.mode.includes_plain_state_symbols() {
-                    push_state_token_symbol(facts, id, start, end, "state");
-                }
-                push_state_payload_symbol_from_token(
-                    facts,
+                self.handle_state_entity(id, start, end, "state", events);
+                push_state_payload_event_from_token(
+                    events,
                     self.code,
                     class_id.as_str(),
                     start,
@@ -337,40 +368,28 @@ impl StateTokenFactCollector<'_> {
                 );
             }
             Tok::Fork(id) => {
-                if self.relation_label_pending {
-                    self.relation_target_seen = true;
-                }
-                if self.mode.includes_plain_state_symbols() {
-                    push_state_token_symbol(facts, id, start, end, "state fork");
-                }
+                self.handle_state_entity(id, start, end, "state fork", events);
             }
             Tok::Join(id) => {
-                if self.relation_label_pending {
-                    self.relation_target_seen = true;
-                }
-                if self.mode.includes_plain_state_symbols() {
-                    push_state_token_symbol(facts, id, start, end, "state join");
-                }
+                self.handle_state_entity(id, start, end, "state join", events);
             }
             Tok::Choice(id) => {
-                if self.relation_label_pending {
-                    self.relation_target_seen = true;
-                }
-                if self.mode.includes_plain_state_symbols() {
-                    push_state_token_symbol(facts, id, start, end, "state choice");
-                }
+                self.handle_state_entity(id, start, end, "state choice", events);
             }
-            Tok::ClassDef => facts.push_directive_prefix("classDef"),
-            Tok::ClassDefId(id) => push_state_outline_symbol(
-                facts,
+            Tok::ClassDef => {
+                self.flush_pending_entity(events);
+                events.push(StateEditorEvent::DirectivePrefix("classDef"));
+            }
+            Tok::ClassDefId(id) => push_state_outline_event(
+                events,
                 id,
                 start,
                 end,
                 "state class definition",
                 EditorSemanticKind::Property,
             ),
-            Tok::ClassDefStyleOpts(raw) => push_state_payload_symbol_from_token(
-                facts,
+            Tok::ClassDefStyleOpts(raw) => push_state_payload_event_from_token(
+                events,
                 self.code,
                 raw.as_str(),
                 start,
@@ -378,17 +397,20 @@ impl StateTokenFactCollector<'_> {
                 "state class definition style",
                 EditorSemanticKind::String,
             ),
-            Tok::Class => facts.push_directive_prefix("class"),
-            Tok::ClassEntityIds(ids) => push_state_id_list_symbols(
-                facts,
+            Tok::Class => {
+                self.flush_pending_entity(events);
+                events.push(StateEditorEvent::DirectivePrefix("class"));
+            }
+            Tok::ClassEntityIds(ids) => push_state_id_list_events(
+                events,
                 self.code,
                 ids.as_str(),
                 start,
                 end,
                 "state class target",
             ),
-            Tok::StyleClass(class_id) => push_state_payload_symbol_from_token(
-                facts,
+            Tok::StyleClass(class_id) => push_state_payload_event_from_token(
+                events,
                 self.code,
                 class_id.as_str(),
                 start,
@@ -396,17 +418,20 @@ impl StateTokenFactCollector<'_> {
                 "state class reference",
                 EditorSemanticKind::Property,
             ),
-            Tok::Style => facts.push_directive_prefix("style"),
-            Tok::StyleIds(ids) => push_state_id_list_symbols(
-                facts,
+            Tok::Style => {
+                self.flush_pending_entity(events);
+                events.push(StateEditorEvent::DirectivePrefix("style"));
+            }
+            Tok::StyleIds(ids) => push_state_id_list_events(
+                events,
                 self.code,
                 ids.as_str(),
                 start,
                 end,
                 "state style target",
             ),
-            Tok::StyleDefStyleOpts(raw) => push_state_payload_symbol_from_token(
-                facts,
+            Tok::StyleDefStyleOpts(raw) => push_state_payload_event_from_token(
+                events,
                 self.code,
                 raw.as_str(),
                 start,
@@ -415,9 +440,10 @@ impl StateTokenFactCollector<'_> {
                 EditorSemanticKind::String,
             ),
             Tok::AccTitle(value) => {
-                facts.push_directive_prefix("accTitle");
-                push_state_payload_symbol_from_token(
-                    facts,
+                self.flush_pending_entity(events);
+                events.push(StateEditorEvent::DirectivePrefix("accTitle"));
+                push_state_payload_event_from_token(
+                    events,
                     self.code,
                     value.as_str(),
                     start,
@@ -427,9 +453,10 @@ impl StateTokenFactCollector<'_> {
                 );
             }
             Tok::AccDescr(value) | Tok::AccDescrMultiline(value) => {
-                facts.push_directive_prefix("accDescr");
-                push_state_payload_symbol_from_token(
-                    facts,
+                self.flush_pending_entity(events);
+                events.push(StateEditorEvent::DirectivePrefix("accDescr"));
+                push_state_payload_event_from_token(
+                    events,
                     self.code,
                     value.as_str(),
                     start,
@@ -440,8 +467,6 @@ impl StateTokenFactCollector<'_> {
             }
             Tok::Sd
             | Tok::As
-            | Tok::LeftOf
-            | Tok::RightOf
             | Tok::NoteText(_)
             | Tok::Concurrent
             | Tok::HideEmptyDescription
@@ -451,44 +476,122 @@ impl StateTokenFactCollector<'_> {
             | Tok::StringLit(_) => {}
         }
     }
-}
 
-fn push_state_stmt_symbol(facts: &mut EditorSemanticFacts, state: &StateStmt, detail: &str) {
-    if !is_editor_visible_state_id(state) {
-        return;
+    fn handle_state_entity(
+        &mut self,
+        id: String,
+        start: usize,
+        end: usize,
+        default_detail: &'static str,
+        events: &mut Vec<StateEditorEvent>,
+    ) {
+        if self.note_alias_pending {
+            self.note_alias_pending = false;
+            return;
+        }
+
+        if self.relation_label_pending {
+            self.flush_pending_entity(events);
+            push_state_entity_event(events, id, start, end, "state reference");
+            self.relation_target_seen = true;
+            return;
+        }
+
+        self.queue_state_entity(id, start, end, default_detail, events);
     }
 
-    let Some(span) = state.id_span else {
-        return;
-    };
+    fn queue_state_entity(
+        &mut self,
+        id: String,
+        start: usize,
+        end: usize,
+        detail: &'static str,
+        events: &mut Vec<StateEditorEvent>,
+    ) {
+        self.flush_pending_entity(events);
+        let Some(entity) = state_pending_entity(id, start, end, detail) else {
+            return;
+        };
+        self.pending_entity = Some(entity);
+    }
 
-    facts.push_symbol(EditorSemanticSymbol::new(
-        state.id.clone(),
-        Some(detail.to_string()),
-        EditorSemanticKind::Class,
-        span,
-        span,
-    ));
+    fn flush_pending_entity(&mut self, events: &mut Vec<StateEditorEvent>) {
+        if let Some(entity) = self.pending_entity.take() {
+            events.push(StateEditorEvent::Entity {
+                name: entity.name,
+                selection: entity.selection,
+                detail: entity.detail,
+                kind: entity.kind,
+            });
+        }
+    }
+
+    fn flush_pending_entity_as(
+        &mut self,
+        detail: &'static str,
+        events: &mut Vec<StateEditorEvent>,
+    ) {
+        if let Some(entity) = self.pending_entity.take() {
+            events.push(StateEditorEvent::Entity {
+                name: entity.name,
+                selection: entity.selection,
+                detail,
+                kind: entity.kind,
+            });
+        }
+    }
+
+    fn finish_statement(&mut self, events: &mut Vec<StateEditorEvent>) {
+        self.flush_pending_entity(events);
+        self.context = StateTokenContext::Default;
+        self.note_text_pending = false;
+        self.note_position_seen = false;
+        self.note_alias_pending = false;
+        self.relation_label_pending = false;
+        self.relation_target_seen = false;
+    }
 }
 
-fn push_state_token_symbol(
-    facts: &mut EditorSemanticFacts,
+fn state_pending_entity(
+    id: String,
+    start: usize,
+    end: usize,
+    detail: &'static str,
+) -> Option<StatePendingEntity> {
+    if !is_editor_visible_state_name(&id) {
+        return None;
+    }
+
+    let selection_end = start + id.len();
+    let selection = SourceSpan::new(start, selection_end.min(end));
+    Some(StatePendingEntity {
+        name: id,
+        selection,
+        detail,
+        kind: EditorSemanticKind::Class,
+    })
+}
+
+fn push_state_entity_event(
+    events: &mut Vec<StateEditorEvent>,
     id: String,
     start: usize,
     end: usize,
     detail: &'static str,
 ) {
-    if !is_editor_visible_state_name(&id) {
+    let Some(entity) = state_pending_entity(id, start, end, detail) else {
         return;
-    }
-
-    let selection_end = start + id.len();
-    let selection = SourceSpan::new(start, selection_end.min(end));
-    push_state_symbol_with_selection(facts, id, selection, detail);
+    };
+    events.push(StateEditorEvent::Entity {
+        name: entity.name,
+        selection: entity.selection,
+        detail: entity.detail,
+        kind: entity.kind,
+    });
 }
 
-fn push_state_symbol_with_selection(
-    facts: &mut EditorSemanticFacts,
+fn push_state_entity_event_with_selection(
+    events: &mut Vec<StateEditorEvent>,
     id: String,
     selection: SourceSpan,
     detail: &'static str,
@@ -497,17 +600,16 @@ fn push_state_symbol_with_selection(
         return;
     }
 
-    facts.push_symbol(EditorSemanticSymbol::new(
-        id,
-        Some(detail.to_string()),
-        EditorSemanticKind::Class,
+    events.push(StateEditorEvent::Entity {
+        name: id,
         selection,
-        selection,
-    ));
+        detail,
+        kind: EditorSemanticKind::Class,
+    });
 }
 
-fn push_state_outline_symbol(
-    facts: &mut EditorSemanticFacts,
+fn push_state_outline_event(
+    events: &mut Vec<StateEditorEvent>,
     name: String,
     start: usize,
     end: usize,
@@ -519,17 +621,16 @@ fn push_state_outline_symbol(
     }
 
     let selection = SourceSpan::new(start, end);
-    facts.push_symbol(EditorSemanticSymbol::outline(
+    events.push(StateEditorEvent::Outline {
         name,
-        Some(detail.to_string()),
+        selection,
+        detail,
         kind,
-        selection,
-        selection,
-    ));
+    });
 }
 
-fn push_state_id_list_symbols(
-    facts: &mut EditorSemanticFacts,
+fn push_state_id_list_events(
+    events: &mut Vec<StateEditorEvent>,
     code: &str,
     fallback_ids: &str,
     start: usize,
@@ -542,8 +643,8 @@ fn push_state_id_list_symbols(
             .map(str::trim)
             .filter(|id| !id.is_empty())
         {
-            push_state_symbol_with_selection(
-                facts,
+            push_state_entity_event_with_selection(
+                events,
                 id.to_string(),
                 SourceSpan::new(start, end),
                 detail,
@@ -564,8 +665,8 @@ fn push_state_id_list_symbols(
         if leading < trailing {
             let id_start = cursor + leading;
             let id_end = cursor + trailing;
-            push_state_symbol_with_selection(
-                facts,
+            push_state_entity_event_with_selection(
+                events,
                 slice[id_start..id_end].to_string(),
                 SourceSpan::new(start + id_start, start + id_end),
                 detail,
@@ -579,8 +680,8 @@ fn push_state_id_list_symbols(
     }
 }
 
-fn push_state_payload_symbol_from_token(
-    facts: &mut EditorSemanticFacts,
+fn push_state_payload_event_from_token(
+    events: &mut Vec<StateEditorEvent>,
     code: &str,
     value: &str,
     start: usize,
@@ -595,17 +696,17 @@ fn push_state_payload_symbol_from_token(
 
     let span = SourceSpan::new(start, end);
     let selection = token_value_selection(code, start, end, value).unwrap_or(span);
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        value,
-        Some(detail.to_string()),
-        kind,
+    events.push(StateEditorEvent::Payload {
+        value: value.to_string(),
         span,
         selection,
-    ));
+        detail,
+        kind,
+    });
 }
 
-fn push_state_string_payload_symbol(
-    facts: &mut EditorSemanticFacts,
+fn push_state_string_payload_event(
+    events: &mut Vec<StateEditorEvent>,
     value: &str,
     start: usize,
     end: usize,
@@ -622,13 +723,13 @@ fn push_state_string_payload_symbol(
     } else {
         span
     };
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        value,
-        Some(detail.to_string()),
-        kind,
+    events.push(StateEditorEvent::Payload {
+        value: value.to_string(),
         span,
         selection,
-    ));
+        detail,
+        kind,
+    });
 }
 
 fn token_value_selection(code: &str, start: usize, end: usize, value: &str) -> Option<SourceSpan> {
@@ -640,19 +741,6 @@ fn token_value_selection(code: &str, start: usize, end: usize, value: &str) -> O
     ))
 }
 
-fn is_editor_visible_state_id(state: &StateStmt) -> bool {
-    state.ty != "divider" && is_editor_visible_state_name(&state.id)
-}
-
 fn is_editor_visible_state_name(id: &str) -> bool {
     !id.trim().is_empty() && id.trim() != "[*]"
-}
-
-fn state_detail(state: &StateStmt) -> &'static str {
-    match state.ty.as_str() {
-        "fork" => "state fork",
-        "join" => "state join",
-        "choice" => "state choice",
-        _ => "state",
-    }
 }

@@ -484,6 +484,20 @@ click Running "https://example.com/run" "Run details""#;
         running_start + "Running".len()
     );
 
+    let idle_relation_source_start = text.find("Idle --> Running").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Idle"
+            && symbol.detail.as_deref() == Some("state reference")
+            && symbol.selection.start == idle_relation_source_start
+    }));
+
+    let running_relation_target_start = text.find("Idle --> Running").unwrap() + "Idle --> ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Running"
+            && symbol.detail.as_deref() == Some("state reference")
+            && symbol.selection.start == running_relation_target_start
+    }));
+
     let active_start = text.find("Active").unwrap();
     assert_eq!(
         symbol_at("Active", active_start).selection.end,
@@ -540,6 +554,7 @@ click Running "https://example.com/run" "Run details""#;
         })
         .unwrap();
     assert_eq!(floating_note.role, EditorSemanticRole::Payload);
+    assert!(!facts.symbols.iter().any(|symbol| symbol.name == "note1"));
 
     let active_style_start = text.find("activeStyle").unwrap();
     let active_style = facts
