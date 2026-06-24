@@ -86,7 +86,7 @@ pub(super) fn draw_edge(
             feature: "edges with missing endpoint layouts",
         });
     };
-    let Some(mut plan) = plan_edge_route(EdgeRouteRequest {
+    let Some(plan) = plan_edge_route(EdgeRouteRequest {
         graph: request.graph,
         graph_layout: request.graph_layout,
         edges: request.edges,
@@ -101,8 +101,7 @@ pub(super) fn draw_edge(
             feature: "unroutable graph edges",
         });
     };
-    apply_edge_style_to_plan(&mut plan, request.edge.style);
-    paint_route_plan(drawing, &plan);
+    paint_route_plan(drawing, &plan, request.edge.style);
 
     Ok(())
 }
@@ -142,42 +141,30 @@ fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
     }
 }
 
-fn apply_edge_style_to_plan(plan: &mut RoutePlan, style: GraphEdgeStyle) {
-    for cell in &mut plan.cells {
-        cell.color = match cell.kind {
+fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: GraphEdgeStyle) {
+    for cell in &plan.cells {
+        let color = match cell.kind {
             PlannedRouteCellKind::EdgeArrow => style.arrow.or(style.line),
             PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => style.line,
         };
-    }
-    for label in &mut plan.labels {
-        label.color = style.label;
-    }
-}
-
-fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
-    for cell in &plan.cells {
         match cell.kind {
-            PlannedRouteCellKind::EdgeLine => set_edge_line_with_color(
-                drawing.canvas,
-                cell.coord.x,
-                cell.coord.y,
-                cell.ch,
-                cell.color,
-            ),
+            PlannedRouteCellKind::EdgeLine => {
+                set_edge_line_with_color(drawing.canvas, cell.coord.x, cell.coord.y, cell.ch, color)
+            }
             PlannedRouteCellKind::RouteCell => set_route_cell_with_color(
                 drawing.canvas,
                 drawing.route_cells,
                 cell.coord.x,
                 cell.coord.y,
                 cell.ch,
-                cell.color,
+                color,
             ),
             PlannedRouteCellKind::EdgeArrow => set_edge_arrow_with_color(
                 drawing.canvas,
                 cell.coord.x,
                 cell.coord.y,
                 cell.ch,
-                cell.color,
+                color,
             ),
         }
     }
@@ -188,7 +175,7 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
             start: label.start,
             end: label.end,
             text: label.text.clone(),
-            color: label.color,
+            color: style.label,
         }));
 }
 
@@ -205,7 +192,7 @@ mod tests {
         let line = AsciiRgb::new(1, 2, 3);
         let arrow = AsciiRgb::new(4, 5, 6);
         let label = AsciiRgb::new(7, 8, 9);
-        let mut plan = RoutePlan {
+        let plan = RoutePlan {
             cells: vec![
                 planned_cell(0, 0, '-', PlannedRouteCellKind::EdgeLine),
                 planned_cell(1, 0, '-', PlannedRouteCellKind::RouteCell),
@@ -215,12 +202,17 @@ mod tests {
                 start: CanvasCoord { x: 0, y: 0 },
                 end: CanvasCoord { x: 2, y: 0 },
                 text: "label".to_string(),
-                color: None,
             }],
         };
 
-        apply_edge_style_to_plan(
-            &mut plan,
+        let mut canvas = Canvas::new(3, 1);
+        let mut route_cells = RouteCells::new();
+        let mut labels = Vec::new();
+        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells, &mut labels);
+
+        paint_route_plan(
+            &mut drawing,
+            &plan,
             GraphEdgeStyle {
                 line: Some(line),
                 arrow: Some(arrow),
@@ -228,22 +220,37 @@ mod tests {
             },
         );
 
-        assert_eq!(plan.cells[0].color, Some(line));
-        assert_eq!(plan.cells[1].color, Some(line));
-        assert_eq!(plan.cells[2].color, Some(arrow));
-        assert_eq!(plan.labels[0].color, Some(label));
+        assert_eq!(
+            canvas.get_color(0, 0),
+            Some(crate::terminal::CanvasColor::Direct(line))
+        );
+        assert_eq!(
+            canvas.get_color(1, 0),
+            Some(crate::terminal::CanvasColor::Direct(line))
+        );
+        assert_eq!(
+            canvas.get_color(2, 0),
+            Some(crate::terminal::CanvasColor::Direct(arrow))
+        );
+        assert_eq!(labels[0].color, Some(label));
     }
 
     #[test]
     fn edge_arrow_style_falls_back_to_line_style() {
         let line = AsciiRgb::new(10, 11, 12);
-        let mut plan = RoutePlan {
+        let plan = RoutePlan {
             cells: vec![planned_cell(0, 0, '>', PlannedRouteCellKind::EdgeArrow)],
             labels: Vec::new(),
         };
 
-        apply_edge_style_to_plan(
-            &mut plan,
+        let mut canvas = Canvas::new(1, 1);
+        let mut route_cells = RouteCells::new();
+        let mut labels = Vec::new();
+        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells, &mut labels);
+
+        paint_route_plan(
+            &mut drawing,
+            &plan,
             GraphEdgeStyle {
                 line: Some(line),
                 arrow: None,
@@ -251,7 +258,10 @@ mod tests {
             },
         );
 
-        assert_eq!(plan.cells[0].color, Some(line));
+        assert_eq!(
+            canvas.get_color(0, 0),
+            Some(crate::terminal::CanvasColor::Direct(line))
+        );
     }
 
     #[test]
@@ -297,7 +307,6 @@ mod tests {
             ch,
             kind,
             segment: PlannedRouteSegment::Direct,
-            color: None,
         }
     }
 }

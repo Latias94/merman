@@ -30,7 +30,6 @@ pub(super) fn plan_top_down_direct_route(
         ch: charset.down_connector,
         kind: PlannedRouteCellKind::EdgeLine,
         segment: PlannedRouteSegment::Direct,
-        color: None,
     });
     for y in start..end {
         cells.push(PlannedRouteCell {
@@ -38,7 +37,6 @@ pub(super) fn plan_top_down_direct_route(
             ch: line,
             kind: PlannedRouteCellKind::RouteCell,
             segment: PlannedRouteSegment::Direct,
-            color: None,
         });
     }
     cells.push(PlannedRouteCell {
@@ -52,7 +50,6 @@ pub(super) fn plan_top_down_direct_route(
             GraphEdgeArrow::Point => PlannedRouteCellKind::EdgeArrow,
         },
         segment: PlannedRouteSegment::Direct,
-        color: None,
     });
 
     let labels = planned_label(

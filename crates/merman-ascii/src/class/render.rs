@@ -717,18 +717,15 @@ fn draw_layered_relation(
     let Some(bottom) = placed_by_id.get(layout.bottom_id) else {
         return;
     };
-    let Some(geometry) = relation_graph::plan_layered_relation_route(
-        placed_boxes,
-        top,
-        bottom,
-        lane_offset,
-        1,
-        1,
-        1,
-        0,
-    ) else {
-        return;
-    };
+    let geometry = relation_graph::plan_layered_relation_route(
+        relation_graph::LayeredRelationRouteRequest::new(
+            placed_boxes,
+            top,
+            bottom,
+            lane_offset,
+            relation_graph::LayeredRelationRouteProfile::class(),
+        ),
+    );
     let vertical = line_char(layout.line, charset);
     let horizontal = horizontal_line_char(layout.line, charset);
     let relation_chars = relation_line_chars(charset);

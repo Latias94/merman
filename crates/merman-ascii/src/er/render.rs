@@ -509,18 +509,15 @@ fn draw_layered_relationship(
     let horizontal = relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?;
     let label = relationship.role_a.trim();
     let relation_chars = relation_line_chars(charset);
-    let Some(geometry) = relation_graph::plan_layered_relation_route(
-        placed_boxes,
-        top,
-        bottom,
-        lane_offset,
-        2,
-        2,
-        2,
-        1,
-    ) else {
-        return Ok(());
-    };
+    let geometry = relation_graph::plan_layered_relation_route(
+        relation_graph::LayeredRelationRouteRequest::new(
+            placed_boxes,
+            top,
+            bottom,
+            lane_offset,
+            relation_graph::LayeredRelationRouteProfile::er(),
+        ),
+    );
 
     let mut overlays = Vec::new();
     overlays.push(RelationOverlay::text(

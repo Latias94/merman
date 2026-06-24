@@ -1,7 +1,6 @@
 use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
 use super::path::StepDirection;
-use crate::color::AsciiRgb;
 
 mod grid;
 mod left_right;
@@ -31,7 +30,6 @@ pub(super) struct PlannedRouteCell {
     pub(super) ch: char,
     pub(super) kind: PlannedRouteCellKind,
     pub(super) segment: PlannedRouteSegment,
-    pub(super) color: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +44,6 @@ pub(super) struct PlannedRouteLabel {
     pub(super) start: CanvasCoord,
     pub(super) end: CanvasCoord,
     pub(super) text: String,
-    pub(super) color: Option<AsciiRgb>,
 }
 
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
@@ -64,7 +61,6 @@ fn route_cell_in_segment(
         ch,
         kind: PlannedRouteCellKind::RouteCell,
         segment,
-        color: None,
     }
 }
 
@@ -83,7 +79,6 @@ fn edge_line_cell_in_segment(
         ch,
         kind: PlannedRouteCellKind::EdgeLine,
         segment,
-        color: None,
     }
 }
 
@@ -102,7 +97,6 @@ fn edge_arrow_cell_in_segment(
         ch,
         kind: PlannedRouteCellKind::EdgeArrow,
         segment,
-        color: None,
     }
 }
 
@@ -117,7 +111,6 @@ fn planned_label(
             start,
             end,
             text: label.to_string(),
-            color: None,
         })
 }
 
@@ -133,7 +126,6 @@ fn planned_label_on_canvas_lines(
         start: first,
         end: last,
         text: label.to_string(),
-        color: None,
     })
 }
 

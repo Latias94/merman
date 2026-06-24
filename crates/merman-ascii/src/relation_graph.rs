@@ -312,6 +312,65 @@ impl LayeredRelationRoutePlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LayeredRelationRouteProfile {
+    min_vertical_gap: usize,
+    source_path_start_offset: usize,
+    route_y_offset_from_target: usize,
+    target_path_end_offset_from_target: usize,
+}
+
+impl LayeredRelationRouteProfile {
+    pub(crate) const fn new(
+        min_vertical_gap: usize,
+        source_path_start_offset: usize,
+        route_y_offset_from_target: usize,
+        target_path_end_offset_from_target: usize,
+    ) -> Self {
+        Self {
+            min_vertical_gap,
+            source_path_start_offset,
+            route_y_offset_from_target,
+            target_path_end_offset_from_target,
+        }
+    }
+
+    pub(crate) const fn class() -> Self {
+        Self::new(1, 1, 1, 0)
+    }
+
+    pub(crate) const fn er() -> Self {
+        Self::new(2, 2, 2, 1)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LayeredRelationRouteRequest<'boxes, 'graph> {
+    placed_boxes: &'boxes [PlacedRelationGraphBox<'graph>],
+    top: &'boxes PlacedRelationGraphBox<'graph>,
+    bottom: &'boxes PlacedRelationGraphBox<'graph>,
+    lane_offset: isize,
+    profile: LayeredRelationRouteProfile,
+}
+
+impl<'boxes, 'graph> LayeredRelationRouteRequest<'boxes, 'graph> {
+    pub(crate) fn new(
+        placed_boxes: &'boxes [PlacedRelationGraphBox<'graph>],
+        top: &'boxes PlacedRelationGraphBox<'graph>,
+        bottom: &'boxes PlacedRelationGraphBox<'graph>,
+        lane_offset: isize,
+        profile: LayeredRelationRouteProfile,
+    ) -> Self {
+        Self {
+            placed_boxes,
+            top,
+            bottom,
+            lane_offset,
+            profile,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LayeredRelationEdge<'a> {
     top_id: &'a str,
     bottom_id: &'a str,
@@ -720,59 +779,61 @@ pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
 }
 
 pub(crate) fn plan_layered_relation_route(
-    placed_boxes: &[PlacedRelationGraphBox<'_>],
-    top: &PlacedRelationGraphBox<'_>,
-    bottom: &PlacedRelationGraphBox<'_>,
-    lane_offset: isize,
-    min_vertical_gap: usize,
-    source_path_start_offset: usize,
-    route_y_offset_from_target: usize,
-    target_path_end_offset_from_target: usize,
-) -> Option<LayeredRelationRouteGeometry> {
-    let lane_offset =
-        spanning_lane_offset_around_intermediate_boxes(placed_boxes, top, bottom, lane_offset);
-    let from_x = offset_center(top.center_x(), lane_offset);
-    let to_x = offset_center(bottom.center_x(), lane_offset);
-    let source_top = top.y();
-    let source_bottom = top.bottom();
-    let target_top = bottom.y();
-    let target_bottom = bottom.bottom();
+    request: LayeredRelationRouteRequest<'_, '_>,
+) -> LayeredRelationRouteGeometry {
+    let lane_offset = spanning_lane_offset_around_intermediate_boxes(
+        request.placed_boxes,
+        request.top,
+        request.bottom,
+        request.lane_offset,
+    );
+    let from_x = offset_center(request.top.center_x(), lane_offset);
+    let to_x = offset_center(request.bottom.center_x(), lane_offset);
+    let source_top = request.top.y();
+    let source_bottom = request.top.bottom();
+    let target_top = request.bottom.y();
+    let target_bottom = request.bottom.bottom();
 
-    if target_top > source_bottom.saturating_add(min_vertical_gap) {
-        return Some(LayeredRelationRouteGeometry {
+    if target_top > source_bottom.saturating_add(request.profile.min_vertical_gap) {
+        return LayeredRelationRouteGeometry {
             from_x,
             to_x,
-            source_path_start_y: source_bottom.saturating_add(source_path_start_offset),
+            source_path_start_y: source_bottom
+                .saturating_add(request.profile.source_path_start_offset),
             source_marker_y: source_bottom.saturating_add(1),
-            route_y: target_top.saturating_sub(route_y_offset_from_target),
+            route_y: target_top.saturating_sub(request.profile.route_y_offset_from_target),
             target_marker_y: target_top.saturating_sub(1),
-            target_path_end_y: target_top.saturating_sub(target_path_end_offset_from_target),
-        });
+            target_path_end_y: target_top
+                .saturating_sub(request.profile.target_path_end_offset_from_target),
+        };
     }
 
-    if source_top > target_bottom.saturating_add(min_vertical_gap) {
-        return Some(LayeredRelationRouteGeometry {
+    if source_top > target_bottom.saturating_add(request.profile.min_vertical_gap) {
+        return LayeredRelationRouteGeometry {
             from_x,
             to_x,
-            source_path_start_y: source_top.saturating_sub(source_path_start_offset),
+            source_path_start_y: source_top
+                .saturating_sub(request.profile.source_path_start_offset),
             source_marker_y: source_top.saturating_sub(1),
-            route_y: target_bottom.saturating_add(route_y_offset_from_target),
+            route_y: target_bottom.saturating_add(request.profile.route_y_offset_from_target),
             target_marker_y: target_bottom.saturating_add(1),
-            target_path_end_y: target_bottom.saturating_add(target_path_end_offset_from_target),
-        });
+            target_path_end_y: target_bottom
+                .saturating_add(request.profile.target_path_end_offset_from_target),
+        };
     }
 
-    Some(LayeredRelationRouteGeometry {
+    LayeredRelationRouteGeometry {
         from_x,
         to_x,
-        source_path_start_y: source_bottom.saturating_add(source_path_start_offset),
+        source_path_start_y: source_bottom.saturating_add(request.profile.source_path_start_offset),
         source_marker_y: source_bottom.saturating_add(1),
         route_y: source_bottom
             .max(target_bottom)
-            .saturating_add(route_y_offset_from_target),
+            .saturating_add(request.profile.route_y_offset_from_target),
         target_marker_y: target_bottom.saturating_add(1),
-        target_path_end_y: target_bottom.saturating_add(target_path_end_offset_from_target),
-    })
+        target_path_end_y: target_bottom
+            .saturating_add(request.profile.target_path_end_offset_from_target),
+    }
 }
 
 fn route_column_crosses_any_box(
@@ -1401,8 +1462,13 @@ mod tests {
                 y: 4,
             },
         ];
-        let geometry = plan_layered_relation_route(&placed, &placed[0], &placed[1], 0, 1, 1, 1, 0)
-            .expect("route has enough vertical space");
+        let geometry = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[1],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+        ));
         let route = LayeredRelationRoutePlan::new(
             geometry.clone(),
             '|',
@@ -1444,5 +1510,45 @@ mod tests {
             canvas.get_color(1, 2),
             Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
         );
+    }
+
+    #[test]
+    fn layered_relation_route_plan_avoids_intermediate_boxes() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let middle_box =
+            RelationGraphBox::new("middle".to_string(), vec!["MMMMMMM".to_string()], 7);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "middle",
+                relation_box: &middle_box,
+                x: 0,
+                y: 4,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 10,
+            },
+        ];
+
+        let geometry = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[2],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+        ));
+
+        assert_eq!(geometry.from_x(), 7);
+        assert_eq!(geometry.to_x(), 7);
+        assert_eq!(geometry.route_y(), 9);
     }
 }
