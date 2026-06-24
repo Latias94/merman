@@ -187,6 +187,61 @@ fn incomplete_class_documents_use_recovered_parser_facts() {
 }
 
 #[test]
+fn class_member_outline_facts_do_not_pollute_completion_ids() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "classDiagram\n",
+            "class User {\n",
+            "  +login()\n",
+            "  -password: String\n",
+            "}\n",
+            "<<interface>> User\n",
+            "User: email\n",
+            "click User href \"https://example.com\"\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "User"));
+    assert!(!index.node_ids().any(|id| id == "+login()"));
+    assert!(!index.node_ids().any(|id| id == "-password: String"));
+    assert!(!index.node_ids().any(|id| id == "email"));
+    assert!(!index.node_ids().any(|id| id == "interface"));
+
+    assert!(
+        index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "+login()" && item.detail.as_deref() == Some("class member"))
+    );
+    assert!(
+        index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "-password: String"
+                && item.detail.as_deref() == Some("class member"))
+    );
+    assert!(
+        index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "email" && item.detail.as_deref() == Some("class member"))
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "interface")
+    );
+}
+
+#[test]
 fn er_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

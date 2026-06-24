@@ -169,9 +169,10 @@ impl ClassEditorFactCollector {
                 self.push_pending_relation_source(facts);
                 self.expect_name(ExpectedClassName::RelationTarget);
             }
-            Tok::Label(_) => {
+            Tok::Label(label) => {
                 if let Some(symbol) = self.pending_relation_source.take() {
                     self.push_symbol(facts, symbol, ExpectedClassName::MemberOwner);
+                    self.push_label_member_symbol(facts, &label, SourceSpan::new(start, end));
                 }
             }
             Tok::Name(name) => {
@@ -181,6 +182,12 @@ impl ClassEditorFactCollector {
                 };
                 if self.after_annotation_start {
                     self.after_annotation_start = false;
+                    self.push_payload_symbol(
+                        facts,
+                        symbol,
+                        "class annotation",
+                        EditorSemanticKind::String,
+                    );
                     return;
                 }
 
@@ -189,6 +196,9 @@ impl ClassEditorFactCollector {
                 } else {
                     self.pending_relation_source = Some(symbol);
                 }
+            }
+            Tok::Member(member) => {
+                self.push_member_symbol(facts, member, SourceSpan::new(start, end));
             }
             Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
             Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
@@ -200,7 +210,6 @@ impl ClassEditorFactCollector {
             | Tok::SquareStop
             | Tok::StyleSeparator
             | Tok::Str(_)
-            | Tok::Member(_)
             | Tok::RestOfLine(_)
             | Tok::LinkTarget(_)
             | Tok::CallbackName(_)
@@ -263,6 +272,61 @@ impl ClassEditorFactCollector {
             selection,
         ));
     }
+
+    fn push_payload_symbol(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        symbol: ClassTokenSymbol,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+    ) {
+        if symbol.name.is_empty() {
+            return;
+        }
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            symbol.name,
+            Some(detail.to_string()),
+            kind,
+            symbol.span,
+            symbol.span,
+        ));
+    }
+
+    fn push_member_symbol(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        member: String,
+        span: SourceSpan,
+    ) {
+        let Some((name, selection)) = class_member_selection(&member, span) else {
+            return;
+        };
+        facts.push_symbol(EditorSemanticSymbol::outline(
+            name,
+            Some("class member".to_string()),
+            EditorSemanticKind::Property,
+            span,
+            selection,
+        ));
+    }
+
+    fn push_label_member_symbol(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        label: &str,
+        span: SourceSpan,
+    ) {
+        let Some((name, selection)) = class_label_member_selection(label, span) else {
+            return;
+        };
+        facts.push_symbol(EditorSemanticSymbol::outline(
+            name,
+            Some("class member".to_string()),
+            EditorSemanticKind::Property,
+            span,
+            selection,
+        ));
+    }
 }
 
 fn selection_span_for_class_name(name: &str, span: SourceSpan) -> SourceSpan {
@@ -275,4 +339,39 @@ fn selection_span_for_class_name(name: &str, span: SourceSpan) -> SourceSpan {
     }
 
     span
+}
+
+fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
+    let trimmed_start = member.len().saturating_sub(member.trim_start().len());
+    let text = &member[trimmed_start..];
+    let trimmed_len = text.trim_end().len();
+    if trimmed_len == 0 {
+        return None;
+    }
+
+    let text = &text[..trimmed_len];
+    Some((
+        text.to_string(),
+        SourceSpan::new(
+            span.start + trimmed_start,
+            span.start + trimmed_start + text.len(),
+        ),
+    ))
+}
+
+fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
+    let after_colon = label.strip_prefix(':').unwrap_or(label);
+    let colon_offset = usize::from(label.starts_with(':'));
+    let leading = after_colon
+        .len()
+        .saturating_sub(after_colon.trim_start().len());
+    let text = &after_colon[leading..];
+    let trimmed_len = text.trim_end().len();
+    if trimmed_len == 0 {
+        return None;
+    }
+
+    let text = &text[..trimmed_len];
+    let start = span.start + colon_offset + leading;
+    Some((text.to_string(), SourceSpan::new(start, start + text.len())))
 }

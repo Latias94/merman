@@ -461,6 +461,7 @@ fn parse_class_editor_facts_preserve_parser_symbol_spans() {
 namespace Company {
   class User {
     +login()
+    -password: String
   }
 }
 User <|-- Admin
@@ -496,11 +497,31 @@ classDef service fill:#eee
         user_start + "User".len()
     );
 
+    let login_start = text.find("+login()").unwrap();
+    let login = symbol_at("+login()", login_start);
+    assert_eq!(login.role, EditorSemanticRole::Outline);
+    assert_eq!(login.detail.as_deref(), Some("class member"));
+
+    let password_start = text.find("-password: String").unwrap();
+    let password = symbol_at("-password: String", password_start);
+    assert_eq!(password.role, EditorSemanticRole::Outline);
+    assert_eq!(password.detail.as_deref(), Some("class member"));
+
     let admin_start = text.find("Admin").unwrap();
     assert_eq!(
         symbol_at("Admin", admin_start).selection.end,
         admin_start + "Admin".len()
     );
+
+    let email_start = text.find("email").unwrap();
+    let email = symbol_at("email", email_start);
+    assert_eq!(email.role, EditorSemanticRole::Outline);
+    assert_eq!(email.detail.as_deref(), Some("class member"));
+
+    let annotation_start = text.find("interface").unwrap();
+    let annotation = symbol_at("interface", annotation_start);
+    assert_eq!(annotation.role, EditorSemanticRole::Payload);
+    assert_eq!(annotation.detail.as_deref(), Some("class annotation"));
 
     let service_start = text.find("service").unwrap();
     assert_eq!(

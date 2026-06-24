@@ -158,8 +158,9 @@ partial buffers and downstream migration.
   from its lexer token stream with complete/recovered provenance. State now carries state id spans
   in its LALRPOP AST, emits parser-backed state/reference/fork/join/choice facts, and recovers facts
   from the state lexer token stream for incomplete buffers. Class now emits class/namespace/
-  relation, member-owner, annotation-target, directive-target, and interaction-target facts from its
-  lexer token stream with complete/recovered provenance. ER now emits entity, relationship endpoint,
+  relation, member-owner, member-outline, annotation-target, annotation-payload, directive-target,
+  and interaction-target facts from its lexer token stream with complete/recovered provenance. ER now
+  emits entity, relationship endpoint,
   attribute, class/style/classDef target, and inline class facts with recovered token-stream output
   for incomplete buffers; ER attribute names are now outline facts and attribute type/key/comment
   payload spans are preserved for lint/future semantic consumers without becoming node completion
@@ -217,6 +218,8 @@ partial buffers and downstream migration.
   provenance path in `DocumentStore`, and header completion includes `gantt`. The migration index
   now respects semantic roles: entity facts feed completion/navigation/outline, outline facts feed
   outline only, and payload facts stay out of LSP completion/navigation.
+  Class member facts now use the outline role for class-body and inline `Class: member` entries,
+  while annotation names are payload spans reserved for lint/future semantic consumers.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,
@@ -278,8 +281,9 @@ partial buffers and downstream migration.
   current LSP navigation: flowchart, sequence, state, class, and ER.
 - ER `IdList` is now span-rich internally; future ER lint can use directive payload spans instead
   of reparsing class/style/classDef lines.
-- Class is migrated at the class/reference-owner level, but full product-grade rename/lint will
-  still benefit from deeper member, annotation payload, and directive payload span facts.
+- Class is migrated at the class/reference-owner level, and member outline plus annotation payload
+  spans are now parser-backed; full product-grade rename/lint will still benefit from deeper
+  directive payload spans and recovered diagnostics.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
   This preserves behavior while removing duplicated scan logic.

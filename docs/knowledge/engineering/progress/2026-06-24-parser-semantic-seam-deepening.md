@@ -46,6 +46,9 @@ partial parse results instead of raw-text heuristic scans.
   LALRPOP complete/recovered provenance, covering class declarations, namespaces, relation
   endpoints, member owners, annotation targets, style/classDef/cssClass targets, and click/link/
   callback targets without returning to raw-text scans.
+- Class member facts are now role-aware: class-body members and inline `Class: member` entries are
+  outline-only symbols, while annotation names are payload-only spans. This preserves data needed
+  by future lint/semantic consumers without adding members or annotations to node-id completion.
 - ER is the fifth migrated family: `IdList` is now span-rich internally, editor facts cover
   entities, relationship endpoints, attribute names, inline classes, class/style/classDef targets,
   and incomplete ER buffers recover from the ER lexer token stream instead of raw-text scans.
@@ -94,10 +97,10 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: deepen class member/annotation/directive payload
-spans, deepen state/mindmap/gantt directive payload spans for rename and references, add
-role-aware outline facts for constructs like Gantt sections, or expose recovered parser diagnostics
-alongside recovered facts. Do not add new heuristic parsing in LSP for covered
+Choose the next parser seam slice deliberately: deepen class/state/mindmap/gantt directive payload
+spans for rename and references, add role-aware outline facts for constructs like Gantt sections,
+or expose recovered parser diagnostics alongside recovered facts. Do not add new heuristic parsing
+in LSP for covered
 flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations
