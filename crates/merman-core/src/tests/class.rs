@@ -466,10 +466,15 @@ namespace Company {
 }
 User <|-- Admin
 User: email
+User <|-- Admin : manages
 <<interface>> User
+note for User "Primary user"
+note "Floating note"
 click User href "https://example.com" "Open user" _blank
 click Admin call open(userId) "Open admin"
 callback User "refreshUser" "Refresh user"
+accTitle: Class chart
+accDescr: Shows class relationships
 classDef service fill:#eee
 class User:::service
 cssClass "User,Admin" service
@@ -534,6 +539,53 @@ style User fill:#fff
     let annotation = symbol_at("interface", annotation_start);
     assert_eq!(annotation.role, EditorSemanticRole::Payload);
     assert_eq!(annotation.detail.as_deref(), Some("class annotation"));
+
+    let relation_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "manages" && symbol.detail.as_deref() == Some("class relation label")
+        })
+        .unwrap();
+    assert_eq!(relation_label.role, EditorSemanticRole::Payload);
+
+    let note_for = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Primary user" && symbol.detail.as_deref() == Some("class note")
+        })
+        .unwrap();
+    assert_eq!(note_for.role, EditorSemanticRole::Payload);
+
+    let floating_note = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Floating note" && symbol.detail.as_deref() == Some("class note")
+        })
+        .unwrap();
+    assert_eq!(floating_note.role, EditorSemanticRole::Payload);
+
+    let acc_title = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Class chart"
+                && symbol.detail.as_deref() == Some("class accessibility title")
+        })
+        .unwrap();
+    assert_eq!(acc_title.role, EditorSemanticRole::Payload);
+
+    let acc_descr = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Shows class relationships"
+                && symbol.detail.as_deref() == Some("class accessibility description")
+        })
+        .unwrap();
+    assert_eq!(acc_descr.role, EditorSemanticRole::Payload);
 
     let href_start = text.find("https://example.com").unwrap();
     let href = symbol_at("https://example.com", href_start);

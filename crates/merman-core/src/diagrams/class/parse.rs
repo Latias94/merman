@@ -104,6 +104,7 @@ struct ClassEditorFactCollector<'a> {
     interaction: Option<ClassInteractionKind>,
     callback_statement_function_seen: bool,
     line_payload: Option<ClassLinePayloadKind>,
+    note_text_pending: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -150,6 +151,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             interaction: None,
             callback_statement_function_seen: false,
             line_payload: None,
+            note_text_pending: false,
         }
     }
 
@@ -164,7 +166,13 @@ impl<'a> ClassEditorFactCollector<'a> {
                 self.pending_relation_source = None;
                 self.expect_name(ExpectedClassName::Namespace);
             }
-            Tok::NoteFor => self.expect_name(ExpectedClassName::NoteTarget),
+            Tok::Note => {
+                self.note_text_pending = true;
+            }
+            Tok::NoteFor => {
+                self.note_text_pending = true;
+                self.expect_name(ExpectedClassName::NoteTarget);
+            }
             Tok::CssClass => {
                 facts.push_directive_prefix("cssClass");
                 self.css_class_targets_pending = true;
@@ -216,6 +224,13 @@ impl<'a> ClassEditorFactCollector<'a> {
                 if let Some(symbol) = self.pending_relation_source.take() {
                     self.push_symbol(facts, symbol, ExpectedClassName::MemberOwner);
                     self.push_label_member_symbol(facts, &label, SourceSpan::new(start, end));
+                } else {
+                    self.push_label_payload_symbol(
+                        facts,
+                        &label,
+                        SourceSpan::new(start, end),
+                        "class relation label",
+                    );
                 }
             }
             Tok::Name(name) => {
@@ -253,6 +268,18 @@ impl<'a> ClassEditorFactCollector<'a> {
                         "class css target",
                     );
                     self.expect_name(ExpectedClassName::CssClassReference);
+                    return;
+                }
+
+                if self.note_text_pending {
+                    self.note_text_pending = false;
+                    self.push_string_payload_symbol(
+                        facts,
+                        &text,
+                        SourceSpan::new(start, end),
+                        "class note",
+                        EditorSemanticKind::String,
+                    );
                     return;
                 }
 
@@ -332,10 +359,27 @@ impl<'a> ClassEditorFactCollector<'a> {
                     );
                 }
             }
-            Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
-            Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
+            Tok::AccTitle(value) => {
+                facts.push_directive_prefix("accTitle");
+                self.push_payload_symbol_from_token(
+                    facts,
+                    &value,
+                    SourceSpan::new(start, end),
+                    "class accessibility title",
+                    EditorSemanticKind::String,
+                );
+            }
+            Tok::AccDescr(value) | Tok::AccDescrMultiline(value) => {
+                facts.push_directive_prefix("accDescr");
+                self.push_payload_symbol_from_token(
+                    facts,
+                    &value,
+                    SourceSpan::new(start, end),
+                    "class accessibility description",
+                    EditorSemanticKind::String,
+                );
+            }
             Tok::Direction(_)
-            | Tok::Note
             | Tok::HrefKw
             | Tok::StructStart
             | Tok::SquareStart
@@ -354,6 +398,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         self.interaction = None;
         self.callback_statement_function_seen = false;
         self.line_payload = None;
+        self.note_text_pending = false;
     }
 
     fn expect_name(&mut self, expected: ExpectedClassName) {
@@ -548,6 +593,25 @@ impl<'a> ClassEditorFactCollector<'a> {
             text,
             Some(detail.to_string()),
             kind,
+            span,
+            selection,
+        ));
+    }
+
+    fn push_label_payload_symbol(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        label: &str,
+        span: SourceSpan,
+        detail: &'static str,
+    ) {
+        let Some((name, selection)) = class_label_member_selection(label, span) else {
+            return;
+        };
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            name,
+            Some(detail.to_string()),
+            EditorSemanticKind::String,
             span,
             selection,
         ));

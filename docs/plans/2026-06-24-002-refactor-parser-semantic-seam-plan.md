@@ -162,8 +162,9 @@ partial buffers and downstream migration.
   references, `classDef` ids are outline-only facts, and style, class reference, click URL/tooltip,
   and accessibility text values are payload-only spans. Class now emits class/namespace/relation,
   member-owner, member-outline, annotation-target, annotation-payload, directive-target,
-  interaction-target, interaction string, link-target, callback function/args, inline class,
-  cssClass reference, and style/classDef payload facts from its lexer token stream with
+  interaction-target, interaction string, link-target, callback function/args, relation-label,
+  note, accessibility, inline class, cssClass reference, and style/classDef payload facts from its
+  lexer token stream with
   complete/recovered provenance. Class `classDef` ids are outline-only, and `cssClass` quoted
   target lists are entity references instead of treating the style class name as a graph entity. ER
   now emits entity, relationship endpoint,
@@ -298,10 +299,12 @@ partial buffers and downstream migration.
   of reparsing class/style/classDef lines.
 - Class is migrated at the class/reference-owner level, and member outline plus annotation payload
   spans are now parser-backed. Interaction string/link target payloads, callback payloads,
-  style/classDef raw style payloads, inline class references, and cssClass target/reference
-  projection are parser-backed. A useful break already landed here: style class names are no
-  longer graph-node entities for completion/rename. Full product-grade lint can still deepen class
-  note/accessibility/relation-label payload spans and recovered diagnostics.
+  style/classDef raw style payloads, inline class references, note text, accessibility text,
+  relation labels, and cssClass target/reference projection are parser-backed. A useful break
+  already landed here: style class names are no longer graph-node entities for completion/rename.
+  Full product-grade lint can still decide whether class display-label strings and quoted relation
+  multiplicity/cardinality strings deserve payload facts, and should expose recovered diagnostics
+  rather than adding LSP-side scans.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
   This preserves behavior while removing duplicated scan logic.

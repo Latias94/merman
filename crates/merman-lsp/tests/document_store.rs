@@ -238,8 +238,13 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
             "}\n",
             "<<interface>> User\n",
             "User: email\n",
+            "User <|-- Admin : manages\n",
+            "note for User \"Primary user\"\n",
+            "note \"Floating note\"\n",
             "click User href \"https://example.com\" \"Open user\" _blank\n",
             "click User call open(userId) \"Open user\"\n",
+            "accTitle: Class chart\n",
+            "accDescr: Shows class relationships\n",
             "classDef service fill:#eee\n",
             "class User:::service\n",
             "cssClass \"User,Admin\" service\n",
@@ -263,6 +268,11 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
     assert!(!index.node_ids().any(|id| id == "fill:#fff"));
     assert!(!index.node_ids().any(|id| id == "open"));
     assert!(!index.node_ids().any(|id| id == "userId"));
+    assert!(!index.node_ids().any(|id| id == "manages"));
+    assert!(!index.node_ids().any(|id| id == "Primary user"));
+    assert!(!index.node_ids().any(|id| id == "Floating note"));
+    assert!(!index.node_ids().any(|id| id == "Class chart"));
+    assert!(!index.node_ids().any(|id| id == "Shows class relationships"));
 
     assert!(
         index
@@ -324,6 +334,24 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
             .outline_items()
             .iter()
             .any(|item| item.name == "userId")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "manages")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Primary user")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Class chart")
     );
 }
 

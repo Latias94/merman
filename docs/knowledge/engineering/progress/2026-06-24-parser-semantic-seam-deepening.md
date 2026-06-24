@@ -62,6 +62,11 @@ partial parse results instead of raw-text heuristic scans.
   style class names are payload-only, and `style`/`classDef` raw style strings are payload-only
   spans. `click ... call ...` and `callback ...` function names plus callback args are also
   payload-only parser facts.
+- Class note/accessibility/relation-label facts are now payload-only parser facts. `note` text,
+  `accTitle:`/`accDescr:` values, and relation labels such as `: manages` stay available to future
+  lint/semantic consumers while remaining excluded from node-id completion and outline projection.
+  Class display-label strings and quoted relation multiplicity/cardinality strings remain optional
+  future payload candidates if product lint needs those distinctions.
 - ER is the fifth migrated family: `IdList` is now span-rich internally, editor facts cover
   entities, relationship endpoints, attribute names, inline classes, class/style/classDef targets,
   and incomplete ER buffers recover from the ER lexer token stream instead of raw-text scans.
@@ -123,12 +128,12 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: deepen class note/accessibility/relation-label
-payload spans, move state toward a shared parser event stream or deepen state description/note
-payloads, deepen mindmap directive payload spans, design cross-line payload spans for Gantt
-multiline `accDescr`, or expose recovered parser diagnostics alongside recovered facts. Do not add
-new heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt symbols;
-extend core facts instead.
+Choose the next parser seam slice deliberately: move state toward a shared parser event stream or
+deepen state description/note payloads, decide whether class display-label strings and quoted
+relation multiplicity/cardinality strings should become payload facts, deepen mindmap directive
+payload spans, design cross-line payload spans for Gantt multiline `accDescr`, or expose recovered
+parser diagnostics alongside recovered facts. Do not add new heuristic parsing in LSP for covered
+flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations
 
