@@ -952,6 +952,55 @@ fn flowchart_local_semantic_fixture_covers_sibling_group_boundary_routes() {
 }
 
 #[test]
+fn flowchart_parser_explicit_td_sibling_group_preserves_local_order_after_external_edges() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "subgraph left [Left Group]\n",
+            "    direction LR\n",
+            "    A[Alpha] --> B[Beta]\n",
+            "end\n",
+            "subgraph right [Right Group]\n",
+            "    direction TD\n",
+            "    C[Gamma] --> D[Delta]\n",
+            "end\n",
+            "B -- handoff --> C\n",
+            "A -- audit --> D\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("explicit TD sibling group should render with external edges");
+
+    for expected in [
+        "Left Group",
+        "Right Group",
+        "Alpha",
+        "Beta",
+        "Gamma",
+        "Delta",
+        "handoff",
+        "audit",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "mixed-direction sibling group output should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+
+    assert_eq!(
+        line_index("Alpha"),
+        line_index("Beta"),
+        "left sibling LR group should keep Alpha and Beta on the same row:\n{rendered}"
+    );
+    assert!(
+        line_index("Gamma") < line_index("Delta"),
+        "explicit right sibling TD group should keep Gamma above Delta despite external edges:\n{rendered}"
+    );
+}
+
+#[test]
 fn flowchart_parser_circle_shape_renders_as_round_terminal_shape() {
     let rendered =
         render_flowchart("flowchart LR\nA((A)) --> B", &AsciiRenderOptions::ascii()).unwrap();

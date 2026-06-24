@@ -815,9 +815,6 @@ fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [Grid
         let Some(direction) = group.direction else {
             continue;
         };
-        if direction == graph.direction.canonical() {
-            continue;
-        }
         let members = group_placement_members(graph, group_index);
         if members.len() < 2 {
             continue;
