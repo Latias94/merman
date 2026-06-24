@@ -13,6 +13,7 @@ use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
     ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelationshipRenderModel,
 };
+use std::collections::HashMap;
 
 const ER_LEVEL_HORIZONTAL_GAP: usize = 4;
 
@@ -86,6 +87,11 @@ pub(crate) fn render_er_diagram(
         .values()
         .map(|entity| render_entity_box(entity, options, charset))
         .collect::<Vec<_>>();
+    let entity_labels = model
+        .entities
+        .values()
+        .map(|entity| (entity.id.clone(), entity_display_label(entity).to_string()))
+        .collect::<HashMap<_, _>>();
 
     if model.relationships.is_empty() {
         return Ok(relation_graph::render_stacked_boxes_with_options(
@@ -93,12 +99,19 @@ pub(crate) fn render_er_diagram(
         ));
     }
 
-    render_er_components(&boxes, &model.relationships, options, charset)
+    render_er_components(
+        &boxes,
+        &model.relationships,
+        &entity_labels,
+        options,
+        charset,
+    )
 }
 
 fn render_er_component(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
+    entity_labels: &HashMap<String, String>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
@@ -118,12 +131,13 @@ fn render_er_component(
         return render_vertical_relationship(top, bottom, relationship, options, charset);
     }
 
-    render_layered_relationships(boxes, relationships, options, charset)
+    render_layered_relationships(boxes, relationships, entity_labels, options, charset)
 }
 
 fn render_er_components(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
+    entity_labels: &HashMap<String, String>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
@@ -134,7 +148,7 @@ fn render_er_components(
     let components =
         relation_graph::relation_components(boxes, &edges).map_err(er_layered_error)?;
     if components.len() == 1 {
-        return render_er_component(boxes, relationships, options, charset);
+        return render_er_component(boxes, relationships, entity_labels, options, charset);
     }
 
     let mut rendered = Vec::new();
@@ -152,6 +166,7 @@ fn render_er_components(
         rendered.push(render_er_component(
             &component_boxes,
             &component_relationships,
+            entity_labels,
             options,
             charset,
         )?);
@@ -204,12 +219,7 @@ fn render_entity_box(
 }
 
 fn entity_sections(entity: &ErEntityRenderModel) -> Vec<Vec<String>> {
-    let label = if entity.alias.is_empty() {
-        entity.label.clone()
-    } else {
-        entity.alias.clone()
-    };
-    let mut sections = vec![vec![label]];
+    let mut sections = vec![vec![entity_display_label(entity).to_string()]];
 
     let attributes = entity
         .attributes
@@ -222,6 +232,14 @@ fn entity_sections(entity: &ErEntityRenderModel) -> Vec<Vec<String>> {
     }
 
     sections
+}
+
+fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
+    if entity.alias.is_empty() {
+        &entity.label
+    } else {
+        &entity.alias
+    }
 }
 
 fn attribute_text(attribute: &ErAttributeRenderModel) -> String {
@@ -429,6 +447,7 @@ fn parallel_er_lane_rows(
 fn render_layered_relationships(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
+    entity_labels: &HashMap<String, String>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
@@ -436,8 +455,19 @@ fn render_layered_relationships(
         .iter()
         .map(er_layered_edge)
         .collect::<Vec<_>>();
-    let scene = LayeredRelationScene::new(boxes, edges, ER_LEVEL_HORIZONTAL_GAP)
-        .map_err(er_layered_error)?;
+    let scene = match LayeredRelationScene::new(boxes, edges, ER_LEVEL_HORIZONTAL_GAP) {
+        Ok(scene) => scene,
+        Err(LayeredRelationError::Crossing) => {
+            return render_dense_relationship_fallback(
+                boxes,
+                relationships,
+                entity_labels,
+                options,
+                charset,
+            );
+        }
+        Err(error) => return Err(er_layered_error(error)),
+    };
     if scene.cell_count() > options.max_grid_cells {
         return Err(AsciiError::RenderLimitExceeded {
             actual: scene.cell_count(),
@@ -459,6 +489,58 @@ fn render_layered_relationships(
     }
 
     Ok(canvas.finish_trimmed_with_options(options))
+}
+
+fn render_dense_relationship_fallback(
+    boxes: &[RenderedEntityBox],
+    relationships: &[ErRelationshipRenderModel],
+    entity_labels: &HashMap<String, String>,
+    options: &AsciiRenderOptions,
+    charset: ErCharset,
+) -> Result<String> {
+    let mut rendered = relation_graph::render_stacked_boxes_with_options(boxes, options);
+    if relationships.is_empty() {
+        return Ok(rendered);
+    }
+
+    rendered.push('\n');
+    rendered.push_str("relations:\n");
+    for relationship in relationships {
+        rendered.push_str(&er_relationship_summary(
+            relationship,
+            entity_labels,
+            charset,
+        )?);
+        rendered.push('\n');
+    }
+    Ok(rendered)
+}
+
+fn er_relationship_summary(
+    relationship: &ErRelationshipRenderModel,
+    entity_labels: &HashMap<String, String>,
+    charset: ErCharset,
+) -> Result<String> {
+    let left_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
+    let right_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+    let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
+    let label = RelationGraphLabel::new(&relationship.role_a)
+        .map(|label| format!(" : {}", label.lines().join(" / ")))
+        .unwrap_or_default();
+
+    Ok(format!(
+        "{} {}{}{} {}{}",
+        relationship_label(entity_labels, &relationship.entity_a),
+        left_cardinality,
+        relation,
+        right_cardinality,
+        relationship_label(entity_labels, &relationship.entity_b),
+        label
+    ))
+}
+
+fn relationship_label<'a>(entity_labels: &'a HashMap<String, String>, id: &'a str) -> &'a str {
+    entity_labels.get(id).map(String::as_str).unwrap_or(id)
 }
 
 fn er_layered_edge(relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge<'_> {
@@ -555,6 +637,17 @@ fn relationship_horizontal_line(rel_type: &str, charset: ErCharset) -> Result<ch
     match rel_type {
         "IDENTIFYING" | "" => Ok(charset.solid_horizontal_relation),
         "NON_IDENTIFYING" => Ok(charset.dotted_horizontal_relation),
+        _ => Err(AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "unknown ER relationship identification types",
+        }),
+    }
+}
+
+fn er_relationship_summary_line(rel_type: &str, charset: ErCharset) -> Result<&'static str> {
+    match relationship_horizontal_line(rel_type, charset)? {
+        '-' | '─' => Ok("--"),
+        '.' | '╌' => Ok(".."),
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "er",
             feature: "unknown ER relationship identification types",

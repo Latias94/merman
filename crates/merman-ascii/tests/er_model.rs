@@ -528,6 +528,40 @@ fn er_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
 }
 
 #[test]
+fn er_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba\nA ||--|| C : ac\nC ||--|| A : ca\nB ||--|| C : bc\nC ||--|| B : cb",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("dense ER relationships should render through relation summary fallback");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+\n",
+            "| A |\n",
+            "+---+\n",
+            "\n",
+            "+---+\n",
+            "| B |\n",
+            "+---+\n",
+            "\n",
+            "+---+\n",
+            "| C |\n",
+            "+---+\n",
+            "\n",
+            "relations:\n",
+            "A ||--|| B : ab\n",
+            "B ||--|| A : ba\n",
+            "A ||--|| C : ac\n",
+            "C ||--|| A : ca\n",
+            "B ||--|| C : bc\n",
+            "C ||--|| B : cb\n",
+        )
+    );
+}
+
+#[test]
 fn er_local_semantic_fixture_covers_dense_relationships() {
     let input = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR"))

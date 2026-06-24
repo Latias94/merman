@@ -646,8 +646,13 @@ fn render_layered_relations(
     charset: ClassCharset,
 ) -> Result<String> {
     let edges = layouts.iter().map(class_layered_edge).collect::<Vec<_>>();
-    let scene = LayeredRelationScene::new(boxes, edges, CLASS_LEVEL_HORIZONTAL_GAP)
-        .map_err(class_layered_error)?;
+    let scene = match LayeredRelationScene::new(boxes, edges, CLASS_LEVEL_HORIZONTAL_GAP) {
+        Ok(scene) => scene,
+        Err(LayeredRelationError::Crossing) => {
+            return Ok(render_dense_relation_fallback(boxes, layouts, options));
+        }
+        Err(error) => return Err(class_layered_error(error)),
+    };
     if scene.cell_count() > options.max_grid_cells {
         return Err(AsciiError::RenderLimitExceeded {
             actual: scene.cell_count(),
@@ -669,6 +674,54 @@ fn render_layered_relations(
     }
 
     Ok(canvas.finish_trimmed_with_options(options))
+}
+
+fn render_dense_relation_fallback(
+    boxes: &[RenderedClassBox],
+    layouts: &[RelationLayout<'_>],
+    options: &AsciiRenderOptions,
+) -> String {
+    let mut rendered = relation_graph::render_stacked_boxes_with_options(boxes, options);
+    if layouts.is_empty() {
+        return rendered;
+    }
+
+    rendered.push('\n');
+    rendered.push_str("relations:\n");
+    for layout in layouts {
+        rendered.push_str(&class_relation_summary(layout));
+        rendered.push('\n');
+    }
+    rendered
+}
+
+fn class_relation_summary(layout: &RelationLayout<'_>) -> String {
+    let mut summary = format!(
+        "{} {} {}",
+        layout.top_id,
+        class_relation_summary_symbol(layout),
+        layout.bottom_id
+    );
+    if let Some(label) = layout.label.as_ref() {
+        summary.push_str(" : ");
+        summary.push_str(&label.lines().join(" / "));
+    }
+    summary
+}
+
+fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {
+    match (layout.marker, layout.marker_side, layout.line) {
+        (RelationMarker::Extension, MarkerSide::Top, _) => "<|--",
+        (RelationMarker::Extension, MarkerSide::Bottom, _) => "--|>",
+        (RelationMarker::Dependency, MarkerSide::Top, RelationLine::Dotted) => "<..",
+        (RelationMarker::Dependency, MarkerSide::Bottom, RelationLine::Dotted) => "..>",
+        (RelationMarker::Dependency, MarkerSide::Top, RelationLine::Solid) => "<--",
+        (RelationMarker::Dependency, MarkerSide::Bottom, RelationLine::Solid) => "-->",
+        (RelationMarker::Aggregation, MarkerSide::Top, _) => "o--",
+        (RelationMarker::Aggregation, MarkerSide::Bottom, _) => "--o",
+        (RelationMarker::Composition, MarkerSide::Top, _) => "*--",
+        (RelationMarker::Composition, MarkerSide::Bottom, _) => "--*",
+    }
 }
 
 fn class_layered_edge<'a>(layout: &RelationLayout<'a>) -> LayeredRelationEdge<'a> {
