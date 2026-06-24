@@ -2,6 +2,7 @@ use super::{
     LabeledText, LexError, LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok,
     destruct_end_link, destruct_start_link, lex, parse_edge_label_text,
 };
+use crate::SourceSpan;
 use std::collections::VecDeque;
 
 pub(super) struct Lexer<'input> {
@@ -450,7 +451,10 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    pub(super) fn lex_subgraph_header_after_keyword(&mut self) -> Option<(usize, Tok, usize)> {
+    pub(super) fn lex_subgraph_header_after_keyword(
+        &mut self,
+        keyword_start: usize,
+    ) -> Option<(usize, Tok, usize)> {
         // Match Mermaid's flowchart parser behavior: it consumes a single "SPACE" token after the
         // `subgraph` keyword, while any additional whitespace becomes part of the subgraph header
         // token (`textNoTags`). This affects whether `FlowDB.addSubGraph(...)` decides to auto-generate
@@ -485,7 +489,8 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
         }
 
-        let raw_id = self.input[start..self.pos].to_string();
+        let raw_id_end = self.pos;
+        let raw_id = self.input[start..raw_id_end].to_string();
         let mut raw_title = raw_id.clone();
         let mut title_kind = TitleKind::Text;
         let mut id_equals_title = true;
@@ -518,6 +523,8 @@ impl<'input> Lexer<'input> {
             start,
             Tok::SubgraphHeader(SubgraphHeader {
                 raw_id,
+                header_span: Some(SourceSpan::new(keyword_start, self.pos)),
+                raw_id_span: Some(SourceSpan::new(start, raw_id_end)),
                 raw_title,
                 title_kind,
                 id_equals_title,

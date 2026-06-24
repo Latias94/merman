@@ -87,6 +87,7 @@ impl FlowchartBuildState {
                         let idx = self.nodes.len();
                         self.nodes.push(Node {
                             id: target.clone(),
+                            id_span: None,
                             label: None,
                             label_type: TitleKind::Text,
                             shape: None,
@@ -122,6 +123,7 @@ impl FlowchartBuildState {
                             let idx = self.nodes.len();
                             self.nodes.push(Node {
                                 id: s.target.clone(),
+                                id_span: None,
                                 label: None,
                                 label_type: TitleKind::Text,
                                 shape: None,

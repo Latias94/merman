@@ -2102,3 +2102,61 @@ fn parse_diagram_flowchart_keyword_flowchart() {
     assert_eq!(res.model["direction"], json!("TB"));
     assert_eq!(res.model["subgraphs"], json!([]));
 }
+
+#[test]
+fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA-->B\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let symbol = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("missing symbol {name}"))
+    };
+
+    let a_start = text.find("A-->").unwrap();
+    let b_start = text.find("-->B").unwrap() + "-->".len();
+
+    assert_eq!(symbol("A").selection.start, a_start);
+    assert_eq!(symbol("A").selection.end, a_start + "A".len());
+    assert_eq!(symbol("B").selection.start, b_start);
+    assert_eq!(symbol("B").selection.end, b_start + "B".len());
+}
+
+#[test]
+fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
+    let engine = Engine::new();
+    let text = "%%{init: {\"theme\": \"dark\"}}%%\nflowchart TD\nclassDef hot fill:#f00\nA-->B\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "init")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "classDef")
+    );
+
+    let a = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "A")
+        .expect("node A editor symbol");
+    let a_start = text.find("A-->").unwrap();
+    assert_eq!(a.selection.start, a_start);
+    assert_eq!(a.selection.end, a_start + "A".len());
+}

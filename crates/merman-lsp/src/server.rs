@@ -271,7 +271,7 @@ mod tests {
             HoverContents::Markup(markup) => markup.value,
             other => panic!("unexpected hover contents: {other:?}"),
         };
-        assert!(text.contains("group") || text.contains("diagram element"));
+        assert!(text.contains("group"));
 
         let symbols = match document_symbols(&snapshot) {
             DocumentSymbolResponse::Nested(symbols) => symbols,

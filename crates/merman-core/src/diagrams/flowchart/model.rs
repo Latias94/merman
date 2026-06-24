@@ -1,3 +1,4 @@
+use crate::SourceSpan;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -115,6 +116,7 @@ pub struct FlowSubgraph {
 #[derive(Debug, Clone)]
 pub(crate) struct Node {
     pub id: String,
+    pub id_span: Option<SourceSpan>,
     pub label: Option<String>,
     pub label_type: TitleKind,
     pub shape: Option<String>,
@@ -179,6 +181,8 @@ pub(crate) struct LabeledText {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SubgraphHeader {
     pub raw_id: String,
+    pub header_span: Option<SourceSpan>,
+    pub raw_id_span: Option<SourceSpan>,
     pub raw_title: String,
     pub title_kind: TitleKind,
     pub id_equals_title: bool,
@@ -188,6 +192,8 @@ impl Default for SubgraphHeader {
     fn default() -> Self {
         Self {
             raw_id: String::new(),
+            header_span: None,
+            raw_id_span: None,
             raw_title: String::new(),
             title_kind: TitleKind::Text,
             id_equals_title: true,

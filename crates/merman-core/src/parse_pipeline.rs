@@ -1,7 +1,7 @@
 use crate::{
-    Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result, common_db, diagram,
-    diagrams::error_diagram, family, preprocess_diagram, preprocess_diagram_with_known_type,
-    runtime, sanitize, theme,
+    EditorSemanticFacts, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result,
+    common_db, diagram, diagrams::error_diagram, family, preprocess_diagram,
+    preprocess_diagram_with_known_type, runtime, sanitize, theme,
 };
 use diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
 
@@ -80,6 +80,30 @@ impl<'a> ParsePipeline<'a> {
             |meta, model| ParsedDiagramRender { meta, model },
             |model| Some(model.kind()),
         )
+    }
+
+    pub(crate) fn parse_editor_semantic_facts(&self) -> Result<Option<EditorSemanticFacts>> {
+        let mut directive_prefixes = editor_directive_prefixes(self.text);
+        let Some((_code, meta)) = self.preprocess()? else {
+            return Ok(None);
+        };
+
+        let facts = match meta.diagram_type.as_str() {
+            "flowchart-v2" | "flowchart-elk" => {
+                crate::diagrams::flowchart::parse_flowchart_editor_facts(self.text, &meta)?
+            }
+            _ => return Ok(None),
+        };
+
+        directive_prefixes.extend(facts.directive_prefixes);
+        let mut facts = EditorSemanticFacts {
+            symbols: facts.symbols,
+            directive_prefixes: Vec::new(),
+        };
+        for prefix in directive_prefixes {
+            facts.push_directive_prefix(prefix);
+        }
+        Ok(Some(facts))
     }
 
     fn parse_model<T, O>(
@@ -359,6 +383,43 @@ struct ParseTimingSuccess<'a> {
     parse: Option<runtime::TimingDuration>,
     sanitize: Option<runtime::TimingDuration>,
     input_bytes: usize,
+}
+
+fn editor_directive_prefixes(text: &str) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    for line in text.lines() {
+        if let Some(prefix) = editor_directive_prefix(line) {
+            let prefix = prefix.to_string();
+            if !prefixes.contains(&prefix) {
+                prefixes.push(prefix);
+            }
+        }
+    }
+    prefixes
+}
+
+fn editor_directive_prefix(line: &str) -> Option<&'static str> {
+    let trimmed = line.trim_start();
+
+    if let Some(rest) = trimmed.strip_prefix("%%{") {
+        let name = rest
+            .split(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '}'))
+            .next()
+            .filter(|name| !name.is_empty())?;
+
+        return matches!(name, "init" | "initialize" | "wrap").then_some(match name {
+            "init" => "init",
+            "initialize" => "initialize",
+            "wrap" => "wrap",
+            _ => unreachable!(),
+        });
+    }
+
+    if trimmed.starts_with(":::") {
+        return Some(":::");
+    }
+
+    None
 }
 
 fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Option<String> {

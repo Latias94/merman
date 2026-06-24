@@ -1,5 +1,8 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
+    ParseMetadata, Result,
+};
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -90,17 +93,21 @@ pub fn parse_flowchart_model_for_render(
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
 }
 
+pub fn parse_flowchart_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<EditorSemanticFacts> {
+    let code = mask_flowchart_editor_parse_input(code);
+    let ast = parse_flowchart_ast(&code, meta)?;
+    Ok(editor_facts_from_flowchart_ast(&ast))
+}
+
 fn parse_flowchart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<FlowchartSemanticSource> {
     let (code, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
-    let ast = flowchart_grammar::FlowchartAstParser::new()
-        .parse(Lexer::new(&code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("{e:?}"),
-        })?;
+    let ast = parse_flowchart_ast(&code, meta)?;
 
     let mut build = FlowchartBuildState::new();
     build
@@ -175,6 +182,204 @@ fn parse_flowchart_semantic_source(
         edges,
         subgraphs: builder.subgraphs,
     })
+}
+
+fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst> {
+    flowchart_grammar::FlowchartAstParser::new()
+        .parse(Lexer::new(code))
+        .map_err(|e| Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: format!("{e:?}"),
+        })
+}
+
+fn mask_flowchart_editor_parse_input(code: &str) -> String {
+    let mut bytes = code.as_bytes().to_vec();
+
+    if let Some((start, end)) = frontmatter_range(code) {
+        mask_range_preserving_newlines(&mut bytes, start, end);
+    }
+    mask_directives(code, &mut bytes);
+    mask_mermaid_comment_lines(code, &mut bytes);
+    mask_accessibility_statements(code, &mut bytes);
+
+    String::from_utf8(bytes).unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into())
+}
+
+fn frontmatter_range(code: &str) -> Option<(usize, usize)> {
+    let after_marker = code.strip_prefix("---")?;
+    let open_line_end = after_marker.find('\n')?;
+    if !after_marker[..open_line_end].trim().is_empty() {
+        return None;
+    }
+
+    let body_start = 3 + open_line_end + 1;
+    let body = &code[body_start..];
+    let mut offset = 0usize;
+    for line in body.split_inclusive('\n') {
+        if line.trim_end_matches(['\r', '\n']).trim() == "---" {
+            return Some((0, body_start + offset + line.len()));
+        }
+        offset += line.len();
+    }
+
+    None
+}
+
+fn mask_directives(code: &str, bytes: &mut [u8]) {
+    let mut pos = 0usize;
+    while let Some(rel) = code[pos..].find("%%{") {
+        let start = pos + rel;
+        let after_start = start + 3;
+        let end = code[after_start..]
+            .find("}%%")
+            .map_or(code.len(), |rel_end| after_start + rel_end + 3);
+        mask_range_preserving_newlines(bytes, start, end);
+        pos = end;
+    }
+}
+
+fn mask_mermaid_comment_lines(code: &str, bytes: &mut [u8]) {
+    let mut start = 0usize;
+    for line in code.split_inclusive('\n') {
+        let end = start + line.len();
+        let trimmed = line.trim_start();
+        if let Some(after_marker) = trimmed.strip_prefix("%%") {
+            let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
+            if !after_marker.starts_with('{') && has_comment_body {
+                mask_range_preserving_newlines(bytes, start, end);
+            }
+        }
+        start = end;
+    }
+}
+
+fn mask_accessibility_statements(code: &str, bytes: &mut [u8]) {
+    let mut start = 0usize;
+    while start < code.len() {
+        let end = next_line_end(code, start);
+        let line = &code[start..end];
+        let trimmed = line.trim_start();
+
+        if is_accessibility_title_line(trimmed) {
+            mask_range_preserving_newlines(bytes, start, end);
+            start = end;
+            continue;
+        }
+
+        if let Some(is_block) = accessibility_description_line_kind(trimmed) {
+            let mut block_end = end;
+            if is_block && !trimmed.contains('}') {
+                while block_end < code.len() {
+                    let next_end = next_line_end(code, block_end);
+                    let next_line = &code[block_end..next_end];
+                    block_end = next_end;
+                    if next_line.contains('}') {
+                        break;
+                    }
+                }
+            }
+            mask_range_preserving_newlines(bytes, start, block_end);
+            start = block_end;
+            continue;
+        }
+
+        start = end;
+    }
+}
+
+fn is_accessibility_title_line(trimmed: &str) -> bool {
+    trimmed
+        .strip_prefix("accTitle")
+        .is_some_and(|rest| rest.trim_start().starts_with(':'))
+}
+
+fn accessibility_description_line_kind(trimmed: &str) -> Option<bool> {
+    for prefix in ["accDescr", "accDescription"] {
+        let Some(rest) = trimmed.strip_prefix(prefix) else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        if rest.starts_with(':') {
+            return Some(false);
+        }
+        if rest.starts_with('{') {
+            return Some(true);
+        }
+    }
+    None
+}
+
+fn next_line_end(code: &str, start: usize) -> usize {
+    code[start..]
+        .find('\n')
+        .map_or(code.len(), |relative| start + relative + 1)
+}
+
+fn mask_range_preserving_newlines(bytes: &mut [u8], start: usize, end: usize) {
+    for byte in &mut bytes[start..end] {
+        if *byte != b'\n' && *byte != b'\r' {
+            *byte = b' ';
+        }
+    }
+}
+
+fn editor_facts_from_flowchart_ast(ast: &FlowchartAst) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    collect_editor_facts_from_statements(&ast.statements, &mut facts);
+    facts
+}
+
+fn collect_editor_facts_from_statements(statements: &[Stmt], facts: &mut EditorSemanticFacts) {
+    for stmt in statements {
+        match stmt {
+            Stmt::Chain { nodes, .. } => {
+                for node in nodes {
+                    push_flowchart_node_symbol(facts, node);
+                }
+            }
+            Stmt::Node(node) => push_flowchart_node_symbol(facts, node),
+            Stmt::Subgraph(subgraph) => {
+                push_flowchart_subgraph_symbol(facts, subgraph);
+                collect_editor_facts_from_statements(&subgraph.statements, facts);
+            }
+            Stmt::Style(_) => facts.push_directive_prefix("style"),
+            Stmt::ClassDef(_) => facts.push_directive_prefix("classDef"),
+            Stmt::ClassAssign(_) => facts.push_directive_prefix("class"),
+            Stmt::Click(_) => facts.push_directive_prefix("click"),
+            Stmt::LinkStyle(_) => facts.push_directive_prefix("linkStyle"),
+            Stmt::Direction(_) | Stmt::ShapeData { .. } => {}
+        }
+    }
+}
+
+fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
+    if let Some(span) = node.id_span {
+        facts.push_symbol(EditorSemanticSymbol::new(
+            node.id.clone(),
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            span,
+            span,
+        ));
+    }
+}
+
+fn push_flowchart_subgraph_symbol(facts: &mut EditorSemanticFacts, subgraph: &SubgraphBlock) {
+    if let Some(span) = subgraph.header.header_span.or(subgraph.header.raw_id_span) {
+        let name = subgraph.header.raw_id.trim();
+        if name.is_empty() {
+            return;
+        }
+        let selection = subgraph.header.raw_id_span.unwrap_or(span);
+        facts.push_symbol(EditorSemanticSymbol::new(
+            name.to_string(),
+            Some("subgraph".to_string()),
+            EditorSemanticKind::Namespace,
+            span,
+            selection,
+        ));
+    }
 }
 
 impl FlowchartSemanticSource {

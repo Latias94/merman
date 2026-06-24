@@ -13,6 +13,7 @@ pub mod config;
 pub mod detect;
 pub mod diagram;
 pub mod diagrams;
+pub mod editor;
 pub mod entities;
 pub mod error;
 mod family;
@@ -34,6 +35,7 @@ pub use diagram::{
     DiagramRegistry, DiagramSemanticParser, ParsedDiagram, ParsedDiagramRender,
     RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
 };
+pub use editor::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 pub use error::{Error, Result};
 pub use family::DiagramFamilyCapability;
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
@@ -298,6 +300,19 @@ impl Engine {
         options: ParseOptions,
     ) -> Result<Option<ParseMetadata>> {
         parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options).metadata()
+    }
+
+    /// Parses editor-facing semantic facts when a family has a parser-backed implementation.
+    ///
+    /// Returned spans are byte offsets in the `text` supplied to this method.
+    pub fn parse_editor_semantic_facts_with_type_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<EditorSemanticFacts>> {
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
+            .parse_editor_semantic_facts()
     }
 
     /// Async facade for [`Engine::parse_metadata_sync`].

@@ -4,18 +4,21 @@ use merman_analysis::{
     lsp::{diagram_type_for_text, uri_is_markdown},
     markdown::extract_charts_with_spans,
 };
+use merman_core::{Engine, ParseOptions};
 use std::collections::HashMap;
 use tower_lsp::lsp_types::Url;
 
 #[derive(Debug, Default)]
 pub struct DocumentStore {
     documents: HashMap<Url, DocumentSnapshot>,
+    engine: Engine,
 }
 
 impl DocumentStore {
     pub fn new() -> Self {
         Self {
             documents: HashMap::new(),
+            engine: Engine::new(),
         }
     }
 
@@ -27,8 +30,7 @@ impl DocumentStore {
                 .map(|(index, chart)| {
                     let definition = chart.definition;
                     let diagram_type = diagram_type_for_text(&definition);
-                    let text_index =
-                        FenceTextIndex::from_text(&definition, diagram_type.as_deref());
+                    let text_index = self.text_index(&definition, diagram_type.as_deref());
                     FenceSnapshot {
                         index,
                         start: chart.start,
@@ -42,7 +44,7 @@ impl DocumentStore {
                 .collect::<Vec<_>>()
         } else {
             let diagram_type = diagram_type_for_text(&text);
-            let text_index = FenceTextIndex::from_text(&text, diagram_type.as_deref());
+            let text_index = self.text_index(&text, diagram_type.as_deref());
             vec![FenceSnapshot {
                 index: 0,
                 start: 0,
@@ -70,6 +72,20 @@ impl DocumentStore {
 
     pub fn remove(&mut self, uri: &Url) {
         self.documents.remove(uri);
+    }
+
+    fn text_index(&self, text: &str, diagram_type: Option<&str>) -> FenceTextIndex {
+        if let Some(diagram_type) = diagram_type
+            && let Ok(Some(facts)) = self.engine.parse_editor_semantic_facts_with_type_sync(
+                diagram_type,
+                text,
+                ParseOptions::strict(),
+            )
+        {
+            return FenceTextIndex::from_core_facts(facts);
+        }
+
+        FenceTextIndex::from_text(text, diagram_type)
     }
 }
 

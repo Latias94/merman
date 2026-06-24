@@ -219,6 +219,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         let idx = self.nodes.len();
         self.nodes.push(Node {
             id: id.to_string(),
+            id_span: None,
             label: None,
             label_type: TitleKind::Text,
             shape: None,

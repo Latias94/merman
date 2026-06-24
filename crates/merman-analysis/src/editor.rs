@@ -99,6 +99,53 @@ impl FenceTextIndex {
         index
     }
 
+    pub fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
+        let mut index = Self::default();
+
+        index.directive_prefixes.extend(facts.directive_prefixes);
+
+        for symbol in facts.symbols {
+            let item = FenceLineItem {
+                name: symbol.name,
+                detail: symbol.detail,
+                kind: editor_kind_from_core(symbol.kind),
+                span: ByteSpan {
+                    start: symbol.span.start,
+                    end: symbol.span.end,
+                },
+                selection: ByteSpan {
+                    start: symbol.selection.start,
+                    end: symbol.selection.end,
+                },
+            };
+            index
+                .references
+                .entry(item.name.clone())
+                .or_default()
+                .push(item.selection);
+            index.node_ids.insert(item.name.clone());
+            index.outline_items.push(item);
+        }
+
+        index.outline_items.sort_by(|left, right| {
+            (
+                left.span.start,
+                left.span.end,
+                left.name.as_str(),
+                left.selection.start,
+                left.selection.end,
+            )
+                .cmp(&(
+                    right.span.start,
+                    right.span.end,
+                    right.name.as_str(),
+                    right.selection.start,
+                    right.selection.end,
+                ))
+        });
+        index
+    }
+
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
         self.node_ids.iter()
     }
@@ -156,6 +203,22 @@ impl FenceTextIndex {
                 .push(item.selection);
             self.outline_items.push(item);
         }
+    }
+}
+
+fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolKind {
+    match kind {
+        merman_core::EditorSemanticKind::Class => EditorSymbolKind::Class,
+        merman_core::EditorSemanticKind::Event => EditorSymbolKind::Event,
+        merman_core::EditorSemanticKind::Function => EditorSymbolKind::Function,
+        merman_core::EditorSemanticKind::Module => EditorSymbolKind::Module,
+        merman_core::EditorSemanticKind::Namespace => EditorSymbolKind::Namespace,
+        merman_core::EditorSemanticKind::Object => EditorSymbolKind::Object,
+        merman_core::EditorSemanticKind::Package => EditorSymbolKind::Package,
+        merman_core::EditorSemanticKind::Property => EditorSymbolKind::Property,
+        merman_core::EditorSemanticKind::String => EditorSymbolKind::String,
+        merman_core::EditorSemanticKind::Struct => EditorSymbolKind::Struct,
+        merman_core::EditorSemanticKind::Variable => EditorSymbolKind::Variable,
     }
 }
 
@@ -496,6 +559,7 @@ fn generic_kind(diagram_type: Option<&str>) -> EditorSymbolKind {
 #[cfg(test)]
 mod tests {
     use super::{FenceTextIndex, is_candidate_node_id};
+    use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 
     #[test]
     fn text_index_collects_node_ids() {
@@ -522,5 +586,28 @@ mod tests {
         assert!(index.has_directive_prefix("init"));
         assert!(index.has_directive_prefix("classDef"));
         assert!(index.has_directive_prefix(":::"));
+    }
+
+    #[test]
+    fn text_index_projects_core_editor_facts() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_directive_prefix("classDef");
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+
+        let index = FenceTextIndex::from_core_facts(facts);
+
+        assert!(index.node_ids().any(|id| id == "A"));
+        assert_eq!(index.first_reference_span("A").unwrap().start, 13);
+        assert_eq!(
+            index.outline_items()[0].detail.as_deref(),
+            Some("flowchart node")
+        );
+        assert!(index.has_directive_prefix("classDef"));
     }
 }

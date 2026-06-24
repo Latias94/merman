@@ -6,6 +6,7 @@ use crate::diagrams::flowchart::{
   ClassAssignStmt, ClassDefStmt, ClickStmt, Edge, FlowchartAst, LabeledText, LinkStyleStmt,
   LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
+use crate::SourceSpan;
 
 extern {
   type Location = usize;
@@ -42,7 +43,7 @@ extern {
 }
 
 pub FlowchartAst: FlowchartAst = {
-  <h:Header> <_s:Seps> <st:Statements> => {
+  <_lead:Seps> <h:Header> <_s:Seps> <st:Statements> => {
     let (keyword, direction) = h;
     FlowchartAst { keyword, direction, statements: st }
   },
@@ -166,7 +167,8 @@ NodeGroupRest: Node = {
 };
 
 NodeRef: Node = {
-  <id:Id> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: Some(nl.text.text),
     label_type: nl.text.kind,
@@ -185,7 +187,8 @@ NodeRef: Node = {
     link_target: None,
     have_callback: false,
   },
-  <id:Id> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: None,
     label_type: TitleKind::Text,
@@ -207,7 +210,8 @@ NodeRef: Node = {
 };
 
 NodeRefChain: Node = {
-  <id:Id> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: Some(nl.text.text),
     label_type: nl.text.kind,
@@ -226,7 +230,8 @@ NodeRefChain: Node = {
     link_target: None,
     have_callback: false,
   },
-  <id:Id> <sd:ShapeData> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <sd:ShapeData> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: None,
     label_type: TitleKind::Text,
@@ -245,7 +250,8 @@ NodeRefChain: Node = {
     link_target: None,
     have_callback: false,
   },
-  <id:Id> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: None,
     label_type: TitleKind::Text,

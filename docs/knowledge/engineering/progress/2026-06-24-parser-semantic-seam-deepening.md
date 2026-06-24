@@ -21,13 +21,25 @@ partial parse results instead of raw-text heuristic scans.
 - Heuristic fence-local structure scans are now a centralized migration shim, not the target design.
 - The new plan keeps the parser choice where it already belongs: inside each family.
 - A new ADR records the seam so later lint and LSP work can use the same contract.
-- Verified with `cargo fmt --all` and `cargo test -p merman-analysis -p merman-lsp`.
+- `merman-core` now exposes `EditorSemanticFacts`, `EditorSemanticSymbol`,
+  `EditorSemanticKind`, and `SourceSpan` as the parser-backed editor semantic contract.
+- Flowchart is the first tracer bullet: its lexer/LALRPOP AST now preserves node id spans and
+  subgraph header/selection spans, and editor fact extraction preserves original input byte
+  offsets even when directives/frontmatter/comments/accessibility statements are masked away for
+  parsing.
+- `merman-analysis::FenceTextIndex::from_core_facts` projects core editor facts into the shared
+  LSP/lint migration index, including directive prefixes used by completion.
+- `merman-lsp::DocumentStore` now tries parser-backed core facts for known diagram types and falls
+  back to the centralized text index only when parser-backed facts are unavailable or fail.
+- Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
+  `cargo nextest run -p merman-analysis editor::tests`, and `cargo nextest run -p merman-lsp`.
 
 # Next Action
 
-Use flowchart as the tracer bullet for parser-backed editor spans. Its lexer already emits byte
-locations for tokens, but the AST/model currently drops those spans, so the next change should lift
-node/subgraph/reference spans through the family-local parser path before LSP consumes them.
+Choose the next parser seam slice deliberately: either add recoverable partial editor facts for
+incomplete flowchart buffers, or migrate the next high-value family (`sequence`, `state`, or
+`class`) to `EditorSemanticFacts`. Do not add new heuristic parsing in LSP for covered flowchart
+symbols; extend core facts instead.
 
 # Citations
 

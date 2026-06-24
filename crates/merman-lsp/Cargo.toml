@@ -19,6 +19,7 @@ tower-lsp.workspace = true
 tokio.workspace = true
 url.workspace = true
 merman-analysis.workspace = true
+merman-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

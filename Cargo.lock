@@ -2828,6 +2828,7 @@ dependencies = [
  "futures",
  "lsp-types",
  "merman-analysis",
+ "merman-core",
  "serde",
  "serde_json",
  "tempfile",
