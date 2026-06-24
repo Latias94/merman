@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added an LSP smoke regression proving the shared rule config contract also survives server
+  initialization, so `merman.parse.no_diagram` and source-byte-limit diagnostics can be disabled
+  through `initialize` payloads as well as CLI/library entry points.
 - Added CLI regressions proving the shared rule config contract also reaches `merman-cli`, so
   `no_diagram` and source-byte-limit diagnostics can be disabled from the command surface as well
   as from the library API.

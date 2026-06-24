@@ -132,6 +132,108 @@ async fn lsp_service_smoke_applies_configuration_updates() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_honors_core_rule_disablement() {
+    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {},
+            "initializationOptions": {
+                "lint": {
+                    "disable_rules": [
+                        "merman.parse.no_diagram",
+                        "merman.resource.source_bytes_exceeded"
+                    ]
+                },
+                "resources": {
+                    "max_source_bytes": 8
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let empty_open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: String::new(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(empty_open)
+            .await
+            .unwrap(),
+        None
+    );
+
+    let empty_publish = socket
+        .next()
+        .await
+        .expect("expected empty diagnostics publish");
+    let empty_params: PublishDiagnosticsParams =
+        from_value(empty_publish.params().cloned().expect("publish params")).unwrap();
+    assert!(empty_params.diagnostics.is_empty());
+
+    let resource_uri = tower_lsp::lsp_types::Url::parse("file:///tmp/limited.mmd").unwrap();
+    let resource_open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: resource_uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(resource_open)
+            .await
+            .unwrap(),
+        None
+    );
+
+    let resource_publish = socket
+        .next()
+        .await
+        .expect("expected resource diagnostics publish");
+    let resource_params: PublishDiagnosticsParams =
+        from_value(resource_publish.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(resource_params.uri, resource_uri);
+    assert!(resource_params.diagnostics.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_publishes_current_diagnostics_version() {
     let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
