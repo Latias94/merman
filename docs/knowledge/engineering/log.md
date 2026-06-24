@@ -6,6 +6,14 @@ status: active
 # Log
 
 ## 2026-06-25
+- Removed the legacy string-based semantic warning projection for block and gitGraph. Those
+  families now emit structured `warningFacts`, and `merman-analysis` projects warnings from the
+  shared rule IDs instead of matching message text.
+- Updated core and analysis regressions to assert the new `warningFacts` surface, while keeping the
+  existing compatibility path out of the production contract.
+- Re-verified with `cargo fmt --all --check`, `cargo check -p merman-core -p merman-analysis
+  -p merman-render`, and focused `cargo test -p merman-core` / `cargo test -p merman-analysis`
+  warning regressions.
 - Centralized the analysis options JSON contract in `merman-analysis`, so bindings-core and
   `merman-lsp` now share the same lint/config parsing path for `initialize` and
   `workspace/didChangeConfiguration`.

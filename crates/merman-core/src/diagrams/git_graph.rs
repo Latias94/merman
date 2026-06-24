@@ -63,7 +63,6 @@ pub struct GitGraphRenderModel {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub warning_facts: Vec<DiagramWarningFact>,
-    pub warnings: Vec<String>,
 }
 
 impl GitGraphRenderModel {
@@ -834,7 +833,6 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("direction".to_string(), json!(model.direction));
     out.insert("accTitle".to_string(), json!(model.acc_title));
     out.insert("accDescr".to_string(), json!(model.acc_descr));
-    out.insert("warnings".to_string(), json!(model.warnings));
     out.insert("warningFacts".to_string(), json!(model.warning_facts));
     out.insert(
         "config".to_string(),
@@ -908,11 +906,6 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
             Some(db.acc_descr)
         },
         warning_facts: db.warning_facts.clone(),
-        warnings: db
-            .warning_facts
-            .iter()
-            .map(|fact| fact.message.clone())
-            .collect(),
     })
 }
 
@@ -1538,11 +1531,11 @@ merge feature id:"M1"
     #[test]
     fn should_log_warning_when_two_commits_have_same_id() {
         let model = parse("gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n");
-        let warnings = model["warnings"]
+        let warnings = model["warningFacts"]
             .as_array()
             .unwrap()
             .iter()
-            .filter_map(|v| v.as_str())
+            .filter_map(|v| v.get("message").and_then(|message| message.as_str()))
             .collect::<Vec<_>>();
         assert!(warnings.contains(&"Commit ID working on MDR already exists"));
     }

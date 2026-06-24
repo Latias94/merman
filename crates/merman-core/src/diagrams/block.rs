@@ -1630,19 +1630,12 @@ pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
         .map(block_to_value)
         .collect::<Vec<_>>();
     let classes = class_def_map_to_value(&db.classes);
-    let warnings = db
-        .warning_facts
-        .iter()
-        .map(|fact| Value::String(fact.message.clone()))
-        .collect();
-
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("blocks".to_string(), Value::Array(blocks));
     out.insert("edges".to_string(), Value::Array(edges));
     out.insert("blocksFlat".to_string(), Value::Array(blocks_flat));
     out.insert("classes".to_string(), classes);
-    out.insert("warnings".to_string(), Value::Array(warnings));
     out.insert("warningFacts".to_string(), json!(db.warning_facts));
     out.insert(
         "config".to_string(),
@@ -2024,11 +2017,11 @@ mod tests {
     #[test]
     fn warns_when_block_width_exceeds_column_width() {
         let model = parse("block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n");
-        let warnings: Vec<&str> = model["warnings"]
+        let warnings: Vec<&str> = model["warningFacts"]
             .as_array()
             .unwrap()
             .iter()
-            .filter_map(|v| v.as_str())
+            .filter_map(|v| v.get("message").and_then(|message| message.as_str()))
             .collect();
         assert!(warnings.contains(&"Block B width 2 exceeds configured column width 1"));
     }

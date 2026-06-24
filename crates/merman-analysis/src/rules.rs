@@ -140,29 +140,14 @@ pub(crate) fn semantic_warning_diagnostics(
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
     let span = source_map.whole_source_span().ok();
-    if let Some(warning_facts) = model
+    let Some(warning_facts) = model
         .get("warningFacts")
         .and_then(|value| serde_json::from_value::<Vec<DiagramWarningFact>>(value.clone()).ok())
-    {
-        return semantic_warning_fact_diagnostics(diagram_type, warning_facts, span, rule_config);
-    }
-    let Some(warnings) = model.get("warnings").and_then(Value::as_array) else {
+    else {
         return Vec::new();
     };
 
-    warnings
-        .iter()
-        .filter_map(Value::as_str)
-        .filter_map(|message| {
-            let descriptor = semantic_warning_rule_descriptor(diagram_type, message);
-            rule_config
-                .is_rule_enabled(descriptor)
-                .then_some((descriptor, message))
-        })
-        .map(|(descriptor, message)| {
-            warning_for_message(diagram_type, message, span.clone(), descriptor, rule_config)
-        })
-        .collect()
+    semantic_warning_fact_diagnostics(diagram_type, warning_facts, span, rule_config)
 }
 
 fn semantic_warning_fact_diagnostics(
@@ -181,20 +166,14 @@ fn semantic_warning_fact_diagnostics(
                 .then_some((descriptor, fact))
         })
         .map(|(descriptor, fact)| {
-            warning_for_message(
-                diagram_type,
-                &fact.message,
-                span.clone(),
-                descriptor,
-                rule_config,
-            )
+            warning_for_fact(diagram_type, fact, span.clone(), descriptor, rule_config)
         })
         .collect()
 }
 
-fn warning_for_message(
+fn warning_for_fact(
     diagram_type: &str,
-    message: &str,
+    fact: DiagramWarningFact,
     span: Option<DiagnosticSpan>,
     descriptor: RuleDescriptor,
     rule_config: &AnalysisRuleConfig,
@@ -203,7 +182,7 @@ fn warning_for_message(
         descriptor.id,
         rule_config.severity_for(descriptor),
         descriptor.category,
-        message,
+        fact.message,
     )
     .with_diagram_type(diagram_type);
 
@@ -418,7 +397,14 @@ mod tests {
 
         let diagnostics = semantic_warning_diagnostics(
             "block",
-            &json!({"warnings": ["Block A exceeds configured column width 1"]}),
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
+                        "message": "Block A exceeds configured column width 1"
+                    }
+                ]
+            }),
             &source_map,
             &config,
         );
@@ -439,9 +425,6 @@ mod tests {
                         "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
                         "message": "Block A exceeds configured column width 1"
                     }
-                ],
-                "warnings": [
-                    "Block A exceeds configured column width 1"
                 ]
             }),
             &source_map,
@@ -462,7 +445,14 @@ mod tests {
 
         let diagnostics = semantic_warning_diagnostics(
             "block",
-            &json!({"warnings": ["Block A exceeds configured column width 1"]}),
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
+                        "message": "Block A exceeds configured column width 1"
+                    }
+                ]
+            }),
             &source_map,
             &config,
         );

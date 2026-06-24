@@ -923,7 +923,6 @@ mod tests {
             acc_title: None,
             acc_descr: None,
             warning_facts: Vec::new(),
-            warnings: Vec::new(),
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });
         let measurer = VendoredFontMetricsTextMeasurer::default();
@@ -969,7 +968,6 @@ mod tests {
             acc_title: None,
             acc_descr: None,
             warning_facts: Vec::new(),
-            warnings: Vec::new(),
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });
         let measurer = VendoredFontMetricsTextMeasurer::default();
