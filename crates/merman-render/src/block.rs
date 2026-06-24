@@ -1044,7 +1044,11 @@ pub(crate) fn block_model_from_semantic(semantic: &Value) -> Result<BlockDiagram
         .transpose()?
         .unwrap_or_default();
 
-    Ok(BlockDiagramModel { blocks_flat, edges })
+    Ok(BlockDiagramModel {
+        blocks_flat,
+        edges,
+        warning_facts: Vec::new(),
+    })
 }
 
 pub fn layout_block_diagram(

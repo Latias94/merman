@@ -32,7 +32,8 @@ pub mod utils;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    DiagramRegistry, DiagramSemanticParser, ParsedDiagram, ParsedDiagramRender,
+    BLOCK_WIDTH_WARNING_RULE_ID, DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
+    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
     RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
 };
 pub use editor::{

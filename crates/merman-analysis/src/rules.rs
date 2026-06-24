@@ -2,6 +2,9 @@ use crate::{
     AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, DiagnosticSeverity,
     DiagnosticSpan, SourceMap,
 };
+use merman_core::{
+    BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -137,6 +140,12 @@ pub(crate) fn semantic_warning_diagnostics(
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
     let span = source_map.whole_source_span().ok();
+    if let Some(warning_facts) = model
+        .get("warningFacts")
+        .and_then(|value| serde_json::from_value::<Vec<DiagramWarningFact>>(value.clone()).ok())
+    {
+        return semantic_warning_fact_diagnostics(diagram_type, warning_facts, span, rule_config);
+    }
     let Some(warnings) = model.get("warnings").and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -152,6 +161,33 @@ pub(crate) fn semantic_warning_diagnostics(
         })
         .map(|(descriptor, message)| {
             warning_for_message(diagram_type, message, span.clone(), descriptor, rule_config)
+        })
+        .collect()
+}
+
+fn semantic_warning_fact_diagnostics(
+    diagram_type: &str,
+    warning_facts: Vec<DiagramWarningFact>,
+    span: Option<DiagnosticSpan>,
+    rule_config: &AnalysisRuleConfig,
+) -> Vec<AnalysisDiagnostic> {
+    warning_facts
+        .into_iter()
+        .filter_map(|fact| {
+            let descriptor =
+                warning_fact_rule_descriptor(diagram_type, &fact.rule_id, &fact.message);
+            rule_config
+                .is_rule_enabled(descriptor)
+                .then_some((descriptor, fact))
+        })
+        .map(|(descriptor, fact)| {
+            warning_for_message(
+                diagram_type,
+                &fact.message,
+                span.clone(),
+                descriptor,
+                rule_config,
+            )
         })
         .collect()
 }
@@ -187,6 +223,18 @@ fn semantic_warning_rule_descriptor(diagram_type: &str, message: &str) -> RuleDe
         }
         "gitGraph" => GIT_GRAPH_WARNING_RULE,
         _ => SEMANTIC_WARNING_RULE,
+    }
+}
+
+fn warning_fact_rule_descriptor(
+    diagram_type: &str,
+    rule_id: &str,
+    message: &str,
+) -> RuleDescriptor {
+    match rule_id {
+        BLOCK_WIDTH_WARNING_RULE_ID => BLOCK_WIDTH_RULE,
+        GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => GIT_GRAPH_DUPLICATE_COMMIT_RULE,
+        _ => semantic_warning_rule_descriptor(diagram_type, message),
     }
 }
 
@@ -376,6 +424,33 @@ mod tests {
         );
 
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn semantic_warning_facts_use_rule_ids_when_present() {
+        let source = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics = semantic_warning_diagnostics(
+            "block",
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
+                        "message": "Block A exceeds configured column width 1"
+                    }
+                ],
+                "warnings": [
+                    "Block A exceeds configured column width 1"
+                ]
+            }),
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, BLOCK_WIDTH_RULE_ID);
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
     }
 
     #[test]

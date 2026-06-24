@@ -922,6 +922,7 @@ mod tests {
             direction: "LR".to_string(),
             acc_title: None,
             acc_descr: None,
+            warning_facts: Vec::new(),
             warnings: Vec::new(),
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });
@@ -967,6 +968,7 @@ mod tests {
             direction: "BT".to_string(),
             acc_title: None,
             acc_descr: None,
+            warning_facts: Vec::new(),
             warnings: Vec::new(),
         };
         let cfg = json!({ "gitGraph": { "parallelCommits": true } });

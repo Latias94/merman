@@ -1,5 +1,26 @@
 use crate::{Error, MermaidConfig, ParseMetadata, Result, baseline::BaselineRegistryProfile};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
+pub const GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
+
+/// Shared warning fact emitted by diagram families for analysis and lint consumers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagramWarningFact {
+    pub rule_id: String,
+    pub message: String,
+}
+
+impl DiagramWarningFact {
+    pub fn new(rule_id: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            rule_id: rule_id.into(),
+            message: message.into(),
+        }
+    }
+}
 
 /// Parser used by the semantic JSON path for one Mermaid diagram family.
 pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<Value>;

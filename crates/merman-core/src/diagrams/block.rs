@@ -1,3 +1,4 @@
+use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact};
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
@@ -9,6 +10,12 @@ pub struct BlockDiagramRenderModel {
     pub blocks_flat: Vec<BlockNodeRenderModel>,
     #[serde(default)]
     pub edges: Vec<BlockEdgeRenderModel>,
+    #[serde(
+        default,
+        rename = "warningFacts",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub warning_facts: Vec<DiagramWarningFact>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -147,7 +154,7 @@ struct BlockDb {
     edges: Vec<Block>,
     edge_count: HashMap<String, i64>,
     classes: HashMap<String, ClassDef>,
-    warnings: Vec<String>,
+    warning_facts: Vec<DiagramWarningFact>,
 }
 
 impl BlockDb {
@@ -159,7 +166,7 @@ impl BlockDb {
         self.edges.clear();
         self.edge_count.clear();
         self.classes.clear();
-        self.warnings.clear();
+        self.warning_facts.clear();
 
         let root = Block {
             id: self.root_id.clone(),
@@ -299,11 +306,14 @@ impl BlockDb {
                 && block.block_type != "column-setting"
                 && block.width_in_columns.is_some_and(|w| w > col)
             {
-                self.warnings.push(format!(
-                    "Block {} width {} exceeds configured column width {}",
-                    block.id,
-                    block.width_in_columns.unwrap_or(1),
-                    col
+                self.warning_facts.push(DiagramWarningFact::new(
+                    BLOCK_WIDTH_WARNING_RULE_ID,
+                    format!(
+                        "Block {} width {} exceeds configured column width {}",
+                        block.id,
+                        block.width_in_columns.unwrap_or(1),
+                        col
+                    ),
                 ));
             }
 
@@ -600,6 +610,7 @@ fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
             .map(block_to_render_node)
             .collect(),
         edges: db.edges.iter().map(block_to_render_edge).collect(),
+        warning_facts: db.warning_facts.clone(),
     }
 }
 
@@ -1619,7 +1630,11 @@ pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
         .map(block_to_value)
         .collect::<Vec<_>>();
     let classes = class_def_map_to_value(&db.classes);
-    let warnings = db.warnings.into_iter().map(Value::String).collect();
+    let warnings = db
+        .warning_facts
+        .iter()
+        .map(|fact| Value::String(fact.message.clone()))
+        .collect();
 
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
@@ -1628,6 +1643,7 @@ pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("blocksFlat".to_string(), Value::Array(blocks_flat));
     out.insert("classes".to_string(), classes);
     out.insert("warnings".to_string(), Value::Array(warnings));
+    out.insert("warningFacts".to_string(), json!(db.warning_facts));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),

@@ -1,3 +1,4 @@
+use crate::diagram::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
@@ -56,6 +57,12 @@ pub struct GitGraphRenderModel {
     pub acc_title: Option<String>,
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
+    #[serde(
+        default,
+        rename = "warningFacts",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub warning_facts: Vec<DiagramWarningFact>,
     pub warnings: Vec<String>,
 }
 
@@ -112,7 +119,7 @@ struct GitGraphDb {
     curr_branch: String,
     direction: String,
     seq: i64,
-    warnings: Vec<String>,
+    warning_facts: Vec<DiagramWarningFact>,
     acc_title: String,
     acc_descr: String,
     prng: Option<XorShift64Star>,
@@ -171,7 +178,7 @@ impl GitGraphDb {
         self.head = None;
         self.direction = "LR".to_string();
         self.seq = 0;
-        self.warnings.clear();
+        self.warning_facts.clear();
         self.acc_title.clear();
         self.acc_descr.clear();
 
@@ -258,8 +265,10 @@ impl GitGraphDb {
 
         self.head = Some(new_commit.id.clone());
         if self.commits.contains_key(&new_commit.id) {
-            self.warnings
-                .push(format!("Commit ID {} already exists", new_commit.id));
+            self.warning_facts.push(DiagramWarningFact::new(
+                GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+                format!("Commit ID {} already exists", new_commit.id),
+            ));
         }
 
         let existed = self.commits.contains_key(&new_commit.id);
@@ -826,6 +835,7 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("accTitle".to_string(), json!(model.acc_title));
     out.insert("accDescr".to_string(), json!(model.acc_descr));
     out.insert("warnings".to_string(), json!(model.warnings));
+    out.insert("warningFacts".to_string(), json!(model.warning_facts));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
@@ -897,7 +907,12 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         } else {
             Some(db.acc_descr)
         },
-        warnings: db.warnings,
+        warning_facts: db.warning_facts.clone(),
+        warnings: db
+            .warning_facts
+            .iter()
+            .map(|fact| fact.message.clone())
+            .collect(),
     })
 }
 
@@ -912,7 +927,7 @@ fn new_gitgraph_db() -> GitGraphDb {
         curr_branch: "main".to_string(),
         direction: "LR".to_string(),
         seq: 0,
-        warnings: Vec::new(),
+        warning_facts: Vec::new(),
         acc_title: String::new(),
         acc_descr: String::new(),
         prng: None,
