@@ -33,12 +33,20 @@ Class and ER relation fixtures are split by topology readability:
 - Summary fixtures must keep every endpoint, connector, and label line visible; multiline Mermaid
   labels should become continuation rows rather than slash-joined text or leaked `<br>` markup.
 
+| Fixture class | Use when | Assertions |
+| --- | --- | --- |
+| Routed grid | The topology has readable terminal routes. | Important endpoints, labels, markers, and compartments are visible; `relations:` is absent. |
+| Structured summary | Dense crossings or grid budget make a routed grid misleading. | Every endpoint, connector, and label line is visible under `relations:`; `<br>` does not leak. |
+| Unsupported boundary | Mermaid syntax has semantics the ASCII renderer cannot honestly represent yet. | Prefer focused parser/model tests that assert `UnsupportedFeature`; add a fixture only when the input itself documents a durable boundary. |
+
 Current examples:
 
 - `class/dense_relations.mmd`
 - `class/dense_multiline_relations.mmd`
+- `class/routed_relationship_variants.mmd`
 - `er/dense_relations.mmd`
 - `er/dense_multiline_relations.mmd`
+- `er/routed_schema_with_attributes.mmd`
 - `flowchart/multi_boundary_routes.mmd`
 - `flowchart/nested_direction_boundary.mmd`
 - `flowchart/sibling_boundary_routes.mmd`

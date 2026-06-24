@@ -54,6 +54,14 @@ fn strip_html_spans(input: &str) -> String {
     output
 }
 
+fn read_local_semantic_fixture(path: &str) -> String {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/testdata/local-semantic")
+        .join(path);
+    std::fs::read_to_string(&fixture_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
+}
+
 #[test]
 fn class_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
@@ -725,6 +733,35 @@ fn class_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
 }
 
 #[test]
+fn class_parser_dense_realization_relationships_keep_dotted_summary_connector() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nA ..|> B : ab\nB ..|> A : ba\nA ..> C : ac\nC ..> A : ca\nB --> C : bc\nC --> B : cb",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("dense realization relationships should render through relation summary fallback");
+
+    assert!(
+        rendered.contains("relations:"),
+        "dense realization fixture should use relation summary:\n{rendered}"
+    );
+    for expected in [
+        "B <|.. A : ab",
+        "A <|.. B : ba",
+        "A ..>  C : ac",
+        "B -->  C : bc",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "dense realization summary should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("<|--"),
+        "dense realization summary should not collapse dotted realization to solid inheritance:\n{rendered}"
+    );
+}
+
+#[test]
 fn class_parser_relation_layout_falls_back_to_summary_when_grid_budget_is_tight() {
     let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
 
@@ -811,11 +848,7 @@ fn class_color_truecolor_marks_dense_relation_summary_roles_without_changing_pla
 
 #[test]
 fn class_local_semantic_fixture_covers_dense_relationships() {
-    let input = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/local-semantic/class/dense_relations.mmd"),
-    )
-    .expect("local semantic class fixture must be readable");
+    let input = read_local_semantic_fixture("class/dense_relations.mmd");
 
     let rendered = render_class(&input, &AsciiRenderOptions::ascii())
         .expect("dense local semantic class fixture should render");
@@ -836,11 +869,7 @@ fn class_local_semantic_fixture_covers_dense_relationships() {
 
 #[test]
 fn class_local_semantic_fixture_covers_dense_multiline_relation_summary() {
-    let input = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/local-semantic/class/dense_multiline_relations.mmd"),
-    )
-    .expect("local semantic dense multiline class fixture must be readable");
+    let input = read_local_semantic_fixture("class/dense_multiline_relations.mmd");
 
     let rendered = render_class(&input, &AsciiRenderOptions::ascii())
         .expect("dense multiline local semantic class fixture should render");
@@ -872,5 +901,35 @@ fn class_local_semantic_fixture_covers_dense_multiline_relation_summary() {
     assert!(
         !rendered.contains("<br>"),
         "dense multiline semantic class fixture should not leak Mermaid break syntax:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_local_semantic_fixture_covers_routed_relationship_variants() {
+    let input = read_local_semantic_fixture("class/routed_relationship_variants.mmd");
+
+    let rendered = render_class(&input, &AsciiRenderOptions::ascii())
+        .expect("routed relationship variant class fixture should render");
+
+    for expected in [
+        "Shape",
+        "<<interface>>",
+        "Circle",
+        "radius",
+        "draw",
+        "implements",
+        "paints",
+        "loads",
+        "keeps",
+        "contains",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "routed relationship variant fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "routed relationship variant fixture should remain a routed grid, not a summary:\n{rendered}"
     );
 }

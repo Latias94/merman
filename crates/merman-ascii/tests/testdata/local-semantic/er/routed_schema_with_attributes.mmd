@@ -1,0 +1,20 @@
+erDiagram
+CUSTOMER {
+  string id PK
+  string email UK
+}
+ORDER {
+  int id PK
+  string status
+}
+LINE_ITEM {
+  int id PK
+  int quantity
+}
+PRODUCT {
+  int id PK
+  string name
+}
+CUSTOMER ||--o{ ORDER : places
+ORDER ||--|{ LINE_ITEM : contains
+PRODUCT ||--o{ LINE_ITEM : supplies

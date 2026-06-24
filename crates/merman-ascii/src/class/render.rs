@@ -700,16 +700,22 @@ fn class_relation_summary_row(layout: &RelationLayout<'_>) -> RelationGraphSumma
 
 fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {
     match (layout.marker, layout.marker_side, layout.line) {
-        (RelationMarker::Extension, MarkerSide::Top, _) => "<|--",
-        (RelationMarker::Extension, MarkerSide::Bottom, _) => "--|>",
+        (RelationMarker::Extension, MarkerSide::Top, RelationLine::Solid) => "<|--",
+        (RelationMarker::Extension, MarkerSide::Top, RelationLine::Dotted) => "<|..",
+        (RelationMarker::Extension, MarkerSide::Bottom, RelationLine::Solid) => "--|>",
+        (RelationMarker::Extension, MarkerSide::Bottom, RelationLine::Dotted) => "..|>",
         (RelationMarker::Dependency, MarkerSide::Top, RelationLine::Dotted) => "<..",
         (RelationMarker::Dependency, MarkerSide::Bottom, RelationLine::Dotted) => "..>",
         (RelationMarker::Dependency, MarkerSide::Top, RelationLine::Solid) => "<--",
         (RelationMarker::Dependency, MarkerSide::Bottom, RelationLine::Solid) => "-->",
-        (RelationMarker::Aggregation, MarkerSide::Top, _) => "o--",
-        (RelationMarker::Aggregation, MarkerSide::Bottom, _) => "--o",
-        (RelationMarker::Composition, MarkerSide::Top, _) => "*--",
-        (RelationMarker::Composition, MarkerSide::Bottom, _) => "--*",
+        (RelationMarker::Aggregation, MarkerSide::Top, RelationLine::Solid) => "o--",
+        (RelationMarker::Aggregation, MarkerSide::Top, RelationLine::Dotted) => "o..",
+        (RelationMarker::Aggregation, MarkerSide::Bottom, RelationLine::Solid) => "--o",
+        (RelationMarker::Aggregation, MarkerSide::Bottom, RelationLine::Dotted) => "..o",
+        (RelationMarker::Composition, MarkerSide::Top, RelationLine::Solid) => "*--",
+        (RelationMarker::Composition, MarkerSide::Top, RelationLine::Dotted) => "*..",
+        (RelationMarker::Composition, MarkerSide::Bottom, RelationLine::Solid) => "--*",
+        (RelationMarker::Composition, MarkerSide::Bottom, RelationLine::Dotted) => "..*",
     }
 }
 

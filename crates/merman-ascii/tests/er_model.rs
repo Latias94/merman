@@ -54,6 +54,14 @@ fn strip_html_spans(input: &str) -> String {
     output
 }
 
+fn read_local_semantic_fixture(path: &str) -> String {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/testdata/local-semantic")
+        .join(path);
+    std::fs::read_to_string(&fixture_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
+}
+
 #[test]
 fn er_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
@@ -649,11 +657,7 @@ fn er_color_html_wraps_dense_relation_summary_roles_without_changing_plain_text(
 
 #[test]
 fn er_local_semantic_fixture_covers_dense_relationships() {
-    let input = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/local-semantic/er/dense_relations.mmd"),
-    )
-    .expect("local semantic ER fixture must be readable");
+    let input = read_local_semantic_fixture("er/dense_relations.mmd");
 
     let rendered = render_er(&input, &AsciiRenderOptions::ascii())
         .expect("dense local semantic ER fixture should render");
@@ -674,11 +678,7 @@ fn er_local_semantic_fixture_covers_dense_relationships() {
 
 #[test]
 fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
-    let input = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/local-semantic/er/dense_multiline_relations.mmd"),
-    )
-    .expect("local semantic dense multiline ER fixture must be readable");
+    let input = read_local_semantic_fixture("er/dense_multiline_relations.mmd");
 
     let rendered = render_er(&input, &AsciiRenderOptions::ascii())
         .expect("dense multiline local semantic ER fixture should render");
@@ -711,5 +711,35 @@ fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
     assert!(
         !rendered.contains("<br>"),
         "dense multiline semantic ER fixture should not leak Mermaid break syntax:\n{rendered}"
+    );
+}
+
+#[test]
+fn er_local_semantic_fixture_covers_routed_schema_with_attributes() {
+    let input = read_local_semantic_fixture("er/routed_schema_with_attributes.mmd");
+
+    let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+        .expect("routed schema ER fixture should render");
+
+    for expected in [
+        "CUSTOMER",
+        "ORDER",
+        "LINE_ITEM",
+        "PRODUCT",
+        "string id PK",
+        "string email UK",
+        "int quantity",
+        "places",
+        "contains",
+        "supplies",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "routed schema fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "routed schema fixture should remain a routed grid, not a summary:\n{rendered}"
     );
 }
