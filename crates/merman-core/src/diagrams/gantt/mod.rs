@@ -15,7 +15,7 @@ use datetime::*;
 use model::*;
 
 pub use model::{GanttDiagramRenderModel, GanttRenderTask};
-pub use parse::{parse_gantt, parse_gantt_model_for_render};
+pub use parse::{parse_gantt, parse_gantt_editor_facts, parse_gantt_model_for_render};
 
 const ALL_WEEKDAYS_MASK: u8 = 0b0111_1111;
 const MAX_CONSECUTIVE_EXCLUDED_DAYS: usize = 366;

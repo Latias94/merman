@@ -920,8 +920,9 @@ fn gantt_ref_id_prefix_len(s: &str) -> usize {
     s.bytes().take_while(|b| is_gantt_ref_id_byte(*b)).count()
 }
 
-pub(super) fn relative_ref_ids<'a>(s: &'a str, keyword: &str) -> Option<&'a str> {
+pub(super) fn relative_ref_ids_range(s: &str, keyword: &str) -> Option<std::ops::Range<usize>> {
     let rest = s.strip_prefix(keyword)?;
+    let rest_start = keyword.len();
 
     let ws_len: usize = rest
         .chars()
@@ -937,7 +938,8 @@ pub(super) fn relative_ref_ids<'a>(s: &'a str, keyword: &str) -> Option<&'a str>
         let refs = &rest[start..];
         let id_len = gantt_ref_id_prefix_len(refs);
         if id_len > 0 {
-            return Some(&refs[..id_len]);
+            let start = rest_start + start;
+            return Some(start..start + id_len);
         }
 
         let (previous_start, _) = rest[..start].char_indices().next_back()?;
@@ -946,6 +948,11 @@ pub(super) fn relative_ref_ids<'a>(s: &'a str, keyword: &str) -> Option<&'a str>
         }
         start = previous_start;
     }
+}
+
+pub(super) fn relative_ref_ids<'a>(s: &'a str, keyword: &str) -> Option<&'a str> {
+    let range = relative_ref_ids_range(s, keyword)?;
+    Some(&s[range])
 }
 
 pub(super) fn get_start_date(

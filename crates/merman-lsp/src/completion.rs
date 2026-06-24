@@ -68,6 +68,7 @@ fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
         keyword_completion("flowchart TD", "flowchart header", range.clone(), None),
         keyword_completion("sequenceDiagram", "sequence header", range.clone(), None),
         keyword_completion("stateDiagram-v2", "state header", range.clone(), None),
+        keyword_completion("gantt", "gantt header", range.clone(), None),
         keyword_completion("mindmap", "mindmap header", range, None),
     ]
 }

@@ -208,6 +208,7 @@ fn diagram_header_prefix_matches(prefix: &str) -> bool {
         "flowchart TD",
         "sequenceDiagram",
         "stateDiagram-v2",
+        "gantt",
         "mindmap",
     ]
     .iter()

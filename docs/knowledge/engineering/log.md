@@ -34,6 +34,12 @@ status: active
 - Migrated Mindmap as the first hand-written-family tracer bullet onto `EditorSemanticFacts`: its line parser now produces a shared event stream for DB/render semantics and editor facts, preserving node spans, class/icon directives, inline-header spans, multiline labels, and recovered incomplete-delimiter facts.
 - Fixed `merman-lsp` feature profile drift by giving the LSP crate default `core-full`/`core-host` feature passthroughs, so product LSP detection includes mindmap and no longer silently uses the tiny core registry.
 - Recorded the next high-return fearless-refactor candidates: `gantt` should follow the mindmap event-stream pattern, while class/ER/state/mindmap can be deepened with payload spans and recovered diagnostics before product-grade lint/rename work.
+- Migrated Gantt onto `EditorSemanticFacts`: task ids, `after`/`until` dependency references, `click` targets, and directive prefixes now come from the Gantt parser statement rules with complete/recovered provenance.
+- Exposed Gantt relative-reference ranges from the date parser helper so editor facts reuse the same Mermaid-backed dependency matcher as render semantics.
+- Kept Gantt `section` as a directive prefix rather than a node id to avoid polluting task-id completion; future section document-symbol support should use role-aware or outline-only facts.
+- Made Gantt editor completeness tolerant of original-source YAML front matter and Mermaid init directives, preserving complete provenance while still using original byte spans.
+- Added Gantt LSP regressions proving complete and incomplete documents use `ParserComplete`/`ParserRecovered`, and added `gantt` diagram-header completion.
+- Re-verified `cargo fmt --all`, `cargo nextest run -p merman-core editor_facts --no-fail-fast`, `cargo nextest run -p merman-core gantt --no-fail-fast`, `cargo nextest run -p merman-analysis --no-fail-fast`, and `cargo nextest run -p merman-lsp --no-fail-fast`.
 
 ## 2026-06-23
 - Confirmed alpha-stage fearless refactor scope for diagnostics-first analysis: canonical `analyze_json`, legacy `validate_json` projection, CLI lint, Markdown fence diagnostics, LSP-ready position mapping, ADR, and engineering memory are in scope.

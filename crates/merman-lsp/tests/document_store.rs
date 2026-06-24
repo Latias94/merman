@@ -215,6 +215,51 @@ fn incomplete_er_documents_use_recovered_parser_facts() {
 }
 
 #[test]
+fn gantt_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "gantt\n",
+            "dateFormat YYYY-MM-DD\n",
+            "section Demo\n",
+            "Task 1: id1,2014-01-01,1d\n",
+            "Task 2: id2,after id1,2d\n",
+            "click id2 href \"https://example.com/\"\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("gantt"));
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|id| id == "id1"));
+    assert!(index.node_ids().any(|id| id == "id2"));
+    assert!(!index.node_ids().any(|id| id == "Demo"));
+    assert!(index.has_directive_prefix("dateFormat"));
+    assert!(index.has_directive_prefix("section"));
+    assert!(index.has_directive_prefix("click"));
+}
+
+#[test]
+fn incomplete_gantt_documents_use_recovered_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "gantt\ndateFormat YYYY-MM-DD\nTask 1: id1,2014-01-01,1d\nTask 2".to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
+    assert!(index.node_ids().any(|id| id == "id1"));
+    assert!(!index.node_ids().any(|id| id == "Task"));
+}
+
+#[test]
 fn mindmap_documents_use_parser_facts() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

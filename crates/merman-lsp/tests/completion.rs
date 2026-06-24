@@ -123,3 +123,25 @@ fn completion_offers_header_edit_ranges() {
         other => panic!("unexpected text edit: {other:?}"),
     }
 }
+
+#[test]
+fn completion_offers_gantt_header() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "ga".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 2));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "gantt")
+        .unwrap();
+    match item.text_edit.as_ref().unwrap() {
+        CompletionTextEdit::Edit(edit) => {
+            assert_eq!(edit.new_text, "gantt");
+            assert_eq!(edit.range.start.character, 0);
+            assert_eq!(edit.range.end.character, 2);
+        }
+        other => panic!("unexpected text edit: {other:?}"),
+    }
+}

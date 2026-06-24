@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
+use crate::{EditorSemanticCompleteness, Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
 use chrono::NaiveDate;
 use futures::executor::block_on;
 use serde_json::json;
@@ -26,6 +26,157 @@ fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
         .and_hms_opt(h, min, s)
         .unwrap();
     crate::time::datetime_from_naive_local(naive).timestamp_millis()
+}
+
+#[test]
+fn gantt_editor_facts_preserve_parser_symbol_spans() {
+    let text = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Demo\n",
+        "Task 1: id1,2014-01-01,1d\n",
+        "Task 2: id2,after id1,until id1\n",
+        "click id2 call open()\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "dateFormat")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "section")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "click")
+    );
+
+    let id1_def_start = text.find("id1,2014").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id1"
+            && symbol.detail.as_deref() == Some("gantt task")
+            && symbol.selection.start == id1_def_start
+            && symbol.selection.end == id1_def_start + "id1".len()
+    }));
+
+    let id1_after_start = text.find("after id1").unwrap() + "after ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id1"
+            && symbol.detail.as_deref() == Some("gantt dependency")
+            && symbol.selection.start == id1_after_start
+            && symbol.selection.end == id1_after_start + "id1".len()
+    }));
+
+    let id1_until_start = text.find("until id1").unwrap() + "until ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id1"
+            && symbol.detail.as_deref() == Some("gantt dependency")
+            && symbol.selection.start == id1_until_start
+            && symbol.selection.end == id1_until_start + "id1".len()
+    }));
+
+    let id2_def_start = text.find("id2,after").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id2"
+            && symbol.detail.as_deref() == Some("gantt task")
+            && symbol.selection.start == id2_def_start
+            && symbol.selection.end == id2_def_start + "id2".len()
+    }));
+
+    let id2_click_start = text.find("click id2").unwrap() + "click ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id2"
+            && symbol.detail.as_deref() == Some("gantt click target")
+            && symbol.selection.start == id2_click_start
+            && symbol.selection.end == id2_click_start + "id2".len()
+    }));
+}
+
+#[test]
+fn gantt_editor_facts_recovers_from_incomplete_input() {
+    let text = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "Task 1: id1,2014-01-01,1d\n",
+        "Task 2",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
+        })
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "dateFormat")
+    );
+}
+
+#[test]
+fn gantt_editor_facts_skip_leading_mermaid_directives() {
+    let text = concat!(
+        "%%{init: {\"theme\": \"dark\"}}%%\n",
+        "gantt\n",
+        "Task 1: id1,2014-01-01,1d\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "init")
+    );
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
+        })
+    );
+}
+
+#[test]
+fn gantt_editor_facts_skip_frontmatter() {
+    let text = concat!(
+        "---\n",
+        "title: Roadmap\n",
+        "---\n",
+        "gantt\n",
+        "Task 1: id1,2014-01-01,1d\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
+        })
+    );
 }
 
 #[test]

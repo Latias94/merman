@@ -52,6 +52,16 @@ partial parse results instead of raw-text heuristic scans.
   stream for nodes, class directives, and icon directives. The same events drive DB/render model
   construction and editor facts, so LSP/lint consumers get parser-backed node spans and recovered
   incomplete-delimiter facts without breaking class/icon decoration behavior.
+- Gantt is the second migrated hand-written family: task ids, `after`/`until` dependency
+  references, `click` targets, and directive prefixes now come from the Gantt statement parser
+  rules with complete/recovered provenance. The relative-reference matcher now has a range
+  projection so editor facts reuse the same Mermaid-backed dependency grammar as render semantics.
+- Gantt editor completeness is tolerant of original-source YAML front matter and Mermaid init
+  directives, so parser-backed facts preserve original byte spans without misclassifying valid
+  editor buffers as recovered.
+- Gantt `section` is deliberately recorded as a directive prefix, not as a node id. Future section
+  document-symbol support should extend the semantic contract with role-aware or outline-only facts
+  instead of adding section names to task-id completion.
 - `merman-analysis::FenceTextIndex::from_core_facts` projects core editor facts into the shared
   LSP/lint migration index, including directive prefixes used by completion.
 - `FenceTextIndex` now records whether its source is `TextScan`, `ParserComplete`, or
@@ -59,11 +69,12 @@ partial parse results instead of raw-text heuristic scans.
   return to heuristic scans.
 - `merman-lsp::DocumentStore` now tries parser-backed core facts for known diagram types and falls
   back to the centralized text index only when parser-backed facts are unavailable or fail; LSP
-  regressions cover flowchart, sequence, state, class, ER, and mindmap complete/recovered
+  regressions cover flowchart, sequence, state, class, ER, mindmap, and gantt complete/recovered
   provenance.
 - `merman-lsp` now exposes default `core-full` and `core-host` feature passthroughs so product LSP
   builds use the full detector/parser profile. This fixed a silent mindmap regression where LSP
   detection used the tiny registry and fell back to `TextScan`.
+- `merman-lsp` now offers the `gantt` diagram header completion.
 - Verified with `cargo fmt --all`, `cargo nextest run -p merman-core parse_flowchart_editor_facts`,
   `cargo nextest run -p merman-core parse_sequence_editor_facts`,
   `cargo nextest run -p merman-core parse_state_editor_facts`,
@@ -71,17 +82,17 @@ partial parse results instead of raw-text heuristic scans.
   `cargo nextest run -p merman-core parse_er_editor_facts`,
   `cargo nextest run -p merman-core state`, `cargo nextest run -p merman-core class`,
   `cargo nextest run -p merman-core er`, `cargo nextest run -p merman-core mindmap`,
-  `cargo nextest run -p merman-core editor_facts`, `cargo nextest run -p merman-analysis`,
-  and `cargo nextest run -p merman-lsp`.
+  `cargo nextest run -p merman-core gantt`, `cargo nextest run -p merman-core editor_facts`,
+  `cargo nextest run -p merman-analysis`, and `cargo nextest run -p merman-lsp`.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: migrate `gantt` to `EditorSemanticFacts` using the
-mindmap event-stream pattern, deepen class member/annotation/directive payload spans, deepen ER
-attribute type/key/comment facts if lint needs them, deepen state or mindmap directive payload
-spans for rename and references, or expose recovered parser diagnostics alongside recovered facts.
-Do not add new heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/mindmap
-symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: deepen class member/annotation/directive payload
+spans, deepen ER attribute type/key/comment facts if lint needs them, deepen state/mindmap/gantt
+directive payload spans for rename and references, add role-aware outline facts for constructs like
+Gantt sections, or expose recovered parser diagnostics alongside recovered facts. Do not add new
+heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt symbols;
+extend core facts instead.
 
 # Citations
 

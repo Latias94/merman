@@ -179,7 +179,14 @@ partial buffers and downstream migration.
 - **Status:** Mindmap landed as the first hand-written-family tracer bullet. Its line parser now
   produces an internal event stream shared by render DB construction and editor facts, preserving
   node spans, class/icon directive prefixes, class/icon decoration semantics, inline-header spans,
-  multiline-node behavior, and recovered facts for incomplete node delimiters.
+  multiline-node behavior, and recovered facts for incomplete node delimiters. Gantt now emits
+  parser-backed task id, `after`/`until` dependency, `click` target, and directive-prefix facts
+  from the same statement grammar used by the render parser. Its relative-reference matcher now
+  exposes source ranges so editor facts reuse the Mermaid-backed dependency grammar instead of
+  reimplementing it downstream. Gantt editor completeness also tolerates original-source front
+  matter and Mermaid init directives while preserving original byte spans. Gantt `section` remains
+  a directive prefix, not a node id, so task completion stays focused on task identifiers; section
+  outline support should use a role-aware or outline-only fact rather than polluting `node_ids()`.
 - **Goal:** Bring `mindmap`, `gantt`, and the other line- or indentation-driven families that matter
   to the same contract.
 - **Files:** `crates/merman-core/src/diagrams/mindmap/*`,
@@ -202,7 +209,8 @@ partial buffers and downstream migration.
   fallback remains only when a family has no core fact extraction path or the extraction itself is
   unavailable. Mindmap now follows the same complete/recovered provenance path, and `merman-lsp`
   explicitly enables the core full/host feature profile so product LSP detection does not silently
-  run with the tiny registry.
+  run with the tiny registry. Gantt now follows the same `ParserComplete`/`ParserRecovered`
+  provenance path in `DocumentStore`, and header completion includes `gantt`.
 - **Goal:** Stop the analysis and LSP transport layers from rediscovering diagram structure by
   scanning raw text.
 - **Files:** `crates/merman-analysis/src/document.rs`,
@@ -245,6 +253,8 @@ partial buffers and downstream migration.
 - `docs/adr/0017-er-parser-technology.md`
 - `docs/adr/0018-state-parser-technology.md`
 - `docs/adr/0025-mindmap-parser-technology.md`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/parser/gantt.spec.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttDb.js`
 - `docs/plans/2026-06-24-001-feat-lsp-completion-foundations-plan.md`
 - `crates/merman-analysis/src/document.rs`
 - `crates/merman-analysis/src/lsp.rs`

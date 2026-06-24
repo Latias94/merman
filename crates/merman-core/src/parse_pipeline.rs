@@ -101,6 +101,7 @@ impl<'a> ParsePipeline<'a> {
             }
             "er" | "erDiagram" => crate::diagrams::er::parse_er_editor_facts(self.text, &meta),
             "mindmap" => crate::diagrams::mindmap::parse_mindmap_editor_facts(self.text, &meta),
+            "gantt" => crate::diagrams::gantt::parse_gantt_editor_facts(self.text, &meta),
             _ => return Ok(None),
         };
 
