@@ -239,6 +239,11 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
             "<<interface>> User\n",
             "User: email\n",
             "click User href \"https://example.com\" \"Open user\" _blank\n",
+            "click User call open(userId) \"Open user\"\n",
+            "classDef service fill:#eee\n",
+            "class User:::service\n",
+            "cssClass \"User,Admin\" service\n",
+            "style User fill:#fff\n",
         )
         .to_string(),
     );
@@ -253,6 +258,11 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
     assert!(!index.node_ids().any(|id| id == "https://example.com"));
     assert!(!index.node_ids().any(|id| id == "Open user"));
     assert!(!index.node_ids().any(|id| id == "_blank"));
+    assert!(!index.node_ids().any(|id| id == "service"));
+    assert!(!index.node_ids().any(|id| id == "fill:#eee"));
+    assert!(!index.node_ids().any(|id| id == "fill:#fff"));
+    assert!(!index.node_ids().any(|id| id == "open"));
+    assert!(!index.node_ids().any(|id| id == "userId"));
 
     assert!(
         index
@@ -272,6 +282,11 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
             .outline_items()
             .iter()
             .any(|item| item.name == "email" && item.detail.as_deref() == Some("class member"))
+    );
+    assert!(
+        index.outline_items().iter().any(
+            |item| item.name == "service" && item.detail.as_deref() == Some("class definition")
+        )
     );
     assert!(
         !index
@@ -296,6 +311,19 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
             .outline_items()
             .iter()
             .any(|item| item.name == "_blank")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "fill:#eee")
+    );
+    assert!(!index.outline_items().iter().any(|item| item.name == "open"));
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "userId")
     );
 }
 

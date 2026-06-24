@@ -468,7 +468,12 @@ User <|-- Admin
 User: email
 <<interface>> User
 click User href "https://example.com" "Open user" _blank
+click Admin call open(userId) "Open admin"
+callback User "refreshUser" "Refresh user"
 classDef service fill:#eee
+class User:::service
+cssClass "User,Admin" service
+style User fill:#fff
 "#;
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
@@ -483,6 +488,13 @@ classDef service fill:#eee
             .iter()
             .find(|symbol| symbol.name == name && symbol.selection.start == start)
             .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+    let symbol_with_detail = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail}"))
     };
 
     let company_start = text.find("Company").unwrap();
@@ -539,12 +551,42 @@ classDef service fill:#eee
     assert_eq!(target.detail.as_deref(), Some("class link target"));
 
     let service_start = text.find("service").unwrap();
-    assert_eq!(
-        symbol_at("service", service_start).selection.end,
-        service_start + "service".len()
-    );
+    let service = symbol_at("service", service_start);
+    assert_eq!(service.selection.end, service_start + "service".len());
+    assert_eq!(service.role, EditorSemanticRole::Outline);
+    assert_eq!(service.detail.as_deref(), Some("class definition"));
+
+    let class_def_style = symbol_with_detail("fill:#eee", "class definition style");
+    assert_eq!(class_def_style.role, EditorSemanticRole::Payload);
+
+    let inline_service_start = text.find(":::service").unwrap() + ":::".len();
+    let inline_service = symbol_at("service", inline_service_start);
+    assert_eq!(inline_service.role, EditorSemanticRole::Payload);
+    assert_eq!(inline_service.detail.as_deref(), Some("class inline class"));
+
+    let css_admin = symbol_with_detail("Admin", "class css target");
+    assert_eq!(css_admin.role, EditorSemanticRole::Entity);
+
+    let css_service = symbol_with_detail("service", "class css reference");
+    assert_eq!(css_service.role, EditorSemanticRole::Payload);
+
+    let class_style = symbol_with_detail("fill:#fff", "class style");
+    assert_eq!(class_style.role, EditorSemanticRole::Payload);
+
+    let callback = symbol_with_detail("open", "class callback");
+    assert_eq!(callback.role, EditorSemanticRole::Payload);
+    assert_eq!(callback.kind, EditorSemanticKind::Function);
+
+    let callback_args = symbol_with_detail("userId", "class callback args");
+    assert_eq!(callback_args.role, EditorSemanticRole::Payload);
+
+    let callback_statement = symbol_with_detail("refreshUser", "class callback");
+    assert_eq!(callback_statement.role, EditorSemanticRole::Payload);
 
     assert!(facts.directive_prefixes.iter().any(|p| p == "click"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "callback"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "cssClass"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
 }
 

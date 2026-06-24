@@ -162,8 +162,11 @@ partial buffers and downstream migration.
   references, `classDef` ids are outline-only facts, and style, class reference, click URL/tooltip,
   and accessibility text values are payload-only spans. Class now emits class/namespace/relation,
   member-owner, member-outline, annotation-target, annotation-payload, directive-target,
-  interaction-target, interaction string, and link-target payload facts from its lexer token stream
-  with complete/recovered provenance. ER now emits entity, relationship endpoint,
+  interaction-target, interaction string, link-target, callback function/args, inline class,
+  cssClass reference, and style/classDef payload facts from its lexer token stream with
+  complete/recovered provenance. Class `classDef` ids are outline-only, and `cssClass` quoted
+  target lists are entity references instead of treating the style class name as a graph entity. ER
+  now emits entity, relationship endpoint,
   attribute, class/style/classDef target, and inline class facts with recovered token-stream output
   for incomplete buffers; ER attribute names are now outline facts and attribute type/key/comment
   payload spans are preserved for lint/future semantic consumers without becoming node completion
@@ -294,9 +297,11 @@ partial buffers and downstream migration.
 - ER `IdList` is now span-rich internally; future ER lint can use directive payload spans instead
   of reparsing class/style/classDef lines.
 - Class is migrated at the class/reference-owner level, and member outline plus annotation payload
-  spans are now parser-backed. Interaction string/link target payloads are also parser-backed; full
-  product-grade rename/lint will still benefit from callback payload span calibration, style
-  payload spans, and recovered diagnostics.
+  spans are now parser-backed. Interaction string/link target payloads, callback payloads,
+  style/classDef raw style payloads, inline class references, and cssClass target/reference
+  projection are parser-backed. A useful break already landed here: style class names are no
+  longer graph-node entities for completion/rename. Full product-grade lint can still deepen class
+  note/accessibility/relation-label payload spans and recovered diagnostics.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
   This preserves behavior while removing duplicated scan logic.

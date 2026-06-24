@@ -57,6 +57,11 @@ partial parse results instead of raw-text heuristic scans.
   by `click`/`link`/`callback` remain entity facts, while quoted URLs/tooltips and `_blank`-style
   link targets are retained for future lint/semantic consumers without entering completion or
   outline.
+- Class style facts now separate graph entities from styling payloads: `classDef` ids are
+  outline-only, `cssClass` quoted target lists are entity references, inline `:::` and `cssClass`
+  style class names are payload-only, and `style`/`classDef` raw style strings are payload-only
+  spans. `click ... call ...` and `callback ...` function names plus callback args are also
+  payload-only parser facts.
 - ER is the fifth migrated family: `IdList` is now span-rich internally, editor facts cover
   entities, relationship endpoints, attribute names, inline classes, class/style/classDef targets,
   and incomplete ER buffers recover from the ER lexer token stream instead of raw-text scans.
@@ -118,11 +123,12 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: calibrate class callback/style payload spans, move
-state toward a shared parser event stream or deepen state description/note payloads, deepen mindmap
-directive payload spans, design cross-line payload spans for Gantt multiline `accDescr`, or expose
-recovered parser diagnostics alongside recovered facts. Do not add new heuristic parsing in LSP for
-covered flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: deepen class note/accessibility/relation-label
+payload spans, move state toward a shared parser event stream or deepen state description/note
+payloads, deepen mindmap directive payload spans, design cross-line payload spans for Gantt
+multiline `accDescr`, or expose recovered parser diagnostics alongside recovered facts. Do not add
+new heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt symbols;
+extend core facts instead.
 
 # Citations
 

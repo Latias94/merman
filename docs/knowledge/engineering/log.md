@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened `classDiagram` editor facts so `classDef` ids now land as outline facts, `cssClass`
+  quoted target lists stay entity references, inline `:::` and `cssClass` style class names are
+  payload-only, and `style`/`classDef` raw style strings plus `click ... call ...` callback
+  functions/args are preserved as payload spans.
+- Re-verified the class slice with `cargo nextest run -p merman-core parse_class_editor_facts_preserve_parser_symbol_spans --no-fail-fast`,
+  `cargo nextest run -p merman-lsp class_member_outline_facts_do_not_pollute_completion_ids --no-fail-fast`,
+  `cargo nextest run -p merman-core class --no-fail-fast`,
+  `cargo nextest run -p merman-core editor_facts --no-fail-fast`,
+  `cargo nextest run -p merman-analysis --no-fail-fast`,
+  `cargo nextest run -p merman-lsp --no-fail-fast`, and `cargo fmt --all --check`.
 - Deepened `stateDiagram` editor facts so `classDef` ids become outline facts, `class`/`style`
   state targets remain entity references, and `class`/`style`/`click`/`accTitle`/`accDescr`
   payloads stay span-rich for future lint and semantic consumers without polluting LSP
