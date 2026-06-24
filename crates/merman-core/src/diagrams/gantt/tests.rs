@@ -40,7 +40,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
         "section Demo\n",
         "Task 1: id1,2014-01-01,1d\n",
         "Task 2: id2,after id1,until id1\n",
-        "click id2 call open()\n",
+        "click id2 call open(userId) href \"https://example.com/\"\n",
     );
     let facts = Engine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
@@ -132,6 +132,33 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             && symbol.detail.as_deref() == Some("gantt click target")
             && symbol.selection.start == id2_click_start
             && symbol.selection.end == id2_click_start + "id2".len()
+    }));
+
+    let callback_start = text.find("open(userId)").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "open"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt click callback")
+            && symbol.selection.start == callback_start
+            && symbol.selection.end == callback_start + "open".len()
+    }));
+
+    let callback_args_start = text.find("userId").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "userId"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt click callback args")
+            && symbol.selection.start == callback_args_start
+            && symbol.selection.end == callback_args_start + "userId".len()
+    }));
+
+    let href_start = text.find("https://example.com/").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "https://example.com/"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt click href")
+            && symbol.selection.start == href_start
+            && symbol.selection.end == href_start + "https://example.com/".len()
     }));
 }
 

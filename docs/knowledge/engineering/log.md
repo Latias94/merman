@@ -50,6 +50,8 @@ status: active
 - Re-verified Gantt core tests plus `merman-analysis` and `merman-lsp` after the Gantt section outline projection landed.
 - Deepened Gantt directive facts so `title`, `dateFormat`, `axisFormat`, `tickInterval`, `includes`, `excludes`, `todayMarker`, `weekday`, and `weekend` values are payload-only parser spans for future lint/semantic consumers.
 - Added regressions proving Gantt directive payloads stay out of task-id completion and outline projection, then re-verified Gantt/core editor facts plus analysis/LSP suites.
+- Deepened Gantt click facts by making the existing click parser span-aware and preserving `href` URLs, callback names, and callback args as payload-only facts while keeping click task ids as entity references.
+- Re-verified Gantt, core editor facts, `merman-analysis`, and `merman-lsp` after the click payload projection landed.
 
 ## 2026-06-23
 - Confirmed alpha-stage fearless refactor scope for diagnostics-first analysis: canonical `analyze_json`, legacy `validate_json` projection, CLI lint, Markdown fence diagnostics, LSP-ready position mapping, ADR, and engineering memory are in scope.

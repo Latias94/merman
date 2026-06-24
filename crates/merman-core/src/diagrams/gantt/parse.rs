@@ -33,6 +33,13 @@ fn starts_with_ci(s: &str, prefix: &str) -> bool {
         .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
 }
 
+fn leading_whitespace_len(s: &str) -> usize {
+    s.chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(char::len_utf8)
+        .sum()
+}
+
 fn parse_keyword_arg<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let t = line.trim_start();
     if !starts_with_ci(t, keyword) {
@@ -98,62 +105,114 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
     Some(buf.trim().to_string())
 }
 
-fn parse_click_statement(line: &str) -> Option<ClickStatementParts> {
-    let t = line.trim_start();
-    if !starts_with_ci(t, "click") {
+fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatementParts<'_>> {
+    let trimmed = line.trim_start();
+    if !starts_with_ci(trimmed, "click") {
         return None;
     }
-    let rest = t["click".len()..].trim_start();
-    let mut parts = rest.splitn(2, char::is_whitespace);
-    let ids = parts.next()?.trim().to_string();
-    let mut tail = parts.next().unwrap_or("").trim_start();
+    let leading = line.len().saturating_sub(trimmed.len());
+    let after_click = &trimmed["click".len()..];
+    let rest_leading = leading_whitespace_len(after_click);
+    let rest_start = "click".len() + rest_leading;
+    let rest = &trimmed[rest_start..];
+    let ids_len = rest
+        .char_indices()
+        .find_map(|(idx, ch)| ch.is_whitespace().then_some(idx))
+        .unwrap_or(rest.len());
+    let ids = SpannedText {
+        text: &rest[..ids_len],
+        start: line_start + leading + rest_start,
+        end: line_start + leading + rest_start + ids_len,
+    };
 
-    let mut href: Option<String> = None;
-    let mut call: Option<(String, Option<String>)> = None;
+    let mut tail_offset = rest_start + ids_len;
+    tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
+    let mut href = None;
+    let mut call = None;
 
-    while !tail.is_empty() {
+    while tail_offset < trimmed.len() {
+        let tail = &trimmed[tail_offset..];
         if starts_with_ci(tail, "href") {
-            let mut r = tail["href".len()..].trim_start();
-            if !r.starts_with('\"') {
+            let href_keyword_end = tail_offset + "href".len();
+            let after_href = &trimmed[href_keyword_end..];
+            let href_ws = leading_whitespace_len(after_href);
+            let quote_start = href_keyword_end + href_ws;
+            let value_start = quote_start + '"'.len_utf8();
+            if !trimmed[quote_start..].starts_with('"') {
                 break;
             }
-            r = &r[1..];
-            let Some(end) = r.find('\"') else {
+            let value_tail = &trimmed[value_start..];
+            let Some(end) = value_tail.find('"') else {
                 break;
             };
-            href = Some(r[..end].to_string());
-            tail = r[end + 1..].trim_start();
+            let value_end = value_start + end;
+            href = Some(SpannedText {
+                text: &trimmed[value_start..value_end],
+                start: line_start + leading + value_start,
+                end: line_start + leading + value_end,
+            });
+            tail_offset = value_end + '"'.len_utf8();
+            tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
             continue;
         }
 
         if starts_with_ci(tail, "call") {
-            let r = tail["call".len()..].trim_start();
-            let Some(paren) = r.find('(') else {
+            let call_keyword_end = tail_offset + "call".len();
+            let after_call = &trimmed[call_keyword_end..];
+            let call_ws = leading_whitespace_len(after_call);
+            let name_start = call_keyword_end + call_ws;
+            let name_tail = &trimmed[name_start..];
+            let Some(paren_rel) = name_tail.find('(') else {
                 break;
             };
-            let name = r[..paren].trim().to_string();
-            let after = &r[paren + 1..];
-            let Some(end) = after.find(')') else {
+            let paren = name_start + paren_rel;
+            let args_start = paren + '('.len_utf8();
+            let args_tail = &trimmed[args_start..];
+            let Some(end_rel) = args_tail.find(')') else {
                 break;
             };
-            let args_raw = after[..end].to_string();
-            let args = if args_raw.trim().is_empty() {
+            let args_end = args_start + end_rel;
+            let args_text = &trimmed[args_start..args_end];
+            let args = if args_text.trim().is_empty() {
                 None
             } else {
-                Some(args_raw)
+                Some(SpannedText {
+                    text: args_text,
+                    start: line_start + leading + args_start,
+                    end: line_start + leading + args_end,
+                })
             };
-            call = Some((name, args));
-            tail = after[end + 1..].trim_start();
+            call = Some(ClickCallParts {
+                name: SpannedText {
+                    text: &trimmed[name_start..paren],
+                    start: line_start + leading + name_start,
+                    end: line_start + leading + paren,
+                },
+                args,
+            });
+            tail_offset = args_end + ')'.len_utf8();
+            tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
             continue;
         }
 
         break;
     }
 
-    Some((ids, href, call))
+    Some(ClickStatementParts { ids, href, call })
 }
 
-type ClickStatementParts = (String, Option<String>, Option<(String, Option<String>)>);
+#[derive(Debug, Clone, Copy)]
+struct ClickStatementParts<'a> {
+    ids: SpannedText<'a>,
+    href: Option<SpannedText<'a>>,
+    call: Option<ClickCallParts<'a>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClickCallParts<'a> {
+    name: SpannedText<'a>,
+    args: Option<SpannedText<'a>>,
+}
 
 pub fn parse_gantt_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     collect_gantt_editor_facts_from_lines(code)
@@ -433,9 +492,9 @@ fn collect_gantt_statement_editor_facts(
         *in_acc_descr_block = block_open;
         return true;
     }
-    if parse_click_statement(stripped).is_some() {
+    if let Some(click) = parse_click_statement(stripped, line_start) {
         facts.push_directive_prefix("click");
-        collect_gantt_click_target_symbols(stripped, line_start, facts);
+        collect_gantt_click_symbols(stripped, line_start, click, facts);
         return true;
     }
 
@@ -484,41 +543,55 @@ fn gantt_acc_descr_block_open(line: &str) -> Option<bool> {
     Some(!rest.contains('}'))
 }
 
-fn collect_gantt_click_target_symbols(
+fn collect_gantt_click_symbols(
     line: &str,
     line_start: usize,
+    click: ClickStatementParts<'_>,
     facts: &mut EditorSemanticFacts,
 ) {
-    let trimmed = line.trim_start();
-    let leading = line.len().saturating_sub(trimmed.len());
-    let rest_start = "click".len();
-    let Some(rest) = trimmed.get(rest_start..) else {
-        return;
-    };
-    let rest_leading: usize = rest
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum();
-    let ids_start = rest_start + rest_leading;
-    let ids_tail = &trimmed[ids_start..];
-    let ids_len = ids_tail
-        .char_indices()
-        .find_map(|(idx, ch)| ch.is_whitespace().then_some(idx))
-        .unwrap_or(ids_tail.len());
-    let ids = &ids_tail[..ids_len];
-    let statement_span =
-        SourceSpan::new(line_start + leading, line_start + leading + trimmed.len());
+    let statement_span = gantt_statement_span(line, line_start);
 
     push_gantt_delimited_id_symbols(
-        ids,
-        line_start + leading + ids_start,
+        click.ids.text,
+        click.ids.start,
         ',',
         "gantt click target",
         EditorSemanticKind::Function,
         statement_span,
         facts,
     );
+
+    if let Some(href) = click.href {
+        push_gantt_payload_symbol(
+            line,
+            line_start,
+            href,
+            "gantt click href",
+            EditorSemanticKind::String,
+            facts,
+        );
+    }
+
+    if let Some(call) = click.call {
+        push_gantt_payload_symbol(
+            line,
+            line_start,
+            call.name,
+            "gantt click callback",
+            EditorSemanticKind::Function,
+            facts,
+        );
+        if let Some(args) = call.args {
+            push_gantt_payload_symbol(
+                line,
+                line_start,
+                args,
+                "gantt click callback args",
+                EditorSemanticKind::String,
+                facts,
+            );
+        }
+    }
 }
 
 fn collect_gantt_section_symbol(
@@ -1043,12 +1116,16 @@ fn parse_gantt_statement(
         db.set_acc_descr(&v);
         return Ok(());
     }
-    if let Some((ids, href, call)) = parse_click_statement(stripped) {
-        if let Some((name, args)) = call {
-            db.set_click_event(&ids, &name, args.as_deref());
+    if let Some(click) = parse_click_statement(stripped, 0) {
+        if let Some(call) = click.call {
+            db.set_click_event(
+                &click.ids.text,
+                call.name.text.trim(),
+                call.args.map(|args| args.text),
+            );
         }
-        if let Some(href) = href {
-            db.set_link(&ids, &href);
+        if let Some(href) = click.href {
+            db.set_link(&click.ids.text, href.text);
         }
         return Ok(());
     }

@@ -315,7 +315,7 @@ fn gantt_documents_use_parser_facts() {
             "section Demo\n",
             "Task 1: id1,2014-01-01,1d\n",
             "Task 2: id2,after id1,2d\n",
-            "click id2 href \"https://example.com/\"\n",
+            "click id2 call open(userId) href \"https://example.com/\"\n",
         )
         .to_string(),
     );
@@ -328,6 +328,9 @@ fn gantt_documents_use_parser_facts() {
     assert!(!index.node_ids().any(|id| id == "Demo"));
     assert!(!index.node_ids().any(|id| id == "Roadmap"));
     assert!(!index.node_ids().any(|id| id == "YYYY-MM-DD"));
+    assert!(!index.node_ids().any(|id| id == "open"));
+    assert!(!index.node_ids().any(|id| id == "userId"));
+    assert!(!index.node_ids().any(|id| id == "https://example.com/"));
     assert!(
         index
             .outline_items()
@@ -345,6 +348,19 @@ fn gantt_documents_use_parser_facts() {
             .outline_items()
             .iter()
             .any(|item| item.name == "YYYY-MM-DD")
+    );
+    assert!(!index.outline_items().iter().any(|item| item.name == "open"));
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "userId")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "https://example.com/")
     );
     assert!(index.has_directive_prefix("title"));
     assert!(index.has_directive_prefix("dateFormat"));
