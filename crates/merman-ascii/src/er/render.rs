@@ -5,8 +5,8 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationGraphLabel, RelationGraphLine, RelationLineChars, RelationOverlay,
-    RelationParallelPlan, RelationStackPlan,
+    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -498,43 +498,36 @@ fn render_dense_relationship_fallback(
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
-    let mut summaries = Vec::with_capacity(relationships.len());
+    let mut rows = Vec::with_capacity(relationships.len());
     for relationship in relationships {
-        summaries.push(RelationGraphLine::with_role(
-            er_relationship_summary(relationship, entity_labels, charset)?,
-            AsciiColorRole::EdgeLabel,
-        ));
+        rows.push(er_relationship_summary_row(
+            relationship,
+            entity_labels,
+            charset,
+        )?);
     }
 
-    Ok(relation_graph::render_stacked_boxes_with_section(
-        boxes,
-        RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
-        &summaries,
-        options,
+    Ok(relation_graph::render_stacked_boxes_with_relation_summary(
+        boxes, &rows, options,
     ))
 }
 
-fn er_relationship_summary(
+fn er_relationship_summary_row(
     relationship: &ErRelationshipRenderModel,
     entity_labels: &HashMap<String, String>,
     charset: ErCharset,
-) -> Result<String> {
+) -> Result<RelationGraphSummaryRow> {
     let left_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let right_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
-    let label = RelationGraphLabel::new(&relationship.role_a)
-        .map(|label| format!(" : {}", label.lines().join(" / ")))
-        .unwrap_or_default();
+    let label = RelationGraphLabel::new(&relationship.role_a);
 
-    Ok(format!(
-        "{} {}{}{} {}{}",
+    Ok(RelationGraphSummaryRow::new(
         relationship_label(entity_labels, &relationship.entity_a),
-        left_cardinality,
-        relation,
-        right_cardinality,
+        format!("{left_cardinality}{relation}{right_cardinality}"),
         relationship_label(entity_labels, &relationship.entity_b),
-        label
-    ))
+    )
+    .with_label(label.as_ref()))
 }
 
 fn relationship_label<'a>(entity_labels: &'a HashMap<String, String>, id: &'a str) -> &'a str {

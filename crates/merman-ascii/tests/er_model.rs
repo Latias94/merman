@@ -657,16 +657,25 @@ fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
         "INVOICE",
         "PAYMENT",
         "relations:",
-        "places / orders",
-        "belongs / to",
-        "reconciles / payment",
-        "captures / funds",
+        "CUSTOMER ||--o{ ORDER",
+        "places",
+        "orders",
+        "belongs",
+        "to",
+        "reconciles",
+        "payment",
+        "captures",
+        "funds",
     ] {
         assert!(
             rendered.contains(expected),
             "dense multiline semantic ER fixture should keep {expected:?} visible:\n{rendered}"
         );
     }
+    assert!(
+        !rendered.contains(" / "),
+        "dense multiline semantic ER fixture should keep label lines structured instead of slash-joining them:\n{rendered}"
+    );
     assert!(
         !rendered.contains("<br>"),
         "dense multiline semantic ER fixture should not leak Mermaid break syntax:\n{rendered}"

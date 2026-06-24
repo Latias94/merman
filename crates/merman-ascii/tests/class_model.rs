@@ -820,16 +820,24 @@ fn class_local_semantic_fixture_covers_dense_multiline_relation_summary() {
         "Repo",
         "Cache",
         "relations:",
-        "receives / request",
-        "returns / response",
-        "persists / state",
-        "invalidates / entry",
+        "Gateway --> Service : receives",
+        "request",
+        "Service --> Gateway : returns",
+        "response",
+        "persists",
+        "state",
+        "invalidates",
+        "entry",
     ] {
         assert!(
             rendered.contains(expected),
             "dense multiline semantic class fixture should keep {expected:?} visible:\n{rendered}"
         );
     }
+    assert!(
+        !rendered.contains(" / "),
+        "dense multiline semantic class fixture should keep label lines structured instead of slash-joining them:\n{rendered}"
+    );
     assert!(
         !rendered.contains("<br>"),
         "dense multiline semantic class fixture should not leak Mermaid break syntax:\n{rendered}"

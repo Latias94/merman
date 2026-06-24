@@ -7,8 +7,8 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationGraphLabel, RelationGraphLine, RelationLineChars, RelationOverlay,
-    RelationParallelPlan, RelationStackPlan,
+    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
@@ -681,31 +681,20 @@ fn render_dense_relation_fallback(
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
 ) -> String {
-    let summaries = layouts
+    let rows = layouts
         .iter()
-        .map(class_relation_summary)
-        .map(|summary| RelationGraphLine::with_role(summary, AsciiColorRole::EdgeLabel))
+        .map(class_relation_summary_row)
         .collect::<Vec<_>>();
-    relation_graph::render_stacked_boxes_with_section(
-        boxes,
-        RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
-        &summaries,
-        options,
-    )
+    relation_graph::render_stacked_boxes_with_relation_summary(boxes, &rows, options)
 }
 
-fn class_relation_summary(layout: &RelationLayout<'_>) -> String {
-    let mut summary = format!(
-        "{} {} {}",
+fn class_relation_summary_row(layout: &RelationLayout<'_>) -> RelationGraphSummaryRow {
+    RelationGraphSummaryRow::new(
         layout.top_id,
         class_relation_summary_symbol(layout),
-        layout.bottom_id
-    );
-    if let Some(label) = layout.label.as_ref() {
-        summary.push_str(" : ");
-        summary.push_str(&label.lines().join(" / "));
-    }
-    summary
+        layout.bottom_id,
+    )
+    .with_label(layout.label.as_ref())
 }
 
 fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {

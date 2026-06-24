@@ -3,8 +3,10 @@ use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::options::AsciiRenderOptions;
 use crate::text::{StyledLine, display_width, split_label_lines};
 mod layered;
+mod summary;
 
 pub(crate) use self::layered::*;
+pub(crate) use self::summary::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphLine {
