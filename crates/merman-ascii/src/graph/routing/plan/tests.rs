@@ -235,6 +235,45 @@ fn edge_boundary_context_classifies_external_internal_entering_and_leaving_edges
 }
 
 #[test]
+fn edge_boundary_context_prefers_the_narrowest_nested_group_boundary() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_node("c", "C");
+    graph.add_group_with_style(
+        "outer",
+        "Outer",
+        Some(GraphDirection::TopDown),
+        vec!["a".to_string(), "inner".to_string()],
+        Default::default(),
+    );
+    graph.add_group_with_style(
+        "inner",
+        "Inner",
+        Some(GraphDirection::LeftRight),
+        vec!["b".to_string(), "c".to_string()],
+        Default::default(),
+    );
+
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("a", "b", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::Entering {
+            group_id: "inner",
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight
+        }
+    );
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("b", "a", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::Leaving {
+            group_id: "inner",
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight
+        }
+    );
+}
+
+#[test]
 fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     let options = AsciiRenderOptions::ascii();
     let charset = GraphCharset::for_options(&options);
