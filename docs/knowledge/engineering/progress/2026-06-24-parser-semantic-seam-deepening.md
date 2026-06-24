@@ -74,8 +74,8 @@ partial parse results instead of raw-text heuristic scans.
 - Class note/accessibility/relation-label facts are now payload-only parser facts. `note` text,
   `accTitle:`/`accDescr:` values, and relation labels such as `: manages` stay available to future
   lint/semantic consumers while remaining excluded from node-id completion and outline projection.
-  Class display-label strings and quoted relation multiplicity/cardinality strings remain optional
-  future payload candidates if product lint needs those distinctions.
+  Class display-label strings and quoted relation multiplicity/cardinality strings are now payload
+  spans, so lint and semantic consumers can inspect them without polluting completion.
 - ER is the fifth migrated family: `IdList` is now span-rich internally, editor facts cover
   entities, relationship endpoints, attribute names, inline classes, class/style/classDef targets,
   and incomplete ER buffers recover from the ER lexer token stream instead of raw-text scans.
@@ -85,8 +85,9 @@ partial parse results instead of raw-text heuristic scans.
   lexer reports the block EOF once, exits block mode, and lets editor fact recovery finish.
 - Mindmap is the first migrated hand-written family: its line parser now returns an internal event
   stream for nodes, class directives, and icon directives. The same events drive DB/render model
-  construction and editor facts, so LSP/lint consumers get parser-backed node spans and recovered
-  incomplete-delimiter facts without breaking class/icon decoration behavior.
+  construction and editor facts, so LSP/lint consumers get parser-backed node spans, payload spans
+  for class/icon decoration values, and recovered incomplete-delimiter facts without breaking the
+  decoration behavior.
 - Gantt is the second migrated hand-written family: task ids, `after`/`until` dependency
   references, `click` targets, and directive prefixes now come from the Gantt statement parser
   rules with complete/recovered provenance. The relative-reference matcher now has a range
@@ -139,10 +140,9 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: move state toward a shared parser event stream,
-deepen mindmap directive payload spans, or expose recovered parser diagnostics alongside recovered
-facts. Do not add new heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/
-mindmap/gantt symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: move state toward a shared parser event stream, or
+expose recovered parser diagnostics alongside recovered facts. Do not add new heuristic parsing in
+LSP for covered flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
 
 # Citations
 

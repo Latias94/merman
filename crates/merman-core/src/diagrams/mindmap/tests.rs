@@ -1,5 +1,7 @@
 use super::*;
-use crate::{EditorSemanticCompleteness, Engine, ParseOptions, RenderSemanticModel};
+use crate::{
+    EditorSemanticCompleteness, EditorSemanticRole, Engine, ParseOptions, RenderSemanticModel,
+};
 use futures::executor::block_on;
 use serde_json::Value;
 
@@ -297,6 +299,24 @@ fn mindmap_editor_facts_preserve_parser_node_spans() {
         symbol_at("child2", child2_start).selection.end,
         child2_start + "child2".len()
     );
+
+    let class_start = text.find("hot").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "hot"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("mindmap class")
+            && symbol.selection.start == class_start
+            && symbol.selection.end == class_start + "hot".len()
+    }));
+
+    let icon_start = text.find("bomb").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "bomb"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("mindmap icon")
+            && symbol.selection.start == icon_start
+            && symbol.selection.end == icon_start + "bomb".len()
+    }));
 
     assert!(facts.directive_prefixes.iter().any(|p| p == ":::"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "::icon"));

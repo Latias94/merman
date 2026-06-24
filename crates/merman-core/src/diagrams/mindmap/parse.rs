@@ -47,10 +47,17 @@ struct MindmapParsedNodeLine {
 }
 
 #[derive(Debug, Clone)]
+struct MindmapParsedPayloadLine {
+    value: String,
+    span: SourceSpan,
+    selection: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
 enum MindmapParsedEvent {
     Node(MindmapParsedNodeLine),
-    Class(String),
-    Icon(String),
+    Class(MindmapParsedPayloadLine),
+    Icon(MindmapParsedPayloadLine),
 }
 
 #[derive(Debug, Default)]
@@ -83,10 +90,10 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
                 )?;
             }
             MindmapParsedEvent::Class(class) => {
-                db.decorate_last(Some(class), None, &meta.effective_config);
+                db.decorate_last(Some(class.value), None, &meta.effective_config);
             }
             MindmapParsedEvent::Icon(icon) => {
-                db.decorate_last(None, Some(icon), &meta.effective_config);
+                db.decorate_last(None, Some(icon.value), &meta.effective_config);
             }
         }
     }
@@ -108,14 +115,34 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
         facts.push_directive_prefix(prefix);
     }
     for event in parsed.events {
-        if let MindmapParsedEvent::Node(node) = event {
-            facts.push_symbol(EditorSemanticSymbol::new(
-                node.id_raw,
-                Some("mindmap node".to_string()),
-                EditorSemanticKind::Namespace,
-                node.span,
-                node.selection,
-            ));
+        match event {
+            MindmapParsedEvent::Node(node) => {
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    node.id_raw,
+                    Some("mindmap node".to_string()),
+                    EditorSemanticKind::Namespace,
+                    node.span,
+                    node.selection,
+                ));
+            }
+            MindmapParsedEvent::Class(class) => {
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    class.value,
+                    Some("mindmap class".to_string()),
+                    EditorSemanticKind::Property,
+                    class.span,
+                    class.selection,
+                ));
+            }
+            MindmapParsedEvent::Icon(icon) => {
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    icon.value,
+                    Some("mindmap icon".to_string()),
+                    EditorSemanticKind::String,
+                    icon.span,
+                    icon.selection,
+                ));
+            }
         }
     }
     facts
@@ -198,22 +225,50 @@ fn parse_mindmap_lines(
             }
 
             if starts_with_case_insensitive(rest, "::icon(") {
+                let statement_span = SourceSpan::new(
+                    line_start + rest_offset,
+                    line_start + rest_offset + rest.len(),
+                );
                 let after = &rest["::icon(".len()..];
                 let Some(end) = after.find(')') else {
                     return Ok(HandleOutcome::Done);
                 };
-                let icon = after[..end].to_string();
+                let icon = after[..end].trim();
+                if icon.is_empty() {
+                    return Ok(HandleOutcome::Done);
+                }
+                let icon_leading = after[..end].len() - after[..end].trim_start().len();
+                let selection_start = line_start + rest_offset + "::icon(".len() + icon_leading;
                 out.directive_prefixes.push("::icon".to_string());
-                out.events.push(MindmapParsedEvent::Icon(icon));
+                out.events
+                    .push(MindmapParsedEvent::Icon(MindmapParsedPayloadLine {
+                        value: icon.to_string(),
+                        span: statement_span,
+                        selection: SourceSpan::new(selection_start, selection_start + icon.len()),
+                    }));
                 return Ok(HandleOutcome::Done);
             }
 
             if let Some(after) = rest.strip_prefix(":::") {
                 // Mermaid mindmap does not treat `%% ...` as an inline comment inside `:::` class
                 // directives (the entire remainder is interpreted as space-separated class names).
+                let statement_span = SourceSpan::new(
+                    line_start + rest_offset,
+                    line_start + rest_offset + rest.len(),
+                );
+                let class = after.trim();
+                if class.is_empty() {
+                    return Ok(HandleOutcome::Done);
+                }
+                let class_leading = after.len() - after.trim_start().len();
+                let selection_start = line_start + rest_offset + ":::".len() + class_leading;
                 out.directive_prefixes.push(":::".to_string());
                 out.events
-                    .push(MindmapParsedEvent::Class(after.trim().to_string()));
+                    .push(MindmapParsedEvent::Class(MindmapParsedPayloadLine {
+                        value: class.to_string(),
+                        span: statement_span,
+                        selection: SourceSpan::new(selection_start, selection_start + class.len()),
+                    }));
                 return Ok(HandleOutcome::Done);
             }
 

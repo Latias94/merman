@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened `mindmap` directive payload facts so `:::class` and `::icon(...)` decoration values
+  now ride the shared parser event stream as payload-only spans without polluting node-id
+  completion or outline.
 - Deepened `gantt` multiline accessibility facts so `accDescr { ... }` blocks now produce
   payload-only parser facts with cross-line spans; unterminated blocks preserve recovered payload
   facts for partial editor buffers.
@@ -23,10 +26,8 @@ status: active
 - Deepened `classDiagram` residual payload facts so relation labels, `note` text,
   `accTitle:`/`accDescr:` values, and multiline class accessibility descriptions are retained as
   payload-only parser facts without leaking into LSP completion or outline.
-- Recorded the remaining class lint candidates: display-label strings and quoted relation
-  multiplicity/cardinality strings should be payload-modeled only if product lint needs them;
-  otherwise the next higher-return parser break is state event-stream unification, mindmap
-  directive payloads, Gantt multiline accessibility spans, or recovered parser diagnostics.
+- Recorded the remaining higher-return parser breaks after class payload deepening: state
+  event-stream unification and recovered parser diagnostics.
 - Deepened `classDiagram` editor facts so `classDef` ids now land as outline facts, `cssClass`
   quoted target lists stay entity references, inline `:::` and `cssClass` style class names are
   payload-only, and `style`/`classDef` raw style strings plus `click ... call ...` callback

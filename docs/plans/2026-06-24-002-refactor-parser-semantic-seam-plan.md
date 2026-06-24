@@ -191,8 +191,9 @@ partial buffers and downstream migration.
 
 - **Status:** Mindmap landed as the first hand-written-family tracer bullet. Its line parser now
   produces an internal event stream shared by render DB construction and editor facts, preserving
-  node spans, class/icon directive prefixes, class/icon decoration semantics, inline-header spans,
-  multiline-node behavior, and recovered facts for incomplete node delimiters. Gantt now emits
+  node spans, class/icon directive prefixes, class/icon decoration payload spans, class/icon
+  decoration semantics, inline-header spans, multiline-node behavior, and recovered facts for
+  incomplete node delimiters. Gantt now emits
   parser-backed task id, `after`/`until` dependency, `click` target, `section` outline, and
   directive-prefix facts from the same statement grammar used by the render parser. Its
   relative-reference matcher now exposes source ranges so editor facts reuse the Mermaid-backed
@@ -230,9 +231,9 @@ partial buffers and downstream migration.
   provenance path in `DocumentStore`, exposes Gantt sections as outline-only symbols, and header
   completion includes `gantt`. The migration index now respects semantic roles: entity facts feed
   completion/navigation/outline, outline facts feed outline only, and payload facts stay out of LSP
-  completion/navigation. Gantt directive, click, and single-line accessibility payloads are
-  preserved for future lint and semantic consumers without leaking into node-id completion or
-  outline surfaces.
+  completion/navigation. Mindmap class/icon payloads and Gantt directive, click, and accessibility
+  payloads are preserved for future lint and semantic consumers without leaking into node-id
+  completion or outline surfaces.
   Class member facts now use the outline role for class-body and inline `Class: member` entries,
   while annotation names plus interaction URLs/tooltips/link targets are payload spans reserved for
   lint/future semantic consumers.
@@ -306,7 +307,8 @@ partial buffers and downstream migration.
   recovered diagnostics rather than adding LSP-side scans.
 - Mindmap showed a high-return hand-written-family pattern: convert line handling into an explicit
   parser event stream, then project the same events into DB/render semantics and editor facts.
-  This preserves behavior while removing duplicated scan logic.
+  This preserves behavior while removing duplicated scan logic; class/icon decoration values now
+  ride the same event stream as payload spans.
 - Gantt now exposes parser-backed task ids, section outlines, directive/click/single-line and
   multiline accessibility payloads, dependencies, and click targets for editor consumers without
   adding section names or directive values to task-id completion.

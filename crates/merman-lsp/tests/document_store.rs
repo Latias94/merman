@@ -585,7 +585,15 @@ fn mindmap_documents_use_parser_facts() {
     let snapshot = store.upsert(
         uri,
         1,
-        "mindmap\nroot(Root Node)\n child1(Child 1)\n child2\n".to_string(),
+        concat!(
+            "mindmap\n",
+            "root(Root Node)\n",
+            " child1(Child 1)\n",
+            " :::hot\n",
+            " ::icon(bomb)\n",
+            " child2\n",
+        )
+        .to_string(),
     );
     let index = &snapshot.fences[0].text_index;
 
@@ -593,6 +601,10 @@ fn mindmap_documents_use_parser_facts() {
     assert!(index.node_ids().any(|id| id == "root"));
     assert!(index.node_ids().any(|id| id == "child1"));
     assert!(index.node_ids().any(|id| id == "child2"));
+    assert!(!index.node_ids().any(|id| id == "hot"));
+    assert!(!index.node_ids().any(|id| id == "bomb"));
+    assert!(!index.outline_items().iter().any(|item| item.name == "hot"));
+    assert!(!index.outline_items().iter().any(|item| item.name == "bomb"));
 }
 
 #[test]
