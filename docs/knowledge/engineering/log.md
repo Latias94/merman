@@ -6,6 +6,12 @@ status: active
 # Log
 
 ## 2026-06-24
+- Deepened `stateDiagram` payload facts so state display labels, colon descriptions, relation
+  labels, positioned/floating note text, class/style/click payloads, and accessibility text are all
+  parser-backed payload-only spans.
+- Recorded the remaining state architecture break: replace the AST-plus-supplemental-token editor
+  fact split with an explicit parser event stream when the next state refactor needs stronger
+  locality.
 - Deepened `classDiagram` residual payload facts so relation labels, `note` text,
   `accTitle:`/`accDescr:` values, and multiline class accessibility descriptions are retained as
   payload-only parser facts without leaking into LSP completion or outline.

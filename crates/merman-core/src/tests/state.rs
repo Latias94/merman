@@ -443,10 +443,14 @@ fn parse_state_editor_facts_preserve_parser_state_spans() {
     let text = r#"stateDiagram-v2
 [*] --> Idle
 Idle --> Running
+Idle: Waiting state
+Idle --> Running: starts
 state Running {
   [*] --> Active
 }
 state "Paused State" as Paused
+note right of Running : Running details
+note "Floating note" as note1
 classDef activeStyle fill:#0f0,border:#333
 class Idle, Running activeStyle
 style Running fill:#f00
@@ -491,6 +495,51 @@ click Running "https://example.com/run" "Run details""#;
         symbol_at("Paused", paused_start).selection.end,
         paused_start + "Paused".len()
     );
+
+    let display_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Paused State" && symbol.detail.as_deref() == Some("state display label")
+        })
+        .unwrap();
+    assert_eq!(display_label.role, EditorSemanticRole::Payload);
+
+    let state_description = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Waiting state" && symbol.detail.as_deref() == Some("state description")
+        })
+        .unwrap();
+    assert_eq!(state_description.role, EditorSemanticRole::Payload);
+
+    let relation_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "starts" && symbol.detail.as_deref() == Some("state relation label")
+        })
+        .unwrap();
+    assert_eq!(relation_label.role, EditorSemanticRole::Payload);
+
+    let positioned_note = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Running details" && symbol.detail.as_deref() == Some("state note")
+        })
+        .unwrap();
+    assert_eq!(positioned_note.role, EditorSemanticRole::Payload);
+
+    let floating_note = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Floating note" && symbol.detail.as_deref() == Some("state note")
+        })
+        .unwrap();
+    assert_eq!(floating_note.role, EditorSemanticRole::Payload);
 
     let active_style_start = text.find("activeStyle").unwrap();
     let active_style = facts

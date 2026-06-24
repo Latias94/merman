@@ -46,6 +46,11 @@ partial parse results instead of raw-text heuristic scans.
   accessibility payload spans, plus class/style/click target references. These facts preserve
   source coordinates for lint and future semantic consumers without adding LSP-side heuristics or
   polluting node-id completion with directive values.
+- State description and note payloads are now parser-backed too. The token collector preserves
+  `state "Display" as Id` display labels, `Id: description` state descriptions, relation labels,
+  and note text as payload-only facts, using a minimal relation context to avoid treating
+  `Id: description` and `Id --> Other: label` as the same semantic fact. A future deeper break can
+  still replace the AST-plus-supplemental-token split with an explicit state event stream.
 - Class is the fourth migrated family: editor facts now come from the class lexer token stream with
   LALRPOP complete/recovered provenance, covering class declarations, namespaces, relation
   endpoints, member owners, annotation targets, style/classDef/cssClass targets, and click/link/
@@ -128,12 +133,12 @@ partial parse results instead of raw-text heuristic scans.
 
 # Next Action
 
-Choose the next parser seam slice deliberately: move state toward a shared parser event stream or
-deepen state description/note payloads, decide whether class display-label strings and quoted
-relation multiplicity/cardinality strings should become payload facts, deepen mindmap directive
-payload spans, design cross-line payload spans for Gantt multiline `accDescr`, or expose recovered
-parser diagnostics alongside recovered facts. Do not add new heuristic parsing in LSP for covered
-flowchart/sequence/state/class/ER/mindmap/gantt symbols; extend core facts instead.
+Choose the next parser seam slice deliberately: move state toward a shared parser event stream,
+decide whether class display-label strings and quoted relation multiplicity/cardinality strings
+should become payload facts, deepen mindmap directive payload spans, design cross-line payload
+spans for Gantt multiline `accDescr`, or expose recovered parser diagnostics alongside recovered
+facts. Do not add new heuristic parsing in LSP for covered flowchart/sequence/state/class/ER/
+mindmap/gantt symbols; extend core facts instead.
 
 # Citations
 

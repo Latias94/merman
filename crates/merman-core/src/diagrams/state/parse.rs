@@ -136,6 +136,9 @@ fn collect_state_editor_facts_from_tokens(
         code,
         mode,
         context: StateTokenContext::Default,
+        note_text_pending: false,
+        relation_label_pending: false,
+        relation_target_seen: false,
     };
     while let Some(result) = lexer.next() {
         match result {
@@ -151,6 +154,9 @@ struct StateTokenFactCollector<'a> {
     code: &'a str,
     mode: StateTokenFactMode,
     context: StateTokenContext,
+    note_text_pending: bool,
+    relation_label_pending: bool,
+    relation_target_seen: bool,
 }
 
 fn collect_state_editor_facts_from_statements(
@@ -191,6 +197,13 @@ impl StateTokenFactCollector<'_> {
         match token {
             Tok::Newline | Tok::StructStart | Tok::StructStop => {
                 self.context = StateTokenContext::Default;
+                self.note_text_pending = false;
+                self.relation_label_pending = false;
+                self.relation_target_seen = false;
+            }
+            Tok::Arrow => {
+                self.relation_label_pending = true;
+                self.relation_target_seen = false;
             }
             Tok::Click => {
                 facts.push_directive_prefix("click");
@@ -218,6 +231,54 @@ impl StateTokenFactCollector<'_> {
             }
             Tok::EdgeState if self.context == StateTokenContext::ClickTarget => {
                 self.context = StateTokenContext::ClickAfterTarget;
+            }
+            Tok::EdgeState => {
+                if self.relation_label_pending {
+                    self.relation_target_seen = true;
+                }
+            }
+            Tok::Note => {
+                self.note_text_pending = true;
+            }
+            Tok::NoteText(text) if self.note_text_pending => {
+                push_state_payload_symbol_from_token(
+                    facts,
+                    self.code,
+                    text.as_str(),
+                    start,
+                    end,
+                    "state note",
+                    EditorSemanticKind::String,
+                );
+                self.note_text_pending = false;
+            }
+            Tok::StateDescr(text) => {
+                push_state_string_payload_symbol(
+                    facts,
+                    text.as_str(),
+                    start,
+                    end,
+                    "state display label",
+                    EditorSemanticKind::String,
+                );
+            }
+            Tok::Descr(text) => {
+                let detail = if self.relation_label_pending && self.relation_target_seen {
+                    "state relation label"
+                } else {
+                    "state description"
+                };
+                push_state_payload_symbol_from_token(
+                    facts,
+                    self.code,
+                    text.as_str(),
+                    start,
+                    end,
+                    detail,
+                    EditorSemanticKind::String,
+                );
+                self.relation_label_pending = false;
+                self.relation_target_seen = false;
             }
             Tok::StringLit(text)
                 if matches!(
@@ -251,11 +312,17 @@ impl StateTokenFactCollector<'_> {
                 self.context = StateTokenContext::Default;
             }
             Tok::Id(id) | Tok::CompositState(id) => {
+                if self.relation_label_pending {
+                    self.relation_target_seen = true;
+                }
                 if self.mode.includes_plain_state_symbols() {
                     push_state_token_symbol(facts, id, start, end, "state");
                 }
             }
             Tok::StyledId((id, class_id)) => {
+                if self.relation_label_pending {
+                    self.relation_target_seen = true;
+                }
                 if self.mode.includes_plain_state_symbols() {
                     push_state_token_symbol(facts, id, start, end, "state");
                 }
@@ -270,16 +337,25 @@ impl StateTokenFactCollector<'_> {
                 );
             }
             Tok::Fork(id) => {
+                if self.relation_label_pending {
+                    self.relation_target_seen = true;
+                }
                 if self.mode.includes_plain_state_symbols() {
                     push_state_token_symbol(facts, id, start, end, "state fork");
                 }
             }
             Tok::Join(id) => {
+                if self.relation_label_pending {
+                    self.relation_target_seen = true;
+                }
                 if self.mode.includes_plain_state_symbols() {
                     push_state_token_symbol(facts, id, start, end, "state join");
                 }
             }
             Tok::Choice(id) => {
+                if self.relation_label_pending {
+                    self.relation_target_seen = true;
+                }
                 if self.mode.includes_plain_state_symbols() {
                     push_state_token_symbol(facts, id, start, end, "state choice");
                 }
@@ -363,15 +439,10 @@ impl StateTokenFactCollector<'_> {
                 );
             }
             Tok::Sd
-            | Tok::EdgeState
-            | Tok::Descr(_)
-            | Tok::Arrow
             | Tok::As
-            | Tok::Note
             | Tok::LeftOf
             | Tok::RightOf
             | Tok::NoteText(_)
-            | Tok::StateDescr(_)
             | Tok::Concurrent
             | Tok::HideEmptyDescription
             | Tok::ScaleWidth(_)

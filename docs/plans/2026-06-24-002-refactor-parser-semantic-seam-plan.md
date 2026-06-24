@@ -160,8 +160,9 @@ partial buffers and downstream migration.
   from the state lexer token stream for incomplete buffers. State now also runs a token-backed
   supplemental fact pass for complete parses so `class`/`style`/`click` state targets are entity
   references, `classDef` ids are outline-only facts, and style, class reference, click URL/tooltip,
-  and accessibility text values are payload-only spans. Class now emits class/namespace/relation,
-  member-owner, member-outline, annotation-target, annotation-payload, directive-target,
+  accessibility text, display-label, description, relation-label, and note text values are
+  payload-only spans. Class now emits class/namespace/relation, member-owner, member-outline,
+  annotation-target, annotation-payload, directive-target,
   interaction-target, interaction string, link-target, callback function/args, relation-label,
   note, accessibility, inline class, cssClass reference, and style/classDef payload facts from its
   lexer token stream with
@@ -316,7 +317,8 @@ partial buffers and downstream migration.
 - `mindmap` and `gantt` likely need family-local line parser span extraction rather than a forced
   parser-generator rewrite; the useful break is the shared semantic contract, not parser
   monoculture.
-- State class/style/click references and directive payloads are now span-backed through a
-  supplemental lexer pass. A higher-return future break is to move state to an explicit parser
-  event stream so render semantics and editor facts share one span-preserving intermediate form
-  instead of splitting across AST fields and supplemental token facts.
+- State display-labels, colon descriptions, relation labels, notes, class/style/click references,
+  and directive payloads are now span-backed through a supplemental lexer pass. A higher-return
+  future break is to move state to an explicit parser event stream so render semantics and editor
+  facts share one span-preserving intermediate form instead of splitting across AST fields and
+  supplemental token facts.

@@ -138,6 +138,11 @@ fn state_documents_use_parser_facts() {
             "stateDiagram-v2\n",
             "[*] --> Idle\n",
             "Idle --> Running\n",
+            "Idle: Waiting state\n",
+            "Idle --> Running: starts\n",
+            "state \"Paused State\" as Paused\n",
+            "note right of Running : Running details\n",
+            "note \"Floating note\" as note1\n",
             "classDef activeStyle fill:#0f0,border:#333\n",
             "class Idle, Running activeStyle\n",
             "style Running fill:#f00\n",
@@ -153,6 +158,11 @@ fn state_documents_use_parser_facts() {
     assert!(index.node_ids().any(|id| id == "Idle"));
     assert!(index.node_ids().any(|id| id == "Running"));
     assert!(!index.node_ids().any(|id| id == "activeStyle"));
+    assert!(!index.node_ids().any(|id| id == "Waiting state"));
+    assert!(!index.node_ids().any(|id| id == "starts"));
+    assert!(!index.node_ids().any(|id| id == "Paused State"));
+    assert!(!index.node_ids().any(|id| id == "Running details"));
+    assert!(!index.node_ids().any(|id| id == "Floating note"));
     assert!(!index.node_ids().any(|id| id == "fill:#0f0,border:#333"));
     assert!(!index.node_ids().any(|id| id == "fill:#f00"));
     assert!(!index.node_ids().any(|id| id == "Lifecycle chart"));
@@ -165,6 +175,30 @@ fn state_documents_use_parser_facts() {
             .iter()
             .any(|item| item.name == "activeStyle"
                 && item.detail.as_deref() == Some("state class definition"))
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Waiting state")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "starts")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Paused State")
+    );
+    assert!(
+        !index
+            .outline_items()
+            .iter()
+            .any(|item| item.name == "Running details")
     );
     assert!(
         !index
