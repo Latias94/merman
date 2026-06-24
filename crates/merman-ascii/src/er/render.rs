@@ -500,16 +500,15 @@ fn render_dense_relationship_fallback(
 ) -> Result<String> {
     let mut summaries = Vec::with_capacity(relationships.len());
     for relationship in relationships {
-        summaries.push(er_relationship_summary(
-            relationship,
-            entity_labels,
-            charset,
-        )?);
+        summaries.push(RelationGraphLine::with_role(
+            er_relationship_summary(relationship, entity_labels, charset)?,
+            AsciiColorRole::EdgeLabel,
+        ));
     }
 
     Ok(relation_graph::render_stacked_boxes_with_section(
         boxes,
-        "relations:",
+        RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
         &summaries,
         options,
     ))

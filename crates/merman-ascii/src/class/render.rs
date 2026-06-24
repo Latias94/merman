@@ -684,8 +684,14 @@ fn render_dense_relation_fallback(
     let summaries = layouts
         .iter()
         .map(class_relation_summary)
+        .map(|summary| RelationGraphLine::with_role(summary, AsciiColorRole::EdgeLabel))
         .collect::<Vec<_>>();
-    relation_graph::render_stacked_boxes_with_section(boxes, "relations:", &summaries, options)
+    relation_graph::render_stacked_boxes_with_section(
+        boxes,
+        RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
+        &summaries,
+        options,
+    )
 }
 
 fn class_relation_summary(layout: &RelationLayout<'_>) -> String {
