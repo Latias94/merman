@@ -5,5 +5,6 @@ pub mod context;
 pub mod document_store;
 pub mod server;
 pub mod snapshot;
+pub mod structure;
 
 pub use server::MermanLanguageServer;
