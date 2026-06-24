@@ -49,7 +49,5 @@ Use `mermaid-ascii` as a historical baseline for graph/sequence output only. Use
 
 ## Current Gaps Worth Watching
 
-- ER reversed cardinality spellings such as `}|` and `}o` are parsed through the same constants but
-  should get a dedicated routed fixture before promotion into a release gate.
 - Any future support for endpoint cardinality rendering should be treated as a new capability,
   not inferred from the current ASCII contract.

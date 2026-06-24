@@ -42,6 +42,7 @@ Class and ER relation fixtures are split by topology readability:
 See [ASCII Class / ER Capability Matrix](../../../../../docs/rendering/ASCII_CLASS_ER_CAPABILITY_MATRIX.md) for the current comparison against `beautiful-mermaid` and `mermaid-ascii`.
 
 Current covered Class capabilities include association (`--` / `..`), inheritance, realization, aggregation, composition, multiline labels, parallel lanes, crossing reroutes, dense summary fallback, and tight-budget summary fallback.
+Current covered ER capabilities include entity attributes, key/comment tokens, identifying and non-identifying relationships, normalized cardinality spellings (`}|` / `}o`), multiline labels, parallel lanes, crossing reroutes, dense summary fallback, and tight-budget summary fallback.
 Current explicit unsupported boundaries are covered by typed-model tests for Class endpoint labels and lollipop relations, plus ER unknown cardinality markers and unknown relationship identification types.
 
 Current examples:

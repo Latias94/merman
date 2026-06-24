@@ -320,6 +320,34 @@ fn er_parser_zero_or_one_cardinality_renders_marker() {
 }
 
 #[test]
+fn er_parser_reversed_one_or_more_cardinality_renders_normalized_marker() {
+    let rendered = render_er("erDiagram\nA }|--|| B : has", &AsciiRenderOptions::ascii())
+        .expect("ER should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+\n", "| A |\n", "+---+\n", " |{\n", " has\n", "  |\n", " ||\n", "+---+\n",
+            "| B |\n", "+---+\n",
+        )
+    );
+}
+
+#[test]
+fn er_parser_reversed_zero_or_more_cardinality_renders_normalized_marker() {
+    let rendered = render_er("erDiagram\nA }o--|| B : has", &AsciiRenderOptions::ascii())
+        .expect("ER should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+\n", "| A |\n", "+---+\n", " o{\n", " has\n", "  |\n", " ||\n", "+---+\n",
+            "| B |\n", "+---+\n",
+        )
+    );
+}
+
+#[test]
 fn er_render_model_rejects_unknown_cardinality_markers() {
     let mut model = parse_er_model("erDiagram\nA ||--|| B : relates");
     model
