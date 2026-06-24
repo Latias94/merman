@@ -8,9 +8,9 @@ use tower_lsp::lsp_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, DocumentSymbolParams, GotoDefinitionParams, HoverContents,
     HoverParams, InitializeParams, Position, PrepareRenameResponse, PublishDiagnosticsParams,
-    ReferenceContext, ReferenceParams, RenameParams, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-    VersionedTextDocumentIdentifier,
+    ReferenceContext, ReferenceParams, RenameParams, SymbolInformation,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -237,7 +237,7 @@ async fn lsp_service_smoke_publishes_current_diagnostics_version() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_hover_and_document_symbols() {
-    let (mut service, _socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -274,6 +274,10 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
         service.ready().await.unwrap().call(open).await.unwrap(),
         None
     );
+    let first = socket.next().await.expect("expected first diagnostics");
+    let first_params: PublishDiagnosticsParams =
+        from_value(first.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(first_params.uri, uri);
 
     let hover = Request::build("textDocument/hover")
         .params(
@@ -302,7 +306,7 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
     let document_symbol = Request::build("textDocument/documentSymbol")
         .params(
             serde_json::to_value(DocumentSymbolParams {
-                text_document: TextDocumentIdentifier { uri },
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
                 work_done_progress_params: Default::default(),
                 partial_result_params: Default::default(),
             })
@@ -326,6 +330,74 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
         symbols,
         tower_lsp::lsp_types::DocumentSymbolResponse::Nested(_)
     ));
+
+    let other_uri = tower_lsp::lsp_types::Url::parse("file:///tmp/second.mmd").unwrap();
+    let second_open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: other_uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nsubgraph group\nX-->Y\nend\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(second_open)
+            .await
+            .unwrap(),
+        None
+    );
+    let second = socket.next().await.expect("expected second diagnostics");
+    let second_params: PublishDiagnosticsParams =
+        from_value(second.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(second_params.uri, other_uri);
+
+    let workspace_symbol = Request::build("workspace/symbol")
+        .params(
+            serde_json::to_value(WorkspaceSymbolParams {
+                partial_result_params: Default::default(),
+                work_done_progress_params: Default::default(),
+                query: "group".to_string(),
+            })
+            .unwrap(),
+        )
+        .id(4)
+        .finish();
+    let workspace_symbol_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(workspace_symbol)
+        .await
+        .unwrap();
+    let workspace_symbol_value = workspace_symbol_response
+        .and_then(|response| response.result().cloned())
+        .expect("expected workspace symbol result");
+    let workspace_symbols: Vec<SymbolInformation> =
+        serde_json::from_value(workspace_symbol_value).unwrap();
+    assert!(
+        workspace_symbols
+            .iter()
+            .any(|symbol| symbol.name == "group")
+    );
+    assert!(
+        workspace_symbols
+            .iter()
+            .any(|symbol| symbol.location.uri == uri)
+    );
+    assert!(
+        workspace_symbols
+            .iter()
+            .any(|symbol| symbol.location.uri == other_uri)
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
