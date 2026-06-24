@@ -1,4 +1,5 @@
 use super::super::{RelationGraphBox, find_box};
+use super::lanes::parallel_lane_margin;
 use crate::canvas::Canvas;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -362,7 +363,11 @@ fn place_layered_boxes<'a>(
         .max()
         .unwrap_or(0)
         .max(max_label_half_width.saturating_mul(2).saturating_add(1))
-        .saturating_add(spanning_lane_margin(level_groups, edges, levels).saturating_mul(2));
+        .saturating_add(spanning_lane_margin(level_groups, edges, levels).saturating_mul(2))
+        .saturating_add(
+            parallel_lane_margin(edges.iter().map(|edge| (edge.from_id, edge.to_id)))
+                .saturating_mul(2),
+        );
     let global_center = content_width / 2;
 
     let mut placed = Vec::new();

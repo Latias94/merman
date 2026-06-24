@@ -3,9 +3,10 @@ use super::boxes::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationPlan, PlacedRelationGraphBox,
     plan_layered_relation_boxes,
 };
+use super::lanes::parallel_relation_lane_offsets;
 use super::route::{
     LayeredRelationRouteGeometry, LayeredRelationRouteRequest, LayeredRelationRouteStyle,
-    RelationOverlay, draw_layered_relation_route, parallel_relation_lane_offsets,
+    RelationOverlay, draw_layered_relation_route,
 };
 use crate::canvas::Canvas;
 

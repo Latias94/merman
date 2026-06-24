@@ -519,13 +519,9 @@ fn draw_layered_relationship(
             AsciiColorRole::EdgeArrow,
         ));
         if let Some(label) = label.as_ref() {
-            let label_y = geometry
-                .source_marker_y()
-                .saturating_add(1)
-                .min(geometry.route_y());
             overlays.push(RelationOverlay::label(
                 (geometry.from_x() + geometry.to_x()) / 2,
-                label_y,
+                geometry.label_y_after_source(),
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));

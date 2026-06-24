@@ -713,13 +713,9 @@ fn draw_layered_relation(
     scene.draw_edge(canvas, edge_index, lane_offset, style, |geometry| {
         let mut overlays = Vec::new();
         if let Some(label) = layout.label.as_ref() {
-            let label_y = geometry
-                .source_marker_y()
-                .saturating_add(1)
-                .min(geometry.route_y());
             overlays.push(RelationOverlay::label(
                 (geometry.from_x() + geometry.to_x()) / 2,
-                label_y,
+                geometry.label_y_after_source(),
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));

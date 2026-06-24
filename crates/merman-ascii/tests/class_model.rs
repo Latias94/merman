@@ -355,6 +355,31 @@ fn class_parser_parallel_relationship_layout_renders_each_lane() {
 }
 
 #[test]
+fn class_parser_bidirectional_relationship_layout_renders_reverse_lanes() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nA --> B : ab\nB --> A : ba",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("bidirectional class relationships should render distinct lanes");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "   +---+\n",
+            "   | A |\n",
+            "   +---+\n",
+            "  |     v\n",
+            " ab     |\n",
+            "  |    ba\n",
+            "  v     |\n",
+            "   +---+\n",
+            "   | B |\n",
+            "   +---+\n",
+        )
+    );
+}
+
+#[test]
 fn class_parser_mixed_parallel_relationship_layout_renders_each_lane() {
     let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Dog\nAnimal <|-- Cat",
@@ -365,15 +390,15 @@ fn class_parser_mixed_parallel_relationship_layout_renders_each_lane() {
     assert_eq!(
         rendered,
         concat!(
-            "    +--------+\n",
-            "    | Animal |\n",
-            "    +--------+\n",
-            "      ^  ^  ^\n",
-            "      |  |  |\n",
-            "+-----+--+--+-+\n",
-            "+-----+    +-----+\n",
-            "| Dog |    | Cat |\n",
-            "+-----+    +-----+\n",
+            "       +--------+\n",
+            "       | Animal |\n",
+            "       +--------+\n",
+            "         ^  ^  ^\n",
+            "         |  |  |\n",
+            "   +-----+--+--+-+\n",
+            "   +-----+    +-----+\n",
+            "   | Dog |    | Cat |\n",
+            "   +-----+    +-----+\n",
         )
     );
 }
@@ -411,7 +436,7 @@ fn class_parser_spanning_level_relationship_layout_routes_around_intermediate_bo
 #[test]
 fn class_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
     let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nclass C\nA --> B\nB --> C\nC --> A",
+        "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> C : bc\nC --> A : ca",
         &AsciiRenderOptions::ascii(),
     )
     .expect("cyclic class relationships should render");
@@ -423,13 +448,15 @@ fn class_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
             "     | A |\n",
             "     +---+\n",
             "       |    v\n",
+            "      ab    |\n",
             "       |    |\n",
             "       v    |\n",
             "     +---+  |\n",
             "     | B |  |\n",
             "     +---+  |\n",
             "       |    |\n",
-            "       |    |\n",
+            "      bc    |\n",
+            "       |   ca\n",
             "       v    |\n",
             "     +---+\n",
             "     | C |\n",

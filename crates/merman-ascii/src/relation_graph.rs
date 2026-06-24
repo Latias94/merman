@@ -562,6 +562,13 @@ mod tests {
     }
 
     #[test]
+    fn parallel_relation_lane_offsets_group_reverse_endpoint_pairs() {
+        let offsets = parallel_relation_lane_offsets([("A", "B"), ("B", "A"), ("A", "B")]);
+
+        assert_eq!(offsets, vec![-6, 0, 6]);
+    }
+
+    #[test]
     fn relation_graph_label_splits_breaks_and_tracks_line_count() {
         let label = RelationGraphLabel::new("north<br>south").expect("label should be present");
 
@@ -622,6 +629,23 @@ mod tests {
 
         let plan =
             plan_layered_relation_boxes(&boxes, &edges, 1).expect("cyclic plan should render");
+
+        assert_eq!(plan.width(), 7);
+    }
+
+    #[test]
+    fn layered_relation_plan_reserves_width_for_reverse_parallel_lanes() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let edges = vec![
+            LayeredRelationEdge::new("a", "b", 0, 0),
+            LayeredRelationEdge::new("b", "a", 0, 0),
+        ];
+
+        let plan = plan_layered_relation_boxes(&boxes, &edges, 1)
+            .expect("bidirectional plan should render");
 
         assert_eq!(plan.width(), 7);
     }
@@ -692,6 +716,44 @@ mod tests {
             canvas.get_color(1, 2),
             Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
         );
+    }
+
+    #[test]
+    fn layered_relation_route_label_y_follows_source_to_target_direction() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 10,
+            },
+        ];
+
+        let downward = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[1],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+        ));
+        let upward = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[1],
+            &placed[0],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+        ));
+
+        assert_eq!(downward.label_y_after_source(), 2);
+        assert_eq!(upward.label_y_after_source(), 8);
     }
 
     #[test]

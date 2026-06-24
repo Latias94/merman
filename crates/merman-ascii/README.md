@@ -33,17 +33,19 @@ create/destroy lifecycle markers, visible autonumber, and sequence control block
 colors map to ANSI/HTML background output when color mode is enabled. The classDiagram slice can render class boxes, members, methods, multiline
 relationship labels, single relationship layouts, layered chain/star multi-relationship layouts, and
 adjacent-layer crossing layouts resolved by layer reordering for extension, dependency,
-aggregation, and composition through `render_class` or `render_model`; same-endpoint and simple
-mixed-parallel relationships render as distinct lanes, and simple forward or reverse spanning-level
-relationships route through side lanes. Cyclic class and ER relationship shapes now render through
-the layered planner with visible cycle-closing lanes instead of failing early, while truly unrelated boxes remain separate components beside the
-relationship layout. The ER slice can
+aggregation, and composition through `render_class` or `render_model`; same-endpoint,
+bidirectional same-pair, and simple mixed-parallel relationships render as distinct lanes, and
+simple forward or reverse spanning-level relationships route through side lanes. Cyclic class and ER
+relationship shapes now render through the layered planner with visible cycle-closing lanes instead
+of failing early, while truly unrelated boxes remain separate components beside the relationship
+layout. The ER slice can
 render entity boxes, attributes, multiline relationship labels, identifying and non-identifying lines, common
 cardinality markers, layered chain/star
 multi-relationship layouts, and adjacent-layer crossing layouts resolved by layer reordering through
-`render_er` or `render_model`; same-endpoint and simple mixed-parallel relationships render as
-distinct lanes, and simple forward or reverse spanning-level relationships route through side lanes. Cyclic and
-unresolved dense graph shapes now follow the same layered fallback with visible cycle-closing lanes, while unrelated standalone entities render as
+`render_er` or `render_model`; same-endpoint, bidirectional same-pair, and simple mixed-parallel
+relationships render as distinct lanes, and simple forward or reverse spanning-level relationships
+route through side lanes. Cyclic and unresolved dense graph shapes now follow the same layered
+fallback with visible cycle-closing lanes, while unrelated standalone entities render as
 separate components beside the relationship layout. The stateDiagram slice can render simple states,
 descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, root
 directions, and composite-state boxes through `render_state` or `render_model`; inline and block
@@ -80,8 +82,8 @@ copied, normalized, and self-authored cases.
 | --- | --- | --- |
 | flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML color roles, foreground `classDef`/`class`/`style`/`linkStyle` mapping, and node/subgraph `fill`/`background` output. |
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes with parseable fill backgrounds, activations, lifecycle markers, autonumber, core control blocks, parseable rect backgrounds, and opt-in ANSI/HTML color roles. |
-| classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, multiline relationship labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
-| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, multiline relationship labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
+| classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, multiline relationship labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
+| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, multiline relationship labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
 | stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground/background `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML color roles. |
 | xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, axis visibility controls, inferred numeric labels, configurable compact plot areas, multi-series legend rows, opt-in data labels, outside-bar vertical data labels, and opt-in ANSI/HTML foreground color roles. |
 

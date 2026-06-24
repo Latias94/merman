@@ -374,6 +374,31 @@ fn er_parser_parallel_relationship_layout_renders_each_lane() {
 }
 
 #[test]
+fn er_parser_bidirectional_relationship_layout_renders_reverse_lanes() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("bidirectional ER relationships should render distinct lanes");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "   +---+\n",
+            "   | A |\n",
+            "   +---+\n",
+            " ||    ||\n",
+            " ab     |\n",
+            "  |    ba\n",
+            " ||    ||\n",
+            "   +---+\n",
+            "   | B |\n",
+            "   +---+\n",
+        )
+    );
+}
+
+#[test]
 fn er_parser_mixed_parallel_relationship_layout_renders_each_lane() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : a\nA ||..o{ B : b\nA ||--|| C : c",
@@ -384,16 +409,16 @@ fn er_parser_mixed_parallel_relationship_layout_renders_each_lane() {
     assert_eq!(
         rendered,
         concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            "   || || ||\n",
-            "  a |  b c:\n",
-            "+---++.+++++\n",
-            "||  o{    ||\n",
-            "+---+    +---+\n",
-            "| B |    | C |\n",
-            "+---+    +---+\n",
+            "        +---+\n",
+            "        | A |\n",
+            "        +---+\n",
+            "      || || ||\n",
+            "    a  |  b c:\n",
+            "  +----++.+++++\n",
+            " ||    o{    ||\n",
+            "   +---+    +---+\n",
+            "   | B |    | C |\n",
+            "   +---+    +---+\n",
         )
     );
 }
@@ -485,7 +510,7 @@ fn er_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
             "     | A |\n",
             "     +---+\n",
             "      ||   ||\n",
-            "     owns owns\n",
+            "     owns   |\n",
             "       |    |\n",
             "      ||    |\n",
             "     +---+  |\n",
@@ -493,7 +518,7 @@ fn er_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
             "     +---+  |\n",
             "      ||    |\n",
             "     owns   |\n",
-            "       |    |\n",
+            "       |  owns\n",
             "      ||   ||\n",
             "     +---+\n",
             "     | C |\n",

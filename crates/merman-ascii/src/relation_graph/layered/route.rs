@@ -6,7 +6,6 @@ use super::draw::{
 };
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RelationOverlay {
@@ -107,6 +106,14 @@ impl LayeredRelationRouteGeometry {
 
     pub(crate) fn target_marker_y(&self) -> usize {
         self.target_marker_y
+    }
+
+    pub(crate) fn label_y_after_source(&self) -> usize {
+        if self.source_marker_y <= self.target_marker_y {
+            return self.source_marker_y.saturating_add(1).min(self.route_y());
+        }
+
+        self.source_marker_y.saturating_sub(1).max(self.route_y())
     }
 }
 
@@ -276,34 +283,6 @@ pub(crate) fn draw_layered_relation_route(
         overlays,
     )
     .draw_at(canvas);
-}
-
-pub(crate) fn parallel_lane_offset(index: usize, count: usize) -> isize {
-    if count <= 1 {
-        return 0;
-    }
-    (index as isize * 2 - (count as isize - 1)) * 3
-}
-
-pub(crate) fn parallel_relation_lane_offsets<'a>(
-    endpoints: impl IntoIterator<Item = (&'a str, &'a str)>,
-) -> Vec<isize> {
-    let endpoints = endpoints.into_iter().collect::<Vec<_>>();
-    let mut counts = HashMap::<(&str, &str), usize>::new();
-    for endpoint in &endpoints {
-        *counts.entry(*endpoint).or_insert(0) += 1;
-    }
-
-    let mut seen = HashMap::<(&str, &str), usize>::new();
-    endpoints
-        .into_iter()
-        .map(|endpoint| {
-            let index = seen.entry(endpoint).or_insert(0);
-            let offset = parallel_lane_offset(*index, counts[&endpoint]);
-            *index += 1;
-            offset
-        })
-        .collect()
 }
 
 pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
