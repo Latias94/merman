@@ -7,13 +7,6 @@ pub(crate) struct CompareDiagramPaths {
     pub out_svg_dir: PathBuf,
 }
 
-pub(crate) fn compare_diagram_paths(
-    diagram: &str,
-    out_path: Option<PathBuf>,
-) -> CompareDiagramPaths {
-    compare_diagram_paths_with_roots(diagram, out_path, None, None)
-}
-
 pub(crate) fn compare_diagram_paths_with_roots(
     diagram: &str,
     out_path: Option<PathBuf>,

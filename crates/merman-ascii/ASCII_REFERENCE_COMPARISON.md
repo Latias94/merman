@@ -1,7 +1,7 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 
 This note compares `merman-ascii` with the two local reference checkouts:
 
@@ -19,6 +19,12 @@ product boundary.
   ideas, but it is not always semantically faithful to Mermaid.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
+- Class and ER relation output now deliberately shares the `relation_graph` seam. Adapters preserve
+  Mermaid-family semantics, while shared relation planning owns lane placement, routed grids, and
+  structured dense/grid-budget summary fallback.
+- The SVG compare CLI keeps per-diagram entrypoints, but common fixture discovery, upstream/local
+  SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
+  compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
 
 ## Reference Corpus Snapshot
 
@@ -64,8 +70,8 @@ Mermaid terminal standard.
 | --- | --- | --- | --- | --- |
 | Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, richer shape handling, and more styling hooks, but `RL` is approximated as `LR`. | Flowchart is the strongest terminal family here: true `BT`/`RL`, boundary-aware subgraph routing, color roles, and a wider supported subset. | Keep `mermaid-ascii` for routing evidence and `beautiful-mermaid` for UI ideas, but keep Mermaid semantics first. |
 | Sequence | Exact copied-fixture parity for a compact sequence corpus. | Much broader parser/layout coverage, including notes, blocks, theming, and ASCII/Unicode variants. | Typed sequence support is already beyond the narrow reference: activations, create/destroy, boxes, control blocks, mirror actors, and color roles all exist. | Remaining work is mostly layout polish and boundary tightening, not parser rescue. |
-| Class | Not part of the reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | Supported subset via the layered relation planner, with multiline relationship labels, same-endpoint and bidirectional same-pair lanes, spanning routes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, dense multiline local semantic fixtures, and typed role colors. | Extend from typed relation facts, not from parser shape. |
-| ER | Not part of the reference scope. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | Supported subset via the same layered relation machinery, with entity boxes, cardinality markers, multiline relationship labels, same-endpoint and bidirectional same-pair lanes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, and dense multiline local semantic fixtures. | Relation layout is the seam worth deepening. |
+| Class | Not part of the reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | Supported subset through the shared `relation_graph` seam, with multiline relationship labels, same-endpoint and bidirectional same-pair lanes, spanning routes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, dense multiline local semantic fixtures, and typed role colors. | Extend from typed relation facts, not from parser shape. |
+| ER | Not part of the reference scope. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | Supported subset through the same `relation_graph` seam, with entity boxes, cardinality markers, multiline relationship labels, same-endpoint and bidirectional same-pair lanes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, and dense multiline local semantic fixtures. | Relation layout is the shared seam; cardinality and relationship identity stay family-specific. |
 | State | Not part of the reference scope. | State diagram support rides the broader ASCII pipeline and gives useful layout ideas. | Supported subset with start/end, fork/join/choice, notes, composite states, divider regions, and role colors. | Keep state honest to the typed model; do not try to copy browser shapes literally. |
 | XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | Compact terminal plots with bars, lines, mixed charts, horizontal mode, configurable compact plot areas, multi-series legend rows that use typed plot titles when present, axis visibility controls, and Mermaid data-label display policy. | Plot planning is split from row rendering; richer multi-series label placement and terminal tooltip alternatives remain follow-on work. |
 

@@ -1,8 +1,9 @@
 //! Per-diagram SVG compare commands.
 
 use crate::XtaskError;
-use crate::cmd::compare::{CompareFixtureResult, CompareRunOptions, run_svg_compare};
-use crate::svgdom;
+use crate::cmd::compare::{
+    CompareFixtureResult, CompareRunOptions, run_svg_compare, write_compare_result_section,
+};
 use regex::Regex;
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -51,10 +52,7 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let layout_opts = svg_compare_layout_opts();
     let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
     let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
-    let mut state = ErCompareState {
-        rows: Vec::new(),
-        dom_failures: Vec::new(),
-    };
+    let mut state = ErCompareState { rows: Vec::new() };
 
     run_svg_compare(
         CompareRunOptions {
@@ -77,9 +75,9 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             let _ = writeln!(report);
             let _ = writeln!(
                 report,
-                "| fixture | markers ok | dom ok | viewBox (upstream) | viewBox (local) | max-width (upstream) | max-width (local) |"
+                "| fixture | markers ok | viewBox (upstream) | viewBox (local) | max-width (upstream) | max-width (local) |"
             );
-            let _ = writeln!(report, "|---|---:|---:|---|---|---:|---:|");
+            let _ = writeln!(report, "|---|---:|---|---|---:|---:|");
             let _ = writeln!(report);
         },
         |_, _, _| None,
@@ -196,48 +194,6 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
-            let mut dom_ok = None;
-            if input.check_dom {
-                let upstream_dom =
-                    match svgdom::dom_signature(input.upstream_svg, input.mode, input.dom_decimals)
-                    {
-                        Ok(v) => Some(v),
-                        Err(err) => {
-                            issues.push(format!(
-                                "dom parse failed (upstream) for {}: {err}",
-                                input.stem
-                            ));
-                            None
-                        }
-                    };
-                let local_dom =
-                    match svgdom::dom_signature(&local_svg, input.mode, input.dom_decimals) {
-                        Ok(v) => Some(v),
-                        Err(err) => {
-                            issues.push(format!(
-                                "dom parse failed (local) for {}: {err}",
-                                input.stem
-                            ));
-                            None
-                        }
-                    };
-
-                if let (Some(upstream_dom), Some(local_dom)) = (upstream_dom, local_dom) {
-                    if let Some(diff) = svgdom::dom_diff(&upstream_dom, &local_dom) {
-                        issues.push(format!(
-                            "dom mismatch for {} (mode={}, decimals={})",
-                            input.stem, dom_mode, dom_decimals
-                        ));
-                        state.dom_failures.push(format!("{}: {diff}", input.stem));
-                        dom_ok = Some(false);
-                    } else {
-                        dom_ok = Some(true);
-                    }
-                } else {
-                    dom_ok = Some(false);
-                }
-            }
-
             if check_markers && !marker_ok {
                 issues.push(format!(
                     "marker mismatch for {}: missing={:?} extra={:?}",
@@ -248,7 +204,6 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             state.rows.push(ErCompareRow {
                 stem: input.stem.to_string(),
                 marker_ok,
-                dom_ok,
                 upstream_view_box: extract_view_box(input.upstream_svg),
                 local_view_box: extract_view_box(&local_svg),
                 upstream_max_width: extract_max_width(input.upstream_svg),
@@ -257,52 +212,36 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
             Ok(CompareFixtureResult::Rendered {
                 local_svg,
-                compare_dom: false,
+                compare_dom: true,
                 issues,
                 notes: Vec::new(),
             })
         },
-        |state, report, _paths, options, _failures, _notes| {
+        |state, report, paths, options, failures, _notes| {
             for row in &state.rows {
-                let dom_ok = match row.dom_ok {
-                    Some(true) => "yes",
-                    Some(false) => "no",
-                    None => "-",
-                };
                 let _ = writeln!(
                     report,
-                    "| `{}` | {} | {} | `{}` | `{}` | `{}` | `{}` |",
+                    "| `{}` | {} | `{}` | `{}` | `{}` | `{}` |",
                     row.stem,
                     if row.marker_ok { "yes" } else { "no" },
-                    dom_ok,
                     row.upstream_view_box,
                     row.local_view_box,
                     row.upstream_max_width,
                     row.local_max_width,
                 );
             }
-
-            if options.check_dom && !state.dom_failures.is_empty() {
-                let _ = writeln!(report);
-                let _ = writeln!(report, "## DOM Mismatch Details");
-                let _ = writeln!(report);
-                for detail in &state.dom_failures {
-                    let _ = writeln!(report, "- {detail}");
-                }
-            }
+            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
         },
     )
 }
 
 struct ErCompareState {
     rows: Vec<ErCompareRow>,
-    dom_failures: Vec<String>,
 }
 
 struct ErCompareRow {
     stem: String,
     marker_ok: bool,
-    dom_ok: Option<bool>,
     upstream_view_box: String,
     local_view_box: String,
     upstream_max_width: String,

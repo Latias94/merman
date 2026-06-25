@@ -24,13 +24,14 @@ pub(crate) struct CompareFixtureInput<'a> {
     pub(crate) fixture_path: &'a Path,
     pub(crate) upstream_svg: &'a str,
     pub(crate) text: &'a str,
-    pub(crate) mode: svgdom::DomMode,
-    pub(crate) dom_decimals: u32,
     pub(crate) check_dom: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum CompareFixtureResult {
+    Skipped {
+        reason: String,
+    },
     Rendered {
         local_svg: String,
         compare_dom: bool,
@@ -81,8 +82,77 @@ where
     )
 }
 
+pub(crate) fn run_svg_compare_with_roots<S, Header, Skip, Render, Report>(
+    options: CompareRunOptions<'_>,
+    fixtures_root: Option<PathBuf>,
+    upstream_root: Option<PathBuf>,
+    state: &mut S,
+    write_header: Header,
+    skip_fixture: Skip,
+    render_fixture: Render,
+    write_report: Report,
+) -> Result<(), XtaskError>
+where
+    Header: FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>),
+    Skip: FnMut(&mut S, &str, &CompareRunPaths) -> Option<String>,
+    Render: FnMut(&mut S, &CompareFixtureInput<'_>) -> Result<CompareFixtureResult, String>,
+    Report:
+        FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>, &[String], &[String]),
+{
+    run_svg_compare_with_roots_and_fixture_reports(
+        options,
+        fixtures_root,
+        upstream_root,
+        state,
+        write_header,
+        skip_fixture,
+        render_fixture,
+        |_, _, _| {},
+        write_report,
+    )
+}
+
 pub(crate) fn run_svg_compare_with_fixture_reports<S, Header, Skip, Render, FixtureReport, Report>(
+    options: CompareRunOptions<'_>,
+    state: &mut S,
+    write_header: Header,
+    skip_fixture: Skip,
+    render_fixture: Render,
+    write_fixture_report: FixtureReport,
+    write_report: Report,
+) -> Result<(), XtaskError>
+where
+    Header: FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>),
+    Skip: FnMut(&mut S, &str, &CompareRunPaths) -> Option<String>,
+    Render: FnMut(&mut S, &CompareFixtureInput<'_>) -> Result<CompareFixtureResult, String>,
+    FixtureReport: FnMut(&mut S, &mut String, &CompareFixtureReportInput<'_>),
+    Report:
+        FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>, &[String], &[String]),
+{
+    run_svg_compare_with_roots_and_fixture_reports(
+        options,
+        None,
+        None,
+        state,
+        write_header,
+        skip_fixture,
+        render_fixture,
+        write_fixture_report,
+        write_report,
+    )
+}
+
+pub(crate) fn run_svg_compare_with_roots_and_fixture_reports<
+    S,
+    Header,
+    Skip,
+    Render,
+    FixtureReport,
+    Report,
+>(
     mut options: CompareRunOptions<'_>,
+    fixtures_root: Option<PathBuf>,
+    upstream_root: Option<PathBuf>,
     state: &mut S,
     mut write_header: Header,
     mut skip_fixture: Skip,
@@ -98,7 +168,12 @@ where
     Report:
         FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>, &[String], &[String]),
 {
-    let compare_paths = crate::cmd::compare_diagram_paths(options.diagram, options.out_path.take());
+    let compare_paths = crate::cmd::compare_diagram_paths_with_roots(
+        options.diagram,
+        options.out_path.take(),
+        fixtures_root,
+        upstream_root,
+    );
     let fixtures_dir = compare_paths.fixtures_dir.clone();
     let upstream_dir = compare_paths.upstream_dir.clone();
     let out_svg_dir = compare_paths.out_svg_dir.clone();
@@ -160,8 +235,6 @@ where
             fixture_path: &mmd_path,
             upstream_svg: &upstream_svg,
             text: &text,
-            mode,
-            dom_decimals: options.dom_decimals,
             check_dom: options.check_dom,
         };
 
@@ -175,6 +248,10 @@ where
 
         let failure_start = failures.len();
         match outcome {
+            CompareFixtureResult::Skipped { reason } => {
+                notes.push(format!("skipped {stem}: {reason}"));
+                continue;
+            }
             CompareFixtureResult::Rendered {
                 local_svg,
                 compare_dom,
@@ -386,5 +463,96 @@ pub(crate) fn write_notes_section(report: &mut String, notes: &[String]) {
     );
     for note in notes {
         let _ = writeln!(report, "- {note}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_root(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        crate::cmd::target_root()
+            .join("compare")
+            .join("xtask-harness-tests")
+            .join(format!("{name}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn svg_compare_harness_supports_custom_roots_and_render_level_skips() {
+        let root = unique_test_root("roots-and-skips");
+        let fixtures_root = root.join("fixtures");
+        let upstream_root = root.join("upstream");
+        let fixture_dir = fixtures_root.join("harness_probe");
+        let upstream_dir = upstream_root.join("harness_probe");
+        fs::create_dir_all(&fixture_dir).expect("fixture dir should be created");
+        fs::create_dir_all(&upstream_dir).expect("upstream dir should be created");
+        fs::write(fixture_dir.join("rendered.mmd"), "rendered")
+            .expect("rendered fixture should be written");
+        fs::write(fixture_dir.join("skipped.mmd"), "skipped")
+            .expect("skipped fixture should be written");
+        fs::write(upstream_dir.join("rendered.svg"), r#"<svg id="rendered"/>"#)
+            .expect("rendered upstream should be written");
+        fs::write(upstream_dir.join("skipped.svg"), r#"<svg id="skipped"/>"#)
+            .expect("skipped upstream should be written");
+
+        let out_path = root.join("report.md");
+        let mut seen = Vec::new();
+        run_svg_compare_with_roots(
+            CompareRunOptions {
+                diagram: "harness_probe",
+                out_path: Some(out_path.clone()),
+                filter: None,
+                check_dom: true,
+                dom_mode: "parity",
+                dom_decimals: 3,
+            },
+            Some(fixtures_root),
+            Some(upstream_root),
+            &mut seen,
+            |_, report, _paths, _options| {
+                let _ = writeln!(report, "# Harness Probe");
+            },
+            |_, _, _| None,
+            |seen, input| {
+                seen.push(input.stem.to_string());
+                if input.stem == "skipped" {
+                    return Ok(CompareFixtureResult::Skipped {
+                        reason: "parse-time admission policy".to_string(),
+                    });
+                }
+                Ok(CompareFixtureResult::Rendered {
+                    local_svg: input.upstream_svg.to_string(),
+                    compare_dom: true,
+                    issues: Vec::new(),
+                    notes: Vec::new(),
+                })
+            },
+            |_, report, paths, options, failures, notes| {
+                write_compare_result_section(
+                    report,
+                    options.check_dom,
+                    failures,
+                    &paths.out_svg_dir,
+                );
+                write_notes_section(report, notes);
+            },
+        )
+        .expect("custom-root harness run should succeed");
+
+        assert_eq!(seen, ["rendered", "skipped"]);
+        let report = fs::read_to_string(&out_path).expect("report should be written");
+        assert!(report.contains("All fixtures matched."));
+        assert!(report.contains("skipped skipped: parse-time admission policy"));
+        let out_svg_dir = out_path
+            .parent()
+            .expect("out path should have parent")
+            .join("harness_probe");
+        assert!(out_svg_dir.join("rendered.svg").is_file());
+        assert!(!out_svg_dir.join("skipped.svg").is_file());
     }
 }

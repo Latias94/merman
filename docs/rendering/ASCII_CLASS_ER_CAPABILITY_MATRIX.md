@@ -9,6 +9,15 @@ repositories:
 Use `mermaid-ascii` as a historical baseline for graph/sequence output only. Use
 `beautiful-mermaid` as capability evidence for Class and ER semantics, not as a byte-level oracle.
 
+## Architecture Note
+
+Class and ER ASCII rendering share the `relation_graph` seam for relation routing, lane placement,
+layered drawing, and structured summary fallback. The family adapters should keep only
+Mermaid-specific semantics at their edges: Class markers, notes, lollipop/interface handling,
+endpoint labels, ER cardinality, relationship identification, entity labels, and explicit
+unsupported diagnostics. Dense crossings and tight `AsciiRenderOptions::max_grid_cells` budgets
+should use the shared `relations:` summary rather than renderer-local fallback branches.
+
 ## Class Diagram Matrix
 
 | Surface | Reference evidence | `merman` status | Fixture strategy |

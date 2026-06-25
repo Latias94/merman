@@ -29,6 +29,10 @@ rather than copied upstream output.
 
 Class and ER relation fixtures are split by topology readability:
 
+These fixtures protect the shared `relation_graph` seam. Class and ER adapters may differ in
+markers, cardinality, labels, notes, and unsupported diagnostics, but routing, lane placement,
+layered draw policy, and dense/grid-budget summary fallback should stay shared.
+
 - Use routed-grid fixtures when the relation graph has a deterministic, readable terminal path:
   chains, stars, same-endpoint lanes, bidirectional same-pair lanes, simple spanning lanes, and
   cycle-closing lanes.
