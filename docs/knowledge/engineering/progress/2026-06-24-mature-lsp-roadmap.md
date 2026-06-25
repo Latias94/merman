@@ -34,6 +34,9 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 - U2 has started: `FenceTextIndex::from_text` still exists as a migration fallback, but it no
   longer projects payload-only directive lines such as `click`, `linkStyle`, `accTitle`,
   `accDescr`, or `title` into node IDs or outline entries. It only records their directive prefixes.
+- U2's text-scan fallback now also treats `init`, `initialize`, and `wrap` as non-symbol
+  directives, so those directive lines do not leak into node IDs or outline items when parser
+  facts are unavailable.
 - U2 has also deepened sequence editor facts: sequence `title`, `accTitle`, `accDescr`, message
   text, note text, and `links`/`link`/`properties`/`details` interaction payloads are now
   parser-backed payload-only spans, with directive prefix tracking for the sequence interaction

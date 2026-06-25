@@ -6,6 +6,15 @@ status: active
 # Log
 
 ## 2026-06-25
+- Tightened the text-scan fallback in `merman-analysis::editor` so `init`, `initialize`, and
+  `wrap` directive lines no longer leak into node IDs or outline items when parser-backed facts
+  are unavailable.
+- Added a regression proving those directive prefixes stay out of fallback node-id projection while
+  ordinary diagram content still projects normally.
+- Re-verified the slice with `cargo fmt --all --check` and
+  `cargo nextest run -p merman-analysis --no-fail-fast`.
+
+## 2026-06-25
 - Tightened the shared lint/config rule-id contract so `options_json` and CLI lint now reject
   unknown or internal rule ids instead of silently accepting them, and the analysis crate now
   exposes a public configurable-rule registry view for future completion surfaces.

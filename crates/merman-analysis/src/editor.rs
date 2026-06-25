@@ -362,7 +362,15 @@ impl FenceTextIndex {
 fn is_payload_only_text_scan_prefix(prefix: &str) -> bool {
     matches!(
         prefix,
-        "linkStyle" | "click" | "accTitle" | "accDescr" | "accDescription" | "title"
+        "init"
+            | "initialize"
+            | "wrap"
+            | "linkStyle"
+            | "click"
+            | "accTitle"
+            | "accDescr"
+            | "accDescription"
+            | "title"
     )
 }
 
@@ -462,6 +470,9 @@ fn is_candidate_node_id(token: &str) -> bool {
             | "class"
             | "style"
             | "linkStyle"
+            | "init"
+            | "initialize"
+            | "wrap"
     )
 }
 
@@ -785,6 +796,32 @@ mod tests {
             );
         }
         assert!(index.outline_items().is_empty());
+    }
+
+    #[test]
+    fn text_scan_skips_non_symbol_directive_prefixes() {
+        let index = FenceTextIndex::from_text(
+            concat!(
+                "%%{initialize: {\"theme\": \"dark\"}}%%\n",
+                "%%{wrap}%%\n",
+                "flowchart TD\n",
+                "A-->B\n",
+            ),
+            Some("flowchart-v2"),
+        );
+
+        assert!(index.has_directive_prefix("initialize"));
+        assert!(index.has_directive_prefix("wrap"));
+        assert_eq!(
+            index.node_ids().cloned().collect::<Vec<_>>(),
+            vec!["A", "B"]
+        );
+        assert!(
+            !index
+                .outline_items()
+                .iter()
+                .any(|item| matches!(item.name.as_str(), "initialize" | "wrap"))
+        );
     }
 
     #[test]
