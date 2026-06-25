@@ -11,7 +11,9 @@ use crate::relation_graph::{
     RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
-use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
+use merman_core::models::class_diagram::{
+    ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
+};
 use std::collections::HashMap;
 
 const CLASS_LEVEL_HORIZONTAL_GAP: usize = 4;
@@ -37,6 +39,7 @@ struct ClassCharset {
     arrow_down: char,
     aggregation: char,
     composition: char,
+    lollipop: char,
 }
 
 impl ClassCharset {
@@ -62,6 +65,7 @@ impl ClassCharset {
                 arrow_down: 'v',
                 aggregation: 'o',
                 composition: '*',
+                lollipop: 'o',
             },
             AsciiCharset::Unicode => Self {
                 top_left: '┌',
@@ -83,6 +87,7 @@ impl ClassCharset {
                 arrow_down: '▼',
                 aggregation: '◇',
                 composition: '◆',
+                lollipop: '○',
             },
         }
     }
@@ -96,6 +101,7 @@ enum RelationMarker {
     Dependency,
     Aggregation,
     Composition,
+    Lollipop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,32 +137,63 @@ pub(crate) fn render_class_diagram(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
-    if model.classes.is_empty() {
-        return Ok(String::new());
-    }
-
     let charset = ClassCharset::for_options(options);
     let namespace_facade_aliases = namespace_facade_aliases(model);
-    let boxes = model
-        .classes
-        .values()
-        .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
-        .map(|class| render_class_box(class, options, charset))
-        .collect::<Vec<_>>();
-
-    if model.relations.is_empty() {
+    let boxes = render_class_boxes(model, options, charset, &namespace_facade_aliases);
+    if boxes.is_empty() {
         return Ok(relation_graph::render_stacked_boxes_with_options(
             &boxes, options,
         ));
     }
 
-    let layouts = model
+    let mut layouts = model
         .relations
         .iter()
         .map(|relation| relation_layout(model, relation, &namespace_facade_aliases))
         .collect::<Result<Vec<_>>>()?;
+    layouts.extend(note_relation_layouts(
+        model,
+        &namespace_facade_aliases,
+        &boxes,
+    ));
+
+    if layouts.is_empty() {
+        return Ok(relation_graph::render_stacked_boxes_with_options(
+            &boxes, options,
+        ));
+    }
 
     render_class_components(&boxes, &layouts, options, charset)
+}
+
+fn render_class_boxes(
+    model: &ClassDiagram,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+    namespace_facade_aliases: &HashMap<String, String>,
+) -> Vec<RenderedClassBox> {
+    let mut boxes =
+        Vec::with_capacity(model.classes.len() + model.interfaces.len() + model.notes.len());
+    boxes.extend(
+        model
+            .classes
+            .values()
+            .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
+            .map(|class| render_class_box(class, options, charset)),
+    );
+    boxes.extend(
+        model
+            .interfaces
+            .iter()
+            .map(|interface| render_interface_box(interface, options, charset)),
+    );
+    boxes.extend(
+        model
+            .notes
+            .iter()
+            .map(|note| render_note_box(note, options, charset)),
+    );
+    boxes
 }
 
 fn namespace_facade_aliases(model: &ClassDiagram) -> HashMap<String, String> {
@@ -273,6 +310,37 @@ fn render_class_box(
     charset: ClassCharset,
 ) -> RenderedClassBox {
     let sections = class_sections(class);
+    render_box_sections(class.id.clone(), sections, options, charset)
+}
+
+fn render_interface_box(
+    interface: &ClassInterface,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+) -> RenderedClassBox {
+    let sections = vec![vec!["<<interface>>".to_string(), interface.label.clone()]];
+    render_box_sections(interface.id.clone(), sections, options, charset)
+}
+
+fn render_note_box(
+    note: &ClassNote,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+) -> RenderedClassBox {
+    let mut lines = vec!["note".to_string()];
+    if let Some(label) = RelationGraphLabel::new(&note.text) {
+        lines.extend(label.lines().iter().cloned());
+    }
+
+    render_box_sections(note.id.clone(), vec![lines], options, charset)
+}
+
+fn render_box_sections(
+    id: String,
+    sections: Vec<Vec<String>>,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+) -> RenderedClassBox {
     let content_width = content_width(&sections, options.box_border_padding);
     let mut out = Vec::new();
 
@@ -308,7 +376,7 @@ fn render_class_box(
     ));
 
     let width = content_width + 2;
-    RenderedClassBox::new_with_lines(class.id.clone(), out, width)
+    RenderedClassBox::new_with_lines(id, out, width)
 }
 
 fn class_sections(class: &ClassNode) -> Vec<Vec<String>> {
@@ -506,11 +574,38 @@ fn marker_for_relation_type(
     if relation_type == constants.composition {
         return Ok(Some(RelationMarker::Composition));
     }
+    if relation_type == constants.lollipop {
+        return Ok(Some(RelationMarker::Lollipop));
+    }
 
     Err(AsciiError::UnsupportedFeature {
         diagram_type: "class",
-        feature: "class relationship types other than extension, dependency, aggregation, or composition",
+        feature: "class relationship types other than extension, dependency, aggregation, composition, or lollipop",
     })
+}
+
+fn note_relation_layouts<'a>(
+    model: &'a ClassDiagram,
+    namespace_facade_aliases: &'a HashMap<String, String>,
+    boxes: &[RenderedClassBox],
+) -> Vec<RelationLayout<'a>> {
+    model
+        .notes
+        .iter()
+        .filter_map(|note| {
+            let target_id = note.class_id.as_deref()?;
+            let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
+            relation_graph::find_box(boxes, target_id).map(|_| RelationLayout {
+                top_id: note.id.as_str(),
+                bottom_id: target_id,
+                endpoint_marker: None,
+                line: RelationLine::Dotted,
+                label: None,
+                top_endpoint_label: None,
+                bottom_endpoint_label: None,
+            })
+        })
+        .collect()
 }
 
 fn relation_endpoint_label(label: &str) -> Option<RelationGraphLabel> {
@@ -888,6 +983,10 @@ fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {
         (RelationMarker::Composition, MarkerSide::Top, RelationLine::Dotted) => "*..",
         (RelationMarker::Composition, MarkerSide::Bottom, RelationLine::Solid) => "--*",
         (RelationMarker::Composition, MarkerSide::Bottom, RelationLine::Dotted) => "..*",
+        (RelationMarker::Lollipop, MarkerSide::Top, RelationLine::Solid) => "()--",
+        (RelationMarker::Lollipop, MarkerSide::Top, RelationLine::Dotted) => "()..",
+        (RelationMarker::Lollipop, MarkerSide::Bottom, RelationLine::Solid) => "--()",
+        (RelationMarker::Lollipop, MarkerSide::Bottom, RelationLine::Dotted) => "..()",
     }
 }
 
@@ -974,6 +1073,7 @@ fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) 
         },
         RelationMarker::Aggregation => charset.aggregation,
         RelationMarker::Composition => charset.composition,
+        RelationMarker::Lollipop => charset.lollipop,
     }
 }
 

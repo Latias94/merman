@@ -847,20 +847,69 @@ fn class_parser_endpoint_labels_are_preserved_in_relation_summary() {
 }
 
 #[test]
-fn class_render_model_rejects_lollipop_relations() {
-    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
-    let lollipop = model.constants.relation_type.lollipop;
-    let none = model.constants.relation_type.none;
-    let relation = model
-        .relations
-        .first_mut()
-        .expect("fixture should contain one relation");
-    relation.relation.type1 = lollipop;
-    relation.relation.type2 = none;
+fn class_parser_lollipop_relation_renders_interface_node() {
+    let rendered = render_class(
+        "classDiagram\nIService ()-- Service",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
 
-    assert_unsupported_class_model(
-        &model,
-        "class relationship types other than extension, dependency, aggregation, or composition",
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---------------+\n",
+            "| <<interface>> |\n",
+            "| IService      |\n",
+            "+---------------+\n",
+            "        o\n",
+            "        |\n",
+            "   +---------+\n",
+            "   | Service |\n",
+            "   +---------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_note_for_renders_dotted_link_to_class() {
+    let rendered = render_class(
+        "classDiagram\nclass Service\nnote for Service \"Handles<br>requests\"",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+----------+\n",
+            "| note     |\n",
+            "| Handles  |\n",
+            "| requests |\n",
+            "+----------+\n",
+            "      :\n",
+            " +---------+\n",
+            " | Service |\n",
+            " +---------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_standalone_note_renders_box() {
+    let rendered = render_class(
+        "classDiagram\nnote \"Standalone\"",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------------+\n",
+            "| note       |\n",
+            "| Standalone |\n",
+            "+------------+\n",
+        )
     );
 }
 

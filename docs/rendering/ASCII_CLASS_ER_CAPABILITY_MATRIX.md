@@ -22,7 +22,8 @@ Use `mermaid-ascii` as a historical baseline for graph/sequence output only. Use
 | Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |
 | Namespace-qualified class names | Local semantic tests | Supported | Local semantic fixtures |
 | Endpoint labels / cardinality strings attached to a relation | Mermaid class cardinality tests and `beautiful-mermaid` parser/renderer | Supported | Exact vertical fixtures and summary regressions |
-| Lollipop relations | Not represented in ASCII renderer | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
+| Notes and note-for links | Mermaid class parser / SVG behavior | Supported | Local semantic fixtures with exact snapshots |
+| Lollipop relations and interface nodes | Mermaid class parser / SVG behavior | Supported | Routed-grid fixtures and summary regressions |
 | Multiple markers on one relation | Not represented in ASCII renderer | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
 
 ## ER Diagram Matrix
