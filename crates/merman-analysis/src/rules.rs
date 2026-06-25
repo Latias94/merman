@@ -3,7 +3,8 @@ use crate::{
     DiagnosticSeverity, DiagnosticSpan, SourceMap,
 };
 use merman_core::{
-    BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+    BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,6 +22,7 @@ pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
+pub const FLOWCHART_MISSING_DIRECTION_RULE_ID: &str = "merman.flowchart.missing_direction";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
 
@@ -128,6 +130,13 @@ const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     default_enabled: true,
     fixable: false,
 };
+const FLOWCHART_MISSING_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
+    id: FLOWCHART_MISSING_DIRECTION_RULE_ID,
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Semantic,
+    default_enabled: true,
+    fixable: false,
+};
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
     default_severity: DiagnosticSeverity::Warning,
@@ -156,6 +165,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PANIC_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     BLOCK_WIDTH_RULE,
+    FLOWCHART_MISSING_DIRECTION_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
     SEMANTIC_WARNING_RULE,
 ];
@@ -311,6 +321,7 @@ fn warning_for_fact(
 fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
     match rule_id {
         BLOCK_WIDTH_WARNING_RULE_ID => Some(BLOCK_WIDTH_RULE),
+        FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID => Some(FLOWCHART_MISSING_DIRECTION_RULE),
         GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => Some(GIT_GRAPH_DUPLICATE_COMMIT_RULE),
         SEMANTIC_WARNING_RULE_ID => Some(SEMANTIC_WARNING_RULE),
         _ => None,
@@ -550,6 +561,32 @@ mod tests {
     }
 
     #[test]
+    fn semantic_warning_facts_map_flowchart_missing_direction_rule_id() {
+        let source = "flowchart\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics = semantic_warning_diagnostics(
+            "flowchart-v2",
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+                        "message": "flowchart headers should declare an explicit direction"
+                    }
+                ]
+            }),
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, FLOWCHART_MISSING_DIRECTION_RULE_ID);
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+        assert_eq!(diagnostics[0].category, DiagnosticCategory::Semantic);
+        assert_eq!(diagnostics[0].diagram_type.as_deref(), Some("flowchart-v2"));
+    }
+
+    #[test]
     fn rule_config_can_override_block_warning_severity() {
         let source = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
         let source_map = SourceMap::new(source);
@@ -579,7 +616,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 14);
+        assert_eq!(descriptors.len(), 15);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
         assert_eq!(descriptors[0].category, DiagnosticCategory::Config);
@@ -639,6 +676,11 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == BLOCK_WIDTH_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == FLOWCHART_MISSING_DIRECTION_RULE_ID)
         );
         assert!(
             descriptors
@@ -716,6 +758,11 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == BLOCK_WIDTH_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == FLOWCHART_MISSING_DIRECTION_RULE_ID)
         );
         assert!(
             descriptors

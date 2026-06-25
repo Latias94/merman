@@ -2101,6 +2101,48 @@ fn parse_diagram_flowchart_keyword_flowchart() {
     assert_eq!(res.model["keyword"], json!("flowchart"));
     assert_eq!(res.model["direction"], json!("TB"));
     assert_eq!(res.model["subgraphs"], json!([]));
+    assert!(res.model.get("warningFacts").is_none());
+}
+
+#[test]
+fn parse_diagram_flowchart_without_direction_defaults_to_tb_and_warns() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_diagram("flowchart\nA-->B", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.meta.diagram_type, "flowchart-v2");
+    assert_eq!(res.model["direction"], json!("TB"));
+    assert_eq!(
+        res.model["warningFacts"],
+        json!([
+            {
+                "ruleId": FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+                "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`"
+            }
+        ])
+    );
+}
+
+#[test]
+fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync("flowchart\nA-->B", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    match parsed.model {
+        RenderSemanticModel::Flowchart(model) => {
+            assert_eq!(model.direction.as_deref(), Some("TB"));
+            assert_eq!(model.warning_facts.len(), 1);
+            assert_eq!(
+                model.warning_facts[0].rule_id,
+                FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID
+            );
+        }
+        other => panic!("flowchart render parse should return typed model, got {other:?}"),
+    }
 }
 
 #[test]

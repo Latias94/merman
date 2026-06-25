@@ -8,7 +8,7 @@ facts, it is not considered mature.
 
 | Family | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Flowchart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, and payload roles. |
+| Flowchart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, payload roles, and parser-backed flowchart lint warnings. |
 | Sequence | Yes | Yes | Yes | Yes | Yes | Yes | Mature for participants, actors, message endpoints, notes, boxes, directive payloads, and interaction payload prefixes. |
 | State | Yes | Yes | Yes | Yes | Yes | Yes | Mature for state ids, references, outlines, and role-aware payloads. |
 | Class | Yes | Yes | Yes | Yes | Yes | Yes | Mature for class ids, members, annotations, directives, and style payload roles. |
@@ -37,3 +37,5 @@ facts, it is not considered mature.
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`
   into node IDs or outline entries. Parser-backed payload facts must likewise remain outside
   completion IDs and outline entries unless their role explicitly permits it.
+- Flowchart lint: parser-backed warning facts should flow through the shared analysis contract,
+  starting with a warning for flowchart headers that omit an explicit direction.

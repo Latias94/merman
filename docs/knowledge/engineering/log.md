@@ -6,6 +6,24 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added a parser-backed flowchart lint rule for missing header direction, with the core flowchart
+  model now defaulting omitted headers to `TB` while still emitting `warningFacts` for the shared
+  analysis contract.
+- Registered `merman.flowchart.missing_direction` in the shared rule descriptor table and proved
+  it can be disabled through `AnalysisRuleConfig` while remaining visible through analysis, CLI,
+  and LSP consumers.
+- Added core, analysis, CLI, and LSP regressions covering the new flowchart warning fact, the rule
+  mapping, and the default-direction model behavior.
+- Re-verified the slice with `cargo fmt --all`, `cargo nextest run -p merman-core
+  parse_diagram_flowchart_without_direction_defaults_to_tb_and_warns
+  parse_flowchart_render_model_carries_missing_direction_warning_fact
+  parse_diagram_flowchart_keyword_flowchart --no-fail-fast`, `cargo nextest run -p
+  merman-analysis flowchart_missing_direction
+  semantic_warning_facts_map_flowchart_missing_direction_rule_id
+  rule_descriptors_expose_stable_rule_metadata --no-fail-fast`, `cargo nextest run -p
+  merman-analysis -p merman-cli --no-fail-fast`, and `cargo nextest run -p merman-lsp --no-fail-fast`.
+
+## 2026-06-25
 - Tightened `merman-lsp` completion handling so directive-oriented lines like `classDef` and
   `click` no longer fall back to the generic `flowchart TD` header prompt when no other items are
   available.

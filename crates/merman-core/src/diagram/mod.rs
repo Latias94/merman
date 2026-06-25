@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
+pub const FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID: &str = "merman.flowchart.missing_direction";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 
 /// Shared warning fact emitted by diagram families for analysis and lint consumers.

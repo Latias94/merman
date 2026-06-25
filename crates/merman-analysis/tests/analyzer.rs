@@ -1,5 +1,6 @@
 use merman_analysis::{
-    AnalysisOptions, AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity,
+    AnalysisOptions, AnalysisRuleConfig, AnalysisStatus, Analyzer, DiagnosticCategory,
+    DiagnosticSeverity,
 };
 
 fn analyze(source: &str) -> merman_analysis::AnalysisPayload {
@@ -91,6 +92,32 @@ fn valid_flowchart_returns_no_diagnostics() {
 
     assert!(payload.valid);
     assert_eq!(payload.summary.errors, 0);
+    assert!(payload.diagnostics.is_empty());
+}
+
+#[test]
+fn flowchart_missing_direction_is_warning() {
+    let payload = analyze("flowchart\nA[Hello] --> B[World]\n");
+
+    assert!(payload.valid);
+    assert_eq!(payload.summary.errors, 0);
+    assert_eq!(payload.summary.warnings, 1);
+    let diagnostic = &payload.diagnostics[0];
+    assert_eq!(diagnostic.id, "merman.flowchart.missing_direction");
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+    assert_eq!(diagnostic.category, DiagnosticCategory::Semantic);
+    assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert!(diagnostic.message.contains("explicit direction"));
+}
+
+#[test]
+fn flowchart_missing_direction_rule_can_be_disabled() {
+    let options = AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default().with_rule_disabled("merman.flowchart.missing_direction"),
+    );
+    let payload = Analyzer::with_options(options).analyze("flowchart\nA-->B\n");
+
+    assert!(payload.valid);
     assert!(payload.diagnostics.is_empty());
 }
 

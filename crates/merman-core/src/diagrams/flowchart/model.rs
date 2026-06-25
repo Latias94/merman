@@ -1,4 +1,4 @@
-use crate::SourceSpan;
+use crate::{DiagramWarningFact, SourceSpan};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,12 @@ pub struct FlowchartV2Model {
     pub subgraphs: Vec<FlowSubgraph>,
     #[serde(default)]
     pub tooltips: FxHashMap<String, String>,
+    #[serde(
+        default,
+        rename = "warningFacts",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub warning_facts: Vec<DiagramWarningFact>,
 }
 
 impl FlowchartV2Model {

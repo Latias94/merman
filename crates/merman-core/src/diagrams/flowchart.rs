@@ -1,7 +1,8 @@
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
+    DiagramWarningFact, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, Error, FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID, MermaidConfig,
+    ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -79,6 +80,7 @@ struct FlowchartSemanticSource {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
+    warning_facts: Vec<DiagramWarningFact>,
 }
 
 pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -179,9 +181,13 @@ fn parse_flowchart_semantic_source(
         apply_semantic_statements(&ast.statements, &mut semantic_ctx)?;
     }
 
+    let direction = ast.direction;
+    let warning_facts = flowchart_warning_facts(&direction);
+    let direction = direction.or_else(|| Some("TB".to_string()));
+
     Ok(FlowchartSemanticSource {
         keyword: ast.keyword,
-        direction: ast.direction,
+        direction,
         acc_descr,
         acc_title,
         class_defs,
@@ -191,6 +197,7 @@ fn parse_flowchart_semantic_source(
         nodes,
         edges,
         subgraphs: builder.subgraphs,
+        warning_facts,
     })
 }
 
@@ -201,6 +208,17 @@ fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst>
             diagram_type: meta.diagram_type.clone(),
             message: format!("{e:?}"),
         })
+}
+
+fn flowchart_warning_facts(direction: &Option<String>) -> Vec<DiagramWarningFact> {
+    if direction.is_some() {
+        return Vec::new();
+    }
+
+    vec![DiagramWarningFact::new(
+        FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+        "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+    )]
 }
 
 fn mask_flowchart_editor_parse_input(code: &str) -> String {
@@ -652,7 +670,8 @@ fn push_flowchart_token_symbol(
 
 impl FlowchartSemanticSource {
     fn into_compat_json(self, diagram_type: &str, config: &MermaidConfig) -> Value {
-        json!({
+        let warning_facts = self.warning_facts;
+        let mut model = json!({
             "type": diagram_type,
             "keyword": self.keyword,
             "direction": self.direction,
@@ -680,7 +699,13 @@ impl FlowchartSemanticSource {
                 .into_iter()
                 .map(flow_subgraph_to_json)
                 .collect::<Vec<_>>(),
-        })
+        });
+
+        if !warning_facts.is_empty() {
+            model["warningFacts"] = json!(warning_facts);
+        }
+
+        model
     }
 
     fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartV2Model> {
@@ -710,6 +735,7 @@ impl FlowchartSemanticSource {
                 .map(flow_subgraph_to_model)
                 .collect::<Vec<_>>(),
             tooltips: self.tooltips.into_iter().collect(),
+            warning_facts: self.warning_facts,
         })
     }
 }
