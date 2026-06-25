@@ -37,6 +37,9 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 - U2's text-scan fallback now also treats `init`, `initialize`, and `wrap` as non-symbol
   directives, so those directive lines do not leak into node IDs or outline items when parser
   facts are unavailable.
+- U2's completion context now also suppresses the generic `flowchart TD` fallback on directive
+  lines, so directive-oriented lines remain on directive completions instead of being mistaken for
+  a fresh diagram header prompt.
 - U2 has also deepened sequence editor facts: sequence `title`, `accTitle`, `accDescr`, message
   text, note text, and `links`/`link`/`properties`/`details` interaction payloads are now
   parser-backed payload-only spans, with directive prefix tracking for the sequence interaction

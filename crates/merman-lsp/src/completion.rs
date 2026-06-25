@@ -49,6 +49,13 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     }
 
     if items.is_empty() {
+        if context.is_comment_or_directive_line() {
+            return CompletionList {
+                is_incomplete: false,
+                items,
+            };
+        }
+
         items.push(keyword_completion(
             "flowchart TD",
             "diagram kind",

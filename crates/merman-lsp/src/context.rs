@@ -97,8 +97,13 @@ impl<'a> CompletionContext<'a> {
 
     pub fn offer_directive_items(&self) -> bool {
         let prefix = self.prefix.trim_end();
+        let directive_prefix = self.directive_prefix();
 
-        prefix.contains("class") || prefix.contains(":::")
+        prefix.trim_start().starts_with("%%")
+            || matches!(
+                directive_prefix,
+                Some("classDef") | Some("class") | Some("style") | Some("linkStyle") | Some(":::")
+            )
     }
 
     pub fn offer_direction_items(&self) -> bool {
@@ -122,9 +127,59 @@ impl<'a> CompletionContext<'a> {
 
         !diagram_header_prefix_matches(prefix)
             && !self.offer_direction_items()
-            && !self.offer_directive_items()
+            && !self.is_comment_or_directive_line()
             && !self.offer_operator_items()
             && !self.offer_shape_items()
+    }
+
+    pub(crate) fn is_comment_or_directive_line(&self) -> bool {
+        let prefix = self.prefix.trim_start();
+
+        prefix.starts_with("%%") || self.directive_prefix().is_some()
+    }
+
+    pub fn directive_prefix(&self) -> Option<&'static str> {
+        let prefix = self.prefix.trim_start();
+
+        if let Some(rest) = prefix.strip_prefix("%%{") {
+            let name = rest
+                .split(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '}'))
+                .next()
+                .filter(|name| !name.is_empty())?;
+
+            return matches!(name, "init" | "initialize" | "wrap").then_some(match name {
+                "init" => "init",
+                "initialize" => "initialize",
+                "wrap" => "wrap",
+                _ => unreachable!(),
+            });
+        }
+
+        for candidate in [
+            "classDef",
+            "class",
+            "style",
+            "linkStyle",
+            "click",
+            "accTitle",
+            "accDescr",
+            "accDescription",
+            "title",
+        ] {
+            if prefix == candidate
+                || prefix.strip_prefix(candidate).is_some_and(|rest| {
+                    rest.starts_with(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '{'))
+                })
+            {
+                return Some(candidate);
+            }
+        }
+
+        if prefix.starts_with(":::") {
+            return Some(":::");
+        }
+
+        None
     }
 
     pub fn node_text_edit_range(&self) -> Option<Range> {
@@ -255,12 +310,21 @@ mod tests {
             CompletionContext::from_snapshot(&directive, Position::new(0, 21)).unwrap();
         assert!(directive_context.offer_directive_items());
 
-        let direction = store.upsert(uri.clone(), 4, "direction".to_string());
+        let click = store.upsert(
+            uri.clone(),
+            4,
+            "click User href \"https://example.com\" \"Open user\" _blank".to_string(),
+        );
+        let click_context = CompletionContext::from_snapshot(&click, Position::new(0, 18)).unwrap();
+        assert!(click_context.is_comment_or_directive_line());
+        assert!(!click_context.offer_node_items());
+
+        let direction = store.upsert(uri.clone(), 5, "direction".to_string());
         let direction_context =
             CompletionContext::from_snapshot(&direction, Position::new(0, 9)).unwrap();
         assert!(direction_context.offer_direction_items());
 
-        let shape = store.upsert(uri.clone(), 5, "A@{ shape: ".to_string());
+        let shape = store.upsert(uri.clone(), 6, "A@{ shape: ".to_string());
         let shape_context = CompletionContext::from_snapshot(&shape, Position::new(0, 11)).unwrap();
         assert!(shape_context.offer_shape_items());
         assert!(shape_context.shape_value_range().is_some());
@@ -270,7 +334,7 @@ mod tests {
         assert_eq!(shape_range.start.character, 11);
         assert_eq!(shape_replacement, "circle }");
 
-        let classic_shape = store.upsert(uri, 6, "A((".to_string());
+        let classic_shape = store.upsert(uri, 7, "A((".to_string());
         let classic_shape_context =
             CompletionContext::from_snapshot(&classic_shape, Position::new(0, 3)).unwrap();
         assert!(classic_shape_context.offer_shape_items());
@@ -278,7 +342,7 @@ mod tests {
 
         let node = store.upsert(
             Url::parse("file:///tmp/example.mmd").unwrap(),
-            7,
+            8,
             "node_1".to_string(),
         );
         let node_context = CompletionContext::from_snapshot(&node, Position::new(0, 6)).unwrap();

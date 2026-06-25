@@ -35,6 +35,45 @@ fn completion_offers_direction_keywords() {
 }
 
 #[test]
+fn completion_does_not_offer_node_ids_for_directive_lines() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "%%{init: {\"theme\":\"dark\"}}%%\n".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 10));
+
+    assert!(list.items.iter().all(|item| item.label != "flowchart TD"));
+    assert!(
+        list.items
+            .iter()
+            .all(|item| item.kind != Some(tower_lsp::lsp_types::CompletionItemKind::VARIABLE))
+    );
+}
+
+#[test]
+fn completion_offers_directive_items_for_directive_lines() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "classDef foo fill:#f00".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 12));
+
+    assert!(list.items.iter().any(|item| item.label == ":::className"));
+}
+
+#[test]
+fn completion_does_not_fallback_to_header_for_other_directive_lines() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "click User href \"https://example.com\" \"Open user\" _blank".to_string(),
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 18));
+
+    assert!(list.items.iter().all(|item| item.label != "flowchart TD"));
+}
+
+#[test]
 fn completion_offers_node_ids_for_markdown_fences() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.markdown").unwrap();

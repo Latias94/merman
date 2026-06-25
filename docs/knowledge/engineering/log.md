@@ -6,6 +6,15 @@ status: active
 # Log
 
 ## 2026-06-25
+- Tightened `merman-lsp` completion handling so directive-oriented lines like `classDef` and
+  `click` no longer fall back to the generic `flowchart TD` header prompt when no other items are
+  available.
+- Added regressions proving directive lines stay on directive completions, do not offer node ids,
+  and do not regress to the new-diagram fallback prompt.
+- Re-verified the slice with `cargo fmt --all --check` and
+  `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast`.
+
+## 2026-06-25
 - Tightened the text-scan fallback in `merman-analysis::editor` so `init`, `initialize`, and
   `wrap` directive lines no longer leak into node IDs or outline items when parser-backed facts
   are unavailable.
