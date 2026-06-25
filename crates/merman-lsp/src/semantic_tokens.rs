@@ -2,8 +2,11 @@ use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use merman_analysis::{
     ByteSpan, EditorSymbolKind, FenceSemanticItem, FenceSemanticRole, SourceMap,
 };
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use tower_lsp::lsp_types::{
     Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
+    SemanticTokensDelta, SemanticTokensEdit, SemanticTokensFullDeltaResult,
     SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
 };
 
@@ -41,7 +44,7 @@ pub fn semantic_tokens_options() -> SemanticTokensOptions {
         work_done_progress_options: Default::default(),
         legend: semantic_tokens_legend(),
         range: Some(true),
-        full: Some(SemanticTokensFullOptions::Bool(true)),
+        full: Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
     }
 }
 
@@ -66,7 +69,20 @@ pub fn semantic_tokens_legend() -> SemanticTokensLegend {
 }
 
 pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> SemanticTokens {
-    semantic_tokens_from_absolute_tokens(absolute_tokens_for_snapshot(snapshot))
+    semantic_tokens_from_absolute_tokens_with_result_id(
+        absolute_tokens_for_snapshot(snapshot),
+        None,
+    )
+}
+
+pub fn semantic_tokens_for_snapshot_with_result_id(
+    snapshot: &DocumentSnapshot,
+    result_id: String,
+) -> SemanticTokens {
+    semantic_tokens_from_absolute_tokens_with_result_id(
+        absolute_tokens_for_snapshot(snapshot),
+        Some(result_id),
+    )
 }
 
 pub fn semantic_tokens_for_snapshot_range(
@@ -78,14 +94,48 @@ pub fn semantic_tokens_for_snapshot_range(
         .filter(|token| token_overlaps_range(token, &range))
         .collect();
 
-    semantic_tokens_from_absolute_tokens(absolute_tokens)
+    semantic_tokens_from_absolute_tokens_with_result_id(absolute_tokens, None)
 }
 
-fn semantic_tokens_from_absolute_tokens(absolute_tokens: Vec<AbsoluteToken>) -> SemanticTokens {
+pub fn semantic_tokens_delta_result(
+    previous_tokens: &[SemanticToken],
+    current_tokens: &[SemanticToken],
+    result_id: String,
+) -> SemanticTokensFullDeltaResult {
+    let Some(edit) = semantic_tokens_delta_edit(previous_tokens, current_tokens) else {
+        return SemanticTokensFullDeltaResult::TokensDelta(SemanticTokensDelta {
+            result_id: Some(result_id),
+            edits: Vec::new(),
+        });
+    };
+
+    SemanticTokensFullDeltaResult::TokensDelta(SemanticTokensDelta {
+        result_id: Some(result_id),
+        edits: vec![edit],
+    })
+}
+
+fn semantic_tokens_from_absolute_tokens_with_result_id(
+    absolute_tokens: Vec<AbsoluteToken>,
+    result_id: Option<String>,
+) -> SemanticTokens {
     SemanticTokens {
-        result_id: None,
+        result_id,
         data: encode_relative_tokens(absolute_tokens),
     }
+}
+
+pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[SemanticToken]) -> String {
+    let mut hasher = DefaultHasher::new();
+    snapshot.version.hash(&mut hasher);
+    for token in tokens {
+        token.delta_line.hash(&mut hasher);
+        token.delta_start.hash(&mut hasher);
+        token.length.hash(&mut hasher);
+        token.token_type.hash(&mut hasher);
+        token.token_modifiers_bitset.hash(&mut hasher);
+    }
+    format!("{}:{:016x}", snapshot.version, hasher.finish())
 }
 
 fn absolute_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<AbsoluteToken> {
@@ -241,6 +291,43 @@ fn encode_relative_tokens(absolute_tokens: Vec<AbsoluteToken>) -> Vec<SemanticTo
         .collect()
 }
 
+fn semantic_tokens_delta_edit(
+    previous_tokens: &[SemanticToken],
+    current_tokens: &[SemanticToken],
+) -> Option<SemanticTokensEdit> {
+    let prefix_tokens = previous_tokens
+        .iter()
+        .zip(current_tokens.iter())
+        .take_while(|(previous, current)| previous == current)
+        .count();
+
+    if prefix_tokens == previous_tokens.len() && prefix_tokens == current_tokens.len() {
+        return None;
+    }
+
+    let previous_remainder = &previous_tokens[prefix_tokens..];
+    let current_remainder = &current_tokens[prefix_tokens..];
+    let suffix_tokens = previous_remainder
+        .iter()
+        .rev()
+        .zip(current_remainder.iter().rev())
+        .take_while(|(previous, current)| previous == current)
+        .count();
+
+    let previous_end = previous_tokens.len().saturating_sub(suffix_tokens);
+    let current_end = current_tokens.len().saturating_sub(suffix_tokens);
+
+    Some(SemanticTokensEdit {
+        start: (prefix_tokens * 5) as u32,
+        delete_count: ((previous_end - prefix_tokens) * 5) as u32,
+        data: if prefix_tokens < current_end {
+            Some(current_tokens[prefix_tokens..current_end].to_vec())
+        } else {
+            None
+        },
+    })
+}
+
 fn token_type_for_kind(kind: EditorSymbolKind) -> u32 {
     match kind {
         EditorSymbolKind::Class => TOKEN_TYPE_CLASS,
@@ -363,6 +450,51 @@ mod tests {
             payload_tokens.len() >= 2,
             "expected multiline payload to produce per-line semantic tokens: {decoded:?}"
         );
+    }
+
+    #[test]
+    fn semantic_tokens_delta_result_prefers_edits_over_full_tokens() {
+        let previous = vec![
+            SemanticToken {
+                delta_line: 0,
+                delta_start: 0,
+                length: 3,
+                token_type: TOKEN_TYPE_NAMESPACE,
+                token_modifiers_bitset: 0,
+            },
+            SemanticToken {
+                delta_line: 0,
+                delta_start: 4,
+                length: 2,
+                token_type: TOKEN_TYPE_STRING,
+                token_modifiers_bitset: 1 << TOKEN_MODIFIER_PAYLOAD,
+            },
+        ];
+        let current = vec![
+            SemanticToken {
+                delta_line: 0,
+                delta_start: 0,
+                length: 3,
+                token_type: TOKEN_TYPE_NAMESPACE,
+                token_modifiers_bitset: 0,
+            },
+            SemanticToken {
+                delta_line: 0,
+                delta_start: 5,
+                length: 2,
+                token_type: TOKEN_TYPE_STRING,
+                token_modifiers_bitset: 1 << TOKEN_MODIFIER_PAYLOAD,
+            },
+        ];
+
+        let result = semantic_tokens_delta_result(&previous, &current, "next".to_string());
+        let SemanticTokensFullDeltaResult::TokensDelta(delta) = result else {
+            panic!("expected delta tokens");
+        };
+
+        assert_eq!(delta.result_id.as_deref(), Some("next"));
+        assert_eq!(delta.edits.len(), 1);
+        assert!(!delta.edits[0].data.as_ref().unwrap().is_empty());
     }
 
     fn decode_tokens(tokens: &[SemanticToken]) -> Vec<AbsoluteToken> {

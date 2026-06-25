@@ -6,18 +6,27 @@ use merman_analysis::{
 };
 use merman_core::{Engine, ParseOptions};
 use std::collections::HashMap;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{SemanticToken, Url};
 
 #[derive(Debug, Default)]
 pub struct DocumentStore {
     documents: HashMap<Url, DocumentSnapshot>,
+    semantic_tokens_state: HashMap<Url, SemanticTokensState>,
     engine: Engine,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SemanticTokensState {
+    pub version: Option<i32>,
+    pub result_id: Option<String>,
+    pub tokens: Vec<SemanticToken>,
 }
 
 impl DocumentStore {
     pub fn new() -> Self {
         Self {
             documents: HashMap::new(),
+            semantic_tokens_state: HashMap::new(),
             engine: Engine::new(),
         }
     }
@@ -72,10 +81,23 @@ impl DocumentStore {
 
     pub fn remove(&mut self, uri: &Url) {
         self.documents.remove(uri);
+        self.semantic_tokens_state.remove(uri);
     }
 
     pub fn snapshots(&self) -> Vec<DocumentSnapshot> {
         self.documents.values().cloned().collect()
+    }
+
+    pub fn semantic_tokens_state(&self, uri: &Url) -> Option<&SemanticTokensState> {
+        self.semantic_tokens_state.get(uri)
+    }
+
+    pub fn semantic_tokens_state_cloned(&self, uri: &Url) -> Option<SemanticTokensState> {
+        self.semantic_tokens_state.get(uri).cloned()
+    }
+
+    pub fn set_semantic_tokens_state(&mut self, uri: Url, state: SemanticTokensState) {
+        self.semantic_tokens_state.insert(uri, state);
     }
 
     fn text_index(&self, text: &str, diagram_type: Option<&str>) -> FenceTextIndex {

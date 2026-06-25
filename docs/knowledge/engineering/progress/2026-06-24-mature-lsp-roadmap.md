@@ -15,8 +15,8 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 # Details
 
 - `merman-lsp` already covers diagnostics, completion, hover, document symbols, definition,
-  references, prepare-rename, rename, full-document semantic tokens, and fix-backed quickfix code
-  actions.
+  references, prepare-rename, rename, full-document semantic tokens, range/delta semantic tokens,
+  and fix-backed quickfix code actions.
 - `merman-analysis` already owns canonical diagnostics payloads, Markdown fence analysis, LSP range
   conversion helpers, and CLI lint output.
 - Parser-backed editor facts now cover the main current LSP families with complete/recovered
@@ -56,9 +56,9 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 - U6 has its first provider slice: `textDocument/semanticTokens/full` is advertised and served from
   parser-backed `FenceSemanticItem` roles. Token types derive from `EditorSymbolKind`, while
   `mermanEntity`, `mermanOutline`, and `mermanPayload` modifiers preserve the role category.
-- Semantic-token coverage includes role classification, Markdown absolute UTF-16 ranges, multiline
-  payload splitting, initialize capability wiring, and the full-document handler. Range/delta
-  semantic tokens remain future work.
+- Semantic-token coverage now includes role classification, Markdown absolute UTF-16 ranges,
+  multiline payload splitting, initialize capability wiring, the full-document handler, range
+  projection, delta projection, and cached result-id reuse.
 - `AnalysisDiagnostic` now carries optional `DiagnosticFix` metadata. LSP diagnostics preserve
   fixes in `Diagnostic.data`, and `textDocument/codeAction` returns quickfix edits only for
   diagnostics with explicit source-span-backed fixes.

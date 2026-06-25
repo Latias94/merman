@@ -1,8 +1,11 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::completion_for_snapshot;
 use crate::document_store::DocumentStore;
+use crate::document_store::SemanticTokensState;
 use crate::semantic_tokens::{
-    semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range, semantic_tokens_options,
+    semantic_tokens_delta_result, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
+    semantic_tokens_for_snapshot_with_result_id, semantic_tokens_options,
+    semantic_tokens_result_id,
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
@@ -29,10 +32,10 @@ use tower_lsp::lsp_types::{
     DidSaveTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
     InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams, RenameParams,
-    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
-    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceEdit,
-    WorkspaceSymbolParams,
+    SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceEdit, WorkspaceSymbolParams,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -100,6 +103,24 @@ impl MermanLanguageServer {
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, version)
             .await;
+    }
+
+    async fn record_semantic_tokens_state(
+        &self,
+        uri: &tower_lsp::lsp_types::Url,
+        version: Option<i32>,
+        tokens: Vec<tower_lsp::lsp_types::SemanticToken>,
+        result_id: Option<String>,
+    ) {
+        let mut store = self.store.lock().await;
+        store.set_semantic_tokens_state(
+            uri.clone(),
+            SemanticTokensState {
+                version,
+                result_id,
+                tokens,
+            },
+        );
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) {
@@ -262,7 +283,68 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document.uri;
         let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.map(|snapshot| semantic_tokens_for_snapshot(&snapshot).into()))
+        let Some(snapshot) = snapshot else {
+            return Ok(None);
+        };
+
+        let tokens = semantic_tokens_for_snapshot(&snapshot);
+        let result_id = semantic_tokens_result_id(&snapshot, &tokens.data);
+        let tokens = semantic_tokens_for_snapshot_with_result_id(&snapshot, result_id.clone());
+        self.record_semantic_tokens_state(
+            &uri,
+            Some(snapshot.version),
+            tokens.data.clone(),
+            Some(result_id),
+        )
+        .await;
+
+        Ok(Some(SemanticTokensResult::Tokens(tokens)))
+    }
+
+    async fn semantic_tokens_full_delta(
+        &self,
+        params: SemanticTokensDeltaParams,
+    ) -> Result<Option<SemanticTokensFullDeltaResult>> {
+        let uri = params.text_document.uri;
+        let snapshot = self.snapshot_for_uri(&uri).await;
+        let Some(snapshot) = snapshot else {
+            return Ok(None);
+        };
+
+        let current_tokens = semantic_tokens_for_snapshot(&snapshot);
+        let current_result_id = semantic_tokens_result_id(&snapshot, &current_tokens.data);
+        let delta = {
+            let store = self.store.lock().await;
+            let previous = store.semantic_tokens_state_cloned(&uri);
+            match previous {
+                Some(previous)
+                    if previous.result_id.as_deref()
+                        == Some(params.previous_result_id.as_str()) =>
+                {
+                    semantic_tokens_delta_result(
+                        &previous.tokens,
+                        &current_tokens.data,
+                        current_result_id.clone(),
+                    )
+                }
+                _ => SemanticTokensFullDeltaResult::Tokens(
+                    semantic_tokens_for_snapshot_with_result_id(
+                        &snapshot,
+                        current_result_id.clone(),
+                    ),
+                ),
+            }
+        };
+
+        self.record_semantic_tokens_state(
+            &uri,
+            Some(snapshot.version),
+            current_tokens.data,
+            Some(current_result_id),
+        )
+        .await;
+
+        Ok(Some(delta))
     }
 
     async fn semantic_tokens_range(
@@ -415,7 +497,7 @@ mod tests {
         assert!(matches!(
             capabilities.semantic_tokens_provider,
             Some(SemanticTokensServerCapabilities::SemanticTokensOptions(ref options))
-                if matches!(options.full, Some(SemanticTokensFullOptions::Bool(true)))
+                if matches!(options.full, Some(SemanticTokensFullOptions::Delta { delta: Some(true) }))
                     && options.range == Some(true)
                     && !options.legend.token_types.is_empty()
                     && !options.legend.token_modifiers.is_empty()

@@ -28,10 +28,11 @@ facts, it is not considered mature.
   rule is `merman.config.prefer_init_directive`.
 - Semantic index: parser-backed payload facts are retained as semantic items even when they are
   not projected into completion, outline, or rename surfaces.
-- Semantic tokens: the full-document and range providers are wired from parser-backed
+- Semantic tokens: the full-document, range, and delta providers are wired from parser-backed
   entity/outline/payload semantic items. Token types derive from `EditorSymbolKind`; token
-  modifiers preserve role categories. Delta providers remain deferred, and configuration changes
-  ask the client to refresh semantic tokens when refresh support is advertised.
+  modifiers preserve role categories. Configuration changes ask the client to refresh semantic
+  tokens when refresh support is advertised, and delta requests reuse cached previous token state
+  when the result id matches.
 - Text-scan fallback: may record directive prefixes for unmigrated paths, but must not project
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`
   into node IDs or outline entries. Parser-backed payload facts must likewise remain outside

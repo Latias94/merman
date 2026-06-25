@@ -6,6 +6,11 @@ status: active
 # Log
 
 ## 2026-06-25
+- Added semantic-token delta support to `merman-lsp`, including cached previous token state,
+  full/delta capability advertisement, and a smoke test that exercises `textDocument/semanticTokens/full`
+  followed by `textDocument/semanticTokens/full/delta`.
+- Updated the LSP docs and engineering memory so semantic tokens are now described as full/range/delta
+  rather than deferred delta work.
 - Wired `workspace/semanticTokens/refresh` into `merman-lsp` configuration changes when the client
   advertises refresh support, so semantic-token consumers now get an explicit requery signal after
   analyzer settings change.

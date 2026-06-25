@@ -26,9 +26,9 @@ analysis path.
 - Client font metrics, rendering, and HTML label behavior are not part of the LSP contract.
 - Completion covers diagram structure, directions, operators, shapes, directives, and local
   identifiers with stable replacement edits.
-- Hover, go to definition, references, prepare-rename, rename, full-document semantic tokens, and
-  fix-backed code actions are wired.
+- Hover, go to definition, references, prepare-rename, rename, full-document semantic tokens,
+  range/delta semantic tokens, and fix-backed code actions are wired.
 - Workspace symbols are wired from tracked document snapshots.
 - Code actions remain intentionally sparse until lint rules emit source-span-backed
   `DiagnosticFix` metadata.
-- Formatting and range/delta semantic tokens remain deferred.
+- Formatting remains deferred.
