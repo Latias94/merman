@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-25
+- Removed the silent fallback from `merman-analysis` rule lookup. Rule descriptors are now
+  resolved through an explicit registry, and unknown analysis rule ids surface as internal
+  contract gaps instead of collapsing into the generic semantic warning bucket.
+- Added a regression proving unknown semantic warning fact ids now emit an explicit internal
+  diagnostic, while known block and gitGraph warning facts still map to their stable rule ids.
+- Added a regression proving analyzer-level rule lookup gaps surface as internal errors, so future
+  missing rule registrations fail loudly during lint/LSP development instead of degrading silently.
+- Re-verified the slice with `cargo fmt --all --check` and `cargo test -p merman-analysis --lib -- --nocapture`.
+
+## 2026-06-25
 - Added semantic-token delta support to `merman-lsp`, including cached previous token state,
   full/delta capability advertisement, and a smoke test that exercises `textDocument/semanticTokens/full`
   followed by `textDocument/semanticTokens/full/delta`.

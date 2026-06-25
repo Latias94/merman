@@ -3,7 +3,7 @@ use crate::rules::{
     DIAGRAM_PARSE_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID, INVALID_FRONT_MATTER_YAML_RULE_ID,
     MALFORMED_FRONT_MATTER_RULE_ID, NO_DIAGRAM_RULE_ID, PANIC_RULE_ID,
     RECOVERED_EDITOR_FACTS_RULE_ID, RESOURCE_LIMIT_RULE_ID, UNSUPPORTED_DIAGRAM_RULE_ID,
-    rule_descriptor,
+    internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
 use crate::{AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, SourceDescriptor, SourceMap};
 use merman_core::{
@@ -375,7 +375,14 @@ fn rule_diagnostic(
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Option<AnalysisDiagnostic> {
-    let descriptor = rule_descriptor(rule_id);
+    let message = message.into();
+    let Some(descriptor) = rule_descriptor(rule_id) else {
+        return Some(internal_rule_registry_gap_diagnostic(
+            format!("unknown analysis rule id `{rule_id}` while emitting diagnostic: {message}"),
+            source_map.whole_source_span().ok(),
+        ));
+    };
+
     if !rule_config.is_rule_enabled(descriptor) {
         return None;
     }
@@ -397,7 +404,7 @@ fn rule_diagnostic(
 mod tests {
     use super::{AnalysisOptions, Analyzer};
     use crate::rules::AnalysisRuleConfig;
-    use crate::{DiagnosticCategory, DiagnosticSeverity};
+    use crate::{AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, SourceMap};
 
     #[test]
     fn analyze_state_parse_failure_surfaces_recovery_diagnostic() {
@@ -582,6 +589,31 @@ mod tests {
                 .diagnostics
                 .iter()
                 .all(|diagnostic| diagnostic.severity == DiagnosticSeverity::Hint)
+        );
+    }
+
+    #[test]
+    fn analysis_rule_registry_gap_surfaces_as_internal_error() {
+        let source_map = SourceMap::new("flowchart TD\nA-->B\n");
+        let diagnostic = super::rule_diagnostic(
+            "merman.unknown.rule",
+            AnalysisStatus::Panic,
+            "rule ids must be registered",
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        )
+        .expect("internal registry gap diagnostic");
+
+        assert_eq!(
+            diagnostic.id,
+            crate::rules::INTERNAL_RULE_REGISTRY_GAP_RULE_ID
+        );
+        assert_eq!(diagnostic.category, DiagnosticCategory::Internal);
+        assert_eq!(diagnostic.code, Some(AnalysisStatus::InternalError.code()));
+        assert!(
+            diagnostic
+                .message
+                .contains("unknown analysis rule id `merman.unknown.rule`")
         );
     }
 }

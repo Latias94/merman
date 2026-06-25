@@ -322,6 +322,8 @@ and performance fixtures before marking a family or feature product-ready.
     fences.
   - Existing warnings such as block width and duplicate gitGraph commits still map to compatible
     IDs after rule-engine migration.
+  - Unknown rule ids are treated as internal contract gaps instead of collapsing into a generic
+    semantic warning bucket.
   - Rule fix metadata serializes without forcing LSP-specific types into `merman-analysis`.
 - **Verification:** CLI lint, bindings, and LSP diagnostics consume the same rule outputs.
 

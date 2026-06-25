@@ -70,6 +70,9 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 - That shared rule-config surface now also flows through binding `options_json`, so FFI,
   UniFFI, WASM, and future editor adapters can enable/disable rules and override severities
   through the same analysis contract.
+- Unknown semantic warning fact ids no longer collapse into the generic semantic warning bucket;
+  they now surface as explicit internal rule-registry gaps so missing core warning mappings are
+  visible during lint and LSP development.
 
 # Next Action
 

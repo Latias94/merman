@@ -1,6 +1,6 @@
 use crate::{
-    AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, DiagnosticSeverity,
-    DiagnosticSpan, SourceMap,
+    AnalysisDiagnostic, AnalysisStatus, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
+    DiagnosticSeverity, DiagnosticSpan, SourceMap,
 };
 use merman_core::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
@@ -19,6 +19,7 @@ pub const MALFORMED_FRONT_MATTER_RULE_ID: &str = "merman.config.malformed_front_
 pub const INVALID_DIRECTIVE_JSON_RULE_ID: &str = "merman.config.invalid_directive_json";
 pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front_matter_yaml";
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
+pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
@@ -112,6 +113,14 @@ const PANIC_RULE: RuleDescriptor = RuleDescriptor {
     fixable: false,
 };
 
+const INTERNAL_RULE_REGISTRY_GAP_RULE: RuleDescriptor = RuleDescriptor {
+    id: INTERNAL_RULE_REGISTRY_GAP_RULE_ID,
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Internal,
+    default_enabled: true,
+    fixable: false,
+};
+
 const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     id: BLOCK_WIDTH_RULE_ID,
     default_severity: DiagnosticSeverity::Warning,
@@ -145,6 +154,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     INVALID_DIRECTIVE_JSON_RULE,
     INVALID_FRONT_MATTER_YAML_RULE,
     PANIC_RULE,
+    INTERNAL_RULE_REGISTRY_GAP_RULE,
     BLOCK_WIDTH_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
     SEMANTIC_WARNING_RULE,
@@ -154,23 +164,11 @@ pub fn rule_descriptors() -> &'static [RuleDescriptor] {
     RULE_DESCRIPTORS
 }
 
-pub fn rule_descriptor(rule_id: &str) -> RuleDescriptor {
-    match rule_id {
-        PREFER_INIT_DIRECTIVE_RULE_ID => PREFER_INIT_DIRECTIVE_RULE,
-        NO_DIAGRAM_RULE_ID => NO_DIAGRAM_RULE,
-        DIAGRAM_PARSE_RULE_ID => DIAGRAM_PARSE_RULE,
-        UNSUPPORTED_DIAGRAM_RULE_ID => UNSUPPORTED_DIAGRAM_RULE,
-        RECOVERED_EDITOR_FACTS_RULE_ID => RECOVERED_EDITOR_FACTS_RULE,
-        RESOURCE_LIMIT_RULE_ID => RESOURCE_LIMIT_RULE,
-        MALFORMED_FRONT_MATTER_RULE_ID => MALFORMED_FRONT_MATTER_RULE,
-        INVALID_DIRECTIVE_JSON_RULE_ID => INVALID_DIRECTIVE_JSON_RULE,
-        INVALID_FRONT_MATTER_YAML_RULE_ID => INVALID_FRONT_MATTER_YAML_RULE,
-        PANIC_RULE_ID => PANIC_RULE,
-        BLOCK_WIDTH_RULE_ID => BLOCK_WIDTH_RULE,
-        GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID => GIT_GRAPH_DUPLICATE_COMMIT_RULE,
-        SEMANTIC_WARNING_RULE_ID => SEMANTIC_WARNING_RULE,
-        _ => SEMANTIC_WARNING_RULE,
-    }
+pub fn rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
+    RULE_DESCRIPTORS
+        .iter()
+        .copied()
+        .find(|descriptor| descriptor.id == rule_id)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -247,18 +245,34 @@ fn semantic_warning_fact_diagnostics(
     span: Option<DiagnosticSpan>,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
-    warning_facts
-        .into_iter()
-        .filter_map(|fact| {
-            let descriptor = warning_fact_rule_descriptor(&fact.rule_id);
-            rule_config
-                .is_rule_enabled(descriptor)
-                .then_some((descriptor, fact))
-        })
-        .map(|(descriptor, fact)| {
-            warning_for_fact(diagram_type, fact, span.clone(), descriptor, rule_config)
-        })
-        .collect()
+    let mut diagnostics = Vec::with_capacity(warning_facts.len());
+
+    for fact in warning_facts {
+        match warning_fact_rule_descriptor(&fact.rule_id) {
+            Some(descriptor) if rule_config.is_rule_enabled(descriptor) => {
+                diagnostics.push(warning_for_fact(
+                    diagram_type,
+                    fact,
+                    span.clone(),
+                    descriptor,
+                    rule_config,
+                ));
+            }
+            Some(_) => {}
+            None => diagnostics.push(
+                internal_rule_registry_gap_diagnostic(
+                    format!(
+                        "unknown warning fact rule id `{}`: {}",
+                        fact.rule_id, fact.message
+                    ),
+                    span.clone(),
+                )
+                .with_diagram_type(diagram_type),
+            ),
+        }
+    }
+
+    diagnostics
 }
 
 fn warning_for_fact(
@@ -283,12 +297,34 @@ fn warning_for_fact(
     diagnostic
 }
 
-fn warning_fact_rule_descriptor(rule_id: &str) -> RuleDescriptor {
+fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
     match rule_id {
-        BLOCK_WIDTH_WARNING_RULE_ID => BLOCK_WIDTH_RULE,
-        GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => GIT_GRAPH_DUPLICATE_COMMIT_RULE,
-        _ => SEMANTIC_WARNING_RULE,
+        BLOCK_WIDTH_WARNING_RULE_ID => Some(BLOCK_WIDTH_RULE),
+        GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => Some(GIT_GRAPH_DUPLICATE_COMMIT_RULE),
+        SEMANTIC_WARNING_RULE_ID => Some(SEMANTIC_WARNING_RULE),
+        _ => None,
     }
+}
+
+pub(crate) fn internal_rule_registry_gap_diagnostic(
+    message: impl Into<String>,
+    span: Option<DiagnosticSpan>,
+) -> AnalysisDiagnostic {
+    let mut diagnostic = AnalysisDiagnostic::error(
+        INTERNAL_RULE_REGISTRY_GAP_RULE_ID,
+        DiagnosticCategory::Internal,
+        message,
+    )
+    .with_code(
+        AnalysisStatus::InternalError.code(),
+        AnalysisStatus::InternalError.code_name(),
+    );
+
+    if let Some(span) = span {
+        diagnostic = diagnostic.with_span(span);
+    }
+
+    diagnostic
 }
 
 fn init_directive_alias_diagnostics(
@@ -532,7 +568,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 13);
+        assert_eq!(descriptors.len(), 14);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
         assert_eq!(descriptors[0].category, DiagnosticCategory::Config);
@@ -586,6 +622,11 @@ mod tests {
         assert!(
             descriptors
                 .iter()
+                .any(|descriptor| descriptor.id == INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
                 .any(|descriptor| descriptor.id == BLOCK_WIDTH_RULE_ID)
         );
         assert!(
@@ -621,6 +662,34 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].id, BLOCK_WIDTH_RULE_ID);
+    }
+
+    #[test]
+    fn semantic_warning_facts_surface_unknown_rule_ids_as_internal_errors() {
+        let source = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics = semantic_warning_diagnostics(
+            "block",
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": "merman.block.unregistered_warning",
+                        "message": "Block A emitted a future warning"
+                    }
+                ]
+            }),
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, INTERNAL_RULE_REGISTRY_GAP_RULE_ID);
+        assert_eq!(diagnostics[0].category, DiagnosticCategory::Internal);
+        assert_eq!(
+            diagnostics[0].code,
+            Some(AnalysisStatus::InternalError.code())
+        );
     }
 
     #[test]
