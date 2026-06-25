@@ -1,6 +1,6 @@
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 use merman::render::FlowchartElkBackend as RenderFlowchartElkBackend;
-use merman_analysis::DiagnosticSeverity;
+use merman_analysis::{DiagnosticSeverity, configurable_rule_descriptor};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -152,15 +152,16 @@ pub(crate) struct LintArgs {
     )]
     pub(crate) max_source_bytes: Option<usize>,
 
-    /// Disable a lint rule by stable rule id. Can be repeated.
+    /// Disable a configurable lint rule by stable rule id. Can be repeated.
     #[arg(
         long = "disable-rule",
         value_name = "RULE_ID",
+        value_parser = parse_lint_rule_id,
         help_heading = "Lint rules"
     )]
     pub(crate) disable_rules: Vec<String>,
 
-    /// Override a lint rule severity as RULE_ID=error|warning|info|hint. Can be repeated.
+    /// Override a configurable lint rule severity as RULE_ID=error|warning|info|hint. Can be repeated.
     #[arg(
         long = "rule-severity",
         value_name = "RULE_ID=SEVERITY",
@@ -692,15 +693,27 @@ fn parse_lint_rule_severity_override(value: &str) -> Result<LintRuleSeverityOver
     let Some((rule_id, severity)) = value.split_once('=') else {
         return Err("expected RULE_ID=SEVERITY".to_string());
     };
-    let rule_id = rule_id.trim();
-    if rule_id.is_empty() {
+    if rule_id.trim().is_empty() {
         return Err("rule id must not be empty".to_string());
+    }
+    if configurable_rule_descriptor(rule_id).is_none() {
+        return Err(format!("unknown or internal lint rule id `{rule_id}`"));
     }
 
     Ok(LintRuleSeverityOverride {
         rule_id: rule_id.to_string(),
         severity: parse_lint_severity(severity.trim())?,
     })
+}
+
+fn parse_lint_rule_id(value: &str) -> Result<String, String> {
+    if value.trim().is_empty() {
+        return Err("rule id must not be empty".to_string());
+    }
+    if configurable_rule_descriptor(value).is_none() {
+        return Err(format!("unknown or internal lint rule id `{value}`"));
+    }
+    Ok(value.to_string())
 }
 
 fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, String> {

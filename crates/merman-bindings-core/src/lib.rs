@@ -155,4 +155,19 @@ mod tests {
         );
         assert_eq!(payload["diagnostics"][0]["severity"].as_str(), Some("hint"));
     }
+
+    #[test]
+    fn analyze_json_rejects_unknown_lint_rule_ids() {
+        let err = analyze_json(
+            b"flowchart TD\nA-->B\n",
+            br#"{"lint":{"disable_rules":["merman.unknown.rule"]}}"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(
+            err.message().contains("configurable analysis rule id"),
+            "unexpected error: {err:?}"
+        );
+    }
 }

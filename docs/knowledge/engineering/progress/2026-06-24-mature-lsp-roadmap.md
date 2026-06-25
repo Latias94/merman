@@ -70,6 +70,9 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 - That shared rule-config surface now also flows through binding `options_json`, so FFI,
   UniFFI, WASM, and future editor adapters can enable/disable rules and override severities
   through the same analysis contract.
+- The shared rule-config surface now rejects unknown or internal rule ids at the JSON and CLI
+  boundaries, and the analysis crate exposes a public configurable-rule registry view so future
+  completion and lint clients can reuse the same public rule-id list.
 - Unknown semantic warning fact ids no longer collapse into the generic semantic warning bucket;
   they now surface as explicit internal rule-registry gaps so missing core warning mappings are
   visible during lint and LSP development.
@@ -78,7 +81,8 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 
 Continue U4 by adding more stable lint rule descriptors and source-span-backed `DiagnosticFix`
 rules, then continue U2 family fact deepening where the capability matrix still shows partial
-rename/lint readiness.
+rename/lint readiness. Keep the public configurable-rule registry aligned with any future rule-id
+completion surface.
 
 # Citations
 

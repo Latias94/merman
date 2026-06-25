@@ -385,6 +385,53 @@ fn cli_lint_can_override_rule_severity() {
 }
 
 #[test]
+fn cli_lint_rejects_unknown_rule_ids() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+
+    for (args, expected) in [
+        (
+            vec![
+                "lint",
+                "--format",
+                "json",
+                "--disable-rule",
+                "merman.unknown.rule",
+                "-",
+            ],
+            "unknown or internal lint rule id `merman.unknown.rule`",
+        ),
+        (
+            vec![
+                "lint",
+                "--format",
+                "json",
+                "--rule-severity",
+                "merman.internal.panic=warning",
+                "-",
+            ],
+            "unknown or internal lint rule id `merman.internal.panic`",
+        ),
+    ] {
+        let output = Command::new(&exe)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn cli")
+            .wait_with_output()
+            .expect("wait cli");
+
+        assert!(
+            !output.status.success(),
+            "expected lint args to be rejected"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(stderr.contains(expected), "unexpected stderr:\n{stderr}");
+    }
+}
+
+#[test]
 fn cli_lint_can_disable_resource_limit_rule() {
     let output = run_with_stdin(
         &[

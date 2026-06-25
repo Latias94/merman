@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-25
+- Tightened the shared lint/config rule-id contract so `options_json` and CLI lint now reject
+  unknown or internal rule ids instead of silently accepting them, and the analysis crate now
+  exposes a public configurable-rule registry view for future completion surfaces.
+- Added regressions in `merman-analysis`, `merman-bindings-core`, and `merman-cli` proving the
+  shared configuration surface still accepts valid public rule ids while rejecting unknown and
+  internal ones.
+- Re-verified the slice with `cargo fmt --all --check` and
+  `cargo nextest run -p merman-analysis -p merman-bindings-core -p merman-cli`.
+
+## 2026-06-25
 - Removed the silent fallback from `merman-analysis` rule lookup. Rule descriptors are now
   resolved through an explicit registry, and unknown analysis rule ids surface as internal
   contract gaps instead of collapsing into the generic semantic warning bucket.

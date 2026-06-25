@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-06-23
+Last updated: 2026-06-25
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -117,12 +117,13 @@ rule ids from `merman-analysis`.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `lint.disable_rules` | array of strings | none | Rule ids to disable. Unknown ids are ignored. |
-| `lint.rule_severities` | array of objects | none | Per-rule severity overrides as `{ "rule_id": "...", "severity": "error|warning|info|hint" }`. |
+| `lint.disable_rules` | array of strings | none | Rule ids to disable. Entries must name configurable analysis rules. Unknown or internal ids return `MERMAN_INVALID_ARGUMENT`. |
+| `lint.rule_severities` | array of objects | none | Per-rule severity overrides as `{ "rule_id": "...", "severity": "error|warning|info|hint" }`. `rule_id` must name a configurable analysis rule. |
 
 `disable_rules` and `rule_severities` apply to source lint rules and semantic warnings alike. They
-are additive overrides on top of the built-in rule defaults and can be used by FFI, UniFFI, WASM,
-CLI lint, and future editor adapters.
+are additive overrides on top of the built-in rule defaults, are validated against the public
+analysis rule registry, and can be used by FFI, UniFFI, WASM, CLI lint, and future editor
+adapters. Internal analysis rules are reserved for contract gaps and diagnostics infrastructure.
 
 `fixed_today` must be a `YYYY-MM-DD` date. `fixed_local_offset_minutes` must be an integer offset
 accepted by the fixed-offset timezone model, currently `-1439` through `1439`. Invalid values return

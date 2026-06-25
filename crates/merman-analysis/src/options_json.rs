@@ -1,4 +1,6 @@
-use crate::{AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity};
+use crate::{
+    AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, configurable_rule_descriptor,
+};
 use chrono::NaiveDate;
 use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
@@ -168,6 +170,7 @@ impl AnalysisOptionsJson {
                     "lint.disable_rules entries must not be empty",
                 ));
             }
+            validate_configurable_rule_id(rule_id, "lint.disable_rules")?;
             config.disable_rule(rule_id.clone());
         }
 
@@ -177,6 +180,7 @@ impl AnalysisOptionsJson {
                     "lint.rule_severities.rule_id must not be empty",
                 ));
             }
+            validate_configurable_rule_id(&override_.rule_id, "lint.rule_severities.rule_id")?;
             config.set_rule_severity(
                 override_.rule_id.clone(),
                 parse_lint_severity(&override_.severity)?,
@@ -238,6 +242,18 @@ fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, AnalysisOption
     }
 }
 
+fn validate_configurable_rule_id(
+    rule_id: &str,
+    field: &str,
+) -> Result<(), AnalysisOptionsJsonError> {
+    if configurable_rule_descriptor(rule_id).is_none() {
+        return Err(AnalysisOptionsJsonError::new(format!(
+            "{field} entry `{rule_id}` must reference a configurable analysis rule id",
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +286,43 @@ mod tests {
         assert_eq!(
             analysis.rule_config.severity_for(*prefer_init),
             DiagnosticSeverity::Hint
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_unknown_lint_rule_ids() {
+        let options = AnalysisOptionsJson {
+            lint: Some(LintOptionsJson {
+                disable_rules: vec!["merman.unknown.rule".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let err = options.to_analysis_options().unwrap_err();
+        assert!(
+            err.to_string().contains("configurable analysis rule id"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_internal_lint_rule_ids() {
+        let wrapped = serde_json::json!({
+            "lint": {
+                "rule_severities": [
+                    {
+                        "rule_id": "merman.internal.panic",
+                        "severity": "warning"
+                    }
+                ]
+            }
+        });
+
+        let err = analysis_options_from_json_value(&wrapped).unwrap_err();
+        assert!(
+            err.to_string().contains("configurable analysis rule id"),
+            "unexpected error: {err}"
         );
     }
 

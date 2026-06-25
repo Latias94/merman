@@ -164,6 +164,17 @@ pub fn rule_descriptors() -> &'static [RuleDescriptor] {
     RULE_DESCRIPTORS
 }
 
+pub fn configurable_rule_descriptors() -> impl Iterator<Item = RuleDescriptor> {
+    RULE_DESCRIPTORS
+        .iter()
+        .copied()
+        .filter(|descriptor| descriptor.category != DiagnosticCategory::Internal)
+}
+
+pub fn configurable_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
+    configurable_rule_descriptors().find(|descriptor| descriptor.id == rule_id)
+}
+
 pub fn rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
     RULE_DESCRIPTORS
         .iter()
@@ -689,6 +700,37 @@ mod tests {
         assert_eq!(
             diagnostics[0].code,
             Some(AnalysisStatus::InternalError.code())
+        );
+    }
+
+    #[test]
+    fn configurable_rule_descriptors_exclude_internal_rules() {
+        let descriptors: Vec<_> = configurable_rule_descriptors().collect();
+
+        assert!(
+            descriptors
+                .iter()
+                .all(|descriptor| descriptor.category != DiagnosticCategory::Internal)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == BLOCK_WIDTH_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == SEMANTIC_WARNING_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .all(|descriptor| descriptor.id != PANIC_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .all(|descriptor| descriptor.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
         );
     }
 
