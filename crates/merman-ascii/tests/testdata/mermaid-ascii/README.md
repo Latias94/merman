@@ -30,3 +30,8 @@ Expected inventory:
 | `extended-chars` | 25 | Graph diagrams rendered with Unicode box drawing characters. |
 | `sequence` | 12 | Sequence diagrams rendered with Unicode box drawing characters. |
 | `sequence-ascii` | 5 | Sequence diagrams rendered with ASCII characters. |
+
+Upstream also includes `cmd/testdata/multibyte` examples for accented Latin, Greek, and Cyrillic
+labels. They are treated as semantic coverage rather than copied exact-output fixtures because
+`merman-ascii` preserves readable labels but does not copy `mermaid-ascii`'s current LR label
+spacing byte-for-byte.

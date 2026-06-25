@@ -1,7 +1,7 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-06-24
+Last updated: 2026-06-25
 
 This note compares `merman-ascii` with the two local reference checkouts:
 
@@ -20,10 +20,28 @@ product boundary.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
 
+## Reference Corpus Snapshot
+
+`repo-ref/mermaid-ascii/cmd/testdata` currently provides the copied exact-output oracle admitted
+by this crate: 54 `ascii` graph fixtures, 25 `extended-chars` graph fixtures, 12 `sequence`
+fixtures, and 5 `sequence-ascii` fixtures. Its 3 `multibyte` examples for accented Latin, Greek,
+and Cyrillic labels are useful semantic evidence, but they are not admitted as byte-level fixtures:
+`merman-ascii` preserves the labels readably while intentionally not copying the upstream LR label
+spacing byte-for-byte.
+
+`repo-ref/beautiful-mermaid/src/__tests__/testdata` currently has 63 `ascii` fixtures and 37
+`unicode` fixtures, plus focused tests for edge styles, multiline labels, class arrows, and
+`xychart-beta` ASCII rendering. Treat that corpus as capability discovery. Promote an idea from it
+by writing a small local semantic fixture or model test, not by treating its output as an official
+Mermaid terminal standard.
+
 ## Fixture Admissibility
 
 - Use copied `mermaid-ascii` fixtures when the family is graph or sequence and the upstream corpus
   is a good exact-output oracle. These are byte-level parity tests.
+- Keep `mermaid-ascii` multibyte examples semantic unless the local routing policy deliberately
+  changes to match their spacing. Label visibility, rectangular character grids, and no leaked
+  markup are the relevant checks.
 - Use `beautiful-mermaid` only as capability prior art. It can suggest coverage and layout ideas,
   but it is not a byte-level standard.
 - Use self-authored local fixtures when the diagram is dense, family-specific, or semantically

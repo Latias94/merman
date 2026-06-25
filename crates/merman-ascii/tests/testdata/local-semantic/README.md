@@ -14,6 +14,10 @@ rather than copied upstream output.
   the admitted `mermaid-ascii` graph and sequence fixtures, not Class/ER.
 - `beautiful-mermaid` is capability evidence for Class, ER, XYChart, color, and multiline terminal
   behavior. It can suggest a local fixture, but it is not an official golden-output standard.
+- Reference examples that are useful but not exact-output oracles, such as `mermaid-ascii`
+  multibyte labels or `beautiful-mermaid` xychart/class/ER examples, should be re-expressed as
+  small semantic tests. Preserve the Mermaid behavior under review, not the reference renderer's
+  incidental spacing.
 - Local semantic fixtures should name the Mermaid behavior being protected: visible labels,
   preserved relationship direction, routed reachability, grouped content, supported terminal color
   roles, or explicit unsupported-feature diagnostics.

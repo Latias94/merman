@@ -1,7 +1,7 @@
 # ASCII Gap Registry
 
 Status: Active planning registry
-Last updated: 2026-06-24
+Last updated: 2026-06-26
 
 This registry maps remaining ASCII renderer gaps to owning modules, dependencies, and validation
 gates. It does not replace the support matrices:
@@ -17,7 +17,7 @@ Use this file as the first planning context for new ASCII workstreams.
 
 | Gap ID | Capability gap | Owning module | Dependencies | Validation gate | Source |
 | --- | --- | --- | --- | --- | --- |
-| A-TEXT-010 | Full CJK/emoji multi-cell placement across renderers. | `text::StyledLine`, `canvas`, family label/layout modules | Decide how wide cells are represented in `Canvas`; add family-level placement fixtures. | `cargo nextest run -p merman-ascii cjk`; `cargo nextest run -p merman-ascii` | `FLOWCHART_SUPPORT.md`, `SEQUENCE_SUPPORT.md` |
+| A-TEXT-010 | Full CJK/emoji multi-cell placement across renderers. | `text::StyledLine`, `canvas`, family label/layout modules | Single-width non-ASCII labels from the `mermaid-ascii` multibyte corpus are now semantically covered for flowchart labels. `Canvas` also rejects wide-character writes that would spill continuation cells across row boundaries. Remaining work is cross-family terminal-width validation for true multi-cell CJK/emoji cases without adopting upstream multibyte LR spacing as a byte oracle. | `cargo nextest run -p merman-ascii flowchart_parser_multibyte_reference_labels_render_readably`; `cargo nextest run -p merman-ascii wide_text`; `cargo nextest run -p merman-ascii cjk`; `cargo nextest run -p merman-ascii` | `FLOWCHART_SUPPORT.md`, `SEQUENCE_SUPPORT.md`, `V1_MERMAID_ASCII_COVERAGE.md`, `ASCII_REFERENCE_COMPARISON.md` |
 | A-STYLE-010 | Background/fill style semantics for ANSI/HTML output. | `color`, `canvas`, `text::StyledLine`, shared CSS color parsing, graph/state/sequence adapters | Flowchart, state, and sequence node/group/box/rect backgrounds now flow through the renderer while preserving plain output. Remaining work is limited to broader CSS color forms that terminals cannot represent faithfully, especially alpha blending. | `cargo nextest run -p merman-ascii color`; `cargo nextest run -p merman-ascii flowchart sequence state` | ADR 0067; `FLOWCHART_SUPPORT.md`, `SEQUENCE_SUPPORT.md`, `STATE_SUPPORT.md`; 2026-06-23 sequence background closeout |
 | A-GRAPH-010 | Flowchart subgraph direction overrides. | `graph::layout`, `graph::routing`, `graph::draw` | Shipped subset now covers nested local-direction overrides for the exercised flowchart combinations, including the current boundary-aware cross-boundary cases. Keep adding explicit cases only when a concrete Mermaid/parser example proves a remaining gap. | `cargo nextest run -p merman-ascii flowchart`; `cargo nextest run -p merman-ascii graph_fixture` | `FLOWCHART_SUPPORT.md`; 2026-06-24 nested override closeout |
 | A-GRAPH-020 | Additional uncommon flowchart shapes, icons, images, Markdown/HTML labels, links, and callbacks. | `graph::model`, `graph::label`, `graph::draw`, `graph::from_flowchart_model` | Split by feature family; reject browser-only semantics that cannot be represented in text. | `cargo nextest run -p merman-ascii flowchart`; feature-specific parser/model tests | `FLOWCHART_SUPPORT.md` |

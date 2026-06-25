@@ -103,6 +103,21 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
 }
 
+fn assert_rectangular_char_grid(rendered: &str) {
+    let mut lines = rendered.lines();
+    let Some(first) = lines.next() else {
+        return;
+    };
+    let width = first.chars().count();
+    for line in lines {
+        assert_eq!(
+            line.chars().count(),
+            width,
+            "rendered lines should stay aligned:\n{rendered}"
+        );
+    }
+}
+
 #[test]
 fn flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
@@ -430,6 +445,36 @@ fn flowchart_parser_rl_cjk_node_labels_reserve_display_cells() {
             "+-----+     +-----+\n",
         )
     );
+}
+
+#[test]
+fn flowchart_parser_multibyte_reference_labels_render_readably() {
+    let cases = [
+        (
+            "graph LR\nA[Café]-->|résumé|B[Über]",
+            ["Café", "résumé", "Über"],
+        ),
+        (
+            "graph LR\nA[Γειά]-->|ετικέτα|B[Κόσμος]",
+            ["Γειά", "ετικέτα", "Κόσμος"],
+        ),
+        (
+            "graph LR\nA[Привет]-->|метка|B[Мир]",
+            ["Привет", "метка", "Мир"],
+        ),
+    ];
+
+    for (input, expected_labels) in cases {
+        let rendered = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+
+        for label in expected_labels {
+            assert!(
+                rendered.contains(label),
+                "missing {label:?} in rendered fixture:\n{rendered}"
+            );
+        }
+        assert_rectangular_char_grid(&rendered);
+    }
 }
 
 #[test]

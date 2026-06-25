@@ -37,6 +37,11 @@ Summary:
 - Sequence copied fixture parity: 17 / 17.
 - Named copied fixture gaps: none.
 
+The upstream `cmd/testdata/multibyte` group is intentionally outside the byte-level v1 oracle.
+Those examples use accented Latin, Greek, and Cyrillic labels. `merman-ascii` renders them readably,
+but its LR edge-label spacing is terminal-native and not byte-identical to `mermaid-ascii`'s current
+goldens. Semantic coverage lives in `flowchart_parser_multibyte_reference_labels_render_readably`.
+
 ## V1 Gate
 
 Run the focused v1 compatibility gate with:

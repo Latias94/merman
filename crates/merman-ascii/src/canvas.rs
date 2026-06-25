@@ -27,7 +27,7 @@ impl Canvas {
     }
 
     pub(crate) fn set(&mut self, x: usize, y: usize, ch: char) {
-        if let Some(index) = self.index(x, y) {
+        if let Some(index) = self.index_for_char(x, y, ch) {
             let style = self.cells[index].raw_style().with_foreground(None);
             write_primary_cell_style(&mut self.cells, index, ch, style);
         }
@@ -42,14 +42,14 @@ impl Canvas {
     }
 
     pub(crate) fn set_canvas_color(&mut self, x: usize, y: usize, ch: char, color: CanvasColor) {
-        if let Some(index) = self.index(x, y) {
+        if let Some(index) = self.index_for_char(x, y, ch) {
             let style = self.cells[index].raw_style().with_foreground(Some(color));
             write_primary_cell_style(&mut self.cells, index, ch, style);
         }
     }
 
     pub(crate) fn set_style(&mut self, x: usize, y: usize, ch: char, style: CanvasStyle) {
-        if let Some(index) = self.index(x, y) {
+        if let Some(index) = self.index_for_char(x, y, ch) {
             write_primary_cell_style(&mut self.cells, index, ch, style);
         }
     }
@@ -168,6 +168,13 @@ impl Canvas {
             return None;
         }
         Some(y * self.width + x)
+    }
+
+    fn index_for_char(&self, x: usize, y: usize, ch: char) -> Option<usize> {
+        if x.saturating_add(char_display_width(ch)) > self.width {
+            return None;
+        }
+        self.index(x, y)
     }
 
     fn finish_ansi(self, theme: AsciiColorTheme, mode: AsciiColorMode, trim: bool) -> String {
@@ -461,6 +468,37 @@ mod tests {
         assert_eq!(canvas.get(1, 0), None);
         assert_eq!(canvas.get(2, 0), Some('A'));
         assert_eq!(canvas.finish(), "中A \n");
+    }
+
+    #[test]
+    fn wide_text_does_not_cross_canvas_row_boundary() {
+        let mut canvas = Canvas::new(2, 2);
+        canvas.set(1, 0, '中');
+        canvas.set(0, 1, 'B');
+
+        assert_eq!(canvas.get(1, 0), Some(' '));
+        assert_eq!(canvas.get(0, 1), Some('B'));
+        assert_eq!(canvas.finish(), "  \nB \n");
+    }
+
+    #[test]
+    fn styled_wide_text_does_not_cross_canvas_row_boundary() {
+        let mut canvas = Canvas::new(2, 2);
+        canvas.set_style(
+            1,
+            0,
+            '中',
+            CanvasStyle::foreground(CanvasColor::Role(AsciiColorRole::Text)),
+        );
+        canvas.set_role(0, 1, 'B', AsciiColorRole::EdgeLine);
+
+        assert_eq!(canvas.get(1, 0), Some(' '));
+        assert_eq!(canvas.get(0, 1), Some('B'));
+        assert_eq!(
+            canvas.get_color(0, 1),
+            Some(CanvasColor::Role(AsciiColorRole::EdgeLine))
+        );
+        assert_eq!(canvas.finish(), "  \nB \n");
     }
 
     #[test]
