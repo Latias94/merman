@@ -11,15 +11,15 @@ use super::route::{
 use crate::canvas::Canvas;
 
 #[derive(Debug, Clone)]
-pub(crate) struct LayeredRelationScene<'boxes, 'edges> {
+pub(crate) struct LayeredRelationScene<'boxes> {
     plan: LayeredRelationPlan<'boxes>,
-    edges: Vec<LayeredRelationEdge<'edges>>,
+    edges: Vec<LayeredRelationEdge>,
     draw_order: Vec<(usize, isize)>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum LayeredRelationScenePlan<'boxes, 'edges> {
-    Routed(LayeredRelationScene<'boxes, 'edges>),
+pub(crate) enum LayeredRelationScenePlan<'boxes> {
+    Routed(LayeredRelationScene<'boxes>),
     Summary(LayeredRelationSummaryReason),
 }
 
@@ -29,10 +29,10 @@ pub(crate) enum LayeredRelationSummaryReason {
     GridBudget { actual: usize, limit: usize },
 }
 
-impl<'boxes, 'edges> LayeredRelationScene<'boxes, 'edges> {
+impl<'boxes> LayeredRelationScene<'boxes> {
     pub(crate) fn new(
         boxes: &'boxes [RelationGraphBox],
-        edges: Vec<LayeredRelationEdge<'edges>>,
+        edges: Vec<LayeredRelationEdge>,
         horizontal_gap: usize,
     ) -> std::result::Result<Self, LayeredRelationError> {
         let plan = plan_layered_relation_boxes(boxes, &edges, horizontal_gap)?;
@@ -119,12 +119,12 @@ impl<'boxes, 'edges> LayeredRelationScene<'boxes, 'edges> {
     }
 }
 
-pub(crate) fn plan_layered_relation_scene<'boxes, 'edges>(
+pub(crate) fn plan_layered_relation_scene<'boxes>(
     boxes: &'boxes [RelationGraphBox],
-    edges: Vec<LayeredRelationEdge<'edges>>,
+    edges: Vec<LayeredRelationEdge>,
     horizontal_gap: usize,
     max_grid_cells: usize,
-) -> std::result::Result<LayeredRelationScenePlan<'boxes, 'edges>, LayeredRelationError> {
+) -> std::result::Result<LayeredRelationScenePlan<'boxes>, LayeredRelationError> {
     let scene = match LayeredRelationScene::new(boxes, edges, horizontal_gap) {
         Ok(scene) => scene,
         Err(LayeredRelationError::Crossing) => {

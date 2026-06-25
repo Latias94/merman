@@ -2,6 +2,7 @@ use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::options::AsciiRenderOptions;
 use crate::text::{StyledLine, display_width, split_label_lines};
+use crate::{AsciiError, Result};
 mod layered;
 mod summary;
 
@@ -359,6 +360,140 @@ pub(crate) fn render_stacked_boxes_with_section(
     }
 
     render_lines_with_options(&lines, options)
+}
+
+pub(crate) fn render_relation_components<R>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    edges: Vec<LayeredRelationEdge>,
+    options: &AsciiRenderOptions,
+    layered_error: impl Fn(LayeredRelationError) -> AsciiError,
+    is_same_endpoint_parallel: impl Fn(&[R]) -> bool,
+    should_summary_fallback: impl Fn(&[R]) -> bool,
+    render_vertical: impl Fn(&[RelationGraphBox], &R, &AsciiRenderOptions) -> Result<String>,
+    render_parallel: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+    render_summary: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+    render_layered: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+) -> Result<String>
+where
+    R: Clone,
+{
+    let components = relation_components(boxes, &edges).map_err(layered_error)?;
+    if components.len() == 1 {
+        return render_relation_component(
+            boxes,
+            relations,
+            options,
+            &is_same_endpoint_parallel,
+            &should_summary_fallback,
+            &render_vertical,
+            &render_parallel,
+            &render_summary,
+            &render_layered,
+        );
+    }
+
+    let mut rendered = Vec::new();
+    for component in components {
+        let component_boxes = component
+            .boxes()
+            .iter()
+            .map(|relation_box| (*relation_box).clone())
+            .collect::<Vec<_>>();
+        let component_relations = component
+            .edge_indices()
+            .iter()
+            .map(|index| relations[*index].clone())
+            .collect::<Vec<_>>();
+        rendered.push(render_relation_component(
+            &component_boxes,
+            &component_relations,
+            options,
+            &is_same_endpoint_parallel,
+            &should_summary_fallback,
+            &render_vertical,
+            &render_parallel,
+            &render_summary,
+            &render_layered,
+        )?);
+    }
+
+    Ok(rendered.join("\n"))
+}
+
+fn render_relation_component<R>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    is_same_endpoint_parallel: &impl Fn(&[R]) -> bool,
+    should_summary_fallback: &impl Fn(&[R]) -> bool,
+    render_vertical: &impl Fn(&[RelationGraphBox], &R, &AsciiRenderOptions) -> Result<String>,
+    render_parallel: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+    render_summary: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+    render_layered: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+) -> Result<String> {
+    if relations.is_empty() {
+        return Ok(render_stacked_boxes_with_options(boxes, options));
+    }
+    if is_same_endpoint_parallel(relations) {
+        return render_parallel(boxes, relations, options);
+    }
+    if relations.len() == 1 {
+        return render_vertical(boxes, &relations[0], options);
+    }
+    if should_summary_fallback(relations) {
+        return render_summary(boxes, relations, options);
+    }
+
+    render_layered(boxes, relations, options)
+}
+
+pub(crate) fn render_layered_relation_component<R>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    horizontal_gap: usize,
+    max_grid_cells: usize,
+    build_edges: impl Fn(&R) -> LayeredRelationEdge,
+    build_summary_row: impl Fn(&R) -> Result<RelationGraphSummaryRow>,
+    draw_edge: impl for<'boxes> Fn(
+        &LayeredRelationScene<'boxes>,
+        &mut Canvas,
+        usize,
+        &R,
+        isize,
+    ) -> Result<()>,
+    layered_error: impl Fn(LayeredRelationError) -> AsciiError,
+) -> Result<String> {
+    let edges = relations.iter().map(build_edges).collect::<Vec<_>>();
+    let scene = match plan_layered_relation_scene(boxes, edges, horizontal_gap, max_grid_cells)
+        .map_err(layered_error)?
+    {
+        LayeredRelationScenePlan::Routed(scene) => scene,
+        LayeredRelationScenePlan::Summary(reason) => {
+            let _ = reason;
+            let rows = relations
+                .iter()
+                .map(build_summary_row)
+                .collect::<Result<Vec<_>>>()?;
+            return Ok(render_stacked_boxes_with_relation_summary(
+                boxes, &rows, options,
+            ));
+        }
+    };
+
+    let mut canvas = scene.canvas_with_boxes();
+    for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
+        draw_edge(
+            &scene,
+            &mut canvas,
+            edge_index,
+            &relations[edge_index],
+            lane_offset,
+        )?;
+    }
+
+    Ok(canvas.finish_trimmed_with_options(options))
 }
 
 pub(crate) fn find_box<'a>(

@@ -238,36 +238,6 @@ fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) 
         .and_then(|(_, local_id)| model.classes.contains_key(local_id).then_some(local_id))
 }
 
-fn render_class_component(
-    boxes: &[RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-) -> Result<String> {
-    if layouts.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            boxes, options,
-        ));
-    }
-    if is_same_endpoint_parallel_layout(layouts) {
-        return render_parallel_vertical_relations(boxes, layouts, options, charset);
-    }
-    if layouts.len() == 1 {
-        let layout = &layouts[0];
-        let top = find_box(boxes, layout.top_id)?;
-        let bottom = find_box(boxes, layout.bottom_id)?;
-
-        return Ok(render_vertical_relation(
-            top, bottom, layout, options, charset,
-        ));
-    }
-    if layouts.iter().any(RelationLayout::has_endpoint_label) {
-        return Ok(render_dense_relation_fallback(boxes, layouts, options));
-    }
-
-    render_layered_relations(boxes, layouts, options, charset)
-}
-
 fn render_class_components(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
@@ -275,33 +245,55 @@ fn render_class_components(
     charset: ClassCharset,
 ) -> Result<String> {
     let edges = layouts.iter().map(class_layered_edge).collect::<Vec<_>>();
-    let components =
-        relation_graph::relation_components(boxes, &edges).map_err(class_layered_error)?;
-    if components.len() == 1 {
-        return render_class_component(boxes, layouts, options, charset);
-    }
+    relation_graph::render_relation_components(
+        boxes,
+        layouts,
+        edges,
+        options,
+        class_layered_error,
+        is_same_endpoint_parallel_layout,
+        |component_layouts| {
+            component_layouts.len() > 1
+                && component_layouts
+                    .iter()
+                    .any(RelationLayout::has_endpoint_label)
+        },
+        |component_boxes, layout, component_options| {
+            let top = find_box(component_boxes, layout.top_id)?;
+            let bottom = find_box(component_boxes, layout.bottom_id)?;
 
-    let mut rendered = Vec::new();
-    for component in components {
-        let component_boxes = component
-            .boxes()
-            .iter()
-            .map(|relation_box| (*relation_box).clone())
-            .collect::<Vec<_>>();
-        let component_layouts = component
-            .edge_indices()
-            .iter()
-            .map(|index| layouts[*index].clone())
-            .collect::<Vec<_>>();
-        rendered.push(render_class_component(
-            &component_boxes,
-            &component_layouts,
-            options,
-            charset,
-        )?);
-    }
-
-    Ok(rendered.join("\n"))
+            Ok(render_vertical_relation(
+                top,
+                bottom,
+                layout,
+                component_options,
+                charset,
+            ))
+        },
+        |component_boxes, component_layouts, component_options| {
+            render_parallel_vertical_relations(
+                component_boxes,
+                component_layouts,
+                component_options,
+                charset,
+            )
+        },
+        |component_boxes, component_layouts, component_options| {
+            Ok(render_dense_relation_fallback(
+                component_boxes,
+                component_layouts,
+                component_options,
+            ))
+        },
+        |component_boxes, component_layouts, component_options| {
+            render_layered_relations(
+                component_boxes,
+                component_layouts,
+                component_options,
+                charset,
+            )
+        },
+    )
 }
 
 fn render_class_box(
@@ -874,36 +866,20 @@ fn render_layered_relations(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> Result<String> {
-    let edges = layouts.iter().map(class_layered_edge).collect::<Vec<_>>();
-    let scene = match relation_graph::plan_layered_relation_scene(
+    relation_graph::render_layered_relation_component(
         boxes,
-        edges,
+        layouts,
+        options,
         CLASS_LEVEL_HORIZONTAL_GAP,
         options.max_grid_cells,
+        class_layered_edge,
+        |layout| Ok(class_relation_summary_row(layout)),
+        |scene, canvas, edge_index, layout, lane_offset| {
+            draw_layered_relation(scene, canvas, edge_index, layout, lane_offset, charset);
+            Ok(())
+        },
+        class_layered_error,
     )
-    .map_err(class_layered_error)?
-    {
-        relation_graph::LayeredRelationScenePlan::Routed(scene) => scene,
-        relation_graph::LayeredRelationScenePlan::Summary(reason) => {
-            let _ = reason;
-            return Ok(render_dense_relation_fallback(boxes, layouts, options));
-        }
-    };
-
-    let mut canvas = scene.canvas_with_boxes();
-    for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
-        let layout = &layouts[edge_index];
-        draw_layered_relation(
-            &scene,
-            &mut canvas,
-            edge_index,
-            layout,
-            lane_offset,
-            charset,
-        );
-    }
-
-    Ok(canvas.finish_trimmed_with_options(options))
 }
 
 fn render_dense_relation_fallback(
@@ -990,7 +966,7 @@ fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {
     }
 }
 
-fn class_layered_edge<'a>(layout: &RelationLayout<'a>) -> LayeredRelationEdge<'a> {
+fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
     let label = layout.label.as_ref();
     LayeredRelationEdge::new(
         layout.top_id,
@@ -1013,7 +989,7 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
 }
 
 fn draw_layered_relation(
-    scene: &LayeredRelationScene<'_, '_>,
+    scene: &LayeredRelationScene<'_>,
     canvas: &mut Canvas,
     edge_index: usize,
     layout: &RelationLayout<'_>,
