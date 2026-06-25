@@ -15,19 +15,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-fn resolve_compare_root(raw: Option<PathBuf>, default: PathBuf) -> PathBuf {
-    let Some(raw) = raw else {
-        return default;
-    };
-    if raw.is_absolute() {
-        return raw;
-    }
-    if raw.as_os_str().is_empty() {
-        return default;
-    }
-    crate::cmd::workspace_root().join(raw)
-}
-
 pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut fixtures_root_arg: Option<PathBuf> = None;
@@ -137,11 +124,16 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         ));
     }
 
-    let compare_paths = crate::cmd::compare_diagram_paths("flowchart", out_path);
-    let fixtures_dir = resolve_compare_root(fixtures_root_arg, compare_paths.fixtures_dir);
-    let upstream_dir = resolve_compare_root(upstream_root_arg, compare_paths.upstream_dir);
-    let out_path = compare_paths.out_path;
-    let out_svg_dir = compare_paths.out_svg_dir;
+    let compare_paths = crate::cmd::compare_diagram_paths_with_roots(
+        "flowchart",
+        out_path,
+        fixtures_root_arg,
+        upstream_root_arg,
+    );
+    let fixtures_dir = compare_paths.fixtures_dir.clone();
+    let upstream_dir = compare_paths.upstream_dir.clone();
+    let out_path = compare_paths.out_path.clone();
+    let out_svg_dir = compare_paths.out_svg_dir.clone();
     let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
 
     if mmd_files.is_empty() {
