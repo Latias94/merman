@@ -88,11 +88,11 @@ pub(crate) struct LayeredRelationRouteGeometry {
 }
 
 impl LayeredRelationRouteGeometry {
-    pub(crate) fn from_x(&self) -> usize {
+    pub(crate) fn source_x(&self) -> usize {
         self.from_x
     }
 
-    pub(crate) fn to_x(&self) -> usize {
+    pub(crate) fn target_x(&self) -> usize {
         self.to_x
     }
 

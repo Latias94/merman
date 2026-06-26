@@ -3,6 +3,7 @@ use merman_ascii::{
 };
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
+use unicode_width::UnicodeWidthStr;
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -119,10 +120,7 @@ fn assert_rectangular_char_grid(rendered: &str) {
 }
 
 fn terminal_test_width(input: &str) -> usize {
-    input
-        .chars()
-        .map(|ch| if ch.is_ascii() { 1 } else { 2 })
-        .sum()
+    UnicodeWidthStr::width(input)
 }
 
 fn assert_rectangular_terminal_grid(rendered: &str) {

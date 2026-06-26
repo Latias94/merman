@@ -186,14 +186,14 @@ fn stack_divider_sections(graph: &AsciiGraph, placements: &mut [GridCoord]) {
                 continue;
             };
 
-            if let Some(desired_top) = next_top {
-                if bounds.y < desired_top {
-                    shift_member_indices_y(
-                        placements,
-                        &member_indices,
-                        (desired_top - bounds.y) as usize,
-                    );
-                }
+            if let Some(desired_top) = next_top
+                && bounds.y < desired_top
+            {
+                shift_member_indices_y(
+                    placements,
+                    &member_indices,
+                    (desired_top - bounds.y) as usize,
+                );
             }
 
             let Some(updated_bounds) = member_grid_bounds(&member_indices, placements) else {
@@ -573,17 +573,22 @@ fn place_group_nodes(
         visit_order.push(*root_index);
     }
 
-    process_group_visit_order(
-        graph,
-        &member_ids,
-        &index_by_id,
-        direction,
-        &mut placements,
-        &mut occupied,
-        &mut highest_position_per_level,
-        &mut visit_order,
-        &mut cursor,
-    );
+    {
+        let mut visit_state = GroupVisitState {
+            placements: &mut placements,
+            occupied: &mut occupied,
+            highest_position_per_level: &mut highest_position_per_level,
+            visit_order: &mut visit_order,
+            cursor: &mut cursor,
+        };
+        process_group_visit_order(
+            graph,
+            &member_ids,
+            &index_by_id,
+            direction,
+            &mut visit_state,
+        );
+    }
 
     let remaining_members = member_indices
         .iter()
@@ -602,20 +607,31 @@ fn place_group_nodes(
             );
             visit_order.push(node_index);
         }
+        let mut visit_state = GroupVisitState {
+            placements: &mut placements,
+            occupied: &mut occupied,
+            highest_position_per_level: &mut highest_position_per_level,
+            visit_order: &mut visit_order,
+            cursor: &mut cursor,
+        };
         process_group_visit_order(
             graph,
             &member_ids,
             &index_by_id,
             direction,
-            &mut placements,
-            &mut occupied,
-            &mut highest_position_per_level,
-            &mut visit_order,
-            &mut cursor,
+            &mut visit_state,
         );
     }
 
     placements
+}
+
+struct GroupVisitState<'a> {
+    placements: &'a mut HashMap<usize, GridCoord>,
+    occupied: &'a mut HashSet<(usize, usize)>,
+    highest_position_per_level: &'a mut BTreeMap<usize, usize>,
+    visit_order: &'a mut Vec<usize>,
+    cursor: &'a mut usize,
 }
 
 fn process_group_visit_order<'a>(
@@ -623,17 +639,13 @@ fn process_group_visit_order<'a>(
     member_ids: &HashSet<&'a str>,
     index_by_id: &HashMap<&'a str, usize>,
     direction: GraphDirection,
-    placements: &mut HashMap<usize, GridCoord>,
-    occupied: &mut HashSet<(usize, usize)>,
-    highest_position_per_level: &mut BTreeMap<usize, usize>,
-    visit_order: &mut Vec<usize>,
-    cursor: &mut usize,
+    state: &mut GroupVisitState<'_>,
 ) {
-    while *cursor < visit_order.len() {
-        let node_index = visit_order[*cursor];
-        *cursor += 1;
+    while *state.cursor < state.visit_order.len() {
+        let node_index = state.visit_order[*state.cursor];
+        *state.cursor += 1;
 
-        let Some(parent_coord) = placements.get(&node_index).copied() else {
+        let Some(parent_coord) = state.placements.get(&node_index).copied() else {
             continue;
         };
         let child_level = match direction {
@@ -649,18 +661,18 @@ fn process_group_visit_order<'a>(
             })
             .filter_map(|edge| index_by_id.get(edge.to.as_str()).copied())
         {
-            if placements.contains_key(&child_index) {
+            if state.placements.contains_key(&child_index) {
                 continue;
             }
             place_group_node(
                 child_index,
                 child_level,
                 direction,
-                placements,
-                occupied,
-                highest_position_per_level,
+                state.placements,
+                state.occupied,
+                state.highest_position_per_level,
             );
-            visit_order.push(child_index);
+            state.visit_order.push(child_index);
         }
     }
 }

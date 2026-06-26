@@ -555,21 +555,21 @@ fn draw_layered_relationship(
     scene.draw_edge(canvas, edge_index, lane_offset, style, |geometry| {
         let mut overlays = Vec::new();
         overlays.push(RelationOverlay::text(
-            geometry.from_x(),
+            geometry.source_x(),
             geometry.source_marker_y(),
             top_cardinality.to_string(),
             AsciiColorRole::EdgeArrow,
         ));
         if let Some(label) = label.as_ref() {
             overlays.push(RelationOverlay::label(
-                (geometry.from_x() + geometry.to_x()) / 2,
+                (geometry.source_x() + geometry.target_x()) / 2,
                 geometry.label_y_after_source(),
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));
         }
         overlays.push(RelationOverlay::text(
-            geometry.to_x(),
+            geometry.target_x(),
             geometry.target_marker_y(),
             bottom_cardinality.to_string(),
             AsciiColorRole::EdgeArrow,

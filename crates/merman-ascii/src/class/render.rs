@@ -1009,7 +1009,7 @@ fn draw_layered_relation(
         let mut overlays = Vec::new();
         if let Some(label) = layout.label.as_ref() {
             overlays.push(RelationOverlay::label(
-                (geometry.from_x() + geometry.to_x()) / 2,
+                (geometry.source_x() + geometry.target_x()) / 2,
                 geometry.label_y_after_source(),
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
@@ -1019,13 +1019,13 @@ fn draw_layered_relation(
         if let Some(endpoint_marker) = layout.endpoint_marker {
             match endpoint_marker.side {
                 MarkerSide::Top => overlays.push(RelationOverlay::glyph(
-                    geometry.from_x(),
+                    geometry.source_x(),
                     geometry.source_marker_y(),
                     marker_char(endpoint_marker.marker, MarkerSide::Top, charset),
                     AsciiColorRole::EdgeArrow,
                 )),
                 MarkerSide::Bottom => overlays.push(RelationOverlay::glyph(
-                    geometry.to_x(),
+                    geometry.target_x(),
                     geometry.target_marker_y(),
                     marker_char(endpoint_marker.marker, MarkerSide::Bottom, charset),
                     AsciiColorRole::EdgeArrow,

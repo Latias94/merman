@@ -26,11 +26,11 @@ impl LayeredRelationEdge {
         }
     }
 
-    pub(crate) fn from_id(&self) -> &str {
+    pub(crate) fn source_id(&self) -> &str {
         self.from_id.as_str()
     }
 
-    pub(crate) fn to_id(&self) -> &str {
+    pub(crate) fn target_id(&self) -> &str {
         self.to_id.as_str()
     }
 }
@@ -142,12 +142,14 @@ pub(crate) fn relation_components<'a>(
     // disjoint adjacent-layer crossings; only truly isolated boxes become standalone components.
     let mut incident_ids = HashSet::new();
     for edge in edges {
-        if find_box(boxes, edge.from_id()).is_none() || find_box(boxes, edge.to_id()).is_none() {
+        if find_box(boxes, edge.source_id()).is_none()
+            || find_box(boxes, edge.target_id()).is_none()
+        {
             return Err(LayeredRelationError::MissingEndpoint);
         }
 
-        incident_ids.insert(edge.from_id());
-        incident_ids.insert(edge.to_id());
+        incident_ids.insert(edge.source_id());
+        incident_ids.insert(edge.target_id());
     }
 
     let mut components = Vec::new();
@@ -198,16 +200,18 @@ fn layered_relation_levels(
     let mut outgoing = HashMap::<String, Vec<String>>::new();
 
     for edge in edges {
-        if find_box(boxes, edge.from_id()).is_none() || find_box(boxes, edge.to_id()).is_none() {
+        if find_box(boxes, edge.source_id()).is_none()
+            || find_box(boxes, edge.target_id()).is_none()
+        {
             return Err(LayeredRelationError::MissingEndpoint);
         }
 
-        incident.insert(edge.from_id().to_string());
-        incident.insert(edge.to_id().to_string());
+        incident.insert(edge.source_id().to_string());
+        incident.insert(edge.target_id().to_string());
         outgoing
-            .entry(edge.from_id().to_string())
+            .entry(edge.source_id().to_string())
             .or_default()
-            .push(edge.to_id().to_string());
+            .push(edge.target_id().to_string());
     }
 
     if incident.len() != boxes.len() {
@@ -260,19 +264,19 @@ fn reject_crossing_layered_relations(
     }
 
     for (left_index, left) in edges.iter().enumerate() {
-        let left_from_level = levels.get(left.from_id()).copied().unwrap_or(0);
-        let left_to_level = levels.get(left.to_id()).copied().unwrap_or(0);
+        let left_from_level = levels.get(left.source_id()).copied().unwrap_or(0);
+        let left_to_level = levels.get(left.target_id()).copied().unwrap_or(0);
         for right in edges.iter().skip(left_index + 1) {
-            if levels.get(right.from_id()).copied().unwrap_or(0) != left_from_level
-                || levels.get(right.to_id()).copied().unwrap_or(0) != left_to_level
+            if levels.get(right.source_id()).copied().unwrap_or(0) != left_from_level
+                || levels.get(right.target_id()).copied().unwrap_or(0) != left_to_level
             {
                 continue;
             }
 
-            let left_from_order = order_by_id.get(left.from_id()).copied().unwrap_or(0);
-            let left_to_order = order_by_id.get(left.to_id()).copied().unwrap_or(0);
-            let right_from_order = order_by_id.get(right.from_id()).copied().unwrap_or(0);
-            let right_to_order = order_by_id.get(right.to_id()).copied().unwrap_or(0);
+            let left_from_order = order_by_id.get(left.source_id()).copied().unwrap_or(0);
+            let left_to_order = order_by_id.get(left.target_id()).copied().unwrap_or(0);
+            let right_from_order = order_by_id.get(right.source_id()).copied().unwrap_or(0);
+            let right_to_order = order_by_id.get(right.target_id()).copied().unwrap_or(0);
 
             let crosses_left_to_right =
                 left_from_order < right_from_order && left_to_order > right_to_order;
@@ -316,10 +320,10 @@ fn ordered_layered_groups<'a>(
             let parent_order = edges
                 .iter()
                 .filter(|edge| {
-                    edge.to_id() == relation_box.id()
-                        && levels.get(edge.from_id()).copied() == Some(level - 1)
+                    edge.target_id() == relation_box.id()
+                        && levels.get(edge.source_id()).copied() == Some(level - 1)
                 })
-                .filter_map(|edge| previous_order.get(edge.from_id()).copied())
+                .filter_map(|edge| previous_order.get(edge.source_id()).copied())
                 .min()
                 .unwrap_or(usize::MAX);
             let original_order = original_order
@@ -365,8 +369,12 @@ fn place_layered_boxes<'a>(
         .max(max_label_half_width.saturating_mul(2).saturating_add(1))
         .saturating_add(spanning_lane_margin(level_groups, edges, levels).saturating_mul(2))
         .saturating_add(
-            parallel_lane_margin(edges.iter().map(|edge| (edge.from_id(), edge.to_id())))
-                .saturating_mul(2),
+            parallel_lane_margin(
+                edges
+                    .iter()
+                    .map(|edge| (edge.source_id(), edge.target_id())),
+            )
+            .saturating_mul(2),
         );
     let global_center = content_width / 2;
 
@@ -405,8 +413,8 @@ fn spanning_lane_margin(
     levels: &HashMap<String, usize>,
 ) -> usize {
     let has_spanning_edge = edges.iter().any(|edge| {
-        let from_level = levels.get(edge.from_id()).copied().unwrap_or(0);
-        let to_level = levels.get(edge.to_id()).copied().unwrap_or(0);
+        let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
+        let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
         from_level.abs_diff(to_level) > 1
     });
     if !has_spanning_edge {
@@ -445,8 +453,8 @@ fn relation_edge_crosses_level_gap(
     levels: &HashMap<String, usize>,
     level: usize,
 ) -> bool {
-    let from_level = levels.get(edge.from_id()).copied().unwrap_or(0);
-    let to_level = levels.get(edge.to_id()).copied().unwrap_or(0);
+    let from_level = levels.get(edge.source_id()).copied().unwrap_or(0);
+    let to_level = levels.get(edge.target_id()).copied().unwrap_or(0);
     let min_level = from_level.min(to_level);
     let max_level = from_level.max(to_level);
 

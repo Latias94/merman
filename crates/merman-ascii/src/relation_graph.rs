@@ -362,6 +362,8 @@ pub(crate) fn render_stacked_boxes_with_section(
     render_lines_with_options(&lines, options)
 }
 
+// Family adapters provide independent strategies at this seam, so the parameter list is intentional.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_relation_components<R>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -421,6 +423,7 @@ where
     Ok(rendered.join("\n"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_relation_component<R>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -448,6 +451,8 @@ fn render_relation_component<R>(
     render_layered(boxes, relations, options)
 }
 
+// Family adapters provide independent strategies at this seam, so the parameter list is intentional.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_layered_relation_component<R>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -951,19 +956,19 @@ mod tests {
             RelationLineChars::new(['-', '|', '.', ':'], '+'),
             vec![
                 RelationOverlay::text(
-                    geometry.from_x(),
+                    geometry.source_x(),
                     geometry.source_marker_y(),
                     "T".to_string(),
                     AsciiColorRole::EdgeArrow,
                 ),
                 RelationOverlay::text(
-                    (geometry.from_x() + geometry.to_x()) / 2,
+                    (geometry.source_x() + geometry.target_x()) / 2,
                     geometry.route_y().saturating_sub(1),
                     "L".to_string(),
                     AsciiColorRole::EdgeLabel,
                 ),
                 RelationOverlay::text(
-                    geometry.to_x(),
+                    geometry.target_x(),
                     geometry.target_marker_y(),
                     "B".to_string(),
                     AsciiColorRole::EdgeArrow,
@@ -1060,8 +1065,8 @@ mod tests {
             LayeredRelationRouteProfile::new(1, 1, 1, 0),
         ));
 
-        assert_eq!(geometry.from_x(), 7);
-        assert_eq!(geometry.to_x(), 7);
+        assert_eq!(geometry.source_x(), 7);
+        assert_eq!(geometry.target_x(), 7);
         assert_eq!(geometry.route_y(), 9);
     }
 }

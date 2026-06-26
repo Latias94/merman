@@ -36,8 +36,11 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         horizontal_gap: usize,
     ) -> std::result::Result<Self, LayeredRelationError> {
         let plan = plan_layered_relation_boxes(boxes, &edges, horizontal_gap)?;
-        let lane_offsets =
-            parallel_relation_lane_offsets(edges.iter().map(|edge| (edge.from_id(), edge.to_id())));
+        let lane_offsets = parallel_relation_lane_offsets(
+            edges
+                .iter()
+                .map(|edge| (edge.source_id(), edge.target_id())),
+        );
         let mut draw_order = lane_offsets.into_iter().enumerate().collect::<Vec<_>>();
         draw_order.sort_by_key(|(index, lane_offset)| (lane_offset.unsigned_abs(), *index));
 
@@ -109,12 +112,12 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             .plan
             .placed_boxes()
             .iter()
-            .find(|placed_box| placed_box.id() == edge.from_id())?;
+            .find(|placed_box| placed_box.id() == edge.source_id())?;
         let bottom = self
             .plan
             .placed_boxes()
             .iter()
-            .find(|placed_box| placed_box.id() == edge.to_id())?;
+            .find(|placed_box| placed_box.id() == edge.target_id())?;
         Some((top, bottom))
     }
 }
