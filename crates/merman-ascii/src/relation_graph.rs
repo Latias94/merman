@@ -82,6 +82,60 @@ pub(crate) enum RelationComponentSummaryReason {
     MultiRelationEndpointLabels,
 }
 
+pub(crate) trait RelationComponentAdapter<R> {
+    fn build_edges(&self, relation: &R) -> LayeredRelationEdge;
+
+    fn is_same_endpoint_parallel(&self, relations: &[R]) -> bool;
+
+    fn summary_policy(&self) -> RelationComponentSummaryPolicy;
+
+    fn layered_horizontal_gap(&self) -> usize;
+
+    fn relation_facts(&self, relation: &R) -> RelationComponentFacts {
+        let _ = relation;
+        RelationComponentFacts::default()
+    }
+
+    fn render_vertical(
+        &self,
+        boxes: &[RelationGraphBox],
+        relation: &R,
+        options: &AsciiRenderOptions,
+    ) -> Result<String>;
+
+    fn render_parallel(
+        &self,
+        boxes: &[RelationGraphBox],
+        relations: &[R],
+        options: &AsciiRenderOptions,
+    ) -> Result<String>;
+
+    fn render_summary(
+        &self,
+        boxes: &[RelationGraphBox],
+        relations: &[R],
+        reason: RelationComponentSummaryReason,
+        options: &AsciiRenderOptions,
+    ) -> Result<String>;
+
+    fn build_summary_row(
+        &self,
+        relation: &R,
+        reason: LayeredRelationSummaryReason,
+    ) -> Result<RelationGraphSummaryRow>;
+
+    fn draw_layered_edge<'boxes>(
+        &self,
+        scene: &LayeredRelationScene<'boxes>,
+        canvas: &mut Canvas,
+        edge_index: usize,
+        relation: &R,
+        lane_offset: isize,
+    ) -> Result<()>;
+
+    fn layered_error(&self, error: LayeredRelationError) -> AsciiError;
+}
+
 impl RelationGraphLabel {
     pub(crate) fn new(raw: &str) -> Option<Self> {
         let trimmed = raw.trim();
@@ -416,44 +470,24 @@ pub(crate) fn render_stacked_boxes_with_section(
     render_lines_with_options(&lines, options)
 }
 
-// Family adapters provide independent strategies at this seam, so the parameter list is intentional.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn render_relation_components<R>(
+pub(crate) fn render_relation_components<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
-    edges: Vec<LayeredRelationEdge>,
     options: &AsciiRenderOptions,
-    layered_error: impl Fn(LayeredRelationError) -> AsciiError,
-    is_same_endpoint_parallel: impl Fn(&[R]) -> bool,
-    summary_policy: RelationComponentSummaryPolicy,
-    relation_facts: impl Fn(&R) -> RelationComponentFacts,
-    render_vertical: impl Fn(&[RelationGraphBox], &R, &AsciiRenderOptions) -> Result<String>,
-    render_parallel: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
-    render_summary: impl Fn(
-        &[RelationGraphBox],
-        &[R],
-        RelationComponentSummaryReason,
-        &AsciiRenderOptions,
-    ) -> Result<String>,
-    render_layered: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+    adapter: &A,
 ) -> Result<String>
 where
+    A: RelationComponentAdapter<R>,
     R: Clone,
 {
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
+    let layered_error = |error| adapter.layered_error(error);
     let components = relation_components(boxes, &edges).map_err(layered_error)?;
     if components.len() == 1 {
-        return render_relation_component(
-            boxes,
-            relations,
-            options,
-            &is_same_endpoint_parallel,
-            summary_policy,
-            &relation_facts,
-            &render_vertical,
-            &render_parallel,
-            &render_summary,
-            &render_layered,
-        );
+        return render_relation_component(boxes, relations, options, adapter);
     }
 
     let mut rendered = Vec::new();
@@ -472,81 +506,70 @@ where
             &component_boxes,
             &component_relations,
             options,
-            &is_same_endpoint_parallel,
-            summary_policy,
-            &relation_facts,
-            &render_vertical,
-            &render_parallel,
-            &render_summary,
-            &render_layered,
+            adapter,
         )?);
     }
 
     Ok(rendered.join("\n"))
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render_relation_component<R>(
+fn render_relation_component<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
-    is_same_endpoint_parallel: &impl Fn(&[R]) -> bool,
-    summary_policy: RelationComponentSummaryPolicy,
-    relation_facts: &impl Fn(&R) -> RelationComponentFacts,
-    render_vertical: &impl Fn(&[RelationGraphBox], &R, &AsciiRenderOptions) -> Result<String>,
-    render_parallel: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
-    render_summary: &impl Fn(
-        &[RelationGraphBox],
-        &[R],
-        RelationComponentSummaryReason,
-        &AsciiRenderOptions,
-    ) -> Result<String>,
-    render_layered: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
-) -> Result<String> {
+    adapter: &A,
+) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let summary_policy = adapter.summary_policy();
+    let relation_facts = |relation: &R| adapter.relation_facts(relation);
     if relations.is_empty() {
         return Ok(render_stacked_boxes_with_options(boxes, options));
     }
-    if is_same_endpoint_parallel(relations) {
-        return render_parallel(boxes, relations, options);
+    if adapter.is_same_endpoint_parallel(relations) {
+        return adapter.render_parallel(boxes, relations, options);
     }
     if relations.len() == 1 {
-        return render_vertical(boxes, &relations[0], options);
+        return adapter.render_vertical(boxes, &relations[0], options);
     }
     if let Some(reason) = summary_policy.summary_reason_before_layering(relations, relation_facts) {
-        return render_summary(boxes, relations, reason, options);
+        return adapter.render_summary(boxes, relations, reason, options);
     }
 
-    render_layered(boxes, relations, options)
+    render_layered_relation_component(
+        boxes,
+        relations,
+        options,
+        adapter.layered_horizontal_gap(),
+        options.max_grid_cells,
+        adapter,
+    )
 }
 
-// Family adapters provide independent strategies at this seam, so the parameter list is intentional.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn render_layered_relation_component<R>(
+pub(crate) fn render_layered_relation_component<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
     horizontal_gap: usize,
     max_grid_cells: usize,
-    build_edges: impl Fn(&R) -> LayeredRelationEdge,
-    build_summary_row: impl Fn(&R, LayeredRelationSummaryReason) -> Result<RelationGraphSummaryRow>,
-    draw_edge: impl for<'boxes> Fn(
-        &LayeredRelationScene<'boxes>,
-        &mut Canvas,
-        usize,
-        &R,
-        isize,
-    ) -> Result<()>,
-    layered_error: impl Fn(LayeredRelationError) -> AsciiError,
-) -> Result<String> {
-    let edges = relations.iter().map(build_edges).collect::<Vec<_>>();
+    adapter: &A,
+) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
     let scene = match plan_layered_relation_scene(boxes, edges, horizontal_gap, max_grid_cells)
-        .map_err(layered_error)?
+        .map_err(|error| adapter.layered_error(error))?
     {
         LayeredRelationScenePlan::Routed(scene) => scene,
         LayeredRelationScenePlan::Summary(reason) => {
             let rows = relations
                 .iter()
-                .map(|relation| build_summary_row(relation, reason))
+                .map(|relation| adapter.build_summary_row(relation, reason))
                 .collect::<Result<Vec<_>>>()?;
             return Ok(render_stacked_boxes_with_relation_summary(
                 boxes, &rows, options,
@@ -556,7 +579,7 @@ pub(crate) fn render_layered_relation_component<R>(
 
     let mut canvas = scene.canvas_with_boxes();
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
-        draw_edge(
+        adapter.draw_layered_edge(
             &scene,
             &mut canvas,
             edge_index,
@@ -721,6 +744,87 @@ mod tests {
     use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
     use std::cell::Cell;
 
+    struct TestRelationAdapter {
+        summary_reason: Cell<Option<LayeredRelationSummaryReason>>,
+    }
+
+    impl RelationComponentAdapter<(&'static str, &'static str)> for TestRelationAdapter {
+        fn build_edges(&self, relation: &(&'static str, &'static str)) -> LayeredRelationEdge {
+            LayeredRelationEdge::new(relation.0, relation.1, 0, 0)
+        }
+
+        fn is_same_endpoint_parallel(&self, _relations: &[(&'static str, &'static str)]) -> bool {
+            false
+        }
+
+        fn summary_policy(&self) -> RelationComponentSummaryPolicy {
+            RelationComponentSummaryPolicy::never_before_layering()
+        }
+
+        fn layered_horizontal_gap(&self) -> usize {
+            1
+        }
+
+        fn render_vertical(
+            &self,
+            _boxes: &[RelationGraphBox],
+            _relation: &(&'static str, &'static str),
+            _options: &AsciiRenderOptions,
+        ) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn render_parallel(
+            &self,
+            _boxes: &[RelationGraphBox],
+            _relations: &[(&'static str, &'static str)],
+            _options: &AsciiRenderOptions,
+        ) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn render_summary(
+            &self,
+            _boxes: &[RelationGraphBox],
+            _relations: &[(&'static str, &'static str)],
+            _reason: RelationComponentSummaryReason,
+            _options: &AsciiRenderOptions,
+        ) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn build_summary_row(
+            &self,
+            _relation: &(&'static str, &'static str),
+            reason: LayeredRelationSummaryReason,
+        ) -> Result<RelationGraphSummaryRow> {
+            self.summary_reason.set(Some(reason));
+            Ok(RelationGraphSummaryRow::new("A", "-->", "B"))
+        }
+
+        fn draw_layered_edge<'boxes>(
+            &self,
+            _scene: &LayeredRelationScene<'boxes>,
+            _canvas: &mut Canvas,
+            _edge_index: usize,
+            _relation: &(&'static str, &'static str),
+            _lane_offset: isize,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
+            AsciiError::UnsupportedFeature {
+                diagram_type: "test",
+                feature: match error {
+                    LayeredRelationError::MissingEndpoint => "missing endpoint",
+                    LayeredRelationError::UnrelatedBoxes => "unrelated boxes",
+                    LayeredRelationError::Crossing => "crossing",
+                },
+            }
+        }
+    }
+
     #[test]
     fn render_stacked_boxes_preserves_plain_text() {
         let boxes = vec![
@@ -799,7 +903,9 @@ mod tests {
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
         ];
         let relations = vec![("a", "b")];
-        let seen_reason = Cell::new(None);
+        let adapter = TestRelationAdapter {
+            summary_reason: Cell::new(None),
+        };
 
         let rendered = render_layered_relation_component(
             &boxes,
@@ -807,25 +913,12 @@ mod tests {
             &AsciiRenderOptions::ascii(),
             1,
             1,
-            |(from, to)| LayeredRelationEdge::new(*from, *to, 0, 0),
-            |_, reason| {
-                seen_reason.set(Some(reason));
-                Ok(RelationGraphSummaryRow::new("A", "-->", "B"))
-            },
-            |_, _, _, _, _| Ok(()),
-            |error| AsciiError::UnsupportedFeature {
-                diagram_type: "test",
-                feature: match error {
-                    LayeredRelationError::MissingEndpoint => "missing endpoint",
-                    LayeredRelationError::UnrelatedBoxes => "unrelated boxes",
-                    LayeredRelationError::Crossing => "crossing",
-                },
-            },
+            &adapter,
         )
         .expect("summary fallback should render");
 
         assert_eq!(
-            seen_reason.get(),
+            adapter.summary_reason.get(),
             Some(LayeredRelationSummaryReason::GridBudget {
                 actual: 5,
                 limit: 1,

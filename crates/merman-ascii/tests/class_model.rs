@@ -502,24 +502,11 @@ fn class_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
 }
 
 #[test]
-fn class_parser_namespace_qualified_relationships_do_not_render_duplicate_classes() {
-    let rendered = render_class(
-        r#"classDiagram
-namespace Platform["Platform Layer"] {
-  namespace FFI {
-    class DartBinding
-    class PythonBinding
-  }
-  namespace Core {
-    class Renderer
-  }
-}
-Platform.FFI.DartBinding --> Platform.Core.Renderer : calls
-Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
-"#,
-        &AsciiRenderOptions::unicode(),
-    )
-    .expect("namespace-qualified class relationships should render");
+fn class_local_semantic_fixture_covers_namespace_qualified_relationships() {
+    let input = read_local_semantic_fixture("class/namespace_qualified_relationships.mmd");
+
+    let rendered = render_class(&input, &AsciiRenderOptions::unicode())
+        .expect("namespace-qualified class relationships should render");
 
     assert!(!rendered.contains("Platform.FFI.DartBinding"));
     assert!(!rendered.contains("Platform.FFI.PythonBinding"));
@@ -528,6 +515,10 @@ Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
     assert!(rendered.contains("PythonBinding"));
     assert!(rendered.contains("Renderer"));
     assert!(rendered.contains("calls"));
+    assert!(
+        rendered.lines().count() >= 4,
+        "namespace-qualified class fixture should produce a non-trivial multi-line layout:\n{rendered}"
+    );
 }
 
 #[test]
@@ -847,14 +838,12 @@ fn class_parser_endpoint_labels_are_preserved_in_relation_summary() {
 }
 
 #[test]
-fn class_parser_wide_members_and_summary_labels_preserve_relation_visibility() {
+fn class_local_semantic_fixture_covers_wide_members_and_summary_labels() {
+    let input = read_local_semantic_fixture("class/wide_members_and_summary_labels.mmd");
     let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
 
-    let rendered = render_class(
-        "classDiagram\nclass User {\n  +String 名称\n}\nclass Order {\n  +String 状态🚀\n}\nclass Audit\nUser --> Order : 创建🚀\nOrder --> Audit : 记录数据",
-        &options,
-    )
-    .expect("class diagram with wide member and relation labels should render");
+    let rendered = render_class(&input, &options)
+        .expect("class diagram with wide member and relation labels should render");
 
     for expected in [
         "User",
@@ -904,12 +893,10 @@ fn class_parser_lollipop_relation_renders_interface_node() {
 }
 
 #[test]
-fn class_parser_note_for_renders_dotted_link_to_class() {
-    let rendered = render_class(
-        "classDiagram\nclass Service\nnote for Service \"Handles<br>requests\"",
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("class diagram should render");
+fn class_local_semantic_fixture_covers_note_for_link() {
+    let input = read_local_semantic_fixture("class/note_for_service.mmd");
+    let rendered =
+        render_class(&input, &AsciiRenderOptions::ascii()).expect("class diagram should render");
 
     assert_eq!(
         rendered,
@@ -928,12 +915,10 @@ fn class_parser_note_for_renders_dotted_link_to_class() {
 }
 
 #[test]
-fn class_parser_standalone_note_renders_box() {
-    let rendered = render_class(
-        "classDiagram\nnote \"Standalone\"",
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("class diagram should render");
+fn class_local_semantic_fixture_covers_standalone_note() {
+    let input = read_local_semantic_fixture("class/standalone_note.mmd");
+    let rendered =
+        render_class(&input, &AsciiRenderOptions::ascii()).expect("class diagram should render");
 
     assert_eq!(
         rendered,

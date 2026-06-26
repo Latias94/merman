@@ -258,8 +258,8 @@ The renderer should make semantic commitments before drawing. Graph layout decid
   - `crates/merman-ascii/src/sequence/layout.rs`
   - `crates/merman-ascii/tests/sequence_model.rs`
   - `crates/merman-ascii/tests/testdata/mermaid-ascii/SEQUENCE_FIXTURE_GAPS.md`
-- **Approach:** Replace the mutable event-state bag with row instructions that describe the event row, overlay rows, activation changes, and note/control boundaries. The renderer should paint rows from this plan rather than deciding row insertion while walking events.
-- **Patterns to follow:** Existing `SequenceEventPlan` tests in `crates/merman-ascii/src/sequence/plan.rs`; sequence layout helpers in `crates/merman-ascii/src/sequence/layout.rs`; imported fixture gap style in `crates/merman-ascii/tests/testdata/mermaid-ascii/SEQUENCE_FIXTURE_GAPS.md`.
+- **Approach:** Use the row-intent planner to describe the event row, overlay rows, activation changes, and note/control boundaries. The renderer should paint rows from this plan rather than deciding row insertion while walking events.
+- **Patterns to follow:** Existing `SequenceRowPlanner` and `SequenceRowStep` tests in `crates/merman-ascii/src/sequence/plan.rs`; sequence layout helpers in `crates/merman-ascii/src/sequence/layout.rs`; imported fixture gap style in `crates/merman-ascii/tests/testdata/mermaid-ascii/SEQUENCE_FIXTURE_GAPS.md`.
 - **Test scenarios:**
   - A message with activation start/end produces the same participant lifecycle rows regardless of label width.
   - Notes over one or more participants reserve rows before message drawing and do not overlap control blocks.

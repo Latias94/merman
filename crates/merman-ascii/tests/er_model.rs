@@ -91,24 +91,12 @@ fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static s
 }
 
 #[test]
-fn er_parser_wide_attributes_and_summary_labels_preserve_relation_visibility() {
+fn er_local_semantic_fixture_covers_wide_attributes_and_summary_labels() {
+    let input = read_local_semantic_fixture("er/wide_attributes_and_summary_labels.mmd");
     let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
 
-    let rendered = render_er(
-        r#"erDiagram
-CUSTOMER {
-  string 名称
-}
-ORDER {
-  string 状态🚀
-}
-AUDIT
-CUSTOMER ||--o{ ORDER : "下单🚀"
-ORDER ||--|| AUDIT : "记录数据"
-"#,
-        &options,
-    )
-    .expect("ER diagram with wide attributes and relation labels should render");
+    let rendered = render_er(&input, &options)
+        .expect("ER diagram with wide attributes and relation labels should render");
 
     for expected in [
         "CUSTOMER",

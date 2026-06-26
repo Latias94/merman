@@ -1399,6 +1399,14 @@ Suggested direction:
 Deepen the sequence plan into a terminal row-intent plan before painting. The
 renderer should paint rows rather than decide event lifecycle semantics.
 
+Status note 2026-06-26:
+
+This issue has been addressed in `crates/merman-ascii/src/sequence/plan.rs`.
+`SequenceRowPlanner` now owns activation counts, actor visibility, control
+frame state, and lifecycle row intent, while `SequenceRowStep` carries the row
+intent into the painter. The remaining work is doc hygiene and any future
+sequence capability slice, not the old mutable event-state bag.
+
 Related decisions:
 
 - ADR-0065 ASCII output boundary

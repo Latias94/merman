@@ -38,6 +38,21 @@ fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::R
     render_model(&parsed.model, options)
 }
 
+fn read_local_semantic_fixture(path: &str) -> String {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/testdata/local-semantic")
+        .join(path);
+    std::fs::read_to_string(&fixture_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
+}
+
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
 fn parse_sequence_render_model(input: &str) -> SequenceDiagramRenderModel {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -1650,11 +1665,7 @@ fn sequence_control_blocks_render_inside_participant_boxes() {
 
 #[test]
 fn sequence_local_semantic_fixture_covers_dense_control_rows() {
-    let input = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/local-semantic/sequence/dense_control_rows.mmd"),
-    )
-    .expect("local semantic sequence fixture must be readable");
+    let input = read_local_semantic_fixture("sequence/dense_control_rows.mmd");
 
     let rendered = render_sequence(&input, &AsciiRenderOptions::unicode())
         .expect("dense local semantic sequence fixture should render");
@@ -1679,6 +1690,47 @@ fn sequence_local_semantic_fixture_covers_dense_control_rows() {
     assert!(
         rendered.lines().count() >= 10,
         "dense semantic sequence fixture should produce a multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_local_semantic_fixture_covers_self_messages_with_notes_and_alt_branch() {
+    let input = read_local_semantic_fixture("sequence/self_messages_with_notes.mmd");
+
+    let rendered = render_sequence(&input, &AsciiRenderOptions::unicode())
+        .expect("self-message local semantic sequence fixture should render");
+
+    for expected in [
+        "Main Process",
+        "Renderer",
+        "3s Fallback Timer",
+        "Multiple panels",
+        "Single panel",
+        "closePanel(focusedId)",
+        "closePanel(lastId)",
+        "Panel removed",
+        "Stack becomes []",
+        "Panel reopens",
+        "window.destroy()",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "self-message semantic sequence fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        first_line_index_containing(&rendered, "Multiple panels")
+            < first_line_index_containing(&rendered, "Single panel"),
+        "alt branch order should remain readable in the semantic fixture:\n{rendered}"
+    );
+    assert!(
+        first_line_index_containing(&rendered, "Panel removed")
+            < first_line_index_containing(&rendered, "Panel reopens"),
+        "branch-local note ordering should stay visible:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "self-message semantic sequence fixture should produce a multi-line layout:\n{rendered}"
     );
 }
 

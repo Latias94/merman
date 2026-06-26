@@ -14,6 +14,14 @@ fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Re
     render_model(&parsed.model, options)
 }
 
+fn read_local_semantic_fixture(path: &str) -> String {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/testdata/local-semantic")
+        .join(path);
+    std::fs::read_to_string(&fixture_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
+}
+
 fn strip_ansi(input: &str) -> String {
     let mut output = String::new();
     let mut chars = input.chars().peekable();
@@ -53,6 +61,13 @@ fn strip_html_spans(input: &str) -> String {
         index += ch.len_utf8();
     }
     output
+}
+
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
 }
 
 fn cjk_test_width(input: &str) -> usize {
@@ -629,11 +644,7 @@ fn xychart_parser_header_only_renders_empty_text() {
 
 #[test]
 fn xychart_local_semantic_fixture_covers_small_mixed_plot() {
-    let input = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/local-semantic/xychart/mixed_small.mmd"),
-    )
-    .expect("local semantic xychart fixture must be readable");
+    let input = read_local_semantic_fixture("xychart/mixed_small.mmd");
 
     let rendered = render_xychart(&input, &AsciiRenderOptions::ascii())
         .expect("local semantic xychart fixture should render");
@@ -646,6 +657,44 @@ fn xychart_local_semantic_fixture_covers_small_mixed_plot() {
     }
     assert!(
         rendered.lines().count() >= 5,
+        "local semantic xychart fixture should produce a multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_local_semantic_fixture_covers_horizontal_mixed_plot_with_cjk_labels() {
+    let input = read_local_semantic_fixture("xychart/horizontal_mixed_cjk.mmd");
+
+    let rendered = render_xychart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic xychart fixture should render");
+
+    for expected in ["营收", "北区", "南区", "东区", "分数", "Bar 1", "Line 1"] {
+        assert!(
+            rendered.contains(expected),
+            "local semantic xychart fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        first_line_index_containing(&rendered, "营收")
+            < first_line_index_containing(&rendered, "y: 分数"),
+        "title should render above the axis title:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .find(|line| line.contains("Bar 1") && line.contains("Line 1"))
+            .is_some_and(|line| line.find("Bar 1") < line.find("Line 1")),
+        "legend should preserve series order on the same row:\n{rendered}"
+    );
+    assert!(
+        first_line_index_containing(&rendered, "北区")
+            < first_line_index_containing(&rendered, "南区")
+            && first_line_index_containing(&rendered, "南区")
+                < first_line_index_containing(&rendered, "东区"),
+        "CJK category labels should keep their row order:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 6,
         "local semantic xychart fixture should produce a multi-line layout:\n{rendered}"
     );
 }

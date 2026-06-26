@@ -53,10 +53,12 @@ layered draw policy, and dense/grid-budget summary fallback should stay shared.
 See [ASCII Class / ER Capability Matrix](../../../../../docs/rendering/ASCII_CLASS_ER_CAPABILITY_MATRIX.md) for the current comparison against `beautiful-mermaid` and `mermaid-ascii`.
 
 Current covered Class capabilities include association (`--` / `..`), inheritance, realization, aggregation, composition, notes, lollipop/interface nodes, endpoint cardinality labels, CJK/emoji member and relationship labels, multiline labels, parallel lanes, crossing reroutes, disconnected components, dense summary fallback, and tight-budget summary fallback.
+Current covered Class local semantic fixtures also include namespace-qualified relationships and wide member / summary-label coverage.
 Current covered ER capabilities include entity attributes, CJK/emoji attribute and relationship labels, key/comment tokens, identifying and non-identifying relationships, normalized cardinality spellings (`}|` / `}o`), multiline labels, parallel lanes, crossing reroutes, disconnected components, dense summary fallback, and tight-budget summary fallback.
+Current covered ER local semantic fixtures also include wide attribute / summary-label coverage.
 Current explicit unsupported boundaries are covered by typed-model tests for Class multiple markers, plus ER unknown cardinality markers and unknown relationship identification types.
 
-## Flowchart Route Fixtures
+## Current Examples
 
 Flowchart ASCII fixtures should protect planner-owned route semantics rather than copied spacing
 from a reference renderer. `mermaid-ascii` and `beautiful-mermaid` are useful capability probes for
@@ -74,18 +76,27 @@ Current examples:
 - `class/dense_relations.mmd`
 - `class/dense_multiline_relations.mmd`
 - `class/disconnected_components.mmd`
+- `class/namespace_qualified_relationships.mmd`
+- `class/note_for_service.mmd`
 - `class/routed_relationship_variants.mmd`
+- `class/standalone_note.mmd`
+- `class/wide_members_and_summary_labels.mmd`
 - `er/dense_relations.mmd`
 - `er/dense_multiline_relations.mmd`
 - `er/disconnected_components.mmd`
 - `er/routed_schema_with_attributes.mmd`
+- `er/wide_attributes_and_summary_labels.mmd`
 - `flowchart/back_edge_labels.mmd`
 - `flowchart/boundary_label_lane.mmd`
+- `flowchart/cjk_boundary_routes.mmd`
 - `flowchart/disconnected_subgraphs.mmd`
 - `flowchart/multiline_edge_label.mmd`
 - `flowchart/multi_boundary_routes.mmd`
 - `flowchart/nested_direction_boundary.mmd`
 - `flowchart/sibling_boundary_routes.mmd`
 - `sequence/dense_control_rows.mmd`
+- `sequence/self_messages_with_notes.mmd`
 - `state/composite_boundary.mmd`
+- `state/cjk_connection_lifecycle.mmd`
 - `xychart/mixed_small.mmd`
+- `xychart/horizontal_mixed_cjk.mmd`

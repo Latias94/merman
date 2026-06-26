@@ -5,9 +5,8 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationComponentFacts, RelationComponentSummaryPolicy, RelationGraphLabel, RelationGraphLine,
-    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
-    RelationStackPlan,
+    RelationComponentSummaryPolicy, RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow,
+    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -74,6 +73,11 @@ impl ErCharset {
 
 type RenderedEntityBox = RelationGraphBox;
 
+struct ErRelationComponentAdapter<'a> {
+    charset: ErCharset,
+    entity_labels: &'a HashMap<String, String>,
+}
+
 pub(crate) fn render_er_diagram(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
@@ -116,52 +120,11 @@ fn render_er_components(
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
-    let edges = relationships
-        .iter()
-        .map(er_layered_edge)
-        .collect::<Vec<_>>();
-    relation_graph::render_relation_components(
-        boxes,
-        relationships,
-        edges,
-        options,
-        er_layered_error,
-        is_same_endpoint_parallel_relationship,
-        RelationComponentSummaryPolicy::never_before_layering(),
-        |_relationship| RelationComponentFacts::default(),
-        |component_boxes, relationship, component_options| {
-            let top = find_box(component_boxes, &relationship.entity_a)?;
-            let bottom = find_box(component_boxes, &relationship.entity_b)?;
-
-            render_vertical_relationship(top, bottom, relationship, component_options, charset)
-        },
-        |component_boxes, component_relationships, component_options| {
-            render_parallel_vertical_relationships(
-                component_boxes,
-                component_relationships,
-                component_options,
-                charset,
-            )
-        },
-        |component_boxes, component_relationships, _reason, component_options| {
-            render_dense_relationship_fallback(
-                component_boxes,
-                component_relationships,
-                entity_labels,
-                component_options,
-                charset,
-            )
-        },
-        |component_boxes, component_relationships, component_options| {
-            render_layered_relationships(
-                component_boxes,
-                component_relationships,
-                entity_labels,
-                component_options,
-                charset,
-            )
-        },
-    )
+    let adapter = ErRelationComponentAdapter {
+        charset,
+        entity_labels,
+    };
+    relation_graph::render_relation_components(boxes, relationships, options, &adapter)
 }
 
 fn render_entity_box(
@@ -433,35 +396,6 @@ fn parallel_er_lane_rows(
     Ok(rows)
 }
 
-fn render_layered_relationships(
-    boxes: &[RenderedEntityBox],
-    relationships: &[ErRelationshipRenderModel],
-    entity_labels: &HashMap<String, String>,
-    options: &AsciiRenderOptions,
-    charset: ErCharset,
-) -> Result<String> {
-    relation_graph::render_layered_relation_component(
-        boxes,
-        relationships,
-        options,
-        ER_LEVEL_HORIZONTAL_GAP,
-        options.max_grid_cells,
-        er_layered_edge,
-        |relationship, _reason| er_relationship_summary_row(relationship, entity_labels, charset),
-        |scene, canvas, edge_index, relationship, lane_offset| {
-            draw_layered_relationship(
-                scene,
-                canvas,
-                edge_index,
-                relationship,
-                lane_offset,
-                charset,
-            )
-        },
-        er_layered_error,
-    )
-}
-
 fn render_dense_relationship_fallback(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
@@ -530,6 +464,94 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "er",
         feature,
+    }
+}
+
+impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
+    for ErRelationComponentAdapter<'a>
+{
+    fn build_edges(&self, relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge {
+        er_layered_edge(relationship)
+    }
+
+    fn is_same_endpoint_parallel(&self, relationships: &[ErRelationshipRenderModel]) -> bool {
+        is_same_endpoint_parallel_relationship(relationships)
+    }
+
+    fn summary_policy(&self) -> RelationComponentSummaryPolicy {
+        RelationComponentSummaryPolicy::never_before_layering()
+    }
+
+    fn layered_horizontal_gap(&self) -> usize {
+        ER_LEVEL_HORIZONTAL_GAP
+    }
+
+    fn render_vertical(
+        &self,
+        boxes: &[RenderedEntityBox],
+        relationship: &ErRelationshipRenderModel,
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        let top = find_box(boxes, &relationship.entity_a)?;
+        let bottom = find_box(boxes, &relationship.entity_b)?;
+
+        render_vertical_relationship(top, bottom, relationship, options, self.charset)
+    }
+
+    fn render_parallel(
+        &self,
+        boxes: &[RenderedEntityBox],
+        relationships: &[ErRelationshipRenderModel],
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        render_parallel_vertical_relationships(boxes, relationships, options, self.charset)
+    }
+
+    fn render_summary(
+        &self,
+        boxes: &[RenderedEntityBox],
+        relationships: &[ErRelationshipRenderModel],
+        _reason: relation_graph::RelationComponentSummaryReason,
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        render_dense_relationship_fallback(
+            boxes,
+            relationships,
+            self.entity_labels,
+            options,
+            self.charset,
+        )
+    }
+
+    fn build_summary_row(
+        &self,
+        relationship: &ErRelationshipRenderModel,
+        _reason: relation_graph::LayeredRelationSummaryReason,
+    ) -> Result<RelationGraphSummaryRow> {
+        er_relationship_summary_row(relationship, self.entity_labels, self.charset)
+    }
+
+    fn draw_layered_edge<'boxes>(
+        &self,
+        scene: &relation_graph::LayeredRelationScene<'boxes>,
+        canvas: &mut Canvas,
+        edge_index: usize,
+        relationship: &ErRelationshipRenderModel,
+        lane_offset: isize,
+    ) -> Result<()> {
+        draw_layered_relationship(
+            scene,
+            canvas,
+            edge_index,
+            relationship,
+            lane_offset,
+            self.charset,
+        )?;
+        Ok(())
+    }
+
+    fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
+        er_layered_error(error)
     }
 }
 

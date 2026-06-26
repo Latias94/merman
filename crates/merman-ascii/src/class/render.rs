@@ -96,6 +96,10 @@ impl ClassCharset {
 
 type RenderedClassBox = RelationGraphBox;
 
+struct ClassRelationComponentAdapter {
+    charset: ClassCharset,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RelationMarker {
     Extension,
@@ -245,52 +249,8 @@ fn render_class_components(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> Result<String> {
-    let edges = layouts.iter().map(class_layered_edge).collect::<Vec<_>>();
-    relation_graph::render_relation_components(
-        boxes,
-        layouts,
-        edges,
-        options,
-        class_layered_error,
-        is_same_endpoint_parallel_layout,
-        RelationComponentSummaryPolicy::summarize_multi_relation_endpoint_labels(),
-        |layout| RelationComponentFacts::default().with_endpoint_label(layout.has_endpoint_label()),
-        |component_boxes, layout, component_options| {
-            let top = find_box(component_boxes, layout.top_id)?;
-            let bottom = find_box(component_boxes, layout.bottom_id)?;
-
-            Ok(render_vertical_relation(
-                top,
-                bottom,
-                layout,
-                component_options,
-                charset,
-            ))
-        },
-        |component_boxes, component_layouts, component_options| {
-            render_parallel_vertical_relations(
-                component_boxes,
-                component_layouts,
-                component_options,
-                charset,
-            )
-        },
-        |component_boxes, component_layouts, _reason, component_options| {
-            Ok(render_dense_relation_fallback(
-                component_boxes,
-                component_layouts,
-                component_options,
-            ))
-        },
-        |component_boxes, component_layouts, component_options| {
-            render_layered_relations(
-                component_boxes,
-                component_layouts,
-                component_options,
-                charset,
-            )
-        },
-    )
+    let adapter = ClassRelationComponentAdapter { charset };
+    relation_graph::render_relation_components(boxes, layouts, options, &adapter)
 }
 
 fn render_class_box(
@@ -857,28 +817,6 @@ fn parallel_class_lane_rows(
     rows
 }
 
-fn render_layered_relations(
-    boxes: &[RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-) -> Result<String> {
-    relation_graph::render_layered_relation_component(
-        boxes,
-        layouts,
-        options,
-        CLASS_LEVEL_HORIZONTAL_GAP,
-        options.max_grid_cells,
-        class_layered_edge,
-        |layout, _reason| Ok(class_relation_summary_row(layout)),
-        |scene, canvas, edge_index, layout, lane_offset| {
-            draw_layered_relation(scene, canvas, edge_index, layout, lane_offset, charset);
-            Ok(())
-        },
-        class_layered_error,
-    )
-}
-
 fn render_dense_relation_fallback(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
@@ -982,6 +920,91 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "class",
         feature,
+    }
+}
+
+impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
+    for ClassRelationComponentAdapter
+{
+    fn build_edges(&self, layout: &RelationLayout<'a>) -> LayeredRelationEdge {
+        class_layered_edge(layout)
+    }
+
+    fn is_same_endpoint_parallel(&self, layouts: &[RelationLayout<'a>]) -> bool {
+        is_same_endpoint_parallel_layout(layouts)
+    }
+
+    fn summary_policy(&self) -> RelationComponentSummaryPolicy {
+        RelationComponentSummaryPolicy::summarize_multi_relation_endpoint_labels()
+    }
+
+    fn layered_horizontal_gap(&self) -> usize {
+        CLASS_LEVEL_HORIZONTAL_GAP
+    }
+
+    fn relation_facts(&self, layout: &RelationLayout<'a>) -> RelationComponentFacts {
+        RelationComponentFacts::default().with_endpoint_label(layout.has_endpoint_label())
+    }
+
+    fn render_vertical(
+        &self,
+        boxes: &[RenderedClassBox],
+        layout: &RelationLayout<'a>,
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        let top = find_box(boxes, layout.top_id)?;
+        let bottom = find_box(boxes, layout.bottom_id)?;
+
+        Ok(render_vertical_relation(
+            top,
+            bottom,
+            layout,
+            options,
+            self.charset,
+        ))
+    }
+
+    fn render_parallel(
+        &self,
+        boxes: &[RenderedClassBox],
+        layouts: &[RelationLayout<'a>],
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        render_parallel_vertical_relations(boxes, layouts, options, self.charset)
+    }
+
+    fn render_summary(
+        &self,
+        boxes: &[RenderedClassBox],
+        layouts: &[RelationLayout<'a>],
+        _reason: relation_graph::RelationComponentSummaryReason,
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        Ok(render_dense_relation_fallback(boxes, layouts, options))
+    }
+
+    fn build_summary_row(
+        &self,
+        layout: &RelationLayout<'a>,
+        _reason: relation_graph::LayeredRelationSummaryReason,
+    ) -> Result<RelationGraphSummaryRow> {
+        Ok(class_relation_summary_row(layout))
+    }
+
+    fn draw_layered_edge<'boxes>(
+        &self,
+        scene: &relation_graph::LayeredRelationScene<'boxes>,
+        canvas: &mut Canvas,
+        edge_index: usize,
+        layout: &RelationLayout<'a>,
+        lane_offset: isize,
+    ) -> Result<()> {
+        draw_layered_relation(scene, canvas, edge_index, layout, lane_offset, self.charset);
+        Ok(())
+    }
+
+    fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
+        class_layered_error(error)
     }
 }
 
