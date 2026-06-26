@@ -1,6 +1,6 @@
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::lalrpop_recovery_span,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use serde_json::Value;
 
@@ -312,6 +312,10 @@ fn push_sequence_text_payload(
         ExpectedSequenceText::Note => "sequence note",
         ExpectedSequenceText::Interaction => "sequence interaction payload",
     };
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        SourceSpan::new(start, end),
+    ));
     push_sequence_named_payload(text, detail, start, end, code, facts);
 }
 

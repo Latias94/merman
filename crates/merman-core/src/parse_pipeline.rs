@@ -110,6 +110,7 @@ impl<'a> ParsePipeline<'a> {
             symbols,
             directive_prefixes: family_directive_prefixes,
             diagnostics,
+            expected_syntax,
         } = facts;
         directive_prefixes.extend(family_directive_prefixes);
         let mut facts = EditorSemanticFacts {
@@ -117,6 +118,7 @@ impl<'a> ParsePipeline<'a> {
             symbols,
             directive_prefixes: Vec::new(),
             diagnostics,
+            expected_syntax,
         };
         for prefix in directive_prefixes {
             facts.push_directive_prefix(prefix);

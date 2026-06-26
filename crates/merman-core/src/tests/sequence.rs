@@ -115,6 +115,18 @@ details Alice: {"owner": "platform"}"#;
     for prefix in ["title", "accTitle", "accDescr", "details"] {
         assert!(facts.directive_prefixes.iter().any(|p| p == prefix));
     }
+
+    for payload in ["Hello", "Review", r#"{"owner": "platform"}"#] {
+        let start = text.find(payload).unwrap();
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span.start <= start
+                    && expected.span.end >= start + payload.len()
+            }),
+            "missing payload expected syntax for {payload:?}"
+        );
+    }
 }
 
 #[test]

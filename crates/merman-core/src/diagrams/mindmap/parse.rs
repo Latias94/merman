@@ -111,6 +111,7 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
         symbols: Vec::new(),
         directive_prefixes: Vec::new(),
         diagnostics: parsed.diagnostics,
+        expected_syntax: Vec::new(),
     };
     for prefix in parsed.directive_prefixes {
         facts.push_directive_prefix(prefix);

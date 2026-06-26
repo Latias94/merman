@@ -20,9 +20,9 @@ mod status;
 
 pub use analyzer::{AnalysisOptions, Analyzer};
 pub use editor::{
-    ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceLineItem,
-    FenceReferenceGroup, FenceSemanticItem, FenceSemanticRole, FenceTextIndex,
-    FenceTextIndexSource,
+    ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext,
+    FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,
+    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,

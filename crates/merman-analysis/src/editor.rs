@@ -102,6 +102,17 @@ pub enum FenceCursorCompletionKind {
     NodeIdentifier,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FenceExpectedSyntaxKind {
+    Payload,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FenceExpectedSyntax {
+    kind: FenceExpectedSyntaxKind,
+    span: ByteSpan,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FenceCursorContext {
     prefix: String,
@@ -109,6 +120,7 @@ pub struct FenceCursorContext {
     cursor: usize,
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
+    expected_syntax: Option<FenceExpectedSyntaxKind>,
     completion_kinds: Vec<FenceCursorCompletionKind>,
 }
 
@@ -133,6 +145,10 @@ impl FenceCursorContext {
         self.comment_or_directive_line
     }
 
+    pub fn expected_syntax(&self) -> Option<FenceExpectedSyntaxKind> {
+        self.expected_syntax
+    }
+
     pub fn completion_kinds(&self) -> &[FenceCursorCompletionKind] {
         &self.completion_kinds
     }
@@ -149,6 +165,7 @@ pub struct FenceTextIndex {
     references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
     outline_items: Vec<FenceLineItem>,
     semantic_items: Vec<FenceSemanticItem>,
+    expected_syntax: Vec<FenceExpectedSyntax>,
     source: FenceTextIndexSource,
 }
 
@@ -219,6 +236,20 @@ impl FenceTextIndex {
             }
         };
         index.directive_prefixes.extend(facts.directive_prefixes);
+        index
+            .expected_syntax
+            .extend(
+                facts
+                    .expected_syntax
+                    .into_iter()
+                    .map(|expected| FenceExpectedSyntax {
+                        kind: expected_syntax_kind_from_core(expected.kind),
+                        span: ByteSpan {
+                            start: expected.span.start,
+                            end: expected.span.end,
+                        },
+                    }),
+            );
 
         for symbol in facts.symbols {
             let role = symbol.role;
@@ -408,6 +439,12 @@ impl FenceTextIndex {
         if offer_node_items(&prefix, comment_or_directive_line) {
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
         }
+        let expected_syntax = self
+            .expected_syntax_at_offset(cursor)
+            .map(|expected| expected.kind);
+        if let Some(expected_syntax) = expected_syntax {
+            apply_expected_syntax_to_completion(expected_syntax, &mut completion_kinds);
+        }
 
         FenceCursorContext {
             prefix,
@@ -415,8 +452,24 @@ impl FenceTextIndex {
             cursor,
             directive_prefix,
             comment_or_directive_line,
+            expected_syntax,
             completion_kinds,
         }
+    }
+
+    fn expected_syntax_at_offset(&self, offset: usize) -> Option<&FenceExpectedSyntax> {
+        self.expected_syntax
+            .iter()
+            .filter(|expected| expected.span.contains(offset))
+            .min_by(|left, right| {
+                let left_len = left.span.end.saturating_sub(left.span.start);
+                let right_len = right.span.end.saturating_sub(right.span.start);
+                (left_len, left.span.start, left.span.end).cmp(&(
+                    right_len,
+                    right.span.start,
+                    right.span.end,
+                ))
+            })
     }
 
     fn record_line(
@@ -564,6 +617,23 @@ fn semantic_role_from_core(role: merman_core::EditorSemanticRole) -> FenceSemant
         merman_core::EditorSemanticRole::Entity => FenceSemanticRole::Entity,
         merman_core::EditorSemanticRole::Outline => FenceSemanticRole::Outline,
         merman_core::EditorSemanticRole::Payload => FenceSemanticRole::Payload,
+    }
+}
+
+fn expected_syntax_kind_from_core(
+    kind: merman_core::EditorExpectedSyntaxKind,
+) -> FenceExpectedSyntaxKind {
+    match kind {
+        merman_core::EditorExpectedSyntaxKind::Payload => FenceExpectedSyntaxKind::Payload,
+    }
+}
+
+fn apply_expected_syntax_to_completion(
+    expected: FenceExpectedSyntaxKind,
+    completion_kinds: &mut Vec<FenceCursorCompletionKind>,
+) {
+    match expected {
+        FenceExpectedSyntaxKind::Payload => completion_kinds.clear(),
     }
 }
 
@@ -907,8 +977,8 @@ fn generic_kind(diagram_type: Option<&str>) -> EditorSymbolKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceSemanticRole, FenceTextIndex,
-        FenceTextIndexSource, is_candidate_node_id,
+        ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceExpectedSyntaxKind,
+        FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, is_candidate_node_id,
     };
     use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 
@@ -1038,6 +1108,32 @@ mod tests {
         assert_eq!(context.cursor(), 0);
         assert_eq!(context.prefix(), "");
         assert!(context.offers(FenceCursorCompletionKind::DiagramHeader));
+    }
+
+    #[test]
+    fn cursor_context_uses_parser_expected_payload_to_suppress_generic_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "Alice",
+            Some("sequence participant".to_string()),
+            EditorSemanticKind::Event,
+            SourceSpan::new(16, 21),
+            SourceSpan::new(16, 21),
+        ));
+        facts.push_expected_syntax(merman_core::EditorExpectedSyntax::new(
+            merman_core::EditorExpectedSyntaxKind::Payload,
+            SourceSpan::new(28, 33),
+        ));
+        let index = FenceTextIndex::from_core_facts(facts);
+        let context = index.cursor_context("sequenceDiagram\nAlice->Bob: Hello", 31);
+
+        assert_eq!(
+            context.expected_syntax(),
+            Some(FenceExpectedSyntaxKind::Payload)
+        );
+        assert!(context.completion_kinds().is_empty());
+        assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
+        assert!(!context.offers(FenceCursorCompletionKind::DiagramHeader));
     }
 
     #[test]

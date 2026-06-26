@@ -154,6 +154,25 @@ impl EditorSemanticDiagnostic {
     }
 }
 
+/// Parser-known syntax category that is expected at a source span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorExpectedSyntaxKind {
+    Payload,
+}
+
+/// Parser-produced cursor context hint for completion and other editor features.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditorExpectedSyntax {
+    pub kind: EditorExpectedSyntaxKind,
+    pub span: SourceSpan,
+}
+
+impl EditorExpectedSyntax {
+    pub fn new(kind: EditorExpectedSyntaxKind, span: SourceSpan) -> Self {
+        Self { kind, span }
+    }
+}
+
 /// Whether editor-facing facts came from a complete family parse or a recoverable partial parse.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum EditorSemanticCompleteness {
@@ -169,6 +188,7 @@ pub struct EditorSemanticFacts {
     pub symbols: Vec<EditorSemanticSymbol>,
     pub directive_prefixes: Vec<String>,
     pub diagnostics: Vec<EditorSemanticDiagnostic>,
+    pub expected_syntax: Vec<EditorExpectedSyntax>,
 }
 
 impl EditorSemanticFacts {
@@ -203,6 +223,10 @@ impl EditorSemanticFacts {
         if !self.directive_prefixes.contains(&prefix) {
             self.directive_prefixes.push(prefix);
         }
+    }
+
+    pub fn push_expected_syntax(&mut self, expected: EditorExpectedSyntax) {
+        self.expected_syntax.push(expected);
     }
 }
 

@@ -6,6 +6,20 @@ status: active
 # Log
 
 ## 2026-06-27
+- Added the first parser-fed expected syntax slice. `merman-core::EditorSemanticFacts` now carries
+  `expected_syntax`, `sequence` parser facts emit payload spans for messages, notes, and
+  interaction payloads, and `merman-analysis::FenceCursorContext` projects those spans into
+  completion context.
+- `merman-lsp` now treats parser-controlled payload positions as empty completion contexts instead
+  of falling back to generic headers or identifier completion. This proves the intended route:
+  parser state -> analysis cursor context -> thin LSP projection.
+- Verified the slice with `cargo test -p merman-core --lib parse_sequence_editor_facts_preserve_actor_and_box_spans -- --nocapture`,
+  `cargo test -p merman-analysis --lib cursor_context_uses_parser_expected_payload_to_suppress_generic_completion -- --nocapture`,
+  `cargo test -p merman-lsp --test completion completion_uses_sequence_parser_payload_context -- --nocapture`,
+  `cargo check -p merman-core -p merman-analysis -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-27
 - Added the first analysis-owned completion cursor contract. `merman-analysis::FenceTextIndex`
   now exposes `FenceCursorContext` plus `FenceCursorCompletionKind`, covering prefix spans,
   directive/comment classification, and expected completion categories.

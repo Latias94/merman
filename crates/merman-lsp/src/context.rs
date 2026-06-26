@@ -1,5 +1,7 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
-use merman_analysis::{FenceCursorCompletionKind, lsp::position_from_utf16};
+use merman_analysis::{
+    FenceCursorCompletionKind, FenceExpectedSyntaxKind, lsp::position_from_utf16,
+};
 use tower_lsp::lsp_types::{Position, Range, Url};
 
 #[derive(Debug)]
@@ -11,6 +13,7 @@ pub struct CompletionContext<'a> {
     cursor_offset: usize,
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
+    expected_syntax: Option<FenceExpectedSyntaxKind>,
     completion_kinds: Vec<FenceCursorCompletionKind>,
 }
 
@@ -35,6 +38,7 @@ impl<'a> CompletionContext<'a> {
             cursor_offset,
             directive_prefix: cursor_context.directive_prefix(),
             comment_or_directive_line: cursor_context.is_comment_or_directive_line(),
+            expected_syntax: cursor_context.expected_syntax(),
             completion_kinds: cursor_context.completion_kinds().to_vec(),
         })
     }
@@ -121,6 +125,10 @@ impl<'a> CompletionContext<'a> {
 
     pub(crate) fn is_comment_or_directive_line(&self) -> bool {
         self.comment_or_directive_line
+    }
+
+    pub(crate) fn is_parser_controlled_payload(&self) -> bool {
+        self.expected_syntax == Some(FenceExpectedSyntaxKind::Payload)
     }
 
     pub fn directive_prefix(&self) -> Option<&'static str> {

@@ -38,8 +38,9 @@ pub use diagram::{
     RenderSemanticParser,
 };
 pub use editor::{
-    EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
+    EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, Result};
 pub use family::DiagramFamilyCapability;

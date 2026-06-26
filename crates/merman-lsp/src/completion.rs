@@ -53,7 +53,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     }
 
     if items.is_empty() {
-        if context.is_comment_or_directive_line() {
+        if context.is_comment_or_directive_line() || context.is_parser_controlled_payload() {
             return CompletionList {
                 is_incomplete: false,
                 items,
