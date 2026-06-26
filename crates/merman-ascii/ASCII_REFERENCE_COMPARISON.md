@@ -24,7 +24,8 @@ product boundary.
   reference spacing.
 - Class and ER relation output now deliberately shares the `relation_graph` seam. Adapters preserve
   Mermaid-family semantics, while shared relation planning owns lane placement, routed grids, and
-  structured dense/grid-budget summary fallback.
+  structured dense/grid-budget summary fallback. Summary reasons are preserved at that seam for
+  direct topology-policy tests.
 - The SVG compare CLI keeps per-diagram entrypoints, but common fixture discovery, upstream/local
   SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
   compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
@@ -71,7 +72,7 @@ Mermaid terminal standard.
 
 | Family | `mermaid-ascii` | `beautiful-mermaid` | `merman-ascii` | Readout |
 | --- | --- | --- | --- | --- |
-| Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, richer shape handling, and more styling hooks, but `RL` is approximated as `LR`. | Flowchart is the strongest terminal family here: true `BT`/`RL`, boundary-aware subgraph routing, color roles, and a wider supported subset. | Keep `mermaid-ascii` for routing evidence and `beautiful-mermaid` for UI ideas, but keep Mermaid semantics first. |
+| Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, richer shape handling, and more styling hooks, but `RL` is approximated as `LR`. | Flowchart is the strongest terminal family here: true `BT`/`RL`, boundary-aware subgraph routing, boundary/grid-path label extent budgeting, color roles, and a wider supported subset. | Keep `mermaid-ascii` for routing evidence and `beautiful-mermaid` for UI ideas, but keep Mermaid semantics first. |
 | Sequence | Exact copied-fixture parity for a compact sequence corpus. | Much broader parser/layout coverage, including notes, blocks, theming, and ASCII/Unicode variants. | Typed sequence support is already beyond the narrow reference: activations, create/destroy, boxes, control blocks, mirror actors, and color roles all exist. | Remaining work is mostly layout polish and boundary tightening, not parser rescue. |
 | Class | Not part of the reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | Supported subset through the shared `relation_graph` seam, with multiline relationship labels, same-endpoint and bidirectional same-pair lanes, spanning routes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, dense multiline local semantic fixtures, and typed role colors. | Extend from typed relation facts, not from parser shape. |
 | ER | Not part of the reference scope. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | Supported subset through the same `relation_graph` seam, with entity boxes, cardinality markers, multiline relationship labels, same-endpoint and bidirectional same-pair lanes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, and dense multiline local semantic fixtures. | Relation layout is the shared seam; cardinality and relationship identity stay family-specific. |
@@ -93,6 +94,8 @@ Mermaid terminal standard.
 
 - CJK and emoji placement is covered for the current renderer families; keep the same semantic
   gate for new families and more complex grapheme clusters.
-- Flowchart route families beyond the current layered planner.
-- Class and ER dense relation topologies beyond the current fallback.
+- Flowchart route-label placement beyond extent budgeting, especially avoiding nearby node-text
+  overlap for very long boundary/grid-path labels.
+- Class and ER dense relation topologies beyond the current fallback; new policy decisions should
+  add explicit `LayeredRelationSummaryReason` variants.
 - XYChart richer multi-series label placement and terminal tooltip alternatives.
