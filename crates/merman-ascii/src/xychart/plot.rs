@@ -1,5 +1,5 @@
 use crate::color::AsciiColorRole;
-use crate::terminal::char_display_width;
+use crate::terminal::{CanvasColor, CanvasStyle, char_display_width, write_primary_cell_style};
 use crate::text::{StyledCell, display_width};
 use crate::{AsciiCharset, AsciiRenderOptions};
 use merman_core::diagrams::xychart::{
@@ -467,10 +467,14 @@ fn write_band_text(
     role: AsciiColorRole,
 ) {
     let fitted = fit_centered(value, band_width);
-    for (offset, ch) in fitted.chars().enumerate().take(band_width) {
-        if let Some(cell) = row.get_mut(band_start + offset) {
-            *cell = ChartCell::with_role(ch, role);
+    let mut offset = 0;
+    let style = CanvasStyle::foreground(CanvasColor::Role(role));
+    for ch in fitted.chars() {
+        if offset >= band_width {
+            break;
         }
+        write_primary_cell_style(row, band_start + offset, ch, style);
+        offset += char_display_width(ch);
     }
 }
 
@@ -520,4 +524,25 @@ pub(super) fn format_number(value: f64) -> String {
         out.pop();
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_band_text_preserves_wide_glyph_continuation_cells() {
+        let mut row = vec![ChartCell::blank(); 5];
+
+        write_band_text(&mut row, 1, 3, "中", AsciiColorRole::Text);
+
+        assert_eq!(row[1].output_char(), Some('中'));
+        assert!(row[2].is_continuation());
+        assert_eq!(row[3].output_char(), Some(' '));
+        assert_eq!(
+            row[1].color(),
+            Some(CanvasColor::Role(AsciiColorRole::Text))
+        );
+        assert_eq!(row[4].output_char(), Some(' '));
+    }
 }
