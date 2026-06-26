@@ -455,7 +455,7 @@ pub(crate) fn render_layered_relation_component<R>(
     horizontal_gap: usize,
     max_grid_cells: usize,
     build_edges: impl Fn(&R) -> LayeredRelationEdge,
-    build_summary_row: impl Fn(&R) -> Result<RelationGraphSummaryRow>,
+    build_summary_row: impl Fn(&R, LayeredRelationSummaryReason) -> Result<RelationGraphSummaryRow>,
     draw_edge: impl for<'boxes> Fn(
         &LayeredRelationScene<'boxes>,
         &mut Canvas,
@@ -471,10 +471,9 @@ pub(crate) fn render_layered_relation_component<R>(
     {
         LayeredRelationScenePlan::Routed(scene) => scene,
         LayeredRelationScenePlan::Summary(reason) => {
-            let _ = reason;
             let rows = relations
                 .iter()
-                .map(build_summary_row)
+                .map(|relation| build_summary_row(relation, reason))
                 .collect::<Result<Vec<_>>>()?;
             return Ok(render_stacked_boxes_with_relation_summary(
                 boxes, &rows, options,
@@ -647,6 +646,7 @@ mod tests {
     use super::*;
     use crate::canvas::Canvas;
     use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
+    use std::cell::Cell;
 
     #[test]
     fn render_stacked_boxes_preserves_plain_text() {
@@ -717,6 +717,48 @@ mod tests {
                 "<span style=\"color:#333333\">A --&gt; B</span>\n",
             )
         );
+    }
+
+    #[test]
+    fn render_layered_relation_component_passes_summary_reason_to_row_builder() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let relations = vec![("a", "b")];
+        let seen_reason = Cell::new(None);
+
+        let rendered = render_layered_relation_component(
+            &boxes,
+            &relations,
+            &AsciiRenderOptions::ascii(),
+            1,
+            1,
+            |(from, to)| LayeredRelationEdge::new(*from, *to, 0, 0),
+            |_, reason| {
+                seen_reason.set(Some(reason));
+                Ok(RelationGraphSummaryRow::new("A", "-->", "B"))
+            },
+            |_, _, _, _, _| Ok(()),
+            |error| AsciiError::UnsupportedFeature {
+                diagram_type: "test",
+                feature: match error {
+                    LayeredRelationError::MissingEndpoint => "missing endpoint",
+                    LayeredRelationError::UnrelatedBoxes => "unrelated boxes",
+                    LayeredRelationError::Crossing => "crossing",
+                },
+            },
+        )
+        .expect("summary fallback should render");
+
+        assert_eq!(
+            seen_reason.get(),
+            Some(LayeredRelationSummaryReason::GridBudget {
+                actual: 5,
+                limit: 1,
+            })
+        );
+        assert!(rendered.contains("relations:\nA --> B\n"));
     }
 
     #[test]

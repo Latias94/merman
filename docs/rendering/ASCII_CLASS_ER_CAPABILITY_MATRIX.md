@@ -16,7 +16,9 @@ layered drawing, and structured summary fallback. The family adapters should kee
 Mermaid-specific semantics at their edges: Class markers, notes, lollipop/interface handling,
 endpoint labels, ER cardinality, relationship identification, entity labels, and explicit
 unsupported diagnostics. Dense crossings and tight `AsciiRenderOptions::max_grid_cells` budgets
-should use the shared `relations:` summary rather than renderer-local fallback branches.
+should use the shared `relations:` summary rather than renderer-local fallback branches. Summary
+fallback reasons are preserved at the `relation_graph` seam so tests can assert the topology policy
+directly instead of inferring it only from rendered text.
 
 ## Class Diagram Matrix
 

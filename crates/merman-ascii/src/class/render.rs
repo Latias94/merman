@@ -873,7 +873,7 @@ fn render_layered_relations(
         CLASS_LEVEL_HORIZONTAL_GAP,
         options.max_grid_cells,
         class_layered_edge,
-        |layout| Ok(class_relation_summary_row(layout)),
+        |layout, _reason| Ok(class_relation_summary_row(layout)),
         |scene, canvas, edge_index, layout, lane_offset| {
             draw_layered_relation(scene, canvas, edge_index, layout, lane_offset, charset);
             Ok(())

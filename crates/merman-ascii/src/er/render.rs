@@ -445,7 +445,7 @@ fn render_layered_relationships(
         ER_LEVEL_HORIZONTAL_GAP,
         options.max_grid_cells,
         er_layered_edge,
-        |relationship| er_relationship_summary_row(relationship, entity_labels, charset),
+        |relationship, _reason| er_relationship_summary_row(relationship, entity_labels, charset),
         |scene, canvas, edge_index, relationship, lane_offset| {
             draw_layered_relationship(
                 scene,
