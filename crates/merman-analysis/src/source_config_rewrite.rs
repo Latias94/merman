@@ -20,11 +20,54 @@ pub(crate) fn init_directives_to_frontmatter_fix(
         return None;
     }
 
-    let frontmatter = frontmatter_config_edit(source, config)?;
-    let mut removals = init_directives
+    let mut config = config;
+    let _ = move_flowchart_html_labels_to_root(&mut config);
+    let removals = init_directives
         .into_iter()
         .map(|directive| directive_removal_span(source, directive.full))
         .collect::<Vec<_>>();
+
+    frontmatter_config_fix(
+        source,
+        source_map,
+        config,
+        removals,
+        "Move init directive config into frontmatter",
+    )
+}
+
+pub(crate) fn flowchart_html_labels_to_root_fix(
+    source: &str,
+    source_map: &SourceMap,
+) -> Option<DiagnosticFix> {
+    let mut config = merged_diagram_config(source)?;
+    if !move_flowchart_html_labels_to_root(&mut config) {
+        return None;
+    }
+
+    let removals = init_directive_spans(source)
+        .into_iter()
+        .map(|directive| directive_removal_span(source, directive.full))
+        .collect::<Vec<_>>();
+
+    frontmatter_config_fix(
+        source,
+        source_map,
+        config,
+        removals,
+        "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`",
+    )
+}
+
+pub(crate) fn frontmatter_config_fix(
+    source: &str,
+    source_map: &SourceMap,
+    config: Value,
+    removals: Vec<ByteSpan>,
+    title: &'static str,
+) -> Option<DiagnosticFix> {
+    let frontmatter = frontmatter_config_edit(source, config)?;
+    let mut removals = removals;
     removals.sort_by_key(|span| (span.start, span.end));
     removals.dedup();
 
@@ -62,7 +105,7 @@ pub(crate) fn init_directives_to_frontmatter_fix(
         ));
     }
 
-    Some(DiagnosticFix::new("Move init directive config into frontmatter", edits).preferred())
+    Some(DiagnosticFix::new(title, edits).preferred())
 }
 
 fn merged_diagram_config(source: &str) -> Option<Value> {
@@ -123,6 +166,32 @@ fn frontmatter_document(fields: Map<String, Value>) -> Option<String> {
         body.push('\n');
     }
     Some(format!("---\n{body}---\n"))
+}
+
+fn move_flowchart_html_labels_to_root(config: &mut Value) -> bool {
+    let Value::Object(root) = config else {
+        return false;
+    };
+    let root_had_html_labels = root.contains_key("htmlLabels");
+    let (html_labels, flowchart_is_empty) = {
+        let Some(Value::Object(flowchart)) = root.get_mut("flowchart") else {
+            return false;
+        };
+        let Some(html_labels) = flowchart.remove("htmlLabels") else {
+            return false;
+        };
+        let flowchart_is_empty = flowchart.is_empty();
+        (html_labels, flowchart_is_empty)
+    };
+
+    if !root_had_html_labels {
+        root.insert("htmlLabels".to_string(), html_labels);
+    }
+    if flowchart_is_empty {
+        root.remove("flowchart");
+    }
+
+    true
 }
 
 fn parse_frontmatter_fields(yaml_body: &str) -> Option<Map<String, Value>> {
@@ -270,5 +339,19 @@ mod tests {
 
         assert_eq!(migrated.config.as_value(), original.config.as_value());
         assert!(!edited.contains("%%{ initialize"));
+    }
+
+    #[test]
+    fn flowchart_html_labels_to_root_fix_promotes_deprecated_key() {
+        let source = "---\nconfig:\n  flowchart:\n    curve: basis\n---\n%%{ init: {\"flowchart\":{\"htmlLabels\":false}} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(fix.is_preferred);
+        assert!(edited.contains("htmlLabels: false"));
+        assert!(!edited.contains("flowchart:\n    htmlLabels: false"));
+        assert!(edited.contains("config:\n  flowchart:\n    curve: basis"));
     }
 }

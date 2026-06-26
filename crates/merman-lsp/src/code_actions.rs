@@ -343,6 +343,49 @@ mod tests {
     }
 
     #[test]
+    fn deprecated_flowchart_html_labels_fix_produces_quickfix_action() {
+        let source = "%%{init: { \"flowchart\": { \"htmlLabels\": false, \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n";
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let payload = Analyzer::new().analyze(source);
+        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 80),
+            },
+            context: CodeActionContext {
+                diagnostics,
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions =
+            code_actions_for_params(&params).expect("expected deprecated htmlLabels quickfix");
+        let action = actions
+            .iter()
+            .filter_map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => Some(action),
+                CodeActionOrCommand::Command(_) => None,
+            })
+            .find(|action| {
+                action.title == "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
+            })
+            .expect("missing deprecated htmlLabels quickfix");
+
+        assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
+        assert_eq!(action.is_preferred, Some(true));
+        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
+        let edits = changes.get(&uri).unwrap();
+        assert!(!edits.is_empty());
+        assert!(edits[0].new_text.contains("htmlLabels: false"));
+    }
+
+    #[test]
     fn flowchart_missing_direction_fix_produces_quickfix_action() {
         let source = "flowchart\nA-->B\n";
         let analyzer = authoring_analyzer();

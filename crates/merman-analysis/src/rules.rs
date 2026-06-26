@@ -173,7 +173,7 @@ const DEPRECATED_FLOWCHART_HTML_LABELS_RULE: RuleDescriptor = RuleDescriptor {
     default_enabled: true,
     default_profile: AnalysisRuleProfile::Core,
     origin: RuleOrigin::MermaidCompatibility,
-    fixable: false,
+    fixable: true,
 };
 
 const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE: RuleDescriptor = RuleDescriptor {
@@ -792,6 +792,7 @@ fn deprecated_flowchart_html_labels_diagnostics(
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
+    let fix = crate::source_config_rewrite::flowchart_html_labels_to_root_fix(source, source_map);
     init_directive_config_key_diagnostics(
         source,
         source_map,
@@ -801,6 +802,14 @@ fn deprecated_flowchart_html_labels_diagnostics(
         "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
         "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
     )
+    .into_iter()
+    .map(|mut diagnostic| {
+        if let Some(fix) = fix.clone() {
+            diagnostic = diagnostic.with_fix(fix);
+        }
+        diagnostic
+    })
+    .collect()
 }
 
 fn deprecated_external_diagram_loading_diagnostics(
@@ -1023,7 +1032,18 @@ mod tests {
         assert_eq!(diagnostic.id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
         assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-        assert!(diagnostic.fixes.is_empty());
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(
+            diagnostic.fixes[0].title,
+            "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
+        );
+        assert!(diagnostic.fixes[0].is_preferred);
+        assert_eq!(diagnostic.fixes[0].edits.len(), 2);
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .contains("htmlLabels: false")
+        );
         let span = diagnostic.span.as_ref().expect("htmlLabels span");
         assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
     }
@@ -1038,6 +1058,11 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+        assert_eq!(diagnostics[0].fixes.len(), 1);
+        assert_eq!(
+            diagnostics[0].fixes[0].title,
+            "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
+        );
         let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
         assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
     }

@@ -44,10 +44,10 @@ facts, it is not considered mature.
 - Config lint: Mermaid-backed compatibility warnings can be enabled in the core profile when
   upstream emits or documents the same warning.
   `merman.compatibility.config.deprecated_flowchart_html_labels` reports deprecated
-  `flowchart.htmlLabels`, while
+  `flowchart.htmlLabels` and carries a preferred quickfix to move it to root `htmlLabels`, while
   `merman.compatibility.config.deprecated_external_diagram_loading` reports deprecated
   `lazyLoadedDiagrams` / `loadExternalDiagramsAtStartup` directive config. Both intentionally
-  remain fixless because they are API/config migrations rather than local source rewrites.
+  remain source-backed compatibility warnings.
 - Semantic index: parser-backed payload facts are retained as semantic items even when they are
   not projected into completion, outline, or rename surfaces.
 - Semantic tokens: the full-document, range, and delta providers are wired from parser-backed

@@ -369,6 +369,11 @@ fn cli_lint_rules_lists_rule_catalog_json() {
             .iter()
             .any(|value| value == "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts")
     );
+    let flowchart_html_labels = rules
+        .iter()
+        .find(|rule| rule["id"] == "merman.compatibility.config.deprecated_flowchart_html_labels")
+        .expect("deprecated flowchart htmlLabels rule");
+    assert_eq!(flowchart_html_labels["fixable"], true);
 }
 
 #[test]

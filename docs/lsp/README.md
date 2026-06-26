@@ -62,8 +62,9 @@ navigation, code-action, and semantic-token foundations.
 - Mermaid-backed compatibility rules such as
   `merman.compatibility.config.deprecated_flowchart_html_labels` and
   `merman.compatibility.config.deprecated_external_diagram_loading` can be core-profile warnings
-  when the pinned Mermaid source or docs expose the same warning. They do not imply quickfix
-  support unless the diagnostic carries explicit `DiagnosticFix` metadata.
+  when the pinned Mermaid source or docs expose the same warning. The flowchart htmlLabels rule
+  also carries a preferred migration quickfix into root `htmlLabels` when the source shape allows
+  it.
 - Full-document, range, and delta semantic tokens are role-aware and parser-backed; configuration
   changes trigger `workspace/semanticTokens/refresh` when the client advertises refresh support,
   and delta requests reuse cached snapshot token state when the previous result id matches.

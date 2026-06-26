@@ -299,7 +299,7 @@ mod tests {
                     &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md".to_string(),
                 )
                 && rule.configurable
-                && !rule.fixable
+                && rule.fixable
         }));
         assert!(catalog.rules.iter().any(|rule| {
             rule.id == "merman.compatibility.config.deprecated_external_diagram_loading"

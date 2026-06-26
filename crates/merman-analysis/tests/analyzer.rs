@@ -184,7 +184,12 @@ fn deprecated_flowchart_html_labels_config_is_core_warning() {
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
     assert!(diagnostic.message.contains("deprecated"));
-    assert!(diagnostic.fixes.is_empty());
+    assert_eq!(diagnostic.fixes.len(), 1);
+    assert_eq!(
+        diagnostic.fixes[0].title,
+        "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
+    );
+    assert!(diagnostic.fixes[0].is_preferred);
     let span = diagnostic.span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
 }

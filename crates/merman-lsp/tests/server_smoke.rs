@@ -384,7 +384,7 @@ async fn lsp_service_smoke_pulls_document_diagnostics() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quickfix() {
+async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfix() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -442,12 +442,10 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quic
             "merman.compatibility.config.deprecated_flowchart_html_labels".to_string()
         ))
     );
-    assert!(diagnostic.data.is_none());
-
     let request = Request::build("textDocument/codeAction")
         .params(
             serde_json::to_value(CodeActionParams {
-                text_document: TextDocumentIdentifier { uri },
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
                 range: Range {
                     start: Position::new(0, 0),
                     end: Position::new(0, 80),
@@ -473,7 +471,22 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quic
         .unwrap()
         .expect("code action response");
     let result = response.result().expect("code action result");
-    assert!(result.is_null() || result.as_array().is_some_and(|actions| actions.is_empty()));
+    let actions = result.as_array().expect("code action array");
+    let action = actions
+        .iter()
+        .find(|action| {
+            action.get("title").and_then(|value| value.as_str())
+                == Some("Move deprecated `flowchart.htmlLabels` to root `htmlLabels`")
+        })
+        .expect("missing deprecated htmlLabels quickfix");
+    let edits = action["edit"]["changes"][uri.as_str()]
+        .as_array()
+        .expect("expected text edits");
+    assert!(edits.iter().any(|edit| {
+        edit["newText"]
+            .as_str()
+            .is_some_and(|text| text.contains("htmlLabels: false"))
+    }));
 }
 
 #[tokio::test(flavor = "current_thread")]

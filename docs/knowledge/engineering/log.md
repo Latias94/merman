@@ -6,6 +6,11 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added a preferred quickfix for `merman.compatibility.config.deprecated_flowchart_html_labels`. The fix promotes deprecated `flowchart.htmlLabels` into root-level `htmlLabels` and reuses the shared config/frontmatter rewrite path so the analysis, CLI, and LSP surfaces stay aligned.
+- Kept `merman.compatibility.config.deprecated_external_diagram_loading` fixless; it remains an API/config migration rather than a local source rewrite.
+- Re-verified the slice with `cargo test -p merman-analysis --test analyzer deprecated_flowchart_html_labels_config_is_core_warning -- --exact --nocapture`, `cargo test -p merman-lsp --lib code_actions::tests::deprecated_flowchart_html_labels_fix_produces_quickfix_action -- --exact --nocapture`, `cargo test -p merman-lsp --test server_smoke lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfix -- --exact --nocapture`, `cargo test -p merman-lsp --lib protocol::tests::rule_catalog_response_contains_governed_authoring_rule -- --exact --nocapture`, `cargo test -p merman-cli --test cli_compat cli_lint_rules_lists_rule_catalog_json`, `cargo check -p merman-analysis -p merman-cli -p merman-lsp`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-26
 - Promoted `merman.authoring.config.prefer_frontmatter_config` from a hint into a preferred migration fix. The analysis layer now rewrites init/initialize directive config into YAML frontmatter using the merged Mermaid config as the source of truth, preserves existing frontmatter fields, and removes the original directive spans.
 - Reused the shared init-directive scanner to expose full directive spans plus keyword spans so config migration, lint, code actions, and future parser-backed editor features can share the same directive locator.
 - Re-verified the slice with focused analysis, analyzer, LSP code action, and CLI lint-rules/disable/severity tests, plus `cargo fmt --all --check` and `git diff --check`.
