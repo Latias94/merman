@@ -3,7 +3,7 @@
   "slug": "ascii-architecture-deepening",
   "title": "ASCII Architecture Deepening",
   "status": "active",
-  "updated": "2026-06-01",
+  "updated": "2026-06-26",
   "scope_kind": "architecture",
   "problem": "merman-ascii has shipped multiple diagram-family subsets, but text styling, graph routing, relation rendering, sequence event state, and gap tracking are still spread across shallow internal modules.",
   "authoritative_docs": [
@@ -136,6 +136,21 @@
       "date": "2026-06-01",
       "task": "AAD-080",
       "result": "passed targeted flowchart subgraph and graph fixture validation for local-direction subset plus cross-boundary fallback"
+    },
+    {
+      "date": "2026-06-26",
+      "task": "AAD-100",
+      "result": "removed the duplicate graph route extent helper and made RoutePlan own selected-route canvas extents"
+    },
+    {
+      "date": "2026-06-26",
+      "task": "AAD-100",
+      "result": "introduced shared GraphGroupTopology for routing boundary classification and graph group layout"
+    },
+    {
+      "date": "2026-06-26",
+      "task": "AAD-100",
+      "result": "passed cargo nextest run -p merman-ascii, cargo clippy -p merman-ascii --all-targets -- -D warnings, and git diff --check"
     }
   ],
   "adr_refs": [
@@ -153,7 +168,7 @@
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "AAD-080",
-    "notes": "Active again for bounded A-GRAPH-010 follow-on work. After AAD-080 commit or closeout, continue from crates/merman-ascii/ASCII_GAP_REGISTRY.md for the next ASCII feature or routing expansion."
+    "next_task": "registry-selected",
+    "notes": "AAD-010 through AAD-100 are complete. Continue from crates/merman-ascii/ASCII_GAP_REGISTRY.md and pick a narrow capability or architecture slice with explicit validation gates."
   }
 }

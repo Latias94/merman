@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening — Handoff
 
 Status: Active
-Last updated: 2026-06-02
+Last updated: 2026-06-26
 
 ## Current State
 
@@ -13,28 +13,20 @@ The lane was originally opened to execute five architecture deepening targets fo
 - sequence event plan seam,
 - ASCII gap registry.
 
-AAD-010 through AAD-070 remain complete.
-The lane has been resumed for AAD-080, a bounded `A-GRAPH-010` follow-on.
+AAD-010 through AAD-100 are complete. The lane remains active only as a registry-backed place for
+future ASCII architecture slices.
 
 ## Active Task
 
-- Task ID: AAD-090
-- Owner: codex
-- Files: `crates/merman-ascii/src/graph/routing`, `crates/merman-ascii/src/relation_graph.rs`,
-  `crates/merman-ascii/src/class/render.rs`, `crates/merman-ascii/src/er/render.rs`,
-  `crates/merman-ascii/src/sequence`, `crates/merman-ascii/tests/flowchart_model.rs`,
-  `crates/merman-ascii/tests/class_model.rs`, `crates/merman-ascii/tests/er_model.rs`,
-  `crates/merman-ascii/tests/sequence_model.rs`, `crates/merman-core/src/diagrams/class/db.rs`,
-  `crates/merman-core/src/diagrams/class/tests.rs`, `crates/merman-cli`, ASCII support docs,
-  class namespace parser goldens, `docs/workstreams/ascii-architecture-deepening`
-- Validation: `cargo nextest run -p merman-ascii`; `cargo nextest run -p merman-cli --features ascii`;
-  `cargo nextest run -p merman-core --lib`;
-  `cargo clippy -p merman-ascii --all-targets --no-deps -- -D warnings`;
-  `cargo clippy -p merman-cli --features ascii --all-targets --no-deps -- -D warnings`
-- Status: READY FOR REVIEW
-- Review: Verify route-plan coverage catches dropped edges and wrong Unicode turn glyphs without
-  blessing unrelated output shape drift.
-- Evidence: `EVIDENCE_AND_GATES.md`, `JOURNAL/2026-06-02-aad-090.md`
+- Task ID: none
+- Owner: unassigned
+- Files: choose from `crates/merman-ascii/ASCII_GAP_REGISTRY.md`
+- Validation: choose the registry gate for the next slice; minimum package gate remains
+  `cargo nextest run -p merman-ascii`,
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`, and `git diff --check`.
+- Status: NO ACTIVE TASK
+- Review: Start the next slice from the registry, not from stale AAD-090 handoff text.
+- Evidence: `EVIDENCE_AND_GATES.md`, `TODO.md`
 
 ## Decisions Since Last Update
 
@@ -85,10 +77,16 @@ The lane has been resumed for AAD-080, a bounded `A-GRAPH-010` follow-on.
   core instead of synthesizing duplicate top-level classes.
 - ER/class shared spanning relation lanes now choose a clear side around intermediate boxes instead
   of blindly offsetting to the right and potentially overwriting entity/class text.
+- AAD-100 moved route canvas sizing into `RoutePlan::canvas_extent`, deleting the separate
+  `graph/routing/plan/extent.rs` calculation path.
+- Back-lane width contracts are now explicit minimum route-plan extents on the route families that
+  need them, rather than global right padding.
+- AAD-100 introduced `graph::topology::GraphGroupTopology`, shared by routing boundary context and
+  graph group layout, so group membership/depth is no longer rebuilt separately in those modules.
 
 ## Blockers
 
-- None for the shipped subset. Remaining mixed-direction parity gaps are tracked in
+- None for the shipped subset. Remaining parity gaps are tracked in
   `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
 - `cargo nextest run -p merman-core` still has one unrelated snapshot failure in
   `fixtures/flowchart/stress_flowchart_edge_label_position_064.mmd` (`labelType` markdown vs
@@ -96,6 +94,7 @@ The lane has been resumed for AAD-080, a bounded `A-GRAPH-010` follow-on.
 
 ## Next Recommended Action
 
-- Review and, if accepted, close this AAD-090 slice. The next same-lane task should add broader
-  route invariants for every parsed flowchart edge and decide separately whether to refresh or
-  investigate the stale flowchart parser golden.
+- Pick the next slice from `crates/merman-ascii/ASCII_GAP_REGISTRY.md`. Good candidates are broader
+  flowchart route invariants for parsed edges, or a focused support-boundary slice for remaining
+  uncommon graph shapes/labels. Treat complex fixtures as semantic evidence, not byte-perfect
+  standards unless they come from the copied upstream `mermaid-ascii` corpus.

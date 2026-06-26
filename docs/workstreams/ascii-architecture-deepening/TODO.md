@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening — TODO
 
 Status: Active
-Last updated: 2026-06-02
+Last updated: 2026-06-26
 
 ## M0 — Scope And Evidence Freeze
 
@@ -89,7 +89,7 @@ Last updated: 2026-06-02
 
 ## M7 — Subgraph Local Direction Subset
 
-- [ ] AAD-080 [owner=codex] [deps=AAD-070] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests/flowchart_model.rs,crates/merman-ascii/FLOWCHART_SUPPORT.md,crates/merman-ascii/ASCII_GAP_REGISTRY.md,docs/workstreams/ascii-architecture-deepening]
+- [x] AAD-080 [owner=codex] [deps=AAD-070] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests/flowchart_model.rs,crates/merman-ascii/FLOWCHART_SUPPORT.md,crates/merman-ascii/ASCII_GAP_REGISTRY.md,docs/workstreams/ascii-architecture-deepening]
   Goal: Ship a narrow but honest `FlowSubgraph.dir` subset by supporting local canonical `LR`
   subgraph layout inside canonical `TD` roots when routed edges remain fully internal to the
   subgraph, and document the remaining mixed-direction boundary gaps explicitly.
@@ -99,12 +99,12 @@ Last updated: 2026-06-02
   Evidence: parser-backed flowchart model tests for shipped local `LR` behavior and documented
   fallback coverage for cross-boundary edges.
   Context: `crates/merman-ascii/ASCII_GAP_REGISTRY.md`, `crates/merman-ascii/FLOWCHART_SUPPORT.md`.
-  Handoff: IN PROGRESS on 2026-06-01. Code and tests currently pass local validation; doc and
-  journal closeout still needed before commit.
+  Handoff: DONE. Later graph-routing work expanded this subset into explicit boundary-aware route
+  planning; remaining graph gaps are tracked in `ASCII_GAP_REGISTRY.md`.
 
 ## M8 — Cross-Boundary Mixed-Direction Routing Seam
 
-- [ ] AAD-090 [owner=codex] [deps=AAD-080] [scope=crates/merman-ascii/src/graph/routing,crates/merman-ascii/tests/flowchart_model.rs,docs/workstreams/ascii-architecture-deepening]
+- [x] AAD-090 [owner=codex] [deps=AAD-080] [scope=crates/merman-ascii/src/graph/routing,crates/merman-ascii/tests/flowchart_model.rs,docs/workstreams/ascii-architecture-deepening]
   Goal: Introduce an explicit route-planning seam for edges that enter or leave a direction-bearing
   subgraph, starting with context classification and one bounded root `TD` / local `LR` strategy.
   Validation: targeted route-plan tests; `cargo nextest run -p merman-ascii flowchart subgraph`; `cargo nextest run -p merman-ascii flowchart`
@@ -113,7 +113,21 @@ Last updated: 2026-06-02
   Evidence: route-plan classification tests, parser-backed subgraph boundary tests, and updated
   design/evidence docs.
   Context: `crates/merman-ascii/ASCII_GAP_REGISTRY.md`, `docs/workstreams/ascii-architecture-deepening/DESIGN.md`, `F:\\SourceCodes\\Rust\\merman\\repo-ref\\beautiful-mermaid\\src\\layout-engine.ts`.
-  Handoff: READY FOR REVIEW on 2026-06-02. Route seam has explicit request objects, boundary
-  segment markers, TD same-rank merge coverage, turn-glyph regression tests, class namespace
-  qualified endpoint coverage, and ER spanning relation coverage. Next same-lane step is a broader
-  route invariant that fails when any parsed flowchart edge is silently dropped.
+  Handoff: DONE. Route seam has explicit request objects, boundary segment markers, TD same-rank
+  merge coverage, turn-glyph regression tests, parser-backed boundary fixtures, and explicit
+  canvas-extent ownership in `RoutePlan`.
+
+## M9 — Route Extent And Group Topology Hardening
+
+- [x] AAD-100 [owner=codex] [deps=AAD-090] [scope=crates/merman-ascii/src/graph/routing,crates/merman-ascii/src/graph/layout,docs/workstreams/ascii-architecture-deepening]
+  Goal: Remove duplicate route canvas extent computation and replace repeated group membership /
+  parent-depth reconstruction with a shared graph topology model.
+  Validation: `cargo nextest run -p merman-ascii`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `git diff --check`
+  Review: Back-lane and top-down back-edge width contracts must remain explicit route-plan
+  properties, not global padding. Boundary routing and group layout must read group membership from
+  the same topology index.
+  Evidence: `a48417a8e refactor(ascii): make route plans own canvas extent`;
+  `3c1ee58c1 refactor(ascii): share graph group topology`.
+  Context: `crates/merman-ascii/src/graph/routing/plan.rs`,
+  `crates/merman-ascii/src/graph/topology.rs`.
+  Handoff: DONE on 2026-06-26. All `merman-ascii` tests, clippy, and diff check passed.
