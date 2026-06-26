@@ -70,6 +70,22 @@ Response:
       "origin": "mermaid_compatibility",
       "configurable": true,
       "fixable": false
+    },
+    {
+      "id": "merman.compatibility.config.deprecated_external_diagram_loading",
+      "description": "Report deprecated external diagram loading config and recommend `registerExternalDiagrams`.",
+      "evidence": [
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/mermaid.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/mermaid.spec.ts"
+      ],
+      "default_severity": "warning",
+      "category": "config",
+      "default_enabled": true,
+      "default_profile": "core",
+      "origin": "mermaid_compatibility",
+      "configurable": true,
+      "fixable": false
     }
   ]
 }
@@ -96,7 +112,8 @@ Response:
   "configurable_rule_ids": [
     "merman.authoring.config.prefer_init_directive",
     "merman.authoring.flowchart.explicit_direction",
-    "merman.compatibility.config.deprecated_flowchart_html_labels"
+    "merman.compatibility.config.deprecated_flowchart_html_labels",
+    "merman.compatibility.config.deprecated_external_diagram_loading"
   ],
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

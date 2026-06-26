@@ -6,6 +6,20 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added a second Mermaid-backed core compatibility config lint:
+  `merman.compatibility.config.deprecated_external_diagram_loading`. It reports deprecated
+  `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` directive config and recommends the
+  `registerExternalDiagrams` runtime API instead of encoding a Merman-specific standard.
+- Kept the rule source-backed and span-precise by reusing `merman-analysis::source_directives`
+  for directive key-path matching, while leaving the diagnostic intentionally fixless because the
+  replacement is an API migration rather than a safe local rewrite.
+- Re-verified the new rule and its surface area with `cargo test -p merman-analysis --lib`,
+  `cargo test -p merman-analysis --lib --test analyzer`, `cargo test -p merman-lsp --lib
+  protocol::tests`, `cargo test -p merman-cli --test cli_compat cli_lint_rules_lists_rule_catalog_json`,
+  `cargo check -p merman-analysis -p merman-cli -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-26
 - Extracted the directive/config source scanner from `merman-analysis::rules` into the internal
   `source_directives` module. Rules now ask for init-directive config key paths such as
   `flowchart.htmlLabels` / `config.flowchart.htmlLabels` instead of embedding path-specific

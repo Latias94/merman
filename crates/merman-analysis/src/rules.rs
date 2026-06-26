@@ -14,6 +14,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.authoring.config.prefer_init_directive";
 pub const DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID: &str =
     "merman.compatibility.config.deprecated_flowchart_html_labels";
+pub const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID: &str =
+    "merman.compatibility.config.deprecated_external_diagram_loading";
 pub const NO_DIAGRAM_RULE_ID: &str = "merman.parse.no_diagram";
 pub const DIAGRAM_PARSE_RULE_ID: &str = "merman.parse.diagram_parse";
 pub const UNSUPPORTED_DIAGRAM_RULE_ID: &str = "merman.compatibility.unsupported_diagram";
@@ -34,6 +36,8 @@ const DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS: [&[&str]; 2] = [
     &["flowchart", "htmlLabels"],
     &["config", "flowchart", "htmlLabels"],
 ];
+const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS: [&[&str]; 2] =
+    [&["lazyLoadedDiagrams"], &["loadExternalDiagramsAtStartup"]];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -146,6 +150,22 @@ const DEPRECATED_FLOWCHART_HTML_LABELS_RULE: RuleDescriptor = RuleDescriptor {
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.type.ts",
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
+    ],
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Config,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
+
+const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE: RuleDescriptor = RuleDescriptor {
+    id: DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID,
+    description: "Report deprecated external diagram loading config and recommend `registerExternalDiagrams`.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/mermaid.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/mermaid.spec.ts",
     ],
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Config,
@@ -366,6 +386,7 @@ const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
 const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PREFER_INIT_DIRECTIVE_RULE,
     DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
+    DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
     NO_DIAGRAM_RULE,
     DIAGRAM_PARSE_RULE,
     UNSUPPORTED_DIAGRAM_RULE,
@@ -508,6 +529,11 @@ pub(crate) fn source_lint_diagnostics(
 ) -> Vec<AnalysisDiagnostic> {
     let mut diagnostics = init_directive_alias_diagnostics(source, source_map, rule_config);
     diagnostics.extend(deprecated_flowchart_html_labels_diagnostics(
+        source,
+        source_map,
+        rule_config,
+    ));
+    diagnostics.extend(deprecated_external_diagram_loading_diagnostics(
         source,
         source_map,
         rule_config,
@@ -703,26 +729,55 @@ fn deprecated_flowchart_html_labels_diagnostics(
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
-    if !rule_config.is_rule_enabled(DEPRECATED_FLOWCHART_HTML_LABELS_RULE) {
+    init_directive_config_key_diagnostics(
+        source,
+        source_map,
+        rule_config,
+        DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
+        &DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS,
+        "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
+        "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
+    )
+}
+
+fn deprecated_external_diagram_loading_diagnostics(
+    source: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+) -> Vec<AnalysisDiagnostic> {
+    init_directive_config_key_diagnostics(
+        source,
+        source_map,
+        rule_config,
+        DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
+        &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS,
+        "deprecated external diagram loading config; use `registerExternalDiagrams` instead",
+        "Mermaid warns that `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` are deprecated in favor of the `registerExternalDiagrams` API.",
+    )
+}
+
+fn init_directive_config_key_diagnostics(
+    source: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+    descriptor: RuleDescriptor,
+    matching_paths: &[&[&str]],
+    message: &'static str,
+    help: &'static str,
+) -> Vec<AnalysisDiagnostic> {
+    if !rule_config.is_rule_enabled(descriptor) {
         return Vec::new();
     }
-    let severity = rule_config.severity_for(DEPRECATED_FLOWCHART_HTML_LABELS_RULE);
+    let severity = rule_config.severity_for(descriptor);
 
-    init_directive_config_key_spans(source, &DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS)
+    init_directive_config_key_spans(source, matching_paths)
         .into_iter()
         .filter_map(|span| {
             let span = source_map.span(span.start, span.end).ok()?;
             Some(
-                AnalysisDiagnostic::new(
-                    DEPRECATED_FLOWCHART_HTML_LABELS_RULE.id,
-                    severity,
-                    DEPRECATED_FLOWCHART_HTML_LABELS_RULE.category,
-                    "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
-                )
-                .with_span(span)
-                .with_help(
-                    "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
-                ),
+                AnalysisDiagnostic::new(descriptor.id, severity, descriptor.category, message)
+                    .with_span(span)
+                    .with_help(help),
             )
         })
         .collect()
@@ -871,6 +926,44 @@ mod tests {
     }
 
     #[test]
+    fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
+        let source = "%%{init: { \"lazyLoadedDiagrams\": true, \"loadExternalDiagramsAtStartup\": false }}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics =
+            source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+        assert_eq!(diagnostics.len(), 2);
+        assert!(diagnostics.iter().all(|diagnostic| {
+            diagnostic.id == DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID
+                && diagnostic.severity == DiagnosticSeverity::Warning
+                && diagnostic.category == DiagnosticCategory::Config
+                && diagnostic.fixes.is_empty()
+        }));
+        let spans: Vec<_> = diagnostics
+            .iter()
+            .map(|diagnostic| {
+                let span = diagnostic.span.as_ref().expect("deprecated key span");
+                &source[span.byte_start..span.byte_end]
+            })
+            .collect();
+        assert_eq!(
+            spans,
+            vec!["lazyLoadedDiagrams", "loadExternalDiagramsAtStartup"]
+        );
+    }
+
+    #[test]
+    fn rule_config_can_disable_deprecated_external_diagram_loading_rule() {
+        let source = "%%{init: { \"lazyLoadedDiagrams\": true }}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default()
+            .with_rule_disabled(DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID);
+
+        assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
+    }
+
+    #[test]
     fn rule_config_can_disable_block_warning_rules() {
         let source = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
         let source_map = SourceMap::new(source);
@@ -1011,7 +1104,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 16);
+        assert_eq!(descriptors.len(), 17);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert!(descriptors[0].description.contains("canonical `init`"));
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1111,6 +1204,38 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID)
+        );
+        let deprecated_external_loading = descriptors
+            .iter()
+            .find(|descriptor| descriptor.id == DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID)
+            .expect("deprecated external diagram loading descriptor");
+        assert_eq!(
+            deprecated_external_loading.origin,
+            RuleOrigin::MermaidCompatibility
+        );
+        assert!(deprecated_external_loading.default_enabled);
+        assert_eq!(
+            deprecated_external_loading.default_profile,
+            AnalysisRuleProfile::Core
+        );
+        assert_eq!(
+            deprecated_external_loading.default_severity,
+            DiagnosticSeverity::Warning
+        );
+        assert_eq!(
+            deprecated_external_loading.category,
+            DiagnosticCategory::Config
+        );
+        assert!(!deprecated_external_loading.fixable);
+        assert!(
+            deprecated_external_loading
+                .evidence
+                .contains(&"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts")
         );
         assert!(
             descriptors

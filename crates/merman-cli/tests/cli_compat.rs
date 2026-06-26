@@ -337,6 +337,23 @@ fn cli_lint_rules_lists_rule_catalog_json() {
             .iter()
             .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
     );
+    let external_loading = rules
+        .iter()
+        .find(|rule| {
+            rule["id"] == "merman.compatibility.config.deprecated_external_diagram_loading"
+        })
+        .expect("deprecated external diagram loading rule");
+    assert_eq!(external_loading["origin"], "mermaid_compatibility");
+    assert_eq!(external_loading["default_profile"], "core");
+    assert_eq!(external_loading["default_severity"], "warning");
+    assert_eq!(external_loading["fixable"], false);
+    assert!(
+        external_loading["evidence"]
+            .as_array()
+            .expect("evidence array")
+            .iter()
+            .any(|value| value == "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts")
+    );
 }
 
 #[test]
