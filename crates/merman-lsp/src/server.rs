@@ -2,7 +2,10 @@ use crate::code_actions::code_actions_for_params;
 use crate::completion::completion_for_snapshot;
 use crate::document_store::DocumentStore;
 use crate::document_store::SemanticTokensState;
-use crate::protocol::{RULE_CATALOG_METHOD, RuleCatalogResponse, experimental_capabilities};
+use crate::protocol::{
+    CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
+    experimental_capabilities,
+};
 use crate::semantic_tokens::{
     semantic_tokens_delta_result, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
     semantic_tokens_for_snapshot_with_result_id, semantic_tokens_options,
@@ -61,6 +64,7 @@ impl MermanLanguageServer {
     pub fn service() -> (LspService<Self>, ClientSocket) {
         LspService::build(Self::new)
             .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
+            .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
             .finish()
     }
 
@@ -89,6 +93,10 @@ impl MermanLanguageServer {
 
     pub async fn rule_catalog(&self) -> Result<RuleCatalogResponse> {
         Ok(RuleCatalogResponse::current())
+    }
+
+    pub async fn config_schema(&self) -> Result<ConfigSchemaResponse> {
+        Ok(ConfigSchemaResponse::current())
     }
 
     async fn snapshot_for_uri(&self, uri: &tower_lsp::lsp_types::Url) -> Option<DocumentSnapshot> {

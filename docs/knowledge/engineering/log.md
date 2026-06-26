@@ -6,6 +6,20 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added the second editor-agnostic Merman LSP extension request, `merman/configSchema`, and
+  advertised it beside `merman/ruleCatalog` under
+  `ServerCapabilities.experimental.merman.requests`.
+- The config schema response exposes accepted settings roots, lint profiles, diagnostic
+  severities, configurable rule-id enums from the shared analysis catalog, and a JSON Schema-style
+  description of the active `lint`, `parse.suppress_errors`, `resources.max_source_bytes`,
+  `site_config`, `fixed_today`, and `fixed_local_offset_minutes` options.
+- Documented the request in `docs/lsp/EXTENSION_PROTOCOL.md` and synchronized
+  `docs/lsp/README.md` plus `docs/lsp/CAPABILITIES.md` so plugin authors can build settings UI,
+  completion, and validation hints without Merman owning editor-specific UI.
+- Verified the config schema slice with `cargo nextest run -p merman-lsp --no-fail-fast
+  --status-level=all --final-status-level=all`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-26
 - Added the first editor-agnostic Merman LSP extension request, `merman/ruleCatalog`, and
   advertised it under `ServerCapabilities.experimental.merman.requests` so plugins can discover
   rule metadata without depending on a Merman-owned UI package.

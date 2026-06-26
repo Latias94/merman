@@ -14,7 +14,8 @@ navigation, code-action, and semantic-token foundations.
   `documentSymbol`, `definition`, `references`, `prepareRename`, `rename`, `codeAction`,
   `semanticTokens/full`, and `semanticTokens/range`.
 - Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
-  starting with `merman/ruleCatalog` for rule metadata discovery.
+  including `merman/ruleCatalog` for rule metadata discovery and `merman/configSchema` for
+  analysis/lint settings discovery.
 - Publish diagnostics from `merman-analysis`.
 - Keep document state versioned so stale diagnostics are never republished.
 - Provide the first completion surface for diagram structure, directions, shapes, and local
@@ -59,7 +60,8 @@ navigation, code-action, and semantic-token foundations.
   and delta requests reuse cached snapshot token state when the previous result id matches.
 - Capability maturity is tracked in `CAPABILITIES.md`.
 - Merman-specific custom requests are documented in `EXTENSION_PROTOCOL.md`; editor plugins should
-  feature-detect those requests and keep UI outside the LSP server.
+  feature-detect those requests, use the config schema for settings completion/validation hints,
+  and keep UI outside the LSP server.
 
 ## Notes
 

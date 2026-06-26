@@ -1,7 +1,7 @@
 use futures::SinkExt;
 use futures::StreamExt;
 use merman_lsp::MermanLanguageServer;
-use merman_lsp::protocol::RULE_CATALOG_METHOD;
+use merman_lsp::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD};
 use serde_json::from_value;
 use tokio::time::{Duration, timeout};
 use tower::{Service, ServiceExt};
@@ -41,6 +41,10 @@ async fn lsp_service_smoke_handles_initialize() {
     assert_eq!(
         response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["ruleCatalog"],
         RULE_CATALOG_METHOD
+    );
+    assert_eq!(
+        response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
+        CONFIG_SCHEMA_METHOD
     );
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
@@ -92,6 +96,58 @@ async fn lsp_service_smoke_serves_rule_catalog_custom_request() {
                 .iter()
                 .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
     }));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_serves_config_schema_custom_request() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::to_value(InitializeParams::default()).unwrap())
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let request = Request::build(CONFIG_SCHEMA_METHOD).id(2).finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("config schema response");
+    let result = response.result().expect("config schema result");
+
+    assert_eq!(result["version"], 1);
+    assert_eq!(result["rule_catalog_method"], RULE_CATALOG_METHOD);
+    assert!(
+        result["configurable_rule_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "merman.authoring.flowchart.explicit_direction")
+    );
+    assert_eq!(
+        result["schema"]["$defs"]["analysisOptions"]["properties"]["lint"]["properties"]["profile"]
+            ["enum"],
+        serde_json::json!(["core", "recommended", "strict"])
+    );
+    assert_eq!(
+        result["schema"]["$defs"]["severity"]["enum"],
+        serde_json::json!(["error", "warning", "info", "hint"])
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

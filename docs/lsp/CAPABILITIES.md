@@ -23,6 +23,10 @@ facts, it is not considered mature.
   evidence references, profiles, origins, configurability, and fixability instead of duplicating
   LSP-local rule tables. The server advertises `merman/ruleCatalog` under
   `ServerCapabilities.experimental.merman.requests`.
+- Configuration discovery: clients should use `merman/configSchema` for editor settings completion,
+  validation hints, available lint profiles, diagnostic severities, configurable rule-id enums, and
+  the accepted direct/`merman`/`analysis` settings roots. The schema describes the same analysis
+  options accepted by initialization options and `workspace/didChangeConfiguration`.
 - Completion: semantic roles must exclude payload-only spans.
 - Definition / References / Rename: entity-only semantic item queries keyed by typed reference
   groups. Payload and outline-only items are excluded unless a future role explicitly allows

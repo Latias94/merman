@@ -19,7 +19,8 @@ During `initialize`, the server advertises:
     "merman": {
       "schemaVersion": 1,
       "requests": {
-        "ruleCatalog": "merman/ruleCatalog"
+        "ruleCatalog": "merman/ruleCatalog",
+        "configSchema": "merman/configSchema"
       }
     }
   }
@@ -62,6 +63,68 @@ Rules use the same metadata vocabulary as CLI and binding catalog surfaces. Plug
 filter `configurable == true` for settings UI, use `origin` and `evidence` when explaining rule
 authority, and use `fixable` only as a hint that diagnostics from the rule may carry quickfix
 metadata.
+
+## `merman/configSchema`
+
+Request params: none.
+
+Response:
+
+```json
+{
+  "version": 1,
+  "rule_catalog_method": "merman/ruleCatalog",
+  "accepted_roots": ["direct", "merman", "analysis"],
+  "profiles": ["core", "recommended", "strict"],
+  "severities": ["error", "warning", "info", "hint"],
+  "configurable_rule_ids": [
+    "merman.authoring.config.prefer_init_directive",
+    "merman.authoring.flowchart.explicit_direction"
+  ],
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Merman analysis options",
+    "$defs": {
+      "analysisOptions": {
+        "type": "object",
+        "properties": {
+          "lint": {
+            "type": "object",
+            "properties": {
+              "profile": {
+                "type": "string",
+                "enum": ["core", "recommended", "strict"]
+              },
+              "enable_rules": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/ruleId" }
+              },
+              "disable_rules": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/ruleId" }
+              },
+              "rule_severities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["rule_id", "severity"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The schema describes the same analysis options accepted by `initialize.initializationOptions` and
+`workspace/didChangeConfiguration`: `lint`, `parse.suppress_errors`, `resources.max_source_bytes`,
+`site_config`, `fixed_today`, and `fixed_local_offset_minutes`. It is intentionally permissive with
+`additionalProperties` so alpha clients are not broken by future options. Clients should use it for
+settings completion, settings validation hints, and profile/rule pickers, then use
+`merman/ruleCatalog` for the richer rule explanations and evidence metadata.
 
 ## Standard LSP Pairing
 
