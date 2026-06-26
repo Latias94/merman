@@ -1,3 +1,4 @@
+use crate::diagrams::scan::{split_statement_suffix_hash_or_semi, starts_with_case_insensitive};
 use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 
@@ -86,14 +87,9 @@ enum TimelineParseOutput {
     Model(TimelineDiagramRenderModel),
 }
 
-fn starts_with_ci(s: &str, prefix: &str) -> bool {
-    s.get(..prefix.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
-}
-
 fn parse_keyword_arg_full_line_after_one_ws<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let t = line.trim_start();
-    if !starts_with_ci(t, keyword) {
+    if !starts_with_case_insensitive(t, keyword) {
         return None;
     }
     let after = &t[keyword.len()..];
@@ -115,20 +111,9 @@ fn parse_section_value(line: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
-    let mut end = s.len();
-    for (i, c) in s.char_indices() {
-        if c == '#' || c == ';' {
-            end = i;
-            break;
-        }
-    }
-    &s[..end]
-}
-
 fn parse_key_colon_value_hash_or_semi(line: &str, key: &str) -> Option<String> {
     let t = line.trim_start();
-    if !starts_with_ci(t, key) {
+    if !starts_with_case_insensitive(t, key) {
         return None;
     }
     let rest = t[key.len()..].trim_start();
@@ -138,7 +123,7 @@ fn parse_key_colon_value_hash_or_semi(line: &str, key: &str) -> Option<String> {
 
 fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {
     let t = first_line.trim_start();
-    if !starts_with_ci(t, "accDescr") {
+    if !starts_with_case_insensitive(t, "accDescr") {
         return None;
     }
     let rest = t["accDescr".len()..].trim_start();
@@ -258,7 +243,7 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
         }
 
         if !header_seen {
-            if starts_with_ci(t, "timeline") {
+            if starts_with_case_insensitive(t, "timeline") {
                 header_seen = true;
                 let rest = t["timeline".len()..].trim_start();
                 if !rest.is_empty() {

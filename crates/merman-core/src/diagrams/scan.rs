@@ -46,10 +46,22 @@ pub(crate) fn leading_whitespace_len(s: &str) -> usize {
         .sum()
 }
 
+pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
+    let mut end = s.len();
+    for (i, c) in s.char_indices() {
+        if c == '#' || c == ';' {
+            end = i;
+            break;
+        }
+    }
+    &s[..end]
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        leading_whitespace_len, split_indent, starts_with_case_insensitive, strip_line_ending,
+        leading_whitespace_len, split_indent, split_statement_suffix_hash_or_semi,
+        starts_with_case_insensitive, strip_line_ending,
     };
 
     #[test]
@@ -75,5 +87,12 @@ mod tests {
     #[test]
     fn leading_whitespace_len_tracks_utf8_width() {
         assert_eq!(leading_whitespace_len(" \troot"), 2);
+    }
+
+    #[test]
+    fn split_statement_suffix_hash_or_semi_stops_before_comment_markers() {
+        assert_eq!(split_statement_suffix_hash_or_semi("task # note"), "task ");
+        assert_eq!(split_statement_suffix_hash_or_semi("task; note"), "task");
+        assert_eq!(split_statement_suffix_hash_or_semi("task"), "task");
     }
 }
