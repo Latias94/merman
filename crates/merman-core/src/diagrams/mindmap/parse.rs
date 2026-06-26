@@ -8,9 +8,8 @@ use crate::{
 
 use super::db::{MindmapDb, MindmapParseConfig};
 use super::render_model::MindmapDiagramRenderModel;
-use super::utils::{
-    parse_node_spec, split_indent, starts_with_case_insensitive, strip_inline_comment,
-};
+use super::utils::{parse_node_spec, strip_inline_comment};
+use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 
 static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 

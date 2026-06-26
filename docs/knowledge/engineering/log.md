@@ -10,6 +10,11 @@ status: active
 - Verified that `gantt` already preserves its recovery facts on the current slice; the next refactor pressure point should be a shared linear fact-extraction seam across `mindmap` and `gantt`, not another one-off recovery patch.
 
 ## 2026-06-26
+- Extracted shared low-level scan helpers into `crates/merman-core/src/diagrams/scan.rs` and pointed both `mindmap` and `gantt` at the same line-ending, case-insensitive prefix, and indent utilities.
+- Kept the refactor intentionally narrow: it does not merge family semantics, only the reusable scanner layer that sits under the parser-backed facts seam.
+- Re-verified the slice with `cargo test -p merman-core mindmap_editor_facts -- --nocapture`, `cargo test -p merman-core gantt_editor_facts -- --nocapture`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-26
 - Clarified the maturity roadmap so parser-generator choice is evaluated per family rather than by blanket preference. `mindmap` and `gantt` are the first recommended pressure points for fearless refactors; the rest of the families should follow in capability-matrix order once parser-backed facts and recovery quality are convincing.
 - Recorded the design rule that the LSP surface should keep pressuring core correctness and performance. When a family shows grammar ambiguity, recovery pain, or span drift, a local parser rewrite is on the table if it is the best fit for that family.
 

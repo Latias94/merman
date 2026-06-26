@@ -1,4 +1,7 @@
 use super::*;
+use crate::diagrams::scan::{
+    leading_whitespace_len, starts_with_case_insensitive, strip_line_ending,
+};
 use crate::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -26,23 +29,9 @@ fn split_statement_suffix(s: &str) -> &str {
     &s[..end]
 }
 
-fn starts_with_ci(s: &str, prefix: &str) -> bool {
-    // Avoid slicing by raw bytes: non-ASCII leading characters would panic if `prefix.len()` is
-    // not on a UTF-8 boundary (e.g. task lines that start with CJK labels).
-    s.get(..prefix.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
-}
-
-fn leading_whitespace_len(s: &str) -> usize {
-    s.chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum()
-}
-
 fn parse_keyword_arg<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let t = line.trim_start();
-    if !starts_with_ci(t, keyword) {
+    if !starts_with_case_insensitive(t, keyword) {
         return None;
     }
     let after = &t[keyword.len()..];
@@ -56,7 +45,7 @@ fn parse_keyword_arg<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
 
 fn parse_keyword_arg_full_line<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let t = line.trim_start();
-    if !starts_with_ci(t, keyword) {
+    if !starts_with_case_insensitive(t, keyword) {
         return None;
     }
     let after = &t[keyword.len()..];
@@ -69,7 +58,7 @@ fn parse_keyword_arg_full_line<'a>(line: &'a str, keyword: &str) -> Option<&'a s
 
 fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
     let t = line.trim_start();
-    if !starts_with_ci(t, key) {
+    if !starts_with_case_insensitive(t, key) {
         return None;
     }
     let rest = t[key.len()..].trim_start();
@@ -84,7 +73,7 @@ fn parse_key_colon_value_spanned<'a>(
     key: &str,
 ) -> Option<SpannedText<'a>> {
     let trimmed = line.trim_start();
-    if !starts_with_ci(trimmed, key) {
+    if !starts_with_case_insensitive(trimmed, key) {
         return None;
     }
     let leading = line.len().saturating_sub(trimmed.len());
@@ -108,7 +97,7 @@ fn parse_key_colon_value_spanned<'a>(
 
 fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {
     let t = first_line.trim_start();
-    if !starts_with_ci(t, "accDescr") {
+    if !starts_with_case_insensitive(t, "accDescr") {
         return None;
     }
     let rest = t["accDescr".len()..].trim_start();
@@ -135,7 +124,7 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
 
 fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatementParts<'_>> {
     let trimmed = line.trim_start();
-    if !starts_with_ci(trimmed, "click") {
+    if !starts_with_case_insensitive(trimmed, "click") {
         return None;
     }
     let leading = line.len().saturating_sub(trimmed.len());
@@ -160,7 +149,7 @@ fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatement
 
     while tail_offset < trimmed.len() {
         let tail = &trimmed[tail_offset..];
-        if starts_with_ci(tail, "href") {
+        if starts_with_case_insensitive(tail, "href") {
             let href_keyword_end = tail_offset + "href".len();
             let after_href = &trimmed[href_keyword_end..];
             let href_ws = leading_whitespace_len(after_href);
@@ -184,7 +173,7 @@ fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatement
             continue;
         }
 
-        if starts_with_ci(tail, "call") {
+        if starts_with_case_insensitive(tail, "call") {
             let call_keyword_end = tail_offset + "call".len();
             let after_call = &trimmed[call_keyword_end..];
             let call_ws = leading_whitespace_len(after_call);
@@ -254,7 +243,7 @@ fn collect_gantt_editor_facts_from_lines(code: &str) -> EditorSemanticFacts {
     let mut offset = 0usize;
 
     for segment in code.split_inclusive('\n') {
-        let line = line_without_ending(segment);
+        let line = strip_line_ending(segment);
         collect_gantt_editor_line(
             line,
             offset,
@@ -276,11 +265,6 @@ fn collect_gantt_editor_facts_from_lines(code: &str) -> EditorSemanticFacts {
     }
 
     facts
-}
-
-fn line_without_ending(segment: &str) -> &str {
-    let segment = segment.strip_suffix('\n').unwrap_or(segment);
-    segment.strip_suffix('\r').unwrap_or(segment)
 }
 
 fn collect_gantt_editor_line(
@@ -321,7 +305,7 @@ fn collect_gantt_editor_line(
         return;
     }
 
-    if !*header_seen && starts_with_ci(trimmed, "gantt") {
+    if !*header_seen && starts_with_case_insensitive(trimmed, "gantt") {
         *header_seen = true;
         if let Some((rest, rest_start)) = gantt_header_rest(stripped, line_start)
             && !rest.trim().is_empty()
@@ -373,7 +357,7 @@ fn mark_gantt_recovered_statement(
 
 fn gantt_header_rest(line: &str, line_start: usize) -> Option<(&str, usize)> {
     let trimmed = line.trim_start();
-    if !starts_with_ci(trimmed, "gantt") {
+    if !starts_with_case_insensitive(trimmed, "gantt") {
         return None;
     }
 
@@ -416,11 +400,11 @@ fn collect_gantt_statement_editor_facts(
         );
         return true;
     }
-    if starts_with_ci(trimmed, "inclusiveEndDates") {
+    if starts_with_case_insensitive(trimmed, "inclusiveEndDates") {
         facts.push_directive_prefix("inclusiveEndDates");
         return true;
     }
-    if starts_with_ci(trimmed, "topAxis") {
+    if starts_with_case_insensitive(trimmed, "topAxis") {
         facts.push_directive_prefix("topAxis");
         return true;
     }
@@ -604,7 +588,7 @@ fn parse_gantt_keyword_arg_spanned<'a>(
     terminates_at_statement_suffix: bool,
 ) -> Option<SpannedText<'a>> {
     let trimmed = line.trim_start();
-    if !starts_with_ci(trimmed, keyword) {
+    if !starts_with_case_insensitive(trimmed, keyword) {
         return None;
     }
     let after = &trimmed[keyword.len()..];
@@ -641,7 +625,7 @@ struct GanttAccDescrBlock {
 impl GanttAccDescrBlock {
     fn start(line: &str, line_start: usize) -> Option<Self> {
         let trimmed = line.trim_start();
-        if !starts_with_ci(trimmed, "accDescr") {
+        if !starts_with_case_insensitive(trimmed, "accDescr") {
             return None;
         }
 
@@ -1064,7 +1048,7 @@ fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
         }
 
         if !header_seen {
-            if starts_with_ci(trimmed, "gantt") {
+            if starts_with_case_insensitive(trimmed, "gantt") {
                 header_seen = true;
                 let rest = trimmed["gantt".len()..].trim_start();
                 if !rest.is_empty() {
@@ -1227,11 +1211,11 @@ fn parse_gantt_statement(
         db.set_date_format(v);
         return Ok(());
     }
-    if starts_with_ci(t, "inclusiveEndDates") {
+    if starts_with_case_insensitive(t, "inclusiveEndDates") {
         db.enable_inclusive_end_dates();
         return Ok(());
     }
-    if starts_with_ci(t, "topAxis") {
+    if starts_with_case_insensitive(t, "topAxis") {
         db.enable_top_axis();
         return Ok(());
     }
