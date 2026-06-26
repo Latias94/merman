@@ -6,6 +6,20 @@ status: active
 # Log
 
 ## 2026-06-26
+- Tightened the core compatibility lint governance boundary for
+  `merman.compatibility.config.deprecated_flowchart_html_labels`: upstream explicitly deprecates
+  `flowchart.htmlLabels`, but does not mark `class.htmlLabels` as deprecated in the same schema or
+  config warning path, so the rule no longer reports `class.htmlLabels`.
+- Removed the over-broad class-diagram regression and restored the rule description/docs to the
+  source-backed `flowchart.htmlLabels` contract. This preserves the principle that core lint
+  standards are Mermaid-backed, not Merman-invented.
+- Re-verified the corrected slice with `cargo test -p merman-analysis --lib html_labels`,
+  `cargo test -p merman-analysis --test analyzer`, `cargo test -p merman-lsp --lib
+  protocol::tests`, `cargo test -p merman-cli --test cli_compat cli_lint_rules_lists_rule_catalog_json`,
+  `cargo check -p merman-analysis -p merman-cli -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-26
 - Broadened the Mermaid-backed core compatibility lint
   `merman.compatibility.config.deprecated_flowchart_html_labels` so it now covers both
   `flowchart.htmlLabels` and `class.htmlLabels` directive/config shapes through the shared

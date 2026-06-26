@@ -57,7 +57,7 @@ Response:
     },
     {
       "id": "merman.compatibility.config.deprecated_flowchart_html_labels",
-      "description": "Report deprecated diagram-specific `htmlLabels` config and recommend the root-level `htmlLabels` option.",
+      "description": "Report deprecated `flowchart.htmlLabels` config and recommend the root-level `htmlLabels` option.",
       "evidence": [
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.type.ts",

@@ -32,11 +32,9 @@ pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
 
-const DEPRECATED_DIAGRAM_HTML_LABELS_CONFIG_PATHS: [&[&str]; 4] = [
+const DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS: [&[&str]; 2] = [
     &["flowchart", "htmlLabels"],
     &["config", "flowchart", "htmlLabels"],
-    &["class", "htmlLabels"],
-    &["config", "class", "htmlLabels"],
 ];
 const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS: [&[&str]; 2] =
     [&["lazyLoadedDiagrams"], &["loadExternalDiagramsAtStartup"]];
@@ -147,7 +145,7 @@ const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
 
 const DEPRECATED_FLOWCHART_HTML_LABELS_RULE: RuleDescriptor = RuleDescriptor {
     id: DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID,
-    description: "Report deprecated diagram-specific `htmlLabels` config and recommend the root-level `htmlLabels` option.",
+    description: "Report deprecated `flowchart.htmlLabels` config and recommend the root-level `htmlLabels` option.",
     evidence: &[
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.type.ts",
@@ -736,9 +734,9 @@ fn deprecated_flowchart_html_labels_diagnostics(
         source_map,
         rule_config,
         DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
-        &DEPRECATED_DIAGRAM_HTML_LABELS_CONFIG_PATHS,
-        "diagram-specific `htmlLabels` config is deprecated; use root-level `htmlLabels` instead",
-        "Mermaid keeps diagram-specific `htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
+        &DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS,
+        "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
+        "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
     )
 }
 
@@ -893,9 +891,8 @@ mod tests {
     }
 
     #[test]
-    fn source_lint_reports_deprecated_class_html_labels_directive() {
-        let source =
-            "%%{init: { \"class\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
+    fn source_lint_reports_config_wrapped_flowchart_html_labels_directive() {
+        let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
         let diagnostics =
@@ -908,17 +905,15 @@ mod tests {
     }
 
     #[test]
-    fn source_lint_reports_config_wrapped_flowchart_html_labels_directive() {
-        let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\nA-->B\n";
+    fn source_lint_does_not_report_class_html_labels_without_deprecation_evidence() {
+        let source =
+            "%%{init: { \"class\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
         let source_map = SourceMap::new(source);
 
         let diagnostics =
             source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
 
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
-        let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
-        assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+        assert!(diagnostics.is_empty());
     }
 
     #[test]

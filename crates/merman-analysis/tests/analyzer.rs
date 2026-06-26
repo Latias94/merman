@@ -190,23 +190,13 @@ fn deprecated_flowchart_html_labels_config_is_core_warning() {
 }
 
 #[test]
-fn deprecated_class_html_labels_config_is_core_warning() {
+fn class_html_labels_config_is_not_a_core_compatibility_warning() {
     let source = "%%{init: { \"class\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
     let payload = analyze(source);
 
     assert!(payload.valid);
-    assert_eq!(payload.summary.warnings, 1);
-    let diagnostic = &payload.diagnostics[0];
-    assert_eq!(
-        diagnostic.id,
-        "merman.compatibility.config.deprecated_flowchart_html_labels"
-    );
-    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
-    assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-    assert!(diagnostic.message.contains("deprecated"));
-    assert!(diagnostic.fixes.is_empty());
-    let span = diagnostic.span.as_ref().expect("htmlLabels span");
-    assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+    assert_eq!(payload.summary.warnings, 0);
+    assert!(payload.diagnostics.is_empty());
 }
 
 #[test]
