@@ -6,6 +6,21 @@ status: active
 # Log
 
 ## 2026-06-26
+- Broadened the Mermaid-backed core compatibility lint
+  `merman.compatibility.config.deprecated_flowchart_html_labels` so it now covers both
+  `flowchart.htmlLabels` and `class.htmlLabels` directive/config shapes through the shared
+  `source_directives` matcher, keeping the rule id stable while expanding the upstream-backed
+  coverage.
+- Added analyzer and source-lint regressions for `classDiagram` init directives so the shared
+  deprecated-`htmlLabels` contract stays span-precise and continues to surface as a core warning
+  without quickfixes.
+- Re-verified the slice with `cargo test -p merman-analysis --lib`, `cargo test -p
+  merman-analysis --lib --test analyzer`, `cargo test -p merman-lsp --lib protocol::tests`,
+  `cargo test -p merman-cli --test cli_compat cli_lint_rules_lists_rule_catalog_json`, `cargo
+  check -p merman-analysis -p merman-cli -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-26
 - Added a second Mermaid-backed core compatibility config lint:
   `merman.compatibility.config.deprecated_external_diagram_loading`. It reports deprecated
   `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` directive config and recommends the

@@ -41,8 +41,8 @@ facts, it is not considered mature.
   profile or explicit rule enablement is active.
 - Config lint: Mermaid-backed compatibility warnings can be enabled in the core profile when
   upstream emits or documents the same warning.
-  `merman.compatibility.config.deprecated_flowchart_html_labels` reports directive usage of
-  deprecated `flowchart.htmlLabels`, while
+  `merman.compatibility.config.deprecated_flowchart_html_labels` reports diagram-specific
+  deprecated `htmlLabels` settings such as `flowchart.htmlLabels` and `class.htmlLabels`, while
   `merman.compatibility.config.deprecated_external_diagram_loading` reports deprecated
   `lazyLoadedDiagrams` / `loadExternalDiagramsAtStartup` directive config. Both intentionally
   carry no quickfix until config parsing preserves safe rewrite spans and formatting.
