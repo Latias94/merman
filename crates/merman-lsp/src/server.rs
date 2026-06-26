@@ -2,6 +2,7 @@ use crate::code_actions::code_actions_for_params;
 use crate::completion::completion_for_snapshot;
 use crate::document_store::DocumentStore;
 use crate::document_store::SemanticTokensState;
+use crate::protocol::{RULE_CATALOG_METHOD, RuleCatalogResponse, experimental_capabilities};
 use crate::semantic_tokens::{
     semantic_tokens_delta_result, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
     semantic_tokens_for_snapshot_with_result_id, semantic_tokens_options,
@@ -37,7 +38,7 @@ use tower_lsp::lsp_types::{
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
     TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceEdit, WorkspaceSymbolParams,
 };
-use tower_lsp::{Client, LanguageServer};
+use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
 #[derive(Debug)]
 pub struct MermanLanguageServer {
@@ -55,6 +56,12 @@ impl MermanLanguageServer {
             analyzer: Arc::new(Mutex::new(Analyzer::new())),
             semantic_tokens_refresh_supported: AtomicBool::new(false),
         }
+    }
+
+    pub fn service() -> (LspService<Self>, ClientSocket) {
+        LspService::build(Self::new)
+            .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
+            .finish()
     }
 
     pub fn capabilities() -> ServerCapabilities {
@@ -75,8 +82,13 @@ impl MermanLanguageServer {
             semantic_tokens_provider: Some(
                 SemanticTokensServerCapabilities::SemanticTokensOptions(semantic_tokens_options()),
             ),
+            experimental: Some(experimental_capabilities()),
             ..ServerCapabilities::default()
         }
+    }
+
+    pub async fn rule_catalog(&self) -> Result<RuleCatalogResponse> {
+        Ok(RuleCatalogResponse::current())
     }
 
     async fn snapshot_for_uri(&self, uri: &tower_lsp::lsp_types::Url) -> Option<DocumentSnapshot> {
@@ -441,6 +453,7 @@ impl LanguageServer for MermanLanguageServer {
 mod tests {
     use super::MermanLanguageServer;
     use crate::document_store::DocumentStore;
+    use crate::protocol::{RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
     use crate::structure::{
         document_symbols, goto_definition, hover, prepare_rename, references, rename,
     };
@@ -448,7 +461,9 @@ mod tests {
         AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, SourceMap,
         lsp::analysis_diagnostic_to_lsp,
     };
+    use tower::{Service, ServiceExt};
     use tower_lsp::LanguageServer;
+    use tower_lsp::jsonrpc::Request;
     use tower_lsp::lsp_types::SemanticTokensResult;
     use tower_lsp::lsp_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
@@ -511,6 +526,10 @@ mod tests {
                     .is_some_and(|kinds| kinds.contains(&CodeActionKind::QUICKFIX))
                     && options.resolve_provider == Some(false)
         ));
+        assert_eq!(
+            capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["ruleCatalog"],
+            RULE_CATALOG_METHOD
+        );
     }
 
     #[test]
@@ -617,7 +636,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn lsp_handlers_return_hover_and_symbols() {
-        let (service, _socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+        let (service, _socket) = MermanLanguageServer::service();
         let server = service.inner();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -741,5 +760,46 @@ mod tests {
                 .iter()
                 .any(|symbol| symbol.name == "group")
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn lsp_service_serves_rule_catalog_custom_request() {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        let initialize = Request::build("initialize")
+            .params(serde_json::to_value(InitializeParams::default()).unwrap())
+            .id(1)
+            .finish();
+
+        let initialize_response = service
+            .ready()
+            .await
+            .unwrap()
+            .call(initialize)
+            .await
+            .unwrap()
+            .expect("initialize response");
+        assert!(initialize_response.is_ok());
+
+        let request = Request::build(RULE_CATALOG_METHOD).id(2).finish();
+        let response = service
+            .ready()
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap()
+            .expect("rule catalog response");
+        let result = response.result().expect("rule catalog result");
+
+        assert_eq!(result["version"], RULE_CATALOG_RESPONSE_VERSION);
+        assert!(result["rules"].as_array().unwrap().iter().any(|rule| {
+            rule["id"] == "merman.authoring.flowchart.explicit_direction"
+                && rule["origin"] == "merman_authoring"
+                && rule["evidence"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+        }));
     }
 }

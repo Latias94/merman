@@ -1,6 +1,7 @@
 use futures::SinkExt;
 use futures::StreamExt;
 use merman_lsp::MermanLanguageServer;
+use merman_lsp::protocol::RULE_CATALOG_METHOD;
 use serde_json::from_value;
 use tokio::time::{Duration, timeout};
 use tower::{Service, ServiceExt};
@@ -18,7 +19,7 @@ use tower_lsp::lsp_types::{
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_initialize() {
-    let (service, _socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (service, _socket) = MermanLanguageServer::service();
 
     let response = tower_lsp::LanguageServer::initialize(
         service.inner(),
@@ -37,6 +38,10 @@ async fn lsp_service_smoke_handles_initialize() {
     assert!(response.capabilities.completion_provider.is_some());
     assert!(response.capabilities.code_action_provider.is_some());
     assert!(response.capabilities.semantic_tokens_provider.is_some());
+    assert_eq!(
+        response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["ruleCatalog"],
+        RULE_CATALOG_METHOD
+    );
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
         Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Kind(
@@ -46,8 +51,52 @@ async fn lsp_service_smoke_handles_initialize() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_serves_rule_catalog_custom_request() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::to_value(InitializeParams::default()).unwrap())
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let request = Request::build(RULE_CATALOG_METHOD).id(2).finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("rule catalog response");
+    let result = response.result().expect("rule catalog result");
+
+    assert_eq!(result["version"], 1);
+    assert!(result["rules"].as_array().unwrap().iter().any(|rule| {
+        rule["id"] == "merman.authoring.flowchart.explicit_direction"
+            && rule["origin"] == "merman_authoring"
+            && rule["evidence"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+    }));
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_configuration_updates() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -136,7 +185,7 @@ async fn lsp_service_smoke_applies_configuration_updates() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -199,7 +248,7 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -262,7 +311,7 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() 
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_honors_core_rule_disablement() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -364,7 +413,7 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_resource_limit_severity_override_on_initialize() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -430,7 +479,7 @@ async fn lsp_service_smoke_applies_resource_limit_severity_override_on_initializ
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_resource_limit_severity_override_on_configuration_change() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -525,7 +574,7 @@ async fn lsp_service_smoke_applies_resource_limit_severity_override_on_configura
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_semantic_tokens_range() {
-    let (mut service, _socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, _socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -588,7 +637,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_range() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_semantic_tokens_delta() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -729,7 +778,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration_change() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -814,7 +863,7 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_publishes_current_diagnostics_version() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -918,7 +967,7 @@ async fn lsp_service_smoke_publishes_current_diagnostics_version() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_hover_and_document_symbols() {
-    let (mut service, mut socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -1083,7 +1132,7 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_navigation_requests() {
-    let (mut service, _socket) = tower_lsp::LspService::new(MermanLanguageServer::new);
+    let (mut service, _socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")

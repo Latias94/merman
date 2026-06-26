@@ -13,6 +13,8 @@ navigation, code-action, and semantic-token foundations.
 - Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
   `documentSymbol`, `definition`, `references`, `prepareRename`, `rename`, `codeAction`,
   `semanticTokens/full`, and `semanticTokens/range`.
+- Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
+  starting with `merman/ruleCatalog` for rule metadata discovery.
 - Publish diagnostics from `merman-analysis`.
 - Keep document state versioned so stale diagnostics are never republished.
 - Provide the first completion surface for diagram structure, directions, shapes, and local
@@ -56,6 +58,8 @@ navigation, code-action, and semantic-token foundations.
   changes trigger `workspace/semanticTokens/refresh` when the client advertises refresh support,
   and delta requests reuse cached snapshot token state when the previous result id matches.
 - Capability maturity is tracked in `CAPABILITIES.md`.
+- Merman-specific custom requests are documented in `EXTENSION_PROTOCOL.md`; editor plugins should
+  feature-detect those requests and keep UI outside the LSP server.
 
 ## Notes
 

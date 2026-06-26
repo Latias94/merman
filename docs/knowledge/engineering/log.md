@@ -6,6 +6,17 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added the first editor-agnostic Merman LSP extension request, `merman/ruleCatalog`, and
+  advertised it under `ServerCapabilities.experimental.merman.requests` so plugins can discover
+  rule metadata without depending on a Merman-owned UI package.
+- Added `crates/merman-lsp/src/protocol.rs` as the home for custom LSP protocol constants and
+  response schemas, documented the extension in `docs/lsp/EXTENSION_PROTOCOL.md`, and updated all
+  server smoke tests to use the real `MermanLanguageServer::service()` builder that registers
+  custom methods.
+- Verified the LSP protocol slice with `cargo fmt --all --check`, `cargo test -p merman-lsp --lib
+  --tests`, and `git diff --check`.
+
+## 2026-06-26
 - Productized the governed lint rule catalog: `RuleDescriptor` now carries machine-readable
   `evidence` references, `RuleCatalogEntry` serializes id/description/evidence/severity/category/
   profile/origin/configurability/fixability, and the catalog is exposed through Rust, CLI

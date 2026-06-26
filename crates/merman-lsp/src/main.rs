@@ -1,5 +1,5 @@
 use merman_lsp::MermanLanguageServer;
-use tower_lsp::{LspService, Server};
+use tower_lsp::Server;
 
 #[tokio::main]
 async fn main() {
@@ -7,6 +7,6 @@ async fn main() {
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(MermanLanguageServer::new);
+    let (service, socket) = MermanLanguageServer::service();
     Server::new(stdin, stdout, socket).serve(service).await;
 }

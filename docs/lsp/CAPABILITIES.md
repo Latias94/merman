@@ -21,7 +21,8 @@ facts, it is not considered mature.
 - Diagnostics: shared `merman-analysis` payloads only.
 - Lint rule discovery: clients should use the shared rule catalog metadata for rule ids,
   evidence references, profiles, origins, configurability, and fixability instead of duplicating
-  LSP-local rule tables.
+  LSP-local rule tables. The server advertises `merman/ruleCatalog` under
+  `ServerCapabilities.experimental.merman.requests`.
 - Completion: semantic roles must exclude payload-only spans.
 - Definition / References / Rename: entity-only semantic item queries keyed by typed reference
   groups. Payload and outline-only items are excluded unless a future role explicitly allows

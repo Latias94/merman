@@ -4,6 +4,7 @@ pub mod code_actions;
 pub mod completion;
 pub mod context;
 pub mod document_store;
+pub mod protocol;
 pub mod semantic_tokens;
 pub mod server;
 pub mod snapshot;
