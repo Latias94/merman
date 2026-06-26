@@ -4,10 +4,35 @@ pub(crate) struct ByteSpan {
     pub(crate) end: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct InitDirectiveSpan {
+    pub(crate) full: ByteSpan,
+    pub(crate) keyword: ByteSpan,
+}
+
 pub(crate) fn directive_keyword_spans(source: &str) -> Vec<ByteSpan> {
-    directive_body_spans(source)
+    directive_spans(source)
         .into_iter()
-        .filter_map(|body| directive_keyword_span(source, body.start, body.end))
+        .filter_map(|directive| {
+            directive_keyword_span(source, directive.body.start, directive.body.end)
+        })
+        .collect()
+}
+
+pub(crate) fn init_directive_spans(source: &str) -> Vec<InitDirectiveSpan> {
+    directive_spans(source)
+        .into_iter()
+        .filter_map(|directive| {
+            let keyword = directive_keyword_span(source, directive.body.start, directive.body.end)?;
+            matches!(
+                source.get(keyword.start..keyword.end),
+                Some("init" | "initialize")
+            )
+            .then_some(InitDirectiveSpan {
+                full: directive.full,
+                keyword,
+            })
+        })
         .collect()
 }
 
@@ -15,17 +40,27 @@ pub(crate) fn init_directive_config_key_spans(
     source: &str,
     matching_paths: &[&[&str]],
 ) -> Vec<ByteSpan> {
-    directive_body_spans(source)
+    directive_spans(source)
         .into_iter()
-        .flat_map(|body| {
-            let mut scanner =
-                DirectiveConfigScanner::new(source, body.start, body.end, matching_paths);
+        .flat_map(|directive| {
+            let mut scanner = DirectiveConfigScanner::new(
+                source,
+                directive.body.start,
+                directive.body.end,
+                matching_paths,
+            );
             scanner.matching_config_key_spans()
         })
         .collect()
 }
 
-fn directive_body_spans(source: &str) -> Vec<ByteSpan> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DirectiveSpan {
+    full: ByteSpan,
+    body: ByteSpan,
+}
+
+fn directive_spans(source: &str) -> Vec<DirectiveSpan> {
     let mut spans = Vec::new();
     let mut cursor = 0usize;
 
@@ -35,11 +70,18 @@ fn directive_body_spans(source: &str) -> Vec<ByteSpan> {
         let Some(body_end) = find_directive_body_end(source, body_start) else {
             break;
         };
-        spans.push(ByteSpan {
-            start: body_start,
-            end: body_end,
+        let full_end = body_end + "}%%".len();
+        spans.push(DirectiveSpan {
+            full: ByteSpan {
+                start: directive_start,
+                end: full_end,
+            },
+            body: ByteSpan {
+                start: body_start,
+                end: body_end,
+            },
         });
-        cursor = body_end + "}%%".len();
+        cursor = full_end;
     }
 
     spans
@@ -387,6 +429,31 @@ mod tests {
 
         assert_eq!(spans.len(), 1);
         assert_eq!(&source[spans[0].start..spans[0].end], "initialize");
+    }
+
+    #[test]
+    fn init_directive_spans_include_full_directive_and_keyword() {
+        let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\n%%{ wrap }%%\n%%{ init: {} }%%\n";
+
+        let spans = init_directive_spans(source);
+
+        assert_eq!(spans.len(), 2);
+        assert_eq!(
+            &source[spans[0].full.start..spans[0].full.end],
+            "%%{ initialize: {\"theme\":\"dark\"} }%%"
+        );
+        assert_eq!(
+            &source[spans[0].keyword.start..spans[0].keyword.end],
+            "initialize"
+        );
+        assert_eq!(
+            &source[spans[1].full.start..spans[1].full.end],
+            "%%{ init: {} }%%"
+        );
+        assert_eq!(
+            &source[spans[1].keyword.start..spans[1].keyword.end],
+            "init"
+        );
     }
 
     #[test]

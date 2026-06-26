@@ -24,5 +24,6 @@ merman-core.workspace = true
 lsp-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 url.workspace = true
 thiserror.workspace = true

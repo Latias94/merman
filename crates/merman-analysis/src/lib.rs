@@ -13,6 +13,7 @@ pub mod markdown;
 pub mod options_json;
 mod payload;
 mod rules;
+mod source_config_rewrite;
 mod source_directives;
 mod source_map;
 mod status;

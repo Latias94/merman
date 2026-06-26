@@ -6,6 +6,21 @@ status: active
 # Log
 
 ## 2026-06-26
+- Promoted `merman.authoring.config.prefer_frontmatter_config` from a hint into a preferred migration fix. The analysis layer now rewrites init/initialize directive config into YAML frontmatter using the merged Mermaid config as the source of truth, preserves existing frontmatter fields, and removes the original directive spans.
+- Reused the shared init-directive scanner to expose full directive spans plus keyword spans so config migration, lint, code actions, and future parser-backed editor features can share the same directive locator.
+- Re-verified the slice with focused analysis, analyzer, LSP code action, and CLI lint-rules/disable/severity tests, plus `cargo fmt --all --check` and `git diff --check`.
+
+## 2026-06-26
+- Upgraded `merman.authoring.config.prefer_frontmatter_config` from a fixless authoring hint into
+  a fix-backed migration rule. The new analysis rewrite helper uses the parsed Mermaid config as
+  the source of truth, preserves existing frontmatter fields, rewrites the merged config under
+  YAML `config`, and removes init/initialize directive source spans through `DiagnosticFix`
+  metadata that LSP code actions can project.
+- Extended `source_directives` with reusable full init-directive spans so future config lint,
+  rewrite, completion, and hover work can share the same directive locator instead of rescanning
+  strings per rule.
+
+## 2026-06-26
 - Narrowed the authoring hint overlap in `merman-analysis`: `merman.authoring.config.prefer_frontmatter_config` now matches both `init` and `initialize` directive aliases, and the alias-reminder hint no longer stacks on top of the frontmatter-config hint for the same source.
 - Re-verified the slice with focused `merman-analysis` analysis and analyzer tests plus `cargo fmt --all --check` and `git diff --check`.
 

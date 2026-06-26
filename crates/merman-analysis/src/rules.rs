@@ -157,7 +157,7 @@ const PREFER_FRONTMATTER_CONFIG_RULE: RuleDescriptor = RuleDescriptor {
     default_enabled: false,
     default_profile: AnalysisRuleProfile::Recommended,
     origin: RuleOrigin::MermanAuthoring,
-    fixable: false,
+    fixable: true,
 };
 
 const DEPRECATED_FLOWCHART_HTML_LABELS_RULE: RuleDescriptor = RuleDescriptor {
@@ -759,6 +759,7 @@ fn prefer_frontmatter_config_diagnostics(
         return Vec::new();
     }
     let severity = rule_config.severity_for(PREFER_FRONTMATTER_CONFIG_RULE);
+    let fix = crate::source_config_rewrite::init_directives_to_frontmatter_fix(source, source_map);
 
     directive_keyword_spans(source)
         .into_iter()
@@ -768,18 +769,20 @@ fn prefer_frontmatter_config_diagnostics(
         })
         .filter_map(|keyword| {
             let span = source_map.span(keyword.start, keyword.end).ok()?;
-            Some(
-                AnalysisDiagnostic::new(
-                    PREFER_FRONTMATTER_CONFIG_RULE.id,
-                    severity,
-                    PREFER_FRONTMATTER_CONFIG_RULE.category,
-                    "prefer frontmatter `config` over Mermaid init directives",
-                )
-                .with_span(span)
-                .with_help(
-                    "Mermaid deprecated directives from v10.5.0; diagram authors should move configuration into the diagram frontmatter `config` block.",
-                ),
+            let mut diagnostic = AnalysisDiagnostic::new(
+                PREFER_FRONTMATTER_CONFIG_RULE.id,
+                severity,
+                PREFER_FRONTMATTER_CONFIG_RULE.category,
+                "prefer frontmatter `config` over Mermaid init directives",
             )
+            .with_span(span)
+            .with_help(
+                "Mermaid deprecated directives from v10.5.0; diagram authors should move configuration into the diagram frontmatter `config` block.",
+            );
+            if let Some(fix) = fix.clone() {
+                diagnostic = diagnostic.with_fix(fix);
+            }
+            Some(diagnostic)
         })
         .collect()
 }
@@ -890,7 +893,23 @@ mod tests {
         assert_eq!(diagnostic.id, PREFER_FRONTMATTER_CONFIG_RULE_ID);
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
         assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-        assert!(diagnostic.fixes.is_empty());
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(
+            diagnostic.fixes[0].title,
+            "Move init directive config into frontmatter"
+        );
+        assert!(diagnostic.fixes[0].is_preferred);
+        assert_eq!(diagnostic.fixes[0].edits.len(), 1);
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .starts_with("---\nconfig:\n")
+        );
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .contains("theme: dark\n")
+        );
         let span = diagnostic.span.as_ref().expect("directive keyword span");
         assert_eq!(&source[span.byte_start..span.byte_end], "init");
     }
@@ -910,7 +929,23 @@ mod tests {
         assert_eq!(diagnostic.id, PREFER_FRONTMATTER_CONFIG_RULE_ID);
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
         assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-        assert!(diagnostic.fixes.is_empty());
+        assert_eq!(diagnostic.fixes.len(), 1);
+        assert_eq!(
+            diagnostic.fixes[0].title,
+            "Move init directive config into frontmatter"
+        );
+        assert!(diagnostic.fixes[0].is_preferred);
+        assert_eq!(diagnostic.fixes[0].edits.len(), 1);
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .starts_with("---\nconfig:\n")
+        );
+        assert!(
+            diagnostic.fixes[0].edits[0]
+                .replacement
+                .contains("theme: dark\n")
+        );
         let span = diagnostic.span.as_ref().expect("directive keyword span");
         assert_eq!(&source[span.byte_start..span.byte_end], "initialize");
     }
@@ -942,7 +977,8 @@ mod tests {
         let source_map = SourceMap::new(source);
         let config = AnalysisRuleConfig::default()
             .with_profile(AnalysisRuleProfile::Recommended)
-            .with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID);
+            .with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID)
+            .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID);
 
         assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
     }
@@ -965,6 +1001,7 @@ mod tests {
         let source_map = SourceMap::new(source);
         let config = AnalysisRuleConfig::default()
             .with_profile(AnalysisRuleProfile::Recommended)
+            .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID)
             .with_rule_severity(PREFER_INIT_DIRECTIVE_RULE_ID, DiagnosticSeverity::Warning);
 
         let diagnostics = source_lint_diagnostics(source, &source_map, &config);
@@ -1249,7 +1286,7 @@ mod tests {
         );
         assert_eq!(prefer_frontmatter.category, DiagnosticCategory::Config);
         assert!(!prefer_frontmatter.default_enabled);
-        assert!(!prefer_frontmatter.fixable);
+        assert!(prefer_frontmatter.fixable);
         assert!(
             prefer_frontmatter
                 .evidence
@@ -1542,7 +1579,7 @@ mod tests {
         );
         assert_eq!(prefer_frontmatter.category, DiagnosticCategory::Config);
         assert!(prefer_frontmatter.configurable);
-        assert!(!prefer_frontmatter.fixable);
+        assert!(prefer_frontmatter.fixable);
         assert!(
             prefer_frontmatter
                 .evidence

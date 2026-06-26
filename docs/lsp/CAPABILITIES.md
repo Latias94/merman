@@ -39,15 +39,15 @@ facts, it is not considered mature.
   authoring rules include `merman.authoring.config.prefer_init_directive`,
   `merman.authoring.config.prefer_frontmatter_config`, and the parser-backed
   `merman.authoring.flowchart.explicit_direction` insertion fix when the `recommended` lint
-  profile or explicit rule enablement is active. Only the flowchart direction rule carries a
-  quickfix today.
+  profile or explicit rule enablement is active. The frontmatter-config rule carries a
+  migration quickfix that rewrites init/initialize directive config into YAML frontmatter.
 - Config lint: Mermaid-backed compatibility warnings can be enabled in the core profile when
   upstream emits or documents the same warning.
   `merman.compatibility.config.deprecated_flowchart_html_labels` reports deprecated
   `flowchart.htmlLabels`, while
   `merman.compatibility.config.deprecated_external_diagram_loading` reports deprecated
   `lazyLoadedDiagrams` / `loadExternalDiagramsAtStartup` directive config. Both intentionally
-  carry no quickfix until config parsing preserves safe rewrite spans and formatting.
+  remain fixless because they are API/config migrations rather than local source rewrites.
 - Semantic index: parser-backed payload facts are retained as semantic items even when they are
   not projected into completion, outline, or rename surfaces.
 - Semantic tokens: the full-document, range, and delta providers are wired from parser-backed

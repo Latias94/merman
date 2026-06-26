@@ -443,9 +443,13 @@ mod tests {
 
     #[test]
     fn analyze_init_directive_alias_emits_safe_fix() {
-        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
-            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-        ));
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+            ),
+        );
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let payload = analyzer.analyze(source);
 
@@ -470,7 +474,8 @@ mod tests {
             AnalysisOptions::default().with_rule_config(
                 AnalysisRuleConfig::default()
                     .with_profile(AnalysisRuleProfile::Recommended)
-                    .with_rule_disabled(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID),
+                    .with_rule_disabled(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID)
+                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
             ),
         );
         let payload =
@@ -535,6 +540,7 @@ mod tests {
             AnalysisOptions::default().with_rule_config(
                 AnalysisRuleConfig::default()
                     .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
                     .with_rule_severity(
                         crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
                         DiagnosticSeverity::Warning,

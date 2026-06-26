@@ -56,8 +56,9 @@ navigation, code-action, and semantic-token foundations.
 - Recommended-profile authoring rules such as `merman.authoring.config.prefer_init_directive`,
   `merman.authoring.config.prefer_frontmatter_config`, and
   `merman.authoring.flowchart.explicit_direction` are available through the shared lint
-  configuration, but remain opt-in through `recommended` or explicit rule enablement. Only the
-  flowchart direction rule carries a quickfix today.
+  configuration, but remain opt-in through `recommended` or explicit rule enablement. The
+  frontmatter-config rule carries a migration quickfix that rewrites init/initialize directive
+  config into YAML frontmatter.
 - Mermaid-backed compatibility rules such as
   `merman.compatibility.config.deprecated_flowchart_html_labels` and
   `merman.compatibility.config.deprecated_external_diagram_loading` can be core-profile warnings

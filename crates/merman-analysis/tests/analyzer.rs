@@ -206,7 +206,12 @@ fn prefer_frontmatter_config_for_init_directives_is_a_recommended_hint() {
     );
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-    assert!(diagnostic.fixes.is_empty());
+    assert_eq!(diagnostic.fixes.len(), 1);
+    assert_eq!(
+        diagnostic.fixes[0].title,
+        "Move init directive config into frontmatter"
+    );
+    assert!(diagnostic.fixes[0].is_preferred);
     let span = diagnostic.span.as_ref().expect("directive span");
     assert_eq!(&source[span.byte_start..span.byte_end], "init");
 }

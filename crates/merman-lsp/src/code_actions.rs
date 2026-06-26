@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn analyzer_fix_metadata_produces_quickfix_action() {
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
-        let analyzer = authoring_analyzer();
+        let analyzer = alias_analyzer();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = analyzer.analyze(source);
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
@@ -301,6 +301,45 @@ mod tests {
         assert_eq!(edits[0].new_text, "init");
         assert_eq!(edits[0].range.start, Position::new(0, 4));
         assert_eq!(edits[0].range.end, Position::new(0, 14));
+    }
+
+    #[test]
+    fn frontmatter_config_migration_fix_produces_quickfix_action() {
+        let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let analyzer = authoring_analyzer();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let payload = analyzer.analyze(source);
+        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 8),
+            },
+            context: CodeActionContext {
+                diagnostics,
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_params(&params).expect("expected frontmatter quickfix");
+        assert_eq!(actions.len(), 1);
+        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+            panic!("expected code action")
+        };
+        assert_eq!(action.title, "Move init directive config into frontmatter");
+        assert_eq!(action.is_preferred, Some(true));
+        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
+        let edits = changes.get(&uri).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert!(edits[0].new_text.starts_with("---\nconfig:\n"));
+        assert!(edits[0].new_text.contains("theme: dark\n"));
+        assert_eq!(edits[0].range.start, Position::new(0, 0));
+        assert_eq!(edits[0].range.end, Position::new(1, 0));
     }
 
     #[test]
@@ -349,7 +388,7 @@ mod tests {
     #[test]
     fn markdown_analyzer_fix_metadata_uses_host_document_ranges() {
         let source = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter\n";
-        let analyzer = authoring_analyzer();
+        let analyzer = alias_analyzer();
         let uri = Url::parse("file:///tmp/example.md").unwrap();
         let payload = analyze_document(
             source,
@@ -382,6 +421,46 @@ mod tests {
         assert_eq!(edits[0].new_text, "init");
         assert_eq!(edits[0].range.start, Position::new(2, 4));
         assert_eq!(edits[0].range.end, Position::new(2, 14));
+    }
+
+    #[test]
+    fn markdown_frontmatter_config_migration_fix_uses_host_document_ranges() {
+        let source = "before\n```mermaid\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter\n";
+        let analyzer = authoring_analyzer();
+        let uri = Url::parse("file:///tmp/example.md").unwrap();
+        let payload = analyze_document(
+            source,
+            &analyzer,
+            markdown_source_descriptor(Some(uri.as_str())),
+        );
+        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range {
+                start: Position::new(2, 0),
+                end: Position::new(2, 8),
+            },
+            context: CodeActionContext {
+                diagnostics,
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_params(&params).expect("expected markdown quickfix");
+        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+            panic!("expected code action")
+        };
+        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
+        let edits = changes.get(&uri).unwrap();
+
+        assert_eq!(action.title, "Move init directive config into frontmatter");
+        assert_eq!(edits.len(), 1);
+        assert!(edits[0].new_text.starts_with("---\nconfig:\n"));
+        assert_eq!(edits[0].range.start, Position::new(2, 0));
+        assert_eq!(edits[0].range.end, Position::new(3, 0));
     }
 
     #[test]
@@ -433,5 +512,15 @@ mod tests {
         Analyzer::with_options(AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
         ))
+    }
+
+    fn alias_analyzer() -> Analyzer {
+        Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config"),
+            ),
+        )
     }
 }

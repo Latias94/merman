@@ -344,7 +344,7 @@ fn cli_lint_rules_lists_rule_catalog_json() {
     assert_eq!(frontmatter["origin"], "merman_authoring");
     assert_eq!(frontmatter["default_profile"], "recommended");
     assert_eq!(frontmatter["default_severity"], "hint");
-    assert_eq!(frontmatter["fixable"], false);
+    assert_eq!(frontmatter["fixable"], true);
     assert!(
         frontmatter["evidence"]
             .as_array()
@@ -401,6 +401,8 @@ fn cli_lint_can_disable_rule_diagnostics() {
             "recommended",
             "--disable-rule",
             "merman.authoring.config.prefer_init_directive",
+            "--disable-rule",
+            "merman.authoring.config.prefer_frontmatter_config",
             "-",
         ],
         "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
@@ -472,6 +474,8 @@ fn cli_lint_can_override_rule_severity() {
             "recommended",
             "--rule-severity",
             "merman.authoring.config.prefer_init_directive=warning",
+            "--disable-rule",
+            "merman.authoring.config.prefer_frontmatter_config",
             "-",
         ],
         "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",

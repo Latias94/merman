@@ -68,7 +68,7 @@ Response:
       "default_profile": "recommended",
       "origin": "merman_authoring",
       "configurable": true,
-      "fixable": false
+      "fixable": true
     },
     {
       "id": "merman.compatibility.config.deprecated_flowchart_html_labels",
