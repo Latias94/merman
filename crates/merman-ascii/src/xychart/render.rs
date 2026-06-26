@@ -5,7 +5,7 @@ use super::plot::{
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::AsciiError;
-use crate::text::{StyledLine, display_width};
+use crate::text::{StyledLine, display_width, truncate_display_width};
 use crate::{AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
@@ -248,10 +248,7 @@ fn render_horizontal(
     if axis_labels_visible(model.display.y_axis) {
         let mut tick_line = ChartLine::new();
         tick_line.push_spaces(plot_prefix_width);
-        tick_line.push_role_text(
-            &horizontal_tick_labels(y_range, plot_area),
-            AsciiColorRole::Text,
-        );
+        tick_line.push_line(&horizontal_tick_label_line(y_range, plot_area));
         out.push(tick_line);
     }
 
@@ -571,28 +568,31 @@ fn vertical_tick_labels(y_range: ValueRange, plot_area: XyChartPlotArea) -> Vec<
         .collect()
 }
 
-fn horizontal_tick_labels(y_range: ValueRange, plot_area: XyChartPlotArea) -> String {
+fn horizontal_tick_label_line(y_range: ValueRange, plot_area: XyChartPlotArea) -> ChartLine {
     let min = format_number(y_range.min);
     let max = format_number(y_range.max);
-    let mut cells = vec![' '; plot_area.horizontal_width];
-
-    for (idx, ch) in min.chars().take(plot_area.horizontal_width).enumerate() {
-        cells[idx] = ch;
-    }
-
-    let max_len = display_width(&max);
-    let max_start = plot_area.horizontal_width.saturating_sub(max_len);
-    for (idx, ch) in max.chars().enumerate() {
-        if let Some(cell) = cells.get_mut(max_start + idx) {
-            *cell = ch;
-        }
-    }
-
-    chars_to_string(&cells)
+    horizontal_tick_label_line_for_labels(&min, &max, plot_area.horizontal_width)
 }
 
-fn chars_to_string(chars: &[char]) -> String {
-    chars.iter().collect::<String>()
+fn horizontal_tick_label_line_for_labels(min: &str, max: &str, width: usize) -> ChartLine {
+    let mut line = ChartLine::blank(width);
+    write_horizontal_tick_label(&mut line, 0, min, width);
+
+    let fitted_max = truncate_display_width(max, width);
+    let max_start = width.saturating_sub(display_width(&fitted_max));
+    write_horizontal_tick_label(
+        &mut line,
+        max_start,
+        &fitted_max,
+        width.saturating_sub(max_start),
+    );
+
+    line
+}
+
+fn write_horizontal_tick_label(line: &mut ChartLine, start: usize, label: &str, width: usize) {
+    let fitted = truncate_display_width(label, width);
+    line.write_text_role(start, &fitted, AsciiColorRole::Text);
 }
 
 fn finish_chart_lines(lines: Vec<ChartLine>, options: &AsciiRenderOptions) -> String {
@@ -628,4 +628,33 @@ fn finish_lines(lines: Vec<String>) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::horizontal_tick_label_line_for_labels;
+
+    #[test]
+    fn horizontal_tick_label_line_uses_display_cells_for_wide_labels() {
+        let line = horizontal_tick_label_line_for_labels("中", "界", 5);
+
+        assert_eq!(line.len(), 5);
+        assert_eq!(line.text(), "中 界");
+        assert_eq!(line.get(0), Some('中'));
+        assert_eq!(line.get(1), None);
+        assert_eq!(line.get(2), Some(' '));
+        assert_eq!(line.get(3), Some('界'));
+        assert_eq!(line.get(4), None);
+    }
+
+    #[test]
+    fn horizontal_tick_label_line_truncates_at_display_cell_boundaries() {
+        let line = horizontal_tick_label_line_for_labels("中国A", "", 3);
+
+        assert_eq!(line.len(), 3);
+        assert_eq!(line.text(), "中 ");
+        assert_eq!(line.get(0), Some('中'));
+        assert_eq!(line.get(1), None);
+        assert_eq!(line.get(2), Some(' '));
+    }
 }

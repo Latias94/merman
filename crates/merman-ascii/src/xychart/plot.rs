@@ -1,6 +1,6 @@
 use crate::color::AsciiColorRole;
 use crate::terminal::{CanvasColor, CanvasStyle, char_display_width, write_primary_cell_style};
-use crate::text::{StyledCell, display_width};
+use crate::text::{StyledCell, display_width, truncate_display_width};
 use crate::{AsciiCharset, AsciiRenderOptions};
 use merman_core::diagrams::xychart::{
     XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
@@ -484,22 +484,6 @@ fn fit_centered(value: &str, width: usize) -> String {
     let left = (width - value_width) / 2;
     let right = width - value_width - left;
     format!("{}{}{}", " ".repeat(left), value, " ".repeat(right))
-}
-
-fn truncate_display_width(value: &str, width: usize) -> String {
-    let mut out = String::new();
-    let mut used = 0;
-
-    for ch in value.chars() {
-        let ch_width = char_display_width(ch);
-        if used + ch_width > width {
-            break;
-        }
-        out.push(ch);
-        used += ch_width;
-    }
-
-    out
 }
 
 fn bar_height(value: f64, range: ValueRange, height: usize) -> usize {

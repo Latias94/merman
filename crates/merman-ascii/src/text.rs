@@ -211,6 +211,22 @@ pub(crate) fn display_width(text: &str) -> usize {
     terminal_display_width(text)
 }
 
+pub(crate) fn truncate_display_width(value: &str, width: usize) -> String {
+    let mut out = String::new();
+    let mut used = 0;
+
+    for ch in value.chars() {
+        let ch_width = char_display_width(ch);
+        if used + ch_width > width {
+            break;
+        }
+        out.push(ch);
+        used += ch_width;
+    }
+
+    out
+}
+
 pub(crate) fn wrap_display_lines(text: &str, max_width: usize) -> Vec<String> {
     let max_width = max_width.max(1);
     let mut lines = Vec::new();
@@ -487,5 +503,13 @@ mod tests {
             output,
             "a\u{1b}[38;2;1;2;3m\u{1b}[48;2;4;5;6m中\u{1b}[0md\n"
         );
+    }
+
+    #[test]
+    fn truncate_display_width_preserves_terminal_cell_boundaries() {
+        assert_eq!(truncate_display_width("中国A", 1), "");
+        assert_eq!(truncate_display_width("中国A", 2), "中");
+        assert_eq!(truncate_display_width("中国A", 4), "中国");
+        assert_eq!(truncate_display_width("中国A", 5), "中国A");
     }
 }
