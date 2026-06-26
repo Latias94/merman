@@ -142,14 +142,24 @@ pub(crate) fn extract_defaults(schema: &JsonValue, root: &JsonValue) -> Option<J
         .and_then(|m| m.get("type"))
         .and_then(|v| v.as_str())
         == Some("object");
+    let props = schema
+        .as_object()
+        .and_then(|m| m.get("properties"))
+        .and_then(|v| v.as_object());
 
-    if is_object_type
-        && let Some(props) = schema
-            .as_object()
-            .and_then(|m| m.get("properties"))
-            .cloned()
-    {
-        return Some(props);
+    if is_object_type || props.is_some() {
+        let mut out = std::collections::BTreeMap::<String, JsonValue>::new();
+        if let Some(props) = props {
+            for (k, v) in props {
+                if let Some(d) = extract_defaults(v, root) {
+                    out.insert(k.clone(), d);
+                }
+            }
+        }
+        if out.is_empty() {
+            return None;
+        }
+        return Some(JsonValue::Object(out.into_iter().collect()));
     }
 
     None
