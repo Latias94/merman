@@ -2,6 +2,7 @@
 title: "refactor: Mature Mermaid LSP and Lint Product Surface"
 type: "refactor"
 date: "2026-06-24"
+deepened: "2026-06-26"
 ---
 
 # refactor: Mature Mermaid LSP and Lint Product Surface
@@ -11,7 +12,8 @@ date: "2026-06-24"
 This plan turns the current diagnostics-first LSP foundation into a product-grade Mermaid language
 tooling surface. It keeps parser technology family-local, removes heuristic editor semantics as the
 parser-backed contract matures, and aligns lint, CLI, FFI/WASM payloads, and LSP features around one
-shared semantic index.
+shared semantic index. The finish line is explicit: maturity is only declared when the capability
+matrix, rule catalog, and fixture gates all agree.
 
 ---
 
@@ -22,7 +24,8 @@ definition, references, prepare-rename, and rename. `merman-analysis` already ow
 diagnostics payloads, Markdown fence handling, and CLI lint output. The current gap is product
 maturity: several capabilities still depend on a migration index, the lint layer is mostly parse and
 semantic-warning projection, and deferred LSP surfaces such as code actions and semantic tokens are
-not yet implemented.
+not yet implemented. The remaining gap is not only more surface area; it is a single auditable bar
+that says the surface is actually mature.
 
 The prior plans are the base layer:
 
@@ -167,10 +170,29 @@ Outside this product slice:
 
 ---
 
+## Success Metrics
+
+- Every first-class family in `docs/lsp/CAPABILITIES.md` is either fully mature or explicitly
+  partial with a documented residual and next action.
+- The public lint catalog, config schema, and binding surfaces expose the same configurable rule
+  ids, severities, profiles, origins, evidence, and fixability metadata on every supported
+  transport.
+- Mature LSP behavior is driven by parser facts and semantic roles rather than transport-local
+  text scans wherever parser-backed coverage exists.
+- Release readiness requires capability-matrix tests, golden semantic fixtures, recovery fixtures,
+  protocol tests, rule catalog/config schema exports, and large-document performance gates to all
+  pass together.
+- A plan may not be called mature if any first-class family still depends on transport-local
+  scanning for a product-critical feature that the capability matrix marks as supported.
+
+---
+
 ## Risks & Dependencies
 
 - Semantic fact coverage may drift by diagram family unless capability status is tested and
   documented.
+- Capability claims can drift from reality if docs, fixtures, and exported catalogs are updated on
+  different schedules.
 - Rename and code action behavior can become unsafe if payload facts and entity references are not
   separated by role.
 - Rule IDs and fix metadata are public contracts once bindings and editor clients consume them.
@@ -179,7 +201,9 @@ Outside this product slice:
   tooling boundary explicit.
 
 Mitigation is capability-driven tests, role-aware semantic indexing, staged public payload changes,
-and performance fixtures before marking a family or feature product-ready.
+and performance fixtures before marking a family or feature product-ready. The capability matrix
+must fail loudly whenever a mature family regresses or a partial family lacks a documented
+residual.
 
 ---
 
@@ -446,20 +470,27 @@ and performance fixtures before marking a family or feature product-ready.
   - `docs/lsp/CAPABILITIES.md`
   - `docs/knowledge/engineering/current-state.md`
 - **Approach:** Add golden semantic-fact fixtures, LSP protocol smoke tests, Markdown multi-fence
-  tests, binding schema tests, and large-document performance fixtures. Document known residuals
-  instead of hiding them with broad normalization.
+  tests, binding schema tests, and large-document performance fixtures. The release gate is the
+  shared capability matrix plus rule catalog/config schema parity, so the plan only finishes when
+  those public contracts and the fixture suite agree. Document known residuals instead of hiding
+  them with broad normalization, and keep any partial capability explicitly named.
 - **Patterns to follow:** Existing parser fixture strategy, `server_smoke` LSP tests, CLI compat
   tests, and the Mermaid parity policy in `AGENTS.md`.
 - **Test scenarios:**
   - Parser-backed semantic facts match golden snapshots for representative upstream Mermaid
     fixtures.
   - Recovery tests cover incomplete buffers for each mature family.
+  - Capability-matrix tests fail if a first-class family regresses to text-scan provenance or if a
+    supported product-critical feature remains partial without a documented residual.
+  - Rule catalog and config schema exports agree on rule ids, profiles, and fixability for the same
+    analysis surface.
   - LSP protocol tests cover diagnostics, completion, hover, symbols, definition, references,
     rename, code actions, and semantic tokens.
   - Large Markdown documents with many fences stay under documented analysis and completion
     latency budgets.
 - **Verification:** The release gate proves feature coverage, parser-backed provenance, payload
-  stability, and performance before the LSP/lint surface is called mature.
+  stability, and performance before the LSP/lint surface is called mature. Any remaining partial
+  capability must remain explicitly named in the capability matrix.
 
 ---
 
@@ -486,5 +517,7 @@ and performance fixtures before marking a family or feature product-ready.
   which capabilities are parser-backed and which still use migration behavior.
 - Add or update ADRs only when public payload semantics, rule configuration, or LSP capability
   boundaries change. Do not create an ADR for every family-local payload addition.
+- Treat `docs/lsp/CAPABILITIES.md` as the source of truth for maturity. Do not declare the plan
+  complete while any first-class family is partial without a documented residual.
 - Keep plan progress out of this document. Progress should be derived from git, tests, and the
   engineering wiki memory bundle.

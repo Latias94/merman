@@ -6,6 +6,15 @@ status: active
 # Log
 
 ## 2026-06-26
+- Deepened the mature Mermaid LSP roadmap plan so the finish line is explicit: maturity now
+  requires agreement between the capability matrix, public rule catalog/config schema, and the
+  fixture/performance gates. U8 was tightened into the actual release gate, and the plan now
+  requires any first-class partial capability to remain explicitly documented instead of being
+  hidden behind a generic completion label.
+- Synced the engineering memory with the same maturity bar so future sessions can resume against a
+  shared definition of "done" instead of rediscovering it from chat history.
+
+## 2026-06-26
 - Added public coverage for `merman.authoring.config.prefer_frontmatter_config` across analysis,
   analyzer, CLI lint-rules JSON, LSP rule catalog/config schema, and repo docs. The new
   recommended-profile hint steers authors from `%%{init}%%` directives toward diagram frontmatter

@@ -28,6 +28,13 @@ rules, LSP protocol features, configuration, packaging, and release gates.
   diagnostics/lint surface with Mermaid compatibility awareness, while Mermaid Studio Core shows an
   IDE-level feature set including completion, validation, refactoring, usages, highlighting, visual
   workflows, and MCP-oriented integration.
+- The roadmap deepening now makes the finish line explicit: maturity is only declared when the
+  capability matrix, public rule catalog/config schema, and fixture/performance gates agree. A
+  first-class family may still be partial, but only if the residual is documented and surfaced as
+  partial rather than being hidden behind a generic `done` label.
+- U8 is now the release gate, not just a documentation task. The plan must hold the maturity bar on
+  `docs/lsp/CAPABILITIES.md`, the rule catalog exports, and the shared fixture suite before the
+  surface is called product-ready.
 - U1 is complete: `docs/lsp/CAPABILITIES.md` now records the current maturity bar, and
   `crates/merman-lsp/tests/capabilities.rs` proves the parser-backed family matrix against the live
   `DocumentStore`.
@@ -88,8 +95,8 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 
 Continue U4 by adding more stable lint rule descriptors and source-span-backed `DiagnosticFix`
 rules, then continue U2 family fact deepening where the capability matrix still shows partial
-rename/lint readiness. Keep the public configurable-rule registry aligned with any future rule-id
-completion surface.
+capability. Keep the public configurable-rule registry aligned with any future rule-id completion
+surface.
 
 # Citations
 
