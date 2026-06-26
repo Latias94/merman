@@ -22,6 +22,8 @@ The second systemic gap is terminal cell ownership. `crates/merman-ascii/src/tex
 
 This work should use fearless refactoring rather than preserving old ASCII snapshots. Old output is evidence only when it represents correct semantics.
 
+Recent comparison against `repo-ref/beautiful-mermaid` and `repo-ref/mermaid-ascii` did not reveal new Class or ER feature gaps that are worth chasing first. `beautiful-mermaid` mainly confirms the Class/ER semantics we already track in local semantic fixtures, while `mermaid-ascii` is intentionally narrower and leaves subgraph, shape, diagonal, activation, note, and block-level sequence work as TODOs. That makes the route-planning seam and terminal-cell model the highest-value remaining work for `merman-ascii`.
+
 ---
 
 ## Requirements

@@ -1,5 +1,6 @@
 use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
+use super::super::model::GraphEdgeStyle;
 use super::label::{RoutedLabelPlacement, RoutedLabelText, routed_label_placement_for_text};
 use super::path::StepDirection;
 
@@ -16,6 +17,7 @@ pub(super) use select::{EdgeRouteRequest, plan_edge_route};
 pub(super) struct RoutePlan {
     pub(super) cells: Vec<PlannedRouteCell>,
     pub(super) labels: Vec<PlannedRouteLabel>,
+    pub(super) style: GraphEdgeStyle,
     min_canvas_extent: CanvasExtent,
 }
 
@@ -30,8 +32,14 @@ impl RoutePlan {
         Self {
             cells,
             labels,
+            style: GraphEdgeStyle::default(),
             min_canvas_extent: CanvasExtent::default(),
         }
+    }
+
+    pub(super) fn with_style(mut self, style: GraphEdgeStyle) -> Self {
+        self.style = style;
+        self
     }
 
     pub(super) fn with_min_canvas_extent(
@@ -43,6 +51,7 @@ impl RoutePlan {
         Self {
             cells,
             labels,
+            style: GraphEdgeStyle::default(),
             min_canvas_extent: CanvasExtent { width, height },
         }
     }

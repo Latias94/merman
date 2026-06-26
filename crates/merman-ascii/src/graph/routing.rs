@@ -1,7 +1,7 @@
 use super::charset::GraphCharset;
 use super::label::GraphLabel;
 use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
-use super::model::{AsciiGraph, AsciiGraphEdge, GraphEdgeStyle, GraphNodeShape, GraphNodeStyle};
+use super::model::{AsciiGraph, AsciiGraphEdge, GraphNodeShape, GraphNodeStyle};
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
 
@@ -41,13 +41,12 @@ pub(super) struct RouteScene {
 }
 
 struct PreparedRoute {
-    style: GraphEdgeStyle,
     plan: RoutePlan,
 }
 
 impl PreparedRoute {
     fn paint(&self, drawing: &mut RouteDrawing<'_>) {
-        paint_route_plan(drawing, &self.plan, self.style);
+        paint_route_plan(drawing, &self.plan);
     }
 }
 
@@ -102,13 +101,11 @@ pub(super) fn prepare_route_scene(
             });
         };
 
+        let plan = plan.with_style(edge.style);
         let (plan_width, plan_height) = plan.canvas_extent();
         width = width.max(plan_width);
         height = height.max(plan_height);
-        routes.push(PreparedRoute {
-            style: edge.style,
-            plan,
-        });
+        routes.push(PreparedRoute { plan });
     }
 
     Ok(RouteScene {
@@ -162,11 +159,11 @@ fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
     }
 }
 
-fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: GraphEdgeStyle) {
+fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
     for cell in &plan.cells {
         let color = match cell.kind {
-            PlannedRouteCellKind::EdgeArrow => style.arrow.or(style.line),
-            PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => style.line,
+            PlannedRouteCellKind::EdgeArrow => plan.style.arrow.or(plan.style.line),
+            PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => plan.style.line,
         };
         match cell.kind {
             PlannedRouteCellKind::EdgeLine => {
@@ -195,7 +192,7 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: Gra
         .extend(plan.labels.iter().map(|label| EdgeLabel {
             text: label.text.clone(),
             placement: label.placement,
-            color: style.label,
+            color: plan.style.label,
         }));
 }
 
@@ -207,7 +204,7 @@ mod tests {
     use crate::color::AsciiRgb;
     use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
-    use crate::graph::model::{GraphDirection, GraphEdgeAttrs};
+    use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
     use crate::graph::routing::label::RoutedLabelText;
 
     #[test]
@@ -234,12 +231,11 @@ mod tests {
 
         paint_route_plan(
             &mut drawing,
-            &plan,
-            GraphEdgeStyle {
+            &plan.with_style(GraphEdgeStyle {
                 line: Some(line),
                 arrow: Some(arrow),
                 label: Some(label),
-            },
+            }),
         );
 
         assert_eq!(
@@ -297,12 +293,11 @@ mod tests {
 
         paint_route_plan(
             &mut drawing,
-            &plan,
-            GraphEdgeStyle {
+            &plan.with_style(GraphEdgeStyle {
                 line: Some(line),
                 arrow: None,
                 label: None,
-            },
+            }),
         );
 
         assert_eq!(
