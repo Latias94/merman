@@ -2,10 +2,7 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
-use super::{
-    PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
-    edge_line_cell, planned_label, route_cell,
-};
+use super::{RoutePlan, edge_arrow_cell, edge_line_cell, planned_label, route_cell};
 
 pub(super) fn plan_left_right_direct_route(
     layouts: &[NodeLayout],
@@ -27,32 +24,14 @@ pub(super) fn plan_left_right_direct_route(
     let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let mut cells = Vec::new();
     if charset.unicode {
-        cells.push(PlannedRouteCell {
-            coord: CanvasCoord { x: from.right(), y },
-            ch: charset.right_connector,
-            kind: PlannedRouteCellKind::EdgeLine,
-            segment: PlannedRouteSegment::Direct,
-        });
+        cells.push(edge_line_cell(from.right(), y, charset.right_connector));
     }
     for x in start..end {
-        cells.push(PlannedRouteCell {
-            coord: CanvasCoord { x, y },
-            ch: line,
-            kind: PlannedRouteCellKind::RouteCell,
-            segment: PlannedRouteSegment::Direct,
-        });
+        cells.push(route_cell(x, y, line));
     }
-    cells.push(PlannedRouteCell {
-        coord: CanvasCoord { x: end, y },
-        ch: match edge.arrow {
-            GraphEdgeArrow::Open => line,
-            GraphEdgeArrow::Point => charset.arrow_right,
-        },
-        kind: match edge.arrow {
-            GraphEdgeArrow::Open => PlannedRouteCellKind::RouteCell,
-            GraphEdgeArrow::Point => PlannedRouteCellKind::EdgeArrow,
-        },
-        segment: PlannedRouteSegment::Direct,
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(end, y, line),
+        GraphEdgeArrow::Point => edge_arrow_cell(end, y, charset.arrow_right),
     });
 
     let labels = planned_label(

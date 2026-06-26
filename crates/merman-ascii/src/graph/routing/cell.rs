@@ -1,18 +1,19 @@
 use super::super::charset::GraphCharset;
 use super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeStroke};
 use crate::canvas::Canvas;
-use crate::color::{AsciiColorRole, AsciiRgb};
+use crate::canvas::CanvasColor;
+use crate::color::AsciiColorRole;
 use std::collections::HashSet;
 
 pub(crate) type RouteCells = HashSet<(usize, usize)>;
 
-pub(super) fn set_route_cell_with_color(
+pub(super) fn set_route_cell_with_paint(
     canvas: &mut Canvas,
     route_cells: &mut RouteCells,
     x: usize,
     y: usize,
     ch: char,
-    color: Option<AsciiRgb>,
+    color: CanvasColor,
 ) {
     let Some(existing) = canvas.get(x, y) else {
         return;
@@ -30,40 +31,22 @@ pub(super) fn set_route_cell_with_color(
     } else {
         AsciiColorRole::EdgeLine
     };
-    if let Some(color) = color {
-        canvas.set_color(x, y, merged, color);
-    } else {
-        canvas.set_role(x, y, merged, role);
-    }
+    let color = match (color, was_routed && merged != existing) {
+        (CanvasColor::Role(_), true) => CanvasColor::Role(role),
+        (color, _) => color,
+    };
+    canvas.set_canvas_color(x, y, merged, color);
     route_cells.insert((x, y));
 }
 
-pub(super) fn set_edge_line_with_color(
+pub(super) fn set_edge_cell_with_paint(
     canvas: &mut Canvas,
     x: usize,
     y: usize,
     ch: char,
-    color: Option<AsciiRgb>,
+    color: CanvasColor,
 ) {
-    if let Some(color) = color {
-        canvas.set_color(x, y, ch, color);
-        return;
-    }
-    canvas.set_role(x, y, ch, AsciiColorRole::EdgeLine);
-}
-
-pub(super) fn set_edge_arrow_with_color(
-    canvas: &mut Canvas,
-    x: usize,
-    y: usize,
-    ch: char,
-    color: Option<AsciiRgb>,
-) {
-    if let Some(color) = color {
-        canvas.set_color(x, y, ch, color);
-        return;
-    }
-    canvas.set_role(x, y, ch, AsciiColorRole::EdgeArrow);
+    canvas.set_canvas_color(x, y, ch, color);
 }
 
 fn merge_route_chars(existing: char, incoming: char) -> char {

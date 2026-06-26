@@ -142,7 +142,7 @@ fn planned_grid_label(
     let first = line.first().copied()?;
     let last = line.last().copied()?;
     let placement = grid_label_placement(&text, first, last, mode, direction)?;
-    Some(PlannedRouteLabel { text, placement })
+    Some(PlannedRouteLabel::new(text, placement))
 }
 
 fn grid_label_line<'a>(

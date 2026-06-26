@@ -6,8 +6,7 @@ use super::super::label::{
     RoutedLabelText, routed_label_right_of_vertical_route_placement_for_text,
 };
 use super::{
-    PlannedRouteCell, PlannedRouteCellKind, PlannedRouteLabel, PlannedRouteSegment, RoutePlan,
-    edge_arrow_cell, edge_line_cell, planned_label, route_cell,
+    PlannedRouteLabel, RoutePlan, edge_arrow_cell, edge_line_cell, planned_label, route_cell,
 };
 
 pub(super) fn plan_top_down_direct_route(
@@ -25,34 +24,13 @@ pub(super) fn plan_top_down_direct_route(
     let end = to.y - 1;
     let line = edge_line_char(edge, charset, GraphDirection::TopDown);
     let mut cells = Vec::new();
-    cells.push(PlannedRouteCell {
-        coord: CanvasCoord {
-            x,
-            y: from.bottom(),
-        },
-        ch: charset.down_connector,
-        kind: PlannedRouteCellKind::EdgeLine,
-        segment: PlannedRouteSegment::Direct,
-    });
+    cells.push(edge_line_cell(x, from.bottom(), charset.down_connector));
     for y in start..end {
-        cells.push(PlannedRouteCell {
-            coord: CanvasCoord { x, y },
-            ch: line,
-            kind: PlannedRouteCellKind::RouteCell,
-            segment: PlannedRouteSegment::Direct,
-        });
+        cells.push(route_cell(x, y, line));
     }
-    cells.push(PlannedRouteCell {
-        coord: CanvasCoord { x, y: end },
-        ch: match edge.arrow {
-            GraphEdgeArrow::Open => line,
-            GraphEdgeArrow::Point => charset.arrow_down,
-        },
-        kind: match edge.arrow {
-            GraphEdgeArrow::Open => PlannedRouteCellKind::RouteCell,
-            GraphEdgeArrow::Point => PlannedRouteCellKind::EdgeArrow,
-        },
-        segment: PlannedRouteSegment::Direct,
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(x, end, line),
+        GraphEdgeArrow::Point => edge_arrow_cell(x, end, charset.arrow_down),
     });
 
     let labels = planned_label(
@@ -384,5 +362,5 @@ fn planned_top_down_back_label(
         &text,
     )?;
 
-    Some(PlannedRouteLabel { text, placement })
+    Some(PlannedRouteLabel::new(text, placement))
 }

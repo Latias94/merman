@@ -1,6 +1,5 @@
 use super::super::layout::CanvasCoord;
-use crate::canvas::Canvas;
-use crate::color::{AsciiColorRole, AsciiRgb};
+use crate::canvas::{Canvas, CanvasColor};
 use crate::terminal::char_display_width;
 use crate::text::{display_width, split_label_lines};
 
@@ -8,7 +7,7 @@ use crate::text::{display_width, split_label_lines};
 pub(crate) struct EdgeLabel {
     pub(super) text: RoutedLabelText,
     pub(super) placement: RoutedLabelPlacement,
-    pub(super) color: Option<AsciiRgb>,
+    pub(super) color: CanvasColor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,21 +171,11 @@ fn label_block_y(center_y: usize, line_count: usize) -> usize {
     center_y.saturating_sub(line_count.saturating_sub(1) / 2)
 }
 
-fn write_label_overlay(
-    canvas: &mut Canvas,
-    x: usize,
-    y: usize,
-    label: &str,
-    color: Option<AsciiRgb>,
-) {
+fn write_label_overlay(canvas: &mut Canvas, x: usize, y: usize, label: &str, color: CanvasColor) {
     let mut offset = 0;
     for ch in label.chars() {
         if ch != ' ' {
-            if let Some(color) = color {
-                canvas.set_color(x + offset, y, ch, color);
-            } else {
-                canvas.set_role(x + offset, y, ch, AsciiColorRole::EdgeLabel);
-            }
+            canvas.set_canvas_color(x + offset, y, ch, color);
         }
         offset += char_display_width(ch);
     }

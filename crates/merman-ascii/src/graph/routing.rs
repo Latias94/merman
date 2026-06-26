@@ -11,7 +11,7 @@ mod path;
 mod plan;
 
 pub(super) use cell::RouteCells;
-use cell::{set_edge_arrow_with_color, set_edge_line_with_color, set_route_cell_with_color};
+use cell::{set_edge_cell_with_paint, set_route_cell_with_paint};
 pub(super) use label::{EdgeLabel, RoutedLabelPlacement, draw_routed_label};
 use plan::{EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route};
 
@@ -161,28 +161,23 @@ fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
 
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
     for cell in &plan.cells {
-        let color = match cell.kind {
-            PlannedRouteCellKind::EdgeArrow => plan.style.arrow.or(plan.style.line),
-            PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => plan.style.line,
-        };
         match cell.kind {
-            PlannedRouteCellKind::EdgeLine => {
-                set_edge_line_with_color(drawing.canvas, cell.coord.x, cell.coord.y, cell.ch, color)
+            PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::EdgeArrow => {
+                set_edge_cell_with_paint(
+                    drawing.canvas,
+                    cell.coord.x,
+                    cell.coord.y,
+                    cell.ch,
+                    cell.paint.color,
+                )
             }
-            PlannedRouteCellKind::RouteCell => set_route_cell_with_color(
+            PlannedRouteCellKind::RouteCell => set_route_cell_with_paint(
                 drawing.canvas,
                 drawing.route_cells,
                 cell.coord.x,
                 cell.coord.y,
                 cell.ch,
-                color,
-            ),
-            PlannedRouteCellKind::EdgeArrow => set_edge_arrow_with_color(
-                drawing.canvas,
-                cell.coord.x,
-                cell.coord.y,
-                cell.ch,
-                color,
+                cell.paint.color,
             ),
         }
     }
@@ -192,16 +187,19 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
         .extend(plan.labels.iter().map(|label| EdgeLabel {
             text: label.text.clone(),
             placement: label.placement,
-            color: plan.style.label,
+            color: label.paint.color,
         }));
 }
 
 #[cfg(test)]
 mod tests {
-    use super::plan::{PlannedRouteCell, PlannedRouteLabel, PlannedRouteSegment};
+    use super::plan::{
+        PlannedRouteCell, PlannedRouteLabel, PlannedRoutePaint, PlannedRouteSegment,
+    };
     use super::*;
     use crate::AsciiRenderOptions;
-    use crate::color::AsciiRgb;
+    use crate::canvas::CanvasColor;
+    use crate::color::{AsciiColorRole, AsciiRgb};
     use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
@@ -218,10 +216,10 @@ mod tests {
                 planned_cell(1, 0, '-', PlannedRouteCellKind::RouteCell),
                 planned_cell(2, 0, '>', PlannedRouteCellKind::EdgeArrow),
             ],
-            vec![PlannedRouteLabel {
-                text: RoutedLabelText::new("label").expect("single-line label should exist"),
-                placement: RoutedLabelPlacement::new(0, 0, 5),
-            }],
+            vec![PlannedRouteLabel::new(
+                RoutedLabelText::new("label").expect("single-line label should exist"),
+                RoutedLabelPlacement::new(0, 0, 5),
+            )],
         );
 
         let mut canvas = Canvas::new(3, 1);
@@ -250,7 +248,7 @@ mod tests {
             canvas.get_color(2, 0),
             Some(crate::terminal::CanvasColor::Direct(arrow))
         );
-        assert_eq!(labels[0].color, Some(label));
+        assert_eq!(labels[0].color, CanvasColor::Direct(label));
     }
 
     #[test]
@@ -258,7 +256,7 @@ mod tests {
         let label = EdgeLabel {
             text: RoutedLabelText::new("north<br>south").expect("label should exist"),
             placement: RoutedLabelPlacement::new(2, 4, 5),
-            color: None,
+            color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
         };
 
         let transformed = transform_routed_label(
@@ -435,6 +433,12 @@ mod tests {
             ch,
             kind,
             segment: PlannedRouteSegment::Direct,
+            paint: PlannedRoutePaint::role(match kind {
+                PlannedRouteCellKind::EdgeArrow => AsciiColorRole::EdgeArrow,
+                PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {
+                    AsciiColorRole::EdgeLine
+                }
+            }),
         }
     }
 }
