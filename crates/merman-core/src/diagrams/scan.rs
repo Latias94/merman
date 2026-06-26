@@ -46,6 +46,10 @@ pub(crate) fn split_indent(line: &str) -> (usize, &str) {
     split_indent_by(line, char::is_whitespace)
 }
 
+pub(crate) fn split_ascii_indent(line: &str) -> (usize, &str) {
+    split_indent_by(line, |ch| matches!(ch, ' ' | '\t'))
+}
+
 pub(crate) fn leading_whitespace_len(s: &str) -> usize {
     s.chars()
         .take_while(|ch| ch.is_whitespace())
@@ -67,8 +71,8 @@ pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        leading_whitespace_len, split_indent, split_indent_by, split_statement_suffix_hash_or_semi,
-        starts_with_case_insensitive, strip_line_ending,
+        leading_whitespace_len, split_ascii_indent, split_indent, split_indent_by,
+        split_statement_suffix_hash_or_semi, starts_with_case_insensitive, strip_line_ending,
     };
 
     #[test]
@@ -89,6 +93,13 @@ mod tests {
         let (indent, rest) = split_indent(" \troot");
         assert_eq!(indent, 2);
         assert_eq!(rest, "root");
+    }
+
+    #[test]
+    fn split_ascii_indent_counts_only_spaces_and_tabs() {
+        let (indent, rest) = split_ascii_indent(" \t\u{00A0}root");
+        assert_eq!(indent, 2);
+        assert_eq!(rest, "\u{00A0}root");
     }
 
     #[test]

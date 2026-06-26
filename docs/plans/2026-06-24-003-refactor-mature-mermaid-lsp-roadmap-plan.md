@@ -52,6 +52,9 @@ shared analysis instead of transport-local scans.
   facts cover the family and feature.
 - R4. Parser technology remains family-local; parser-generator rewrites are allowed only when a
   specific family needs them for correctness, recovery, or maintainability.
+- R4a. Completion must gain parser- or analysis-backed cursor context for first-class families.
+  Transport-local line-prefix heuristics may remain as a bootstrap, but mature completion must be
+  driven by expected syntax positions, semantic roles, and family capability metadata.
 
 ### Analysis and Lint
 
@@ -110,6 +113,18 @@ shared analysis instead of transport-local scans.
   fallback strategy shows why compatibility evidence matters, but Merman's goal is a Rust
   headless implementation. The compatibility path should be pinned fixtures, source-backed parser
   convergence, and documented residuals rather than a Mermaid JS runtime dependency.
+- **KTD7. Cursor context is part of the analysis contract, not an LSP string heuristic:** The
+  current `CompletionContext` is useful as a protocol adapter, but product completion needs a
+  family parser or semantic-index query that can answer "what can appear at this cursor?" without
+  re-parsing the current line in `merman-lsp`. This includes expected keywords, identifiers,
+  directive keys, shape values, relation operators, and value domains where the family grammar can
+  prove them.
+- **KTD8. Parser-generator fit is evaluated by syntax shape:** LALRPOP is a strong fit for
+  statement/block grammars that already need token classes, nesting, source spans, and grammar
+  recovery, such as flowchart, sequence, state, class, and ER. It is a weak default for
+  indentation-tree or text-heavy families such as mindmap, kanban, treemap, journey, and timeline
+  unless the family first defines a line event stream and the remaining ambiguity is genuinely
+  grammar-shaped.
 
 ---
 
@@ -119,7 +134,7 @@ shared analysis instead of transport-local scans.
 flowchart TB
   Source["Mermaid / Markdown / MDX source"] --> Detect["diagram and fence detection"]
   Detect --> Parser["family parser or event stream"]
-  Parser --> Facts["EditorSemanticFacts\nspans, roles, diagnostics, provenance"]
+  Parser --> Facts["EditorSemanticFacts + cursor context\nspans, roles, diagnostics, provenance"]
   Facts --> Index["SemanticIndex\nsymbols, references, payloads, rule contexts"]
   Index --> Rules["lint rule engine\nids, severity, fixes, config"]
   Rules --> Payload["AnalysisPayload\nCLI / FFI / WASM / LSP diagnostics"]
@@ -301,7 +316,7 @@ facts and test coverage.
 
 - **Goal:** Evolve or replace `FenceTextIndex` with a semantic index that can power lint, rename,
   references, semantic tokens, and code actions without protocol-local interpretation.
-- **Requirements:** R5, R8, R9, R10
+- **Requirements:** R4a, R5, R8, R9, R10
 - **Dependencies:** U1, U2
 - **Files:**
   - `crates/merman-analysis/src/editor.rs`
@@ -313,8 +328,8 @@ facts and test coverage.
   - `crates/merman-lsp/tests/completion.rs`
   - `crates/merman-lsp/tests/server_smoke.rs`
 - **Approach:** Model definitions, references, outline entries, payload spans, directive prefixes,
-  semantic-token categories, rename groups, and provenance separately. Keep byte spans in analysis
-  and convert to UTF-16 ranges only at the protocol boundary.
+  cursor contexts, semantic-token categories, rename groups, and provenance separately. Keep byte
+  spans in analysis and convert to UTF-16 ranges only at the protocol boundary.
 - **Current progress:** `FenceTextIndex` now retains parser-backed semantic items and stores
   references in typed `(name, kind)` groups. LSP definition, references, prepare-rename, and rename
   consume item-based group queries instead of name-only lookups.
@@ -324,8 +339,8 @@ facts and test coverage.
   - Definition and references resolve through typed symbol groups rather than name-only lookups.
   - Rename rejects payload-only spans and unsafe replacement names while updating all valid
     references in one fence.
-  - Completion reads local identifiers, directive prefixes, and context keywords from the semantic
-    index.
+  - Completion reads local identifiers, directive prefixes, context keywords, and expected syntax
+    categories from the semantic index.
   - Markdown fence offsets and UTF-16 conversion stay consistent across diagnostics and feature
     responses.
 - **Verification:** LSP feature providers share semantic queries and no longer duplicate symbol
@@ -380,12 +395,16 @@ facts and test coverage.
   - `crates/merman-lsp/tests/document_store.rs`
   - `crates/merman-lsp/README.md`
 - **Approach:** Use the semantic index to separate completion contexts, hover content, outline
-  hierarchy, reference sets, and rename groups. Add family-specific expectations where Mermaid
-  semantics differ instead of forcing all diagrams into node-id behavior.
+  hierarchy, reference sets, and rename groups. Add family-specific expected-syntax queries where
+  Mermaid semantics differ instead of forcing all diagrams into node-id behavior. The LSP provider
+  should become a projection layer over analysis-owned cursor context rather than the owner of
+  string-prefix grammar checks.
 - **Patterns to follow:** Existing handler tests for hover, document symbols, definition,
   references, prepare-rename, and rename.
 - **Test scenarios:**
   - Completion suggests only valid identifiers or keywords for the cursor's family and context.
+  - Completion does not offer generic node ids where the parser context expects directive payloads,
+    relation operators, shape names, date/value fields, or other grammar-specific domains.
   - Hover distinguishes entities, outline-only members, directives, and lint-relevant payloads.
   - Document symbols preserve hierarchy for subgraphs, namespaces, states, sections, and member
     outlines where facts exist.

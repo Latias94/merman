@@ -1,4 +1,4 @@
-use crate::diagrams::scan::split_indent;
+use crate::diagrams::scan::split_ascii_indent;
 use crate::{Error, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 
@@ -230,7 +230,7 @@ fn parse_treemap_input(code: &str, meta: &ParseMetadata) -> Result<Option<Treema
             continue;
         }
 
-        let (indent, rest) = split_indent(t);
+        let (indent, rest) = split_ascii_indent(t);
         let rest = rest.trim_end();
         if rest.is_empty() {
             continue;
@@ -1093,6 +1093,15 @@ accDescr: Treemap accDescr
     fn treemap_allows_whitespace_only_lines_in_the_middle() {
         let model = parse("treemap\n\"A\": 1\n    \n\"B\": 2\n");
         assert_eq!(model["root"]["children"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn treemap_does_not_treat_unicode_nbsp_as_indentation() {
+        let model = parse("treemap\n\"Root\"\n\u{00A0}\"Leaf\": 1\n");
+        let children = model["root"]["children"].as_array().unwrap();
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0]["name"], json!("Root"));
+        assert_eq!(children[1]["name"], json!("Leaf"));
     }
 
     #[test]

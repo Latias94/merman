@@ -5,6 +5,31 @@ status: active
 
 # Log
 
+## 2026-06-27
+- Added the first analysis-owned completion cursor contract. `merman-analysis::FenceTextIndex`
+  now exposes `FenceCursorContext` plus `FenceCursorCompletionKind`, covering prefix spans,
+  directive/comment classification, and expected completion categories.
+- Slimmed `merman-lsp::CompletionContext` into a protocol adapter over that analysis contract.
+  It still owns LSP range/text-edit projection, while line-prefix grammar checks have moved out
+  of the LSP layer.
+- Verified the slice with `cargo test -p merman-analysis --lib cursor_context -- --nocapture`,
+  `cargo test -p merman-lsp --lib context::tests::context_classifies_header_operator_and_directive_prefixes -- --nocapture`,
+  `cargo test -p merman-lsp --test completion -- --nocapture`,
+  `cargo check -p merman-analysis -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-26
+- Audited the parser/LSP maturity seam after the shared scanner extraction. The important next
+  gap is parser/analysis-owned cursor context for completion, not more transport-local
+  line-prefix checks in `merman-lsp`.
+- Updated the mature LSP roadmap to make cursor context an explicit analysis contract and to
+  clarify parser-generator fit by syntax shape: LALRPOP is a strong candidate for statement/block
+  grammars, while indentation-tree and text-heavy families should first expose explicit line event
+  streams.
+- Corrected a helper-extraction regression in `treemap`: its indentation remains space/Tab-only
+  via `split_ascii_indent`, while `mindmap` and `kanban` keep the broader whitespace behavior.
+  Added targeted regressions for the scan helper and treemap NBSP hierarchy behavior.
+
 ## 2026-06-26
 - Closed the first `mindmap` recovery gap in the parser-backed editor facts seam. Later invalid node lines no longer clear earlier symbols in recovery mode, so LSP/editor consumers keep prior outline/completion material even when a later line is malformed.
 - Verified that `gantt` already preserves its recovery facts on the current slice; the next refactor pressure point should be a shared linear fact-extraction seam across `mindmap` and `gantt`, not another one-off recovery patch.

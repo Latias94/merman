@@ -1,5 +1,5 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
-use merman_analysis::lsp::position_from_utf16;
+use merman_analysis::{FenceCursorCompletionKind, lsp::position_from_utf16};
 use tower_lsp::lsp_types::{Position, Range, Url};
 
 #[derive(Debug)]
@@ -9,21 +9,33 @@ pub struct CompletionContext<'a> {
     prefix: String,
     prefix_start_offset: usize,
     cursor_offset: usize,
+    directive_prefix: Option<&'static str>,
+    comment_or_directive_line: bool,
+    completion_kinds: Vec<FenceCursorCompletionKind>,
 }
 
 impl<'a> CompletionContext<'a> {
     pub fn from_snapshot(snapshot: &'a DocumentSnapshot, position: Position) -> Option<Self> {
         let fence = snapshot.fence_at_position(position)?;
         let cursor_offset = snapshot.byte_offset_for_position(position)?;
-        let prefix = completion_prefix(snapshot, fence, position);
-        let prefix_start_offset = cursor_offset.saturating_sub(prefix.len());
+        let relative_cursor = cursor_offset
+            .saturating_sub(fence.body_start)
+            .min(fence.text.len());
+        let cursor_context = fence
+            .text_index
+            .cursor_context(&fence.text, relative_cursor);
+        let prefix_start_offset = fence.body_start + cursor_context.prefix_start();
+        let cursor_offset = fence.body_start + cursor_context.cursor();
 
         Some(Self {
             snapshot,
             fence,
-            prefix,
+            prefix: cursor_context.prefix().to_string(),
             prefix_start_offset,
             cursor_offset,
+            directive_prefix: cursor_context.directive_prefix(),
+            comment_or_directive_line: cursor_context.is_comment_or_directive_line(),
+            completion_kinds: cursor_context.completion_kinds().to_vec(),
         })
     }
 
@@ -84,102 +96,35 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_diagram_headers(&self) -> bool {
-        let prefix = self.prefix.trim_end();
-
-        prefix.is_empty() || diagram_header_prefix_matches(prefix)
+        self.offers(FenceCursorCompletionKind::DiagramHeader)
     }
 
     pub fn offer_operator_items(&self) -> bool {
-        let prefix = self.prefix.trim_end();
-
-        prefix.ends_with('-') || prefix.ends_with("--") || prefix.ends_with("->")
+        self.offers(FenceCursorCompletionKind::Operator)
     }
 
     pub fn offer_directive_items(&self) -> bool {
-        let prefix = self.prefix.trim_end();
-        let directive_prefix = self.directive_prefix();
-
-        prefix.trim_start().starts_with("%%")
-            || matches!(
-                directive_prefix,
-                Some("classDef") | Some("class") | Some("style") | Some("linkStyle") | Some(":::")
-            )
+        self.offers(FenceCursorCompletionKind::Directive)
     }
 
     pub fn offer_direction_items(&self) -> bool {
-        self.prefix.trim_end() == "direction"
+        self.offers(FenceCursorCompletionKind::Direction)
     }
 
     pub fn offer_shape_items(&self) -> bool {
-        let prefix = self.prefix.trim_end();
-
-        prefix.contains("@{ shape:")
-            || prefix.ends_with("((")
-            || prefix.ends_with("{{")
-            || prefix.ends_with('[')
-            || prefix.ends_with("[/")
-            || prefix.ends_with("[\\")
-            || prefix.ends_with('>')
+        self.offers(FenceCursorCompletionKind::Shape)
     }
 
     pub fn offer_node_items(&self) -> bool {
-        let prefix = self.prefix.trim_end();
-
-        !diagram_header_prefix_matches(prefix)
-            && !self.offer_direction_items()
-            && !self.is_comment_or_directive_line()
-            && !self.offer_operator_items()
-            && !self.offer_shape_items()
+        self.offers(FenceCursorCompletionKind::NodeIdentifier)
     }
 
     pub(crate) fn is_comment_or_directive_line(&self) -> bool {
-        let prefix = self.prefix.trim_start();
-
-        prefix.starts_with("%%") || self.directive_prefix().is_some()
+        self.comment_or_directive_line
     }
 
     pub fn directive_prefix(&self) -> Option<&'static str> {
-        let prefix = self.prefix.trim_start();
-
-        if let Some(rest) = prefix.strip_prefix("%%{") {
-            let name = rest
-                .split(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '}'))
-                .next()
-                .filter(|name| !name.is_empty())?;
-
-            return matches!(name, "init" | "initialize" | "wrap").then_some(match name {
-                "init" => "init",
-                "initialize" => "initialize",
-                "wrap" => "wrap",
-                _ => unreachable!(),
-            });
-        }
-
-        for candidate in [
-            "classDef",
-            "class",
-            "style",
-            "linkStyle",
-            "click",
-            "accTitle",
-            "accDescr",
-            "accDescription",
-            "title",
-        ] {
-            if prefix == candidate
-                || prefix.strip_prefix(candidate).is_some_and(|rest| {
-                    rest.starts_with(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '{'))
-                })
-            {
-                return Some(candidate);
-            }
-        }
-
-        if prefix.starts_with(":::") {
-            return Some(":::");
-        }
-
-        None
+        self.directive_prefix
     }
 
     pub fn node_text_edit_range(&self) -> Option<Range> {
@@ -216,26 +161,10 @@ impl<'a> CompletionContext<'a> {
 
         Some((range, has_separator_space))
     }
-}
 
-fn completion_prefix(
-    snapshot: &DocumentSnapshot,
-    fence: &FenceSnapshot,
-    position: Position,
-) -> String {
-    let Some(offset) = snapshot.byte_offset_for_position(position) else {
-        return String::new();
-    };
-
-    let rel = offset.saturating_sub(fence.body_start);
-    fence.text[..rel.min(fence.text.len())]
-        .rsplit_once('\n')
-        .map(|(_, tail)| tail.trim_start().to_string())
-        .unwrap_or_else(|| {
-            fence.text[..rel.min(fence.text.len())]
-                .trim_start()
-                .to_string()
-        })
+    fn offers(&self, kind: FenceCursorCompletionKind) -> bool {
+        self.completion_kinds.contains(&kind)
+    }
 }
 
 fn operator_suffix_start(prefix: &str) -> Option<usize> {
@@ -252,22 +181,6 @@ fn operator_suffix_start(prefix: &str) -> Option<usize> {
     }
 
     seen_operator.then_some(start)
-}
-
-fn diagram_header_prefix_matches(prefix: &str) -> bool {
-    if prefix.is_empty() {
-        return false;
-    }
-
-    [
-        "flowchart TD",
-        "sequenceDiagram",
-        "stateDiagram-v2",
-        "gantt",
-        "mindmap",
-    ]
-    .iter()
-    .any(|candidate| candidate.starts_with(prefix))
 }
 
 #[cfg(test)]
