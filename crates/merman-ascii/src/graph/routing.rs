@@ -1,6 +1,6 @@
 use super::charset::GraphCharset;
 use super::label::GraphLabel;
-use super::layout::{CanvasCoord, GraphLayout, GridCoord, GroupLayout, NodeLayout};
+use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
 use super::model::{
     AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
 };
@@ -14,9 +14,7 @@ mod plan;
 
 pub(super) use cell::RouteCells;
 use cell::{set_edge_arrow_with_color, set_edge_line_with_color, set_route_cell_with_color};
-use label::routed_label_placement;
-pub(super) use label::{EdgeLabel, draw_routed_label};
-pub(super) use plan::RouteLabelAnchor;
+pub(super) use label::{EdgeLabel, RoutedLabelPlacement, draw_routed_label};
 use plan::{
     EdgeRouteRequest, PlannedRouteCellKind, PlannedRouteLabel, RoutePlan, plan_edge_route,
     route_canvas_extent,
@@ -69,14 +67,11 @@ pub(super) fn edge_canvas_extent(
 
 pub(super) fn transform_routed_label(
     label: &EdgeLabel,
-    mut transform: impl FnMut(CanvasCoord) -> CanvasCoord,
-    mut transform_anchor: impl FnMut(RouteLabelAnchor) -> RouteLabelAnchor,
+    mut transform: impl FnMut(RoutedLabelPlacement) -> RoutedLabelPlacement,
 ) -> EdgeLabel {
     EdgeLabel {
-        start: transform(label.start),
-        end: transform(label.end),
         text: label.text.clone(),
-        anchor: transform_anchor(label.anchor),
+        placement: transform(label.placement),
         color: label.color,
     }
 }
@@ -192,9 +187,7 @@ fn planned_route_label_canvas_extent(
 }
 
 fn planned_label_canvas_extent(label: &PlannedRouteLabel) -> (usize, usize) {
-    routed_label_placement(label.start, label.end, &label.text, label.anchor)
-        .map(|placement| placement.canvas_extent())
-        .unwrap_or((0, 0))
+    label.placement.canvas_extent()
 }
 
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: GraphEdgeStyle) {
@@ -228,10 +221,8 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: Gra
     drawing
         .labels
         .extend(plan.labels.iter().map(|label| EdgeLabel {
-            start: label.start,
-            end: label.end,
             text: label.text.clone(),
-            anchor: label.anchor,
+            placement: label.placement,
             color: style.label,
         }));
 }
@@ -242,6 +233,7 @@ mod tests {
     use super::*;
     use crate::AsciiRenderOptions;
     use crate::color::AsciiRgb;
+    use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
     use crate::graph::model::GraphEdgeAttrs;
 
@@ -257,10 +249,8 @@ mod tests {
                 planned_cell(2, 0, '>', PlannedRouteCellKind::EdgeArrow),
             ],
             labels: vec![PlannedRouteLabel {
-                start: CanvasCoord { x: 0, y: 0 },
-                end: CanvasCoord { x: 2, y: 0 },
                 text: "label".to_string(),
-                anchor: RouteLabelAnchor::Inline,
+                placement: RoutedLabelPlacement::new(0, 0, 5),
             }],
         };
 
@@ -363,11 +353,7 @@ mod tests {
         })
         .expect("boundary route should plan");
         let label = plan.labels.first().expect("boundary route should label");
-        let label_width = crate::text::display_width(&label.text);
-        let min_x = label.start.x.min(label.end.x);
-        let max_x = label.start.x.max(label.end.x);
-        let middle_x = min_x + (max_x - min_x) / 2;
-        let required_width = middle_x.saturating_sub(label_width / 2) + label_width;
+        let (required_width, _) = label.placement.canvas_extent();
 
         let (edge_width, _) = edge_canvas_extent(
             &graph,

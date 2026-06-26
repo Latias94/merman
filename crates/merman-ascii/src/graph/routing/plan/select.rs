@@ -163,7 +163,7 @@ fn plan_boundary_route(
             request.charset,
             GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Left))
                 .with_segment(PlannedRouteSegment::Boundary)
-                .with_detached_label(),
+                .with_first_vertical_transit_label(),
         ),
         EdgeBoundaryContext::Leaving {
             root_direction: GraphDirection::TopDown,
@@ -177,7 +177,7 @@ fn plan_boundary_route(
             request.charset,
             GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Right))
                 .with_segment(PlannedRouteSegment::Boundary)
-                .with_detached_label(),
+                .with_last_vertical_transit_label(),
         ),
         EdgeBoundaryContext::Entering {
             group_id,

@@ -132,11 +132,9 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         height,
     );
     for label in &edge_labels {
-        let label = routing::transform_routed_label(
-            label,
-            |coord| output_transform.coord(coord, width, height),
-            |anchor| output_transform.route_label_anchor(anchor),
-        );
+        let label = routing::transform_routed_label(label, |placement| {
+            output_transform.route_label_placement(placement, width, height)
+        });
         routing::draw_routed_label(&mut canvas, &label);
     }
     for group in &graph_layout.groups {
@@ -239,19 +237,24 @@ impl OutputTransform {
         }
     }
 
-    fn route_label_anchor(self, anchor: routing::RouteLabelAnchor) -> routing::RouteLabelAnchor {
+    fn route_label_placement(
+        self,
+        placement: routing::RoutedLabelPlacement,
+        width: usize,
+        height: usize,
+    ) -> routing::RoutedLabelPlacement {
         match self {
-            Self::Identity => anchor,
-            Self::HorizontalMirror => match anchor {
-                routing::RouteLabelAnchor::Left => routing::RouteLabelAnchor::Right,
-                routing::RouteLabelAnchor::Right => routing::RouteLabelAnchor::Left,
-                anchor => anchor,
-            },
-            Self::VerticalMirror => match anchor {
-                routing::RouteLabelAnchor::Above => routing::RouteLabelAnchor::Below,
-                routing::RouteLabelAnchor::Below => routing::RouteLabelAnchor::Above,
-                anchor => anchor,
-            },
+            Self::Identity => placement,
+            Self::HorizontalMirror => placement.with_position(
+                width
+                    .saturating_sub(placement.x())
+                    .saturating_sub(placement.width()),
+                placement.y(),
+            ),
+            Self::VerticalMirror => placement.with_position(
+                placement.x(),
+                height.saturating_sub(1).saturating_sub(placement.y()),
+            ),
         }
     }
 }

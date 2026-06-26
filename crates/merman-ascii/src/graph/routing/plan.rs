@@ -1,5 +1,6 @@
 use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
+use super::label::{RoutedLabelPlacement, routed_label_placement};
 use super::path::StepDirection;
 
 mod boundary;
@@ -45,19 +46,8 @@ pub(super) enum PlannedRouteCellKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PlannedRouteLabel {
-    pub(super) start: CanvasCoord,
-    pub(super) end: CanvasCoord,
     pub(super) text: String,
-    pub(super) anchor: RouteLabelAnchor,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::graph) enum RouteLabelAnchor {
-    Inline,
-    Above,
-    Below,
-    Left,
-    Right,
+    pub(super) placement: RoutedLabelPlacement,
 }
 
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
@@ -119,23 +109,12 @@ fn planned_label(
     start: CanvasCoord,
     end: CanvasCoord,
 ) -> Option<PlannedRouteLabel> {
-    planned_label_with_anchor(label, start, end, RouteLabelAnchor::Inline)
-}
-
-fn planned_label_with_anchor(
-    label: Option<&str>,
-    start: CanvasCoord,
-    end: CanvasCoord,
-    anchor: RouteLabelAnchor,
-) -> Option<PlannedRouteLabel> {
-    label
-        .filter(|label| !label.is_empty())
-        .map(|label| PlannedRouteLabel {
-            start,
-            end,
-            text: label.to_string(),
-            anchor,
-        })
+    let label = label.filter(|label| !label.is_empty())?;
+    let placement = routed_label_placement(start, end, label)?;
+    Some(PlannedRouteLabel {
+        text: label.to_string(),
+        placement,
+    })
 }
 
 fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {

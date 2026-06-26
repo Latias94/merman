@@ -18,6 +18,7 @@ use crate::graph::model::{
     AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStroke, GraphEdgeStyle,
     GraphNodeShape, GraphNodeStyle,
 };
+use crate::graph::routing::label::RoutedLabelPlacement;
 use crate::graph::routing::plan::PlannedRouteSegment;
 use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
 
@@ -315,13 +316,13 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
             Some(crate::graph::routing::path::Port::Left),
         )
         .with_segment(PlannedRouteSegment::Boundary)
-        .with_detached_label(),
+        .with_first_vertical_transit_label(),
     )
     .expect("grid path should exist");
     assert_eq!(plan, expected);
     assert_eq!(
-        plan.labels.first().map(|label| label.anchor),
-        Some(RouteLabelAnchor::Right)
+        plan.labels.first().map(|label| label.placement),
+        Some(RoutedLabelPlacement::new(21, 10, 5))
     );
 }
 
@@ -368,13 +369,13 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
             Some(crate::graph::routing::path::Port::Right),
         )
         .with_segment(PlannedRouteSegment::Boundary)
-        .with_detached_label(),
+        .with_last_vertical_transit_label(),
     )
     .expect("grid path should exist");
     assert_eq!(plan, expected);
     assert_eq!(
-        plan.labels.first().map(|label| label.anchor),
-        Some(RouteLabelAnchor::Right)
+        plan.labels.first().map(|label| label.placement),
+        Some(RoutedLabelPlacement::new(18, 10, 5))
     );
 }
 
@@ -409,7 +410,7 @@ fn entering_boundary_route_uses_explicit_left_boundary_ports() {
             Some(crate::graph::routing::path::Port::Left),
         )
         .with_segment(PlannedRouteSegment::Boundary)
-        .with_detached_label(),
+        .with_first_vertical_transit_label(),
     )
     .expect("grid path should exist");
 
@@ -458,7 +459,7 @@ fn leaving_boundary_route_uses_explicit_right_boundary_ports() {
             Some(crate::graph::routing::path::Port::Right),
         )
         .with_segment(PlannedRouteSegment::Boundary)
-        .with_detached_label(),
+        .with_last_vertical_transit_label(),
     )
     .expect("grid path should exist");
 
@@ -534,10 +535,8 @@ fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() 
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 5, y: 1 },
-            end: CanvasCoord { x: 9, y: 1 },
             text: "label".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(5, 1, 5),
         }]
     );
 }
@@ -620,10 +619,8 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 5, y: 2 },
-            end: CanvasCoord { x: 9, y: 2 },
             text: "go".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(6, 2, 2),
         }]
     );
 }
@@ -821,10 +818,8 @@ fn left_right_bottom_lane_route_plans_reverse_lane_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 1, y: 4 },
-            end: CanvasCoord { x: 11, y: 4 },
             text: "back".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(4, 4, 4),
         }]
     );
 }
@@ -856,10 +851,8 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 3, y: 1 },
-            end: CanvasCoord { x: 9, y: 1 },
             text: "rev".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(5, 1, 3),
         }]
     );
 }
@@ -918,10 +911,8 @@ fn top_down_bent_route_plans_side_bend_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 2, y: 1 },
-            end: CanvasCoord { x: 7, y: 1 },
             text: "bend".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(2, 1, 4),
         }]
     );
 }
@@ -952,10 +943,8 @@ fn top_down_choice_bent_route_drops_before_turning_and_labels_horizontal_segment
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 1, y: 4 },
-            end: CanvasCoord { x: 7, y: 4 },
             text: "bend".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(2, 4, 4),
         }]
     );
 }
@@ -1067,10 +1056,8 @@ fn top_down_back_route_plans_lane_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 6, y: 1 },
-            end: CanvasCoord { x: 6, y: 7 },
             text: "back".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(4, 4, 4),
         }]
     );
 }
@@ -1096,10 +1083,8 @@ fn top_down_direct_route_plans_connector_line_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 4, y: 3 },
-            end: CanvasCoord { x: 4, y: 5 },
             text: "label".to_string(),
-            anchor: RouteLabelAnchor::Inline,
+            placement: RoutedLabelPlacement::new(2, 4, 5),
         }]
     );
 }

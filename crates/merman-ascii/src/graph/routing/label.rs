@@ -1,5 +1,4 @@
 use super::super::layout::CanvasCoord;
-use super::plan::RouteLabelAnchor;
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::terminal::char_display_width;
@@ -7,40 +6,58 @@ use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EdgeLabel {
-    pub(super) start: CanvasCoord,
-    pub(super) end: CanvasCoord,
     pub(super) text: String,
-    pub(super) anchor: RouteLabelAnchor,
+    pub(super) placement: RoutedLabelPlacement,
     pub(super) color: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct RoutedLabelPlacement {
+pub(in crate::graph) struct RoutedLabelPlacement {
     x: usize,
     y: usize,
     width: usize,
 }
 
 impl RoutedLabelPlacement {
-    pub(super) fn canvas_extent(self) -> (usize, usize) {
+    pub(in crate::graph) fn new(x: usize, y: usize, width: usize) -> Self {
+        Self { x, y, width }
+    }
+
+    pub(in crate::graph) fn canvas_extent(self) -> (usize, usize) {
         (self.x + self.width, self.y + 1)
+    }
+
+    pub(in crate::graph) fn x(self) -> usize {
+        self.x
+    }
+
+    pub(in crate::graph) fn y(self) -> usize {
+        self.y
+    }
+
+    pub(in crate::graph) fn width(self) -> usize {
+        self.width
+    }
+
+    pub(in crate::graph) fn with_position(self, x: usize, y: usize) -> Self {
+        Self { x, y, ..self }
     }
 }
 
 pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
-    let Some(placement) = routed_label_placement(label.start, label.end, &label.text, label.anchor)
-    else {
-        return;
-    };
-
-    write_label_overlay(canvas, placement.x, placement.y, &label.text, label.color);
+    write_label_overlay(
+        canvas,
+        label.placement.x,
+        label.placement.y,
+        &label.text,
+        label.color,
+    );
 }
 
 pub(super) fn routed_label_placement(
     start: CanvasCoord,
     end: CanvasCoord,
     text: &str,
-    anchor: RouteLabelAnchor,
 ) -> Option<RoutedLabelPlacement> {
     let width = display_width(text);
     if width == 0 {
@@ -49,23 +66,32 @@ pub(super) fn routed_label_placement(
 
     if start.y == end.y {
         let x = horizontal_label_x(start, end, width);
-        let y = match anchor {
-            RouteLabelAnchor::Above => start.y.saturating_sub(1),
-            RouteLabelAnchor::Below => start.y + 1,
-            RouteLabelAnchor::Inline | RouteLabelAnchor::Left | RouteLabelAnchor::Right => start.y,
-        };
-        return Some(RoutedLabelPlacement { x, y, width });
+        return Some(RoutedLabelPlacement::new(x, start.y, width));
     }
 
-    let x = match anchor {
-        RouteLabelAnchor::Left => start.x.saturating_sub(width + 1),
-        RouteLabelAnchor::Right => start.x + 1,
-        RouteLabelAnchor::Inline | RouteLabelAnchor::Above | RouteLabelAnchor::Below => {
-            start.x.saturating_sub(width / 2)
-        }
-    };
+    let x = start.x.saturating_sub(width / 2);
     let y = vertical_label_y(start, end);
-    Some(RoutedLabelPlacement { x, y, width })
+    Some(RoutedLabelPlacement::new(x, y, width))
+}
+
+pub(super) fn routed_label_right_of_vertical_route_placement(
+    start: CanvasCoord,
+    end: CanvasCoord,
+    text: &str,
+) -> Option<RoutedLabelPlacement> {
+    if start.x != end.x {
+        return None;
+    }
+    let width = display_width(text);
+    if width == 0 {
+        return None;
+    }
+
+    Some(RoutedLabelPlacement::new(
+        start.x + 1,
+        vertical_label_y(start, end),
+        width,
+    ))
 }
 
 fn horizontal_label_x(start: CanvasCoord, end: CanvasCoord, width: usize) -> usize {
@@ -106,64 +132,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn routed_label_anchor_offsets_horizontal_route_rows() {
+    fn routed_label_placement_centers_horizontal_route_labels() {
         let start = CanvasCoord { x: 4, y: 5 };
         let end = CanvasCoord { x: 12, y: 5 };
 
         assert_eq!(
-            routed_label_placement(start, end, "flow", RouteLabelAnchor::Inline),
-            Some(RoutedLabelPlacement {
-                x: 6,
-                y: 5,
-                width: 4,
-            })
-        );
-        assert_eq!(
-            routed_label_placement(start, end, "flow", RouteLabelAnchor::Above),
-            Some(RoutedLabelPlacement {
-                x: 6,
-                y: 4,
-                width: 4,
-            })
-        );
-        assert_eq!(
-            routed_label_placement(start, end, "flow", RouteLabelAnchor::Below),
-            Some(RoutedLabelPlacement {
-                x: 6,
-                y: 6,
-                width: 4,
-            })
+            routed_label_placement(start, end, "flow"),
+            Some(RoutedLabelPlacement::new(6, 5, 4))
         );
     }
 
     #[test]
-    fn routed_label_anchor_offsets_vertical_route_columns() {
+    fn routed_label_placement_centers_vertical_route_labels() {
         let start = CanvasCoord { x: 10, y: 1 };
         let end = CanvasCoord { x: 10, y: 7 };
 
         assert_eq!(
-            routed_label_placement(start, end, "back", RouteLabelAnchor::Inline),
-            Some(RoutedLabelPlacement {
-                x: 8,
-                y: 4,
-                width: 4,
-            })
+            routed_label_placement(start, end, "back"),
+            Some(RoutedLabelPlacement::new(8, 4, 4))
+        );
+    }
+
+    #[test]
+    fn routed_label_right_of_vertical_route_requires_vertical_route() {
+        let start = CanvasCoord { x: 10, y: 1 };
+        let end = CanvasCoord { x: 10, y: 7 };
+
+        assert_eq!(
+            routed_label_right_of_vertical_route_placement(start, end, "back"),
+            Some(RoutedLabelPlacement::new(11, 4, 4))
         );
         assert_eq!(
-            routed_label_placement(start, end, "back", RouteLabelAnchor::Left),
-            Some(RoutedLabelPlacement {
-                x: 5,
-                y: 4,
-                width: 4,
-            })
-        );
-        assert_eq!(
-            routed_label_placement(start, end, "back", RouteLabelAnchor::Right),
-            Some(RoutedLabelPlacement {
-                x: 11,
-                y: 4,
-                width: 4,
-            })
+            routed_label_right_of_vertical_route_placement(
+                CanvasCoord { x: 1, y: 1 },
+                CanvasCoord { x: 4, y: 1 },
+                "bad",
+            ),
+            None
         );
     }
 }

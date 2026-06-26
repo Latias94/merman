@@ -2,11 +2,14 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
+use super::super::label::{
+    RoutedLabelPlacement, routed_label_placement, routed_label_right_of_vertical_route_placement,
+};
 use super::super::path::{
     Port, StepDirection, merge_grid_path, route_grid_path_with_ports, step_direction,
 };
 use super::{
-    PlannedRouteCell, PlannedRouteLabel, PlannedRouteSegment, RouteLabelAnchor, RoutePlan,
+    PlannedRouteCell, PlannedRouteLabel, PlannedRouteSegment, RoutePlan,
     edge_arrow_cell_in_segment, edge_line_cell_in_segment, route_cell_in_segment, route_turn_char,
 };
 
@@ -20,8 +23,9 @@ pub(super) struct GridRouteOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GridRouteLabelMode {
-    Inline,
-    DetachedFromRoute,
+    InlineLongestSegment,
+    FirstVerticalTransitLane,
+    LastVerticalTransitLane,
 }
 
 impl GridRouteOptions {
@@ -30,7 +34,7 @@ impl GridRouteOptions {
             start_port: None,
             end_port: None,
             segment: PlannedRouteSegment::Direct,
-            label_mode: GridRouteLabelMode::Inline,
+            label_mode: GridRouteLabelMode::InlineLongestSegment,
         }
     }
 
@@ -39,7 +43,7 @@ impl GridRouteOptions {
             start_port,
             end_port,
             segment: PlannedRouteSegment::Direct,
-            label_mode: GridRouteLabelMode::Inline,
+            label_mode: GridRouteLabelMode::InlineLongestSegment,
         }
     }
 
@@ -48,8 +52,13 @@ impl GridRouteOptions {
         self
     }
 
-    pub(super) fn with_detached_label(mut self) -> Self {
-        self.label_mode = GridRouteLabelMode::DetachedFromRoute;
+    pub(super) fn with_first_vertical_transit_label(mut self) -> Self {
+        self.label_mode = GridRouteLabelMode::FirstVerticalTransitLane;
+        self
+    }
+
+    pub(super) fn with_last_vertical_transit_label(mut self) -> Self {
+        self.label_mode = GridRouteLabelMode::LastVerticalTransitLane;
         self
     }
 }
@@ -135,11 +144,10 @@ fn planned_grid_label(
     let (line, direction) = grid_label_line(lines, directions, mode)?;
     let first = line.first().copied()?;
     let last = line.last().copied()?;
+    let placement = grid_label_placement(label, first, last, mode, direction)?;
     Some(PlannedRouteLabel {
-        start: first,
-        end: last,
         text: label.to_string(),
-        anchor: grid_label_anchor(mode, direction),
+        placement,
     })
 }
 
@@ -150,25 +158,41 @@ fn grid_label_line<'a>(
 ) -> Option<(&'a Vec<CanvasCoord>, StepDirection)> {
     let candidates = lines.iter().zip(directions.iter().copied());
     match mode {
-        GridRouteLabelMode::Inline => candidates.max_by_key(|(line, _)| line.len()),
-        GridRouteLabelMode::DetachedFromRoute => candidates
-            .filter(|(_, direction)| matches!(direction, StepDirection::Up | StepDirection::Down))
-            .max_by_key(|(line, _)| line.len())
-            .or_else(|| {
-                lines
-                    .iter()
-                    .zip(directions.iter().copied())
-                    .max_by_key(|(line, _)| line.len())
-            }),
+        GridRouteLabelMode::InlineLongestSegment => candidates.max_by_key(|(line, _)| line.len()),
+        GridRouteLabelMode::FirstVerticalTransitLane => first_vertical_grid_label_line(candidates),
+        GridRouteLabelMode::LastVerticalTransitLane => last_vertical_grid_label_line(candidates),
     }
 }
 
-fn grid_label_anchor(mode: GridRouteLabelMode, direction: StepDirection) -> RouteLabelAnchor {
+fn first_vertical_grid_label_line<'a>(
+    mut candidates: impl Iterator<Item = (&'a Vec<CanvasCoord>, StepDirection)>,
+) -> Option<(&'a Vec<CanvasCoord>, StepDirection)> {
+    candidates.find(|(_, direction)| matches!(direction, StepDirection::Up | StepDirection::Down))
+}
+
+fn last_vertical_grid_label_line<'a>(
+    candidates: impl Iterator<Item = (&'a Vec<CanvasCoord>, StepDirection)>,
+) -> Option<(&'a Vec<CanvasCoord>, StepDirection)> {
+    candidates
+        .filter(|(_, direction)| matches!(direction, StepDirection::Up | StepDirection::Down))
+        .last()
+}
+
+fn grid_label_placement(
+    label: &str,
+    first: CanvasCoord,
+    last: CanvasCoord,
+    mode: GridRouteLabelMode,
+    direction: StepDirection,
+) -> Option<RoutedLabelPlacement> {
     match mode {
-        GridRouteLabelMode::Inline => RouteLabelAnchor::Inline,
-        GridRouteLabelMode::DetachedFromRoute => match direction {
-            StepDirection::Left | StepDirection::Right => RouteLabelAnchor::Above,
-            StepDirection::Up | StepDirection::Down => RouteLabelAnchor::Right,
+        GridRouteLabelMode::InlineLongestSegment => routed_label_placement(first, last, label),
+        GridRouteLabelMode::FirstVerticalTransitLane
+        | GridRouteLabelMode::LastVerticalTransitLane => match direction {
+            StepDirection::Up | StepDirection::Down => {
+                routed_label_right_of_vertical_route_placement(first, last, label)
+            }
+            StepDirection::Left | StepDirection::Right => None,
         },
     }
 }
