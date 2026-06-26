@@ -11,6 +11,8 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.authoring.config.prefer_init_directive";
+pub const DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID: &str =
+    "merman.compatibility.config.deprecated_flowchart_html_labels";
 pub const NO_DIAGRAM_RULE_ID: &str = "merman.parse.no_diagram";
 pub const DIAGRAM_PARSE_RULE_ID: &str = "merman.parse.diagram_parse";
 pub const UNSUPPORTED_DIAGRAM_RULE_ID: &str = "merman.compatibility.unsupported_diagram";
@@ -120,7 +122,7 @@ const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
     id: PREFER_INIT_DIRECTIVE_RULE_ID,
     description: "Prefer the canonical `init` directive keyword over the accepted `initialize` alias.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/utils.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/utils.ts",
         "docs/adr/0072-lint-rule-governance.md",
     ],
     default_severity: DiagnosticSeverity::Hint,
@@ -131,12 +133,28 @@ const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
     fixable: true,
 };
 
+const DEPRECATED_FLOWCHART_HTML_LABELS_RULE: RuleDescriptor = RuleDescriptor {
+    id: DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID,
+    description: "Report deprecated `flowchart.htmlLabels` config and recommend the root-level `htmlLabels` option.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.type.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
+    ],
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Config,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
+
 const NO_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
     id: NO_DIAGRAM_RULE_ID,
     description: "Report input that does not contain a Mermaid diagram.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/diagram-api/detectType.ts",
-        "repo-ref/mermaid/packages/mermaid/src/mermaid.spec.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagram-api/detectType.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/mermaid.spec.ts",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Parse,
@@ -150,7 +168,7 @@ const DIAGRAM_PARSE_RULE: RuleDescriptor = RuleDescriptor {
     id: DIAGRAM_PARSE_RULE_ID,
     description: "Report Mermaid diagram syntax that the parser cannot accept.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/mermaid.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/mermaid.ts",
         "docs/adr/0070-diagnostics-first-analysis-contract.md",
     ],
     default_severity: DiagnosticSeverity::Error,
@@ -165,7 +183,7 @@ const UNSUPPORTED_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
     id: UNSUPPORTED_DIAGRAM_RULE_ID,
     description: "Report Mermaid diagram types that are recognized but unavailable in this build.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/diagram-api/detectType.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagram-api/detectType.ts",
         "docs/release/PACKAGE_SURFACES.md",
     ],
     default_severity: DiagnosticSeverity::Error,
@@ -210,8 +228,8 @@ const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
     id: MALFORMED_FRONT_MATTER_RULE_ID,
     description: "Report malformed YAML front matter blocks before diagram parsing.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.ts",
-        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.spec.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagram-api/frontmatter.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagram-api/frontmatter.spec.ts",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
@@ -225,8 +243,8 @@ const INVALID_DIRECTIVE_JSON_RULE: RuleDescriptor = RuleDescriptor {
     id: INVALID_DIRECTIVE_JSON_RULE_ID,
     description: "Report Mermaid directive blocks whose JSON payload cannot be parsed.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/diagram-api/regexes.ts",
-        "repo-ref/mermaid/packages/mermaid/src/utils.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagram-api/regexes.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/utils.ts",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
@@ -240,8 +258,8 @@ const INVALID_FRONT_MATTER_YAML_RULE: RuleDescriptor = RuleDescriptor {
     id: INVALID_FRONT_MATTER_YAML_RULE_ID,
     description: "Report Mermaid front matter whose YAML payload cannot be parsed.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.ts",
-        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.spec.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagram-api/frontmatter.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagram-api/frontmatter.spec.ts",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
@@ -285,7 +303,7 @@ const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     id: BLOCK_WIDTH_RULE_ID,
     description: "Report block diagram entries that exceed the configured column width.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/docs/syntax/block.md",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/syntax/block.md",
         "crates/merman-core/src/diagrams/block.rs",
     ],
     default_severity: DiagnosticSeverity::Warning,
@@ -299,7 +317,7 @@ const FLOWCHART_EXPLICIT_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
     id: FLOWCHART_EXPLICIT_DIRECTION_RULE_ID,
     description: "Recommend explicit flowchart header directions and offer an insertion quickfix.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/docs/syntax/flowchart.md",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/syntax/flowchart.md",
         "crates/merman-core/src/diagrams/flowchart.rs",
         "docs/adr/0072-lint-rule-governance.md",
     ],
@@ -314,7 +332,7 @@ const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
     description: "Report duplicate gitGraph commit ids.",
     evidence: &[
-        "repo-ref/mermaid/packages/mermaid/src/diagrams/git/gitGraphAst.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagrams/git/gitGraphAst.ts",
         "crates/merman-core/src/diagrams/git_graph.rs",
     ],
     default_severity: DiagnosticSeverity::Warning,
@@ -341,6 +359,7 @@ const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
 
 const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PREFER_INIT_DIRECTIVE_RULE,
+    DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
     NO_DIAGRAM_RULE,
     DIAGRAM_PARSE_RULE,
     UNSUPPORTED_DIAGRAM_RULE,
@@ -481,7 +500,13 @@ pub(crate) fn source_lint_diagnostics(
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
-    init_directive_alias_diagnostics(source, source_map, rule_config)
+    let mut diagnostics = init_directive_alias_diagnostics(source, source_map, rule_config);
+    diagnostics.extend(deprecated_flowchart_html_labels_diagnostics(
+        source,
+        source_map,
+        rule_config,
+    ));
+    diagnostics
 }
 
 pub(crate) fn semantic_warning_diagnostics(
@@ -667,6 +692,36 @@ fn init_directive_alias_diagnostics(
         .collect()
 }
 
+fn deprecated_flowchart_html_labels_diagnostics(
+    source: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+) -> Vec<AnalysisDiagnostic> {
+    if !rule_config.is_rule_enabled(DEPRECATED_FLOWCHART_HTML_LABELS_RULE) {
+        return Vec::new();
+    }
+    let severity = rule_config.severity_for(DEPRECATED_FLOWCHART_HTML_LABELS_RULE);
+
+    directive_flowchart_html_labels_spans(source)
+        .into_iter()
+        .filter_map(|span| {
+            let span = source_map.span(span.start, span.end).ok()?;
+            Some(
+                AnalysisDiagnostic::new(
+                    DEPRECATED_FLOWCHART_HTML_LABELS_RULE.id,
+                    severity,
+                    DEPRECATED_FLOWCHART_HTML_LABELS_RULE.category,
+                    "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
+                )
+                .with_span(span)
+                .with_help(
+                    "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
+                ),
+            )
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ByteSpan {
     start: usize,
@@ -674,23 +729,73 @@ struct ByteSpan {
 }
 
 fn directive_keyword_spans(source: &str) -> Vec<ByteSpan> {
+    directive_body_spans(source)
+        .into_iter()
+        .filter_map(|body| directive_keyword_span(source, body.start, body.end))
+        .collect()
+}
+
+fn directive_flowchart_html_labels_spans(source: &str) -> Vec<ByteSpan> {
+    directive_body_spans(source)
+        .into_iter()
+        .flat_map(|body| {
+            let mut scanner = DirectiveConfigScanner::new(source, body.start, body.end);
+            scanner.flowchart_html_labels_spans()
+        })
+        .collect()
+}
+
+fn directive_body_spans(source: &str) -> Vec<ByteSpan> {
     let mut spans = Vec::new();
     let mut cursor = 0usize;
 
     while let Some(relative_start) = source[cursor..].find("%%{") {
         let directive_start = cursor + relative_start;
         let body_start = directive_start + "%%{".len();
-        let Some(relative_end) = source[body_start..].find("}%%") else {
+        let Some(body_end) = find_directive_body_end(source, body_start) else {
             break;
         };
-        let directive_end = body_start + relative_end;
-        if let Some(span) = directive_keyword_span(source, body_start, directive_end) {
-            spans.push(span);
-        }
-        cursor = directive_end + "}%%".len();
+        spans.push(ByteSpan {
+            start: body_start,
+            end: body_end,
+        });
+        cursor = body_end + "}%%".len();
     }
 
     spans
+}
+
+fn find_directive_body_end(source: &str, body_start: usize) -> Option<usize> {
+    let mut cursor = body_start;
+    let mut quote = None;
+    let mut escaped = false;
+
+    while cursor < source.len() {
+        let ch = source[cursor..].chars().next()?;
+        let next = cursor + ch.len_utf8();
+
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == active_quote {
+                quote = None;
+            }
+            cursor = next;
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            '}' if source[next..].starts_with("%%") => return Some(cursor),
+            _ => {}
+        }
+
+        cursor = next;
+    }
+
+    None
 }
 
 fn directive_keyword_span(source: &str, body_start: usize, body_end: usize) -> Option<ByteSpan> {
@@ -723,6 +828,247 @@ fn directive_keyword_span(source: &str, body_start: usize, body_end: usize) -> O
         })
     } else {
         None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ConfigKeySpan<'a> {
+    name: &'a str,
+    span: ByteSpan,
+}
+
+struct DirectiveConfigScanner<'a> {
+    source: &'a str,
+    body_end: usize,
+    pos: usize,
+}
+
+impl<'a> DirectiveConfigScanner<'a> {
+    fn new(source: &'a str, body_start: usize, body_end: usize) -> Self {
+        Self {
+            source,
+            body_end,
+            pos: body_start,
+        }
+    }
+
+    fn flowchart_html_labels_spans(&mut self) -> Vec<ByteSpan> {
+        let mut spans = Vec::new();
+
+        while self.pos < self.body_end {
+            self.skip_ws_and_commas();
+            let Some(key) = self.parse_key() else {
+                break;
+            };
+            self.skip_ws();
+            if self.next_char() != Some(':') {
+                break;
+            }
+            self.skip_ws();
+            if matches!(key.name, "init" | "initialize") {
+                let mut path = Vec::new();
+                self.collect_value_spans(&mut path, &mut spans);
+            } else {
+                self.skip_value();
+            }
+        }
+
+        spans
+    }
+
+    fn collect_value_spans(&mut self, path: &mut Vec<&'a str>, spans: &mut Vec<ByteSpan>) {
+        self.skip_ws();
+        if self.peek_char() != Some('{') {
+            self.skip_value();
+            return;
+        }
+        self.next_char();
+        self.collect_object_entries(path, spans);
+    }
+
+    fn collect_object_entries(&mut self, path: &mut Vec<&'a str>, spans: &mut Vec<ByteSpan>) {
+        loop {
+            self.skip_ws_and_commas();
+            match self.peek_char() {
+                Some('}') => {
+                    self.next_char();
+                    return;
+                }
+                Some(_) => {}
+                None => return,
+            }
+
+            let Some(key) = self.parse_key() else {
+                return;
+            };
+            self.skip_ws();
+            if self.next_char() != Some(':') {
+                return;
+            }
+
+            if key.name == "htmlLabels"
+                && matches!(path.as_slice(), ["flowchart"] | ["config", "flowchart"])
+            {
+                spans.push(key.span);
+            }
+
+            path.push(key.name);
+            self.collect_value_spans(path, spans);
+            path.pop();
+        }
+    }
+
+    fn parse_key(&mut self) -> Option<ConfigKeySpan<'a>> {
+        self.skip_ws();
+        match self.peek_char()? {
+            '"' | '\'' => self.parse_quoted_key(),
+            '}' | ']' => None,
+            _ => self.parse_bare_key(),
+        }
+    }
+
+    fn parse_quoted_key(&mut self) -> Option<ConfigKeySpan<'a>> {
+        let quote = self.next_char()?;
+        let start = self.pos;
+        let mut escaped = false;
+
+        while self.pos < self.body_end {
+            let ch = self.next_char()?;
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == quote {
+                let end = self.pos - quote.len_utf8();
+                let name = self.source.get(start..end)?;
+                return Some(ConfigKeySpan {
+                    name,
+                    span: ByteSpan { start, end },
+                });
+            }
+        }
+
+        None
+    }
+
+    fn parse_bare_key(&mut self) -> Option<ConfigKeySpan<'a>> {
+        let raw_start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if matches!(ch, ':' | '\n' | '\r' | '}' | ']') {
+                break;
+            }
+            self.next_char();
+        }
+
+        let raw_end = self.pos;
+        let raw = self.source.get(raw_start..raw_end)?;
+        let leading = raw.len().saturating_sub(raw.trim_start().len());
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        Some(ConfigKeySpan {
+            name: trimmed,
+            span: ByteSpan {
+                start: raw_start + leading,
+                end: raw_start + leading + trimmed.len(),
+            },
+        })
+    }
+
+    fn skip_value(&mut self) {
+        self.skip_ws();
+        match self.peek_char() {
+            Some('{') => self.skip_balanced('{', '}'),
+            Some('[') => self.skip_balanced('[', ']'),
+            Some('"') | Some('\'') => self.skip_quoted(),
+            Some(_) => {
+                while let Some(ch) = self.peek_char() {
+                    if matches!(ch, ',' | '\n' | '\r' | '}' | ']') {
+                        break;
+                    }
+                    self.next_char();
+                }
+            }
+            None => {}
+        }
+    }
+
+    fn skip_balanced(&mut self, open: char, close: char) {
+        if self.next_char() != Some(open) {
+            return;
+        }
+        let mut depth = 1usize;
+        while self.pos < self.body_end && depth > 0 {
+            match self.peek_char() {
+                Some('"') | Some('\'') => self.skip_quoted(),
+                Some(ch) if ch == open => {
+                    self.next_char();
+                    depth += 1;
+                }
+                Some(ch) if ch == close => {
+                    self.next_char();
+                    depth -= 1;
+                }
+                Some(_) => {
+                    self.next_char();
+                }
+                None => return,
+            }
+        }
+    }
+
+    fn skip_quoted(&mut self) {
+        let Some(quote @ ('"' | '\'')) = self.next_char() else {
+            return;
+        };
+        let mut escaped = false;
+        while self.pos < self.body_end {
+            let Some(ch) = self.next_char() else {
+                return;
+            };
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                return;
+            }
+        }
+    }
+
+    fn skip_ws(&mut self) {
+        while self.peek_char().is_some_and(char::is_whitespace) {
+            self.next_char();
+        }
+    }
+
+    fn skip_ws_and_commas(&mut self) {
+        while self
+            .peek_char()
+            .is_some_and(|ch| ch.is_whitespace() || ch == ',')
+        {
+            self.next_char();
+        }
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        if self.pos >= self.body_end {
+            None
+        } else {
+            self.source[self.pos..self.body_end].chars().next()
+        }
+    }
+
+    fn next_char(&mut self) -> Option<char> {
+        let ch = self.peek_char()?;
+        self.pos += ch.len_utf8();
+        Some(ch)
     }
 }
 
@@ -813,6 +1159,59 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+    }
+
+    #[test]
+    fn source_lint_reports_deprecated_flowchart_html_labels_directive() {
+        let source = "%%{init: { \"flowchart\": { \"htmlLabels\": false, \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics =
+            source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+        assert_eq!(diagnostics.len(), 1);
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+        assert!(diagnostic.fixes.is_empty());
+        let span = diagnostic.span.as_ref().expect("htmlLabels span");
+        assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+    }
+
+    #[test]
+    fn source_lint_reports_config_wrapped_flowchart_html_labels_directive() {
+        let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics =
+            source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+        let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
+        assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+    }
+
+    #[test]
+    fn source_lint_leaves_root_html_labels_alone() {
+        let source = "%%{init: { \"htmlLabels\": false, \"flowchart\": { \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        assert!(
+            source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default()).is_empty()
+        );
+    }
+
+    #[test]
+    fn rule_config_can_disable_deprecated_flowchart_html_labels_rule() {
+        let source =
+            "%%{init: { \"flowchart\": { \"htmlLabels\": false } }}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default()
+            .with_rule_disabled(DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+
+        assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
     }
 
     #[test]
@@ -956,7 +1355,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 15);
+        assert_eq!(descriptors.len(), 16);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert!(descriptors[0].description.contains("canonical `init`"));
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -968,6 +1367,30 @@ mod tests {
         );
         assert_eq!(descriptors[0].origin, RuleOrigin::MermanAuthoring);
         assert!(descriptors[0].fixable);
+        let deprecated_html_labels = descriptors
+            .iter()
+            .find(|descriptor| descriptor.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+            .expect("deprecated htmlLabels descriptor");
+        assert_eq!(
+            deprecated_html_labels.origin,
+            RuleOrigin::MermaidCompatibility
+        );
+        assert!(deprecated_html_labels.default_enabled);
+        assert_eq!(
+            deprecated_html_labels.default_profile,
+            AnalysisRuleProfile::Core
+        );
+        assert_eq!(
+            deprecated_html_labels.default_severity,
+            DiagnosticSeverity::Warning
+        );
+        assert_eq!(deprecated_html_labels.category, DiagnosticCategory::Config);
+        assert!(!deprecated_html_labels.fixable);
+        assert!(
+            deprecated_html_labels
+                .evidence
+                .contains(&"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md")
+        );
         assert!(
             descriptors
                 .iter()
@@ -1027,6 +1450,11 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == FLOWCHART_EXPLICIT_DIRECTION_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
         );
         assert!(
             descriptors
@@ -1124,6 +1552,11 @@ mod tests {
         assert!(
             descriptors
                 .iter()
+                .any(|descriptor| descriptor.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
                 .any(|descriptor| descriptor.id == SEMANTIC_WARNING_RULE_ID)
         );
         assert!(
@@ -1160,6 +1593,16 @@ mod tests {
                 .contains(&"docs/adr/0072-lint-rule-governance.md")
         );
         assert!(catalog.iter().all(|entry| !entry.evidence.is_empty()));
+        let deprecated_html_labels = catalog
+            .iter()
+            .find(|entry| entry.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+            .expect("deprecated htmlLabels catalog entry");
+        assert_eq!(
+            deprecated_html_labels.origin,
+            RuleOrigin::MermaidCompatibility
+        );
+        assert!(deprecated_html_labels.default_enabled);
+        assert!(!deprecated_html_labels.fixable);
 
         let json: serde_json::Value =
             serde_json::from_slice(&rule_catalog_json_bytes().expect("catalog JSON"))
@@ -1198,6 +1641,11 @@ mod tests {
         assert!(
             catalog
                 .iter()
+                .any(|entry| entry.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+        );
+        assert!(
+            catalog
+                .iter()
                 .all(|entry| entry.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
         );
     }
@@ -1205,5 +1653,15 @@ mod tests {
     #[test]
     fn directive_keyword_spans_ignore_unterminated_directives() {
         assert!(directive_keyword_spans("%%{ initialize: {\"theme\":\"dark\"}").is_empty());
+    }
+
+    #[test]
+    fn directive_body_spans_ignore_closing_marker_inside_strings() {
+        let source = "%%{ init: { \"themeCSS\": \"}%%\", \"flowchart\": { \"htmlLabels\": true } } }%%\nflowchart TD\n";
+
+        let spans = directive_flowchart_html_labels_spans(source);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
     }
 }

@@ -276,6 +276,19 @@ mod tests {
                 && rule.configurable
                 && rule.fixable
         }));
+        assert!(catalog.rules.iter().any(|rule| {
+            rule.id == "merman.compatibility.config.deprecated_flowchart_html_labels"
+                && rule.origin == "mermaid_compatibility"
+                && rule.default_profile == "core"
+                && rule.default_enabled
+                && rule.default_severity == "warning"
+                && rule.category == "config"
+                && rule.evidence.contains(
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md".to_string(),
+                )
+                && rule.configurable
+                && !rule.fixable
+        }));
     }
 
     #[test]
@@ -308,6 +321,11 @@ mod tests {
             response
                 .configurable_rule_ids
                 .contains(&"merman.authoring.flowchart.explicit_direction".to_string())
+        );
+        assert!(
+            response.configurable_rule_ids.contains(
+                &"merman.compatibility.config.deprecated_flowchart_html_labels".to_string()
+            )
         );
         assert_eq!(
             response.schema["$defs"]["analysisOptions"]["properties"]["lint"]["properties"]["profile"]

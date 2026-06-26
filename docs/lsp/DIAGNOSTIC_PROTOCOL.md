@@ -33,4 +33,7 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Workspace symbols are wired from tracked document snapshots.
 - Code actions remain intentionally sparse until lint rules emit source-span-backed
   `DiagnosticFix` metadata.
+- Core config diagnostics include source-backed Mermaid compatibility warnings such as deprecated
+  directive usage of `flowchart.htmlLabels`; diagnostics without `DiagnosticFix` metadata do not
+  produce quickfixes.
 - Formatting remains deferred.

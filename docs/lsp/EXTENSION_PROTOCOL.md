@@ -43,7 +43,7 @@ Response:
       "id": "merman.authoring.flowchart.explicit_direction",
       "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
       "evidence": [
-        "repo-ref/mermaid/packages/mermaid/src/docs/syntax/flowchart.md",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/syntax/flowchart.md",
         "crates/merman-core/src/diagrams/flowchart.rs",
         "docs/adr/0072-lint-rule-governance.md"
       ],
@@ -54,6 +54,22 @@ Response:
       "origin": "merman_authoring",
       "configurable": true,
       "fixable": true
+    },
+    {
+      "id": "merman.compatibility.config.deprecated_flowchart_html_labels",
+      "description": "Report deprecated `flowchart.htmlLabels` config and recommend the root-level `htmlLabels` option.",
+      "evidence": [
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.type.ts",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md"
+      ],
+      "default_severity": "warning",
+      "category": "config",
+      "default_enabled": true,
+      "default_profile": "core",
+      "origin": "mermaid_compatibility",
+      "configurable": true,
+      "fixable": false
     }
   ]
 }
@@ -79,7 +95,8 @@ Response:
   "severities": ["error", "warning", "info", "hint"],
   "configurable_rule_ids": [
     "merman.authoring.config.prefer_init_directive",
-    "merman.authoring.flowchart.explicit_direction"
+    "merman.authoring.flowchart.explicit_direction",
+    "merman.compatibility.config.deprecated_flowchart_html_labels"
   ],
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",

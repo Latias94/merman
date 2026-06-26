@@ -31,13 +31,13 @@ navigation, code-action, and semantic-token foundations.
   raw names.
 - Serve full-document semantic tokens from parser-backed semantic items with stable
   entity/outline/payload role modifiers.
+- Serve range and delta semantic-token requests from the same parser-backed token stream.
 - Serve quickfix code actions only from `DiagnosticFix` metadata carried by merman diagnostics.
 - Stay Markdown-fence aware and UTF-16 correct for plain Mermaid, Markdown, and MDX documents.
 
 ## Deferred
 
 - Additional fix-producing lint rules and configuration
-- Delta semantic tokens
 - Formatting
 - Deeper completion documentation for family-specific syntax variants
 
@@ -56,6 +56,10 @@ navigation, code-action, and semantic-token foundations.
 - Fix-backed authoring rules such as `merman.authoring.config.prefer_init_directive` and
   `merman.authoring.flowchart.explicit_direction` are available through the shared lint
   configuration, but remain opt-in through `recommended` or explicit rule enablement.
+- Mermaid-backed compatibility rules such as
+  `merman.compatibility.config.deprecated_flowchart_html_labels` can be core-profile warnings when
+  the pinned Mermaid source or docs expose the same warning. They do not imply quickfix support
+  unless the diagnostic carries explicit `DiagnosticFix` metadata.
 - Full-document, range, and delta semantic tokens are role-aware and parser-backed; configuration
   changes trigger `workspace/semanticTokens/refresh` when the client advertises refresh support,
   and delta requests reuse cached snapshot token state when the previous result id matches.

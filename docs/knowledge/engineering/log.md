@@ -6,6 +6,23 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added the Mermaid-backed core compatibility lint rule
+  `merman.compatibility.config.deprecated_flowchart_html_labels`. It reports directive usage of
+  deprecated `flowchart.htmlLabels` with evidence from Mermaid `config.ts`, `config.type.ts`, and
+  `docs/config/directives.md`, while intentionally carrying no quickfix until config rewrite spans
+  and formatting are structurally safe.
+- Added a directive object scanner for this lint path so the diagnostic range points at the
+  offending `htmlLabels` key, including `init.config.flowchart.htmlLabels`, without changing the
+  Mermaid parser or render behavior. The existing directive wrapper scan now ignores `}%%` inside
+  quoted strings.
+- Added analysis and LSP regressions proving the core warning is emitted, can be disabled, is
+  discoverable through the shared rule catalog/config schema, and does not produce a code action
+  when no `DiagnosticFix` metadata is present.
+- Corrected the public evidence contract after review: rule catalog entries and LSP documentation
+  now cite pinned Mermaid GitHub commit URLs instead of local upstream checkout paths. Local
+  upstream checkouts remain development-only evidence mirrors.
+
+## 2026-06-26
 - Added standard pull diagnostics to `merman-lsp`: `textDocument/diagnostic` now returns full or
   unchanged reports from the shared analysis payloads, `workspace/diagnostic` returns document
   reports for tracked snapshots, and `workspace/diagnostic/refresh` is requested when supported

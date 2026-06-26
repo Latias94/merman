@@ -38,8 +38,9 @@ The governance rules are:
 3. `RuleDescriptor.origin` records whether a rule is Mermaid syntax, Mermaid compatibility,
    Merman authoring, Merman resource policy, or Merman internal infrastructure.
 4. Mermaid syntax and compatibility rules require durable evidence from at least one of:
-   pinned `repo-ref/mermaid` source, upstream docs, upstream-derived fixtures, or a reproducible
-   compatibility test.
+   pinned Mermaid source identified by a public commit URL, upstream docs, upstream-derived
+   fixtures, or a reproducible compatibility test. Local upstream checkouts may be used for
+   development research, but public rule metadata and documentation must not cite local paths.
 5. Merman authoring rules may be useful and fix-backed, but they must not be presented as official
    Mermaid requirements.
 6. The default `core` profile enables syntax, compatibility, resource, and internal diagnostics

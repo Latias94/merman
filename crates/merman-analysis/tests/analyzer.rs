@@ -170,6 +170,26 @@ fn flowchart_missing_direction_rule_can_be_disabled() {
 }
 
 #[test]
+fn deprecated_flowchart_html_labels_config_is_core_warning() {
+    let source = "%%{init: { \"flowchart\": { \"htmlLabels\": false, \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n";
+    let payload = analyze(source);
+
+    assert!(payload.valid);
+    assert_eq!(payload.summary.warnings, 1);
+    let diagnostic = &payload.diagnostics[0];
+    assert_eq!(
+        diagnostic.id,
+        "merman.compatibility.config.deprecated_flowchart_html_labels"
+    );
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+    assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+    assert!(diagnostic.message.contains("deprecated"));
+    assert!(diagnostic.fixes.is_empty());
+    let span = diagnostic.span.as_ref().expect("htmlLabels span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
 fn unsupported_diagram_returns_compatibility_error() {
     let mut engine = merman_core::Engine::new();
     *engine.diagram_registry_mut() = merman_core::diagram::DiagramRegistry::new();
