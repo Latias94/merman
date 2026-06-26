@@ -63,7 +63,7 @@ pub(super) fn plan_left_right_direct_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
 }
 
 pub(super) fn plan_left_right_down_route(
@@ -89,10 +89,7 @@ pub(super) fn plan_left_right_down_route(
         GraphEdgeArrow::Point => edge_arrow_cell(x, end, charset.arrow_down),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 pub(super) fn plan_left_right_down_then_right_route(
@@ -144,10 +141,7 @@ pub(super) fn plan_left_right_down_then_right_route(
         GraphEdgeArrow::Point => edge_arrow_cell(end, to.center_y(), charset.arrow_right),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 pub(super) fn plan_left_right_right_then_up_route(
@@ -196,10 +190,7 @@ pub(super) fn plan_left_right_right_then_up_route(
         GraphEdgeArrow::Point => edge_arrow_cell(end, to.center_y(), charset.arrow_right),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 pub(super) fn plan_left_right_bottom_lane_route(
@@ -265,7 +256,12 @@ pub(super) fn plan_left_right_bottom_lane_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::with_min_canvas_extent(
+        cells,
+        labels,
+        max_x + 3,
+        bottom_y + 1,
+    ))
 }
 
 pub(super) fn plan_left_right_reverse_over_self_loop_route(
@@ -310,7 +306,12 @@ pub(super) fn plan_left_right_reverse_over_self_loop_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::with_min_canvas_extent(
+        cells,
+        labels,
+        from.center_x().max(to.center_x()) + 3,
+        0,
+    ))
 }
 
 pub(super) fn plan_left_right_self_loop_route(
@@ -366,10 +367,7 @@ pub(super) fn plan_left_right_self_loop_route(
         GraphEdgeArrow::Point => edge_arrow_cell(from.center_x(), arrow_y, charset.arrow_up),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 fn plan_left_right_basic_down_then_right_route(
@@ -401,10 +399,7 @@ fn plan_left_right_basic_down_then_right_route(
         GraphEdgeArrow::Point => edge_arrow_cell(end, corner_y, charset.arrow_right),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 fn plan_left_right_basic_right_then_up_route(
@@ -436,10 +431,7 @@ fn plan_left_right_basic_right_then_up_route(
         GraphEdgeArrow::Point => edge_arrow_cell(corner_x, arrow_y, charset.arrow_up),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 fn left_right_direct_route_is_clear(

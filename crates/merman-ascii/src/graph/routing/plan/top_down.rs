@@ -60,7 +60,7 @@ pub(super) fn plan_top_down_direct_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
 }
 
 pub(super) fn plan_top_down_bent_route(
@@ -157,7 +157,7 @@ fn plan_top_down_side_bend_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
 }
 
 fn plan_top_down_drop_then_turn_route(
@@ -217,7 +217,7 @@ fn plan_top_down_drop_then_turn_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
 }
 
 pub(super) fn plan_top_down_side_entry_route(
@@ -259,7 +259,7 @@ pub(super) fn plan_top_down_side_entry_route(
         .into_iter()
         .collect();
 
-        return Some(RoutePlan { cells, labels });
+        return Some(RoutePlan::new(cells, labels));
     }
 
     if from.x <= to.right() + 1 {
@@ -286,7 +286,7 @@ pub(super) fn plan_top_down_side_entry_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
 }
 
 pub(super) fn plan_top_down_back_route(
@@ -337,7 +337,7 @@ pub(super) fn plan_top_down_back_route(
             }
         }
     }
-    let labels = planned_label(
+    let labels: Vec<_> = planned_label(
         edge.label.as_deref(),
         CanvasCoord {
             x: lane_x,
@@ -351,7 +351,13 @@ pub(super) fn plan_top_down_back_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    let min_width = labels.iter().fold(lane_x + 3, |width, label| {
+        width.max(label.placement.canvas_extent().0 + 1)
+    });
+
+    Some(RoutePlan::with_min_canvas_extent(
+        cells, labels, min_width, 0,
+    ))
 }
 
 pub(super) fn top_down_back_edge_lane_x(from: &NodeLayout, to: &NodeLayout) -> usize {

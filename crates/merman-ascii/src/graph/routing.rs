@@ -1,9 +1,7 @@
 use super::charset::GraphCharset;
 use super::label::GraphLabel;
 use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
-use super::model::{
-    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
-};
+use super::model::{AsciiGraph, AsciiGraphEdge, GraphEdgeStyle, GraphNodeShape, GraphNodeStyle};
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
 
@@ -15,10 +13,7 @@ mod plan;
 pub(super) use cell::RouteCells;
 use cell::{set_edge_arrow_with_color, set_edge_line_with_color, set_route_cell_with_color};
 pub(super) use label::{EdgeLabel, RoutedLabelPlacement, draw_routed_label};
-use plan::{
-    EdgeRouteRequest, PlannedRouteCellKind, PlannedRouteLabel, RoutePlan, plan_edge_route,
-    route_canvas_extent,
-};
+use plan::{EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route};
 
 pub(super) struct RouteDrawing<'a> {
     canvas: &'a mut Canvas,
@@ -53,15 +48,36 @@ pub(super) fn edge_canvas_extent(
     graph: &AsciiGraph,
     graph_layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
-    direction: GraphDirection,
     charset: &GraphCharset,
 ) -> (usize, usize) {
-    let layouts = endpoint_layouts_for_extent(graph_layout);
-    let (mut width, mut height) = route_canvas_extent(graph, &layouts, edges, direction);
-    let (label_width, label_height) =
-        planned_route_label_canvas_extent(graph, graph_layout, edges, charset);
-    width = width.max(label_width);
-    height = height.max(label_height);
+    let mut width = 0;
+    let mut height = 0;
+
+    for (edge_index, edge) in edges.iter().enumerate() {
+        let Some(from) = endpoint_layout(graph_layout, &edge.from) else {
+            continue;
+        };
+        let Some(to) = endpoint_layout(graph_layout, &edge.to) else {
+            continue;
+        };
+        let Some(plan) = plan_edge_route(EdgeRouteRequest {
+            graph,
+            graph_layout,
+            edges,
+            from: &from,
+            to: &to,
+            edge_index,
+            edge,
+            charset,
+        }) else {
+            continue;
+        };
+
+        let (plan_width, plan_height) = plan.canvas_extent();
+        width = width.max(plan_width);
+        height = height.max(plan_height);
+    }
+
     (width, height)
 }
 
@@ -127,12 +143,6 @@ fn endpoint_layout(graph_layout: &GraphLayout, endpoint_id: &str) -> Option<Node
         })
 }
 
-fn endpoint_layouts_for_extent(graph_layout: &GraphLayout) -> Vec<NodeLayout> {
-    let mut layouts = graph_layout.nodes.clone();
-    layouts.extend(graph_layout.groups.iter().map(group_endpoint_layout));
-    layouts
-}
-
 fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
     NodeLayout {
         id: group.id.clone(),
@@ -145,49 +155,6 @@ fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
         width: group.width,
         height: group.height,
     }
-}
-
-fn planned_route_label_canvas_extent(
-    graph: &AsciiGraph,
-    graph_layout: &GraphLayout,
-    edges: &[AsciiGraphEdge],
-    charset: &GraphCharset,
-) -> (usize, usize) {
-    let mut width = 0;
-    let mut height = 0;
-
-    for (edge_index, edge) in edges.iter().enumerate() {
-        let Some(from) = endpoint_layout(graph_layout, &edge.from) else {
-            continue;
-        };
-        let Some(to) = endpoint_layout(graph_layout, &edge.to) else {
-            continue;
-        };
-        let Some(plan) = plan_edge_route(EdgeRouteRequest {
-            graph,
-            graph_layout,
-            edges,
-            from: &from,
-            to: &to,
-            edge_index,
-            edge,
-            charset,
-        }) else {
-            continue;
-        };
-
-        for label in &plan.labels {
-            let (label_width, label_height) = planned_label_canvas_extent(label);
-            width = width.max(label_width);
-            height = height.max(label_height);
-        }
-    }
-
-    (width, height)
-}
-
-fn planned_label_canvas_extent(label: &PlannedRouteLabel) -> (usize, usize) {
-    label.placement.canvas_extent()
 }
 
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: GraphEdgeStyle) {
@@ -235,24 +202,24 @@ mod tests {
     use crate::color::AsciiRgb;
     use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
-    use crate::graph::model::GraphEdgeAttrs;
+    use crate::graph::model::{GraphDirection, GraphEdgeAttrs};
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
         let line = AsciiRgb::new(1, 2, 3);
         let arrow = AsciiRgb::new(4, 5, 6);
         let label = AsciiRgb::new(7, 8, 9);
-        let plan = RoutePlan {
-            cells: vec![
+        let plan = RoutePlan::new(
+            vec![
                 planned_cell(0, 0, '-', PlannedRouteCellKind::EdgeLine),
                 planned_cell(1, 0, '-', PlannedRouteCellKind::RouteCell),
                 planned_cell(2, 0, '>', PlannedRouteCellKind::EdgeArrow),
             ],
-            labels: vec![PlannedRouteLabel {
+            vec![PlannedRouteLabel {
                 text: "label".to_string(),
                 placement: RoutedLabelPlacement::new(0, 0, 5),
             }],
-        };
+        );
 
         let mut canvas = Canvas::new(3, 1);
         let mut route_cells = RouteCells::new();
@@ -287,10 +254,10 @@ mod tests {
     #[test]
     fn edge_arrow_style_falls_back_to_line_style() {
         let line = AsciiRgb::new(10, 11, 12);
-        let plan = RoutePlan {
-            cells: vec![planned_cell(0, 0, '>', PlannedRouteCellKind::EdgeArrow)],
-            labels: Vec::new(),
-        };
+        let plan = RoutePlan::new(
+            vec![planned_cell(0, 0, '>', PlannedRouteCellKind::EdgeArrow)],
+            Vec::new(),
+        );
 
         let mut canvas = Canvas::new(1, 1);
         let mut route_cells = RouteCells::new();
@@ -355,13 +322,7 @@ mod tests {
         let label = plan.labels.first().expect("boundary route should label");
         let (required_width, _) = label.placement.canvas_extent();
 
-        let (edge_width, _) = edge_canvas_extent(
-            &graph,
-            &graph_layout,
-            &graph.edges,
-            graph.direction,
-            &charset,
-        );
+        let (edge_width, _) = edge_canvas_extent(&graph, &graph_layout, &graph.edges, &charset);
 
         assert!(
             edge_width >= required_width,

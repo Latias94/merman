@@ -126,7 +126,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
 }
 
 fn planned_grid_label(

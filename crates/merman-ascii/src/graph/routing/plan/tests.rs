@@ -103,89 +103,25 @@ fn edge_route_selects_top_down_same_rank_direct_route() {
 }
 
 #[test]
-fn route_canvas_extent_accounts_for_left_right_back_lane() {
+fn route_plan_canvas_extent_accounts_for_left_right_back_lane() {
     let from = node("a", 10, 0, 3, 3);
     let to = node("b", 0, 0, 3, 3);
-    let layouts = vec![from, to];
-    let edges = vec![edge_between("a", "b", None, GraphEdgeArrow::Point)];
-    let graph = test_graph(GraphDirection::LeftRight, &[("a", "b")]);
+    let edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let plan = plan_left_right_bottom_lane_route(&from, &to, &edge, &charset).unwrap();
 
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &edges, GraphDirection::LeftRight),
-        (14, 5)
-    );
+    assert_eq!(plan.canvas_extent(), (14, 5));
 }
 
 #[test]
-fn route_canvas_extent_accounts_for_top_down_back_label_width() {
+fn route_plan_canvas_extent_accounts_for_top_down_back_label_width() {
     let from = node("a", 0, 6, 3, 3);
     let to = node("b", 0, 0, 3, 3);
-    let layouts = vec![from, to];
-    let edges = vec![edge_between("a", "b", Some("back"), GraphEdgeArrow::Point)];
-    let graph = test_graph(GraphDirection::TopDown, &[("a", "b")]);
+    let edge = edge_between("a", "b", Some("back"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let plan = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
 
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &edges, GraphDirection::TopDown),
-        (9, 0)
-    );
-}
-
-#[test]
-fn route_canvas_extent_uses_local_direction_only_for_internal_subgraph_edges() {
-    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    graph.add_node("x", "X");
-    graph.add_group_with_style(
-        "one",
-        "LR Group",
-        Some(GraphDirection::LeftRight),
-        vec!["a".to_string(), "b".to_string()],
-        Default::default(),
-    );
-
-    let layouts = vec![
-        node("x", 8, 0, 3, 3),
-        node("a", 0, 8, 3, 3),
-        node("b", 8, 8, 3, 3),
-    ];
-    let internal_edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
-    let external_edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
-
-    assert_eq!(
-        route_canvas_extent(
-            &graph,
-            &layouts,
-            std::slice::from_ref(&internal_edge),
-            GraphDirection::TopDown
-        ),
-        (0, 0)
-    );
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &[external_edge], GraphDirection::TopDown),
-        (0, 0)
-    );
-}
-
-#[test]
-fn internal_subgraph_edge_marks_local_group_context_through_extent_behavior() {
-    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    graph.add_group_with_style(
-        "one",
-        "LR Group",
-        Some(GraphDirection::LeftRight),
-        vec!["a".to_string(), "b".to_string()],
-        Default::default(),
-    );
-    let layouts = vec![node("a", 0, 8, 3, 3), node("b", 8, 8, 3, 3)];
-    let internal_edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
-
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &[internal_edge], GraphDirection::TopDown),
-        (0, 0)
-    );
+    assert_eq!(plan.canvas_extent(), (9, 8));
 }
 
 #[test]
@@ -1181,19 +1117,6 @@ fn left_right_layout(edges: &[(&str, &str)], options: &AsciiRenderOptions) -> Gr
         graph.add_edge(*from, *to);
     }
     layout_graph(&graph, options)
-}
-
-fn test_graph(direction: GraphDirection, edges: &[(&str, &str)]) -> AsciiGraph {
-    let mut graph = AsciiGraph::new(direction);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    if edges.iter().any(|(_, to)| *to == "c") {
-        graph.add_node("c", "C");
-    }
-    for (from, to) in edges {
-        graph.add_edge(*from, *to);
-    }
-    graph
 }
 
 fn layout_node<'a>(layout: &'a GraphLayout, id: &str) -> &'a NodeLayout {

@@ -5,19 +5,64 @@ use super::path::StepDirection;
 
 mod boundary;
 mod edges;
-mod extent;
 mod grid;
 mod left_right;
 mod select;
 mod top_down;
 
-pub(super) use extent::route_canvas_extent;
 pub(super) use select::{EdgeRouteRequest, plan_edge_route};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RoutePlan {
     pub(super) cells: Vec<PlannedRouteCell>,
     pub(super) labels: Vec<PlannedRouteLabel>,
+    min_canvas_extent: CanvasExtent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct CanvasExtent {
+    width: usize,
+    height: usize,
+}
+
+impl RoutePlan {
+    pub(super) fn new(cells: Vec<PlannedRouteCell>, labels: Vec<PlannedRouteLabel>) -> Self {
+        Self {
+            cells,
+            labels,
+            min_canvas_extent: CanvasExtent::default(),
+        }
+    }
+
+    pub(super) fn with_min_canvas_extent(
+        cells: Vec<PlannedRouteCell>,
+        labels: Vec<PlannedRouteLabel>,
+        width: usize,
+        height: usize,
+    ) -> Self {
+        Self {
+            cells,
+            labels,
+            min_canvas_extent: CanvasExtent { width, height },
+        }
+    }
+
+    pub(super) fn canvas_extent(&self) -> (usize, usize) {
+        let mut width = self.min_canvas_extent.width;
+        let mut height = self.min_canvas_extent.height;
+
+        for cell in &self.cells {
+            width = width.max(cell.coord.x.saturating_add(1));
+            height = height.max(cell.coord.y.saturating_add(1));
+        }
+        for label in &self.labels {
+            let (label_width, label_height) = label.placement.canvas_extent();
+            width = width.max(label_width);
+            height = height.max(label_height);
+        }
+
+        (width, height)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
