@@ -5,6 +5,27 @@ status: active
 
 # Log
 
+## 2026-06-26
+- Extended `DiagramWarningFact` with optional parser-backed `span` and `fixSpan`, and taught the
+  flowchart grammar to retain the header span so missing-direction warnings no longer depend on
+  whole-document fallback ranges.
+- Promoted `merman.flowchart.missing_direction` to a fix-backed shared rule: `merman-analysis`
+  now maps the fact span into the diagnostic range and maps the fix span into a preferred
+  `DiagnosticFix` that inserts ` TB` at the flowchart header.
+- Added core, analysis, and LSP regressions proving the warning fact JSON shape, analysis fix
+  metadata, ordinary Mermaid quickfix action, and Markdown-fence host-document edit range.
+- Split flowchart source direction from effective render direction: semantic JSON now preserves an
+  omitted header direction as `null`, while the typed render model still receives the effective
+  `TB` default for layout/render consumers.
+- Updated core snapshot normalization so Mermaid parity goldens continue comparing upstream
+  `warnings` output while production models can carry merman-specific `warningFacts` metadata for
+  analysis and LSP.
+- Verified the slice with `cargo fmt --all`, `cargo nextest run -p merman-core --no-fail-fast`,
+  `cargo nextest run -p merman-analysis --no-fail-fast`, and
+  `cargo test -p merman-lsp --lib --tests`. A combined
+  `cargo nextest run -p merman-analysis -p merman-lsp --no-fail-fast` run was interrupted after
+  hanging in nextest test-binary listing; the package-level replacement checks above passed.
+
 ## 2026-06-25
 - Added a parser-backed flowchart lint rule for missing header direction, with the core flowchart
   model now defaulting omitted headers to `TB` while still emitting `warningFacts` for the shared

@@ -135,7 +135,7 @@ const FLOWCHART_MISSING_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
-    fixable: false,
+    fixable: true,
 };
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
@@ -257,13 +257,14 @@ pub(crate) fn semantic_warning_diagnostics(
         return Vec::new();
     };
 
-    semantic_warning_fact_diagnostics(diagram_type, warning_facts, span, rule_config)
+    semantic_warning_fact_diagnostics(diagram_type, warning_facts, span, source_map, rule_config)
 }
 
 fn semantic_warning_fact_diagnostics(
     diagram_type: &str,
     warning_facts: Vec<DiagramWarningFact>,
-    span: Option<DiagnosticSpan>,
+    fallback_span: Option<DiagnosticSpan>,
+    source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
     let mut diagnostics = Vec::with_capacity(warning_facts.len());
@@ -274,10 +275,11 @@ fn semantic_warning_fact_diagnostics(
                 diagnostics.push(warning_for_fact(
                     diagram_type,
                     fact,
-                    span.clone(),
+                    fallback_span.clone(),
+                    source_map,
                     descriptor,
                     rule_config,
-                ));
+                ))
             }
             Some(_) => {}
             None => diagnostics.push(
@@ -286,7 +288,7 @@ fn semantic_warning_fact_diagnostics(
                         "unknown warning fact rule id `{}`: {}",
                         fact.rule_id, fact.message
                     ),
-                    span.clone(),
+                    fallback_span.clone(),
                 )
                 .with_diagram_type(diagram_type),
             ),
@@ -299,10 +301,13 @@ fn semantic_warning_fact_diagnostics(
 fn warning_for_fact(
     diagram_type: &str,
     fact: DiagramWarningFact,
-    span: Option<DiagnosticSpan>,
+    fallback_span: Option<DiagnosticSpan>,
+    source_map: &SourceMap,
     descriptor: RuleDescriptor,
     rule_config: &AnalysisRuleConfig,
 ) -> AnalysisDiagnostic {
+    let span = warning_fact_span(&fact, source_map, fallback_span);
+    let fix = warning_fact_fix(&fact, descriptor, source_map);
     let mut diagnostic = AnalysisDiagnostic::new(
         descriptor.id,
         rule_config.severity_for(descriptor),
@@ -315,7 +320,40 @@ fn warning_for_fact(
         diagnostic = diagnostic.with_span(span);
     }
 
+    if let Some(fix) = fix {
+        diagnostic = diagnostic.with_fix(fix);
+    }
+
     diagnostic
+}
+
+fn warning_fact_span(
+    fact: &DiagramWarningFact,
+    source_map: &SourceMap,
+    fallback_span: Option<DiagnosticSpan>,
+) -> Option<DiagnosticSpan> {
+    fact.span
+        .and_then(|span| source_map.span(span.start, span.end).ok())
+        .or(fallback_span)
+}
+
+fn warning_fact_fix(
+    fact: &DiagramWarningFact,
+    descriptor: RuleDescriptor,
+    source_map: &SourceMap,
+) -> Option<DiagnosticFix> {
+    let fix_span = fact.fix_span.or(fact.span)?;
+    let fix_span = source_map.span(fix_span.start, fix_span.end).ok()?;
+    match descriptor.id {
+        FLOWCHART_MISSING_DIRECTION_RULE_ID => Some(
+            DiagnosticFix::new(
+                "Insert `TB` into the flowchart header",
+                vec![DiagnosticFixEdit::new(fix_span, " TB")],
+            )
+            .preferred(),
+        ),
+        _ => None,
+    }
 }
 
 fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
@@ -571,7 +609,9 @@ mod tests {
                 "warningFacts": [
                     {
                         "ruleId": FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
-                        "message": "flowchart headers should declare an explicit direction"
+                        "message": "flowchart headers should declare an explicit direction",
+                        "span": { "start": 0, "end": 9 },
+                        "fixSpan": { "start": 9, "end": 9 }
                     }
                 ]
             }),
@@ -584,6 +624,17 @@ mod tests {
         assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
         assert_eq!(diagnostics[0].category, DiagnosticCategory::Semantic);
         assert_eq!(diagnostics[0].diagram_type.as_deref(), Some("flowchart-v2"));
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().byte_start, 0);
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().byte_end, 9);
+        assert_eq!(diagnostics[0].fixes.len(), 1);
+        assert_eq!(
+            diagnostics[0].fixes[0].title,
+            "Insert `TB` into the flowchart header"
+        );
+        assert!(diagnostics[0].fixes[0].is_preferred);
+        assert_eq!(diagnostics[0].fixes[0].edits[0].replacement, " TB");
+        assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_start, 9);
+        assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_end, 9);
     }
 
     #[test]
@@ -681,6 +732,12 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == FLOWCHART_MISSING_DIRECTION_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .find(|descriptor| descriptor.id == FLOWCHART_MISSING_DIRECTION_RULE_ID)
+                .is_some_and(|descriptor| descriptor.fixable)
         );
         assert!(
             descriptors

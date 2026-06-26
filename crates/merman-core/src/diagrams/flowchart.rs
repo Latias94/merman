@@ -71,6 +71,7 @@ pub(crate) struct FlowSubGraph {
 struct FlowchartSemanticSource {
     keyword: String,
     direction: Option<String>,
+    effective_direction: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
     class_defs: IndexMap<String, Vec<String>>,
@@ -182,12 +183,13 @@ fn parse_flowchart_semantic_source(
     }
 
     let direction = ast.direction;
-    let warning_facts = flowchart_warning_facts(&direction);
-    let direction = direction.or_else(|| Some("TB".to_string()));
+    let warning_facts = flowchart_warning_facts(&direction, ast.header_span);
+    let effective_direction = direction.clone().or_else(|| Some("TB".to_string()));
 
     Ok(FlowchartSemanticSource {
         keyword: ast.keyword,
         direction,
+        effective_direction,
         acc_descr,
         acc_title,
         class_defs,
@@ -210,15 +212,22 @@ fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst>
         })
 }
 
-fn flowchart_warning_facts(direction: &Option<String>) -> Vec<DiagramWarningFact> {
+fn flowchart_warning_facts(
+    direction: &Option<String>,
+    header_span: crate::SourceSpan,
+) -> Vec<DiagramWarningFact> {
     if direction.is_some() {
         return Vec::new();
     }
 
-    vec![DiagramWarningFact::new(
-        FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
-        "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
-    )]
+    vec![
+        DiagramWarningFact::new(
+            FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+            "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+        )
+        .with_span(header_span)
+        .with_fix_span(crate::SourceSpan::new(header_span.end, header_span.end)),
+    ]
 }
 
 fn mask_flowchart_editor_parse_input(code: &str) -> String {
@@ -713,7 +722,7 @@ impl FlowchartSemanticSource {
             acc_descr: self.acc_descr,
             acc_title: self.acc_title,
             class_defs: self.class_defs,
-            direction: self.direction,
+            direction: self.effective_direction,
             edge_defaults: Some(FlowEdgeDefaults {
                 style: self.edge_defaults.style,
                 interpolate: self.edge_defaults.interpolate,

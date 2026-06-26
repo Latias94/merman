@@ -303,6 +303,49 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_missing_direction_fix_produces_quickfix_action() {
+        let source = "flowchart\nA-->B\n";
+        let analyzer = Analyzer::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let payload = analyzer.analyze(source);
+        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 9),
+            },
+            context: CodeActionContext {
+                diagnostics,
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_params(&params).expect("expected flowchart quickfix");
+        let action = actions
+            .iter()
+            .filter_map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => Some(action),
+                CodeActionOrCommand::Command(_) => None,
+            })
+            .find(|action| action.title == "Insert `TB` into the flowchart header")
+            .expect("missing flowchart direction quickfix");
+
+        assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
+        assert_eq!(action.is_preferred, Some(true));
+        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
+        let edits = changes.get(&uri).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].new_text, " TB");
+        assert_eq!(edits[0].range.start, Position::new(0, 9));
+        assert_eq!(edits[0].range.end, Position::new(0, 9));
+    }
+
+    #[test]
     fn markdown_analyzer_fix_metadata_uses_host_document_ranges() {
         let source = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter\n";
         let analyzer = Analyzer::new();
@@ -338,5 +381,50 @@ mod tests {
         assert_eq!(edits[0].new_text, "init");
         assert_eq!(edits[0].range.start, Position::new(2, 4));
         assert_eq!(edits[0].range.end, Position::new(2, 14));
+    }
+
+    #[test]
+    fn markdown_flowchart_missing_direction_fix_uses_host_document_ranges() {
+        let source = "before\n```mermaid\nflowchart\nA-->B\n```\nafter\n";
+        let analyzer = Analyzer::new();
+        let uri = Url::parse("file:///tmp/example.md").unwrap();
+        let payload = analyze_document(
+            source,
+            &analyzer,
+            markdown_source_descriptor(Some(uri.as_str())),
+        );
+        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range {
+                start: Position::new(2, 0),
+                end: Position::new(2, 9),
+            },
+            context: CodeActionContext {
+                diagnostics,
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_params(&params).expect("expected markdown quickfix");
+        let action = actions
+            .iter()
+            .filter_map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => Some(action),
+                CodeActionOrCommand::Command(_) => None,
+            })
+            .find(|action| action.title == "Insert `TB` into the flowchart header")
+            .expect("missing flowchart direction quickfix");
+        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
+        let edits = changes.get(&uri).unwrap();
+
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].new_text, " TB");
+        assert_eq!(edits[0].range.start, Position::new(2, 9));
+        assert_eq!(edits[0].range.end, Position::new(2, 9));
     }
 }

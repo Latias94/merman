@@ -97,7 +97,8 @@ fn valid_flowchart_returns_no_diagnostics() {
 
 #[test]
 fn flowchart_missing_direction_is_warning() {
-    let payload = analyze("flowchart\nA[Hello] --> B[World]\n");
+    let source = "flowchart\nA[Hello] --> B[World]\n";
+    let payload = analyze(source);
 
     assert!(payload.valid);
     assert_eq!(payload.summary.errors, 0);
@@ -108,6 +109,34 @@ fn flowchart_missing_direction_is_warning() {
     assert_eq!(diagnostic.category, DiagnosticCategory::Semantic);
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
     assert!(diagnostic.message.contains("explicit direction"));
+    let span = diagnostic.span.as_ref().expect("diagnostic span");
+    assert_eq!(span.byte_start, 0);
+    assert_eq!(span.byte_end, "flowchart".len());
+    assert_eq!(span.line, 1);
+    assert_eq!(span.column, 1);
+    assert_eq!(span.end_line, 1);
+    assert_eq!(span.end_column, 10);
+    assert_eq!(span.lsp_range.start.line, 0);
+    assert_eq!(span.lsp_range.start.character, 0);
+    assert_eq!(span.lsp_range.end.line, 0);
+    assert_eq!(span.lsp_range.end.character, 9);
+
+    assert_eq!(diagnostic.fixes.len(), 1);
+    let fix = &diagnostic.fixes[0];
+    assert_eq!(fix.title, "Insert `TB` into the flowchart header");
+    assert!(fix.is_preferred);
+    assert_eq!(fix.edits.len(), 1);
+    assert_eq!(fix.edits[0].replacement, " TB");
+    assert_eq!(fix.edits[0].span.byte_start, "flowchart".len());
+    assert_eq!(fix.edits[0].span.byte_end, "flowchart".len());
+    assert_eq!(fix.edits[0].span.lsp_range.start.line, 0);
+    assert_eq!(fix.edits[0].span.lsp_range.start.character, 9);
+    assert_eq!(fix.edits[0].span.lsp_range.end.line, 0);
+    assert_eq!(fix.edits[0].span.lsp_range.end.character, 9);
+    assert_eq!(
+        source[fix.edits[0].span.byte_start..].chars().next(),
+        Some('\n')
+    );
 }
 
 #[test]

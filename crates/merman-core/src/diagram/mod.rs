@@ -1,4 +1,7 @@
-use crate::{Error, MermaidConfig, ParseMetadata, Result, baseline::BaselineRegistryProfile};
+use crate::{
+    Error, MermaidConfig, ParseMetadata, Result, baseline::BaselineRegistryProfile,
+    editor::SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -12,6 +15,10 @@ pub const GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID: &str = "merman.git_graph.d
 pub struct DiagramWarningFact {
     pub rule_id: String,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<SourceSpan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix_span: Option<SourceSpan>,
 }
 
 impl DiagramWarningFact {
@@ -19,7 +26,19 @@ impl DiagramWarningFact {
         Self {
             rule_id: rule_id.into(),
             message: message.into(),
+            span: None,
+            fix_span: None,
         }
+    }
+
+    pub fn with_span(mut self, span: SourceSpan) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    pub fn with_fix_span(mut self, span: SourceSpan) -> Self {
+        self.fix_span = Some(span);
+        self
     }
 }
 

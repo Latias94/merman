@@ -44,15 +44,15 @@ extern {
 
 pub FlowchartAst: FlowchartAst = {
   <_lead:Seps> <h:Header> <_s:Seps> <st:Statements> => {
-    let (keyword, direction) = h;
-    FlowchartAst { keyword, direction, statements: st }
+    let (keyword, direction, header_span) = h;
+    FlowchartAst { keyword, direction, header_span, statements: st }
   },
 };
 
-Header: (String, Option<String>) = {
-  "graph" <d:Direction?> => ("graph".to_string(), d),
-  "flowchart" <d:Direction?> => ("flowchart".to_string(), d),
-  "flowchart-elk" <d:Direction?> => ("flowchart-elk".to_string(), d),
+Header: (String, Option<String>, SourceSpan) = {
+  <l:@L> "graph" <d:Direction?> <r:@R> => ("graph".to_string(), d, SourceSpan::new(l, r)),
+  <l:@L> "flowchart" <d:Direction?> <r:@R> => ("flowchart".to_string(), d, SourceSpan::new(l, r)),
+  <l:@L> "flowchart-elk" <d:Direction?> <r:@R> => ("flowchart-elk".to_string(), d, SourceSpan::new(l, r)),
 };
 
 Statements: Vec<Stmt> = {

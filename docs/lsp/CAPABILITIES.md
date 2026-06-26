@@ -24,8 +24,9 @@ facts, it is not considered mature.
   groups. Payload and outline-only items are excluded unless a future role explicitly allows
   projection, and same-name entities with different semantic kinds do not collide.
 - Code actions: quickfix provider is wired; only diagnostics with `DiagnosticFix` metadata are
-  eligible, and diagnostics without explicit safe fixes produce no action. The first fix-backed
-  rule is `merman.config.prefer_init_directive`.
+  eligible, and diagnostics without explicit safe fixes produce no action. Fix-backed rules include
+  `merman.config.prefer_init_directive` and the parser-backed
+  `merman.flowchart.missing_direction` insertion fix.
 - Semantic index: parser-backed payload facts are retained as semantic items even when they are
   not projected into completion, outline, or rename surfaces.
 - Semantic tokens: the full-document, range, and delta providers are wired from parser-backed
@@ -37,5 +38,5 @@ facts, it is not considered mature.
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`
   into node IDs or outline entries. Parser-backed payload facts must likewise remain outside
   completion IDs and outline entries unless their role explicitly permits it.
-- Flowchart lint: parser-backed warning facts should flow through the shared analysis contract,
-  starting with a warning for flowchart headers that omit an explicit direction.
+- Flowchart lint: parser-backed warning facts flow through the shared analysis contract, starting
+  with a warning and preferred quickfix for flowchart headers that omit an explicit direction.

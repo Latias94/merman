@@ -60,6 +60,7 @@ pub(crate) struct LinkStyleStmt {
 pub(crate) struct FlowchartAst {
     pub keyword: String,
     pub direction: Option<String>,
+    pub header_span: SourceSpan,
     pub statements: Vec<Stmt>,
 }
 

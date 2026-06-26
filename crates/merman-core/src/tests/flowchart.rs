@@ -2105,20 +2105,22 @@ fn parse_diagram_flowchart_keyword_flowchart() {
 }
 
 #[test]
-fn parse_diagram_flowchart_without_direction_defaults_to_tb_and_warns() {
+fn parse_diagram_flowchart_without_direction_preserves_source_and_warns() {
     let engine = Engine::new();
     let res = block_on(engine.parse_diagram("flowchart\nA-->B", ParseOptions::default()))
         .unwrap()
         .unwrap();
 
     assert_eq!(res.meta.diagram_type, "flowchart-v2");
-    assert_eq!(res.model["direction"], json!("TB"));
+    assert_eq!(res.model["direction"], json!(null));
     assert_eq!(
         res.model["warningFacts"],
         json!([
             {
                 "ruleId": FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
-                "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`"
+                "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+                "span": { "start": 0, "end": 9 },
+                "fixSpan": { "start": 9, "end": 9 }
             }
         ])
     );
@@ -2140,6 +2142,8 @@ fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
                 model.warning_facts[0].rule_id,
                 FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID
             );
+            assert_eq!(model.warning_facts[0].span, Some(SourceSpan::new(0, 9)));
+            assert_eq!(model.warning_facts[0].fix_span, Some(SourceSpan::new(9, 9)));
         }
         other => panic!("flowchart render parse should return typed model, got {other:?}"),
     }

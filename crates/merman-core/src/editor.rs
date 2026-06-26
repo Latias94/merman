@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// Byte span in the parser input that produced an editor-visible semantic fact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceSpan {
     pub start: usize,
     pub end: usize,
