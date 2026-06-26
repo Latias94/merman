@@ -7,6 +7,7 @@
     "standard": "Balanced cross-family set for routine comparison reports.",
     "cross_family": "One representative medium fixture per supported diagram family.",
     "flowchart": "Flowchart-focused routing and layout stress coverage.",
+    "frontmatter": "Frontmatter preprocessing and config ingestion coverage.",
     "stress": "Known heavier fixtures used when validating optimization work.",
     "full": "All fixtures in corpus order."
   },
@@ -480,6 +481,36 @@
       "suites": ["standard", "cross_family"],
       "features": ["axes", "series", "ticks"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "frontmatter_basic",
+      "family": "frontmatter",
+      "size": "small",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/frontmatter_basic.mmd",
+      "suites": ["frontmatter"],
+      "features": ["title", "config_merge"],
+      "quality": ["parse_sanity"]
+    },
+    {
+      "name": "frontmatter_indented",
+      "family": "frontmatter",
+      "size": "small",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/frontmatter_indented.mmd",
+      "suites": ["frontmatter"],
+      "features": ["indent", "config_merge"],
+      "quality": ["parse_sanity"]
+    },
+    {
+      "name": "frontmatter_deep_config",
+      "family": "frontmatter",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/frontmatter_deep_config.mmd",
+      "suites": ["frontmatter"],
+      "features": ["deep_nesting", "config_merge"],
+      "quality": ["parse_sanity"]
     }
   ]
 }

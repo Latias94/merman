@@ -1,6 +1,6 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options};
-use merman_core::{Engine, ParseMetadata, ParseOptions};
+use merman_core::{DetectorRegistry, Engine, ParseMetadata, ParseOptions};
 use std::hint::black_box;
 
 fn fixtures() -> Vec<(&'static str, &'static str)> {
@@ -144,6 +144,23 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
         (
             "xychart_medium",
             include_str!("fixtures/xychart_medium.mmd"),
+        ),
+    ]
+}
+
+fn frontmatter_fixtures() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "frontmatter_basic",
+            include_str!("fixtures/frontmatter_basic.mmd"),
+        ),
+        (
+            "frontmatter_indented",
+            include_str!("fixtures/frontmatter_indented.mmd"),
+        ),
+        (
+            "frontmatter_deep_config",
+            include_str!("fixtures/frontmatter_deep_config.mmd"),
         ),
     ]
 }
@@ -297,6 +314,46 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
                 black_box(parsed.is_some());
             })
         });
+    }
+    group.finish();
+}
+
+fn bench_frontmatter_preprocess(c: &mut Criterion) {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+
+    let mut group = c.benchmark_group("frontmatter_preprocess");
+    for (name, input) in frontmatter_fixtures() {
+        let pre = match merman_core::preprocess_diagram_with_known_type(
+            input,
+            &registry,
+            Some("flowchart-v2"),
+        ) {
+            Ok(v) => v,
+            Err(_) => {
+                eprintln!("[bench][skip][frontmatter_preprocess] {name}: preprocess error");
+                continue;
+            }
+        };
+
+        group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
+            b.iter(|| {
+                let pre = match merman_core::preprocess_diagram_with_known_type(
+                    black_box(data),
+                    &registry,
+                    Some("flowchart-v2"),
+                ) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                black_box(pre.code.len());
+                black_box(pre.title.as_deref().map_or(0, str::len));
+                black_box(pre.config.as_value().as_object().map_or(0, |map| map.len()));
+            })
+        });
+
+        black_box(pre.code.len());
+        black_box(pre.title.as_deref().map_or(0, str::len));
+        black_box(pre.config.as_value().as_object().map_or(0, |map| map.len()));
     }
     group.finish();
 }
@@ -580,6 +637,7 @@ criterion_group!(
     bench_parse,
     bench_parse_known_type,
     bench_parse_cold_engine,
+    bench_frontmatter_preprocess,
     bench_parse_typed,
     bench_parse_typed_only,
     bench_layout,

@@ -74,8 +74,7 @@ fn parse_yaml_object_body(input: &str) -> Result<Value, String> {
     } else {
         format!("{{\n{input}\n}}")
     };
-    let raw = serde_saphyr::from_str::<Value>(&yaml_data).map_err(|e| format!("{e}"))?;
-    Ok(raw)
+    crate::yaml_config::parse_yaml_value(&yaml_data, crate::MAX_DIAGRAM_NESTING_DEPTH)
 }
 
 #[cfg(any(not(feature = "full-config"), test))]
