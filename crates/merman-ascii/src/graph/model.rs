@@ -63,12 +63,6 @@ pub(crate) enum GraphNodeShape {
     Choice,
 }
 
-impl GraphNodeShape {
-    pub(super) fn is_diamond_like(self) -> bool {
-        matches!(self, Self::Diamond | Self::Choice)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AsciiGraphEdge {
     pub(super) from: String,

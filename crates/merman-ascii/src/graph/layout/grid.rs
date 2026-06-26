@@ -1,7 +1,6 @@
 use super::super::label::GraphLabel;
-use super::super::model::{
-    AsciiGraph, AsciiGraphNode, GraphDirection, GraphNodeShape, GraphRootPolicy,
-};
+use super::super::model::{AsciiGraph, AsciiGraphNode, GraphDirection, GraphRootPolicy};
+use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
 use super::{GridCoord, NodeLayout};
 use crate::graph::topology::GraphGroupTopology;
@@ -38,20 +37,24 @@ fn layout_left_right_grid_nodes(
 
     for (index, coord) in placements.iter().copied().enumerate() {
         let node = &graph.nodes[index];
+        let shape_size = node_shape_size(node, options);
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
             coord.x + 1,
-            node_width(node, options).saturating_sub(2),
+            shape_size.width.saturating_sub(2),
         );
         set_axis_size(&mut column_widths, coord.x + 2, 1);
         if coord.x > 0 {
             set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
         }
 
-        let height = node_height(node, options);
         set_axis_size(&mut row_heights, coord.y, 1);
-        set_axis_size(&mut row_heights, coord.y + 1, height.saturating_sub(2));
+        set_axis_size(
+            &mut row_heights,
+            coord.y + 1,
+            shape_size.height.saturating_sub(2),
+        );
         set_axis_size(&mut row_heights, coord.y + 2, 1);
         if coord.y > 0 {
             set_axis_size(
@@ -318,20 +321,24 @@ fn layout_top_down_grid_nodes(
 
     for (index, coord) in placements.iter().copied().enumerate() {
         let node = &graph.nodes[index];
+        let shape_size = node_shape_size(node, options);
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
             coord.x + 1,
-            node_width(node, options).saturating_sub(2),
+            shape_size.width.saturating_sub(2),
         );
         set_axis_size(&mut column_widths, coord.x + 2, 1);
         if coord.x > 0 {
             set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
         }
 
-        let height = node_height(node, options);
         set_axis_size(&mut row_heights, coord.y, 1);
-        set_axis_size(&mut row_heights, coord.y + 1, height.saturating_sub(2));
+        set_axis_size(
+            &mut row_heights,
+            coord.y + 1,
+            shape_size.height.saturating_sub(2),
+        );
         set_axis_size(&mut row_heights, coord.y + 2, 1);
         if coord.y > 0 {
             set_axis_size(
@@ -486,31 +493,7 @@ fn axis_span(axis_sizes: &BTreeMap<usize, usize>, start: usize, len: usize) -> u
         .sum()
 }
 
-fn node_height(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
-    match node.shape {
-        GraphNodeShape::StateStart
-        | GraphNodeShape::StateEnd
-        | GraphNodeShape::ForkJoinHorizontal
-        | GraphNodeShape::Choice => 3,
-        GraphNodeShape::ForkJoinVertical => 7,
-        GraphNodeShape::Rect
-        | GraphNodeShape::Rounded
-        | GraphNodeShape::Diamond
-        | GraphNodeShape::Subroutine
-        | GraphNodeShape::Cylinder => {
-            2 + GraphLabel::new(&node.label).content_height() + options.box_border_padding * 2
-        }
-    }
-}
-
-fn node_width(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
-    let base = GraphLabel::new(&node.label).width() + options.box_border_padding * 2 + 2;
-    match node.shape {
-        GraphNodeShape::StateStart | GraphNodeShape::StateEnd | GraphNodeShape::Choice => 5,
-        GraphNodeShape::ForkJoinHorizontal => 7,
-        GraphNodeShape::ForkJoinVertical => 3,
-        GraphNodeShape::Subroutine => base + 2,
-        GraphNodeShape::Cylinder => base + 2,
-        GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => base,
-    }
+fn node_shape_size(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> GraphNodeShapeSize {
+    let label = GraphLabel::new(&node.label);
+    GraphNodeShapeSemantics::new(node.shape).size_for_label(&label, options)
 }

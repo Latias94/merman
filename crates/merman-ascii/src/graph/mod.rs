@@ -5,6 +5,7 @@ mod label;
 mod layout;
 mod model;
 mod routing;
+mod shape;
 pub(crate) mod style;
 mod topology;
 

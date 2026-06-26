@@ -1,6 +1,7 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphNodeShape};
+use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
+use super::super::super::shape::GraphNodeShapeSemantics;
 use super::super::cell::edge_line_char;
 use super::super::label::{
     RoutedLabelText, routed_label_right_of_vertical_route_placement_for_text,
@@ -50,22 +51,13 @@ pub(super) fn plan_top_down_bent_route(
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
-    if uses_drop_then_turn_bent_route(from.shape) || uses_drop_then_turn_bent_route(to.shape) {
+    if GraphNodeShapeSemantics::new(from.shape).uses_drop_then_turn_bent_route()
+        || GraphNodeShapeSemantics::new(to.shape).uses_drop_then_turn_bent_route()
+    {
         return plan_top_down_drop_then_turn_route(from, to, edge, charset);
     }
 
     plan_top_down_side_bend_route(from, to, edge, charset)
-}
-
-fn uses_drop_then_turn_bent_route(shape: GraphNodeShape) -> bool {
-    matches!(
-        shape,
-        GraphNodeShape::StateStart
-            | GraphNodeShape::StateEnd
-            | GraphNodeShape::ForkJoinHorizontal
-            | GraphNodeShape::ForkJoinVertical
-            | GraphNodeShape::Choice
-    )
 }
 
 fn plan_top_down_side_bend_route(
