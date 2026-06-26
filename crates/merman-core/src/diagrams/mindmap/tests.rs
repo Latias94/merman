@@ -343,6 +343,27 @@ fn mindmap_editor_facts_recovers_from_incomplete_input() {
 }
 
 #[test]
+fn mindmap_editor_facts_preserve_prior_symbols_when_later_node_is_invalid() {
+    let engine = Engine::new();
+    let text = "mindmap\nroot\n child1\n child2[broken]]\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .unwrap()
+        .expect("mindmap editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "child1"));
+    assert!(!facts.symbols.iter().any(|symbol| symbol.name == "child2"));
+    assert!(
+        facts
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("unexpected trailing input"))
+    );
+}
+
+#[test]
 fn mindmap_multiline_markdown_string_node_description_is_parsed() {
     let model = parse(
         "mindmap\n    id1[\"`**Root** with\n\

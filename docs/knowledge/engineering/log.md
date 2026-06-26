@@ -6,6 +6,14 @@ status: active
 # Log
 
 ## 2026-06-26
+- Closed the first `mindmap` recovery gap in the parser-backed editor facts seam. Later invalid node lines no longer clear earlier symbols in recovery mode, so LSP/editor consumers keep prior outline/completion material even when a later line is malformed.
+- Verified that `gantt` already preserves its recovery facts on the current slice; the next refactor pressure point should be a shared linear fact-extraction seam across `mindmap` and `gantt`, not another one-off recovery patch.
+
+## 2026-06-26
+- Clarified the maturity roadmap so parser-generator choice is evaluated per family rather than by blanket preference. `mindmap` and `gantt` are the first recommended pressure points for fearless refactors; the rest of the families should follow in capability-matrix order once parser-backed facts and recovery quality are convincing.
+- Recorded the design rule that the LSP surface should keep pressuring core correctness and performance. When a family shows grammar ambiguity, recovery pain, or span drift, a local parser rewrite is on the table if it is the best fit for that family.
+
+## 2026-06-26
 - Added a preferred quickfix for `merman.compatibility.config.deprecated_flowchart_html_labels`. The fix promotes deprecated `flowchart.htmlLabels` into root-level `htmlLabels` and reuses the shared config/frontmatter rewrite path so the analysis, CLI, and LSP surfaces stay aligned.
 - Kept `merman.compatibility.config.deprecated_external_diagram_loading` fixless; it remains an API/config migration rather than a local source rewrite.
 - Re-verified the slice with `cargo test -p merman-analysis --test analyzer deprecated_flowchart_html_labels_config_is_core_warning -- --exact --nocapture`, `cargo test -p merman-lsp --lib code_actions::tests::deprecated_flowchart_html_labels_fix_produces_quickfix_action -- --exact --nocapture`, `cargo test -p merman-lsp --test server_smoke lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfix -- --exact --nocapture`, `cargo test -p merman-lsp --lib protocol::tests::rule_catalog_response_contains_governed_authoring_rule -- --exact --nocapture`, `cargo test -p merman-cli --test cli_compat cli_lint_rules_lists_rule_catalog_json`, `cargo check -p merman-analysis -p merman-cli -p merman-lsp`, `cargo fmt --all --check`, and `git diff --check`.

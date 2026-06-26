@@ -285,6 +285,17 @@ fn parse_mindmap_lines(
                     return Ok(HandleOutcome::NeedMoreInput);
                 }
                 Err(message) => {
+                    if recover {
+                        out.completeness = EditorSemanticCompleteness::Recovered;
+                        out.diagnostics.push(EditorSemanticDiagnostic::new(
+                            format!("mindmap parser recovered from {message}"),
+                            Some(SourceSpan::new(
+                                line_start + rest_offset,
+                                line_start + rest_offset + rest.len(),
+                            )),
+                        ));
+                        return Ok(HandleOutcome::Done);
+                    }
                     return Err(Error::DiagramParse {
                         diagram_type: meta.diagram_type.clone(),
                         message,

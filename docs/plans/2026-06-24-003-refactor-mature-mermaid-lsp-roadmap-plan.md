@@ -91,6 +91,11 @@ shared analysis instead of transport-local scans.
 - **KTD2. Keep parser technology family-local:** Existing LALRPOP families should deepen grammar
   spans and recovery. Hand-written families should expose explicit event streams. A global LALRPOP
   rewrite would not by itself solve source spans, partial recovery, or semantic indexing.
+- **KTD2a. Re-evaluate parser-generator fit per family, not by blanket preference:** when a family
+  has repeated grammar ambiguity, recovery pain, or span drift, it is valid to replace the local
+  parser shape with the best-fit parser technology for that family. The decision criterion is
+  correctness, recovery quality, and maintainability, not whether the current implementation cost
+  is already high.
 - **KTD3. Replace `FenceTextIndex` with a richer semantic index when it stops fitting:** The current
   index is a good migration seam. Product-grade rename, lint, code actions, and semantic tokens need
   typed definitions, typed references, payload facts, rule contexts, and capability provenance.
@@ -154,6 +159,7 @@ Outside this product slice:
 - Mermaid JS runtime fallback.
 - Render/layout parity refactors that do not affect analysis, lint, or LSP semantics.
 - A repository-wide parser-generator monoculture.
+- A blanket rule that forbids parser-generator replacement even when it is the best local design.
 
 ---
 
@@ -283,6 +289,13 @@ residual.
   - Existing render and parser fixture tests remain green after fact extraction changes.
 - **Verification:** Supported families have parser-backed facts for all product-critical semantic
   roles, and mature LSP tests do not depend on raw-text structure scans.
+
+**Recommended ordering:** deepen `mindmap` and `gantt` first, because they are already the
+documented partial families in the capability matrix and they most clearly show whether the
+family-local parser shape is still the right fit. After that, move outward to the simpler
+line-oriented families (`pie`, `timeline`, `journey`) and then the more specialized product
+families (`quadrantChart`, `xychart-beta`, `C4`, `architecture`) as each one earns parser-backed
+facts and test coverage.
 
 ### U3. Replace the migration index with a semantic index
 
