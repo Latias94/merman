@@ -1,8 +1,9 @@
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig,
-    ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
+    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
+    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    editor::lalrpop_recovery_span,
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -628,6 +629,10 @@ fn push_flowchart_payload_symbol(
     let Some(span) = span else {
         return;
     };
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        selection.unwrap_or(span),
+    ));
     facts.push_symbol(EditorSemanticSymbol::payload(
         name.to_string(),
         Some(detail.to_string()),

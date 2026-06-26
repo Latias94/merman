@@ -6,6 +6,18 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-fed payload expected syntax to `flowchart` labels and directive payloads through
+  the shared `push_flowchart_payload_symbol` path. This covers node labels, edge labels, style
+  payloads, and classDef style payloads without adding LSP-local parsing.
+- Verified that flowchart payload positions now suppress generic completion fallback through the
+  same expected-syntax projection used by `sequence` and `gantt`.
+- Verified the slice with `cargo test -p merman-core --lib parse_flowchart_editor_facts_emit_label_payload_spans -- --nocapture`,
+  `cargo test -p merman-lsp --test completion completion_uses_flowchart_parser_payload_context -- --nocapture`,
+  `cargo test -p merman-lsp --test completion -- --nocapture`,
+  `cargo check -p merman-core -p merman-analysis -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-27
 - Extended parser-fed payload expected syntax to the line-oriented `gantt` family. Existing
   `SpannedText` payload helper paths now mark title/config/accessibility/click payload value
   spans as parser-controlled completion contexts without changing Gantt parsing semantics.

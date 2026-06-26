@@ -2227,6 +2227,18 @@ fn parse_flowchart_editor_facts_emit_label_payload_spans() {
         decision_label_text + "Decision".len()
     );
 
+    for payload in ["Start node", "go", "Decision"] {
+        let start = text.find(payload).unwrap();
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span.start <= start
+                    && expected.span.end >= start + payload.len()
+            }),
+            "missing flowchart payload expected syntax for {payload:?}"
+        );
+    }
+
     assert_eq!(
         facts
             .symbols
