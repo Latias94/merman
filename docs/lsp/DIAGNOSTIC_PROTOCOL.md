@@ -7,7 +7,7 @@ status: active
 
 `merman-lsp` is the canonical LSP transport for diagnostics, completion, and fix-backed code
 actions. It projects `merman-analysis` payloads into LSP diagnostics without adding a second
-analysis path.
+analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagnostics.
 
 ## Canonical rules
 
@@ -28,6 +28,8 @@ analysis path.
   identifiers with stable replacement edits.
 - Hover, go to definition, references, prepare-rename, rename, full-document semantic tokens,
   range/delta semantic tokens, and fix-backed code actions are wired.
+- `textDocument/diagnostic` and `workspace/diagnostic` are wired for pull clients; both report the
+  same shared analysis payloads as the push path.
 - Workspace symbols are wired from tracked document snapshots.
 - Code actions remain intentionally sparse until lint rules emit source-span-backed
   `DiagnosticFix` metadata.

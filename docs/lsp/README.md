@@ -16,7 +16,8 @@ navigation, code-action, and semantic-token foundations.
 - Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
   including `merman/ruleCatalog` for rule metadata discovery and `merman/configSchema` for
   analysis/lint settings discovery.
-- Publish diagnostics from `merman-analysis`.
+- Publish diagnostics from `merman-analysis` and answer standard pull diagnostic requests from the
+  same analysis payloads.
 - Keep document state versioned so stale diagnostics are never republished.
 - Provide the first completion surface for diagram structure, directions, shapes, and local
   identifiers.

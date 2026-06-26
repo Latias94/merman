@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added standard pull diagnostics to `merman-lsp`: `textDocument/diagnostic` now returns full or
+  unchanged reports from the shared analysis payloads, `workspace/diagnostic` returns document
+  reports for tracked snapshots, and `workspace/diagnostic/refresh` is requested when supported
+  after configuration changes.
+- The server now advertises `diagnostic_provider` with pull support, while still keeping the
+  existing push diagnostics path for open/save/configuration updates.
+- Re-verified the diagnostics slice with focused pull-request smoke tests, `cargo fmt --all
+  --check`, and `cargo check -p merman-lsp`.
+
+## 2026-06-26
 - Added completion resolve support to `merman-lsp`: completion items now carry stable resolve
   metadata, `completionItem/resolve` adds Markdown documentation, and resolve keeps `insertText`
   and `textEdit` stable.

@@ -8,13 +8,15 @@ use tower::{Service, ServiceExt};
 use tower_lsp::jsonrpc::Request;
 use tower_lsp::lsp_types::{
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, DocumentSymbolParams, GotoDefinitionParams, HoverContents,
+    DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentSymbolParams, GotoDefinitionParams, HoverContents,
     HoverParams, InitializeParams, Position, PrepareRenameResponse, PublishDiagnosticsParams,
     Range, ReferenceContext, ReferenceParams, RenameParams, SemanticTokensDeltaParams,
     SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
     SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
+    TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport, WorkspaceSymbolParams,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -53,12 +55,107 @@ async fn lsp_service_smoke_handles_initialize() {
         response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
         CONFIG_SCHEMA_METHOD
     );
+    assert!(response.capabilities.diagnostic_provider.is_some());
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
         Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Kind(
             tower_lsp::lsp_types::TextDocumentSyncKind::FULL
         ))
     ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_pulls_workspace_diagnostics() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                },
+                "workspace": {
+                    "diagnostic": {}
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n"
+                        .to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let request = Request::build("workspace/diagnostic")
+        .params(
+            serde_json::to_value(WorkspaceDiagnosticParams {
+                identifier: None,
+                previous_result_ids: Vec::new(),
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("workspace diagnostic response");
+    let result: WorkspaceDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("workspace diagnostic result"),
+    )
+    .unwrap();
+    let report = match result {
+        WorkspaceDiagnosticReportResult::Report(report) => report,
+        other => panic!("unexpected workspace diagnostic result: {other:?}"),
+    };
+    assert_eq!(report.items.len(), 1);
+    let item = match &report.items[0] {
+        WorkspaceDocumentDiagnosticReport::Full(report) => report,
+        other => panic!("unexpected workspace diagnostic item: {other:?}"),
+    };
+    assert_eq!(item.uri, uri);
+    assert_eq!(item.full_document_diagnostic_report.items.len(), 1);
+    assert_eq!(
+        item.full_document_diagnostic_report.items[0].severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::WARNING)
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -155,6 +252,134 @@ async fn lsp_service_smoke_serves_config_schema_custom_request() {
         result["schema"]["$defs"]["severity"]["enum"],
         serde_json::json!(["error", "warning", "info", "hint"])
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_pulls_document_diagnostics() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::to_value(InitializeParams::default()).unwrap())
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n"
+                        .to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let request = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("document diagnostic result"),
+    )
+    .unwrap();
+
+    let report = match result {
+        DocumentDiagnosticReportResult::Report(report) => report,
+        other => panic!("unexpected diagnostic result: {other:?}"),
+    };
+    let full = match report {
+        DocumentDiagnosticReport::Full(report) => report,
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    };
+    assert!(full.full_document_diagnostic_report.result_id.is_some());
+    assert_eq!(full.full_document_diagnostic_report.items.len(), 1);
+    assert_eq!(
+        full.full_document_diagnostic_report.items[0].severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::WARNING)
+    );
+
+    let request = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri },
+                identifier: None,
+                previous_result_id: full.full_document_diagnostic_report.result_id.clone(),
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(3)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("unchanged document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("unchanged document diagnostic result"),
+    )
+    .unwrap();
+    let report = match result {
+        DocumentDiagnosticReportResult::Report(report) => report,
+        other => panic!("unexpected diagnostic result: {other:?}"),
+    };
+    match report {
+        DocumentDiagnosticReport::Unchanged(report) => {
+            assert_eq!(
+                report.unchanged_document_diagnostic_report.result_id,
+                full.full_document_diagnostic_report.result_id.unwrap()
+            );
+        }
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -25,6 +25,7 @@ use merman_analysis::{
     markdown::markdown_source_descriptor,
     options_json::analysis_options_from_json_value,
 };
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
@@ -32,14 +33,20 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
-    InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams, RenameParams,
+    DiagnosticOptions, DiagnosticServerCapabilities, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentSymbolParams, DocumentSymbolResponse, FullDocumentDiagnosticReport,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, RenameParams,
     SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceEdit, WorkspaceSymbolParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, UnchangedDocumentDiagnosticReport,
+    WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult,
+    WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFullDocumentDiagnosticReport,
+    WorkspaceSymbolParams, WorkspaceUnchangedDocumentDiagnosticReport,
 };
 use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
@@ -49,6 +56,7 @@ pub struct MermanLanguageServer {
     store: Arc<Mutex<DocumentStore>>,
     analyzer: Arc<Mutex<Analyzer>>,
     semantic_tokens_refresh_supported: AtomicBool,
+    diagnostic_pull_supported: AtomicBool,
 }
 
 impl MermanLanguageServer {
@@ -58,6 +66,7 @@ impl MermanLanguageServer {
             store: Arc::new(Mutex::new(DocumentStore::new())),
             analyzer: Arc::new(Mutex::new(Analyzer::new())),
             semantic_tokens_refresh_supported: AtomicBool::new(false),
+            diagnostic_pull_supported: AtomicBool::new(false),
         }
     }
 
@@ -81,6 +90,9 @@ impl MermanLanguageServer {
             rename_provider: Some(OneOf::Left(true)),
             document_symbol_provider: Some(OneOf::Left(true)),
             workspace_symbol_provider: Some(OneOf::Left(true)),
+            diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                Self::diagnostic_options(),
+            )),
             code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
                 code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
                 work_done_progress_options: Default::default(),
@@ -102,9 +114,68 @@ impl MermanLanguageServer {
         Ok(ConfigSchemaResponse::current())
     }
 
+    fn diagnostic_options() -> DiagnosticOptions {
+        DiagnosticOptions {
+            identifier: Some("merman".to_string()),
+            inter_file_dependencies: false,
+            workspace_diagnostics: true,
+            work_done_progress_options: Default::default(),
+        }
+    }
+
     async fn snapshot_for_uri(&self, uri: &tower_lsp::lsp_types::Url) -> Option<DocumentSnapshot> {
         let store = self.store.lock().await;
         store.get(uri).cloned()
+    }
+
+    async fn diagnostics_for_snapshot(
+        &self,
+        snapshot: &DocumentSnapshot,
+    ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+        let source = if uri_is_markdown(&snapshot.uri) {
+            markdown_source_descriptor(Some(snapshot.uri.as_str()))
+        } else {
+            merman_analysis::SourceDescriptor::diagram().with_path(snapshot.uri.as_str())
+        };
+        let analyzer = self.analyzer.lock().await;
+        let payload = analyze_document(&snapshot.text, &analyzer, source);
+        analysis_payload_to_diagnostics(&payload, &snapshot.uri)
+    }
+
+    fn diagnostic_result_id(diagnostics: &[tower_lsp::lsp_types::Diagnostic]) -> String {
+        let serialized = serde_json::to_vec(diagnostics).unwrap_or_default();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        serialized.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    }
+
+    fn document_diagnostic_report(
+        diagnostics: Vec<tower_lsp::lsp_types::Diagnostic>,
+        result_id: Option<String>,
+        previous_result_id: Option<&str>,
+    ) -> DocumentDiagnosticReportResult {
+        if let Some(result_id) = result_id.clone()
+            && previous_result_id == Some(result_id.as_str())
+        {
+            return DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(
+                RelatedUnchangedDocumentDiagnosticReport {
+                    related_documents: None,
+                    unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                        result_id,
+                    },
+                },
+            ));
+        }
+
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
+            RelatedFullDocumentDiagnosticReport {
+                related_documents: None,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id,
+                    items: diagnostics,
+                },
+            },
+        ))
     }
 
     async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url, version: Option<i32>) {
@@ -114,15 +185,7 @@ impl MermanLanguageServer {
             return;
         };
 
-        let source = if uri_is_markdown(&snapshot.uri) {
-            markdown_source_descriptor(Some(snapshot.uri.as_str()))
-        } else {
-            merman_analysis::SourceDescriptor::diagram().with_path(snapshot.uri.as_str())
-        };
-        let analyzer = self.analyzer.lock().await;
-        let payload = analyze_document(&snapshot.text, &analyzer, source);
-
-        let diagnostics = analysis_payload_to_diagnostics(&payload, uri);
+        let diagnostics = self.diagnostics_for_snapshot(&snapshot).await;
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, version)
             .await;
@@ -161,6 +224,15 @@ impl MermanLanguageServer {
             .unwrap_or(false)
     }
 
+    fn client_supports_diagnostic_pull(params: &InitializeParams) -> bool {
+        params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.diagnostic.as_ref())
+            .is_some()
+    }
+
     async fn apply_initialization_options(
         &self,
         initialization_options: Option<serde_json::Value>,
@@ -197,6 +269,10 @@ impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         self.semantic_tokens_refresh_supported.store(
             Self::client_supports_semantic_tokens_refresh(&params),
+            Ordering::Relaxed,
+        );
+        self.diagnostic_pull_supported.store(
+            Self::client_supports_diagnostic_pull(&params),
             Ordering::Relaxed,
         );
         self.apply_initialization_options(params.initialization_options)
@@ -284,6 +360,80 @@ impl LanguageServer for MermanLanguageServer {
         {
             let _ = self.client.semantic_tokens_refresh().await;
         }
+        if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+            let _ = self.client.workspace_diagnostic_refresh().await;
+        }
+    }
+
+    async fn diagnostic(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> Result<DocumentDiagnosticReportResult> {
+        let uri = params.text_document.uri;
+        let Some(snapshot) = self.snapshot_for_uri(&uri).await else {
+            let diagnostics = Vec::new();
+            let result_id = Some(Self::diagnostic_result_id(&diagnostics));
+            return Ok(Self::document_diagnostic_report(
+                diagnostics,
+                result_id,
+                params.previous_result_id.as_deref(),
+            ));
+        };
+
+        let diagnostics = self.diagnostics_for_snapshot(&snapshot).await;
+        let result_id = Some(Self::diagnostic_result_id(&diagnostics));
+        Ok(Self::document_diagnostic_report(
+            diagnostics,
+            result_id,
+            params.previous_result_id.as_deref(),
+        ))
+    }
+
+    async fn workspace_diagnostic(
+        &self,
+        params: WorkspaceDiagnosticParams,
+    ) -> Result<WorkspaceDiagnosticReportResult> {
+        let snapshots = {
+            let store = self.store.lock().await;
+            store.snapshots()
+        };
+
+        let mut items = Vec::with_capacity(snapshots.len());
+        for snapshot in snapshots {
+            let diagnostics = self.diagnostics_for_snapshot(&snapshot).await;
+            let result_id = Self::diagnostic_result_id(&diagnostics);
+            let previous_result_id = params
+                .previous_result_ids
+                .iter()
+                .find(|previous| previous.uri == snapshot.uri)
+                .map(|previous| previous.value.as_str());
+
+            let report = if previous_result_id == Some(result_id.as_str()) {
+                WorkspaceDocumentDiagnosticReport::Unchanged(
+                    WorkspaceUnchangedDocumentDiagnosticReport {
+                        uri: snapshot.uri.clone(),
+                        version: Some(snapshot.version as i64),
+                        unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                            result_id,
+                        },
+                    },
+                )
+            } else {
+                WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                    uri: snapshot.uri.clone(),
+                    version: Some(snapshot.version as i64),
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: Some(result_id),
+                        items: diagnostics,
+                    },
+                })
+            };
+            items.push(report);
+        }
+
+        Ok(WorkspaceDiagnosticReportResult::Report(
+            WorkspaceDiagnosticReport { items },
+        ))
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
