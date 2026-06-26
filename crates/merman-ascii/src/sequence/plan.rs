@@ -16,42 +16,24 @@ use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum SequenceEventEffect {
-    StateOnly,
-    Render {
-        created_actors: Vec<usize>,
-        destroyed_actors: Vec<usize>,
-    },
-}
-
-impl SequenceEventEffect {
-    fn created_actors(&self) -> &[usize] {
-        match self {
-            Self::StateOnly => &[],
-            Self::Render { created_actors, .. } => created_actors,
-        }
-    }
-
-    fn destroyed_actors(&self) -> &[usize] {
-        match self {
-            Self::StateOnly => &[],
-            Self::Render {
-                destroyed_actors, ..
-            } => destroyed_actors,
-        }
-    }
+#[derive(Debug, Clone)]
+struct SequenceRowStep<'event> {
+    event: &'event SequenceEvent,
+    active_counts: Vec<usize>,
+    visible_actors: Vec<bool>,
+    created_actors: Vec<usize>,
+    destroyed_actors: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
-struct SequenceEventPlan {
+struct SequenceRowPlanner {
     active_counts: Vec<usize>,
     visible_actors: Vec<bool>,
     control_frames: Vec<SequenceControlFrame>,
     active_control_frames: Vec<usize>,
 }
 
-impl SequenceEventPlan {
+impl SequenceRowPlanner {
     fn new(diagram: &AsciiSequenceDiagram) -> Self {
         Self {
             active_counts: vec![0usize; diagram.participants.len()],
@@ -69,16 +51,16 @@ impl SequenceEventPlan {
         &self.visible_actors
     }
 
-    fn advance(
+    fn advance<'event>(
         &mut self,
         diagram: &AsciiSequenceDiagram,
-        event: &SequenceEvent,
+        event: &'event SequenceEvent,
         current_row: usize,
-    ) -> Result<SequenceEventEffect> {
+    ) -> Result<Option<SequenceRowStep<'event>>> {
         match event {
             SequenceEvent::ActivationStart { actor, .. } => {
                 self.active_counts[*actor] += 1;
-                Ok(SequenceEventEffect::StateOnly)
+                Ok(None)
             }
             SequenceEvent::ActivationEnd { actor, .. } => {
                 let Some(count) = self.active_counts.get_mut(*actor) else {
@@ -88,7 +70,7 @@ impl SequenceEventPlan {
                     return Err(unsupported("activation underflow"));
                 }
                 *count -= 1;
-                Ok(SequenceEventEffect::StateOnly)
+                Ok(None)
             }
             SequenceEvent::ControlStart(start) => {
                 let frame_index = self.control_frames.len();
@@ -101,7 +83,7 @@ impl SequenceEventPlan {
                     end_row: None,
                 });
                 self.active_control_frames.push(frame_index);
-                Ok(SequenceEventEffect::StateOnly)
+                Ok(None)
             }
             SequenceEvent::ControlSeparator(separator) => {
                 let Some(frame_index) = self.active_control_frames.last().copied() else {
@@ -118,11 +100,11 @@ impl SequenceEventPlan {
                     label: separator.label.clone(),
                     row: current_row,
                 });
-                Ok(SequenceEventEffect::StateOnly)
+                Ok(None)
             }
             SequenceEvent::ControlEnd { kind, .. } => {
                 self.end_control_frame(*kind, current_row)?;
-                Ok(SequenceEventEffect::StateOnly)
+                Ok(None)
             }
             SequenceEvent::Message(_) | SequenceEvent::Note(_) => {
                 let model_index = event.model_index();
@@ -133,10 +115,15 @@ impl SequenceEventPlan {
                 }
                 let destroyed_actors =
                     lifecycle_actors_at(diagram, model_index, LifecycleEdge::Destroyed);
-                Ok(SequenceEventEffect::Render {
+                let step = SequenceRowStep {
+                    event,
+                    active_counts: self.active_counts.clone(),
+                    visible_actors: self.visible_actors.clone(),
                     created_actors,
                     destroyed_actors,
-                })
+                };
+                self.record_destroyed_actors(&step.destroyed_actors);
+                Ok(Some(step))
             }
         }
     }
@@ -157,15 +144,6 @@ impl SequenceEventPlan {
             if let Some(count) = self.active_counts.get_mut(*actor) {
                 *count = 0;
             }
-        }
-    }
-
-    fn complete(&mut self, effect: SequenceEventEffect) {
-        if let SequenceEventEffect::Render {
-            destroyed_actors, ..
-        } = effect
-        {
-            self.record_destroyed_actors(&destroyed_actors);
         }
     }
 
@@ -230,29 +208,20 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
         self.lines.len()
     }
 
-    fn emit_event(
-        &mut self,
-        event: &SequenceEvent,
-        event_plan: &SequenceEventPlan,
-        effect: &SequenceEventEffect,
-    ) -> Result<()> {
-        if matches!(effect, SequenceEventEffect::StateOnly) {
-            return Ok(());
-        }
-
-        self.emit_message_spacing(event_plan);
-        self.emit_created_actors(event_plan, effect.created_actors());
-        self.emit_message_or_note(event, event_plan, effect.destroyed_actors())
+    fn emit_step(&mut self, step: &SequenceRowStep<'_>) -> Result<()> {
+        self.emit_message_spacing(step);
+        self.emit_created_actors(step);
+        self.emit_message_or_note(step)
     }
 
-    fn emit_message_spacing(&mut self, event_plan: &SequenceEventPlan) {
+    fn emit_message_spacing(&mut self, step: &SequenceRowStep<'_>) {
         for _ in 0..self.layout.message_spacing {
-            self.lines.push(self.lifeline_line(event_plan));
+            self.lines.push(self.lifeline_line(step));
         }
     }
 
-    fn emit_created_actors(&mut self, event_plan: &SequenceEventPlan, actor_indices: &[usize]) {
-        if actor_indices.is_empty() {
+    fn emit_created_actors(&mut self, step: &SequenceRowStep<'_>) {
+        if step.created_actors.is_empty() {
             return;
         }
 
@@ -260,49 +229,44 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
             self.diagram,
             self.layout,
             self.chars,
-            event_plan.active_counts(),
-            event_plan.visible_actors(),
-            actor_indices,
+            &step.active_counts,
+            &step.visible_actors,
+            &step.created_actors,
         ));
     }
 
-    fn emit_message_or_note(
-        &mut self,
-        event: &SequenceEvent,
-        event_plan: &SequenceEventPlan,
-        destroyed_actors: &[usize],
-    ) -> Result<()> {
-        match event {
+    fn emit_message_or_note(&mut self, step: &SequenceRowStep<'_>) -> Result<()> {
+        match step.event {
             SequenceEvent::Message(message) => {
-                ensure_message_actors_visible(message, event_plan.visible_actors())?;
+                ensure_message_actors_visible(message, &step.visible_actors)?;
                 if message.from == message.to {
                     self.lines.extend(render_self_message(
                         message,
                         self.layout,
                         self.chars,
-                        event_plan.active_counts(),
-                        event_plan.visible_actors(),
-                        destroyed_actors,
+                        &step.active_counts,
+                        &step.visible_actors,
+                        &step.destroyed_actors,
                     ));
                 } else {
                     self.lines.extend(render_message(
                         message,
                         self.layout,
                         self.chars,
-                        event_plan.active_counts(),
-                        event_plan.visible_actors(),
-                        destroyed_actors,
+                        &step.active_counts,
+                        &step.visible_actors,
+                        &step.destroyed_actors,
                     ));
                 }
             }
             SequenceEvent::Note(note) => {
-                ensure_note_actors_visible(note, event_plan.visible_actors())?;
+                ensure_note_actors_visible(note, &step.visible_actors)?;
                 self.lines.extend(render_note(
                     note,
                     self.layout,
                     self.chars,
-                    event_plan.active_counts(),
-                    event_plan.visible_actors(),
+                    &step.active_counts,
+                    &step.visible_actors,
                 ));
             }
             SequenceEvent::ActivationStart { .. }
@@ -314,27 +278,31 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
         Ok(())
     }
 
-    fn finish(mut self, event_plan: &SequenceEventPlan, mirror_actors: bool) -> Vec<SequenceLine> {
-        self.lines.push(self.lifeline_line(event_plan));
+    fn finish(mut self, planner: &SequenceRowPlanner, mirror_actors: bool) -> Vec<SequenceLine> {
+        self.lines
+            .push(self.lifeline_line_state(planner.active_counts(), planner.visible_actors()));
         if mirror_actors {
             self.lines.extend(render_participant_box_rows(
                 self.diagram,
                 self.layout,
                 self.chars,
-                event_plan.visible_actors(),
+                planner.visible_actors(),
                 ParticipantBoxFrame::Mirror,
             ));
         }
         self.lines
     }
 
-    fn lifeline_line(&self, event_plan: &SequenceEventPlan) -> SequenceLine {
-        build_lifeline_line(
-            self.layout,
-            self.chars,
-            event_plan.active_counts(),
-            event_plan.visible_actors(),
-        )
+    fn lifeline_line(&self, step: &SequenceRowStep<'_>) -> SequenceLine {
+        self.lifeline_line_state(&step.active_counts, &step.visible_actors)
+    }
+
+    fn lifeline_line_state(
+        &self,
+        active_counts: &[usize],
+        visible_actors: &[bool],
+    ) -> SequenceLine {
+        build_lifeline_line(self.layout, self.chars, active_counts, visible_actors)
     }
 }
 
@@ -351,19 +319,18 @@ impl SequenceRowPlan {
         chars: &SequenceChars,
         mirror_actors: bool,
     ) -> Result<Self> {
-        let mut event_plan = SequenceEventPlan::new(diagram);
-        let mut emitter =
-            SequenceRowEmitter::new(diagram, layout, chars, event_plan.visible_actors());
+        let mut planner = SequenceRowPlanner::new(diagram);
+        let mut emitter = SequenceRowEmitter::new(diagram, layout, chars, planner.visible_actors());
 
         for event in &diagram.events {
-            let effect = event_plan.advance(diagram, event, emitter.current_row())?;
-            emitter.emit_event(event, &event_plan, &effect)?;
-            event_plan.complete(effect);
+            if let Some(step) = planner.advance(diagram, event, emitter.current_row())? {
+                emitter.emit_step(&step)?;
+            }
         }
 
         Ok(Self {
-            lines: emitter.finish(&event_plan, mirror_actors),
-            control_frames: event_plan.finish()?,
+            lines: emitter.finish(&planner, mirror_actors),
+            control_frames: planner.finish()?,
         })
     }
 
@@ -615,9 +582,9 @@ mod tests {
     #[test]
     fn event_plan_tracks_activation_counts() {
         let diagram = diagram(1);
-        let mut plan = SequenceEventPlan::new(&diagram);
+        let mut plan = SequenceRowPlanner::new(&diagram);
 
-        assert_eq!(
+        assert!(
             plan.advance(
                 &diagram,
                 &SequenceEvent::ActivationStart {
@@ -626,39 +593,45 @@ mod tests {
                 },
                 3,
             )
-            .unwrap(),
-            SequenceEventEffect::StateOnly
+            .unwrap()
+            .is_none()
         );
         assert_eq!(plan.active_counts(), &[1]);
 
-        plan.advance(
-            &diagram,
-            &SequenceEvent::ActivationEnd {
-                actor: 0,
-                model_index: 1,
-            },
-            4,
-        )
-        .unwrap();
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ActivationEnd {
+                    actor: 0,
+                    model_index: 1,
+                },
+                4,
+            )
+            .unwrap()
+            .is_none()
+        );
         assert_eq!(plan.active_counts(), &[0]);
     }
 
     #[test]
     fn event_plan_rejects_empty_control_sections() {
         let diagram = diagram(1);
-        let mut plan = SequenceEventPlan::new(&diagram);
+        let mut plan = SequenceRowPlanner::new(&diagram);
 
-        plan.advance(
-            &diagram,
-            &SequenceEvent::ControlStart(SequenceControlStart {
-                model_index: 0,
-                kind: SequenceControlKind::Alt,
-                label: "choice".to_string(),
-                background: None,
-            }),
-            3,
-        )
-        .unwrap();
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ControlStart(SequenceControlStart {
+                    model_index: 0,
+                    kind: SequenceControlKind::Alt,
+                    label: "choice".to_string(),
+                    background: None,
+                }),
+                3,
+            )
+            .unwrap()
+            .is_none()
+        );
 
         let error = plan
             .advance(
@@ -684,48 +657,60 @@ mod tests {
     #[test]
     fn event_plan_tracks_nested_control_frames() {
         let diagram = diagram(2);
-        let mut plan = SequenceEventPlan::new(&diagram);
+        let mut plan = SequenceRowPlanner::new(&diagram);
 
-        plan.advance(
-            &diagram,
-            &SequenceEvent::ControlStart(SequenceControlStart {
-                model_index: 0,
-                kind: SequenceControlKind::Loop,
-                label: "outer".to_string(),
-                background: None,
-            }),
-            3,
-        )
-        .unwrap();
-        plan.advance(
-            &diagram,
-            &SequenceEvent::ControlStart(SequenceControlStart {
-                model_index: 1,
-                kind: SequenceControlKind::Opt,
-                label: "inner".to_string(),
-                background: None,
-            }),
-            3,
-        )
-        .unwrap();
-        plan.advance(
-            &diagram,
-            &SequenceEvent::ControlEnd {
-                kind: SequenceControlKind::Opt,
-                model_index: 2,
-            },
-            4,
-        )
-        .unwrap();
-        plan.advance(
-            &diagram,
-            &SequenceEvent::ControlEnd {
-                kind: SequenceControlKind::Loop,
-                model_index: 3,
-            },
-            4,
-        )
-        .unwrap();
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ControlStart(SequenceControlStart {
+                    model_index: 0,
+                    kind: SequenceControlKind::Loop,
+                    label: "outer".to_string(),
+                    background: None,
+                }),
+                3,
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ControlStart(SequenceControlStart {
+                    model_index: 1,
+                    kind: SequenceControlKind::Opt,
+                    label: "inner".to_string(),
+                    background: None,
+                }),
+                3,
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ControlEnd {
+                    kind: SequenceControlKind::Opt,
+                    model_index: 2,
+                },
+                4,
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ControlEnd {
+                    kind: SequenceControlKind::Loop,
+                    model_index: 3,
+                },
+                4,
+            )
+            .unwrap()
+            .is_none()
+        );
 
         let frames = plan.finish().unwrap();
         assert_eq!(frames.len(), 2);
@@ -742,11 +727,11 @@ mod tests {
         let mut diagram = diagram(1);
         diagram.lifecycles[0].created_at = Some(1);
         diagram.lifecycles[0].destroyed_at = Some(1);
-        let mut plan = SequenceEventPlan::new(&diagram);
+        let mut plan = SequenceRowPlanner::new(&diagram);
         assert_eq!(plan.visible_actors(), &[false]);
 
-        let effect = plan
-            .advance(
+        assert!(
+            plan.advance(
                 &diagram,
                 &SequenceEvent::ActivationStart {
                     actor: 0,
@@ -754,29 +739,27 @@ mod tests {
                 },
                 3,
             )
-            .unwrap();
-        assert_eq!(effect, SequenceEventEffect::StateOnly);
+            .unwrap()
+            .is_none()
+        );
 
-        let effect = plan
-            .advance(
-                &diagram,
-                &SequenceEvent::Message(SequenceMessage {
-                    model_index: 1,
-                    from: 0,
-                    to: 0,
-                    label: "done".to_string(),
-                    wrap: false,
-                    style: SequenceLineStyle::Solid,
-                    arrow: SequenceArrowHead::Filled,
-                }),
-                4,
-            )
-            .unwrap();
+        let message = SequenceEvent::Message(SequenceMessage {
+            model_index: 1,
+            from: 0,
+            to: 0,
+            label: "done".to_string(),
+            wrap: false,
+            style: SequenceLineStyle::Solid,
+            arrow: SequenceArrowHead::Filled,
+        });
+        let step = plan
+            .advance(&diagram, &message, 4)
+            .unwrap()
+            .expect("message should produce a row step");
 
-        assert_eq!(effect.created_actors(), &[0]);
-        assert_eq!(effect.destroyed_actors(), &[0]);
-        assert_eq!(plan.visible_actors(), &[true]);
-        plan.complete(effect);
+        assert_eq!(step.created_actors, &[0]);
+        assert_eq!(step.destroyed_actors, &[0]);
+        assert_eq!(step.visible_actors, &[true]);
         assert_eq!(plan.visible_actors(), &[false]);
         assert_eq!(plan.active_counts(), &[0]);
     }
