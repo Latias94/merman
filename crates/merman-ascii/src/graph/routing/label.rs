@@ -12,68 +12,58 @@ pub(crate) struct EdgeLabel {
     pub(super) color: Option<AsciiRgb>,
 }
 
-pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
-    if label.start.y == label.end.y {
-        draw_label_on_horizontal_line(
-            canvas,
-            label.start.x,
-            label.end.x,
-            label.start.y,
-            Some(&label.text),
-            label.color,
-        );
-    } else {
-        draw_label_on_vertical_line(
-            canvas,
-            label.start.x,
-            label.start.y,
-            label.end.y,
-            Some(&label.text),
-            label.color,
-        );
-    }
-}
-
-fn draw_label_on_horizontal_line(
-    canvas: &mut Canvas,
-    start_x: usize,
-    end_x: usize,
-    y: usize,
-    label: Option<&str>,
-    color: Option<AsciiRgb>,
-) {
-    let Some(label) = label else {
-        return;
-    };
-    if label.is_empty() {
-        return;
-    }
-    let min_x = start_x.min(end_x);
-    let max_x = start_x.max(end_x);
-    let middle_x = min_x + (max_x - min_x) / 2;
-    let x = middle_x.saturating_sub(display_width(label) / 2);
-    write_label_overlay(canvas, x, y, label, color);
-}
-
-fn draw_label_on_vertical_line(
-    canvas: &mut Canvas,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RoutedLabelPlacement {
     x: usize,
-    start_y: usize,
-    end_y: usize,
-    label: Option<&str>,
-    color: Option<AsciiRgb>,
-) {
-    let Some(label) = label else {
+    y: usize,
+    width: usize,
+}
+
+impl RoutedLabelPlacement {
+    pub(super) fn canvas_extent(self) -> (usize, usize) {
+        (self.x + self.width, self.y + 1)
+    }
+}
+
+pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
+    let Some(placement) = routed_label_placement(label.start, label.end, &label.text) else {
         return;
     };
-    if label.is_empty() {
-        return;
+
+    write_label_overlay(canvas, placement.x, placement.y, &label.text, label.color);
+}
+
+pub(super) fn routed_label_placement(
+    start: CanvasCoord,
+    end: CanvasCoord,
+    text: &str,
+) -> Option<RoutedLabelPlacement> {
+    let width = display_width(text);
+    if width == 0 {
+        return None;
     }
-    let min_y = start_y.min(end_y);
-    let max_y = start_y.max(end_y);
+
+    if start.y == end.y {
+        let min_x = start.x.min(end.x);
+        let max_x = start.x.max(end.x);
+        let middle_x = min_x + (max_x - min_x) / 2;
+        let x = middle_x.saturating_sub(width / 2);
+        return Some(RoutedLabelPlacement {
+            x,
+            y: start.y,
+            width,
+        });
+    }
+
+    let min_y = start.y.min(end.y);
+    let max_y = start.y.max(end.y);
     let middle_y = min_y + (max_y - min_y) / 2;
-    let x = x.saturating_sub(display_width(label) / 2);
-    write_label_overlay(canvas, x, middle_y, label, color);
+    let x = start.x.saturating_sub(width / 2);
+    Some(RoutedLabelPlacement {
+        x,
+        y: middle_y,
+        width,
+    })
 }
 
 fn write_label_overlay(

@@ -6,7 +6,6 @@ use super::model::{
 };
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
-use crate::text::display_width;
 
 mod cell;
 mod label;
@@ -15,6 +14,7 @@ mod plan;
 
 pub(super) use cell::RouteCells;
 use cell::{set_edge_arrow_with_color, set_edge_line_with_color, set_route_cell_with_color};
+use label::routed_label_placement;
 pub(super) use label::{EdgeLabel, draw_routed_label};
 use plan::{
     EdgeRouteRequest, PlannedRouteCellKind, PlannedRouteLabel, RoutePlan, plan_edge_route,
@@ -189,24 +189,9 @@ fn planned_route_label_canvas_extent(
 }
 
 fn planned_label_canvas_extent(label: &PlannedRouteLabel) -> (usize, usize) {
-    let label_width = display_width(&label.text);
-    if label_width == 0 {
-        return (0, 0);
-    }
-
-    if label.start.y == label.end.y {
-        let min_x = label.start.x.min(label.end.x);
-        let max_x = label.start.x.max(label.end.x);
-        let middle_x = min_x + (max_x - min_x) / 2;
-        let x = middle_x.saturating_sub(label_width / 2);
-        return (x + label_width, label.start.y + 1);
-    }
-
-    let min_y = label.start.y.min(label.end.y);
-    let max_y = label.start.y.max(label.end.y);
-    let middle_y = min_y + (max_y - min_y) / 2;
-    let x = label.start.x.saturating_sub(label_width / 2);
-    (x + label_width, middle_y + 1)
+    routed_label_placement(label.start, label.end, &label.text)
+        .map(|placement| placement.canvas_extent())
+        .unwrap_or((0, 0))
 }
 
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: GraphEdgeStyle) {
