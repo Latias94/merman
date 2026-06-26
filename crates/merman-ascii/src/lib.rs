@@ -172,7 +172,7 @@ mod tests {
     fn default_options_match_initial_reference_defaults() {
         let options = AsciiRenderOptions::default();
         assert_eq!(options.charset, AsciiCharset::Unicode);
-        assert_eq!(options.fallback_direction, AsciiDirection::LeftRight);
+        assert_eq!(options.default_direction, AsciiDirection::LeftRight);
         assert_eq!(options.color_mode, AsciiColorMode::Plain);
         assert_eq!(options.color_theme, AsciiColorTheme::default_light());
         assert_eq!(options.box_border_padding, 1);

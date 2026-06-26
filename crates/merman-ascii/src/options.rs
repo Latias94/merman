@@ -21,7 +21,7 @@ pub enum AsciiDirection {
 #[non_exhaustive]
 pub struct AsciiRenderOptions {
     pub charset: AsciiCharset,
-    pub fallback_direction: AsciiDirection,
+    pub default_direction: AsciiDirection,
     pub color_mode: AsciiColorMode,
     pub color_theme: AsciiColorTheme,
     pub box_border_padding: usize,
@@ -41,7 +41,7 @@ impl Default for AsciiRenderOptions {
     fn default() -> Self {
         Self {
             charset: AsciiCharset::Unicode,
-            fallback_direction: AsciiDirection::LeftRight,
+            default_direction: AsciiDirection::LeftRight,
             color_mode: AsciiColorMode::Plain,
             color_theme: AsciiColorTheme::default_light(),
             box_border_padding: 1,

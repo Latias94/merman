@@ -180,7 +180,7 @@ fn node_depth(node: &StateDiagramRenderNode, parent_by_id: &HashMap<&str, Option
 
 fn state_node_direction_by_id(
     model: &StateDiagramRenderModel,
-    fallback_direction: GraphDirection,
+    root_direction: GraphDirection,
 ) -> Result<HashMap<String, GraphDirection>> {
     let mut group_direction_by_id = HashMap::<&str, GraphDirection>::new();
     for node in &model.nodes {
@@ -201,7 +201,7 @@ fn state_node_direction_by_id(
                 .parent_id
                 .as_deref()
                 .and_then(|parent_id| group_direction_by_id.get(parent_id).copied())
-                .unwrap_or_else(|| fallback_direction.canonical());
+                .unwrap_or_else(|| root_direction.canonical());
             (node.id.clone(), direction)
         })
         .collect())

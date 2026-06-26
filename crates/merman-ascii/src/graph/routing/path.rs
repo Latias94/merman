@@ -56,7 +56,7 @@ impl Port {
         }
     }
 
-    pub(super) fn step_fallback(self) -> StepDirection {
+    pub(super) fn terminal_direction(self) -> StepDirection {
         match self {
             Port::Up => StepDirection::Up,
             Port::Down => StepDirection::Down,

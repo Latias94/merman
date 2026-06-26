@@ -17,7 +17,7 @@ pub(crate) fn from_flowchart_model(
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
     } else {
-        match options.fallback_direction {
+        match options.default_direction {
             AsciiDirection::LeftRight => GraphDirection::LeftRight,
             AsciiDirection::TopDown => GraphDirection::TopDown,
         }

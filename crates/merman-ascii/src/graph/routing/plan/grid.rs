@@ -117,7 +117,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     plan_grid_arrow_head(
         &mut cells,
         lines_drawn.last().map(Vec::as_slice).unwrap_or_default(),
-        *line_dirs.last().unwrap_or(&end_port.step_fallback()),
+        *line_dirs.last().unwrap_or(&end_port.terminal_direction()),
         edge,
         charset,
         segment,
@@ -309,7 +309,7 @@ fn plan_grid_box_start(
         return;
     };
 
-    let cell = match start_port.step_fallback() {
+    let cell = match start_port.terminal_direction() {
         StepDirection::Up => {
             edge_line_cell_in_segment(from.x, from.y + 1, charset.up_connector, segment)
         }
@@ -335,7 +335,7 @@ fn plan_grid_box_start(
 fn plan_grid_arrow_head(
     cells: &mut Vec<PlannedRouteCell>,
     last_line: &[CanvasCoord],
-    fallback: StepDirection,
+    default_direction: StepDirection,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
@@ -349,7 +349,7 @@ fn plan_grid_arrow_head(
     let direction = last_line
         .first()
         .and_then(|first| canvas_line_direction(*first, last))
-        .unwrap_or(fallback);
+        .unwrap_or(default_direction);
     let ch = match direction {
         StepDirection::Up => charset.arrow_up,
         StepDirection::Down => charset.arrow_down,
