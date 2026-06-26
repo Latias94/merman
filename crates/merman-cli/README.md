@@ -182,6 +182,7 @@ merman-cli render path/to/diagram.mmd --out out.svg
 merman-cli render --format png --out out.png path/to/diagram.mmd
 merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
 merman-cli render --format pdf --out out.pdf path/to/diagram.mmd
+merman-cli lint-rules --format json --pretty
 merman-cli completion bash
 ```
 
@@ -211,6 +212,20 @@ diagnostics without enabling Merman authoring recommendations. Use `--lint-profi
 `--enable-rule <RULE_ID>` to opt into authoring hints such as
 `merman.authoring.config.prefer_init_directive` and
 `merman.authoring.flowchart.explicit_direction`.
+
+`lint-rules` lists the governed rule catalog used by the analyzer:
+
+```sh
+merman-cli lint-rules
+merman-cli lint-rules --format json --pretty
+merman-cli lint-rules --configurable --format json
+```
+
+The catalog exposes each rule id, evidence reference, default severity, profile, origin,
+configurability, and fixability so CLI, editor, and LSP integrations can present the same rule
+facts. The `origin` field is intentional: Mermaid syntax and compatibility rules are separated from
+Merman authoring recommendations, and the default `core` profile does not enable Merman authoring
+rules.
 
 ## Common Options
 

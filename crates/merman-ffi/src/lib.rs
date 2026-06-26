@@ -654,6 +654,12 @@ pub extern "C" fn merman_diagram_family_capabilities_json() -> MermanResult {
     ffi_result(merman_bindings_core::diagram_family_capabilities_json)
 }
 
+/// Return lint rule catalog metadata as a JSON array.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_lint_rule_catalog_json() -> MermanResult {
+    ffi_result(merman_bindings_core::lint_rule_catalog_json)
+}
+
 /// Return supported theme metadata as a JSON string array.
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_supported_themes_json() -> MermanResult {
@@ -1153,12 +1159,14 @@ mod tests {
         let diagrams = merman_supported_diagrams_json();
         let ascii_diagrams = merman_ascii_supported_diagrams_json();
         let family_capabilities = merman_diagram_family_capabilities_json();
+        let lint_rules = merman_lint_rule_catalog_json();
         let themes = merman_supported_themes_json();
         let host_theme_presets = merman_supported_host_theme_presets_json();
 
         assert_eq!(diagrams.code, BindingStatus::Ok.code());
         assert_eq!(ascii_diagrams.code, BindingStatus::Ok.code());
         assert_eq!(family_capabilities.code, BindingStatus::Ok.code());
+        assert_eq!(lint_rules.code, BindingStatus::Ok.code());
         assert_eq!(themes.code, BindingStatus::Ok.code());
         assert_eq!(host_theme_presets.code, BindingStatus::Ok.code());
 
@@ -1166,6 +1174,7 @@ mod tests {
         let ascii_diagrams: Value = serde_json::from_str(&take_text(ascii_diagrams.data)).unwrap();
         let family_capabilities: Value =
             serde_json::from_str(&take_text(family_capabilities.data)).unwrap();
+        let lint_rules: Value = serde_json::from_str(&take_text(lint_rules.data)).unwrap();
         let themes: Value = serde_json::from_str(&take_text(themes.data)).unwrap();
         let host_theme_presets: Value =
             serde_json::from_str(&take_text(host_theme_presets.data)).unwrap();
@@ -1183,6 +1192,15 @@ mod tests {
                 && capability["has_semantic_parser"] == true
                 && capability["has_render_parser"] == true
         ));
+        assert!(lint_rules.as_array().unwrap().iter().any(|rule| {
+            rule["id"] == "merman.authoring.config.prefer_init_directive"
+                && rule["origin"] == "merman_authoring"
+                && rule["evidence"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+        }));
         assert!(
             themes
                 .as_array()

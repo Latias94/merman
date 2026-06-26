@@ -31,6 +31,7 @@ for current Mermaid parity.
   - `Merman.supportedDiagrams`
   - `Merman.asciiSupportedDiagrams`
   - `Merman.diagramFamilyCapabilities`
+  - `Merman.lintRuleCatalog`
   - `Merman.supportedThemes`
   - `Merman.supportedHostThemePresets`
 - Converts non-OK C ABI results into `MermanException`.
@@ -38,6 +39,11 @@ for current Mermaid parity.
   diagnostics where Flutter platform packaging is not running.
 - Exposes `MermanReusableEngine` and `MermanTextMeasurer` for repeated calls and host text
   measurement through the C reusable-engine API.
+
+`Merman.lintRuleCatalog()` returns typed rule metadata with `id`, `description`,
+`evidence`, `defaultSeverity`, `category`, `defaultEnabled`, `defaultProfile`, `origin`,
+`configurable`, and `fixable`. Hosts should use this catalog to build rule pickers or LSP
+configuration UI instead of shipping their own hard-coded rule table.
 
 ## Platform Packaging
 

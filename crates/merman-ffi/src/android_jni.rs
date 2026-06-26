@@ -507,6 +507,19 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeDiagramFamilyCapabiliti
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeLintRuleCatalogJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_metadata(
+            env,
+            merman_bindings_core::lint_rule_catalog_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanEngine_nativeSupportedThemesJson(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,

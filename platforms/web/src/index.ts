@@ -246,6 +246,40 @@ export interface DiagramFamilyCapability {
   has_render_parser: boolean;
 }
 
+export type LintRuleSeverity = "error" | "warning" | "info" | "hint";
+
+export type LintRuleCategory =
+  | "parse"
+  | "semantic"
+  | "config"
+  | "resource"
+  | "compatibility"
+  | "layout"
+  | "render"
+  | "internal";
+
+export type LintRuleProfile = "core" | "recommended" | "strict";
+
+export type LintRuleOrigin =
+  | "mermaid_syntax"
+  | "mermaid_compatibility"
+  | "merman_authoring"
+  | "merman_resource_policy"
+  | "merman_internal";
+
+export interface LintRuleCatalogEntry {
+  id: string;
+  description: string;
+  evidence: string[];
+  default_severity: LintRuleSeverity;
+  category: LintRuleCategory;
+  default_enabled: boolean;
+  default_profile: LintRuleProfile;
+  origin: LintRuleOrigin;
+  configurable: boolean;
+  fixable: boolean;
+}
+
 export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
   render: true,
   ascii: true,
@@ -357,6 +391,7 @@ export interface MermanWasmModule {
   bindingCapabilities?: () => BindingCapabilities;
   selectedRegistryProfile?: () => string;
   diagramFamilyCapabilities?: () => DiagramFamilyCapability[];
+  lintRuleCatalog?: () => LintRuleCatalogEntry[];
   supportedDiagrams: () => string[];
   supportedHostThemePresets?: () => string[];
   supportedThemes: () => string[];
@@ -376,6 +411,7 @@ let initPromise: Promise<MermanWasmModule> | null = null;
 let supportedDiagramsCache: DiagramType[] | null = null;
 let asciiSupportedDiagramsCache: DiagramType[] | null = null;
 let diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null = null;
+let lintRuleCatalogCache: LintRuleCatalogEntry[] | null = null;
 let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
 let supportedThemesCache: ThemeName[] | null = null;
 
@@ -670,6 +706,18 @@ export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
   return diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
 }
 
+export function lintRuleCatalog(): LintRuleCatalogEntry[] {
+  const rules = getMerman().lintRuleCatalog?.();
+  if (!rules) {
+    throw new Error("Merman lintRuleCatalog() is not available in this artifact.");
+  }
+  lintRuleCatalogCache ??= rules.map(normalizeLintRuleCatalogEntry);
+  return lintRuleCatalogCache.map((rule) => ({
+    ...rule,
+    evidence: [...rule.evidence],
+  }));
+}
+
 export function asciiSupportedDiagrams(): DiagramType[] {
   asciiSupportedDiagramsCache ??= getMerman()
     .asciiSupportedDiagrams()
@@ -732,6 +780,74 @@ function normalizeDiagramFamilyCapability(
     has_semantic_parser: Boolean(capability.has_semantic_parser),
     has_render_parser: Boolean(capability.has_render_parser),
   };
+}
+
+function normalizeLintRuleCatalogEntry(
+  rule: LintRuleCatalogEntry
+): LintRuleCatalogEntry {
+  if (!rule || typeof rule !== "object") {
+    throw new Error("Merman WASM returned an invalid lint rule catalog entry.");
+  }
+  return {
+    id: assertStringField(rule.id, "lint rule id"),
+    description: assertStringField(rule.description, "lint rule description"),
+    evidence: assertStringArray(rule.evidence, "lint rule evidence"),
+    default_severity: assertCatalogValue(rule.default_severity, [
+      "error",
+      "warning",
+      "info",
+      "hint",
+    ]),
+    category: assertCatalogValue(rule.category, [
+      "parse",
+      "semantic",
+      "config",
+      "resource",
+      "compatibility",
+      "layout",
+      "render",
+      "internal",
+    ]),
+    default_enabled: Boolean(rule.default_enabled),
+    default_profile: assertCatalogValue(rule.default_profile, [
+      "core",
+      "recommended",
+      "strict",
+    ]),
+    origin: assertCatalogValue(rule.origin, [
+      "mermaid_syntax",
+      "mermaid_compatibility",
+      "merman_authoring",
+      "merman_resource_policy",
+      "merman_internal",
+    ]),
+    configurable: Boolean(rule.configurable),
+    fixable: Boolean(rule.fixable),
+  };
+}
+
+function assertStringField(value: unknown, label: string): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  throw new Error(`Merman WASM returned an invalid ${label}.`);
+}
+
+function assertStringArray(value: unknown, label: string): string[] {
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return [...value];
+  }
+  throw new Error(`Merman WASM returned invalid ${label}.`);
+}
+
+function assertCatalogValue<const T extends string>(
+  value: unknown,
+  allowed: readonly T[]
+): T {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+    return value as T;
+  }
+  throw new Error(`Merman WASM returned an invalid lint rule catalog value: ${String(value)}`);
 }
 
 function assertThemeName(theme: string): ThemeName {

@@ -75,6 +75,8 @@ impl RuleOrigin {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuleDescriptor {
     pub id: &'static str,
+    pub description: &'static str,
+    pub evidence: &'static [&'static str],
     pub default_severity: DiagnosticSeverity,
     pub category: DiagnosticCategory,
     pub default_enabled: bool,
@@ -83,8 +85,44 @@ pub struct RuleDescriptor {
     pub fixable: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct RuleCatalogEntry {
+    pub id: &'static str,
+    pub description: &'static str,
+    pub evidence: &'static [&'static str],
+    pub default_severity: DiagnosticSeverity,
+    pub category: DiagnosticCategory,
+    pub default_enabled: bool,
+    pub default_profile: AnalysisRuleProfile,
+    pub origin: RuleOrigin,
+    pub configurable: bool,
+    pub fixable: bool,
+}
+
+impl RuleCatalogEntry {
+    fn from_descriptor(descriptor: RuleDescriptor) -> Self {
+        Self {
+            id: descriptor.id,
+            description: descriptor.description,
+            evidence: descriptor.evidence,
+            default_severity: descriptor.default_severity,
+            category: descriptor.category,
+            default_enabled: descriptor.default_enabled,
+            default_profile: descriptor.default_profile,
+            origin: descriptor.origin,
+            configurable: descriptor.category != DiagnosticCategory::Internal,
+            fixable: descriptor.fixable,
+        }
+    }
+}
+
 const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
     id: PREFER_INIT_DIRECTIVE_RULE_ID,
+    description: "Prefer the canonical `init` directive keyword over the accepted `initialize` alias.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/utils.ts",
+        "docs/adr/0072-lint-rule-governance.md",
+    ],
     default_severity: DiagnosticSeverity::Hint,
     category: DiagnosticCategory::Config,
     default_enabled: false,
@@ -95,6 +133,11 @@ const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
 
 const NO_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
     id: NO_DIAGRAM_RULE_ID,
+    description: "Report input that does not contain a Mermaid diagram.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/diagram-api/detectType.ts",
+        "repo-ref/mermaid/packages/mermaid/src/mermaid.spec.ts",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Parse,
     default_enabled: true,
@@ -105,6 +148,11 @@ const NO_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
 
 const DIAGRAM_PARSE_RULE: RuleDescriptor = RuleDescriptor {
     id: DIAGRAM_PARSE_RULE_ID,
+    description: "Report Mermaid diagram syntax that the parser cannot accept.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/mermaid.ts",
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Parse,
     default_enabled: true,
@@ -115,6 +163,11 @@ const DIAGRAM_PARSE_RULE: RuleDescriptor = RuleDescriptor {
 
 const UNSUPPORTED_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
     id: UNSUPPORTED_DIAGRAM_RULE_ID,
+    description: "Report Mermaid diagram types that are recognized but unavailable in this build.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/diagram-api/detectType.ts",
+        "docs/release/PACKAGE_SURFACES.md",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Compatibility,
     default_enabled: true,
@@ -125,6 +178,11 @@ const UNSUPPORTED_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
 
 const RECOVERED_EDITOR_FACTS_RULE: RuleDescriptor = RuleDescriptor {
     id: RECOVERED_EDITOR_FACTS_RULE_ID,
+    description: "Report parser recovery diagnostics emitted while producing editor semantic facts.",
+    evidence: &[
+        "crates/merman-core/src/editor.rs",
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+    ],
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Parse,
     default_enabled: true,
@@ -135,6 +193,11 @@ const RECOVERED_EDITOR_FACTS_RULE: RuleDescriptor = RuleDescriptor {
 
 const RESOURCE_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: RESOURCE_LIMIT_RULE_ID,
+    description: "Report Mermaid sources that exceed the configured analysis source byte budget.",
+    evidence: &[
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+        "docs/bindings/OPTIONS_JSON.md",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Resource,
     default_enabled: true,
@@ -145,6 +208,11 @@ const RESOURCE_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
 
 const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
     id: MALFORMED_FRONT_MATTER_RULE_ID,
+    description: "Report malformed YAML front matter blocks before diagram parsing.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.ts",
+        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.spec.ts",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
     default_enabled: true,
@@ -155,6 +223,11 @@ const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
 
 const INVALID_DIRECTIVE_JSON_RULE: RuleDescriptor = RuleDescriptor {
     id: INVALID_DIRECTIVE_JSON_RULE_ID,
+    description: "Report Mermaid directive blocks whose JSON payload cannot be parsed.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/diagram-api/regexes.ts",
+        "repo-ref/mermaid/packages/mermaid/src/utils.ts",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
     default_enabled: true,
@@ -165,6 +238,11 @@ const INVALID_DIRECTIVE_JSON_RULE: RuleDescriptor = RuleDescriptor {
 
 const INVALID_FRONT_MATTER_YAML_RULE: RuleDescriptor = RuleDescriptor {
     id: INVALID_FRONT_MATTER_YAML_RULE_ID,
+    description: "Report Mermaid front matter whose YAML payload cannot be parsed.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.ts",
+        "repo-ref/mermaid/packages/mermaid/src/diagram-api/frontmatter.spec.ts",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
     default_enabled: true,
@@ -175,6 +253,11 @@ const INVALID_FRONT_MATTER_YAML_RULE: RuleDescriptor = RuleDescriptor {
 
 const PANIC_RULE: RuleDescriptor = RuleDescriptor {
     id: PANIC_RULE_ID,
+    description: "Report an internal panic caught while analyzing Mermaid source.",
+    evidence: &[
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+        "crates/merman-analysis/src/analyzer.rs",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Internal,
     default_enabled: true,
@@ -185,6 +268,11 @@ const PANIC_RULE: RuleDescriptor = RuleDescriptor {
 
 const INTERNAL_RULE_REGISTRY_GAP_RULE: RuleDescriptor = RuleDescriptor {
     id: INTERNAL_RULE_REGISTRY_GAP_RULE_ID,
+    description: "Report an internal rule registry gap while projecting diagnostics.",
+    evidence: &[
+        "docs/adr/0072-lint-rule-governance.md",
+        "crates/merman-analysis/src/rules.rs",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Internal,
     default_enabled: true,
@@ -195,6 +283,11 @@ const INTERNAL_RULE_REGISTRY_GAP_RULE: RuleDescriptor = RuleDescriptor {
 
 const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     id: BLOCK_WIDTH_RULE_ID,
+    description: "Report block diagram entries that exceed the configured column width.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/docs/syntax/block.md",
+        "crates/merman-core/src/diagrams/block.rs",
+    ],
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
@@ -204,6 +297,12 @@ const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
 };
 const FLOWCHART_EXPLICIT_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
     id: FLOWCHART_EXPLICIT_DIRECTION_RULE_ID,
+    description: "Recommend explicit flowchart header directions and offer an insertion quickfix.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/docs/syntax/flowchart.md",
+        "crates/merman-core/src/diagrams/flowchart.rs",
+        "docs/adr/0072-lint-rule-governance.md",
+    ],
     default_severity: DiagnosticSeverity::Hint,
     category: DiagnosticCategory::Semantic,
     default_enabled: false,
@@ -213,6 +312,11 @@ const FLOWCHART_EXPLICIT_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
 };
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
+    description: "Report duplicate gitGraph commit ids.",
+    evidence: &[
+        "repo-ref/mermaid/packages/mermaid/src/diagrams/git/gitGraphAst.ts",
+        "crates/merman-core/src/diagrams/git_graph.rs",
+    ],
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
@@ -222,6 +326,11 @@ const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
 };
 const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
     id: SEMANTIC_WARNING_RULE_ID,
+    description: "Project registered diagram-family semantic warnings that do not yet have a family-specific rule.",
+    evidence: &[
+        "crates/merman-core/src/diagram/mod.rs",
+        "docs/plans/2026-06-24-003-refactor-mature-mermaid-lsp-roadmap-plan.md",
+    ],
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
@@ -250,6 +359,28 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
 
 pub fn rule_descriptors() -> &'static [RuleDescriptor] {
     RULE_DESCRIPTORS
+}
+
+pub fn rule_catalog() -> Vec<RuleCatalogEntry> {
+    RULE_DESCRIPTORS
+        .iter()
+        .copied()
+        .map(RuleCatalogEntry::from_descriptor)
+        .collect()
+}
+
+pub fn configurable_rule_catalog() -> Vec<RuleCatalogEntry> {
+    configurable_rule_descriptors()
+        .map(RuleCatalogEntry::from_descriptor)
+        .collect()
+}
+
+pub fn rule_catalog_json_bytes() -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(&rule_catalog())
+}
+
+pub fn configurable_rule_catalog_json_bytes() -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(&configurable_rule_catalog())
 }
 
 pub fn configurable_rule_descriptors() -> impl Iterator<Item = RuleDescriptor> {
@@ -827,6 +958,7 @@ mod tests {
 
         assert_eq!(descriptors.len(), 15);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
+        assert!(descriptors[0].description.contains("canonical `init`"));
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
         assert_eq!(descriptors[0].category, DiagnosticCategory::Config);
         assert!(!descriptors[0].default_enabled);
@@ -1003,6 +1135,70 @@ mod tests {
             descriptors
                 .iter()
                 .all(|descriptor| descriptor.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
+        );
+    }
+
+    #[test]
+    fn rule_catalog_serializes_public_rule_metadata() {
+        let catalog = rule_catalog();
+        let prefer_init = catalog
+            .iter()
+            .find(|entry| entry.id == PREFER_INIT_DIRECTIVE_RULE_ID)
+            .expect("prefer init catalog entry");
+
+        assert!(prefer_init.description.contains("canonical `init`"));
+        assert_eq!(prefer_init.origin, RuleOrigin::MermanAuthoring);
+        assert_eq!(
+            prefer_init.default_profile,
+            AnalysisRuleProfile::Recommended
+        );
+        assert!(prefer_init.configurable);
+        assert!(prefer_init.fixable);
+        assert!(
+            prefer_init
+                .evidence
+                .contains(&"docs/adr/0072-lint-rule-governance.md")
+        );
+        assert!(catalog.iter().all(|entry| !entry.evidence.is_empty()));
+
+        let json: serde_json::Value =
+            serde_json::from_slice(&rule_catalog_json_bytes().expect("catalog JSON"))
+                .expect("catalog should serialize as JSON");
+        let first = json.as_array().expect("catalog array").first().unwrap();
+        assert_eq!(first["id"], PREFER_INIT_DIRECTIVE_RULE_ID);
+        assert_eq!(first["origin"], "merman_authoring");
+        assert_eq!(first["default_profile"], "recommended");
+        assert_eq!(first["default_severity"], "hint");
+        assert_eq!(first["category"], "config");
+        assert_eq!(first["configurable"], true);
+        assert_eq!(first["fixable"], true);
+        assert!(
+            first["evidence"]
+                .as_array()
+                .expect("evidence array")
+                .iter()
+                .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+        );
+    }
+
+    #[test]
+    fn configurable_rule_catalog_excludes_internal_rules() {
+        let catalog = configurable_rule_catalog();
+
+        assert!(
+            catalog
+                .iter()
+                .all(|entry| entry.category != DiagnosticCategory::Internal)
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|entry| entry.id == FLOWCHART_EXPLICIT_DIRECTION_RULE_ID)
+        );
+        assert!(
+            catalog
+                .iter()
+                .all(|entry| entry.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
         );
     }
 

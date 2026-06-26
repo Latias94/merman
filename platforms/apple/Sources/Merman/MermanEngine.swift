@@ -56,6 +56,32 @@ public struct MermanDiagramFamilyCapability: Decodable {
     }
 }
 
+public struct MermanLintRuleCatalogEntry: Decodable {
+    public let id: String
+    public let description: String
+    public let evidence: [String]
+    public let defaultSeverity: String
+    public let category: String
+    public let defaultEnabled: Bool
+    public let defaultProfile: String
+    public let origin: String
+    public let configurable: Bool
+    public let fixable: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case description
+        case evidence
+        case defaultSeverity = "default_severity"
+        case category
+        case defaultEnabled = "default_enabled"
+        case defaultProfile = "default_profile"
+        case origin
+        case configurable
+        case fixable
+    }
+}
+
 public final class MermanEngine {
     public static let abiVersion: UInt32 = 2
     private static let okCode: Int32 = 0
@@ -64,6 +90,7 @@ public final class MermanEngine {
     private var supportedDiagramsCache: [String]?
     private var asciiSupportedDiagramsCache: [String]?
     private var diagramFamilyCapabilitiesCache: [MermanDiagramFamilyCapability]?
+    private var lintRuleCatalogCache: [MermanLintRuleCatalogEntry]?
     private var themesCache: [String]?
     private var hostThemePresetsCache: [String]?
 
@@ -126,6 +153,16 @@ public final class MermanEngine {
         let text = try decode(merman_diagram_family_capabilities_json())
         let values = try decodeJson([MermanDiagramFamilyCapability].self, from: Data(text.utf8))
         diagramFamilyCapabilitiesCache = values
+        return values
+    }
+
+    public func lintRuleCatalog() throws -> [MermanLintRuleCatalogEntry] {
+        if let lintRuleCatalogCache {
+            return lintRuleCatalogCache
+        }
+        let text = try decode(merman_lint_rule_catalog_json())
+        let values = try decodeJson([MermanLintRuleCatalogEntry].self, from: Data(text.utf8))
+        lintRuleCatalogCache = values
         return values
     }
 

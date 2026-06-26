@@ -59,7 +59,8 @@ choose a different browser preset through `platforms/web/scripts/build-wasm.mjs`
 wrapper exposes `bindingCapabilities()` so callers can discover the active artifact's compiled
 capabilities after initialization. It also exposes `selectedRegistryProfile()` and
 `diagramFamilyCapabilities()` so local slim builds can report the actual full/tiny diagram
-parser/render matrix they contain.
+parser/render matrix they contain, plus `lintRuleCatalog()` so editor integrations can discover the
+governed analyzer rule table and its evidence references without hard-coding them.
 
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
@@ -88,8 +89,11 @@ Current release semantics are intentionally explicit:
   presets are source-build presets only; they are not npm subpackages or package export paths.
 - `bindingCapabilities()` reports the active browser artifact's compiled capabilities.
   `selectedRegistryProfile()` and `diagramFamilyCapabilities()` report the selected diagram registry
-  profile and registered parser/render family facts. Consumers that load an older artifact without
-  these exports should treat it as the historical full browser artifact.
+  profile and registered parser/render family facts. `lintRuleCatalog()` reports analyzer rule ids,
+  evidence references, default profiles, origins, configurability, and fixability. Consumers that
+  load an older artifact without the registry-profile exports should treat it as the historical full
+  browser artifact, but editor settings that depend on lint metadata should fail fast if the lint
+  catalog export is absent.
 - `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
   artifact is Typst-compatible or pure-WASM compatible.
 - `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render

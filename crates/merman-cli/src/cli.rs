@@ -36,6 +36,8 @@ pub(crate) enum Command {
     Layout(LayoutArgs),
     /// Analyze Mermaid source and print diagnostics JSON or text.
     Lint(LintArgs),
+    /// List lint rule metadata.
+    LintRules(LintRulesArgs),
     /// Render Mermaid source to SVG/PNG/JPG/PDF/ASCII/Unicode.
     Render(RenderArgs),
     /// Generate shell completion scripts.
@@ -187,6 +189,26 @@ pub(crate) struct LintArgs {
         help_heading = "Lint rules"
     )]
     pub(crate) rule_severities: Vec<LintRuleSeverityOverride>,
+}
+
+#[derive(Debug, ClapArgs)]
+pub(crate) struct LintRulesArgs {
+    /// Output format for rule metadata.
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = LintOutputFormat::Json,
+        help_heading = "Output"
+    )]
+    pub(crate) format: LintOutputFormat,
+
+    /// Pretty-print JSON output.
+    #[arg(long)]
+    pub(crate) pretty: bool,
+
+    /// Only list rules that public lint configuration can reference.
+    #[arg(long = "configurable", help_heading = "Rule filters")]
+    pub(crate) configurable: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]

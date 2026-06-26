@@ -1,6 +1,6 @@
 use crate::cli::{
-    Cli, Command, CompletionArgs, DetectArgs, LayoutArgs, LintArgs, LintOutputFormat, ParseArgs,
-    RenderCliArgs,
+    Cli, Command, CompletionArgs, DetectArgs, LayoutArgs, LintArgs, LintOutputFormat,
+    LintRulesArgs, ParseArgs, RenderCliArgs,
 };
 use crate::config::{engine_for, layout_options, math_renderer, parse_options, site_config_for};
 use crate::error::CliError;
@@ -42,6 +42,10 @@ pub(crate) fn run(cli: Cli) -> Result<i32, CliError> {
             0
         }
         Some(Command::Lint(args)) => run_lint(args)?,
+        Some(Command::LintRules(args)) => {
+            run_lint_rules(args)?;
+            0
+        }
         Some(Command::Render(args)) => {
             let plan = render_plan_for_subcommand(args)?;
             run_render(plan)?;
@@ -123,6 +127,22 @@ fn run_lint(args: LintArgs) -> Result<i32, CliError> {
     Ok(i32::from(!payload.valid))
 }
 
+fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
+    let catalog = if args.configurable {
+        merman_analysis::configurable_rule_catalog()
+    } else {
+        merman_analysis::rule_catalog()
+    };
+
+    match args.format {
+        LintOutputFormat::Json => print_json(&catalog, args.pretty),
+        LintOutputFormat::Text => {
+            print_lint_rules_text(&catalog);
+            Ok(())
+        }
+    }
+}
+
 fn run_completion(args: CompletionArgs) -> Result<(), CliError> {
     let mut command = Cli::command();
     clap_complete::generate(
@@ -141,6 +161,23 @@ fn print_json<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {
         println!("{}", serde_json::to_string(value)?);
     }
     Ok(())
+}
+
+fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) {
+    println!("ID\tSeverity\tProfile\tOrigin\tConfigurable\tFixable\tEvidence\tDescription");
+    for rule in catalog {
+        println!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            rule.id,
+            rule.default_severity.as_str(),
+            rule.default_profile.as_str(),
+            rule.origin.as_str(),
+            rule.configurable,
+            rule.fixable,
+            rule.evidence.join(","),
+            rule.description
+        );
+    }
 }
 
 fn print_lint_text(payload: &AnalysisPayload) {

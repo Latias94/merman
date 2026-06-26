@@ -20,6 +20,8 @@ Status: experimental generated-binding surface.
 - `MermanEngine::supported_themes()`
 - `MermanEngine::supported_host_theme_presets()`
 - `MermanEngine::diagram_family_capabilities()`
+- `MermanEngine::lint_rule_catalog()`
+- `MermanEngine::configurable_lint_rule_catalog()`
 - `MermanReusableEngine` render/parse/layout/validation methods
 - `MermanReusableEngine` analysis methods
 - `MermanReusableEngine::set_text_measurer(measurer)`
@@ -33,7 +35,9 @@ The optional `options_json` argument uses the shared contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 That contract includes the shared `lint` section for profiles, explicit rule enable/disable, and
 severity overrides, so UniFFI, CLI lint, FFI, and WASM can all drive the same analysis behavior.
-Merman authoring recommendations remain opt-in through `recommended` or explicit rule enablement.
+`lint_rule_catalog()` returns the same rule ids, evidence references, profiles, origins,
+configurability, and fixability exposed by the other metadata surfaces. Merman authoring
+recommendations remain opt-in through `recommended` or explicit rule enablement.
 
 ## Analysis And Validation
 

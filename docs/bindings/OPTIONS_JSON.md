@@ -131,6 +131,9 @@ semantic warnings alike. They are validated against the public analysis rule reg
 used by FFI, UniFFI, WASM, CLI lint, and future editor adapters. `disable_rules` has the highest
 precedence. Severity overrides do not enable a rule whose profile is inactive; use
 `lint.profile = "recommended"` or `enable_rules` for Merman authoring recommendations.
+Bindings expose the same rule registry through their lint-rule catalog metadata surfaces; hosts
+should read that catalog when building settings UI instead of duplicating rule ids, evidence
+references, and origins.
 
 Rule governance is intentionally conservative because Merman is not the Mermaid project:
 

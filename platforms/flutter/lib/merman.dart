@@ -7,7 +7,9 @@ library;
 export 'src/merman_ffi.dart'
     show
         Merman,
+        MermanDiagramFamilyCapability,
         MermanException,
+        MermanLintRuleCatalogEntry,
         MermanReusableEngine,
         MermanStatus,
         MermanTextDirection,

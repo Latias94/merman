@@ -80,6 +80,20 @@ pub struct MermanDiagramFamilyCapability {
     pub has_render_parser: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanLintRuleCatalogEntry {
+    pub id: String,
+    pub description: String,
+    pub evidence: Vec<String>,
+    pub default_severity: String,
+    pub category: String,
+    pub default_enabled: bool,
+    pub default_profile: String,
+    pub origin: String,
+    pub configurable: bool,
+    pub fixable: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MermanTextWrapMode {
     SvgLike,
@@ -299,6 +313,25 @@ fn uniffi_white_space(
     }
 }
 
+fn uniffi_lint_rule(rule: merman_bindings_core::RuleCatalogEntry) -> MermanLintRuleCatalogEntry {
+    MermanLintRuleCatalogEntry {
+        id: rule.id.to_string(),
+        description: rule.description.to_string(),
+        evidence: rule
+            .evidence
+            .iter()
+            .map(|evidence| evidence.to_string())
+            .collect(),
+        default_severity: rule.default_severity.as_str().to_string(),
+        category: rule.category.as_str().to_string(),
+        default_enabled: rule.default_enabled,
+        default_profile: rule.default_profile.as_str().to_string(),
+        origin: rule.origin.as_str().to_string(),
+        configurable: rule.configurable,
+        fixable: rule.fixable,
+    }
+}
+
 #[uniffi::export]
 impl MermanEngine {
     #[uniffi::constructor]
@@ -421,6 +454,20 @@ impl MermanEngine {
                 has_semantic_parser: capability.has_semantic_parser,
                 has_render_parser: capability.has_render_parser,
             })
+            .collect()
+    }
+
+    pub fn lint_rule_catalog(&self) -> Vec<MermanLintRuleCatalogEntry> {
+        merman_bindings_core::lint_rule_catalog()
+            .into_iter()
+            .map(uniffi_lint_rule)
+            .collect()
+    }
+
+    pub fn configurable_lint_rule_catalog(&self) -> Vec<MermanLintRuleCatalogEntry> {
+        merman_bindings_core::configurable_lint_rule_catalog()
+            .into_iter()
+            .map(uniffi_lint_rule)
             .collect()
     }
 }
@@ -766,6 +813,21 @@ mod tests {
                 .any(|capability| capability.diagram_type == "flowchart"
                     && capability.has_semantic_parser
                     && capability.has_render_parser)
+        );
+        let lint_rules = engine.lint_rule_catalog();
+        assert!(lint_rules.iter().any(|rule| {
+            rule.id == "merman.authoring.flowchart.explicit_direction"
+                && rule.origin == "merman_authoring"
+                && rule.default_profile == "recommended"
+                && rule
+                    .evidence
+                    .contains(&"docs/adr/0072-lint-rule-governance.md".to_string())
+        }));
+        assert!(
+            engine
+                .configurable_lint_rule_catalog()
+                .iter()
+                .all(|rule| rule.configurable && rule.category != "internal")
         );
     }
 

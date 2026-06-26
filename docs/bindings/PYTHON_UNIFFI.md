@@ -60,6 +60,7 @@ diagrams = engine.supported_diagrams()
 themes = engine.supported_themes()
 host_presets = engine.supported_host_theme_presets()
 capabilities = engine.diagram_family_capabilities()
+lint_rules = engine.lint_rule_catalog()
 
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):
@@ -82,6 +83,8 @@ Errors are exposed through the generated `MermanError` type. The underlying stat
 name, and message still come from `merman-bindings-core`.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
+`MermanEngine.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
+references, for editor settings, diagnostic explanations, or LSP rule configuration.
 
 ## Text Measurement
 
@@ -109,6 +112,7 @@ The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copi
 it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
 `MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
 `MermanEngine.validate`, metadata methods, `MermanEngine.diagram_family_capabilities`,
+`MermanEngine.lint_rule_catalog`, `MermanEngine.configurable_lint_rule_catalog`,
 `MermanEngine.reusable_engine_with_text_measurer`, `MermanReusableEngine.set_text_measurer`,
 `MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`,
 `MermanEngine.package_version`, and checks `MermanError.Binding` fields for invalid options JSON.

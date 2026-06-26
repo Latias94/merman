@@ -487,6 +487,7 @@ exports it.
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_supported_diagrams_json(void);
 MermanResult merman_diagram_family_capabilities_json(void);
+MermanResult merman_lint_rule_catalog_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);
 ```
@@ -507,6 +508,34 @@ by `options_json.host_theme.preset`. The same buffer ownership rules apply.
   }
 ]
 ```
+
+`merman_lint_rule_catalog_json` returns a UTF-8 JSON array of objects from the shared
+`merman-analysis` rule catalog:
+
+```json
+[
+  {
+    "id": "merman.authoring.flowchart.explicit_direction",
+    "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
+    "evidence": [
+      "repo-ref/mermaid/packages/mermaid/src/docs/syntax/flowchart.md",
+      "crates/merman-core/src/diagrams/flowchart.rs",
+      "docs/adr/0072-lint-rule-governance.md"
+    ],
+    "default_severity": "hint",
+    "category": "semantic",
+    "default_enabled": false,
+    "default_profile": "recommended",
+    "origin": "merman_authoring",
+    "configurable": true,
+    "fixable": true
+  }
+]
+```
+
+Hosts should use this catalog for rule-selection UI, config completion, and documenting whether a
+rule is Mermaid-backed compatibility or a Merman authoring recommendation. `evidence` contains
+local source, fixture, or ADR references that justify the rule classification.
 
 This is diagnostic metadata for profile-aware hosts. `diagram_type` is the Mermaid parser/detector
 id and may include aliases such as `flowchart-v2`; `metadata_id` is the public supported-diagram

@@ -161,9 +161,11 @@ The package does not publish separate npm subpaths for render-only or ASCII-only
 the source build presets above when you need to produce a local slim package, and call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
 `core_full`, `core_host`, `elk_layout`, or `ratex_math` capability. `selectedRegistryProfile()`
-reports the active Mermaid registry profile, and `diagramFamilyCapabilities()` reports the diagram
-parser/render facts registered in the current artifact. The ASCII preset currently preserves the
-full core registry for compatibility with the browser ASCII implementation.
+reports the active Mermaid registry profile, `diagramFamilyCapabilities()` reports the diagram
+parser/render facts registered in the current artifact, and `lintRuleCatalog()` reports analyzer
+rule ids, evidence references, default profiles, origins, configurability, and fixability. The ASCII
+preset currently preserves the full core registry for compatibility with the browser ASCII
+implementation.
 
 ## Web Worker integration
 
@@ -226,13 +228,13 @@ initialization is usually simpler.
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
 - `analyze()`, `analyzeJson()`, `validate()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
-- `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`
+- `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, analysis, validation, and metadata functions require `initMerman()` first.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
-`supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
-metadata drifts from the TypeScript surface.
+`supportedHostThemePresets()`, and `lintRuleCatalog()` return typed metadata and fail fast if the
+generated WebAssembly metadata drifts from the TypeScript surface.
 
 ## Benchmarking against Mermaid JS
 

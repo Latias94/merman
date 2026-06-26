@@ -53,6 +53,7 @@ final analysis = merman.analyzeJson(source);
 final ascii = merman.renderAscii(source);
 final validation = merman.validate(source);
 final diagrams = merman.supportedDiagrams();
+final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
 final hostThemePresets = merman.supportedHostThemePresets();
 
@@ -65,6 +66,8 @@ try {
 
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
+Use `lintRuleCatalog()` to discover analyzer rule ids, evidence references, default severities,
+profiles, origins, configurability, and fixability for editor settings or LSP integrations.
 
 ## Rendering SVG In Flutter
 

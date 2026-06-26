@@ -23,6 +23,10 @@ object MermanEngine {
         nativeDiagramFamilyCapabilitiesJson()
     }
 
+    private val lintRuleCatalogJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeLintRuleCatalogJson()
+    }
+
     private val supportedThemesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         nativeSupportedThemesJson()
     }
@@ -66,6 +70,10 @@ object MermanEngine {
     @JvmStatic
     fun diagramFamilyCapabilitiesJson(): String =
         diagramFamilyCapabilitiesJsonCache
+
+    @JvmStatic
+    fun lintRuleCatalogJson(): String =
+        lintRuleCatalogJsonCache
 
     @JvmStatic
     fun supportedThemesJson(): String =
@@ -123,6 +131,9 @@ object MermanEngine {
 
     @JvmStatic
     private external fun nativeDiagramFamilyCapabilitiesJson(): String
+
+    @JvmStatic
+    private external fun nativeLintRuleCatalogJson(): String
 
     @JvmStatic
     private external fun nativeSupportedThemesJson(): String

@@ -112,6 +112,21 @@ assert.equal(
   true
 );
 
+const lintRules = api.lintRuleCatalog();
+assert.equal(Array.isArray(lintRules), true);
+assert.equal(
+  lintRules.some(
+    (rule) =>
+      rule.id === "merman.authoring.flowchart.explicit_direction" &&
+      rule.default_severity === "hint" &&
+      rule.origin === "merman_authoring" &&
+      rule.evidence.includes("docs/adr/0072-lint-rule-governance.md") &&
+      rule.configurable &&
+      rule.fixable
+  ),
+  true
+);
+
 if (capabilities.render) {
   const rawGantt = `gantt
 title Project Development Plan

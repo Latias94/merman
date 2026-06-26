@@ -40,6 +40,7 @@ typedef struct MermanApi {
     MermanResult (*supported_diagrams_json)(void);
     MermanResult (*ascii_supported_diagrams_json)(void);
     MermanResult (*diagram_family_capabilities_json)(void);
+    MermanResult (*lint_rule_catalog_json)(void);
     MermanResult (*supported_themes_json)(void);
     MermanResult (*supported_host_theme_presets_json)(void);
     MermanFree buffer_free;
@@ -131,6 +132,7 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.supported_diagrams_json == NULL ||
         api.ascii_supported_diagrams_json == NULL ||
         api.diagram_family_capabilities_json == NULL ||
+        api.lint_rule_catalog_json == NULL ||
         api.supported_themes_json == NULL ||
         api.supported_host_theme_presets_json == NULL ||
         api.buffer_free == NULL
@@ -260,6 +262,24 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.diagram_family_capabilities_json(),
         api.buffer_free,
         "\"diagram_type\":\"flowchart\""
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.lint_rule_catalog_json(),
+        api.buffer_free,
+        "merman.authoring.flowchart.explicit_direction"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.lint_rule_catalog_json(),
+        api.buffer_free,
+        "docs/adr/0072-lint-rule-governance.md"
     );
     if (rc != 0) {
         return rc;

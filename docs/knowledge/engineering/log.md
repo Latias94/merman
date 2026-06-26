@@ -6,6 +6,23 @@ status: active
 # Log
 
 ## 2026-06-26
+- Productized the governed lint rule catalog: `RuleDescriptor` now carries machine-readable
+  `evidence` references, `RuleCatalogEntry` serializes id/description/evidence/severity/category/
+  profile/origin/configurability/fixability, and the catalog is exposed through Rust, CLI
+  `lint-rules`, binding-core, C FFI, Android JNI, UniFFI, WASM, Web TS, Flutter/Dart, and Apple
+  Swift surfaces.
+- Rebuilt the Web WASM package with the local proxy at `http://127.0.0.1:10809` so wasm-opt could
+  download Binaryen, and rebuilt the local macOS Apple XCFramework to verify the Swift wrapper
+  against the current FFI header.
+- Fixed a binding-core ASCII option-path defect found while testing: shared `parse` options now
+  live under `options.analysis.parse`, and the regression checks the stored option shape instead
+  of invoking the currently hanging ASCII render path.
+- Verified the catalog/export slice with `cargo fmt --all`, focused analysis/binding/CLI/FFI/UniFFI
+  Rust tests, UniFFI bindgen nextest smoke, `cargo check -p merman-wasm`, Web WASM/TS build and
+  smoke, Flutter analyze, Dart FFI smoke, Apple Swift smoke, wiki-memory validation, and
+  `git diff --check`.
+
+## 2026-06-26
 - Added ADR 0072 for lint rule governance: Merman rule IDs remain under `merman.*`, authoring
   recommendations use `merman.authoring.*`, and Mermaid syntax/compatibility origins require
   pinned source, docs, fixture, or reproducible compatibility evidence.

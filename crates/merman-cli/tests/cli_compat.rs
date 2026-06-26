@@ -311,6 +311,54 @@ fn cli_lint_valid_mermaid_returns_zero_and_json_payload() {
 }
 
 #[test]
+fn cli_lint_rules_lists_rule_catalog_json() {
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args(["lint-rules", "--format", "json"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let catalog: Value =
+        serde_json::from_slice(&output.stdout).expect("lint-rules stdout should be JSON");
+    let rules = catalog.as_array().expect("rule catalog should be an array");
+    let authoring = rules
+        .iter()
+        .find(|rule| rule["id"] == "merman.authoring.flowchart.explicit_direction")
+        .expect("authoring flowchart rule");
+
+    assert_eq!(authoring["origin"], "merman_authoring");
+    assert_eq!(authoring["default_profile"], "recommended");
+    assert_eq!(authoring["default_severity"], "hint");
+    assert_eq!(authoring["fixable"], true);
+    assert!(
+        authoring["evidence"]
+            .as_array()
+            .expect("evidence array")
+            .iter()
+            .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+    );
+}
+
+#[test]
+fn cli_lint_rules_configurable_filter_excludes_internal_rules() {
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args(["lint-rules", "--format", "json", "--configurable"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let catalog: Value =
+        serde_json::from_slice(&output.stdout).expect("lint-rules stdout should be JSON");
+    let rules = catalog.as_array().expect("rule catalog should be an array");
+
+    assert!(
+        rules
+            .iter()
+            .all(|rule| rule["category"] != "internal" && rule["configurable"] == true)
+    );
+}
+
+#[test]
 fn cli_lint_can_disable_rule_diagnostics() {
     let output = run_with_stdin(
         &[

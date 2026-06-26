@@ -22,12 +22,14 @@ pub use engine::BindingEngine;
 pub use metadata::{
     BindingCapabilities, BindingDiagramFamilyCapability, TextMeasurementCapabilities,
     ascii_supported_diagrams, ascii_supported_diagrams_json, binding_capabilities,
-    binding_capabilities_json, diagram_family_capabilities, diagram_family_capabilities_json,
-    selected_registry_profile, supported_diagrams, supported_diagrams_json,
+    binding_capabilities_json, configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
+    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
+    lint_rule_catalog_json, selected_registry_profile, supported_diagrams, supported_diagrams_json,
     supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
     supported_themes_json,
 };
 
+pub use merman_analysis::RuleCatalogEntry;
 use merman_analysis::{AnalysisPayload, Analyzer};
 
 #[cfg(feature = "ascii")]

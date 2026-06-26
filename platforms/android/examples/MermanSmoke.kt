@@ -46,6 +46,12 @@ fun runMermanSmoke() {
     check(MermanEngine.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
         "diagram family capabilities smoke failed"
     }
+    check(MermanEngine.lintRuleCatalogJson().contains("merman.authoring.flowchart.explicit_direction")) {
+        "lint rule catalog smoke failed"
+    }
+    check(MermanEngine.lintRuleCatalogJson().contains("docs/adr/0072-lint-rule-governance.md")) {
+        "lint rule catalog evidence smoke failed"
+    }
     check(MermanEngine.supportedThemesJson().contains("default")) {
         "themes smoke failed"
     }

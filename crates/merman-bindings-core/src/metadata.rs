@@ -8,6 +8,8 @@ static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static BINDING_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+static LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[cfg(feature = "ascii")]
 pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &["class", "er", "flowchart", "sequence", "xychart"];
@@ -129,6 +131,35 @@ pub fn supported_host_theme_presets_json() -> Result<Vec<u8>, BindingError> {
         &SUPPORTED_HOST_THEME_PRESETS_JSON,
         supported_host_theme_presets,
     )
+}
+
+pub fn lint_rule_catalog() -> Vec<merman_analysis::RuleCatalogEntry> {
+    merman_analysis::rule_catalog()
+}
+
+pub fn configurable_lint_rule_catalog() -> Vec<merman_analysis::RuleCatalogEntry> {
+    merman_analysis::configurable_rule_catalog()
+}
+
+pub fn lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
+    if let Some(bytes) = LINT_RULE_CATALOG_JSON.get() {
+        return Ok(bytes.clone());
+    }
+
+    let bytes = merman_analysis::rule_catalog_json_bytes().map_err(internal_json_error)?;
+    let _ = LINT_RULE_CATALOG_JSON.set(bytes.clone());
+    Ok(bytes)
+}
+
+pub fn configurable_lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
+    if let Some(bytes) = CONFIGURABLE_LINT_RULE_CATALOG_JSON.get() {
+        return Ok(bytes.clone());
+    }
+
+    let bytes =
+        merman_analysis::configurable_rule_catalog_json_bytes().map_err(internal_json_error)?;
+    let _ = CONFIGURABLE_LINT_RULE_CATALOG_JSON.set(bytes.clone());
+    Ok(bytes)
 }
 
 pub fn diagram_family_capabilities_json() -> Result<Vec<u8>, BindingError> {
@@ -313,6 +344,9 @@ mod tests {
             serde_json::from_slice(&supported_host_theme_presets_json().unwrap()).unwrap();
         let family_capabilities: Value =
             serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
+        let lint_rules: Value = serde_json::from_slice(&lint_rule_catalog_json().unwrap()).unwrap();
+        let configurable_lint_rules: Value =
+            serde_json::from_slice(&configurable_lint_rule_catalog_json().unwrap()).unwrap();
 
         assert!(
             diagrams
@@ -342,6 +376,22 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|capability| capability["diagram_type"] == "flowchart")
+        );
+        assert!(lint_rules.as_array().unwrap().iter().any(|rule| {
+            rule["id"] == "merman.authoring.flowchart.explicit_direction"
+                && rule["origin"] == "merman_authoring"
+                && rule["evidence"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+        }));
+        assert!(
+            configurable_lint_rules
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|rule| rule["category"] != "internal")
         );
     }
 }

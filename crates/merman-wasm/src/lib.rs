@@ -150,6 +150,12 @@ pub fn diagram_family_capabilities() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = lintRuleCatalog)]
+pub fn lint_rule_catalog() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&merman_bindings_core::lint_rule_catalog())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 #[wasm_bindgen(js_name = supportedThemes)]
 pub fn supported_themes() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(merman_bindings_core::supported_themes())
