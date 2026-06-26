@@ -6,6 +6,17 @@ status: active
 # Log
 
 ## 2026-06-26
+- Extracted the directive/config source scanner from `merman-analysis::rules` into the internal
+  `source_directives` module. Rules now ask for init-directive config key paths such as
+  `flowchart.htmlLabels` / `config.flowchart.htmlLabels` instead of embedding path-specific
+  scanners.
+- Kept the deprecated `flowchart.htmlLabels` diagnostic behavior unchanged while moving the
+  scanner's unterminated-directive, quoted `}%%`, config-wrapper, root-key, and non-init-directive
+  coverage beside the reusable module.
+- Re-verified the refactor with `cargo test -p merman-analysis --lib`, `cargo check -p
+  merman-analysis`, `cargo check -p merman-lsp`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-26
 - Added the Mermaid-backed core compatibility lint rule
   `merman.compatibility.config.deprecated_flowchart_html_labels`. It reports directive usage of
   deprecated `flowchart.htmlLabels` with evidence from Mermaid `config.ts`, `config.type.ts`, and
