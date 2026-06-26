@@ -4,6 +4,7 @@ use super::super::model::{
 };
 use super::groups;
 use super::{GridCoord, NodeLayout};
+use crate::graph::topology::GraphGroupTopology;
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -120,12 +121,15 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
     let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
 
     let root_indices = graph_root_indices(graph);
+    let topology = GraphGroupTopology::new(graph);
     let should_separate_roots =
-        should_separate_left_right_roots(graph, &root_indices, &index_by_id);
+        should_separate_left_right_roots(graph, &root_indices, &index_by_id, &topology);
     let (external_roots, subgraph_roots): (Vec<_>, Vec<_>) =
         root_indices.into_iter().partition(|root_index| {
             !should_separate_roots
-                || groups::node_group_index(graph, &graph.nodes[*root_index].id).is_none()
+                || topology
+                    .direct_node_group_index(&graph.nodes[*root_index].id)
+                    .is_none()
         });
 
     for root_index in external_roots {
@@ -188,12 +192,17 @@ fn should_separate_left_right_roots(
     graph: &AsciiGraph,
     root_indices: &[usize],
     index_by_id: &HashMap<&str, usize>,
+    topology: &GraphGroupTopology<'_>,
 ) -> bool {
-    let has_external_roots = root_indices
-        .iter()
-        .any(|index| groups::node_group_index(graph, &graph.nodes[*index].id).is_none());
+    let has_external_roots = root_indices.iter().any(|index| {
+        topology
+            .direct_node_group_index(&graph.nodes[*index].id)
+            .is_none()
+    });
     let has_subgraph_roots_with_edges = root_indices.iter().any(|index| {
-        groups::node_group_index(graph, &graph.nodes[*index].id).is_some()
+        topology
+            .direct_node_group_index(&graph.nodes[*index].id)
+            .is_some()
             && !child_indices(graph, *index, index_by_id).is_empty()
     });
 

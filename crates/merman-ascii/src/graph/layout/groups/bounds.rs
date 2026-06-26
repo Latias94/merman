@@ -1,14 +1,16 @@
 use super::super::super::label::GraphLabel;
 use super::super::super::model::{AsciiGraph, AsciiGraphGroup, GraphGroupKind};
+use super::super::super::topology::GraphGroupTopology;
 use super::super::{DividerSpan, GroupLayout, NodeLayout};
 use std::collections::{HashMap, HashSet};
 
 pub(super) fn subgraph_offsets(graph: &AsciiGraph, layouts: &[NodeLayout]) -> (usize, usize) {
     let mut min_x = 0isize;
     let mut min_y = 0isize;
+    let topology = GraphGroupTopology::new(graph);
 
     for group_index in 0..graph.groups.len() {
-        let Some(bounds) = raw_group_bounds(graph, layouts, group_index) else {
+        let Some(bounds) = raw_group_bounds(graph, layouts, group_index, &topology) else {
             continue;
         };
         min_x = min_x.min(bounds.x);
@@ -133,6 +135,7 @@ fn raw_group_bounds(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     group_index: usize,
+    topology: &GraphGroupTopology<'_>,
 ) -> Option<RawBounds> {
     graph.groups.get(group_index)?;
 
@@ -146,10 +149,6 @@ fn raw_group_bounds(
                 right: layout.right() as isize,
                 bottom: layout.bottom() as isize,
             });
-    }
-    let mut group_index_by_id = HashMap::new();
-    for (index, group) in graph.groups.iter().enumerate() {
-        group_index_by_id.entry(group.id.as_str()).or_insert(index);
     }
     let mut completed = HashMap::<usize, Option<RawBounds>>::new();
     let mut visiting = HashSet::<usize>::new();
@@ -172,7 +171,7 @@ fn raw_group_bounds(
                     index,
                     group,
                     &layout_bounds_by_id,
-                    &group_index_by_id,
+                    topology,
                     &completed,
                 ),
             );
@@ -186,9 +185,8 @@ fn raw_group_bounds(
 
         stack.push((index, true));
         for member in group.nodes.iter().rev() {
-            if let Some(child_index) = group_index_by_id
-                .get(member.as_str())
-                .copied()
+            if let Some(child_index) = topology
+                .group_index(member)
                 .filter(|child_index| *child_index != index)
                 && !completed.contains_key(&child_index)
                 && !visiting.contains(&child_index)
@@ -205,7 +203,7 @@ fn raw_group_bounds_from_completed_children(
     group_index: usize,
     group: &AsciiGraphGroup,
     layout_bounds_by_id: &HashMap<&str, RawBounds>,
-    group_index_by_id: &HashMap<&str, usize>,
+    topology: &GraphGroupTopology<'_>,
     completed: &HashMap<usize, Option<RawBounds>>,
 ) -> Option<RawBounds> {
     let mut member_bounds = None::<RawBounds>;
@@ -213,9 +211,8 @@ fn raw_group_bounds_from_completed_children(
     for member in &group.nodes {
         let bounds = if let Some(bounds) = layout_bounds_by_id.get(member.as_str()).copied() {
             Some(bounds)
-        } else if let Some(child_index) = group_index_by_id
-            .get(member.as_str())
-            .copied()
+        } else if let Some(child_index) = topology
+            .group_index(member)
             .filter(|child_index| *child_index != group_index)
         {
             completed.get(&child_index).copied().flatten()

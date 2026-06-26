@@ -6,6 +6,7 @@ mod layout;
 mod model;
 mod routing;
 pub(crate) mod style;
+mod topology;
 
 pub(crate) use adapter::from_flowchart_model;
 pub(crate) use draw::render_graph;

@@ -2,6 +2,7 @@ use super::super::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphEdgeArrow, GraphEdgeStroke,
     GraphEdgeStyle, GraphGroupKind, GraphNodeShape, GraphNodeStyle,
 };
+use super::super::topology::GraphGroupTopology;
 use super::{GridCoord, GroupLayout, NodeLayout};
 use crate::options::AsciiRenderOptions;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -25,6 +26,7 @@ pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<G
 }
 
 fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [GridCoord]) {
+    let topology = GraphGroupTopology::new(graph);
     for group_index in 0..graph.groups.len() {
         let Some(group) = graph.groups.get(group_index) else {
             continue;
@@ -32,7 +34,7 @@ fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [Grid
         let Some(direction) = group.direction else {
             continue;
         };
-        let members = group_placement_members(graph, group_index);
+        let members = group_placement_members(graph, &topology, group_index);
         if members.len() < 2 {
             continue;
         }
@@ -76,7 +78,7 @@ fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [Grid
             shift_member_indices(placements, &member.node_indices, delta_x, delta_y);
         }
 
-        let group_member_indices = group_member_indices(graph, group_index);
+        let group_member_indices = group_member_indices(&topology, group_index);
         if group_member_indices.len() < 2 {
             continue;
         }
@@ -92,6 +94,7 @@ fn separate_external_nodes_from_groups(graph: &AsciiGraph, placements: &mut [Gri
     if graph.groups.is_empty() || placements.is_empty() {
         return;
     }
+    let topology = GraphGroupTopology::new(graph);
     let endpoint_group_ids = graph_endpoint_group_ids(graph);
     if endpoint_group_ids.is_empty() {
         return;
@@ -104,7 +107,7 @@ fn separate_external_nodes_from_groups(graph: &AsciiGraph, placements: &mut [Gri
             if !endpoint_group_ids.contains(graph.groups[group_index].id.as_str()) {
                 continue;
             }
-            let member_indices = group_member_indices(graph, group_index);
+            let member_indices = group_member_indices(&topology, group_index);
             if member_indices.is_empty() {
                 continue;
             }
@@ -130,6 +133,7 @@ fn stack_divider_sections(graph: &AsciiGraph, placements: &mut [GridCoord]) {
     if graph.groups.is_empty() || placements.is_empty() {
         return;
     }
+    let topology = GraphGroupTopology::new(graph);
 
     let divider_groups = graph
         .groups
@@ -155,7 +159,7 @@ fn stack_divider_sections(graph: &AsciiGraph, placements: &mut [GridCoord]) {
         let sections: Vec<(Vec<usize>, RawBounds)> = child_dividers
             .into_iter()
             .filter_map(|child_index| {
-                let member_indices = group_member_indices(graph, child_index);
+                let member_indices = group_member_indices(&topology, child_index);
                 if member_indices.is_empty() {
                     return None;
                 }
@@ -215,10 +219,11 @@ pub(super) fn node_padding_y(
     let Some(node) = graph.nodes.get(node_index) else {
         return options.graph_padding_y;
     };
-    let Some(group_index) = node_group_index(graph, &node.id) else {
+    let topology = GraphGroupTopology::new(graph);
+    let Some(group_index) = topology.direct_node_group_index(&node.id) else {
         return options.graph_padding_y;
     };
-    if !has_incoming_edge_from_outside_group(graph, &node.id, group_index) {
+    if !has_incoming_edge_from_outside_group(graph, &topology, &node.id, group_index) {
         return options.graph_padding_y;
     }
 
@@ -228,11 +233,11 @@ pub(super) fn node_padding_y(
         .unwrap_or_default();
     let has_higher_external_entry = graph.groups[group_index].nodes.iter().any(|other_id| {
         if other_id == &node.id
-            || !has_incoming_edge_from_outside_group(graph, other_id, group_index)
+            || !has_incoming_edge_from_outside_group(graph, &topology, other_id, group_index)
         {
             return false;
         }
-        let Some(other_index) = graph.nodes.iter().position(|other| other.id == *other_id) else {
+        let Some(other_index) = topology.node_index(other_id) else {
             return false;
         };
         placements
@@ -246,22 +251,15 @@ pub(super) fn node_padding_y(
     options.graph_padding_y + SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD
 }
 
-pub(super) fn node_group_index(graph: &AsciiGraph, node_id: &str) -> Option<usize> {
-    graph
-        .groups
-        .iter()
-        .position(|group| group.nodes.iter().any(|member| member == node_id))
-}
-
 fn has_incoming_edge_from_outside_group(
     graph: &AsciiGraph,
+    topology: &GraphGroupTopology<'_>,
     node_id: &str,
     group_index: usize,
 ) -> bool {
-    graph
-        .edges
-        .iter()
-        .any(|edge| edge.to == node_id && node_group_index(graph, &edge.from) != Some(group_index))
+    graph.edges.iter().any(|edge| {
+        edge.to == node_id && topology.direct_node_group_index(&edge.from) != Some(group_index)
+    })
 }
 
 fn graph_endpoint_group_ids(graph: &AsciiGraph) -> HashSet<&str> {
@@ -278,44 +276,8 @@ fn graph_endpoint_group_ids(graph: &AsciiGraph) -> HashSet<&str> {
         .collect()
 }
 
-fn group_member_indices(graph: &AsciiGraph, group_index: usize) -> Vec<usize> {
-    let group_index_by_id = graph
-        .groups
-        .iter()
-        .enumerate()
-        .map(|(index, group)| (group.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
-    let node_index_by_id = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
-    let mut indices = HashSet::new();
-    let mut visited_groups = HashSet::new();
-    let mut stack = vec![group_index];
-
-    while let Some(index) = stack.pop() {
-        if !visited_groups.insert(index) {
-            continue;
-        }
-        let Some(group) = graph.groups.get(index) else {
-            continue;
-        };
-
-        for member in &group.nodes {
-            if let Some(node_index) = node_index_by_id.get(member.as_str()).copied() {
-                indices.insert(node_index);
-            } else if let Some(child_group_index) = group_index_by_id.get(member.as_str()).copied()
-            {
-                stack.push(child_group_index);
-            }
-        }
-    }
-
-    let mut indices = indices.into_iter().collect::<Vec<_>>();
-    indices.sort_unstable();
-    indices
+fn group_member_indices(topology: &GraphGroupTopology<'_>, group_index: usize) -> Vec<usize> {
+    topology.group_member_node_indices(group_index)
 }
 
 fn group_bounds_for_placements(
@@ -345,32 +307,24 @@ struct GroupPlacementMember {
     node_indices: Vec<usize>,
 }
 
-fn group_placement_members(graph: &AsciiGraph, group_index: usize) -> Vec<GroupPlacementMember> {
+fn group_placement_members(
+    graph: &AsciiGraph,
+    topology: &GraphGroupTopology<'_>,
+    group_index: usize,
+) -> Vec<GroupPlacementMember> {
     let Some(group) = graph.groups.get(group_index) else {
         return Vec::new();
     };
-    let group_index_by_id = graph
-        .groups
-        .iter()
-        .enumerate()
-        .map(|(index, group)| (group.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
-    let node_index_by_id = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
 
     let mut members = Vec::new();
     for member in &group.nodes {
-        if let Some(node_index) = node_index_by_id.get(member.as_str()).copied() {
+        if let Some(node_index) = topology.node_index(member) {
             members.push(GroupPlacementMember {
                 id: member.clone(),
                 node_indices: vec![node_index],
             });
-        } else if let Some(child_group_index) = group_index_by_id.get(member.as_str()).copied() {
-            let node_indices = group_member_indices(graph, child_group_index);
+        } else if let Some(child_group_index) = topology.group_index(member) {
+            let node_indices = topology.group_member_node_indices(child_group_index);
             if node_indices.is_empty() {
                 continue;
             }
