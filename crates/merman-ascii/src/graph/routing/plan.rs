@@ -1,6 +1,6 @@
 use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
-use super::label::{RoutedLabelPlacement, routed_label_placement};
+use super::label::{RoutedLabelPlacement, RoutedLabelText, routed_label_placement_for_text};
 use super::path::StepDirection;
 
 mod boundary;
@@ -56,7 +56,9 @@ impl RoutePlan {
             height = height.max(cell.coord.y.saturating_add(1));
         }
         for label in &self.labels {
-            let (label_width, label_height) = label.placement.canvas_extent();
+            let (label_width, label_height) = label
+                .placement
+                .canvas_extent_for_lines(label.text.line_count());
             width = width.max(label_width);
             height = height.max(label_height);
         }
@@ -91,7 +93,7 @@ pub(super) enum PlannedRouteCellKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PlannedRouteLabel {
-    pub(super) text: String,
+    pub(super) text: RoutedLabelText,
     pub(super) placement: RoutedLabelPlacement,
 }
 
@@ -154,12 +156,10 @@ fn planned_label(
     start: CanvasCoord,
     end: CanvasCoord,
 ) -> Option<PlannedRouteLabel> {
-    let label = label.filter(|label| !label.is_empty())?;
-    let placement = routed_label_placement(start, end, label)?;
-    Some(PlannedRouteLabel {
-        text: label.to_string(),
-        placement,
-    })
+    let label = label.filter(|label| !label.trim().is_empty())?;
+    let text = RoutedLabelText::new(label)?;
+    let placement = routed_label_placement_for_text(start, end, &text)?;
+    Some(PlannedRouteLabel { text, placement })
 }
 
 fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {

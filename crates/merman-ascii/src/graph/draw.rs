@@ -92,9 +92,13 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         height,
     );
     for label in &edge_labels {
-        let label = routing::transform_routed_label(label, |placement| {
-            output_transform.route_label_placement(placement, width, height)
-        });
+        let label = routing::transform_routed_label(
+            label,
+            |placement, label_height| {
+                output_transform.route_label_placement(placement, width, height, label_height)
+            },
+            output_transform.is_vertical_mirror(),
+        );
         routing::draw_routed_label(&mut canvas, &label);
     }
     for group in &graph_layout.groups {
@@ -122,6 +126,10 @@ impl OutputTransform {
 
     fn is_identity(self) -> bool {
         self == Self::Identity
+    }
+
+    fn is_vertical_mirror(self) -> bool {
+        self == Self::VerticalMirror
     }
 
     fn coord(self, coord: CanvasCoord, width: usize, height: usize) -> CanvasCoord {
@@ -202,6 +210,7 @@ impl OutputTransform {
         placement: routing::RoutedLabelPlacement,
         width: usize,
         height: usize,
+        label_height: usize,
     ) -> routing::RoutedLabelPlacement {
         match self {
             Self::Identity => placement,
@@ -213,7 +222,7 @@ impl OutputTransform {
             ),
             Self::VerticalMirror => placement.with_position(
                 placement.x(),
-                height.saturating_sub(1).saturating_sub(placement.y()),
+                height.saturating_sub(placement.y().saturating_add(label_height)),
             ),
         }
     }

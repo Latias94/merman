@@ -13,8 +13,8 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
-| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels, deterministic length spacing, TD same-rank merge edges, and `mermaid-ascii` padding directives for simple LR/TD edges. |
-| Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
+| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels including multiline labels, deterministic length spacing, TD same-rank merge edges, and `mermaid-ascii` padding directives for simple LR/TD edges. |
+| Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 | Color roles and styles | Supported subset | Opt-in `AsciiColorMode` can emit ANSI or HTML foreground/background spans for renderer-owned roles and Mermaid flowchart `classDef`, `class`, inline `style`, and `linkStyle` declarations. Supported style properties are `color` for text/labels, `stroke` for borders/edges, and `fill`/`background` for node and subgraph backgrounds. |
@@ -28,7 +28,7 @@ approximations. These mappings are product behavior once shipped and should be s
 | Capability | Planned behavior | Notes |
 | --- | --- | --- |
 | Direction transforms | Supported subset. | `BT` vertically flips the TD layout; `RL` horizontally mirrors the LR layout. Node labels, edge labels, group titles, arrowheads, and Unicode connectors stay readable/oriented for the covered root-direction subset. |
-| Edge labels | Supported subset. | Labels render on routed edge paths for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. |
+| Edge labels | Supported subset. | Labels render on routed edge paths, including multiline labels, for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. |
 | Open edges | Supported subset. | Rendered as directionless connectors without arrowheads. |
 | Dotted edges | Supported subset. | ASCII uses `.`/`:`; Unicode uses box-drawing dotted line approximations. |
 | Thick edges | Supported subset. | ASCII uses `=`/`#` for horizontal/vertical thick lines; Unicode uses heavy box-drawing line characters. |
@@ -38,7 +38,7 @@ approximations. These mappings are product behavior once shipped and should be s
 | Diamond/decision shapes | Supported approximation. | Rendered with a decision-like terminal outline using `< label >` on the center row. |
 | Subroutine shapes | Supported approximation. | Rendered as boxes with inner vertical rails. |
 | Cylinder/database shapes | Supported approximation. | Rendered as rounded boxes with an inner top separator. |
-| Subgraphs | Supported subset. | Titled, multiline-title, wrapped-title, nested, external-edge, and boundary-aware cross-boundary group layouts for the shipped `LR`-inside-`TD` subset are covered by parser/model tests and copied `mermaid-ascii` graph fixtures. |
+| Subgraphs | Supported subset. | Titled, multiline-title, wrapped-title, nested, disconnected, external-edge, and boundary-aware cross-boundary group layouts for the shipped `LR`-inside-`TD` subset are covered by parser/model tests, local semantic fixtures, and copied `mermaid-ascii` graph fixtures. |
 
 ## Explicitly Unsupported
 
@@ -46,7 +46,6 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 | Feature | Error feature |
 | --- | --- |
-| Multiline edge labels | `multiline edge labels` |
 | Hand-built subgraph member ids with line breaks | `subgraph member ids with line breaks` |
 | Hand-built models with directions outside Mermaid's supported root-direction set | `unsupported graph directions` |
 | Hexagon, lean, document, fork/join, icon, image, and other uncommon shapes | `non-rectangular node shapes` |
@@ -66,6 +65,7 @@ reference implementation is only an implementation aid.
 | `BT` root direction | Ported | The typed root direction is available, and honest terminal output is implemented as a post-layout vertical flip with arrow/corner remapping. | Covered by `flowchart_parser_bt_root_direction_renders_with_vertical_flip`. |
 | `RL` root direction | Ported with true inversion | `beautiful-mermaid` currently treats `RL` as `LR`, which misrepresents Mermaid semantics; `merman-ascii` implements a true horizontal mirror instead. | Covered by `flowchart_parser_rl_root_direction_renders_with_horizontal_mirror`, `flowchart_parser_rl_multi_character_node_labels_stay_readable`, `flowchart_parser_rl_edge_labels_stay_readable`, and `flowchart_parser_rl_chain_mirrors_unicode_connectors`. |
 | Subgraph direction overrides | Ported subset | `FlowSubgraph.dir` now supports canonical local-direction overrides across nested subgraphs, including the boundary-aware cross-boundary cases covered by the current router. The shipped subset covers the common mixed-direction combinations exercised by the nested tests below; broader unsupported Mermaid combinations should still be added explicitly when they are proven. | Covered by `render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges`, `flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_records_boundary_aware_baseline`, and `flowchart_parser_nested_subgraph_direction_override_keeps_child_group_as_a_movable_block`. |
+| Disconnected subgraphs | Ported semantically | `beautiful-mermaid` uses layout-level non-overlap checks for disconnected groups. `merman-ascii` protects the terminal behavior with local semantic assertions: groups remain distinct, content stays visible, and each disconnected LR chain keeps its local row. | Covered by `flowchart_local_semantic_fixture_covers_disconnected_subgraphs`. |
 | Multiline and wrapped subgraph labels | Ported | The title text can be represented, and group layout now reserves multiple centered title rows using the shared graph label splitter and display-width wrapper. | Covered by `flowchart_parser_multiline_subgraph_title_renders_centered_rows`, `render_flowchart_renders_model_multiline_subgraph_titles`, and `flowchart_parser_long_subgraph_title_wraps_to_multiple_rows`. |
 | ANSI/HTML color roles | Ported | ADR 0067 added an opt-in color API, and flowchart now assigns semantic foreground/background roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
 | `classDef`, `class`, inline node styles, and `linkStyle` colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps safe terminal semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, node/subgraph `fill`/`background` to ANSI/HTML backgrounds, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |

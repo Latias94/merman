@@ -2,9 +2,12 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphNodeShape};
 use super::super::cell::edge_line_char;
+use super::super::label::{
+    RoutedLabelText, routed_label_right_of_vertical_route_placement_for_text,
+};
 use super::{
-    PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
-    edge_line_cell, planned_label, route_cell,
+    PlannedRouteCell, PlannedRouteCellKind, PlannedRouteLabel, PlannedRouteSegment, RoutePlan,
+    edge_arrow_cell, edge_line_cell, planned_label, route_cell,
 };
 
 pub(super) fn plan_top_down_direct_route(
@@ -337,22 +340,19 @@ pub(super) fn plan_top_down_back_route(
             }
         }
     }
-    let labels: Vec<_> = planned_label(
-        edge.label.as_deref(),
-        CanvasCoord {
-            x: lane_x,
-            y: target_y,
-        },
-        CanvasCoord {
-            x: lane_x,
-            y: source_y,
-        },
-    )
-    .into_iter()
-    .collect();
+    let labels: Vec<_> =
+        planned_top_down_back_label(edge.label.as_deref(), lane_x, target_y, source_y)
+            .into_iter()
+            .collect();
 
     let min_width = labels.iter().fold(lane_x + 3, |width, label| {
-        width.max(label.placement.canvas_extent().0 + 1)
+        width.max(
+            label
+                .placement
+                .canvas_extent_for_lines(label.text.line_count())
+                .0
+                + 1,
+        )
     });
 
     Some(RoutePlan::with_min_canvas_extent(
@@ -362,4 +362,27 @@ pub(super) fn plan_top_down_back_route(
 
 pub(super) fn top_down_back_edge_lane_x(from: &NodeLayout, to: &NodeLayout) -> usize {
     from.right().max(to.right()) + 4
+}
+
+fn planned_top_down_back_label(
+    label: Option<&str>,
+    lane_x: usize,
+    target_y: usize,
+    source_y: usize,
+) -> Option<PlannedRouteLabel> {
+    let label = label.filter(|label| !label.trim().is_empty())?;
+    let text = RoutedLabelText::new(label)?;
+    let placement = routed_label_right_of_vertical_route_placement_for_text(
+        CanvasCoord {
+            x: lane_x,
+            y: target_y,
+        },
+        CanvasCoord {
+            x: lane_x,
+            y: source_y,
+        },
+        &text,
+    )?;
+
+    Some(PlannedRouteLabel { text, placement })
 }

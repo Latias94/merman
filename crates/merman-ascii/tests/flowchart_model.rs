@@ -1057,6 +1057,65 @@ fn flowchart_local_semantic_fixture_covers_boundary_label_lane() {
 }
 
 #[test]
+fn flowchart_local_semantic_fixture_covers_multiline_edge_labels() {
+    let input = local_semantic_input("flowchart/multiline_edge_label.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic multiline-edge fixture should render");
+
+    for expected in ["A", "B", "north", "south"] {
+        assert!(
+            rendered.contains(expected),
+            "multiline edge-label fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("<br>"),
+        "multiline edge-label fixture should not leak HTML break markup:\n{rendered}"
+    );
+
+    let north = first_line_index_containing(&rendered, "north");
+    let south = first_line_index_containing(&rendered, "south");
+    assert_eq!(
+        south,
+        north + 1,
+        "multiline edge-label fixture should stack label rows in order:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_back_edge_labels() {
+    let input = local_semantic_input("flowchart/back_edge_labels.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic back-edge label fixture should render");
+
+    for expected in ["A", "B", "C", "back to top", "back to middle"] {
+        assert!(
+            rendered.contains(expected),
+            "back-edge label fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(
+        line_index("A") < line_index("B"),
+        "root TD flow should keep A above B:\n{rendered}"
+    );
+    assert!(
+        line_index("B") < line_index("C"),
+        "root TD flow should keep B above C:\n{rendered}"
+    );
+    assert_ne!(
+        line_index("back to top"),
+        line_index("back to middle"),
+        "separate back-edge labels should not overwrite each other:\n{rendered}"
+    );
+    assert!(
+        line_index("back to top") < line_index("back to middle"),
+        "back-edge labels should retain their planned order without merging:\n{rendered}"
+    );
+}
+
+#[test]
 fn flowchart_local_semantic_fixture_covers_sibling_group_boundary_routes() {
     let input = local_semantic_input("flowchart/sibling_boundary_routes.mmd");
     let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
@@ -1098,6 +1157,61 @@ fn flowchart_local_semantic_fixture_covers_sibling_group_boundary_routes() {
     assert!(
         line_index("Gamma") < line_index("Delta"),
         "target sibling group should preserve its internal TD chain:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_disconnected_subgraphs() {
+    let input = local_semantic_input("flowchart/disconnected_subgraphs.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic disconnected-subgraphs flowchart fixture should render");
+
+    for expected in [
+        "Today",
+        "Next Wave",
+        "Today AI",
+        "Today Markdown",
+        "Today Reads",
+        "Next AI",
+        "Next Widget",
+        "Next Acts",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "disconnected-subgraphs fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert_rectangular_char_grid(&rendered);
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(
+        line_index("Today") < line_index("Next Wave"),
+        "LR disconnected subgraphs should stack into separate visible groups without overlap:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Today AI"),
+        line_index("Today Markdown"),
+        "first disconnected group should keep its LR chain on one row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Today Markdown"),
+        line_index("Today Reads"),
+        "first disconnected group should keep its full LR chain on one row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Next AI"),
+        line_index("Next Widget"),
+        "second disconnected group should keep its LR chain on one row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Next Widget"),
+        line_index("Next Acts"),
+        "second disconnected group should keep its full LR chain on one row:\n{rendered}"
+    );
+    assert!(
+        line_index("Today Reads") < line_index("Next AI"),
+        "disconnected group content should not overlap or merge into one row:\n{rendered}"
     );
 }
 

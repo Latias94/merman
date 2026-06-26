@@ -19,6 +19,7 @@ use crate::graph::model::{
     GraphNodeShape, GraphNodeStyle,
 };
 use crate::graph::routing::label::RoutedLabelPlacement;
+use crate::graph::routing::label::RoutedLabelText;
 use crate::graph::routing::plan::PlannedRouteSegment;
 use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
 
@@ -121,7 +122,7 @@ fn route_plan_canvas_extent_accounts_for_top_down_back_label_width() {
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
     let plan = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
 
-    assert_eq!(plan.canvas_extent(), (9, 8));
+    assert_eq!(plan.canvas_extent(), (12, 8));
 }
 
 #[test]
@@ -471,7 +472,7 @@ fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() 
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "label".to_string(),
+            text: RoutedLabelText::new("label").expect("single-line label should exist"),
             placement: RoutedLabelPlacement::new(5, 1, 5),
         }]
     );
@@ -555,7 +556,7 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "go".to_string(),
+            text: RoutedLabelText::new("go").expect("single-line label should exist"),
             placement: RoutedLabelPlacement::new(6, 2, 2),
         }]
     );
@@ -588,7 +589,9 @@ fn left_right_grid_path_route_plans_bent_path_cells_and_corner() {
             .any(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
     );
     assert_eq!(
-        plan.labels.first().map(|label| label.text.as_str()),
+        plan.labels
+            .first()
+            .and_then(|label| label.text.lines().first().map(String::as_str)),
         Some("down")
     );
 }
@@ -754,7 +757,7 @@ fn left_right_bottom_lane_route_plans_reverse_lane_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "back".to_string(),
+            text: RoutedLabelText::new("back").expect("single-line label should exist"),
             placement: RoutedLabelPlacement::new(4, 4, 4),
         }]
     );
@@ -787,7 +790,7 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "rev".to_string(),
+            text: RoutedLabelText::new("rev").expect("single-line label should exist"),
             placement: RoutedLabelPlacement::new(5, 1, 3),
         }]
     );
@@ -847,7 +850,7 @@ fn top_down_bent_route_plans_side_bend_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "bend".to_string(),
+            text: RoutedLabelText::new("bend").expect("single-line label should exist"),
             placement: RoutedLabelPlacement::new(2, 1, 4),
         }]
     );
@@ -879,7 +882,7 @@ fn top_down_choice_bent_route_drops_before_turning_and_labels_horizontal_segment
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "bend".to_string(),
+            text: RoutedLabelText::new("bend").expect("single-line label should exist"),
             placement: RoutedLabelPlacement::new(2, 4, 4),
         }]
     );
@@ -992,8 +995,8 @@ fn top_down_back_route_plans_lane_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "back".to_string(),
-            placement: RoutedLabelPlacement::new(4, 4, 4),
+            text: RoutedLabelText::new("back").expect("single-line label should exist"),
+            placement: RoutedLabelPlacement::new(7, 4, 4),
         }]
     );
 }
@@ -1019,7 +1022,7 @@ fn top_down_direct_route_plans_connector_line_arrow_and_label() {
     assert_eq!(
         plan.labels,
         vec![PlannedRouteLabel {
-            text: "label".to_string(),
+            text: RoutedLabelText::new("label").expect("single-line label should exist"),
             placement: RoutedLabelPlacement::new(2, 4, 5),
         }]
     );

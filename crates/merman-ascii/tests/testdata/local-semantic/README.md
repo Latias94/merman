@@ -77,7 +77,10 @@ Current examples:
 - `er/dense_relations.mmd`
 - `er/dense_multiline_relations.mmd`
 - `er/routed_schema_with_attributes.mmd`
+- `flowchart/back_edge_labels.mmd`
 - `flowchart/boundary_label_lane.mmd`
+- `flowchart/disconnected_subgraphs.mmd`
+- `flowchart/multiline_edge_label.mmd`
 - `flowchart/multi_boundary_routes.mmd`
 - `flowchart/nested_direction_boundary.mmd`
 - `flowchart/sibling_boundary_routes.mmd`

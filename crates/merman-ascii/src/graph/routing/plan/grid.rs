@@ -3,7 +3,8 @@ use super::super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayou
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
 use super::super::label::{
-    RoutedLabelPlacement, routed_label_placement, routed_label_right_of_vertical_route_placement,
+    RoutedLabelPlacement, RoutedLabelText, routed_label_placement_for_text,
+    routed_label_right_of_vertical_route_placement_for_text,
 };
 use super::super::path::{
     GridPathPortPolicy, Port, PortPair, StepDirection, merge_grid_path, route_grid_path,
@@ -135,15 +136,13 @@ fn planned_grid_label(
     directions: &[StepDirection],
     mode: GridRouteLabelMode,
 ) -> Option<PlannedRouteLabel> {
-    let label = label.filter(|label| !label.is_empty())?;
+    let label = label.filter(|label| !label.trim().is_empty())?;
+    let text = RoutedLabelText::new(label)?;
     let (line, direction) = grid_label_line(lines, directions, mode)?;
     let first = line.first().copied()?;
     let last = line.last().copied()?;
-    let placement = grid_label_placement(label, first, last, mode, direction)?;
-    Some(PlannedRouteLabel {
-        text: label.to_string(),
-        placement,
-    })
+    let placement = grid_label_placement(&text, first, last, mode, direction)?;
+    Some(PlannedRouteLabel { text, placement })
 }
 
 fn grid_label_line<'a>(
@@ -174,18 +173,20 @@ fn last_vertical_grid_label_line<'a>(
 }
 
 fn grid_label_placement(
-    label: &str,
+    label: &RoutedLabelText,
     first: CanvasCoord,
     last: CanvasCoord,
     mode: GridRouteLabelMode,
     direction: StepDirection,
 ) -> Option<RoutedLabelPlacement> {
     match mode {
-        GridRouteLabelMode::InlineLongestSegment => routed_label_placement(first, last, label),
+        GridRouteLabelMode::InlineLongestSegment => {
+            routed_label_placement_for_text(first, last, label)
+        }
         GridRouteLabelMode::FirstVerticalTransitLane
         | GridRouteLabelMode::LastVerticalTransitLane => match direction {
             StepDirection::Up | StepDirection::Down => {
-                routed_label_right_of_vertical_route_placement(first, last, label)
+                routed_label_right_of_vertical_route_placement_for_text(first, last, label)
             }
             StepDirection::Left | StepDirection::Right => None,
         },

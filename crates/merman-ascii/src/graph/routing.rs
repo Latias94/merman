@@ -119,11 +119,16 @@ pub(super) fn prepare_route_scene(
 
 pub(super) fn transform_routed_label(
     label: &EdgeLabel,
-    mut transform: impl FnMut(RoutedLabelPlacement) -> RoutedLabelPlacement,
+    mut transform: impl FnMut(RoutedLabelPlacement, usize) -> RoutedLabelPlacement,
+    reverse_lines: bool,
 ) -> EdgeLabel {
     EdgeLabel {
-        text: label.text.clone(),
-        placement: transform(label.placement),
+        text: if reverse_lines {
+            label.text.reversed()
+        } else {
+            label.text.clone()
+        },
+        placement: transform(label.placement, label.text.line_count()),
         color: label.color,
     }
 }
@@ -203,6 +208,7 @@ mod tests {
     use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs};
+    use crate::graph::routing::label::RoutedLabelText;
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
@@ -216,7 +222,7 @@ mod tests {
                 planned_cell(2, 0, '>', PlannedRouteCellKind::EdgeArrow),
             ],
             vec![PlannedRouteLabel {
-                text: "label".to_string(),
+                text: RoutedLabelText::new("label").expect("single-line label should exist"),
                 placement: RoutedLabelPlacement::new(0, 0, 5),
             }],
         );
@@ -249,6 +255,31 @@ mod tests {
             Some(crate::terminal::CanvasColor::Direct(arrow))
         );
         assert_eq!(labels[0].color, Some(label));
+    }
+
+    #[test]
+    fn transform_routed_label_reverses_vertical_mirrored_multiline_labels() {
+        let label = EdgeLabel {
+            text: RoutedLabelText::new("north<br>south").expect("label should exist"),
+            placement: RoutedLabelPlacement::new(2, 4, 5),
+            color: None,
+        };
+
+        let transformed = transform_routed_label(
+            &label,
+            |placement, line_count| {
+                placement.with_position(
+                    20usize
+                        .saturating_sub(placement.x())
+                        .saturating_sub(placement.width()),
+                    20usize.saturating_sub(placement.y().saturating_add(line_count)),
+                )
+            },
+            true,
+        );
+
+        assert_eq!(transformed.text.lines(), ["south", "north"]);
+        assert_eq!(transformed.placement, RoutedLabelPlacement::new(13, 14, 5));
     }
 
     #[test]

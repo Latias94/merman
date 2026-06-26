@@ -22,7 +22,7 @@ This crate contains the public API foundation, options, errors, third-party prov
 upstream golden fixtures, and model-driven Flowchart, Sequence, State, Class, ER, and XYChart
 rendering. Flowcharts with
 LR/TD/TB/BT/RL root directions, boxed nodes, multiline node labels, common terminal shape
-approximations, edge labels, open/dotted and thick edges, length spacing, and titled/nested
+approximations, edge labels including multiline edge labels, open/dotted and thick edges, length spacing, and titled/nested
 subgraphs with multiline and wrapped title rows can render through `render_flowchart`.
 Basic sequence diagrams with participants, filled/open solid and dotted messages, self messages,
 wrapped message labels, wrapped notes, diagram titles, sequence boxes, activations, actor
@@ -82,7 +82,7 @@ copied, normalized, and self-authored cases.
 
 | Diagram family | Public entry points | Shipped text subset |
 | --- | --- | --- |
-| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML color roles, foreground `classDef`/`class`/`style`/`linkStyle` mapping, and node/subgraph `fill`/`background` output. |
+| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels including multiline edge labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML color roles, foreground `classDef`/`class`/`style`/`linkStyle` mapping, and node/subgraph `fill`/`background` output. |
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes with parseable fill backgrounds, activations, lifecycle markers, autonumber, core control blocks, parseable rect backgrounds, and opt-in ANSI/HTML color roles. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, multiline relationship labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, dense crossing/grid-budget relation-summary fallback, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, multiline relationship labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, dense crossing/grid-budget relation-summary fallback, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
