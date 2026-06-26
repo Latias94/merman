@@ -7,8 +7,9 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    RelationComponentFacts, RelationComponentSummaryPolicy, RelationGraphLabel, RelationGraphLine,
+    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
+    RelationStackPlan,
 };
 use crate::text::display_width;
 use merman_core::models::class_diagram::{
@@ -252,12 +253,8 @@ fn render_class_components(
         options,
         class_layered_error,
         is_same_endpoint_parallel_layout,
-        |component_layouts| {
-            component_layouts.len() > 1
-                && component_layouts
-                    .iter()
-                    .any(RelationLayout::has_endpoint_label)
-        },
+        RelationComponentSummaryPolicy::summarize_multi_relation_endpoint_labels(),
+        |layout| RelationComponentFacts::default().with_endpoint_label(layout.has_endpoint_label()),
         |component_boxes, layout, component_options| {
             let top = find_box(component_boxes, layout.top_id)?;
             let bottom = find_box(component_boxes, layout.bottom_id)?;
@@ -278,7 +275,7 @@ fn render_class_components(
                 charset,
             )
         },
-        |component_boxes, component_layouts, component_options| {
+        |component_boxes, component_layouts, _reason, component_options| {
             Ok(render_dense_relation_fallback(
                 component_boxes,
                 component_layouts,

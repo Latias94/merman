@@ -28,6 +28,60 @@ pub(crate) struct RelationGraphLabel {
     width: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct RelationComponentFacts {
+    has_endpoint_label: bool,
+}
+
+impl RelationComponentFacts {
+    pub(crate) fn with_endpoint_label(mut self, has_endpoint_label: bool) -> Self {
+        self.has_endpoint_label = has_endpoint_label;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RelationComponentSummaryPolicy {
+    summarize_multi_relation_endpoint_labels: bool,
+}
+
+impl RelationComponentSummaryPolicy {
+    pub(crate) fn never_before_layering() -> Self {
+        Self {
+            summarize_multi_relation_endpoint_labels: false,
+        }
+    }
+
+    pub(crate) fn summarize_multi_relation_endpoint_labels() -> Self {
+        Self {
+            summarize_multi_relation_endpoint_labels: true,
+        }
+    }
+
+    fn summary_reason_before_layering<R>(
+        self,
+        relations: &[R],
+        relation_facts: impl Fn(&R) -> RelationComponentFacts,
+    ) -> Option<RelationComponentSummaryReason> {
+        if self.summarize_multi_relation_endpoint_labels
+            && relations.len() > 1
+            && relations
+                .iter()
+                .map(relation_facts)
+                .any(|facts| facts.has_endpoint_label)
+        {
+            return Some(RelationComponentSummaryReason::MultiRelationEndpointLabels);
+        }
+
+        None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RelationComponentSummaryReason {
+    MultiRelationEndpointLabels,
+}
+
 impl RelationGraphLabel {
     pub(crate) fn new(raw: &str) -> Option<Self> {
         let trimmed = raw.trim();
@@ -371,10 +425,16 @@ pub(crate) fn render_relation_components<R>(
     options: &AsciiRenderOptions,
     layered_error: impl Fn(LayeredRelationError) -> AsciiError,
     is_same_endpoint_parallel: impl Fn(&[R]) -> bool,
-    should_summary_fallback: impl Fn(&[R]) -> bool,
+    summary_policy: RelationComponentSummaryPolicy,
+    relation_facts: impl Fn(&R) -> RelationComponentFacts,
     render_vertical: impl Fn(&[RelationGraphBox], &R, &AsciiRenderOptions) -> Result<String>,
     render_parallel: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
-    render_summary: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+    render_summary: impl Fn(
+        &[RelationGraphBox],
+        &[R],
+        RelationComponentSummaryReason,
+        &AsciiRenderOptions,
+    ) -> Result<String>,
     render_layered: impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
 ) -> Result<String>
 where
@@ -387,7 +447,8 @@ where
             relations,
             options,
             &is_same_endpoint_parallel,
-            &should_summary_fallback,
+            summary_policy,
+            &relation_facts,
             &render_vertical,
             &render_parallel,
             &render_summary,
@@ -412,7 +473,8 @@ where
             &component_relations,
             options,
             &is_same_endpoint_parallel,
-            &should_summary_fallback,
+            summary_policy,
+            &relation_facts,
             &render_vertical,
             &render_parallel,
             &render_summary,
@@ -429,10 +491,16 @@ fn render_relation_component<R>(
     relations: &[R],
     options: &AsciiRenderOptions,
     is_same_endpoint_parallel: &impl Fn(&[R]) -> bool,
-    should_summary_fallback: &impl Fn(&[R]) -> bool,
+    summary_policy: RelationComponentSummaryPolicy,
+    relation_facts: &impl Fn(&R) -> RelationComponentFacts,
     render_vertical: &impl Fn(&[RelationGraphBox], &R, &AsciiRenderOptions) -> Result<String>,
     render_parallel: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
-    render_summary: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
+    render_summary: &impl Fn(
+        &[RelationGraphBox],
+        &[R],
+        RelationComponentSummaryReason,
+        &AsciiRenderOptions,
+    ) -> Result<String>,
     render_layered: &impl Fn(&[RelationGraphBox], &[R], &AsciiRenderOptions) -> Result<String>,
 ) -> Result<String> {
     if relations.is_empty() {
@@ -444,8 +512,8 @@ fn render_relation_component<R>(
     if relations.len() == 1 {
         return render_vertical(boxes, &relations[0], options);
     }
-    if should_summary_fallback(relations) {
-        return render_summary(boxes, relations, options);
+    if let Some(reason) = summary_policy.summary_reason_before_layering(relations, relation_facts) {
+        return render_summary(boxes, relations, reason, options);
     }
 
     render_layered(boxes, relations, options)

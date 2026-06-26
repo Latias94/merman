@@ -5,8 +5,9 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    RelationComponentFacts, RelationComponentSummaryPolicy, RelationGraphLabel, RelationGraphLine,
+    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
+    RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -126,7 +127,8 @@ fn render_er_components(
         options,
         er_layered_error,
         is_same_endpoint_parallel_relationship,
-        |_relationships| false,
+        RelationComponentSummaryPolicy::never_before_layering(),
+        |_relationship| RelationComponentFacts::default(),
         |component_boxes, relationship, component_options| {
             let top = find_box(component_boxes, &relationship.entity_a)?;
             let bottom = find_box(component_boxes, &relationship.entity_b)?;
@@ -141,7 +143,7 @@ fn render_er_components(
                 charset,
             )
         },
-        |component_boxes, component_relationships, component_options| {
+        |component_boxes, component_relationships, _reason, component_options| {
             render_dense_relationship_fallback(
                 component_boxes,
                 component_relationships,
