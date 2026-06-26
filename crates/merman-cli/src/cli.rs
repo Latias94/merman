@@ -1,6 +1,6 @@
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 use merman::render::FlowchartElkBackend as RenderFlowchartElkBackend;
-use merman_analysis::{DiagnosticSeverity, configurable_rule_descriptor};
+use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -151,6 +151,24 @@ pub(crate) struct LintArgs {
         help_heading = "Analysis options"
     )]
     pub(crate) max_source_bytes: Option<usize>,
+
+    /// Built-in lint rule profile: core, recommended, or strict.
+    #[arg(
+        long = "lint-profile",
+        value_name = "PROFILE",
+        value_parser = parse_lint_profile,
+        help_heading = "Lint rules"
+    )]
+    pub(crate) lint_profile: Option<AnalysisRuleProfile>,
+
+    /// Enable a configurable lint rule by stable rule id. Can be repeated.
+    #[arg(
+        long = "enable-rule",
+        value_name = "RULE_ID",
+        value_parser = parse_lint_rule_id,
+        help_heading = "Lint rules"
+    )]
+    pub(crate) enable_rules: Vec<String>,
 
     /// Disable a configurable lint rule by stable rule id. Can be repeated.
     #[arg(
@@ -714,6 +732,15 @@ fn parse_lint_rule_id(value: &str) -> Result<String, String> {
         return Err(format!("unknown or internal lint rule id `{value}`"));
     }
     Ok(value.to_string())
+}
+
+fn parse_lint_profile(value: &str) -> Result<AnalysisRuleProfile, String> {
+    match value.to_ascii_lowercase().as_str() {
+        "core" => Ok(AnalysisRuleProfile::Core),
+        "recommended" => Ok(AnalysisRuleProfile::Recommended),
+        "strict" => Ok(AnalysisRuleProfile::Strict),
+        _ => Err("expected profile core, recommended, or strict".to_string()),
+    }
 }
 
 fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, String> {

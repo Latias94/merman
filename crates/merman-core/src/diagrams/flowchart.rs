@@ -1,7 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{
     DiagramWarningFact, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, Error, FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID, MermaidConfig,
+    EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig,
     ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use indexmap::IndexMap;
@@ -222,7 +222,7 @@ fn flowchart_warning_facts(
 
     vec![
         DiagramWarningFact::new(
-            FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
             "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
         )
         .with_span(header_span)

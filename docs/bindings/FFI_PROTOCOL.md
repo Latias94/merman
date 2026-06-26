@@ -41,9 +41,11 @@ protocol extension reserves diagnostics-first analysis JSON as the canonical val
 payload. All source-processing functions accept the shared `options_json` contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
-That shared options contract now also carries a `lint` section for rule enable/disable and severity
-overrides. Hosts that consume analysis or validation diagnostics should treat those rule ids as the
-stable shared contract, not as transport-local behavior.
+That shared options contract now also carries a `lint` section for rule profiles, explicit
+enable/disable, and severity overrides. Hosts that consume analysis or validation diagnostics
+should treat those rule ids as the stable shared contract, not as transport-local behavior. Merman
+authoring rules are opt-in through the `recommended` profile or explicit rule enablement; they are
+not Mermaid-official standards.
 
 ## Stability
 

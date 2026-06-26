@@ -2117,7 +2117,7 @@ fn parse_diagram_flowchart_without_direction_preserves_source_and_warns() {
         res.model["warningFacts"],
         json!([
             {
-                "ruleId": FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
                 "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
                 "span": { "start": 0, "end": 9 },
                 "fixSpan": { "start": 9, "end": 9 }
@@ -2140,7 +2140,7 @@ fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
             assert_eq!(model.warning_facts.len(), 1);
             assert_eq!(
                 model.warning_facts[0].rule_id,
-                FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID
+                FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID
             );
             assert_eq!(model.warning_facts[0].span, Some(SourceSpan::new(0, 9)));
             assert_eq!(model.warning_facts[0].fix_span, Some(SourceSpan::new(9, 9)));

@@ -1,5 +1,6 @@
 use crate::{
-    AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, configurable_rule_descriptor,
+    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, DiagnosticSeverity,
+    configurable_rule_descriptor,
 };
 use chrono::NaiveDate;
 use merman_core::MermaidConfig;
@@ -40,6 +41,9 @@ pub struct ResourceOptionsJson {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintOptionsJson {
+    pub profile: Option<String>,
+    #[serde(default)]
+    pub enable_rules: Vec<String>,
     #[serde(default)]
     pub disable_rules: Vec<String>,
     #[serde(default)]
@@ -164,6 +168,20 @@ impl AnalysisOptionsJson {
         };
 
         let mut config = AnalysisRuleConfig::default();
+        if let Some(profile) = lint.profile.as_deref() {
+            config.set_profile(parse_lint_profile(profile)?);
+        }
+
+        for rule_id in &lint.enable_rules {
+            if rule_id.trim().is_empty() {
+                return Err(AnalysisOptionsJsonError::new(
+                    "lint.enable_rules entries must not be empty",
+                ));
+            }
+            validate_configurable_rule_id(rule_id, "lint.enable_rules")?;
+            config.enable_rule(rule_id.clone());
+        }
+
         for rule_id in &lint.disable_rules {
             if rule_id.trim().is_empty() {
                 return Err(AnalysisOptionsJsonError::new(
@@ -230,6 +248,17 @@ impl AnalysisOptionsJson {
     }
 }
 
+fn parse_lint_profile(value: &str) -> Result<AnalysisRuleProfile, AnalysisOptionsJsonError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "core" => Ok(AnalysisRuleProfile::Core),
+        "recommended" => Ok(AnalysisRuleProfile::Recommended),
+        "strict" => Ok(AnalysisRuleProfile::Strict),
+        _ => Err(AnalysisOptionsJsonError::new(
+            "lint.profile must be core, recommended, or strict",
+        )),
+    }
+}
+
 fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, AnalysisOptionsJsonError> {
     match value.trim().to_ascii_lowercase().as_str() {
         "error" => Ok(DiagnosticSeverity::Error),
@@ -265,9 +294,10 @@ mod tests {
             lint: Some(LintOptionsJson {
                 disable_rules: vec!["merman.git_graph.duplicate_commit_id".to_string()],
                 rule_severities: vec![LintRuleSeverityOverrideJson {
-                    rule_id: "merman.config.prefer_init_directive".to_string(),
+                    rule_id: "merman.authoring.config.prefer_init_directive".to_string(),
                     severity: "hint".to_string(),
                 }],
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -279,14 +309,46 @@ mod tests {
             .unwrap();
         let prefer_init = descriptors
             .iter()
-            .find(|descriptor| descriptor.id == "merman.config.prefer_init_directive")
+            .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_init_directive")
             .unwrap();
 
+        assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
         assert!(!analysis.rule_config.is_rule_enabled(*duplicate_commit));
+        assert!(!analysis.rule_config.is_rule_enabled(*prefer_init));
         assert_eq!(
             analysis.rule_config.severity_for(*prefer_init),
             DiagnosticSeverity::Hint
         );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_accepts_lint_profiles_and_explicit_enablement() {
+        let wrapped = serde_json::json!({
+            "lint": {
+                "profile": "recommended"
+            }
+        });
+        let analysis = analysis_options_from_json_value(&wrapped).unwrap();
+        let prefer_init = rule_descriptors()
+            .iter()
+            .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_init_directive")
+            .unwrap();
+
+        assert_eq!(
+            analysis.rule_config.profile(),
+            AnalysisRuleProfile::Recommended
+        );
+        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
+
+        let wrapped = serde_json::json!({
+            "lint": {
+                "enable_rules": ["merman.authoring.config.prefer_init_directive"]
+            }
+        });
+        let analysis = analysis_options_from_json_value(&wrapped).unwrap();
+
+        assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
+        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
     }
 
     #[test]
@@ -346,9 +408,10 @@ mod tests {
         let wrapped = serde_json::json!({
             "analysis": {
                 "lint": {
+                    "profile": "recommended",
                     "rule_severities": [
                         {
-                            "rule_id": "merman.config.prefer_init_directive",
+                            "rule_id": "merman.authoring.config.prefer_init_directive",
                             "severity": "warning"
                         }
                     ]
@@ -358,12 +421,17 @@ mod tests {
         let analysis = analysis_options_from_json_value(&wrapped).unwrap();
         let prefer_init = rule_descriptors()
             .iter()
-            .find(|descriptor| descriptor.id == "merman.config.prefer_init_directive")
+            .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_init_directive")
             .unwrap();
 
+        assert_eq!(
+            analysis.rule_config.profile(),
+            AnalysisRuleProfile::Recommended
+        );
         assert_eq!(
             analysis.rule_config.severity_for(*prefer_init),
             DiagnosticSeverity::Warning
         );
+        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
     }
 }

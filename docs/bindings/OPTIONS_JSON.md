@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -64,8 +64,12 @@ numeric values return binding errors instead of panicking.
     "max_label_bytes": 2097152
   },
   "lint": {
+    "profile": "recommended",
+    "enable_rules": [
+      "merman.authoring.flowchart.explicit_direction"
+    ],
     "disable_rules": [
-      "merman.config.prefer_init_directive",
+      "merman.authoring.config.prefer_init_directive",
       "merman.git_graph.duplicate_commit_id"
     ],
     "rule_severities": [
@@ -117,13 +121,29 @@ rule ids from `merman-analysis`.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
+| `lint.profile` | string | `core` | Built-in rule profile: `core`, `recommended`, or `strict`. `core` is conservative and does not enable Merman authoring recommendations. |
+| `lint.enable_rules` | array of strings | none | Rule ids to enable even when their profile is not active. Entries must name configurable analysis rules. |
 | `lint.disable_rules` | array of strings | none | Rule ids to disable. Entries must name configurable analysis rules. Unknown or internal ids return `MERMAN_INVALID_ARGUMENT`. |
 | `lint.rule_severities` | array of objects | none | Per-rule severity overrides as `{ "rule_id": "...", "severity": "error|warning|info|hint" }`. `rule_id` must name a configurable analysis rule. |
 
-`disable_rules` and `rule_severities` apply to source lint rules and semantic warnings alike. They
-are additive overrides on top of the built-in rule defaults, are validated against the public
-analysis rule registry, and can be used by FFI, UniFFI, WASM, CLI lint, and future editor
-adapters. Internal analysis rules are reserved for contract gaps and diagnostics infrastructure.
+`profile`, `enable_rules`, `disable_rules`, and `rule_severities` apply to source lint rules and
+semantic warnings alike. They are validated against the public analysis rule registry and can be
+used by FFI, UniFFI, WASM, CLI lint, and future editor adapters. `disable_rules` has the highest
+precedence. Severity overrides do not enable a rule whose profile is inactive; use
+`lint.profile = "recommended"` or `enable_rules` for Merman authoring recommendations.
+
+Rule governance is intentionally conservative because Merman is not the Mermaid project:
+
+| Origin | Meaning | Default profile |
+| --- | --- | --- |
+| `mermaid_syntax` | Syntax or config behavior backed by Mermaid source/docs/fixtures. | `core` |
+| `mermaid_compatibility` | Compatibility warnings backed by Mermaid source/docs/fixtures. | `core` |
+| `merman_authoring` | Merman recommendations and safe editor assists, not official Mermaid standards. | `recommended` |
+| `merman_resource_policy` | Host/runtime budget diagnostics. | `core` |
+| `merman_internal` | Contract gaps and internal safety diagnostics. | not configurable |
+
+Current authoring rule ids are `merman.authoring.config.prefer_init_directive` and
+`merman.authoring.flowchart.explicit_direction`.
 
 `fixed_today` must be a `YYYY-MM-DD` date. `fixed_local_offset_minutes` must be an integer offset
 accepted by the fixed-offset timezone model, currently `-1439` through `1439`. Invalid values return

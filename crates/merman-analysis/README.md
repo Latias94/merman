@@ -7,5 +7,6 @@ The crate intentionally starts below FFI, UniFFI, WASM, CLI, and render wrappers
 stable JSON payload types and source-position mapping helpers before those public surfaces migrate
 from coarse validation to `analyze_json`.
 
-See `docs/adr/0070-diagnostics-first-analysis-contract.md` for the accepted architecture decision.
-
+See `docs/adr/0070-diagnostics-first-analysis-contract.md` for the accepted architecture decision
+and `docs/adr/0072-lint-rule-governance.md` for rule-origin, profile, and authoring-governance
+policy.

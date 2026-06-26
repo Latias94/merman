@@ -403,7 +403,7 @@ fn rule_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::{AnalysisOptions, Analyzer};
-    use crate::rules::AnalysisRuleConfig;
+    use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
     use crate::{AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, SourceMap};
 
     #[test]
@@ -443,7 +443,9 @@ mod tests {
 
     #[test]
     fn analyze_init_directive_alias_emits_safe_fix() {
-        let analyzer = Analyzer::new();
+        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ));
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let payload = analyzer.analyze(source);
 
@@ -452,7 +454,7 @@ mod tests {
         let diagnostic = payload
             .diagnostics
             .iter()
-            .find(|diagnostic| diagnostic.id == "merman.config.prefer_init_directive")
+            .find(|diagnostic| diagnostic.id == crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID)
             .expect("init directive alias diagnostic");
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
         assert_eq!(diagnostic.category, DiagnosticCategory::Config);
@@ -467,6 +469,7 @@ mod tests {
         let analyzer = Analyzer::with_options(
             AnalysisOptions::default().with_rule_config(
                 AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
                     .with_rule_disabled(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID),
             ),
         );
@@ -528,12 +531,16 @@ mod tests {
 
     #[test]
     fn analysis_rule_config_can_override_source_lint_severity() {
-        let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
-            AnalysisRuleConfig::default().with_rule_severity(
-                crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
-                DiagnosticSeverity::Warning,
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_severity(
+                        crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
+                        DiagnosticSeverity::Warning,
+                    ),
             ),
-        ));
+        );
         let payload =
             analyzer.analyze("%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n");
 

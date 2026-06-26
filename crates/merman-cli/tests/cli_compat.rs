@@ -317,8 +317,10 @@ fn cli_lint_can_disable_rule_diagnostics() {
             "lint",
             "--format",
             "json",
+            "--lint-profile",
+            "recommended",
             "--disable-rule",
-            "merman.config.prefer_init_directive",
+            "merman.authoring.config.prefer_init_directive",
             "-",
         ],
         "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
@@ -330,6 +332,31 @@ fn cli_lint_can_disable_rule_diagnostics() {
     assert_eq!(payload["valid"], true);
     assert_eq!(payload["summary"]["hints"], 0);
     assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_can_enable_authoring_rule_diagnostics() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--enable-rule",
+            "merman.authoring.config.prefer_init_directive",
+            "-",
+        ],
+        "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 1);
+    assert_eq!(
+        payload["diagnostics"][0]["id"].as_str(),
+        Some("merman.authoring.config.prefer_init_directive")
+    );
 }
 
 #[test]
@@ -361,8 +388,10 @@ fn cli_lint_can_override_rule_severity() {
             "lint",
             "--format",
             "json",
+            "--lint-profile",
+            "recommended",
             "--rule-severity",
-            "merman.config.prefer_init_directive=warning",
+            "merman.authoring.config.prefer_init_directive=warning",
             "-",
         ],
         "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
@@ -376,7 +405,7 @@ fn cli_lint_can_override_rule_severity() {
     assert_eq!(payload["summary"]["warnings"], 1);
     assert_eq!(
         payload["diagnostics"][0]["id"].as_str(),
-        Some("merman.config.prefer_init_directive")
+        Some("merman.authoring.config.prefer_init_directive")
     );
     assert_eq!(
         payload["diagnostics"][0]["severity"].as_str(),

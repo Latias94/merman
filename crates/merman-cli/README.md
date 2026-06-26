@@ -206,6 +206,12 @@ Use `--format text` for a compact human-readable summary or `--format json` for 
 consumers. Markdown and MDX input files are scanned for Mermaid fences, and `--stdin-file-name`
 provides a stable display path when linting from stdin.
 
+The default lint profile is `core`, which reports syntax, compatibility, resource, and internal
+diagnostics without enabling Merman authoring recommendations. Use `--lint-profile recommended` or
+`--enable-rule <RULE_ID>` to opt into authoring hints such as
+`merman.authoring.config.prefer_init_directive` and
+`merman.authoring.flowchart.explicit_direction`.
+
 ## Common Options
 
 - `-t, --theme <theme>` sets the Mermaid theme.

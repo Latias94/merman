@@ -117,7 +117,8 @@ fn position_from_lsp(value: merman_analysis::Utf16Position) -> Position {
 mod tests {
     use super::code_actions_for_params;
     use merman_analysis::{
-        Analyzer, DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, Utf16Position,
+        AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticFix,
+        DiagnosticFixEdit, DiagnosticSpan, Utf16Position,
         document::analyze_document,
         lsp::{DiagnosticCodeActionData, analysis_payload_to_diagnostics},
         markdown::markdown_source_descriptor,
@@ -268,7 +269,7 @@ mod tests {
     #[test]
     fn analyzer_fix_metadata_produces_quickfix_action() {
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
-        let analyzer = Analyzer::new();
+        let analyzer = authoring_analyzer();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = analyzer.analyze(source);
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
@@ -305,7 +306,7 @@ mod tests {
     #[test]
     fn flowchart_missing_direction_fix_produces_quickfix_action() {
         let source = "flowchart\nA-->B\n";
-        let analyzer = Analyzer::new();
+        let analyzer = authoring_analyzer();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = analyzer.analyze(source);
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
@@ -348,7 +349,7 @@ mod tests {
     #[test]
     fn markdown_analyzer_fix_metadata_uses_host_document_ranges() {
         let source = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter\n";
-        let analyzer = Analyzer::new();
+        let analyzer = authoring_analyzer();
         let uri = Url::parse("file:///tmp/example.md").unwrap();
         let payload = analyze_document(
             source,
@@ -386,7 +387,7 @@ mod tests {
     #[test]
     fn markdown_flowchart_missing_direction_fix_uses_host_document_ranges() {
         let source = "before\n```mermaid\nflowchart\nA-->B\n```\nafter\n";
-        let analyzer = Analyzer::new();
+        let analyzer = authoring_analyzer();
         let uri = Url::parse("file:///tmp/example.md").unwrap();
         let payload = analyze_document(
             source,
@@ -426,5 +427,11 @@ mod tests {
         assert_eq!(edits[0].new_text, " TB");
         assert_eq!(edits[0].range.start, Position::new(2, 9));
         assert_eq!(edits[0].range.end, Position::new(2, 9));
+    }
+
+    fn authoring_analyzer() -> Analyzer {
+        Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ))
     }
 }

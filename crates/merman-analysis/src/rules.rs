@@ -3,14 +3,14 @@ use crate::{
     DiagnosticSeverity, DiagnosticSpan, SourceMap,
 };
 use merman_core::{
-    BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+    BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.config.prefer_init_directive";
+pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.authoring.config.prefer_init_directive";
 pub const NO_DIAGRAM_RULE_ID: &str = "merman.parse.no_diagram";
 pub const DIAGRAM_PARSE_RULE_ID: &str = "merman.parse.diagram_parse";
 pub const UNSUPPORTED_DIAGRAM_RULE_ID: &str = "merman.compatibility.unsupported_diagram";
@@ -22,9 +22,55 @@ pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
-pub const FLOWCHART_MISSING_DIRECTION_RULE_ID: &str = "merman.flowchart.missing_direction";
+pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
+    "merman.authoring.flowchart.explicit_direction";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisRuleProfile {
+    #[default]
+    Core,
+    Recommended,
+    Strict,
+}
+
+impl AnalysisRuleProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Core => "core",
+            Self::Recommended => "recommended",
+            Self::Strict => "strict",
+        }
+    }
+
+    const fn includes(self, minimum: Self) -> bool {
+        self as u8 >= minimum as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleOrigin {
+    MermaidSyntax,
+    MermaidCompatibility,
+    MermanAuthoring,
+    MermanResourcePolicy,
+    MermanInternal,
+}
+
+impl RuleOrigin {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MermaidSyntax => "mermaid_syntax",
+            Self::MermaidCompatibility => "mermaid_compatibility",
+            Self::MermanAuthoring => "merman_authoring",
+            Self::MermanResourcePolicy => "merman_resource_policy",
+            Self::MermanInternal => "merman_internal",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuleDescriptor {
@@ -32,6 +78,8 @@ pub struct RuleDescriptor {
     pub default_severity: DiagnosticSeverity,
     pub category: DiagnosticCategory,
     pub default_enabled: bool,
+    pub default_profile: AnalysisRuleProfile,
+    pub origin: RuleOrigin,
     pub fixable: bool,
 }
 
@@ -39,7 +87,9 @@ const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
     id: PREFER_INIT_DIRECTIVE_RULE_ID,
     default_severity: DiagnosticSeverity::Hint,
     category: DiagnosticCategory::Config,
-    default_enabled: true,
+    default_enabled: false,
+    default_profile: AnalysisRuleProfile::Recommended,
+    origin: RuleOrigin::MermanAuthoring,
     fixable: true,
 };
 
@@ -48,6 +98,8 @@ const NO_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Parse,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidSyntax,
     fixable: false,
 };
 
@@ -56,6 +108,8 @@ const DIAGRAM_PARSE_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Parse,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidSyntax,
     fixable: false,
 };
 
@@ -64,6 +118,8 @@ const UNSUPPORTED_DIAGRAM_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Compatibility,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
 
@@ -72,6 +128,8 @@ const RECOVERED_EDITOR_FACTS_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Parse,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidSyntax,
     fixable: false,
 };
 
@@ -80,6 +138,8 @@ const RESOURCE_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Resource,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanResourcePolicy,
     fixable: false,
 };
 
@@ -88,6 +148,8 @@ const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidSyntax,
     fixable: false,
 };
 
@@ -96,6 +158,8 @@ const INVALID_DIRECTIVE_JSON_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidSyntax,
     fixable: false,
 };
 
@@ -104,6 +168,8 @@ const INVALID_FRONT_MATTER_YAML_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Config,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidSyntax,
     fixable: false,
 };
 
@@ -112,6 +178,8 @@ const PANIC_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Internal,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanInternal,
     fixable: false,
 };
 
@@ -120,6 +188,8 @@ const INTERNAL_RULE_REGISTRY_GAP_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Internal,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanInternal,
     fixable: false,
 };
 
@@ -128,13 +198,17 @@ const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
-const FLOWCHART_MISSING_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
-    id: FLOWCHART_MISSING_DIRECTION_RULE_ID,
-    default_severity: DiagnosticSeverity::Warning,
+const FLOWCHART_EXPLICIT_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
+    id: FLOWCHART_EXPLICIT_DIRECTION_RULE_ID,
+    default_severity: DiagnosticSeverity::Hint,
     category: DiagnosticCategory::Semantic,
-    default_enabled: true,
+    default_enabled: false,
+    default_profile: AnalysisRuleProfile::Recommended,
+    origin: RuleOrigin::MermanAuthoring,
     fixable: true,
 };
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
@@ -142,6 +216,8 @@ const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
 const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
@@ -149,6 +225,8 @@ const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
     default_severity: DiagnosticSeverity::Warning,
     category: DiagnosticCategory::Semantic,
     default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
 
@@ -165,7 +243,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PANIC_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     BLOCK_WIDTH_RULE,
-    FLOWCHART_MISSING_DIRECTION_RULE,
+    FLOWCHART_EXPLICIT_DIRECTION_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
     SEMANTIC_WARNING_RULE,
 ];
@@ -195,12 +273,30 @@ pub fn rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisRuleConfig {
     #[serde(default)]
+    profile: AnalysisRuleProfile,
+    #[serde(default)]
+    enabled_rules: BTreeSet<String>,
+    #[serde(default)]
     disabled_rules: BTreeSet<String>,
     #[serde(default)]
     severity_overrides: BTreeMap<String, DiagnosticSeverity>,
 }
 
 impl AnalysisRuleConfig {
+    pub fn with_profile(mut self, profile: AnalysisRuleProfile) -> Self {
+        self.profile = profile;
+        self
+    }
+
+    pub fn profile(&self) -> AnalysisRuleProfile {
+        self.profile
+    }
+
+    pub fn with_rule_enabled(mut self, rule_id: impl Into<String>) -> Self {
+        self.enable_rule(rule_id);
+        self
+    }
+
     pub fn with_rule_disabled(mut self, rule_id: impl Into<String>) -> Self {
         self.disable_rule(rule_id);
         self
@@ -215,6 +311,14 @@ impl AnalysisRuleConfig {
         self
     }
 
+    pub fn set_profile(&mut self, profile: AnalysisRuleProfile) {
+        self.profile = profile;
+    }
+
+    pub fn enable_rule(&mut self, rule_id: impl Into<String>) {
+        self.enabled_rules.insert(rule_id.into());
+    }
+
     pub fn disable_rule(&mut self, rule_id: impl Into<String>) {
         self.disabled_rules.insert(rule_id.into());
     }
@@ -224,7 +328,13 @@ impl AnalysisRuleConfig {
     }
 
     pub fn is_rule_enabled(&self, descriptor: RuleDescriptor) -> bool {
-        descriptor.default_enabled && !self.disabled_rules.contains(descriptor.id)
+        if self.disabled_rules.contains(descriptor.id) {
+            return false;
+        }
+        if self.enabled_rules.contains(descriptor.id) {
+            return true;
+        }
+        descriptor.default_enabled || self.profile.includes(descriptor.default_profile)
     }
 
     pub fn severity_for(&self, descriptor: RuleDescriptor) -> DiagnosticSeverity {
@@ -345,7 +455,7 @@ fn warning_fact_fix(
     let fix_span = fact.fix_span.or(fact.span)?;
     let fix_span = source_map.span(fix_span.start, fix_span.end).ok()?;
     match descriptor.id {
-        FLOWCHART_MISSING_DIRECTION_RULE_ID => Some(
+        FLOWCHART_EXPLICIT_DIRECTION_RULE_ID => Some(
             DiagnosticFix::new(
                 "Insert `TB` into the flowchart header",
                 vec![DiagnosticFixEdit::new(fix_span, " TB")],
@@ -359,7 +469,7 @@ fn warning_fact_fix(
 fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
     match rule_id {
         BLOCK_WIDTH_WARNING_RULE_ID => Some(BLOCK_WIDTH_RULE),
-        FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID => Some(FLOWCHART_MISSING_DIRECTION_RULE),
+        FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID => Some(FLOWCHART_EXPLICIT_DIRECTION_RULE),
         GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => Some(GIT_GRAPH_DUPLICATE_COMMIT_RULE),
         SEMANTIC_WARNING_RULE_ID => Some(SEMANTIC_WARNING_RULE),
         _ => None,
@@ -494,9 +604,9 @@ mod tests {
     fn source_lint_prefers_init_directive_and_provides_fix() {
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
 
-        let diagnostics =
-            source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+        let diagnostics = source_lint_diagnostics(source, &source_map, &config);
 
         assert_eq!(diagnostics.len(), 1);
         let diagnostic = &diagnostics[0];
@@ -522,6 +632,15 @@ mod tests {
     fn source_lint_leaves_canonical_init_directive_alone() {
         let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+
+        assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
+    }
+
+    #[test]
+    fn source_authoring_lints_are_not_enabled_by_core_profile() {
+        let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
 
         assert!(
             source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default()).is_empty()
@@ -532,10 +651,23 @@ mod tests {
     fn rule_config_can_disable_source_lint_rules() {
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
-        let config =
-            AnalysisRuleConfig::default().with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID);
+        let config = AnalysisRuleConfig::default()
+            .with_profile(AnalysisRuleProfile::Recommended)
+            .with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID);
 
         assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
+    }
+
+    #[test]
+    fn rule_config_can_enable_authoring_rules_without_recommended_profile() {
+        let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default().with_rule_enabled(PREFER_INIT_DIRECTIVE_RULE_ID);
+
+        let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
     }
 
     #[test]
@@ -543,6 +675,7 @@ mod tests {
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
         let config = AnalysisRuleConfig::default()
+            .with_profile(AnalysisRuleProfile::Recommended)
             .with_rule_severity(PREFER_INIT_DIRECTIVE_RULE_ID, DiagnosticSeverity::Warning);
 
         let diagnostics = source_lint_diagnostics(source, &source_map, &config);
@@ -602,13 +735,14 @@ mod tests {
     fn semantic_warning_facts_map_flowchart_missing_direction_rule_id() {
         let source = "flowchart\nA-->B\n";
         let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
 
         let diagnostics = semantic_warning_diagnostics(
             "flowchart-v2",
             &json!({
                 "warningFacts": [
                     {
-                        "ruleId": FLOWCHART_MISSING_DIRECTION_WARNING_RULE_ID,
+                        "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
                         "message": "flowchart headers should declare an explicit direction",
                         "span": { "start": 0, "end": 9 },
                         "fixSpan": { "start": 9, "end": 9 }
@@ -616,12 +750,12 @@ mod tests {
                 ]
             }),
             &source_map,
-            &AnalysisRuleConfig::default(),
+            &config,
         );
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].id, FLOWCHART_MISSING_DIRECTION_RULE_ID);
-        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+        assert_eq!(diagnostics[0].id, FLOWCHART_EXPLICIT_DIRECTION_RULE_ID);
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Hint);
         assert_eq!(diagnostics[0].category, DiagnosticCategory::Semantic);
         assert_eq!(diagnostics[0].diagram_type.as_deref(), Some("flowchart-v2"));
         assert_eq!(diagnostics[0].span.as_ref().unwrap().byte_start, 0);
@@ -635,6 +769,30 @@ mod tests {
         assert_eq!(diagnostics[0].fixes[0].edits[0].replacement, " TB");
         assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_start, 9);
         assert_eq!(diagnostics[0].fixes[0].edits[0].span.byte_end, 9);
+    }
+
+    #[test]
+    fn semantic_authoring_warning_facts_are_not_enabled_by_core_profile() {
+        let source = "flowchart\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics = semantic_warning_diagnostics(
+            "flowchart-v2",
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+                        "message": "flowchart headers should declare an explicit direction",
+                        "span": { "start": 0, "end": 9 },
+                        "fixSpan": { "start": 9, "end": 9 }
+                    }
+                ]
+            }),
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        );
+
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -671,7 +829,12 @@ mod tests {
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
         assert_eq!(descriptors[0].category, DiagnosticCategory::Config);
-        assert!(descriptors[0].default_enabled);
+        assert!(!descriptors[0].default_enabled);
+        assert_eq!(
+            descriptors[0].default_profile,
+            AnalysisRuleProfile::Recommended
+        );
+        assert_eq!(descriptors[0].origin, RuleOrigin::MermanAuthoring);
         assert!(descriptors[0].fixable);
         assert!(
             descriptors
@@ -731,13 +894,18 @@ mod tests {
         assert!(
             descriptors
                 .iter()
-                .any(|descriptor| descriptor.id == FLOWCHART_MISSING_DIRECTION_RULE_ID)
+                .any(|descriptor| descriptor.id == FLOWCHART_EXPLICIT_DIRECTION_RULE_ID)
         );
         assert!(
             descriptors
                 .iter()
-                .find(|descriptor| descriptor.id == FLOWCHART_MISSING_DIRECTION_RULE_ID)
-                .is_some_and(|descriptor| descriptor.fixable)
+                .find(|descriptor| descriptor.id == FLOWCHART_EXPLICIT_DIRECTION_RULE_ID)
+                .is_some_and(|descriptor| {
+                    descriptor.fixable
+                        && !descriptor.default_enabled
+                        && descriptor.default_profile == AnalysisRuleProfile::Recommended
+                        && descriptor.origin == RuleOrigin::MermanAuthoring
+                })
         );
         assert!(
             descriptors
@@ -819,7 +987,7 @@ mod tests {
         assert!(
             descriptors
                 .iter()
-                .any(|descriptor| descriptor.id == FLOWCHART_MISSING_DIRECTION_RULE_ID)
+                .any(|descriptor| descriptor.id == FLOWCHART_EXPLICIT_DIRECTION_RULE_ID)
         );
         assert!(
             descriptors

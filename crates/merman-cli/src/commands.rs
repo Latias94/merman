@@ -202,6 +202,12 @@ fn lint_analyzer_options(
 
 fn lint_rule_config(args: &LintArgs) -> AnalysisRuleConfig {
     let mut config = AnalysisRuleConfig::default();
+    if let Some(profile) = args.lint_profile {
+        config.set_profile(profile);
+    }
+    for rule_id in &args.enable_rules {
+        config.enable_rule(rule_id.clone());
+    }
     for rule_id in &args.disable_rules {
         config.disable_rule(rule_id.clone());
     }

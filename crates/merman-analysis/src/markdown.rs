@@ -260,7 +260,7 @@ mod tests {
         let end = start + "initialize".len();
         let local_span = local_map.span(start, end).unwrap();
         let diagnostic = AnalysisDiagnostic::error(
-            "merman.config.prefer_init_directive",
+            crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
             DiagnosticCategory::Config,
             "prefer init",
         )

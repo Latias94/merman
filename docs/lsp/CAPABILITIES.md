@@ -8,7 +8,7 @@ facts, it is not considered mature.
 
 | Family | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Flowchart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, payload roles, and parser-backed flowchart lint warnings. |
+| Flowchart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, payload roles, and parser-backed authoring hints when enabled. |
 | Sequence | Yes | Yes | Yes | Yes | Yes | Yes | Mature for participants, actors, message endpoints, notes, boxes, directive payloads, and interaction payload prefixes. |
 | State | Yes | Yes | Yes | Yes | Yes | Yes | Mature for state ids, references, outlines, and role-aware payloads. |
 | Class | Yes | Yes | Yes | Yes | Yes | Yes | Mature for class ids, members, annotations, directives, and style payload roles. |
@@ -25,8 +25,9 @@ facts, it is not considered mature.
   projection, and same-name entities with different semantic kinds do not collide.
 - Code actions: quickfix provider is wired; only diagnostics with `DiagnosticFix` metadata are
   eligible, and diagnostics without explicit safe fixes produce no action. Fix-backed rules include
-  `merman.config.prefer_init_directive` and the parser-backed
-  `merman.flowchart.missing_direction` insertion fix.
+  `merman.authoring.config.prefer_init_directive` and the parser-backed
+  `merman.authoring.flowchart.explicit_direction` insertion fix when the `recommended` lint
+  profile or explicit rule enablement is active.
 - Semantic index: parser-backed payload facts are retained as semantic items even when they are
   not projected into completion, outline, or rename surfaces.
 - Semantic tokens: the full-document, range, and delta providers are wired from parser-backed
@@ -39,4 +40,5 @@ facts, it is not considered mature.
   into node IDs or outline entries. Parser-backed payload facts must likewise remain outside
   completion IDs and outline entries unless their role explicitly permits it.
 - Flowchart lint: parser-backed warning facts flow through the shared analysis contract, starting
-  with a warning and preferred quickfix for flowchart headers that omit an explicit direction.
+  with a recommended-profile authoring hint and preferred quickfix for flowchart headers that omit
+  an explicit direction.

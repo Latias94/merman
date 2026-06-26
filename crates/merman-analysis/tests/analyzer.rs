@@ -1,6 +1,6 @@
 use merman_analysis::{
-    AnalysisOptions, AnalysisRuleConfig, AnalysisStatus, Analyzer, DiagnosticCategory,
-    DiagnosticSeverity,
+    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
+    DiagnosticCategory, DiagnosticSeverity,
 };
 
 fn analyze(source: &str) -> merman_analysis::AnalysisPayload {
@@ -96,16 +96,33 @@ fn valid_flowchart_returns_no_diagnostics() {
 }
 
 #[test]
-fn flowchart_missing_direction_is_warning() {
+fn flowchart_missing_direction_is_not_reported_by_core_profile() {
     let source = "flowchart\nA[Hello] --> B[World]\n";
     let payload = analyze(source);
 
     assert!(payload.valid);
     assert_eq!(payload.summary.errors, 0);
-    assert_eq!(payload.summary.warnings, 1);
+    assert_eq!(payload.summary.warnings, 0);
+    assert!(payload.diagnostics.is_empty());
+}
+
+#[test]
+fn flowchart_missing_direction_is_authoring_hint_in_recommended_profile() {
+    let source = "flowchart\nA[Hello] --> B[World]\n";
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ));
+    let payload = analyzer.analyze(source);
+
+    assert!(payload.valid);
+    assert_eq!(payload.summary.errors, 0);
+    assert_eq!(payload.summary.hints, 1);
     let diagnostic = &payload.diagnostics[0];
-    assert_eq!(diagnostic.id, "merman.flowchart.missing_direction");
-    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+    assert_eq!(
+        diagnostic.id,
+        "merman.authoring.flowchart.explicit_direction"
+    );
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
     assert_eq!(diagnostic.category, DiagnosticCategory::Semantic);
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
     assert!(diagnostic.message.contains("explicit direction"));
@@ -142,7 +159,9 @@ fn flowchart_missing_direction_is_warning() {
 #[test]
 fn flowchart_missing_direction_rule_can_be_disabled() {
     let options = AnalysisOptions::default().with_rule_config(
-        AnalysisRuleConfig::default().with_rule_disabled("merman.flowchart.missing_direction"),
+        AnalysisRuleConfig::default()
+            .with_profile(AnalysisRuleProfile::Recommended)
+            .with_rule_disabled("merman.authoring.flowchart.explicit_direction"),
     );
     let payload = Analyzer::with_options(options).analyze("flowchart\nA-->B\n");
 

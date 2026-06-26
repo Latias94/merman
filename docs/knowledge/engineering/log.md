@@ -6,6 +6,21 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added ADR 0072 for lint rule governance: Merman rule IDs remain under `merman.*`, authoring
+  recommendations use `merman.authoring.*`, and Mermaid syntax/compatibility origins require
+  pinned source, docs, fixture, or reproducible compatibility evidence.
+- Extended `merman-analysis` rule descriptors with `origin` and `default_profile`, added
+  `core`/`recommended`/`strict` lint profiles, and added explicit `enable_rules` support across
+  `options_json` and CLI lint.
+- Renamed the authoring rule IDs to `merman.authoring.config.prefer_init_directive` and
+  `merman.authoring.flowchart.explicit_direction`. These rules now default to the `recommended`
+  profile as hints; the default `core` profile no longer emits Merman authoring recommendations.
+- Verified the governance slice with `cargo fmt --all`, `cargo fmt --all --check`, `cargo test -p
+  merman-analysis --lib --tests`, `cargo test -p merman-core flowchart --lib`, `cargo test -p
+  merman-cli cli_lint --test cli_compat`, `cargo test -p merman-lsp code_actions --lib`,
+  `cargo test -p merman-lsp --lib --tests`, wiki-memory validation, and `git diff --check`.
+
+## 2026-06-26
 - Extended `DiagramWarningFact` with optional parser-backed `span` and `fixSpan`, and taught the
   flowchart grammar to retain the header span so missing-direction warnings no longer depend on
   whole-document fallback ranges.

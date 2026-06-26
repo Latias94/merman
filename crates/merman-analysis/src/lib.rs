@@ -31,8 +31,8 @@ pub use payload::{
     Utf16Position,
 };
 pub use rules::{
-    AnalysisRuleConfig, RuleDescriptor, configurable_rule_descriptor,
-    configurable_rule_descriptors, rule_descriptors,
+    AnalysisRuleConfig, AnalysisRuleProfile, RuleDescriptor, RuleOrigin,
+    configurable_rule_descriptor, configurable_rule_descriptors, rule_descriptors,
 };
 pub use source_map::{LineCol, SourceMap, SourceMapError};
 pub use status::AnalysisStatus;

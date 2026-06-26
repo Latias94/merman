@@ -49,8 +49,9 @@ navigation, code-action, and semantic-token foundations.
   or rename targets.
 - Code actions are fix-metadata driven; LSP does not invent edits for diagnostics without explicit
   safe fixes.
-- The first fix-backed lint rule is `merman.config.prefer_init_directive`, which replaces the
-  Mermaid directive alias `initialize` with the canonical `init` keyword.
+- Fix-backed authoring rules such as `merman.authoring.config.prefer_init_directive` and
+  `merman.authoring.flowchart.explicit_direction` are available through the shared lint
+  configuration, but remain opt-in through `recommended` or explicit rule enablement.
 - Full-document, range, and delta semantic tokens are role-aware and parser-backed; configuration
   changes trigger `workspace/semanticTokens/refresh` when the client advertises refresh support,
   and delta requests reuse cached snapshot token state when the previous result id matches.

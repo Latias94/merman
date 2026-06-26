@@ -68,11 +68,12 @@ rules, LSP protocol features, configuration, packaging, and release gates.
 - `AnalysisDiagnostic` now carries optional `DiagnosticFix` metadata. LSP diagnostics preserve
   fixes in `Diagnostic.data`, and `textDocument/codeAction` returns quickfix edits only for
   diagnostics with explicit source-span-backed fixes.
-- The first fix-backed lint rule is `merman.config.prefer_init_directive`, which reports the
-  Mermaid directive alias `initialize` and offers a preferred source edit to replace it with
-  canonical `init`. Markdown fences remap the fix edit back into host-document coordinates.
-- `merman-analysis` now exposes stable rule descriptors plus a shared rule-config surface, and
-  CLI lint can disable rules or override severities through the same analysis config.
+- Fix-backed authoring lint rules such as `merman.authoring.config.prefer_init_directive` and
+  `merman.authoring.flowchart.explicit_direction` report Merman recommendations as hints only when
+  the `recommended` profile or explicit rule enablement is active. Markdown fences remap fix edits
+  back into host-document coordinates.
+- `merman-analysis` now exposes stable rule descriptors plus origin metadata, lint profiles,
+  explicit enable/disable, and severity overrides through the shared rule-config surface.
 - That shared rule-config surface now also flows through binding `options_json`, so FFI,
   UniFFI, WASM, and future editor adapters can enable/disable rules and override severities
   through the same analysis contract.
