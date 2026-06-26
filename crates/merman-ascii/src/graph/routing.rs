@@ -13,7 +13,7 @@ mod plan;
 pub(super) use cell::RouteCells;
 use cell::{set_edge_cell_with_paint, set_route_cell_with_paint};
 use label::{EdgeLabel, draw_routed_label};
-use plan::{EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route};
+use plan::{EdgeRoutePlan, EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route};
 
 pub(super) struct RouteDrawing<'a> {
     canvas: &'a mut Canvas,
@@ -127,7 +127,7 @@ pub(super) fn prepare_route_scene(
                 feature: "edges with missing endpoint layouts",
             });
         };
-        let Some(plan) = plan_edge_route(EdgeRouteRequest {
+        let plan = match plan_edge_route(EdgeRouteRequest {
             graph,
             graph_layout,
             edges,
@@ -136,11 +136,14 @@ pub(super) fn prepare_route_scene(
             edge_index,
             edge,
             charset,
-        }) else {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: graph.diagram_type(),
-                feature: "unroutable graph edges",
-            });
+        }) {
+            EdgeRoutePlan::Routed(plan) => plan,
+            EdgeRoutePlan::Unsupported(route) => {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: graph.diagram_type(),
+                    feature: route.feature(),
+                });
+            }
         };
 
         let plan = plan.with_style(edge.style);

@@ -23,7 +23,9 @@ use crate::graph::routing::label::RoutedLabelPlacement;
 use crate::graph::routing::label::RoutedLabelText;
 use crate::graph::routing::plan::PlannedRoutePaint;
 use crate::graph::routing::plan::PlannedRouteSegment;
-use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
+use crate::graph::routing::plan::select::{
+    EdgeBoundaryContext, UnsupportedEdgeRouteReason, edge_boundary_context,
+};
 
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {
@@ -103,6 +105,47 @@ fn edge_route_selects_top_down_same_rank_direct_route() {
         plan_left_right_direct_route(&graph_layout.nodes, from, to, &edge, &charset).unwrap();
 
     assert_eq!(selected, expected);
+}
+
+#[test]
+fn edge_route_reports_unsupported_boundary_direction() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("x", "X");
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "one",
+        "TD Group",
+        Some(GraphDirection::TopDown),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+    let edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
+    let layout = layout_graph(&graph, &options);
+    let from = node("x", 0, 0, 3, 3);
+    let to = node("a", 0, 0, 3, 3);
+
+    let planned = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: std::slice::from_ref(&edge),
+        from: &from,
+        to: &to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    });
+
+    let EdgeRoutePlan::Unsupported(route) = planned else {
+        panic!("unsupported boundary route should not be silently treated as routed");
+    };
+    assert_eq!(
+        route.reason(),
+        UnsupportedEdgeRouteReason::BoundaryDirection
+    );
+    assert_eq!(route.feature(), "unsupported graph boundary routes");
 }
 
 #[test]

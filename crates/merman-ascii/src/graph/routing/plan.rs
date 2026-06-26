@@ -13,7 +13,7 @@ mod left_right;
 mod select;
 mod top_down;
 
-pub(super) use select::{EdgeRouteRequest, plan_edge_route};
+pub(super) use select::{EdgeRoutePlan, EdgeRouteRequest, plan_edge_route};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RoutePlan {

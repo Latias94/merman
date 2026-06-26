@@ -19,6 +19,56 @@ use super::top_down::{
     plan_top_down_side_entry_route,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::graph::routing) enum EdgeRoutePlan {
+    Routed(RoutePlan),
+    Unsupported(UnsupportedEdgeRoute),
+}
+
+impl EdgeRoutePlan {
+    #[cfg(test)]
+    pub(in crate::graph::routing) fn unwrap(self) -> RoutePlan {
+        self.expect("edge route should be supported")
+    }
+
+    #[cfg(test)]
+    pub(in crate::graph::routing) fn expect(self, message: &str) -> RoutePlan {
+        match self {
+            Self::Routed(plan) => plan,
+            Self::Unsupported(route) => panic!("{message}: {route:?}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::graph::routing) struct UnsupportedEdgeRoute {
+    reason: UnsupportedEdgeRouteReason,
+}
+
+impl UnsupportedEdgeRoute {
+    fn new(reason: UnsupportedEdgeRouteReason) -> Self {
+        Self { reason }
+    }
+
+    pub(in crate::graph::routing) fn feature(self) -> &'static str {
+        match self.reason {
+            UnsupportedEdgeRouteReason::NoRouteFamily => "unroutable graph edges",
+            UnsupportedEdgeRouteReason::BoundaryDirection => "unsupported graph boundary routes",
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::graph::routing) fn reason(self) -> UnsupportedEdgeRouteReason {
+        self.reason
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::graph::routing) enum UnsupportedEdgeRouteReason {
+    NoRouteFamily,
+    BoundaryDirection,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(in crate::graph::routing) struct EdgeRouteRequest<'a> {
     pub(in crate::graph::routing) graph: &'a AsciiGraph,
@@ -31,18 +81,23 @@ pub(in crate::graph::routing) struct EdgeRouteRequest<'a> {
     pub(in crate::graph::routing) charset: &'a GraphCharset,
 }
 
-pub(in crate::graph::routing) fn plan_edge_route(
-    request: EdgeRouteRequest<'_>,
-) -> Option<RoutePlan> {
+pub(in crate::graph::routing) fn plan_edge_route(request: EdgeRouteRequest<'_>) -> EdgeRoutePlan {
     let boundary = edge_boundary_context(request.graph, request.edge);
     if let Some(plan) = plan_boundary_route(boundary, request) {
-        return Some(plan);
+        return EdgeRoutePlan::Routed(plan);
     }
 
-    match boundary.direction().canonical() {
+    let plan = match boundary.direction().canonical() {
         GraphDirection::LeftRight => plan_left_right_route(request),
         GraphDirection::TopDown => plan_top_down_route(request),
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+    };
+
+    match plan {
+        Some(plan) => EdgeRoutePlan::Routed(plan),
+        None => EdgeRoutePlan::Unsupported(UnsupportedEdgeRoute::new(unsupported_reason(
+            boundary, request,
+        ))),
     }
 }
 
@@ -186,8 +241,39 @@ fn plan_boundary_route(
         } if request.edge.to == group_id => {
             plan_top_down_side_entry_route(request.from, request.to, request.edge, request.charset)
         }
-        EdgeBoundaryContext::External { .. } | EdgeBoundaryContext::Internal { .. } => None,
-        EdgeBoundaryContext::Entering { .. } | EdgeBoundaryContext::Leaving { .. } => None,
+        EdgeBoundaryContext::External { .. }
+        | EdgeBoundaryContext::Internal { .. }
+        | EdgeBoundaryContext::Entering { .. }
+        | EdgeBoundaryContext::Leaving { .. } => None,
+    }
+}
+
+fn unsupported_reason(
+    boundary: EdgeBoundaryContext<'_>,
+    request: EdgeRouteRequest<'_>,
+) -> UnsupportedEdgeRouteReason {
+    match boundary {
+        EdgeBoundaryContext::Entering {
+            group_id,
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::TopDown,
+        } if request.edge.to == group_id => UnsupportedEdgeRouteReason::NoRouteFamily,
+        EdgeBoundaryContext::Entering {
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight,
+            ..
+        }
+        | EdgeBoundaryContext::Leaving {
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight,
+            ..
+        } => UnsupportedEdgeRouteReason::NoRouteFamily,
+        EdgeBoundaryContext::Entering { .. } | EdgeBoundaryContext::Leaving { .. } => {
+            UnsupportedEdgeRouteReason::BoundaryDirection
+        }
+        EdgeBoundaryContext::External { .. } | EdgeBoundaryContext::Internal { .. } => {
+            UnsupportedEdgeRouteReason::NoRouteFamily
+        }
     }
 }
 
