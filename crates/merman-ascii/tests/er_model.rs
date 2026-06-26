@@ -91,6 +91,49 @@ fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static s
 }
 
 #[test]
+fn er_parser_wide_attributes_and_summary_labels_preserve_relation_visibility() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_er(
+        r#"erDiagram
+CUSTOMER {
+  string 名称
+}
+ORDER {
+  string 状态🚀
+}
+AUDIT
+CUSTOMER ||--o{ ORDER : "下单🚀"
+ORDER ||--|| AUDIT : "记录数据"
+"#,
+        &options,
+    )
+    .expect("ER diagram with wide attributes and relation labels should render");
+
+    for expected in [
+        "CUSTOMER",
+        "名称",
+        "ORDER",
+        "状态🚀",
+        "AUDIT",
+        "relations:",
+        "CUSTOMER ||--o{ ORDER",
+        "ORDER    ||--|| AUDIT",
+        "下单🚀",
+        "记录数据",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "wide ER fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("<br>"),
+        "wide ER relation summary should not leak Mermaid break syntax:\n{rendered}"
+    );
+}
+
+#[test]
 fn er_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::NodeBorder, AsciiRgb::new(1, 1, 1))

@@ -847,6 +847,39 @@ fn class_parser_endpoint_labels_are_preserved_in_relation_summary() {
 }
 
 #[test]
+fn class_parser_wide_members_and_summary_labels_preserve_relation_visibility() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_class(
+        "classDiagram\nclass User {\n  +String 名称\n}\nclass Order {\n  +String 状态🚀\n}\nclass Audit\nUser --> Order : 创建🚀\nOrder --> Audit : 记录数据",
+        &options,
+    )
+    .expect("class diagram with wide member and relation labels should render");
+
+    for expected in [
+        "User",
+        "名称",
+        "Order",
+        "状态🚀",
+        "Audit",
+        "relations:",
+        "User  --> Order",
+        "Order --> Audit",
+        "创建🚀",
+        "记录数据",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "wide class fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("<br>"),
+        "wide class relation summary should not leak Mermaid break syntax:\n{rendered}"
+    );
+}
+
+#[test]
 fn class_parser_lollipop_relation_renders_interface_node() {
     let rendered = render_class(
         "classDiagram\nIService ()-- Service",

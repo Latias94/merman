@@ -118,6 +118,28 @@ fn assert_rectangular_char_grid(rendered: &str) {
     }
 }
 
+fn terminal_test_width(input: &str) -> usize {
+    input
+        .chars()
+        .map(|ch| if ch.is_ascii() { 1 } else { 2 })
+        .sum()
+}
+
+fn assert_rectangular_terminal_grid(rendered: &str) {
+    let mut lines = rendered.lines();
+    let Some(first) = lines.next() else {
+        return;
+    };
+    let width = terminal_test_width(first);
+    for line in lines {
+        assert_eq!(
+            terminal_test_width(line),
+            width,
+            "rendered lines should stay terminal-cell aligned:\n{rendered}"
+        );
+    }
+}
+
 #[test]
 fn flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
@@ -475,6 +497,23 @@ fn flowchart_parser_multibyte_reference_labels_render_readably() {
         }
         assert_rectangular_char_grid(&rendered);
     }
+}
+
+#[test]
+fn flowchart_parser_cjk_and_emoji_labels_reserve_terminal_cells() {
+    let rendered = render_flowchart(
+        "flowchart LR\nA[开始] -->|处理🚀| B[完成]",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+
+    for expected in ["开始", "处理🚀", "完成"] {
+        assert!(
+            rendered.contains(expected),
+            "wide label {expected:?} should stay visible:\n{rendered}"
+        );
+    }
+    assert_rectangular_terminal_grid(&rendered);
 }
 
 #[test]

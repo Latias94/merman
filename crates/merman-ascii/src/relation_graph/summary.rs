@@ -143,6 +143,31 @@ mod tests {
     }
 
     #[test]
+    fn render_stacked_boxes_with_relation_summary_aligns_wide_text_by_display_width() {
+        let rows = vec![
+            RelationGraphSummaryRow::new("服务", "-->", "Repo")
+                .with_label(RelationGraphLabel::new("处理🚀<br>完成").as_ref()),
+            RelationGraphSummaryRow::new("API", "-->", "数据"),
+        ];
+
+        let rendered =
+            render_stacked_boxes_with_relation_summary(&[], &rows, &AsciiRenderOptions::ascii());
+
+        assert_eq!(
+            rendered,
+            format!(
+                concat!(
+                    "relations:\n",
+                    "服务 --> Repo : 处理🚀\n",
+                    "{}完成\n",
+                    "API  --> 数据\n",
+                ),
+                " ".repeat(16),
+            )
+        );
+    }
+
+    #[test]
     fn render_stacked_boxes_with_relation_summary_colors_title_and_rows() {
         let rows = vec![
             RelationGraphSummaryRow::new("A", "-->", "B")

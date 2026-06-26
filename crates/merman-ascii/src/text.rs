@@ -432,6 +432,27 @@ mod tests {
     }
 
     #[test]
+    fn styled_line_write_line_rejects_wide_cell_at_final_column() {
+        let mut target = StyledLine::plain_text("ab");
+        let source = StyledLine::plain_text("中");
+
+        target.write_line(1, &source);
+
+        assert_eq!(target.text(), "ab");
+        assert_eq!(target.get(1), Some('b'));
+    }
+
+    #[test]
+    fn styled_line_write_text_role_rejects_wide_cell_at_final_column() {
+        let mut target = StyledLine::plain_text("ab");
+
+        target.write_text_role(1, "🚀", AsciiColorRole::Text);
+
+        assert_eq!(target.text(), "ab");
+        assert_eq!(target.get(1), Some('b'));
+    }
+
+    #[test]
     fn styled_line_write_line_ignores_source_continuation_cells() {
         let mut target = StyledLine::plain_text("abcd");
         let source = StyledLine::plain_text("中Z");

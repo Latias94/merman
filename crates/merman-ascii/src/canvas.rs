@@ -482,6 +482,17 @@ mod tests {
     }
 
     #[test]
+    fn emoji_text_does_not_cross_canvas_row_boundary() {
+        let mut canvas = Canvas::new(2, 2);
+        canvas.set(1, 0, '🚀');
+        canvas.set(0, 1, 'B');
+
+        assert_eq!(canvas.get(1, 0), Some(' '));
+        assert_eq!(canvas.get(0, 1), Some('B'));
+        assert_eq!(canvas.finish(), "  \nB \n");
+    }
+
+    #[test]
     fn styled_wide_text_does_not_cross_canvas_row_boundary() {
         let mut canvas = Canvas::new(2, 2);
         canvas.set_style(

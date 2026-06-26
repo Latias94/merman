@@ -22,10 +22,10 @@ should use the shared `relations:` summary rather than renderer-local fallback b
 
 | Surface | Reference evidence | `merman` status | Fixture strategy |
 | --- | --- | --- | --- |
-| Class boxes, members, methods, annotations | `beautiful-mermaid` parser/integration tests | Supported | Parser-backed semantic tests |
+| Class boxes, members, methods, annotations, including CJK/emoji member text | `beautiful-mermaid` parser/integration tests plus local wide-text coverage | Supported | Parser-backed semantic tests |
 | Directional association / dependency / inheritance / realization / aggregation / composition | `beautiful-mermaid` class arrow tests | Supported | Routed-grid fixtures and exact snapshots |
 | Plain association (`--`, `..`) | `beautiful-mermaid` class parser and ASCII tests | Supported | Routed-grid and dense-summary regressions |
-| Relationship labels and multiline labels | `beautiful-mermaid` integration tests | Supported | Routed-grid fixtures |
+| Relationship labels and multiline labels, including CJK/emoji summary labels | `beautiful-mermaid` integration tests plus local wide-text coverage | Supported | Routed-grid and structured-summary fixtures |
 | Same-endpoint lanes, reverse lanes, cycles, crossings, spanning routes | `beautiful-mermaid` ASCII tests | Supported | Routed-grid fixtures |
 | Dense layouts that should collapse to relation summary | `beautiful-mermaid` ASCII tests | Supported | Structured summary fixtures |
 | Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |
@@ -39,10 +39,10 @@ should use the shared `relations:` summary rather than renderer-local fallback b
 
 | Surface | Reference evidence | `merman` status | Fixture strategy |
 | --- | --- | --- | --- |
-| Entity boxes, attributes, PK / UK / FK tokens, comments | `beautiful-mermaid` ER parser/integration tests | Supported | Parser-backed semantic tests |
+| Entity boxes, attributes, PK / UK / FK tokens, comments, including CJK/emoji attributes | `beautiful-mermaid` ER parser/integration tests plus local wide-text coverage | Supported | Parser-backed semantic tests |
 | Identifying and non-identifying relationships | `beautiful-mermaid` ER parser/integration tests | Supported | Routed-grid fixtures |
 | Cardinality variants (`||`, `o|`, `|{`, `o{`, and reversed forms) | `beautiful-mermaid` ER parser tests | Supported | Routed-grid fixtures |
-| Relationship labels and multiline labels | `beautiful-mermaid` ER integration tests | Supported | Routed-grid fixtures |
+| Relationship labels and multiline labels, including CJK/emoji summary labels | `beautiful-mermaid` ER integration tests plus local wide-text coverage | Supported | Routed-grid and structured-summary fixtures |
 | Same-endpoint lanes, reverse lanes, cycles, crossings, spanning routes | `beautiful-mermaid` ER ASCII tests | Supported | Routed-grid fixtures |
 | Dense layouts that should collapse to relation summary | `beautiful-mermaid` ER ASCII tests | Supported | Structured summary fixtures |
 | Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |

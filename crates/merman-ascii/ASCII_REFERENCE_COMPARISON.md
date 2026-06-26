@@ -19,6 +19,9 @@ product boundary.
   ideas, but it is not always semantically faithful to Mermaid.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
+- CJK/emoji terminal-cell coverage is semantic, not byte-exact: primitive cell ownership plus
+  Flowchart, Sequence, Class, ER, and XYChart tests prove visibility/alignment without copying
+  reference spacing.
 - Class and ER relation output now deliberately shares the `relation_graph` seam. Adapters preserve
   Mermaid-family semantics, while shared relation planning owns lane placement, routed grids, and
   structured dense/grid-budget summary fallback.
@@ -88,7 +91,8 @@ Mermaid terminal standard.
 
 ## Remaining Pressure
 
-- CJK and emoji placement across renderers.
+- CJK and emoji placement is covered for the current renderer families; keep the same semantic
+  gate for new families and more complex grapheme clusters.
 - Flowchart route families beyond the current layered planner.
 - Class and ER dense relation topologies beyond the current fallback.
 - XYChart richer multi-series label placement and terminal tooltip alternatives.

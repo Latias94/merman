@@ -90,8 +90,9 @@ reference implementation is only an implementation aid.
   modes: `color`, `stroke`, `fill`, and `background` support hex colors and a small named-color
   set. Stroke width, links, callbacks, icons, images, Markdown labels, and HTML labels are not
   rendered.
-- CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated
-  follow-up coverage before being listed as supported.
+- CJK/emoji width is measured for box sizing and covered by semantic parser tests for visible node
+  and edge labels. Exact spacing from reference multibyte fixtures is intentionally not a
+  byte-level oracle.
 
 ## Test Coverage
 
