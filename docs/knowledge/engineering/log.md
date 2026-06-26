@@ -6,6 +6,19 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-fed payload expected syntax to the line-oriented `gantt` family. Existing
+  `SpannedText` payload helper paths now mark title/config/accessibility/click payload value
+  spans as parser-controlled completion contexts without changing Gantt parsing semantics.
+- Verified that LSP completion now suppresses generic identifier/header fallback inside Gantt
+  payload values through the same core facts -> analysis cursor context -> LSP projection chain
+  used by `sequence`.
+- Verified the slice with `cargo test -p merman-core --lib gantt_editor_facts_preserve_parser_symbol_spans -- --nocapture`,
+  `cargo test -p merman-lsp --test completion completion_uses_gantt_parser_payload_context -- --nocapture`,
+  `cargo test -p merman-lsp --test completion -- --nocapture`,
+  `cargo check -p merman-core -p merman-analysis -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-27
 - Added the first parser-fed expected syntax slice. `merman-core::EditorSemanticFacts` now carries
   `expected_syntax`, `sequence` parser facts emit payload spans for messages, notes, and
   interaction payloads, and `merman-analysis::FenceCursorContext` projects those spans into

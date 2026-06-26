@@ -2,7 +2,10 @@ use super::*;
 use crate::diagrams::scan::{
     leading_whitespace_len, starts_with_case_insensitive, strip_line_ending,
 };
-use crate::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, SourceSpan,
+};
 
 fn strip_inline_comment(line: &str) -> &str {
     // Mermaid gantt does not treat `%%` as an inline comment delimiter for statements like `title`
@@ -708,6 +711,10 @@ impl GanttAccDescrBlock {
             SourceSpan::new(self.statement_start, self.statement_end),
             SourceSpan::new(selection_start, selection_end),
         ));
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            SourceSpan::new(selection_start, selection_end),
+        ));
     }
 }
 
@@ -792,6 +799,10 @@ fn push_gantt_payload_symbol(
     let Some(field) = field.trim() else {
         return;
     };
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        field.span(),
+    ));
     facts.push_symbol(EditorSemanticSymbol::payload(
         field.text,
         Some(detail.to_string()),

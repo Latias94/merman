@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig, ParseOptions,
-    RenderSemanticModel, SourceSpan,
+    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine,
+    MermaidConfig, ParseOptions, RenderSemanticModel, SourceSpan,
 };
 use chrono::NaiveDate;
 use futures::executor::block_on;
@@ -194,6 +194,24 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             && symbol.selection.start == href_start
             && symbol.selection.end == href_start + "https://example.com/".len()
     }));
+
+    for payload in [
+        "Roadmap",
+        "YYYY-MM-DD",
+        "open",
+        "userId",
+        "https://example.com/",
+    ] {
+        let start = text.find(payload).unwrap();
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span.start <= start
+                    && expected.span.end >= start + payload.len()
+            }),
+            "missing gantt payload expected syntax for {payload:?}"
+        );
+    }
 }
 
 #[test]
