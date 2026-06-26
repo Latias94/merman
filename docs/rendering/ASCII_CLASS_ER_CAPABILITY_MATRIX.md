@@ -31,6 +31,7 @@ directly instead of inferring it only from rendered text.
 | Same-endpoint lanes, reverse lanes, cycles, crossings, spanning routes | `beautiful-mermaid` ASCII tests | Supported | Routed-grid fixtures |
 | Dense layouts that should collapse to relation summary | `beautiful-mermaid` ASCII tests | Supported | Structured summary fixtures |
 | Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |
+| Disconnected components / isolated nodes | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
 | Namespace-qualified class names | Local semantic tests | Supported | Local semantic fixtures |
 | Endpoint labels / cardinality strings attached to a relation | Mermaid class cardinality tests and `beautiful-mermaid` parser/renderer | Supported | Exact vertical fixtures and summary regressions |
 | Notes and note-for links | Mermaid class parser / SVG behavior | Supported | Local semantic fixtures with exact snapshots |
@@ -48,6 +49,7 @@ directly instead of inferring it only from rendered text.
 | Same-endpoint lanes, reverse lanes, cycles, crossings, spanning routes | `beautiful-mermaid` ER ASCII tests | Supported | Routed-grid fixtures |
 | Dense layouts that should collapse to relation summary | `beautiful-mermaid` ER ASCII tests | Supported | Structured summary fixtures |
 | Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |
+| Disconnected components / isolated entities | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
 | Unknown cardinality markers | Not represented in reference ASCII output | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
 | Unknown relationship identification types | Not represented in reference ASCII output | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
 | Missing endpoint entities | Not represented in reference ASCII output | Explicit unsupported | Keep as `UnsupportedFeature` model tests |

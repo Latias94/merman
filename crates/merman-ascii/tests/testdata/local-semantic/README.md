@@ -52,8 +52,8 @@ layered draw policy, and dense/grid-budget summary fallback should stay shared.
 
 See [ASCII Class / ER Capability Matrix](../../../../../docs/rendering/ASCII_CLASS_ER_CAPABILITY_MATRIX.md) for the current comparison against `beautiful-mermaid` and `mermaid-ascii`.
 
-Current covered Class capabilities include association (`--` / `..`), inheritance, realization, aggregation, composition, notes, lollipop/interface nodes, endpoint cardinality labels, CJK/emoji member and relationship labels, multiline labels, parallel lanes, crossing reroutes, dense summary fallback, and tight-budget summary fallback.
-Current covered ER capabilities include entity attributes, CJK/emoji attribute and relationship labels, key/comment tokens, identifying and non-identifying relationships, normalized cardinality spellings (`}|` / `}o`), multiline labels, parallel lanes, crossing reroutes, dense summary fallback, and tight-budget summary fallback.
+Current covered Class capabilities include association (`--` / `..`), inheritance, realization, aggregation, composition, notes, lollipop/interface nodes, endpoint cardinality labels, CJK/emoji member and relationship labels, multiline labels, parallel lanes, crossing reroutes, disconnected components, dense summary fallback, and tight-budget summary fallback.
+Current covered ER capabilities include entity attributes, CJK/emoji attribute and relationship labels, key/comment tokens, identifying and non-identifying relationships, normalized cardinality spellings (`}|` / `}o`), multiline labels, parallel lanes, crossing reroutes, disconnected components, dense summary fallback, and tight-budget summary fallback.
 Current explicit unsupported boundaries are covered by typed-model tests for Class multiple markers, plus ER unknown cardinality markers and unknown relationship identification types.
 
 ## Flowchart Route Fixtures
@@ -73,9 +73,11 @@ Current examples:
 
 - `class/dense_relations.mmd`
 - `class/dense_multiline_relations.mmd`
+- `class/disconnected_components.mmd`
 - `class/routed_relationship_variants.mmd`
 - `er/dense_relations.mmd`
 - `er/dense_multiline_relations.mmd`
+- `er/disconnected_components.mmd`
 - `er/routed_schema_with_attributes.mmd`
 - `flowchart/back_edge_labels.mmd`
 - `flowchart/boundary_label_lane.mmd`
