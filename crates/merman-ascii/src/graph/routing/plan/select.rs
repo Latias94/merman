@@ -161,7 +161,7 @@ fn plan_boundary_route(
             request.to,
             request.edge,
             request.charset,
-            GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Left))
+            GridRouteOptions::with_fixed_ports(Port::Right, Port::Left)
                 .with_segment(PlannedRouteSegment::Boundary)
                 .with_first_vertical_transit_label(),
         ),
@@ -175,7 +175,7 @@ fn plan_boundary_route(
             request.to,
             request.edge,
             request.charset,
-            GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Right))
+            GridRouteOptions::with_fixed_ports(Port::Right, Port::Right)
                 .with_segment(PlannedRouteSegment::Boundary)
                 .with_last_vertical_transit_label(),
         ),

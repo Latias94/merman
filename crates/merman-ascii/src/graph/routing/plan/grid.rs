@@ -6,7 +6,8 @@ use super::super::label::{
     RoutedLabelPlacement, routed_label_placement, routed_label_right_of_vertical_route_placement,
 };
 use super::super::path::{
-    Port, StepDirection, merge_grid_path, route_grid_path_with_ports, step_direction,
+    GridPathPortPolicy, Port, PortPair, StepDirection, merge_grid_path, route_grid_path,
+    step_direction,
 };
 use super::{
     PlannedRouteCell, PlannedRouteLabel, PlannedRouteSegment, RoutePlan,
@@ -15,8 +16,7 @@ use super::{
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GridRouteOptions {
-    start_port: Option<Port>,
-    end_port: Option<Port>,
+    port_policy: GridPathPortPolicy,
     segment: PlannedRouteSegment,
     label_mode: GridRouteLabelMode,
 }
@@ -31,17 +31,15 @@ enum GridRouteLabelMode {
 impl GridRouteOptions {
     pub(super) fn direct() -> Self {
         Self {
-            start_port: None,
-            end_port: None,
+            port_policy: GridPathPortPolicy::DirectionalShortest,
             segment: PlannedRouteSegment::Direct,
             label_mode: GridRouteLabelMode::InlineLongestSegment,
         }
     }
 
-    pub(super) fn with_ports(start_port: Option<Port>, end_port: Option<Port>) -> Self {
+    pub(super) fn with_fixed_ports(start_port: Port, end_port: Port) -> Self {
         Self {
-            start_port,
-            end_port,
+            port_policy: GridPathPortPolicy::Fixed(PortPair::new(start_port, end_port)),
             segment: PlannedRouteSegment::Direct,
             label_mode: GridRouteLabelMode::InlineLongestSegment,
         }
@@ -88,13 +86,10 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     charset: &GraphCharset,
     options: GridRouteOptions,
 ) -> Option<RoutePlan> {
-    let (path, start_port, end_port) = route_grid_path_with_ports(
-        &graph_layout.nodes,
-        from,
-        to,
-        options.start_port,
-        options.end_port,
-    )?;
+    let route = route_grid_path(&graph_layout.nodes, from, to, options.port_policy)?;
+    let path = route.path;
+    let start_port = route.ports.start();
+    let end_port = route.ports.end();
     if path.len() < 2 {
         return None;
     }

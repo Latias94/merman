@@ -311,9 +311,9 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
         to,
         &edge,
         &charset,
-        GridRouteOptions::with_ports(
-            Some(crate::graph::routing::path::Port::Right),
-            Some(crate::graph::routing::path::Port::Left),
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Left,
         )
         .with_segment(PlannedRouteSegment::Boundary)
         .with_first_vertical_transit_label(),
@@ -364,9 +364,9 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
         to,
         &edge,
         &charset,
-        GridRouteOptions::with_ports(
-            Some(crate::graph::routing::path::Port::Right),
-            Some(crate::graph::routing::path::Port::Right),
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Right,
         )
         .with_segment(PlannedRouteSegment::Boundary)
         .with_last_vertical_transit_label(),
@@ -405,9 +405,9 @@ fn entering_boundary_route_uses_explicit_left_boundary_ports() {
         to,
         &edge,
         &charset,
-        GridRouteOptions::with_ports(
-            Some(crate::graph::routing::path::Port::Right),
-            Some(crate::graph::routing::path::Port::Left),
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Left,
         )
         .with_segment(PlannedRouteSegment::Boundary)
         .with_first_vertical_transit_label(),
@@ -454,9 +454,9 @@ fn leaving_boundary_route_uses_explicit_right_boundary_ports() {
         to,
         &edge,
         &charset,
-        GridRouteOptions::with_ports(
-            Some(crate::graph::routing::path::Port::Right),
-            Some(crate::graph::routing::path::Port::Right),
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Right,
         )
         .with_segment(PlannedRouteSegment::Boundary)
         .with_last_vertical_transit_label(),
