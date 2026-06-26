@@ -21,15 +21,6 @@ pub(super) struct RouteDrawing<'a> {
     labels: &'a mut Vec<EdgeLabel>,
 }
 
-pub(super) struct DrawEdgeRequest<'a> {
-    pub(super) graph: &'a AsciiGraph,
-    pub(super) graph_layout: &'a GraphLayout,
-    pub(super) edges: &'a [AsciiGraphEdge],
-    pub(super) edge_index: usize,
-    pub(super) edge: &'a AsciiGraphEdge,
-    pub(super) charset: &'a GraphCharset,
-}
-
 impl<'a> RouteDrawing<'a> {
     pub(super) fn new(
         canvas: &'a mut Canvas,
@@ -44,21 +35,56 @@ impl<'a> RouteDrawing<'a> {
     }
 }
 
-pub(super) fn edge_canvas_extent(
+pub(super) struct RouteScene {
+    routes: Vec<PreparedRoute>,
+    extent: (usize, usize),
+}
+
+struct PreparedRoute {
+    style: GraphEdgeStyle,
+    plan: RoutePlan,
+}
+
+impl PreparedRoute {
+    fn paint(&self, drawing: &mut RouteDrawing<'_>) {
+        paint_route_plan(drawing, &self.plan, self.style);
+    }
+}
+
+impl RouteScene {
+    pub(super) fn canvas_extent(&self) -> (usize, usize) {
+        self.extent
+    }
+
+    pub(super) fn paint(&self, drawing: &mut RouteDrawing<'_>) {
+        for route in &self.routes {
+            route.paint(drawing);
+        }
+    }
+}
+
+pub(super) fn prepare_route_scene(
     graph: &AsciiGraph,
     graph_layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
     charset: &GraphCharset,
-) -> (usize, usize) {
+) -> Result<RouteScene> {
+    let mut routes = Vec::with_capacity(edges.len());
     let mut width = 0;
     let mut height = 0;
 
     for (edge_index, edge) in edges.iter().enumerate() {
         let Some(from) = endpoint_layout(graph_layout, &edge.from) else {
-            continue;
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "edges with missing endpoint layouts",
+            });
         };
         let Some(to) = endpoint_layout(graph_layout, &edge.to) else {
-            continue;
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "edges with missing endpoint layouts",
+            });
         };
         let Some(plan) = plan_edge_route(EdgeRouteRequest {
             graph,
@@ -70,15 +96,25 @@ pub(super) fn edge_canvas_extent(
             edge,
             charset,
         }) else {
-            continue;
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "unroutable graph edges",
+            });
         };
 
         let (plan_width, plan_height) = plan.canvas_extent();
         width = width.max(plan_width);
         height = height.max(plan_height);
+        routes.push(PreparedRoute {
+            style: edge.style,
+            plan,
+        });
     }
 
-    (width, height)
+    Ok(RouteScene {
+        routes,
+        extent: (width, height),
+    })
 }
 
 pub(super) fn transform_routed_label(
@@ -90,42 +126,6 @@ pub(super) fn transform_routed_label(
         placement: transform(label.placement),
         color: label.color,
     }
-}
-
-pub(super) fn draw_edge(
-    drawing: &mut RouteDrawing<'_>,
-    request: DrawEdgeRequest<'_>,
-) -> Result<()> {
-    let Some(from) = endpoint_layout(request.graph_layout, &request.edge.from) else {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: request.graph.diagram_type(),
-            feature: "edges with missing endpoint layouts",
-        });
-    };
-    let Some(to) = endpoint_layout(request.graph_layout, &request.edge.to) else {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: request.graph.diagram_type(),
-            feature: "edges with missing endpoint layouts",
-        });
-    };
-    let Some(plan) = plan_edge_route(EdgeRouteRequest {
-        graph: request.graph,
-        graph_layout: request.graph_layout,
-        edges: request.edges,
-        from: &from,
-        to: &to,
-        edge_index: request.edge_index,
-        edge: request.edge,
-        charset: request.charset,
-    }) else {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: request.graph.diagram_type(),
-            feature: "unroutable graph edges",
-        });
-    };
-    paint_route_plan(drawing, &plan, request.edge.style);
-
-    Ok(())
 }
 
 fn endpoint_layout(graph_layout: &GraphLayout, endpoint_id: &str) -> Option<NodeLayout> {
@@ -322,7 +322,9 @@ mod tests {
         let label = plan.labels.first().expect("boundary route should label");
         let (required_width, _) = label.placement.canvas_extent();
 
-        let (edge_width, _) = edge_canvas_extent(&graph, &graph_layout, &graph.edges, &charset);
+        let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
+            .expect("boundary scene should render");
+        let (edge_width, _) = scene.canvas_extent();
 
         assert!(
             edge_width >= required_width,
@@ -331,32 +333,19 @@ mod tests {
     }
 
     #[test]
-    fn draw_edge_reports_missing_endpoint_layouts() {
+    fn prepare_route_scene_reports_missing_endpoint_layouts_before_painting() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         graph.add_node("a", "A");
         graph.add_node("b", "B");
-        graph.add_edge("b", "missing");
+        graph.add_edge("a", "missing");
         let options = AsciiRenderOptions::ascii();
         let graph_layout = layout_graph(&graph, &options);
         let charset = GraphCharset::for_options(&options);
-        let mut canvas = Canvas::new(80, 20);
-        let mut route_cells = RouteCells::new();
-        let mut labels = Vec::new();
-        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells, &mut labels);
-        let edge = &graph.edges[0];
 
-        let error = draw_edge(
-            &mut drawing,
-            DrawEdgeRequest {
-                graph: &graph,
-                graph_layout: &graph_layout,
-                edges: &graph.edges,
-                edge_index: 0,
-                edge,
-                charset: &charset,
-            },
-        )
-        .expect_err("edge with a missing endpoint layout should be unsupported");
+        let error = match prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset) {
+            Ok(_) => panic!("scene planning should fail on missing endpoint layouts"),
+            Err(error) => error,
+        };
 
         assert_eq!(
             error,
@@ -365,6 +354,53 @@ mod tests {
                 feature: "edges with missing endpoint layouts",
             }
         );
+    }
+
+    #[test]
+    fn prepare_route_scene_tracks_canvas_extent_for_each_route_plan() {
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_node("c", "C");
+        graph.add_edge("a", "b");
+        graph.add_edge_with_attrs(
+            "b",
+            "c",
+            GraphEdgeAttrs {
+                label: Some("wide label".to_string()),
+                ..Default::default()
+            },
+        );
+        let graph_layout = layout_graph(&graph, &options);
+
+        let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
+            .expect("supported graph should produce a prepared route scene");
+
+        let mut expected_width = 0;
+        let mut expected_height = 0;
+        for (edge_index, edge) in graph.edges.iter().enumerate() {
+            let from =
+                endpoint_layout(&graph_layout, &edge.from).expect("source layout should exist");
+            let to = endpoint_layout(&graph_layout, &edge.to).expect("target layout should exist");
+            let plan = plan_edge_route(EdgeRouteRequest {
+                graph: &graph,
+                graph_layout: &graph_layout,
+                edges: &graph.edges,
+                from: &from,
+                to: &to,
+                edge_index,
+                edge,
+                charset: &charset,
+            })
+            .expect("supported graph should route");
+            let (plan_width, plan_height) = plan.canvas_extent();
+            expected_width = expected_width.max(plan_width);
+            expected_height = expected_height.max(plan_height);
+        }
+
+        assert_eq!(scene.canvas_extent(), (expected_width, expected_height));
     }
 
     fn planned_cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {

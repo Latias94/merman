@@ -21,8 +21,8 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 
     let charset = GraphCharset::for_options(options);
     let graph_layout = layout_graph(graph, options);
-    let (edge_width, edge_height) =
-        routing::edge_canvas_extent(graph, &graph_layout, &graph.edges, &charset);
+    let route_scene = routing::prepare_route_scene(graph, &graph_layout, &graph.edges, &charset)?;
+    let (edge_width, edge_height) = route_scene.canvas_extent();
     let width = graph_layout
         .nodes
         .iter()
@@ -69,42 +69,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
     {
         let mut route_drawing =
             routing::RouteDrawing::new(&mut canvas, &mut route_cells, &mut edge_labels);
-        for (edge_index, edge) in graph
-            .edges
-            .iter()
-            .enumerate()
-            .filter(|(_, edge)| edge.from == edge.to)
-        {
-            routing::draw_edge(
-                &mut route_drawing,
-                routing::DrawEdgeRequest {
-                    graph,
-                    graph_layout: &graph_layout,
-                    edges: &graph.edges,
-                    edge_index,
-                    edge,
-                    charset: &charset,
-                },
-            )?;
-        }
-        for (edge_index, edge) in graph
-            .edges
-            .iter()
-            .enumerate()
-            .filter(|(_, edge)| edge.from != edge.to)
-        {
-            routing::draw_edge(
-                &mut route_drawing,
-                routing::DrawEdgeRequest {
-                    graph,
-                    graph_layout: &graph_layout,
-                    edges: &graph.edges,
-                    edge_index,
-                    edge,
-                    charset: &charset,
-                },
-            )?;
-        }
+        route_scene.paint(&mut route_drawing);
     }
 
     let output_transform = OutputTransform::for_direction(graph.direction);
