@@ -12,6 +12,8 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.authoring.config.prefer_init_directive";
+pub const PREFER_FRONTMATTER_CONFIG_RULE_ID: &str =
+    "merman.authoring.config.prefer_frontmatter_config";
 pub const DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID: &str =
     "merman.compatibility.config.deprecated_flowchart_html_labels";
 pub const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID: &str =
@@ -141,6 +143,21 @@ const PREFER_INIT_DIRECTIVE_RULE: RuleDescriptor = RuleDescriptor {
     default_profile: AnalysisRuleProfile::Recommended,
     origin: RuleOrigin::MermanAuthoring,
     fixable: true,
+};
+
+const PREFER_FRONTMATTER_CONFIG_RULE: RuleDescriptor = RuleDescriptor {
+    id: PREFER_FRONTMATTER_CONFIG_RULE_ID,
+    description: "Prefer diagram frontmatter `config` over Mermaid init directives.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/configuration.md",
+    ],
+    default_severity: DiagnosticSeverity::Hint,
+    category: DiagnosticCategory::Config,
+    default_enabled: false,
+    default_profile: AnalysisRuleProfile::Recommended,
+    origin: RuleOrigin::MermanAuthoring,
+    fixable: false,
 };
 
 const DEPRECATED_FLOWCHART_HTML_LABELS_RULE: RuleDescriptor = RuleDescriptor {
@@ -385,6 +402,7 @@ const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
 
 const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PREFER_INIT_DIRECTIVE_RULE,
+    PREFER_FRONTMATTER_CONFIG_RULE,
     DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
     DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
     NO_DIAGRAM_RULE,
@@ -528,6 +546,11 @@ pub(crate) fn source_lint_diagnostics(
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
     let mut diagnostics = init_directive_alias_diagnostics(source, source_map, rule_config);
+    diagnostics.extend(prefer_frontmatter_config_diagnostics(
+        source,
+        source_map,
+        rule_config,
+    ));
     diagnostics.extend(deprecated_flowchart_html_labels_diagnostics(
         source,
         source_map,
@@ -724,6 +747,39 @@ fn init_directive_alias_diagnostics(
         .collect()
 }
 
+fn prefer_frontmatter_config_diagnostics(
+    source: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+) -> Vec<AnalysisDiagnostic> {
+    if !rule_config.is_rule_enabled(PREFER_FRONTMATTER_CONFIG_RULE) {
+        return Vec::new();
+    }
+    let severity = rule_config.severity_for(PREFER_FRONTMATTER_CONFIG_RULE);
+
+    directive_keyword_spans(source)
+        .into_iter()
+        .filter_map(|keyword| {
+            (source.get(keyword.start..keyword.end) == Some("init")).then_some(keyword)
+        })
+        .filter_map(|keyword| {
+            let span = source_map.span(keyword.start, keyword.end).ok()?;
+            Some(
+                AnalysisDiagnostic::new(
+                    PREFER_FRONTMATTER_CONFIG_RULE.id,
+                    severity,
+                    PREFER_FRONTMATTER_CONFIG_RULE.category,
+                    "prefer frontmatter `config` over Mermaid init directives",
+                )
+                .with_span(span)
+                .with_help(
+                    "Mermaid deprecated directives from v10.5.0; diagram authors should move configuration into the diagram frontmatter `config` block.",
+                ),
+            )
+        })
+        .collect()
+}
+
 fn deprecated_flowchart_html_labels_diagnostics(
     source: &str,
     source_map: &SourceMap,
@@ -817,10 +873,30 @@ mod tests {
     }
 
     #[test]
-    fn source_lint_leaves_canonical_init_directive_alone() {
+    fn source_lint_prefers_frontmatter_config_over_init_directive() {
         let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
         let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+
+        let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+        assert_eq!(diagnostics.len(), 1);
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.id, PREFER_FRONTMATTER_CONFIG_RULE_ID);
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+        assert!(diagnostic.fixes.is_empty());
+        let span = diagnostic.span.as_ref().expect("directive keyword span");
+        assert_eq!(&source[span.byte_start..span.byte_end], "init");
+    }
+
+    #[test]
+    fn source_lint_leaves_canonical_init_directive_alone() {
+        let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default()
+            .with_profile(AnalysisRuleProfile::Recommended)
+            .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID);
 
         assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
     }
@@ -1116,7 +1192,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 17);
+        assert_eq!(descriptors.len(), 18);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert!(descriptors[0].description.contains("canonical `init`"));
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1128,6 +1204,37 @@ mod tests {
         );
         assert_eq!(descriptors[0].origin, RuleOrigin::MermanAuthoring);
         assert!(descriptors[0].fixable);
+        let prefer_frontmatter = descriptors
+            .iter()
+            .find(|descriptor| descriptor.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
+            .expect("prefer frontmatter config descriptor");
+        assert!(
+            prefer_frontmatter
+                .description
+                .contains("frontmatter `config`")
+        );
+        assert_eq!(prefer_frontmatter.origin, RuleOrigin::MermanAuthoring);
+        assert_eq!(
+            prefer_frontmatter.default_profile,
+            AnalysisRuleProfile::Recommended
+        );
+        assert_eq!(
+            prefer_frontmatter.default_severity,
+            DiagnosticSeverity::Hint
+        );
+        assert_eq!(prefer_frontmatter.category, DiagnosticCategory::Config);
+        assert!(!prefer_frontmatter.default_enabled);
+        assert!(!prefer_frontmatter.fixable);
+        assert!(
+            prefer_frontmatter
+                .evidence
+                .contains(&"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md")
+        );
+        assert!(
+            prefer_frontmatter
+                .evidence
+                .contains(&"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/configuration.md")
+        );
         let deprecated_html_labels = descriptors
             .iter()
             .find(|descriptor| descriptor.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
@@ -1201,6 +1308,11 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
         );
         assert!(
             descriptors
@@ -1385,6 +1497,37 @@ mod tests {
                 .evidence
                 .contains(&"docs/adr/0072-lint-rule-governance.md")
         );
+        let prefer_frontmatter = catalog
+            .iter()
+            .find(|entry| entry.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
+            .expect("prefer frontmatter catalog entry");
+        assert!(
+            prefer_frontmatter
+                .description
+                .contains("frontmatter `config`")
+        );
+        assert_eq!(prefer_frontmatter.origin, RuleOrigin::MermanAuthoring);
+        assert_eq!(
+            prefer_frontmatter.default_profile,
+            AnalysisRuleProfile::Recommended
+        );
+        assert_eq!(
+            prefer_frontmatter.default_severity,
+            DiagnosticSeverity::Hint
+        );
+        assert_eq!(prefer_frontmatter.category, DiagnosticCategory::Config);
+        assert!(prefer_frontmatter.configurable);
+        assert!(!prefer_frontmatter.fixable);
+        assert!(
+            prefer_frontmatter
+                .evidence
+                .contains(&"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md")
+        );
+        assert!(
+            prefer_frontmatter
+                .evidence
+                .contains(&"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/configuration.md")
+        );
         assert!(catalog.iter().all(|entry| !entry.evidence.is_empty()));
         let deprecated_html_labels = catalog
             .iter()
@@ -1425,6 +1568,11 @@ mod tests {
             catalog
                 .iter()
                 .all(|entry| entry.category != DiagnosticCategory::Internal)
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|entry| entry.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
         );
         assert!(
             catalog

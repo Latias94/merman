@@ -311,10 +311,15 @@ mod tests {
             .iter()
             .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_init_directive")
             .unwrap();
+        let prefer_frontmatter = descriptors
+            .iter()
+            .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_frontmatter_config")
+            .unwrap();
 
         assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
         assert!(!analysis.rule_config.is_rule_enabled(*duplicate_commit));
         assert!(!analysis.rule_config.is_rule_enabled(*prefer_init));
+        assert!(!analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
         assert_eq!(
             analysis.rule_config.severity_for(*prefer_init),
             DiagnosticSeverity::Hint
@@ -333,22 +338,31 @@ mod tests {
             .iter()
             .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_init_directive")
             .unwrap();
+        let prefer_frontmatter = rule_descriptors()
+            .iter()
+            .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_frontmatter_config")
+            .unwrap();
 
         assert_eq!(
             analysis.rule_config.profile(),
             AnalysisRuleProfile::Recommended
         );
         assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
 
         let wrapped = serde_json::json!({
             "lint": {
-                "enable_rules": ["merman.authoring.config.prefer_init_directive"]
+                "enable_rules": [
+                    "merman.authoring.config.prefer_init_directive",
+                    "merman.authoring.config.prefer_frontmatter_config"
+                ]
             }
         });
         let analysis = analysis_options_from_json_value(&wrapped).unwrap();
 
         assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
         assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
     }
 
     #[test]
@@ -423,6 +437,10 @@ mod tests {
             .iter()
             .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_init_directive")
             .unwrap();
+        let prefer_frontmatter = rule_descriptors()
+            .iter()
+            .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_frontmatter_config")
+            .unwrap();
 
         assert_eq!(
             analysis.rule_config.profile(),
@@ -433,5 +451,6 @@ mod tests {
             DiagnosticSeverity::Warning
         );
         assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
     }
 }

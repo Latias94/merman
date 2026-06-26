@@ -53,9 +53,11 @@ navigation, code-action, and semantic-token foundations.
   or rename targets.
 - Code actions are fix-metadata driven; LSP does not invent edits for diagnostics without explicit
   safe fixes.
-- Fix-backed authoring rules such as `merman.authoring.config.prefer_init_directive` and
+- Recommended-profile authoring rules such as `merman.authoring.config.prefer_init_directive`,
+  `merman.authoring.config.prefer_frontmatter_config`, and
   `merman.authoring.flowchart.explicit_direction` are available through the shared lint
-  configuration, but remain opt-in through `recommended` or explicit rule enablement.
+  configuration, but remain opt-in through `recommended` or explicit rule enablement. Only the
+  flowchart direction rule carries a quickfix today.
 - Mermaid-backed compatibility rules such as
   `merman.compatibility.config.deprecated_flowchart_html_labels` and
   `merman.compatibility.config.deprecated_external_diagram_loading` can be core-profile warnings

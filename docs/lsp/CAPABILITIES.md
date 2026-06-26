@@ -35,10 +35,12 @@ facts, it is not considered mature.
   groups. Payload and outline-only items are excluded unless a future role explicitly allows
   projection, and same-name entities with different semantic kinds do not collide.
 - Code actions: quickfix provider is wired; only diagnostics with `DiagnosticFix` metadata are
-  eligible, and diagnostics without explicit safe fixes produce no action. Fix-backed rules include
-  `merman.authoring.config.prefer_init_directive` and the parser-backed
+  eligible, and diagnostics without explicit safe fixes produce no action. Recommended-profile
+  authoring rules include `merman.authoring.config.prefer_init_directive`,
+  `merman.authoring.config.prefer_frontmatter_config`, and the parser-backed
   `merman.authoring.flowchart.explicit_direction` insertion fix when the `recommended` lint
-  profile or explicit rule enablement is active.
+  profile or explicit rule enablement is active. Only the flowchart direction rule carries a
+  quickfix today.
 - Config lint: Mermaid-backed compatibility warnings can be enabled in the core profile when
   upstream emits or documents the same warning.
   `merman.compatibility.config.deprecated_flowchart_html_labels` reports deprecated

@@ -36,4 +36,7 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Core config diagnostics include source-backed Mermaid compatibility warnings such as deprecated
   directive usage of `flowchart.htmlLabels` and deprecated external diagram loading config;
   diagnostics without `DiagnosticFix` metadata do not produce quickfixes.
+- Recommended-profile authoring hints include the canonical `init` alias reminder and the
+  frontmatter `config` preference; they stay fixless unless the diagnostic itself carries explicit
+  `DiagnosticFix` metadata.
 - Formatting remains deferred.

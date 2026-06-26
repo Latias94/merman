@@ -6,6 +6,28 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added public coverage for `merman.authoring.config.prefer_frontmatter_config` across analysis,
+  analyzer, CLI lint-rules JSON, LSP rule catalog/config schema, and repo docs. The new
+  recommended-profile hint steers authors from `%%{init}%%` directives toward diagram frontmatter
+  `config` using Mermaid's own directives/configuration docs as evidence.
+- Re-verified the full slice with `cargo test -p merman-analysis --lib`,
+  `cargo test -p merman-analysis --test analyzer`, `cargo test -p merman-cli --test cli_compat
+  cli_lint_rules_lists_rule_catalog_json`, `cargo test -p merman-lsp --lib protocol::tests`,
+  `cargo check -p merman-analysis -p merman-cli -p merman-lsp`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-26
+- Added a new recommended-profile authoring hint,
+  `merman.authoring.config.prefer_frontmatter_config`, to steer diagram authors from `%%{init}%%`
+  directives toward diagram frontmatter `config` based on Mermaid's `docs/config/directives.md`
+  and `docs/config/configuration.md` guidance.
+- Kept the hint source-backed and fixless, added analysis/analyzer regressions for the new rule,
+  and synchronized the public lint rule catalog plus LSP docs so the exported rule set stays
+  discoverable through `merman/ruleCatalog` and `merman/configSchema`.
+- Re-verified the slice with `cargo test -p merman-analysis --lib`, `cargo test -p
+  merman-analysis --test analyzer`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-26
 - Tightened the core compatibility lint governance boundary for
   `merman.compatibility.config.deprecated_flowchart_html_labels`: upstream explicitly deprecates
   `flowchart.htmlLabels`, but does not mark `class.htmlLabels` as deprecated in the same schema or

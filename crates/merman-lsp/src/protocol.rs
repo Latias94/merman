@@ -277,6 +277,18 @@ mod tests {
                 && rule.fixable
         }));
         assert!(catalog.rules.iter().any(|rule| {
+            rule.id == "merman.authoring.config.prefer_frontmatter_config"
+                && rule.origin == "merman_authoring"
+                && rule.default_profile == "recommended"
+                && rule.default_severity == "hint"
+                && rule.category == "config"
+                && rule.evidence.contains(
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md".to_string(),
+                )
+                && rule.configurable
+                && !rule.fixable
+        }));
+        assert!(catalog.rules.iter().any(|rule| {
             rule.id == "merman.compatibility.config.deprecated_flowchart_html_labels"
                 && rule.origin == "mermaid_compatibility"
                 && rule.default_profile == "core"
@@ -330,6 +342,11 @@ mod tests {
         assert_eq!(response.rule_catalog_method, RULE_CATALOG_METHOD);
         assert_eq!(response.profiles, ["core", "recommended", "strict"]);
         assert_eq!(response.severities, ["error", "warning", "info", "hint"]);
+        assert!(
+            response
+                .configurable_rule_ids
+                .contains(&"merman.authoring.config.prefer_frontmatter_config".to_string())
+        );
         assert!(
             response
                 .configurable_rule_ids

@@ -190,6 +190,28 @@ fn deprecated_flowchart_html_labels_config_is_core_warning() {
 }
 
 #[test]
+fn prefer_frontmatter_config_for_init_directives_is_a_recommended_hint() {
+    let source = "%%{ init: { \"theme\": \"dark\" } }%%\nflowchart TD\nA-->B\n";
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ));
+    let payload = analyzer.analyze(source);
+
+    assert!(payload.valid);
+    assert_eq!(payload.summary.hints, 1);
+    let diagnostic = &payload.diagnostics[0];
+    assert_eq!(
+        diagnostic.id,
+        "merman.authoring.config.prefer_frontmatter_config"
+    );
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
+    assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+    assert!(diagnostic.fixes.is_empty());
+    let span = diagnostic.span.as_ref().expect("directive span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "init");
+}
+
+#[test]
 fn class_html_labels_config_is_not_a_core_compatibility_warning() {
     let source = "%%{init: { \"class\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
     let payload = analyze(source);

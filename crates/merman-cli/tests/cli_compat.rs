@@ -337,6 +337,21 @@ fn cli_lint_rules_lists_rule_catalog_json() {
             .iter()
             .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
     );
+    let frontmatter = rules
+        .iter()
+        .find(|rule| rule["id"] == "merman.authoring.config.prefer_frontmatter_config")
+        .expect("frontmatter config authoring rule");
+    assert_eq!(frontmatter["origin"], "merman_authoring");
+    assert_eq!(frontmatter["default_profile"], "recommended");
+    assert_eq!(frontmatter["default_severity"], "hint");
+    assert_eq!(frontmatter["fixable"], false);
+    assert!(
+        frontmatter["evidence"]
+            .as_array()
+            .expect("evidence array")
+            .iter()
+            .any(|value| value == "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md")
+    );
     let external_loading = rules
         .iter()
         .find(|rule| {

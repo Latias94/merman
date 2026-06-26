@@ -56,6 +56,21 @@ Response:
       "fixable": true
     },
     {
+      "id": "merman.authoring.config.prefer_frontmatter_config",
+      "description": "Prefer diagram frontmatter `config` over Mermaid init directives.",
+      "evidence": [
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/configuration.md"
+      ],
+      "default_severity": "hint",
+      "category": "config",
+      "default_enabled": false,
+      "default_profile": "recommended",
+      "origin": "merman_authoring",
+      "configurable": true,
+      "fixable": false
+    },
+    {
       "id": "merman.compatibility.config.deprecated_flowchart_html_labels",
       "description": "Report deprecated `flowchart.htmlLabels` config and recommend the root-level `htmlLabels` option.",
       "evidence": [
@@ -111,6 +126,7 @@ Response:
   "severities": ["error", "warning", "info", "hint"],
   "configurable_rule_ids": [
     "merman.authoring.config.prefer_init_directive",
+    "merman.authoring.config.prefer_frontmatter_config",
     "merman.authoring.flowchart.explicit_direction",
     "merman.compatibility.config.deprecated_flowchart_html_labels",
     "merman.compatibility.config.deprecated_external_diagram_loading"
