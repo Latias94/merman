@@ -716,6 +716,9 @@ fn init_directive_alias_diagnostics(
     if !rule_config.is_rule_enabled(PREFER_INIT_DIRECTIVE_RULE) {
         return Vec::new();
     }
+    if rule_config.is_rule_enabled(PREFER_FRONTMATTER_CONFIG_RULE) {
+        return Vec::new();
+    }
     let severity = rule_config.severity_for(PREFER_INIT_DIRECTIVE_RULE);
 
     directive_keyword_spans(source)
@@ -760,7 +763,8 @@ fn prefer_frontmatter_config_diagnostics(
     directive_keyword_spans(source)
         .into_iter()
         .filter_map(|keyword| {
-            (source.get(keyword.start..keyword.end) == Some("init")).then_some(keyword)
+            matches!(source.get(keyword.start..keyword.end), Some("init" | "initialize"))
+                .then_some(keyword)
         })
         .filter_map(|keyword| {
             let span = source_map.span(keyword.start, keyword.end).ok()?;
@@ -849,6 +853,7 @@ mod tests {
         let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
         let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+        let config = config.with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID);
 
         let diagnostics = source_lint_diagnostics(source, &source_map, &config);
 
@@ -888,6 +893,26 @@ mod tests {
         assert!(diagnostic.fixes.is_empty());
         let span = diagnostic.span.as_ref().expect("directive keyword span");
         assert_eq!(&source[span.byte_start..span.byte_end], "init");
+    }
+
+    #[test]
+    fn source_lint_prefers_frontmatter_config_over_initialize_directive() {
+        let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let config = AnalysisRuleConfig::default()
+            .with_profile(AnalysisRuleProfile::Recommended)
+            .with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID);
+
+        let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+        assert_eq!(diagnostics.len(), 1);
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.id, PREFER_FRONTMATTER_CONFIG_RULE_ID);
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Hint);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+        assert!(diagnostic.fixes.is_empty());
+        let span = diagnostic.span.as_ref().expect("directive keyword span");
+        assert_eq!(&source[span.byte_start..span.byte_end], "initialize");
     }
 
     #[test]

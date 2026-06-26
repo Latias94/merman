@@ -6,6 +6,10 @@ status: active
 # Log
 
 ## 2026-06-26
+- Narrowed the authoring hint overlap in `merman-analysis`: `merman.authoring.config.prefer_frontmatter_config` now matches both `init` and `initialize` directive aliases, and the alias-reminder hint no longer stacks on top of the frontmatter-config hint for the same source.
+- Re-verified the slice with focused `merman-analysis` analysis and analyzer tests plus `cargo fmt --all --check` and `git diff --check`.
+
+## 2026-06-26
 - Deepened the mature Mermaid LSP roadmap plan so the finish line is explicit: maturity now
   requires agreement between the capability matrix, public rule catalog/config schema, and the
   fixture/performance gates. U8 was tightened into the actual release gate, and the plan now
