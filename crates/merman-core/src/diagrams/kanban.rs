@@ -1,3 +1,4 @@
+use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde::{Deserialize, Serialize};
@@ -334,42 +335,6 @@ fn value_to_string(v: &Value) -> String {
         Value::Null => "null".to_string(),
         other => other.to_string(),
     }
-}
-
-fn starts_with_case_insensitive(haystack: &str, needle: &str) -> bool {
-    if haystack.len() < needle.len() {
-        return false;
-    }
-    haystack
-        .as_bytes()
-        .iter()
-        .take(needle.len())
-        .copied()
-        .map(|b| b.to_ascii_lowercase())
-        .eq(needle
-            .as_bytes()
-            .iter()
-            .copied()
-            .map(|b| b.to_ascii_lowercase()))
-}
-
-fn split_indent(line: &str) -> (usize, &str) {
-    let mut indent_chars = 0usize;
-    let mut byte_idx = line.len();
-    for (idx, ch) in line.char_indices() {
-        if ch.is_whitespace() {
-            indent_chars += 1;
-            continue;
-        }
-        byte_idx = idx;
-        break;
-    }
-    if indent_chars == 0 {
-        byte_idx = 0;
-    } else if byte_idx == line.len() {
-        byte_idx = line.len();
-    }
-    (indent_chars, &line[byte_idx..])
 }
 
 fn strip_inline_comment(line: &str) -> &str {

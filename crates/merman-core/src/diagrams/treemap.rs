@@ -1,3 +1,4 @@
+use crate::diagrams::scan::split_indent;
 use crate::{Error, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 
@@ -666,25 +667,6 @@ fn strip_inline_comment_aware(line: &str) -> &str {
 fn is_treemap_header(line: &str) -> bool {
     let t = line.trim_start();
     t == "treemap" || t == "treemap-beta"
-}
-
-fn split_indent(line: &str) -> (usize, &str) {
-    let mut indent_chars = 0usize;
-    let mut byte_idx = line.len();
-    for (idx, ch) in line.char_indices() {
-        if ch == ' ' || ch == '\t' {
-            indent_chars += 1;
-            continue;
-        }
-        byte_idx = idx;
-        break;
-    }
-    if indent_chars == 0 {
-        byte_idx = 0;
-    } else if byte_idx == line.len() {
-        byte_idx = line.len();
-    }
-    (indent_chars, &line[byte_idx..])
 }
 
 fn parse_title(line: &str) -> Option<String> {
