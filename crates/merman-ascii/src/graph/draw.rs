@@ -59,7 +59,6 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 
     let mut canvas = Canvas::new(width, height);
     let mut route_cells = HashSet::new();
-    let mut edge_labels = Vec::new();
     for group in &graph_layout.groups {
         draw_group(&mut canvas, group, &charset);
     }
@@ -67,16 +66,16 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         draw_node(&mut canvas, layout, &charset, options);
     }
     {
-        let mut route_drawing =
-            routing::RouteDrawing::new(&mut canvas, &mut route_cells, &mut edge_labels);
-        route_scene.paint(&mut route_drawing);
+        let mut route_drawing = routing::RouteDrawing::new(&mut canvas, &mut route_cells);
+        route_scene.paint_routes(&mut route_drawing);
     }
 
     let output_transform = OutputTransform::for_direction(graph.direction);
     if output_transform.is_identity() {
-        for label in &edge_labels {
-            routing::draw_routed_label(&mut canvas, label);
-        }
+        route_scene.draw_labels(
+            &mut canvas,
+            output_transform.route_label_transform(width, height),
+        );
         for group in &graph_layout.groups {
             draw_group_title(&mut canvas, group);
         }
@@ -91,16 +90,10 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         width,
         height,
     );
-    for label in &edge_labels {
-        let label = routing::transform_routed_label(
-            label,
-            |placement, label_height| {
-                output_transform.route_label_placement(placement, width, height, label_height)
-            },
-            output_transform.is_vertical_mirror(),
-        );
-        routing::draw_routed_label(&mut canvas, &label);
-    }
+    route_scene.draw_labels(
+        &mut canvas,
+        output_transform.route_label_transform(width, height),
+    );
     for group in &graph_layout.groups {
         draw_transformed_group_title(&mut canvas, group, output_transform, width, height);
     }
@@ -126,10 +119,6 @@ impl OutputTransform {
 
     fn is_identity(self) -> bool {
         self == Self::Identity
-    }
-
-    fn is_vertical_mirror(self) -> bool {
-        self == Self::VerticalMirror
     }
 
     fn coord(self, coord: CanvasCoord, width: usize, height: usize) -> CanvasCoord {
@@ -205,25 +194,11 @@ impl OutputTransform {
         }
     }
 
-    fn route_label_placement(
-        self,
-        placement: routing::RoutedLabelPlacement,
-        width: usize,
-        height: usize,
-        label_height: usize,
-    ) -> routing::RoutedLabelPlacement {
+    fn route_label_transform(self, width: usize, height: usize) -> routing::RouteLabelTransform {
         match self {
-            Self::Identity => placement,
-            Self::HorizontalMirror => placement.with_position(
-                width
-                    .saturating_sub(placement.x())
-                    .saturating_sub(placement.width()),
-                placement.y(),
-            ),
-            Self::VerticalMirror => placement.with_position(
-                placement.x(),
-                height.saturating_sub(placement.y().saturating_add(label_height)),
-            ),
+            Self::Identity => routing::RouteLabelTransform::Identity,
+            Self::HorizontalMirror => routing::RouteLabelTransform::HorizontalMirror { width },
+            Self::VerticalMirror => routing::RouteLabelTransform::VerticalMirror { height },
         }
     }
 }

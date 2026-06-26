@@ -12,25 +12,19 @@ mod plan;
 
 pub(super) use cell::RouteCells;
 use cell::{set_edge_cell_with_paint, set_route_cell_with_paint};
-pub(super) use label::{EdgeLabel, RoutedLabelPlacement, draw_routed_label};
+use label::{EdgeLabel, draw_routed_label};
 use plan::{EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route};
 
 pub(super) struct RouteDrawing<'a> {
     canvas: &'a mut Canvas,
     route_cells: &'a mut RouteCells,
-    labels: &'a mut Vec<EdgeLabel>,
 }
 
 impl<'a> RouteDrawing<'a> {
-    pub(super) fn new(
-        canvas: &'a mut Canvas,
-        route_cells: &'a mut RouteCells,
-        labels: &'a mut Vec<EdgeLabel>,
-    ) -> Self {
+    pub(super) fn new(canvas: &'a mut Canvas, route_cells: &'a mut RouteCells) -> Self {
         Self {
             canvas,
             route_cells,
-            labels,
         }
     }
 }
@@ -55,9 +49,57 @@ impl RouteScene {
         self.extent
     }
 
-    pub(super) fn paint(&self, drawing: &mut RouteDrawing<'_>) {
+    pub(super) fn paint_routes(&self, drawing: &mut RouteDrawing<'_>) {
         for route in &self.routes {
             route.paint(drawing);
+        }
+    }
+
+    pub(super) fn draw_labels(&self, canvas: &mut Canvas, transform: RouteLabelTransform) {
+        for route in &self.routes {
+            for label in &route.plan.labels {
+                let label = transform.apply(EdgeLabel {
+                    text: label.text.clone(),
+                    placement: label.placement,
+                    color: label.paint.color,
+                });
+                draw_routed_label(canvas, &label);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RouteLabelTransform {
+    Identity,
+    HorizontalMirror { width: usize },
+    VerticalMirror { height: usize },
+}
+
+impl RouteLabelTransform {
+    fn apply(self, label: EdgeLabel) -> EdgeLabel {
+        match self {
+            Self::Identity => label,
+            Self::HorizontalMirror { width } => EdgeLabel {
+                placement: label.placement.with_position(
+                    width
+                        .saturating_sub(label.placement.x())
+                        .saturating_sub(label.placement.width()),
+                    label.placement.y(),
+                ),
+                ..label
+            },
+            Self::VerticalMirror { height } => {
+                let line_count = label.text.line_count();
+                EdgeLabel {
+                    text: label.text.reversed(),
+                    placement: label.placement.with_position(
+                        label.placement.x(),
+                        height.saturating_sub(label.placement.y().saturating_add(line_count)),
+                    ),
+                    color: label.color,
+                }
+            }
         }
     }
 }
@@ -114,22 +156,6 @@ pub(super) fn prepare_route_scene(
     })
 }
 
-pub(super) fn transform_routed_label(
-    label: &EdgeLabel,
-    mut transform: impl FnMut(RoutedLabelPlacement, usize) -> RoutedLabelPlacement,
-    reverse_lines: bool,
-) -> EdgeLabel {
-    EdgeLabel {
-        text: if reverse_lines {
-            label.text.reversed()
-        } else {
-            label.text.clone()
-        },
-        placement: transform(label.placement, label.text.line_count()),
-        color: label.color,
-    }
-}
-
 fn endpoint_layout(graph_layout: &GraphLayout, endpoint_id: &str) -> Option<NodeLayout> {
     graph_layout
         .nodes
@@ -181,14 +207,6 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
             ),
         }
     }
-
-    drawing
-        .labels
-        .extend(plan.labels.iter().map(|label| EdgeLabel {
-            text: label.text.clone(),
-            placement: label.placement,
-            color: label.paint.color,
-        }));
 }
 
 #[cfg(test)]
@@ -203,7 +221,7 @@ mod tests {
     use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
-    use crate::graph::routing::label::RoutedLabelText;
+    use crate::graph::routing::label::{RoutedLabelPlacement, RoutedLabelText};
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
@@ -222,19 +240,16 @@ mod tests {
             )],
         );
 
-        let mut canvas = Canvas::new(3, 1);
+        let mut canvas = Canvas::new(5, 1);
         let mut route_cells = RouteCells::new();
-        let mut labels = Vec::new();
-        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells, &mut labels);
+        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
+        let plan = plan.with_style(GraphEdgeStyle {
+            line: Some(line),
+            arrow: Some(arrow),
+            label: Some(label),
+        });
 
-        paint_route_plan(
-            &mut drawing,
-            &plan.with_style(GraphEdgeStyle {
-                line: Some(line),
-                arrow: Some(arrow),
-                label: Some(label),
-            }),
-        );
+        paint_route_plan(&mut drawing, &plan);
 
         assert_eq!(
             canvas.get_color(0, 0),
@@ -248,32 +263,42 @@ mod tests {
             canvas.get_color(2, 0),
             Some(crate::terminal::CanvasColor::Direct(arrow))
         );
-        assert_eq!(labels[0].color, CanvasColor::Direct(label));
+
+        let scene = RouteScene {
+            routes: vec![PreparedRoute { plan }],
+            extent: (5, 1),
+        };
+        scene.draw_labels(&mut canvas, RouteLabelTransform::Identity);
+
+        assert_eq!(canvas.get_color(0, 0), Some(CanvasColor::Direct(label)));
     }
 
     #[test]
-    fn transform_routed_label_reverses_vertical_mirrored_multiline_labels() {
+    fn route_label_transform_mirrors_horizontal_label_placement() {
         let label = EdgeLabel {
             text: RoutedLabelText::new("north<br>south").expect("label should exist"),
             placement: RoutedLabelPlacement::new(2, 4, 5),
             color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
         };
 
-        let transformed = transform_routed_label(
-            &label,
-            |placement, line_count| {
-                placement.with_position(
-                    20usize
-                        .saturating_sub(placement.x())
-                        .saturating_sub(placement.width()),
-                    20usize.saturating_sub(placement.y().saturating_add(line_count)),
-                )
-            },
-            true,
-        );
+        let transformed = RouteLabelTransform::HorizontalMirror { width: 20 }.apply(label);
+
+        assert_eq!(transformed.text.lines(), ["north", "south"]);
+        assert_eq!(transformed.placement, RoutedLabelPlacement::new(13, 4, 5));
+    }
+
+    #[test]
+    fn route_label_transform_reverses_vertical_mirrored_multiline_labels() {
+        let label = EdgeLabel {
+            text: RoutedLabelText::new("north<br>south").expect("label should exist"),
+            placement: RoutedLabelPlacement::new(2, 4, 5),
+            color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
+        };
+
+        let transformed = RouteLabelTransform::VerticalMirror { height: 20 }.apply(label);
 
         assert_eq!(transformed.text.lines(), ["south", "north"]);
-        assert_eq!(transformed.placement, RoutedLabelPlacement::new(13, 14, 5));
+        assert_eq!(transformed.placement, RoutedLabelPlacement::new(2, 14, 5));
     }
 
     #[test]
@@ -286,8 +311,7 @@ mod tests {
 
         let mut canvas = Canvas::new(1, 1);
         let mut route_cells = RouteCells::new();
-        let mut labels = Vec::new();
-        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells, &mut labels);
+        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
 
         paint_route_plan(
             &mut drawing,
