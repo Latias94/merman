@@ -7,8 +7,7 @@ use super::RoutePlan;
 pub(super) use super::boundary::{EdgeBoundaryContext, edge_boundary_context};
 use super::edges::parallel_edge_index;
 use super::grid::{
-    GridRouteOptions, plan_left_right_grid_path_route,
-    plan_left_right_grid_path_route_with_options, plan_left_right_grid_path_route_with_ports,
+    GridRouteOptions, plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_options,
 };
 use super::left_right::{
     plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
@@ -156,14 +155,15 @@ fn plan_boundary_route(
             root_direction: GraphDirection::TopDown,
             local_direction: GraphDirection::LeftRight,
             ..
-        } => plan_left_right_grid_path_route_with_ports(
+        } => plan_left_right_grid_path_route_with_options(
             request.graph_layout,
             request.from,
             request.to,
             request.edge,
             request.charset,
-            Some(Port::Right),
-            Some(Port::Left),
+            GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Left))
+                .with_segment(PlannedRouteSegment::Boundary)
+                .with_detached_label(),
         ),
         EdgeBoundaryContext::Leaving {
             root_direction: GraphDirection::TopDown,
@@ -176,7 +176,8 @@ fn plan_boundary_route(
             request.edge,
             request.charset,
             GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Right))
-                .with_segment(PlannedRouteSegment::Boundary),
+                .with_segment(PlannedRouteSegment::Boundary)
+                .with_detached_label(),
         ),
         EdgeBoundaryContext::Entering {
             group_id,

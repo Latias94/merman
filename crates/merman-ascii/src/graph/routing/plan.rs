@@ -48,6 +48,16 @@ pub(super) struct PlannedRouteLabel {
     pub(super) start: CanvasCoord,
     pub(super) end: CanvasCoord,
     pub(super) text: String,
+    pub(super) anchor: RouteLabelAnchor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::graph) enum RouteLabelAnchor {
+    Inline,
+    Above,
+    Below,
+    Left,
+    Right,
 }
 
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
@@ -109,28 +119,23 @@ fn planned_label(
     start: CanvasCoord,
     end: CanvasCoord,
 ) -> Option<PlannedRouteLabel> {
+    planned_label_with_anchor(label, start, end, RouteLabelAnchor::Inline)
+}
+
+fn planned_label_with_anchor(
+    label: Option<&str>,
+    start: CanvasCoord,
+    end: CanvasCoord,
+    anchor: RouteLabelAnchor,
+) -> Option<PlannedRouteLabel> {
     label
         .filter(|label| !label.is_empty())
         .map(|label| PlannedRouteLabel {
             start,
             end,
             text: label.to_string(),
+            anchor,
         })
-}
-
-fn planned_label_on_canvas_lines(
-    label: Option<&str>,
-    lines: &[Vec<CanvasCoord>],
-) -> Option<PlannedRouteLabel> {
-    let label = label.filter(|label| !label.is_empty())?;
-    let line = lines.iter().max_by_key(|line| line.len())?;
-    let first = line.first().copied()?;
-    let last = line.last().copied()?;
-    Some(PlannedRouteLabel {
-        start: first,
-        end: last,
-        text: label.to_string(),
-    })
 }
 
 fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {

@@ -16,6 +16,7 @@ pub(super) use cell::RouteCells;
 use cell::{set_edge_arrow_with_color, set_edge_line_with_color, set_route_cell_with_color};
 use label::routed_label_placement;
 pub(super) use label::{EdgeLabel, draw_routed_label};
+pub(super) use plan::RouteLabelAnchor;
 use plan::{
     EdgeRouteRequest, PlannedRouteCellKind, PlannedRouteLabel, RoutePlan, plan_edge_route,
     route_canvas_extent,
@@ -69,11 +70,13 @@ pub(super) fn edge_canvas_extent(
 pub(super) fn transform_routed_label(
     label: &EdgeLabel,
     mut transform: impl FnMut(CanvasCoord) -> CanvasCoord,
+    mut transform_anchor: impl FnMut(RouteLabelAnchor) -> RouteLabelAnchor,
 ) -> EdgeLabel {
     EdgeLabel {
         start: transform(label.start),
         end: transform(label.end),
         text: label.text.clone(),
+        anchor: transform_anchor(label.anchor),
         color: label.color,
     }
 }
@@ -189,7 +192,7 @@ fn planned_route_label_canvas_extent(
 }
 
 fn planned_label_canvas_extent(label: &PlannedRouteLabel) -> (usize, usize) {
-    routed_label_placement(label.start, label.end, &label.text)
+    routed_label_placement(label.start, label.end, &label.text, label.anchor)
         .map(|placement| placement.canvas_extent())
         .unwrap_or((0, 0))
 }
@@ -228,6 +231,7 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: Gra
             start: label.start,
             end: label.end,
             text: label.text.clone(),
+            anchor: label.anchor,
             color: style.label,
         }));
 }
@@ -256,6 +260,7 @@ mod tests {
                 start: CanvasCoord { x: 0, y: 0 },
                 end: CanvasCoord { x: 2, y: 0 },
                 text: "label".to_string(),
+                anchor: RouteLabelAnchor::Inline,
             }],
         };
 

@@ -1,6 +1,5 @@
 use super::grid::{
-    GridRouteOptions, plan_left_right_grid_path_route,
-    plan_left_right_grid_path_route_with_options, plan_left_right_grid_path_route_with_ports,
+    GridRouteOptions, plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_options,
 };
 use super::left_right::{
     plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
@@ -289,7 +288,7 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
         Default::default(),
     );
     let layout = layout_graph(&graph, &options);
-    let edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
+    let edge = edge_between("x", "a", Some("enter"), GraphEdgeArrow::Point);
     let from = layout_node(&layout, "x");
     let to = layout_node(&layout, "a");
 
@@ -305,17 +304,25 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     })
     .expect("entering boundary route should use the grid path stub");
 
-    let expected = plan_left_right_grid_path_route_with_ports(
+    let expected = plan_left_right_grid_path_route_with_options(
         &layout,
         from,
         to,
         &edge,
         &charset,
-        Some(crate::graph::routing::path::Port::Right),
-        Some(crate::graph::routing::path::Port::Left),
+        GridRouteOptions::with_ports(
+            Some(crate::graph::routing::path::Port::Right),
+            Some(crate::graph::routing::path::Port::Left),
+        )
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_detached_label(),
     )
     .expect("grid path should exist");
     assert_eq!(plan, expected);
+    assert_eq!(
+        plan.labels.first().map(|label| label.anchor),
+        Some(RouteLabelAnchor::Right)
+    );
 }
 
 #[test]
@@ -334,7 +341,7 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
         Default::default(),
     );
     let layout = layout_graph(&graph, &options);
-    let edge = edge_between("b", "y", None, GraphEdgeArrow::Point);
+    let edge = edge_between("b", "y", Some("leave"), GraphEdgeArrow::Point);
     let from = layout_node(&layout, "b");
     let to = layout_node(&layout, "y");
 
@@ -360,10 +367,15 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
             Some(crate::graph::routing::path::Port::Right),
             Some(crate::graph::routing::path::Port::Right),
         )
-        .with_segment(PlannedRouteSegment::Boundary),
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_detached_label(),
     )
     .expect("grid path should exist");
     assert_eq!(plan, expected);
+    assert_eq!(
+        plan.labels.first().map(|label| label.anchor),
+        Some(RouteLabelAnchor::Right)
+    );
 }
 
 #[test]
@@ -386,14 +398,18 @@ fn entering_boundary_route_uses_explicit_left_boundary_ports() {
     let from = layout_node(&layout, "x");
     let to = layout_node(&layout, "a");
 
-    let expected = plan_left_right_grid_path_route_with_ports(
+    let expected = plan_left_right_grid_path_route_with_options(
         &layout,
         from,
         to,
         &edge,
         &charset,
-        Some(crate::graph::routing::path::Port::Right),
-        Some(crate::graph::routing::path::Port::Left),
+        GridRouteOptions::with_ports(
+            Some(crate::graph::routing::path::Port::Right),
+            Some(crate::graph::routing::path::Port::Left),
+        )
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_detached_label(),
     )
     .expect("grid path should exist");
 
@@ -431,14 +447,18 @@ fn leaving_boundary_route_uses_explicit_right_boundary_ports() {
     let from = layout_node(&layout, "b");
     let to = layout_node(&layout, "y");
 
-    let expected = plan_left_right_grid_path_route_with_ports(
+    let expected = plan_left_right_grid_path_route_with_options(
         &layout,
         from,
         to,
         &edge,
         &charset,
-        Some(crate::graph::routing::path::Port::Right),
-        Some(crate::graph::routing::path::Port::Right),
+        GridRouteOptions::with_ports(
+            Some(crate::graph::routing::path::Port::Right),
+            Some(crate::graph::routing::path::Port::Right),
+        )
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_detached_label(),
     )
     .expect("grid path should exist");
 
@@ -517,6 +537,7 @@ fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() 
             start: CanvasCoord { x: 5, y: 1 },
             end: CanvasCoord { x: 9, y: 1 },
             text: "label".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }
@@ -602,6 +623,7 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
             start: CanvasCoord { x: 5, y: 2 },
             end: CanvasCoord { x: 9, y: 2 },
             text: "go".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }
@@ -802,6 +824,7 @@ fn left_right_bottom_lane_route_plans_reverse_lane_and_label() {
             start: CanvasCoord { x: 1, y: 4 },
             end: CanvasCoord { x: 11, y: 4 },
             text: "back".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }
@@ -836,6 +859,7 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
             start: CanvasCoord { x: 3, y: 1 },
             end: CanvasCoord { x: 9, y: 1 },
             text: "rev".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }
@@ -897,6 +921,7 @@ fn top_down_bent_route_plans_side_bend_arrow_and_label() {
             start: CanvasCoord { x: 2, y: 1 },
             end: CanvasCoord { x: 7, y: 1 },
             text: "bend".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }
@@ -930,6 +955,7 @@ fn top_down_choice_bent_route_drops_before_turning_and_labels_horizontal_segment
             start: CanvasCoord { x: 1, y: 4 },
             end: CanvasCoord { x: 7, y: 4 },
             text: "bend".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }
@@ -1044,6 +1070,7 @@ fn top_down_back_route_plans_lane_arrow_and_label() {
             start: CanvasCoord { x: 6, y: 1 },
             end: CanvasCoord { x: 6, y: 7 },
             text: "back".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }
@@ -1072,6 +1099,7 @@ fn top_down_direct_route_plans_connector_line_arrow_and_label() {
             start: CanvasCoord { x: 4, y: 3 },
             end: CanvasCoord { x: 4, y: 5 },
             text: "label".to_string(),
+            anchor: RouteLabelAnchor::Inline,
         }]
     );
 }

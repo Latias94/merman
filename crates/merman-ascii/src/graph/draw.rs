@@ -132,9 +132,11 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         height,
     );
     for label in &edge_labels {
-        let label = routing::transform_routed_label(label, |coord| {
-            output_transform.coord(coord, width, height)
-        });
+        let label = routing::transform_routed_label(
+            label,
+            |coord| output_transform.coord(coord, width, height),
+            |anchor| output_transform.route_label_anchor(anchor),
+        );
         routing::draw_routed_label(&mut canvas, &label);
     }
     for group in &graph_layout.groups {
@@ -234,6 +236,22 @@ impl OutputTransform {
             Self::Identity => ch,
             Self::HorizontalMirror => mirror_horizontal_char(ch),
             Self::VerticalMirror => mirror_vertical_char(ch),
+        }
+    }
+
+    fn route_label_anchor(self, anchor: routing::RouteLabelAnchor) -> routing::RouteLabelAnchor {
+        match self {
+            Self::Identity => anchor,
+            Self::HorizontalMirror => match anchor {
+                routing::RouteLabelAnchor::Left => routing::RouteLabelAnchor::Right,
+                routing::RouteLabelAnchor::Right => routing::RouteLabelAnchor::Left,
+                anchor => anchor,
+            },
+            Self::VerticalMirror => match anchor {
+                routing::RouteLabelAnchor::Above => routing::RouteLabelAnchor::Below,
+                routing::RouteLabelAnchor::Below => routing::RouteLabelAnchor::Above,
+                anchor => anchor,
+            },
         }
     }
 }

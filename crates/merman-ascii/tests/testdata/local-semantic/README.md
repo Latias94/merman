@@ -56,6 +56,19 @@ Current covered Class capabilities include association (`--` / `..`), inheritanc
 Current covered ER capabilities include entity attributes, CJK/emoji attribute and relationship labels, key/comment tokens, identifying and non-identifying relationships, normalized cardinality spellings (`}|` / `}o`), multiline labels, parallel lanes, crossing reroutes, dense summary fallback, and tight-budget summary fallback.
 Current explicit unsupported boundaries are covered by typed-model tests for Class multiple markers, plus ER unknown cardinality markers and unknown relationship identification types.
 
+## Flowchart Route Fixtures
+
+Flowchart ASCII fixtures should protect planner-owned route semantics rather than copied spacing
+from a reference renderer. `mermaid-ascii` and `beautiful-mermaid` are useful capability probes for
+basic comparison, but complex grouped or cross-boundary diagrams should be judged by whether the
+ASCII topology stays readable.
+
+Use local semantic flowchart fixtures when the behavior depends on grouping, local `direction`
+overrides, cross-boundary reachability, terminal-cell label width, or planner-owned label lanes.
+Assertions should check visible endpoints, labels, relative ordering, and whether labels stay on
+the intended semantic lane. Avoid exact whole-output snapshots unless the ASCII shape itself is
+the behavior under review.
+
 Current examples:
 
 - `class/dense_relations.mmd`
@@ -64,6 +77,7 @@ Current examples:
 - `er/dense_relations.mmd`
 - `er/dense_multiline_relations.mmd`
 - `er/routed_schema_with_attributes.mmd`
+- `flowchart/boundary_label_lane.mmd`
 - `flowchart/multi_boundary_routes.mmd`
 - `flowchart/nested_direction_boundary.mmd`
 - `flowchart/sibling_boundary_routes.mmd`

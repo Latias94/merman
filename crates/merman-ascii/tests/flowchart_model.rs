@@ -1017,6 +1017,46 @@ fn flowchart_parser_boundary_leaving_route_reserves_long_label_extent() {
 }
 
 #[test]
+fn flowchart_local_semantic_fixture_covers_boundary_label_lane() {
+    let input = local_semantic_input("flowchart/boundary_label_lane.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic boundary-label lane fixture should render");
+
+    for expected in [
+        "Start",
+        "Pipeline",
+        "Ingest",
+        "Publish",
+        "Success",
+        "boundaryLabelWithEnoughWidth",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "boundary-label lane fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let label_line = rendered
+        .lines()
+        .find(|line| line.contains("boundaryLabelWithEnoughWidth"))
+        .unwrap_or_else(|| panic!("boundary label should render:\n{rendered}"));
+    assert!(
+        label_line.contains("|boundaryLabelWithEnoughWidth"),
+        "boundary label should attach to the planned vertical transit lane, not the target node row:\n{rendered}"
+    );
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(
+        line_index("Publish") < line_index("boundaryLabelWithEnoughWidth"),
+        "boundary label should render after the source endpoint on the boundary lane:\n{rendered}"
+    );
+    assert!(
+        line_index("boundaryLabelWithEnoughWidth") < line_index("Success"),
+        "boundary label should render before the target endpoint on the boundary lane:\n{rendered}"
+    );
+}
+
+#[test]
 fn flowchart_local_semantic_fixture_covers_sibling_group_boundary_routes() {
     let input = local_semantic_input("flowchart/sibling_boundary_routes.mmd");
     let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
