@@ -1,5 +1,5 @@
 use crate::code_actions::code_actions_for_params;
-use crate::completion::completion_for_snapshot;
+use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::document_store::DocumentStore;
 use crate::document_store::SemanticTokensState;
 use crate::protocol::{
@@ -31,7 +31,7 @@ use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
-    CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse,
+    CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DidSaveTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
@@ -72,7 +72,10 @@ impl MermanLanguageServer {
         ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
-            completion_provider: Some(CompletionOptions::default()),
+            completion_provider: Some(CompletionOptions {
+                resolve_provider: Some(true),
+                ..CompletionOptions::default()
+            }),
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
             rename_provider: Some(OneOf::Left(true)),
@@ -292,6 +295,10 @@ impl LanguageServer for MermanLanguageServer {
             .map(|snapshot| CompletionResponse::List(completion_for_snapshot(&snapshot, position))))
     }
 
+    async fn completion_resolve(&self, item: CompletionItem) -> Result<CompletionItem> {
+        Ok(resolve_completion_item(item))
+    }
+
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         Ok(code_actions_for_params(&params))
     }
@@ -461,7 +468,9 @@ impl LanguageServer for MermanLanguageServer {
 mod tests {
     use super::MermanLanguageServer;
     use crate::document_store::DocumentStore;
-    use crate::protocol::{RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
+    use crate::protocol::{
+        CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
+    };
     use crate::structure::{
         document_symbols, goto_definition, hover, prepare_rename, references, rename,
     };
@@ -516,7 +525,10 @@ mod tests {
             capabilities.workspace_symbol_provider,
             Some(OneOf::Left(true))
         ));
-        assert!(capabilities.completion_provider.is_some());
+        assert!(matches!(
+            capabilities.completion_provider,
+            Some(ref options) if options.resolve_provider == Some(true)
+        ));
         assert!(matches!(
             capabilities.semantic_tokens_provider,
             Some(SemanticTokensServerCapabilities::SemanticTokensOptions(ref options))
@@ -537,6 +549,10 @@ mod tests {
         assert_eq!(
             capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["ruleCatalog"],
             RULE_CATALOG_METHOD
+        );
+        assert_eq!(
+            capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
+            CONFIG_SCHEMA_METHOD
         );
     }
 

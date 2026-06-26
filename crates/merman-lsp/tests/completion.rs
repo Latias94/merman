@@ -1,6 +1,6 @@
-use merman_lsp::completion::completion_for_snapshot;
+use merman_lsp::completion::{completion_for_snapshot, resolve_completion_item};
 use merman_lsp::document_store::DocumentStore;
-use tower_lsp::lsp_types::{CompletionTextEdit, Position, Url};
+use tower_lsp::lsp_types::{CompletionTextEdit, Documentation, MarkupKind, Position, Url};
 
 #[test]
 fn completion_offers_known_node_ids_for_plain_mermaid_documents() {
@@ -20,6 +20,53 @@ fn completion_offers_known_node_ids_for_plain_mermaid_documents() {
             assert_eq!(edit.range.start.character, 0);
         }
         other => panic!("unexpected text edit: {other:?}"),
+    }
+}
+
+#[test]
+fn completion_items_carry_resolve_data() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "direction".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 9));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "direction TB")
+        .unwrap();
+    let data = item.data.as_ref().expect("completion resolve data");
+
+    assert_eq!(data["kind"], "direction");
+    assert_eq!(data["label"], "direction TB");
+}
+
+#[test]
+fn completion_resolve_adds_documentation_without_changing_insert_fields() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "flow".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
+
+    let item = list
+        .items
+        .into_iter()
+        .find(|item| item.label == "flowchart TD")
+        .unwrap();
+    let original_text_edit = item.text_edit.clone();
+    let original_insert_text = item.insert_text.clone();
+
+    let resolved = resolve_completion_item(item);
+
+    assert_eq!(resolved.text_edit, original_text_edit);
+    assert_eq!(resolved.insert_text, original_insert_text);
+    match resolved.documentation.as_ref().unwrap() {
+        Documentation::MarkupContent(markup) => {
+            assert_eq!(markup.kind, MarkupKind::Markdown);
+            assert!(markup.value.contains("Starts a Mermaid"));
+            assert!(markup.value.contains("flowchart TD"));
+        }
+        other => panic!("unexpected completion documentation: {other:?}"),
     }
 }
 

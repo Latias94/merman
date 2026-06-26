@@ -11,8 +11,8 @@ navigation, code-action, and semantic-token foundations.
 ## Responsibilities
 
 - Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
-  `documentSymbol`, `definition`, `references`, `prepareRename`, `rename`, `codeAction`,
-  `semanticTokens/full`, and `semanticTokens/range`.
+  `completionItem/resolve`, `documentSymbol`, `definition`, `references`, `prepareRename`,
+  `rename`, `codeAction`, `semanticTokens/full`, and `semanticTokens/range`.
 - Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
   including `merman/ruleCatalog` for rule metadata discovery and `merman/configSchema` for
   analysis/lint settings discovery.
@@ -38,7 +38,7 @@ navigation, code-action, and semantic-token foundations.
 - Additional fix-producing lint rules and configuration
 - Delta semantic tokens
 - Formatting
-- Completion resolution payloads
+- Deeper completion documentation for family-specific syntax variants
 
 ## Product Direction
 
@@ -69,3 +69,5 @@ navigation, code-action, and semantic-token foundations.
 - Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
 - Completion uses snapshot-derived replacement ranges, so header, operator, direction, shape, and
   node completions replace the current token instead of blindly inserting at the cursor.
+- Completion items carry stable resolve data and `completionItem/resolve` adds Markdown
+  documentation without changing insert text or text edits.

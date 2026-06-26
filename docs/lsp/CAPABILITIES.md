@@ -28,6 +28,9 @@ facts, it is not considered mature.
   the accepted direct/`merman`/`analysis` settings roots. The schema describes the same analysis
   options accepted by initialization options and `workspace/didChangeConfiguration`.
 - Completion: semantic roles must exclude payload-only spans.
+- Completion resolve: completion items carry Merman-owned `data`, and `completionItem/resolve`
+  fills Markdown documentation without changing `insertText`, `textEdit`, filtering, or sorting
+  fields.
 - Definition / References / Rename: entity-only semantic item queries keyed by typed reference
   groups. Payload and outline-only items are excluded unless a future role explicitly allows
   projection, and same-name entities with different semantic kinds do not collide.

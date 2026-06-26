@@ -1,8 +1,11 @@
 use crate::context::CompletionContext;
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionList,
-    CompletionTextEdit, InsertTextFormat, Position, Range, TextEdit,
+    CompletionTextEdit, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Position,
+    Range, TextEdit,
 };
 
 pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) -> CompletionList {
@@ -14,6 +17,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
                 "diagram kind",
                 None,
                 None,
+                CompletionDataKind::DiagramHeader,
             )],
         };
     };
@@ -61,6 +65,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
             "diagram kind",
             None,
             None,
+            CompletionDataKind::DiagramHeader,
         ));
     }
 
@@ -72,20 +77,74 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
 
 fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
     vec![
-        keyword_completion("flowchart TD", "flowchart header", range.clone(), None),
-        keyword_completion("sequenceDiagram", "sequence header", range.clone(), None),
-        keyword_completion("stateDiagram-v2", "state header", range.clone(), None),
-        keyword_completion("gantt", "gantt header", range.clone(), None),
-        keyword_completion("mindmap", "mindmap header", range, None),
+        keyword_completion(
+            "flowchart TD",
+            "flowchart header",
+            range.clone(),
+            None,
+            CompletionDataKind::DiagramHeader,
+        ),
+        keyword_completion(
+            "sequenceDiagram",
+            "sequence header",
+            range.clone(),
+            None,
+            CompletionDataKind::DiagramHeader,
+        ),
+        keyword_completion(
+            "stateDiagram-v2",
+            "state header",
+            range.clone(),
+            None,
+            CompletionDataKind::DiagramHeader,
+        ),
+        keyword_completion(
+            "gantt",
+            "gantt header",
+            range.clone(),
+            None,
+            CompletionDataKind::DiagramHeader,
+        ),
+        keyword_completion(
+            "mindmap",
+            "mindmap header",
+            range,
+            None,
+            CompletionDataKind::DiagramHeader,
+        ),
     ]
 }
 
 fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
     vec![
-        keyword_completion("-->", "edge operator", range.clone(), None),
-        keyword_completion("---", "edge operator", range.clone(), None),
-        keyword_completion("-.->", "edge operator", range.clone(), None),
-        keyword_completion("==>", "edge operator", range, None),
+        keyword_completion(
+            "-->",
+            "edge operator",
+            range.clone(),
+            None,
+            CompletionDataKind::Operator,
+        ),
+        keyword_completion(
+            "---",
+            "edge operator",
+            range.clone(),
+            None,
+            CompletionDataKind::Operator,
+        ),
+        keyword_completion(
+            "-.->",
+            "edge operator",
+            range.clone(),
+            None,
+            CompletionDataKind::Operator,
+        ),
+        keyword_completion(
+            "==>",
+            "edge operator",
+            range,
+            None,
+            CompletionDataKind::Operator,
+        ),
     ]
 }
 
@@ -101,18 +160,60 @@ fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
         "comment"
     };
     vec![
-        keyword_completion(":::className", directive_label, range.clone(), None),
-        keyword_completion("::icon(name)", "node icon directive", range.clone(), None),
-        keyword_completion("%% comment", "comment", range, None),
+        keyword_completion(
+            ":::className",
+            directive_label,
+            range.clone(),
+            None,
+            CompletionDataKind::Directive,
+        ),
+        keyword_completion(
+            "::icon(name)",
+            "node icon directive",
+            range.clone(),
+            None,
+            CompletionDataKind::Directive,
+        ),
+        keyword_completion(
+            "%% comment",
+            "comment",
+            range,
+            None,
+            CompletionDataKind::Directive,
+        ),
     ]
 }
 
 fn direction_items(range: Option<Range>) -> Vec<CompletionItem> {
     vec![
-        keyword_completion("direction TB", "top to bottom", range.clone(), None),
-        keyword_completion("direction BT", "bottom to top", range.clone(), None),
-        keyword_completion("direction LR", "left to right", range.clone(), None),
-        keyword_completion("direction RL", "right to left", range, None),
+        keyword_completion(
+            "direction TB",
+            "top to bottom",
+            range.clone(),
+            None,
+            CompletionDataKind::Direction,
+        ),
+        keyword_completion(
+            "direction BT",
+            "bottom to top",
+            range.clone(),
+            None,
+            CompletionDataKind::Direction,
+        ),
+        keyword_completion(
+            "direction LR",
+            "left to right",
+            range.clone(),
+            None,
+            CompletionDataKind::Direction,
+        ),
+        keyword_completion(
+            "direction RL",
+            "right to left",
+            range,
+            None,
+            CompletionDataKind::Direction,
+        ),
     ]
 }
 
@@ -144,6 +245,7 @@ fn node_items(
             label: id.clone(),
             kind: Some(CompletionItemKind::VARIABLE),
             detail: Some("node identifier".to_string()),
+            data: Some(completion_data(CompletionDataKind::NodeIdentifier, &id)),
             insert_text: Some(id.clone()),
             insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
             text_edit: range
@@ -163,11 +265,13 @@ fn keyword_completion(
     detail: &str,
     range: Option<Range>,
     replacement: Option<&str>,
+    data_kind: CompletionDataKind,
 ) -> CompletionItem {
     CompletionItem {
         label: label.to_string(),
         kind: Some(CompletionItemKind::KEYWORD),
         detail: Some(detail.to_string()),
+        data: Some(completion_data(data_kind, label)),
         insert_text: Some(label.to_string()),
         insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
         text_edit: range.map(|range| {
@@ -183,8 +287,93 @@ fn keyword_completion(
 fn shape_completion(value: &str, detail: &str, context: &CompletionContext<'_>) -> CompletionItem {
     let label = format!("@{{ shape: {value} }}");
     if let Some((range, replacement)) = context.shape_value_edit(value) {
-        keyword_completion(&label, detail, Some(range), Some(&replacement))
+        keyword_completion(
+            &label,
+            detail,
+            Some(range),
+            Some(&replacement),
+            CompletionDataKind::Shape,
+        )
     } else {
-        keyword_completion(&label, detail, context.shape_trigger_range(), Some(&label))
+        keyword_completion(
+            &label,
+            detail,
+            context.shape_trigger_range(),
+            Some(&label),
+            CompletionDataKind::Shape,
+        )
+    }
+}
+
+pub fn resolve_completion_item(mut item: CompletionItem) -> CompletionItem {
+    if item.documentation.is_some() {
+        return item;
+    }
+
+    let Some(data) = item
+        .data
+        .as_ref()
+        .and_then(|value| serde_json::from_value::<CompletionResolveData>(value.clone()).ok())
+    else {
+        return item;
+    };
+
+    item.documentation = Some(Documentation::MarkupContent(MarkupContent {
+        kind: MarkupKind::Markdown,
+        value: completion_documentation(&data),
+    }));
+    item
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum CompletionDataKind {
+    DiagramHeader,
+    Operator,
+    Direction,
+    Directive,
+    Shape,
+    NodeIdentifier,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct CompletionResolveData {
+    kind: CompletionDataKind,
+    label: String,
+}
+
+fn completion_data(kind: CompletionDataKind, label: &str) -> Value {
+    json!({
+        "kind": kind,
+        "label": label
+    })
+}
+
+fn completion_documentation(data: &CompletionResolveData) -> String {
+    match data.kind {
+        CompletionDataKind::DiagramHeader => format!(
+            "Starts a Mermaid `{}` diagram. Use it as the first statement in a plain Mermaid file or fenced Mermaid block.",
+            data.label
+        ),
+        CompletionDataKind::Operator => format!(
+            "Inserts the Mermaid `{}` relationship operator between diagram identifiers.",
+            data.label
+        ),
+        CompletionDataKind::Direction => format!(
+            "Sets flow direction with `{}`. Direction statements are valid inside flowchart subgraphs and supported flowchart contexts.",
+            data.label
+        ),
+        CompletionDataKind::Directive => format!(
+            "Inserts `{}` as a Mermaid directive or comment helper for the current fence.",
+            data.label
+        ),
+        CompletionDataKind::Shape => format!(
+            "Inserts Mermaid flowchart shape object syntax for `{}`.",
+            data.label
+        ),
+        CompletionDataKind::NodeIdentifier => format!(
+            "Reuses the `{}` identifier already present in the current Mermaid fence.",
+            data.label
+        ),
     }
 }

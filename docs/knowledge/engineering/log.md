@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-26
+- Added completion resolve support to `merman-lsp`: completion items now carry stable resolve
+  metadata, `completionItem/resolve` adds Markdown documentation, and resolve keeps `insertText`
+  and `textEdit` stable.
+- The completion provider now advertises `resolve_provider: true`, and protocol tests plus a real
+  `tower_lsp` service smoke test prove the resolved item preserves edit behavior while exposing
+  the extra documentation payload.
+- Re-verified the completion slice with `cargo nextest run -p merman-lsp --no-fail-fast
+  --status-level=all --final-status-level=all`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-26
 - Added the second editor-agnostic Merman LSP extension request, `merman/configSchema`, and
   advertised it beside `merman/ruleCatalog` under
   `ServerCapabilities.experimental.merman.requests`.
