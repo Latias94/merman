@@ -21,8 +21,13 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 
     let charset = GraphCharset::for_options(options);
     let graph_layout = layout_graph(graph, options);
-    let (edge_width, edge_height) =
-        routing::edge_canvas_extent(graph, &graph_layout, &graph.edges, graph.direction);
+    let (edge_width, edge_height) = routing::edge_canvas_extent(
+        graph,
+        &graph_layout,
+        &graph.edges,
+        graph.direction,
+        &charset,
+    );
     let width = graph_layout
         .nodes
         .iter()

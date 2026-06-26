@@ -6,6 +6,7 @@ use super::model::{
 };
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
+use crate::text::display_width;
 
 mod cell;
 mod label;
@@ -16,7 +17,8 @@ pub(super) use cell::RouteCells;
 use cell::{set_edge_arrow_with_color, set_edge_line_with_color, set_route_cell_with_color};
 pub(super) use label::{EdgeLabel, draw_routed_label};
 use plan::{
-    EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route, route_canvas_extent,
+    EdgeRouteRequest, PlannedRouteCellKind, PlannedRouteLabel, RoutePlan, plan_edge_route,
+    route_canvas_extent,
 };
 
 pub(super) struct RouteDrawing<'a> {
@@ -53,9 +55,15 @@ pub(super) fn edge_canvas_extent(
     graph_layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
     direction: GraphDirection,
+    charset: &GraphCharset,
 ) -> (usize, usize) {
     let layouts = endpoint_layouts_for_extent(graph_layout);
-    route_canvas_extent(graph, &layouts, edges, direction)
+    let (mut width, mut height) = route_canvas_extent(graph, &layouts, edges, direction);
+    let (label_width, label_height) =
+        planned_route_label_canvas_extent(graph, graph_layout, edges, charset);
+    width = width.max(label_width);
+    height = height.max(label_height);
+    (width, height)
 }
 
 pub(super) fn transform_routed_label(
@@ -141,6 +149,66 @@ fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
     }
 }
 
+fn planned_route_label_canvas_extent(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    charset: &GraphCharset,
+) -> (usize, usize) {
+    let mut width = 0;
+    let mut height = 0;
+
+    for (edge_index, edge) in edges.iter().enumerate() {
+        let Some(from) = endpoint_layout(graph_layout, &edge.from) else {
+            continue;
+        };
+        let Some(to) = endpoint_layout(graph_layout, &edge.to) else {
+            continue;
+        };
+        let Some(plan) = plan_edge_route(EdgeRouteRequest {
+            graph,
+            graph_layout,
+            edges,
+            from: &from,
+            to: &to,
+            edge_index,
+            edge,
+            charset,
+        }) else {
+            continue;
+        };
+
+        for label in &plan.labels {
+            let (label_width, label_height) = planned_label_canvas_extent(label);
+            width = width.max(label_width);
+            height = height.max(label_height);
+        }
+    }
+
+    (width, height)
+}
+
+fn planned_label_canvas_extent(label: &PlannedRouteLabel) -> (usize, usize) {
+    let label_width = display_width(&label.text);
+    if label_width == 0 {
+        return (0, 0);
+    }
+
+    if label.start.y == label.end.y {
+        let min_x = label.start.x.min(label.end.x);
+        let max_x = label.start.x.max(label.end.x);
+        let middle_x = min_x + (max_x - min_x) / 2;
+        let x = middle_x.saturating_sub(label_width / 2);
+        return (x + label_width, label.start.y + 1);
+    }
+
+    let min_y = label.start.y.min(label.end.y);
+    let max_y = label.start.y.max(label.end.y);
+    let middle_y = min_y + (max_y - min_y) / 2;
+    let x = label.start.x.saturating_sub(label_width / 2);
+    (x + label_width, middle_y + 1)
+}
+
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan, style: GraphEdgeStyle) {
     for cell in &plan.cells {
         let color = match cell.kind {
@@ -186,6 +254,7 @@ mod tests {
     use crate::AsciiRenderOptions;
     use crate::color::AsciiRgb;
     use crate::graph::layout::layout_graph;
+    use crate::graph::model::GraphEdgeAttrs;
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
@@ -261,6 +330,66 @@ mod tests {
         assert_eq!(
             canvas.get_color(0, 0),
             Some(crate::terminal::CanvasColor::Direct(line))
+        );
+    }
+
+    #[test]
+    fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_node("y", "Y");
+        graph.add_group_with_style(
+            "one",
+            "LR Group",
+            Some(GraphDirection::LeftRight),
+            vec!["a".to_string(), "b".to_string()],
+            Default::default(),
+        );
+        graph.add_edge("a", "b");
+        graph.add_edge_with_attrs(
+            "b",
+            "y",
+            GraphEdgeAttrs {
+                label: Some("boundary label with enough width".to_string()),
+                ..Default::default()
+            },
+        );
+        let graph_layout = layout_graph(&graph, &options);
+        let edge = &graph.edges[1];
+        let from = endpoint_layout(&graph_layout, &edge.from).expect("source layout should exist");
+        let to = endpoint_layout(&graph_layout, &edge.to).expect("target layout should exist");
+        let plan = plan_edge_route(EdgeRouteRequest {
+            graph: &graph,
+            graph_layout: &graph_layout,
+            edges: &graph.edges,
+            from: &from,
+            to: &to,
+            edge_index: 1,
+            edge,
+            charset: &charset,
+        })
+        .expect("boundary route should plan");
+        let label = plan.labels.first().expect("boundary route should label");
+        let label_width = crate::text::display_width(&label.text);
+        let min_x = label.start.x.min(label.end.x);
+        let max_x = label.start.x.max(label.end.x);
+        let middle_x = min_x + (max_x - min_x) / 2;
+        let required_width = middle_x.saturating_sub(label_width / 2) + label_width;
+
+        let (edge_width, _) = edge_canvas_extent(
+            &graph,
+            &graph_layout,
+            &graph.edges,
+            graph.direction,
+            &charset,
+        );
+
+        assert!(
+            edge_width >= required_width,
+            "edge canvas extent should reserve boundary label width {required_width}, got {edge_width}; plan: {plan:?}"
         );
     }
 
