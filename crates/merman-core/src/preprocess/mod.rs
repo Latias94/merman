@@ -326,11 +326,11 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
             });
         }
 
-        let raw_yaml: serde_yaml::Value =
-            serde_yaml::from_str(yaml_body).map_err(|e| Error::InvalidFrontMatterYaml {
+        let parsed = serde_saphyr::from_str::<Value>(yaml_body).map_err(|e| {
+            Error::InvalidFrontMatterYaml {
                 message: e.to_string(),
-            })?;
-        let parsed = serde_json::to_value(raw_yaml).unwrap_or(Value::Null);
+            }
+        })?;
         let parsed_obj = match parsed {
             Value::Object(obj) => obj,
             other => {

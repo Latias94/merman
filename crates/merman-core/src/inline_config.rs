@@ -2,7 +2,7 @@ use serde_json::Value;
 #[cfg(any(not(feature = "full-config"), test))]
 use serde_json::{Map, Number};
 
-pub(crate) fn parse_mermaid_inline_object(input: &str) -> std::result::Result<Value, String> {
+pub(crate) fn parse_mermaid_inline_object(input: &str) -> Result<Value, String> {
     #[cfg(feature = "full-config")]
     {
         parse_yaml_object_body(input)
@@ -15,7 +15,7 @@ pub(crate) fn parse_mermaid_inline_object(input: &str) -> std::result::Result<Va
 }
 
 #[cfg(any(not(feature = "full-config"), test))]
-pub(crate) fn parse_inline_config_value(input: &str) -> std::result::Result<Value, String> {
+pub(crate) fn parse_inline_config_value(input: &str) -> Result<Value, String> {
     let mut parser = Parser::new(input);
     let value = parser.parse_value()?;
     parser.skip_ws();
@@ -27,7 +27,7 @@ pub(crate) fn parse_inline_config_value(input: &str) -> std::result::Result<Valu
 }
 
 #[cfg(any(not(feature = "full-config"), test))]
-pub(crate) fn parse_object_body(input: &str) -> std::result::Result<Value, String> {
+pub(crate) fn parse_object_body(input: &str) -> Result<Value, String> {
     let mut parser = Parser::new(input);
     let value = Value::Object(parser.parse_object_entries(None)?);
     parser.skip_ws();
@@ -68,14 +68,14 @@ pub(crate) fn value_to_f64(v: &Value) -> Option<f64> {
 }
 
 #[cfg(feature = "full-config")]
-fn parse_yaml_object_body(input: &str) -> std::result::Result<Value, String> {
+fn parse_yaml_object_body(input: &str) -> Result<Value, String> {
     let yaml_data = if input.contains('\n') {
         format!("{input}\n")
     } else {
         format!("{{\n{input}\n}}")
     };
-    let raw = serde_yaml::from_str::<serde_yaml::Value>(&yaml_data).map_err(|e| format!("{e}"))?;
-    Ok(serde_json::to_value(raw).unwrap_or(Value::Null))
+    let raw = serde_saphyr::from_str::<Value>(&yaml_data).map_err(|e| format!("{e}"))?;
+    Ok(raw)
 }
 
 #[cfg(any(not(feature = "full-config"), test))]
@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
         Self { input, pos: 0 }
     }
 
-    fn parse_value(&mut self) -> std::result::Result<Value, String> {
+    fn parse_value(&mut self) -> Result<Value, String> {
         self.skip_ws();
         match self.peek_char() {
             Some('{') => {
@@ -111,7 +111,7 @@ impl<'a> Parser<'a> {
     fn parse_object_entries(
         &mut self,
         terminator: Option<char>,
-    ) -> std::result::Result<Map<String, Value>, String> {
+    ) -> Result<Map<String, Value>, String> {
         let mut out = Map::new();
 
         loop {
@@ -142,7 +142,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_array(&mut self) -> std::result::Result<Value, String> {
+    fn parse_array(&mut self) -> Result<Value, String> {
         let mut out = Vec::new();
         loop {
             self.skip_ws_and_commas();
@@ -157,7 +157,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_key(&mut self) -> std::result::Result<String, String> {
+    fn parse_key(&mut self) -> Result<String, String> {
         self.skip_ws();
         if matches!(self.peek_char(), Some('"') | Some('\'')) {
             return self.parse_quoted_string();
@@ -181,7 +181,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_quoted_string(&mut self) -> std::result::Result<String, String> {
+    fn parse_quoted_string(&mut self) -> Result<String, String> {
         let Some(quote @ ('"' | '\'')) = self.next_char() else {
             return Err(self.error("expected quoted string"));
         };
@@ -217,7 +217,7 @@ impl<'a> Parser<'a> {
         Err(self.error("unterminated string"))
     }
 
-    fn parse_unicode_escape(&mut self) -> std::result::Result<char, String> {
+    fn parse_unicode_escape(&mut self) -> Result<char, String> {
         let start = self.pos;
         for _ in 0..4 {
             let Some(ch) = self.next_char() else {
@@ -232,7 +232,7 @@ impl<'a> Parser<'a> {
         char::from_u32(code).ok_or_else(|| self.error("invalid unicode scalar"))
     }
 
-    fn parse_bare_value(&mut self) -> std::result::Result<Value, String> {
+    fn parse_bare_value(&mut self) -> Result<Value, String> {
         let start = self.pos;
         while let Some(ch) = self.peek_char() {
             if matches!(ch, ',' | '\n' | '\r' | '}' | ']') {
@@ -248,7 +248,7 @@ impl<'a> Parser<'a> {
         Ok(parse_bare_scalar(raw))
     }
 
-    fn parse_literal_block_scalar(&mut self) -> std::result::Result<Value, String> {
+    fn parse_literal_block_scalar(&mut self) -> Result<Value, String> {
         self.next_char();
         while let Some(ch) = self.peek_char() {
             self.next_char();

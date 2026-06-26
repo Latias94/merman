@@ -673,88 +673,82 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
 
     let text = escape_stray_lt(text);
 
-    let mut handlers = vec![
-        element!("script", |el| {
+    let rewrite_str_settings = RewriteStrSettings::new()
+        .append_element_content_handler(element!("script", |el| {
             el.remove();
             Ok(())
-        }),
-        element!("iframe", |el| {
+        }))
+        .append_element_content_handler(element!("script", |el| {
             el.remove();
             Ok(())
-        }),
-        element!("style", |el| {
+        }))
+        .append_element_content_handler(element!("iframe", |el| {
             el.remove();
             Ok(())
-        }),
-    ];
-
-    handlers.push(element!("a", |el| {
-        // Mirror Mermaid's DOMPurify hooks:
-        // - beforeSanitizeAttributes stores the target in a temporary data-* attribute
-        // - afterSanitizeAttributes restores it (only if the data-* survived sanitization)
-        if let Some(target) = el.get_attribute("target") {
-            let _ = el.set_attribute("data-temp-href-target", &target);
-        }
-        Ok(())
-    }));
-
-    handlers.push(element!("*", |el| {
-        let tag_name = el.tag_name();
-        let lc_tag = tag_name.to_ascii_lowercase();
-
-        if !cfg.allowed_tags.contains(&lc_tag) || cfg.forbid_tags.contains(&lc_tag) {
-            if cfg.keep_content {
-                el.remove_and_keep_content();
-            } else {
-                el.remove();
+        }))
+        .append_element_content_handler(element!("style", |el| {
+            el.remove();
+            Ok(())
+        }))
+        .append_element_content_handler(element!("a", |el| {
+            // Mirror Mermaid's DOMPurify hooks:
+            // - beforeSanitizeAttributes stores the target in a temporary data-* attribute
+            // - afterSanitizeAttributes restores it (only if the data-* survived sanitization)
+            if let Some(target) = el.get_attribute("target") {
+                let _ = el.set_attribute("data-temp-href-target", &target);
             }
-            return Ok(());
-        }
+            Ok(())
+        }))
+        .append_element_content_handler(element!("*", |el| {
+            let tag_name = el.tag_name();
+            let lc_tag = tag_name.to_ascii_lowercase();
 
-        let attrs: Vec<(String, String)> = el
-            .attributes()
-            .iter()
-            .map(|a| (a.name().to_string(), a.value().to_string()))
-            .collect();
-
-        for (name, value) in attrs {
-            let lc_name = name.to_ascii_lowercase();
-            if !dompurify_is_valid_attribute(cfg, &lc_tag, &lc_name, &value) {
-                el.remove_attribute(&name);
-                continue;
+            if !cfg.allowed_tags.contains(&lc_tag) || cfg.forbid_tags.contains(&lc_tag) {
+                if cfg.keep_content {
+                    el.remove_and_keep_content();
+                } else {
+                    el.remove();
+                }
+                return Ok(());
             }
 
-            if matches!(lc_name.as_str(), "href" | "src" | "xlink:href") {
-                // DOMPurify validates URI values on parsed DOM values (entities already decoded).
-                // `lol_html` gives us raw values, so we decode the minimal subset Mermaid relies on.
-                let decoded = decode_attr_html_entities_minimally(&value);
-                if decoded != value {
-                    let _ = el.set_attribute(&name, &decoded);
+            let attrs: Vec<(String, String)> = el
+                .attributes()
+                .iter()
+                .map(|a| (a.name().to_string(), a.value().to_string()))
+                .collect();
+
+            for (name, value) in attrs {
+                let lc_name = name.to_ascii_lowercase();
+                if !dompurify_is_valid_attribute(cfg, &lc_tag, &lc_name, &value) {
+                    el.remove_attribute(&name);
+                    continue;
+                }
+
+                if matches!(lc_name.as_str(), "href" | "src" | "xlink:href") {
+                    // DOMPurify validates URI values on parsed DOM values (entities already decoded).
+                    // `lol_html` gives us raw values, so we decode the minimal subset Mermaid relies on.
+                    let decoded = decode_attr_html_entities_minimally(&value);
+                    if decoded != value {
+                        let _ = el.set_attribute(&name, &decoded);
+                    }
                 }
             }
-        }
 
-        if lc_tag == "a"
-            && let Some(target) = el.get_attribute("data-temp-href-target")
-        {
-            let _ = el.set_attribute("target", &target);
-            el.remove_attribute("data-temp-href-target");
-            if target == "_blank" {
-                let _ = el.set_attribute("rel", "noopener");
+            if lc_tag == "a"
+                && let Some(target) = el.get_attribute("data-temp-href-target")
+            {
+                let _ = el.set_attribute("target", &target);
+                el.remove_attribute("data-temp-href-target");
+                if target == "_blank" {
+                    let _ = el.set_attribute("rel", "noopener");
+                }
             }
-        }
 
-        Ok(())
-    }));
+            Ok(())
+        }));
 
-    rewrite_str(
-        text.as_ref(),
-        RewriteStrSettings {
-            element_content_handlers: handlers,
-            ..RewriteStrSettings::new()
-        },
-    )
-    .unwrap_or_else(|_| text.into_owned())
+    rewrite_str(text.as_ref(), rewrite_str_settings).unwrap_or_else(|_| text.into_owned())
 }
 
 pub fn remove_script(text: &str) -> String {
