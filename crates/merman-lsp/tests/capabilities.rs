@@ -117,7 +117,7 @@ fn product_families_are_parser_backed_and_role_aware() {
             required_ids: &["root", "child1", "child2"],
             required_outline: &[],
             required_prefixes: &[],
-            forbidden_ids: &[],
+            forbidden_ids: &["Root", "Node", "Child", "1"],
         },
     ];
 

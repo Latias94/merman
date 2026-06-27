@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-27
+- Closed the remaining Mindmap role split. Node labels now emit explicit payload symbols, so
+  payload text no longer competes with node-id navigation or rename; the analysis text-scan
+  fallback also stopped treating mindmap label text as completion ids.
+- Verified the slice with `cargo test -p merman-core mindmap_editor_facts_preserve_parser_node_spans -- --nocapture`,
+  `cargo test -p merman-analysis text_scan_mindmap_keeps_labels_out_of_node_ids -- --nocapture`,
+  `cargo test -p merman-lsp structure::tests::mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets -- --nocapture`,
+  `cargo test -p merman-lsp --test capabilities product_families_are_parser_backed_and_role_aware -- --nocapture`,
+  `cargo fmt --all`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Fixed a real Gantt semantic split. Task ids, dependency refs from `after` / `until`, and `click`
   target ids now share the same entity kind, so rename and references connect the task definition
   with its dependency usage instead of treating them as different semantic groups.

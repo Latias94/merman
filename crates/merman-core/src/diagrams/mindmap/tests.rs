@@ -319,6 +319,15 @@ fn mindmap_editor_facts_preserve_parser_node_spans() {
             && symbol.selection.end == icon_start + "bomb".len()
     }));
 
+    let label_start = text.find("Root Node").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Root Node"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("mindmap node label")
+            && symbol.selection.start == label_start
+            && symbol.selection.end == label_start + "Root Node".len()
+    }));
+
     assert!(facts.expected_syntax.iter().any(|expected| {
         expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
             && expected.span.start == root_start

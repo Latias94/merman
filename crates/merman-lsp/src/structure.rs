@@ -603,6 +603,60 @@ mod tests {
     }
 
     #[test]
+    fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            "mindmap\nroot(Root Node)\n child1(Child 1)\n".to_string(),
+        );
+
+        let id_position = Position::new(1, 0);
+        let prepare = outline_prepare_rename(&snapshot, id_position).unwrap();
+        match prepare {
+            PrepareRenameResponse::RangeWithPlaceholder { placeholder, .. } => {
+                assert_eq!(placeholder, "root");
+            }
+            other => panic!("unexpected prepare rename response: {other:?}"),
+        }
+
+        let refs = outline_references(&snapshot, id_position, true).unwrap();
+        assert_eq!(refs.len(), 1);
+
+        let rename = outline_rename(
+            &snapshot,
+            RenameParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier {
+                        uri: snapshot.uri.clone(),
+                    },
+                    id_position,
+                ),
+                new_name: "root_alpha".to_string(),
+                work_done_progress_params: Default::default(),
+            },
+        )
+        .unwrap();
+        let edit = rename.expect("expected rename edit");
+        assert_eq!(
+            edit.changes
+                .as_ref()
+                .unwrap()
+                .get(&snapshot.uri)
+                .unwrap()
+                .len(),
+            1,
+            "rename should only update the mindmap node id"
+        );
+
+        let payload_position = Position::new(1, 5);
+        assert!(outline_definition(&snapshot, payload_position).is_none());
+        assert!(outline_references(&snapshot, payload_position, true).is_none());
+        assert!(outline_prepare_rename(&snapshot, payload_position).is_none());
+    }
+
+    #[test]
     fn rename_and_references_track_simple_identifiers() {
         let mut store = DocumentStore::new();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();

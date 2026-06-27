@@ -121,22 +121,39 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
     for event in parsed.events {
         match event {
             MindmapParsedEvent::Node(node) => {
+                let MindmapParsedNodeLine {
+                    indent: _,
+                    id_raw,
+                    descr_raw,
+                    descr_is_markdown: _,
+                    ty: _,
+                    span,
+                    selection,
+                    payload_span,
+                } = node;
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::NodeIdentifier,
-                    node.selection,
+                    selection,
                 ));
-                if let Some(payload_span) = node.payload_span {
+                if let Some(payload_span) = payload_span {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
                         EditorExpectedSyntaxKind::Payload,
                         payload_span,
                     ));
+                    facts.push_symbol(EditorSemanticSymbol::payload(
+                        descr_raw,
+                        Some("mindmap node label".to_string()),
+                        EditorSemanticKind::String,
+                        payload_span,
+                        payload_span,
+                    ));
                 }
                 facts.push_symbol(EditorSemanticSymbol::new(
-                    node.id_raw,
+                    id_raw,
                     Some("mindmap node".to_string()),
                     EditorSemanticKind::Namespace,
-                    node.span,
-                    node.selection,
+                    span,
+                    selection,
                 ));
             }
             MindmapParsedEvent::Class(class) => {

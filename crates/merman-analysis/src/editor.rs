@@ -498,7 +498,7 @@ impl FenceTextIndex {
             }
         }
 
-        collect_node_ids(line_no_newline, &mut self.node_ids);
+        collect_node_ids(diagram_type, line_no_newline, &mut self.node_ids);
 
         if let Some(item) = classify_line_item(diagram_type, trimmed, abs_start, abs_end) {
             self.references
@@ -754,7 +754,12 @@ fn is_candidate_node_id(token: &str) -> bool {
     )
 }
 
-fn collect_node_ids(text: &str, ids: &mut BTreeSet<String>) {
+fn collect_node_ids(diagram_type: Option<&str>, text: &str, ids: &mut BTreeSet<String>) {
+    if matches!(diagram_type, Some("mindmap")) {
+        collect_mindmap_node_ids(text, ids);
+        return;
+    }
+
     for token in text.split(|ch: char| {
         ch.is_whitespace()
             || matches!(
@@ -777,6 +782,26 @@ fn collect_node_ids(text: &str, ids: &mut BTreeSet<String>) {
     }) {
         if is_candidate_node_id(token) {
             ids.insert(token.to_string());
+        }
+    }
+}
+
+fn collect_mindmap_node_ids(text: &str, ids: &mut BTreeSet<String>) {
+    let trimmed = text.trim_start();
+    if trimmed.is_empty()
+        || trimmed.starts_with('%')
+        || trimmed.starts_with(':')
+        || is_header_line(trimmed)
+    {
+        return;
+    }
+
+    if let Some((token, _)) = first_symbol_token(trimmed, 0) {
+        if token.starts_with(':') {
+            return;
+        }
+        if is_candidate_node_id(&token) {
+            ids.insert(token);
         }
     }
 }
@@ -1077,6 +1102,48 @@ mod tests {
             );
         }
         assert!(index.outline_items().is_empty());
+    }
+
+    #[test]
+    fn text_scan_mindmap_keeps_labels_out_of_node_ids() {
+        let index = FenceTextIndex::from_text(
+            concat!(
+                "mindmap\n",
+                "root(Root Node)\n",
+                " child1[Child 1]\n",
+                " ::icon(bomb)\n",
+                " :::hot\n",
+                " %% comment about node ids\n",
+                " child2\n",
+            ),
+            Some("mindmap"),
+        );
+
+        for required in ["root", "child1", "child2"] {
+            assert!(
+                index.node_ids().any(|id| id == required),
+                "missing mindmap node id {required:?} from text-scan fallback"
+            );
+        }
+
+        for leaked in [
+            "Root", "Node", "Child", "1", "bomb", "hot", "comment", "about", "ids",
+        ] {
+            assert!(
+                !index.node_ids().any(|id| id == leaked),
+                "mindmap text-scan fallback leaked {leaked:?} as a node id"
+            );
+        }
+
+        for required in ["root", "child1", "child2"] {
+            assert!(
+                index
+                    .outline_items()
+                    .iter()
+                    .any(|item| item.name == required),
+                "missing mindmap outline item {required:?} from text-scan fallback"
+            );
+        }
     }
 
     #[test]
