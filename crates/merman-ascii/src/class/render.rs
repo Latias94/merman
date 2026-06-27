@@ -7,11 +7,10 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationComponentFacts, RelationComponentSummaryPolicy, RelationGraphLabel, RelationGraphLine,
-    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
-    RelationStackPlan,
+    RelationComponentFacts, RelationComponentSummaryPolicy, RelationGraphBoxStyle,
+    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
-use crate::text::display_width;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
 };
@@ -290,42 +289,24 @@ fn render_box_sections(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> RenderedClassBox {
-    let content_width = content_width(&sections, options.box_border_padding);
-    let mut out = Vec::new();
-
-    out.push(border_line(
-        charset.top_left,
-        charset.top_right,
-        charset.horizontal,
-        content_width,
-    ));
-    for (section_index, section) in sections.iter().enumerate() {
-        if section_index > 0 {
-            out.push(border_line(
-                charset.separator_left,
-                charset.separator_right,
-                charset.horizontal,
-                content_width,
-            ));
-        }
-        for line in section {
-            out.push(content_line(
-                line,
-                content_width,
-                options.box_border_padding,
-                charset,
-            ));
-        }
-    }
-    out.push(border_line(
-        charset.bottom_left,
-        charset.bottom_right,
-        charset.horizontal,
-        content_width,
-    ));
-
-    let width = content_width + 2;
-    RenderedClassBox::new_with_lines(id, out, width)
+    let style = RelationGraphBoxStyle {
+        top_left: charset.top_left,
+        top_right: charset.top_right,
+        bottom_left: charset.bottom_left,
+        bottom_right: charset.bottom_right,
+        horizontal: charset.horizontal,
+        vertical: charset.vertical,
+        separator_left: charset.separator_left,
+        separator_right: charset.separator_right,
+        border_role: AsciiColorRole::NodeBorder,
+        text_role: AsciiColorRole::Text,
+    };
+    relation_graph::RelationGraphBox::from_sections(
+        id,
+        &sections,
+        options.box_border_padding,
+        style,
+    )
 }
 
 fn class_sections(class: &ClassNode) -> Vec<Vec<String>> {
@@ -366,48 +347,6 @@ fn member_text(member: &ClassMember) -> String {
         return member.display_text.clone();
     }
     member.id.clone()
-}
-
-fn content_width(sections: &[Vec<String>], padding: usize) -> usize {
-    let max_line_width = sections
-        .iter()
-        .flat_map(|section| section.iter())
-        .map(|line| display_width(line))
-        .max()
-        .unwrap_or(0)
-        .max(1);
-    max_line_width + padding.saturating_mul(2)
-}
-
-fn border_line(
-    left: char,
-    right: char,
-    horizontal: char,
-    content_width: usize,
-) -> RelationGraphLine {
-    RelationGraphLine::box_border(
-        left,
-        right,
-        horizontal,
-        content_width,
-        AsciiColorRole::NodeBorder,
-    )
-}
-
-fn content_line(
-    text: &str,
-    content_width: usize,
-    padding: usize,
-    charset: ClassCharset,
-) -> RelationGraphLine {
-    RelationGraphLine::box_content(
-        text,
-        content_width,
-        padding,
-        charset.vertical,
-        AsciiColorRole::NodeBorder,
-        AsciiColorRole::Text,
-    )
 }
 
 fn relation_layout<'a>(

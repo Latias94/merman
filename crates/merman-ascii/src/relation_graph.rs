@@ -22,6 +22,20 @@ pub(crate) struct RelationGraphBox {
     width: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RelationGraphBoxStyle {
+    pub(crate) top_left: char,
+    pub(crate) top_right: char,
+    pub(crate) bottom_left: char,
+    pub(crate) bottom_right: char,
+    pub(crate) horizontal: char,
+    pub(crate) vertical: char,
+    pub(crate) separator_left: char,
+    pub(crate) separator_right: char,
+    pub(crate) border_role: AsciiColorRole,
+    pub(crate) text_role: AsciiColorRole,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphLabel {
     lines: Vec<String>,
@@ -399,6 +413,54 @@ impl RelationGraphBox {
         Self { id, lines, width }
     }
 
+    pub(crate) fn from_sections(
+        id: String,
+        sections: &[Vec<String>],
+        padding: usize,
+        style: RelationGraphBoxStyle,
+    ) -> Self {
+        let content_width = sectioned_box_content_width(sections, padding);
+        let mut lines = Vec::new();
+
+        lines.push(RelationGraphLine::box_border(
+            style.top_left,
+            style.top_right,
+            style.horizontal,
+            content_width,
+            style.border_role,
+        ));
+        for (section_index, section) in sections.iter().enumerate() {
+            if section_index > 0 {
+                lines.push(RelationGraphLine::box_border(
+                    style.separator_left,
+                    style.separator_right,
+                    style.horizontal,
+                    content_width,
+                    style.border_role,
+                ));
+            }
+            for line in section {
+                lines.push(RelationGraphLine::box_content(
+                    line,
+                    content_width,
+                    padding,
+                    style.vertical,
+                    style.border_role,
+                    style.text_role,
+                ));
+            }
+        }
+        lines.push(RelationGraphLine::box_border(
+            style.bottom_left,
+            style.bottom_right,
+            style.horizontal,
+            content_width,
+            style.border_role,
+        ));
+
+        Self::new_with_lines(id, lines, content_width + 2)
+    }
+
     pub(crate) fn id(&self) -> &str {
         &self.id
     }
@@ -416,6 +478,17 @@ impl RelationGraphBox {
             line.draw_at(canvas, x, y + row_index);
         }
     }
+}
+
+fn sectioned_box_content_width(sections: &[Vec<String>], padding: usize) -> usize {
+    let max_line_width = sections
+        .iter()
+        .flat_map(|section| section.iter())
+        .map(|line| display_width(line))
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    max_line_width + padding.saturating_mul(2)
 }
 
 pub(crate) fn render_stacked_boxes(boxes: &[RelationGraphBox]) -> String {
@@ -893,6 +966,38 @@ mod tests {
                 "<span style=\"color:#222222\">relations:</span>\n",
                 "<span style=\"color:#333333\">A --&gt; B</span>\n",
             )
+        );
+    }
+
+    #[test]
+    fn relation_graph_box_from_sections_builds_shared_sectioned_boxes() {
+        let style = RelationGraphBoxStyle {
+            top_left: '+',
+            top_right: '+',
+            bottom_left: '+',
+            bottom_right: '+',
+            horizontal: '-',
+            vertical: '|',
+            separator_left: '+',
+            separator_right: '+',
+            border_role: AsciiColorRole::NodeBorder,
+            text_role: AsciiColorRole::Text,
+        };
+        let relation_box = RelationGraphBox::from_sections(
+            "box".to_string(),
+            &[vec!["A".to_string()], vec!["B".to_string()]],
+            1,
+            style,
+        );
+        let mut canvas = Canvas::new(relation_box.width(), relation_box.height());
+
+        relation_box.draw_at(&mut canvas, 0, 0);
+
+        assert_eq!(relation_box.width(), 5);
+        assert_eq!(relation_box.height(), 5);
+        assert_eq!(
+            canvas.finish_trimmed_with_options(&AsciiRenderOptions::ascii()),
+            "+---+\n| A |\n+---+\n| B |\n+---+\n"
         );
     }
 
