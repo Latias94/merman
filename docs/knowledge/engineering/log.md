@@ -6,6 +6,18 @@ status: active
 # Log
 
 ## 2026-06-27
+- Narrowed flowchart completion heuristics so a single trailing `-` no longer suppresses node-id
+  completion. This keeps parser-backed hyphenated flowchart node ids like `wi-fi` visible instead
+  of forcing them into operator-only completion.
+- Added regression coverage for parser-backed hyphenated flowchart node ids in `merman-core`, plus
+  end-to-end LSP completion coverage showing that `wi-fi` remains completion-visible while
+  clear partial operators still behave as expected.
+- Verified the slice with `cargo test -p merman-core --lib parse_flowchart_editor_facts_preserve -- --nocapture`,
+  `cargo test -p merman-analysis --lib cursor_context_classifies_header_operator_directive_and_nodes -- --nocapture`,
+  `cargo test -p merman-lsp --test completion -- --nocapture`, `cargo fmt --all --check`, and
+  `git diff --check`.
+
+## 2026-06-27
 - Extended parser-backed completion beyond payload-only contexts. ER editor facts now emit
   `IdList` expected syntax for parser-recognized identifier lists, `merman-analysis` projects that
   into node-id completion, and LSP completion now prefers those ids on ER `classDef` lines instead
