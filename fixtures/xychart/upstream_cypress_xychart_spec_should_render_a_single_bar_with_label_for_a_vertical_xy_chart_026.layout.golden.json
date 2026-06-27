@@ -6,6 +6,7 @@
       "height": 500.0,
       "chartOrientation": "vertical",
       "showDataLabel": true,
+      "showDataLabelOutsideBar": false,
       "backgroundColor": "white",
       "labelData": [
         "75"
