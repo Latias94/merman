@@ -35,4 +35,5 @@ git_branch: feat/diagnostics-analysis-contract
 - `cargo test -p merman-core parse_diagram_flowchart_without_direction_preserves_source_and_warns -- --nocapture`
 - `cargo test -p merman-analysis semantic_warning_facts_map_flowchart_unknown_style_target_rule_id -- --nocapture`
 - `cargo test -p merman-analysis rule_descriptors_expose_stable_rule_metadata -- --nocapture`
+- `cargo test -p merman-lsp lsp_service_smoke_reports_flowchart_unknown_style_target_warning -- --nocapture`
 - `cargo fmt --all`

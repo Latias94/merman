@@ -490,6 +490,72 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfi
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_reports_flowchart_unknown_style_target_warning() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::to_value(InitializeParams::default()).unwrap())
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nstyle Q background:#fff\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let publish = timeout(Duration::from_secs(5), socket.next())
+        .await
+        .unwrap()
+        .expect("expected diagnostics publish");
+    assert_eq!(publish.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams =
+        from_value(publish.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.diagnostics.len(), 1);
+    let diagnostic = params.diagnostics[0].clone();
+    assert_eq!(
+        diagnostic.severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::WARNING)
+    );
+    assert_eq!(
+        diagnostic.code,
+        Some(NumberOrString::String(
+            "merman.semantic.flowchart.unknown_style_target".to_string()
+        ))
+    );
+    assert_eq!(diagnostic.range.start.line, 1);
+    assert_eq!(diagnostic.range.start.character, 6);
+    assert_eq!(diagnostic.range.end.line, 1);
+    assert_eq!(diagnostic.range.end.character, 7);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_resolves_completion_items() {
     let (mut service, _socket) = MermanLanguageServer::service();
 

@@ -9,10 +9,13 @@ status: active
 - Added a source-backed flowchart lint rule for `style` directives that target unknown nodes.
   `merman-core` now emits a warning fact from the flowchart semantic build path, and
   `merman-analysis` maps it to stable rule id `merman.semantic.flowchart.unknown_style_target`.
+- Added an LSP smoke test proving that the same warning reaches `textDocument/publishDiagnostics`
+  with the expected rule id and range.
 - Verified the slice with `cargo test -p merman-core parse_diagram_flowchart_style_statement_applies_vertex_styles -- --nocapture`,
   `cargo test -p merman-core parse_diagram_flowchart_without_direction_preserves_source_and_warns -- --nocapture`,
   `cargo test -p merman-analysis semantic_warning_facts_map_flowchart_unknown_style_target_rule_id -- --nocapture`,
   `cargo test -p merman-analysis rule_descriptors_expose_stable_rule_metadata -- --nocapture`,
+  `cargo test -p merman-lsp lsp_service_smoke_reports_flowchart_unknown_style_target_warning -- --nocapture`,
   and `cargo fmt --all`.
 
 ## 2026-06-27
