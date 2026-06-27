@@ -240,6 +240,64 @@ fn completion_offers_node_ids_for_markdown_fences() {
 }
 
 #[test]
+fn completion_stays_fence_local_across_multiple_markdown_mermaid_blocks() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.markdown").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "before\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "A-->B\n",
+            "C-->\n",
+            "```\n",
+            "middle\n",
+            "```mermaid\n",
+            "sequenceDiagram\n",
+            "Alice->>Bob: Hi\n",
+            "```\n",
+            "after\n",
+        )
+        .to_string(),
+    );
+
+    let flowchart_list = completion_for_snapshot(&snapshot, Position::new(4, 4));
+    assert!(
+        flowchart_list.items.iter().any(|item| item.label == "A"),
+        "flowchart fence completion should see local node ids"
+    );
+    assert!(
+        flowchart_list.items.iter().any(|item| item.label == "B"),
+        "flowchart fence completion should see local node ids"
+    );
+    assert!(
+        flowchart_list
+            .items
+            .iter()
+            .all(|item| item.label != "Alice" && item.label != "Bob"),
+        "flowchart fence completion must not leak sequence ids: {:?}",
+        flowchart_list
+            .items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+
+    let sequence_list = completion_for_snapshot(&snapshot, Position::new(9, 14));
+    assert!(
+        sequence_list.items.is_empty(),
+        "sequence payload context in a later markdown fence must stay fence-local: {:?}",
+        sequence_list
+            .items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_uses_sequence_parser_payload_context() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
