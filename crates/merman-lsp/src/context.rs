@@ -261,6 +261,7 @@ fn operator_suffix_start(prefix: &str) -> Option<usize> {
 mod tests {
     use super::CompletionContext;
     use crate::document_store::DocumentStore;
+    use merman_analysis::FenceExpectedSyntaxKind;
     use tower_lsp::lsp_types::{Position, Url};
 
     #[test]
@@ -355,5 +356,17 @@ mod tests {
         );
         let node_context = CompletionContext::from_snapshot(&node, Position::new(0, 6)).unwrap();
         assert!(node_context.offer_node_items());
+
+        let gantt = store.upsert(
+            uri,
+            10,
+            "gantt\nsection Demo\nTask 1: id1,after id2,1d\n".to_string(),
+        );
+        let gantt_context = CompletionContext::from_snapshot(&gantt, Position::new(2, 18)).unwrap();
+        assert_eq!(
+            gantt_context.expected_syntax,
+            Some(FenceExpectedSyntaxKind::NodeIdentifier)
+        );
+        assert!(gantt_context.offer_node_items());
     }
 }

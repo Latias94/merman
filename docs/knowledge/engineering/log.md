@@ -6,6 +6,20 @@ status: active
 # Log
 
 ## 2026-06-27
+- Fixed a real Gantt semantic split. Task ids, dependency refs from `after` / `until`, and `click`
+  target ids now share the same entity kind, so rename and references connect the task definition
+  with its dependency usage instead of treating them as different semantic groups.
+- Those same Gantt id spans now emit parser-backed `NodeIdentifier` expected syntax, so cursor
+  context can recognize dependency and click-target positions as entity positions instead of
+  ad-hoc payloads.
+- Verified the slice with `cargo test -p merman-core --lib gantt -- --nocapture`,
+  `cargo test -p merman-lsp --lib context::tests::context_classifies_header_operator_and_directive_prefixes -- --nocapture`,
+  `cargo test -p merman-lsp --lib structure::tests::gantt_rename_and_references_track_dependency_refs -- --nocapture`,
+  `cargo test -p merman-lsp --test completion -- --nocapture`,
+  `cargo test -p merman-analysis --lib editor -- --nocapture`, `cargo fmt --all`, and
+  `git diff --check`.
+
+## 2026-06-27
 - Extended parser-backed completion to mindmap node lines. `merman-core` now records parser-backed
   `NodeIdentifier` spans for mindmap node ids plus `Payload` spans for explicit node labels, so
   the editor layer can distinguish the label text from the node id instead of treating the whole

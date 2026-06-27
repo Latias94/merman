@@ -168,6 +168,23 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             && symbol.selection.end == id2_click_start + "id2".len()
     }));
 
+    for (label, start) in [
+        ("id1", id1_def_start),
+        ("id1", id1_after_start),
+        ("id1", id1_until_start),
+        ("id2", id2_def_start),
+        ("id2", id2_click_start),
+    ] {
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                    && expected.span.start <= start
+                    && expected.span.end >= start + label.len()
+            }),
+            "missing gantt node-id expected syntax for {label:?} at {start}"
+        );
+    }
+
     let callback_start = text.find("open(userId)").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "open"

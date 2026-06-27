@@ -731,7 +731,8 @@ fn collect_gantt_click_symbols(
         click.ids.start,
         ',',
         "gantt click target",
-        EditorSemanticKind::Function,
+        EditorSemanticKind::Variable,
+        Some(EditorExpectedSyntaxKind::NodeIdentifier),
         statement_span,
         facts,
     );
@@ -879,6 +880,7 @@ fn collect_gantt_task_data_symbols(
                 *id,
                 "gantt task",
                 EditorSemanticKind::Variable,
+                Some(EditorExpectedSyntaxKind::NodeIdentifier),
                 statement_span,
                 facts,
             );
@@ -907,7 +909,8 @@ fn push_gantt_relative_ref_symbols(
             field.start + range.start,
             ' ',
             "gantt dependency",
-            EditorSemanticKind::Event,
+            EditorSemanticKind::Variable,
+            Some(EditorExpectedSyntaxKind::NodeIdentifier),
             statement_span,
             facts,
         );
@@ -920,6 +923,7 @@ fn push_gantt_delimited_id_symbols(
     delimiter: char,
     detail: &str,
     kind: EditorSemanticKind,
+    expected_syntax: Option<EditorExpectedSyntaxKind>,
     statement_span: SourceSpan,
     facts: &mut EditorSemanticFacts,
 ) {
@@ -934,6 +938,7 @@ fn push_gantt_delimited_id_symbols(
                 },
                 detail,
                 kind,
+                expected_syntax,
                 statement_span,
                 facts,
             );
@@ -949,6 +954,7 @@ fn push_gantt_delimited_id_symbols(
         },
         detail,
         kind,
+        expected_syntax,
         statement_span,
         facts,
     );
@@ -958,12 +964,16 @@ fn push_gantt_id_symbol(
     field: SpannedText<'_>,
     detail: &str,
     kind: EditorSemanticKind,
+    expected_syntax: Option<EditorExpectedSyntaxKind>,
     statement_span: SourceSpan,
     facts: &mut EditorSemanticFacts,
 ) {
     let Some(field) = field.trim() else {
         return;
     };
+    if let Some(expected_syntax) = expected_syntax {
+        facts.push_expected_syntax(EditorExpectedSyntax::new(expected_syntax, field.span()));
+    }
     facts.push_symbol(EditorSemanticSymbol::new(
         field.text,
         Some(detail.to_string()),

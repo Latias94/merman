@@ -650,6 +650,56 @@ mod tests {
     }
 
     #[test]
+    fn gantt_rename_and_references_track_dependency_refs() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            "gantt\ndateFormat YYYY-MM-DD\nsection Demo\nTask 1: id1,2014-01-01,1d\nTask 2: id2,after id1,1d\nclick id2 href \"https://example.com/\"\n"
+                .to_string(),
+        );
+
+        let position = Position::new(3, 8);
+        let prepare = outline_prepare_rename(&snapshot, position).unwrap();
+        match prepare {
+            PrepareRenameResponse::RangeWithPlaceholder { placeholder, .. } => {
+                assert_eq!(placeholder, "id1");
+            }
+            other => panic!("unexpected prepare rename response: {other:?}"),
+        }
+
+        let refs = outline_references(&snapshot, position, true).unwrap();
+        assert_eq!(refs.len(), 2);
+
+        let rename = outline_rename(
+            &snapshot,
+            RenameParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier {
+                        uri: snapshot.uri.clone(),
+                    },
+                    position,
+                ),
+                new_name: "task_alpha".to_string(),
+                work_done_progress_params: Default::default(),
+            },
+        )
+        .unwrap();
+        let edit = rename.expect("expected rename edit");
+        assert_eq!(
+            edit.changes
+                .as_ref()
+                .unwrap()
+                .get(&snapshot.uri)
+                .unwrap()
+                .len(),
+            2,
+            "rename should update the task and its dependency reference"
+        );
+    }
+
+    #[test]
     fn workspace_symbols_filter_and_include_outline_items() {
         let mut store = DocumentStore::new();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
