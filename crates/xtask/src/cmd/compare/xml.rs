@@ -10,17 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str> {
-    if let Some(reason) = crate::cmd::upstream_svg_baseline_skip_reason(diagram, stem) {
-        return Some(reason);
-    }
-
-    if diagram == "class" && stem == "upstream_parser_class_spec" {
-        return Some(
-            "upstream Mermaid 11.15 renders prototype-key class ids with NaN transforms and missing nodes; merman keeps those ids deterministic and compare-class-svgs already excludes this fixture",
-        );
-    }
-
-    None
+    crate::cmd::upstream_svg_compare_skip_reason(diagram, stem)
 }
 
 pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {

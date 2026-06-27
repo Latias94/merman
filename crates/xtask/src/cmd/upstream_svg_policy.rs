@@ -179,6 +179,33 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
         );
     }
 
+    if diagram == "state" && stem == "upstream_state_parser_spec" {
+        return Some("upstream Mermaid 11.15 crashes on this parser-only state fixture");
+    }
+
+    if diagram == "class" && stem == "upstream_text_label_variants_spec" {
+        return Some("upstream Mermaid 11.15 fails on the whitespace-only class label fixture");
+    }
+
+    None
+}
+
+pub(crate) fn upstream_svg_compare_skip_reason(
+    diagram: &str,
+    fixture_name_or_stem: &str,
+) -> Option<&'static str> {
+    let stem = normalized_fixture_stem(fixture_name_or_stem);
+
+    if let Some(reason) = upstream_svg_baseline_skip_reason(diagram, stem) {
+        return Some(reason);
+    }
+
+    if diagram == "class" && stem == "upstream_parser_class_spec" {
+        return Some(
+            "upstream Mermaid 11.15 renders prototype-key class ids with NaN transforms and missing nodes; compare-class-svgs and compare-svg-xml already exclude this fixture",
+        );
+    }
+
     None
 }
 
@@ -189,7 +216,7 @@ mod tests {
         flowchart_elk_svg_compare_admitted, flowchart_elk_svg_compare_skip_reason,
         flowchart_elk_svg_parity_admitted, flowchart_elk_svg_parity_skip_reason,
         flowchart_elk_svg_source_backed_probe_admitted, parse_flowchart_elk_backend,
-        upstream_svg_baseline_skip_reason,
+        upstream_svg_baseline_skip_reason, upstream_svg_compare_skip_reason,
     };
 
     #[test]
@@ -504,7 +531,34 @@ mod tests {
             )
         );
         assert_eq!(
+            upstream_svg_baseline_skip_reason("state", "upstream_state_parser_spec.mmd"),
+            Some("upstream Mermaid 11.15 crashes on this parser-only state fixture")
+        );
+        assert_eq!(
+            upstream_svg_baseline_skip_reason("class", "upstream_text_label_variants_spec.mmd"),
+            Some("upstream Mermaid 11.15 fails on the whitespace-only class label fixture")
+        );
+        assert_eq!(
             upstream_svg_baseline_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
+            None
+        );
+    }
+
+    #[test]
+    fn upstream_svg_compare_skip_reason_covers_compare_only_class_artifacts() {
+        assert_eq!(
+            upstream_svg_compare_skip_reason("state", "upstream_state_parser_spec"),
+            Some("upstream Mermaid 11.15 crashes on this parser-only state fixture")
+        );
+        assert_eq!(
+            upstream_svg_compare_skip_reason("class", "upstream_text_label_variants_spec"),
+            Some("upstream Mermaid 11.15 fails on the whitespace-only class label fixture")
+        );
+        let reason = upstream_svg_compare_skip_reason("class", "upstream_parser_class_spec")
+            .expect("prototype-key class ids should be skipped from compare");
+        assert!(reason.contains("prototype-key class ids"));
+        assert_eq!(
+            upstream_svg_compare_skip_reason("class", "upstream_namespaces_and_generics"),
             None
         );
     }

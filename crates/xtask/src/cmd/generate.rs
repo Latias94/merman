@@ -124,13 +124,6 @@ fn upstream_svg_fixture_is_skipped_for_generation(diagram: &str, path: &Path) ->
     {
         return true;
     }
-    if diagram == "state" && name == "upstream_state_parser_spec.mmd" {
-        // Mermaid upstream currently crashes on this input (kept for parser parity).
-        return true;
-    }
-    if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
-        return true;
-    }
     if diagram == "c4" {
         // Mermaid C4 has known render-time type assumptions that make some valid parser
         // fixtures non-renderable (e.g. kv-objects stored in `label.text` or
@@ -175,9 +168,6 @@ fn upstream_svg_fixture_is_skipped_for_check(diagram: &str, path: &Path) -> bool
         return true;
     }
     if diagram == "state" && (name.contains("_parser_") || name.contains("_parser_spec")) {
-        return true;
-    }
-    if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
         return true;
     }
     if diagram == "c4" {

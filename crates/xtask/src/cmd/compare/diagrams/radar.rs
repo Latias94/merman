@@ -96,15 +96,6 @@ pub(crate) fn compare_radar_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let merman_render::model::LayoutDiagram::RadarDiagram(_layout) = &layouted.layout
-            else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    input.fixture_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(sanitize_svg_id(input.stem)),
                 ..Default::default()

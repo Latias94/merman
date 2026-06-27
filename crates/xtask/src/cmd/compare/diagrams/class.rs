@@ -82,7 +82,10 @@ pub(crate) fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 options.dom_mode, options.dom_decimals,
             );
         },
-        |_, _, _| None,
+        |_, stem, _| {
+            crate::cmd::upstream_svg_compare_skip_reason("class", stem)
+                .map(|reason| reason.to_string())
+        },
         |state, input| {
             let parsed = match futures::executor::block_on(
                 engine.parse_diagram(input.text, merman::ParseOptions::default()),
