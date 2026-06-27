@@ -49,6 +49,14 @@ pub(crate) trait RelationComponentAdapter<R> {
 
     fn layered_horizontal_gap(&self) -> usize;
 
+    fn layered_route_style(&self, relation: &R) -> Result<LayeredRelationRouteStyle>;
+
+    fn layered_relation_overlays(
+        &self,
+        relation: &R,
+        geometry: &LayeredRelationRouteGeometry,
+    ) -> Result<Vec<RelationOverlay>>;
+
     fn render_vertical(
         &self,
         boxes: &[RelationGraphBox],
@@ -68,15 +76,6 @@ pub(crate) trait RelationComponentAdapter<R> {
         relation: &R,
         reason: LayeredRelationSummaryReason,
     ) -> Result<RelationGraphSummaryRow>;
-
-    fn draw_layered_edge<'boxes>(
-        &self,
-        scene: &LayeredRelationScene<'boxes>,
-        canvas: &mut Canvas,
-        edge_index: usize,
-        relation: &R,
-        lane_offset: isize,
-    ) -> Result<()>;
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError;
 }
@@ -573,13 +572,11 @@ where
 
     let mut canvas = scene.canvas_with_boxes();
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
-        adapter.draw_layered_edge(
-            &scene,
-            &mut canvas,
-            edge_index,
-            &relations[edge_index],
-            lane_offset,
-        )?;
+        let relation = &relations[edge_index];
+        let style = adapter.layered_route_style(relation)?;
+        scene.draw_edge(&mut canvas, edge_index, lane_offset, style, |geometry| {
+            adapter.layered_relation_overlays(relation, geometry)
+        })?;
     }
 
     Ok(canvas.finish_trimmed_with_options(options))
@@ -755,6 +752,26 @@ mod tests {
             1
         }
 
+        fn layered_route_style(
+            &self,
+            _relation: &(&'static str, &'static str),
+        ) -> Result<LayeredRelationRouteStyle> {
+            Ok(LayeredRelationRouteStyle::new(
+                '-',
+                '-',
+                RelationLineChars::new(['-', '-', '-', '-'], '+'),
+                LayeredRelationRouteProfile::class(),
+            ))
+        }
+
+        fn layered_relation_overlays(
+            &self,
+            _relation: &(&'static str, &'static str),
+            _geometry: &LayeredRelationRouteGeometry,
+        ) -> Result<Vec<RelationOverlay>> {
+            Ok(Vec::new())
+        }
+
         fn render_vertical(
             &self,
             _boxes: &[RelationGraphBox],
@@ -780,17 +797,6 @@ mod tests {
         ) -> Result<RelationGraphSummaryRow> {
             self.summary_reason.set(Some(reason));
             Ok(RelationGraphSummaryRow::new("A", "-->", "B"))
-        }
-
-        fn draw_layered_edge<'boxes>(
-            &self,
-            _scene: &LayeredRelationScene<'boxes>,
-            _canvas: &mut Canvas,
-            _edge_index: usize,
-            _relation: &(&'static str, &'static str),
-            _lane_offset: isize,
-        ) -> Result<()> {
-            Ok(())
         }
 
         fn layered_error(&self, error: LayeredRelationError) -> AsciiError {

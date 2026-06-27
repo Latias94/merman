@@ -1,14 +1,13 @@
 use crate::AsciiError;
 use crate::Result;
-use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow,
-    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
+    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
@@ -390,8 +389,9 @@ fn relation_layout<'a>(
     let left_endpoint_label = relation_endpoint_label(&relation.relation_title_1);
     let right_endpoint_label = relation_endpoint_label(&relation.relation_title_2);
 
-    if endpoint_marker.is_some_and(|marker| marker.marker == RelationMarker::Extension) {
-        let marker = endpoint_marker.expect("extension relationship should have a marker side");
+    if let Some(marker) =
+        endpoint_marker.filter(|marker| marker.marker == RelationMarker::Extension)
+    {
         return Ok(match marker.side {
             MarkerSide::Top => RelationLayout {
                 top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
@@ -858,6 +858,75 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         CLASS_LEVEL_HORIZONTAL_GAP
     }
 
+    fn layered_route_style(
+        &self,
+        layout: &RelationLayout<'a>,
+    ) -> Result<LayeredRelationRouteStyle> {
+        let vertical = line_char(layout.line, self.charset);
+        let horizontal = horizontal_line_char(layout.line, self.charset);
+        let relation_chars = relation_line_chars(self.charset);
+        Ok(LayeredRelationRouteStyle::new(
+            vertical,
+            horizontal,
+            relation_chars,
+            class_route_profile(layout),
+        ))
+    }
+
+    fn layered_relation_overlays(
+        &self,
+        layout: &RelationLayout<'a>,
+        geometry: &relation_graph::LayeredRelationRouteGeometry,
+    ) -> Result<Vec<RelationOverlay>> {
+        let mut overlays = Vec::new();
+        if let Some(label) = layout.top_endpoint_label.as_ref() {
+            overlays.push(RelationOverlay::label(
+                geometry.source_x(),
+                geometry
+                    .source_marker_y()
+                    .saturating_sub(label.line_count()),
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
+        }
+        if let Some(label) = layout.label.as_ref() {
+            overlays.push(RelationOverlay::label(
+                (geometry.source_x() + geometry.target_x()) / 2,
+                geometry.label_y_after_source(),
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
+        }
+
+        if let Some(endpoint_marker) = layout.endpoint_marker {
+            match endpoint_marker.side {
+                MarkerSide::Top => overlays.push(RelationOverlay::glyph(
+                    geometry.source_x(),
+                    geometry.source_marker_y(),
+                    marker_char(endpoint_marker.marker, MarkerSide::Top, self.charset),
+                    AsciiColorRole::EdgeArrow,
+                )),
+                MarkerSide::Bottom => overlays.push(RelationOverlay::glyph(
+                    geometry.target_x(),
+                    geometry.target_marker_y(),
+                    marker_char(endpoint_marker.marker, MarkerSide::Bottom, self.charset),
+                    AsciiColorRole::EdgeArrow,
+                )),
+            }
+        }
+
+        if let Some(label) = layout.bottom_endpoint_label.as_ref() {
+            overlays.push(RelationOverlay::label(
+                geometry.target_x(),
+                geometry.target_marker_y() + 1,
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
+        }
+
+        Ok(overlays)
+    }
+
     fn render_vertical(
         &self,
         boxes: &[RenderedClassBox],
@@ -893,89 +962,9 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         class_relation_summary_row(layout)
     }
 
-    fn draw_layered_edge<'boxes>(
-        &self,
-        scene: &relation_graph::LayeredRelationScene<'boxes>,
-        canvas: &mut Canvas,
-        edge_index: usize,
-        layout: &RelationLayout<'a>,
-        lane_offset: isize,
-    ) -> Result<()> {
-        draw_layered_relation(scene, canvas, edge_index, layout, lane_offset, self.charset);
-        Ok(())
-    }
-
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
         class_layered_error(error)
     }
-}
-
-fn draw_layered_relation(
-    scene: &LayeredRelationScene<'_>,
-    canvas: &mut Canvas,
-    edge_index: usize,
-    layout: &RelationLayout<'_>,
-    lane_offset: isize,
-    charset: ClassCharset,
-) {
-    let vertical = line_char(layout.line, charset);
-    let horizontal = horizontal_line_char(layout.line, charset);
-    let relation_chars = relation_line_chars(charset);
-    let style = LayeredRelationRouteStyle::new(
-        vertical,
-        horizontal,
-        relation_chars,
-        class_route_profile(layout),
-    );
-    scene.draw_edge(canvas, edge_index, lane_offset, style, |geometry| {
-        let mut overlays = Vec::new();
-        if let Some(label) = layout.top_endpoint_label.as_ref() {
-            overlays.push(RelationOverlay::label(
-                geometry.source_x(),
-                geometry
-                    .source_marker_y()
-                    .saturating_sub(label.line_count()),
-                label.clone(),
-                AsciiColorRole::EdgeLabel,
-            ));
-        }
-        if let Some(label) = layout.label.as_ref() {
-            overlays.push(RelationOverlay::label(
-                (geometry.source_x() + geometry.target_x()) / 2,
-                geometry.label_y_after_source(),
-                label.clone(),
-                AsciiColorRole::EdgeLabel,
-            ));
-        }
-
-        if let Some(endpoint_marker) = layout.endpoint_marker {
-            match endpoint_marker.side {
-                MarkerSide::Top => overlays.push(RelationOverlay::glyph(
-                    geometry.source_x(),
-                    geometry.source_marker_y(),
-                    marker_char(endpoint_marker.marker, MarkerSide::Top, charset),
-                    AsciiColorRole::EdgeArrow,
-                )),
-                MarkerSide::Bottom => overlays.push(RelationOverlay::glyph(
-                    geometry.target_x(),
-                    geometry.target_marker_y(),
-                    marker_char(endpoint_marker.marker, MarkerSide::Bottom, charset),
-                    AsciiColorRole::EdgeArrow,
-                )),
-            }
-        }
-
-        if let Some(label) = layout.bottom_endpoint_label.as_ref() {
-            overlays.push(RelationOverlay::label(
-                geometry.target_x(),
-                geometry.target_marker_y() + 1,
-                label.clone(),
-                AsciiColorRole::EdgeLabel,
-            ));
-        }
-
-        overlays
-    });
 }
 
 fn class_route_profile(layout: &RelationLayout<'_>) -> relation_graph::LayeredRelationRouteProfile {

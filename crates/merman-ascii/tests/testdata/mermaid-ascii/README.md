@@ -22,6 +22,9 @@ or too semantically different for the upstream output to be a meaningful baselin
 use a local semantic fixture near the test file instead of stretching this inventory into a second
 standard.
 
+Three copied graph cases keep their rendered spacing via explicit test metadata in
+`tests/graph_fixture.rs`; their Mermaid input stays directive-free.
+
 Expected inventory:
 
 | Directory | Fixture count | Purpose |

@@ -13,7 +13,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
-| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels including multiline labels, deterministic length spacing, TD same-rank merge edges, and `mermaid-ascii` padding directives for simple LR/TD edges. |
+| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels including multiline labels, deterministic length spacing, and TD same-rank merge edges. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -88,8 +88,6 @@ reference implementation is only an implementation aid.
   policy before admitting complex fixtures.
 - Subgraph titles preserve explicit line breaks (`<br>`/escaped newline/model newline) and wrap
   long titles inside the current group box width.
-- Leading `paddingX=` and `paddingY=` lines are supported as `mermaid-ascii` compatibility
-  directives by ASCII render entry points; they are not Mermaid flowchart syntax.
 - Mermaid classes/styles are rendered only for terminal-safe color properties in opt-in ANSI/HTML
   modes: `color`, `stroke`, `fill`, and `background` support hex colors and a small named-color
   set. Stroke width, links, callbacks, icons, images, Markdown labels, and HTML labels are not

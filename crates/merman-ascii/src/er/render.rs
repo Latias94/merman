@@ -1,12 +1,11 @@
-use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow,
-    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
+    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -411,6 +410,55 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         ER_LEVEL_HORIZONTAL_GAP
     }
 
+    fn layered_route_style(
+        &self,
+        relationship: &ErRelationshipRenderModel,
+    ) -> Result<LayeredRelationRouteStyle> {
+        let vertical = relationship_line(&relationship.rel_spec.rel_type, self.charset)?;
+        let horizontal =
+            relationship_horizontal_line(&relationship.rel_spec.rel_type, self.charset)?;
+        let relation_chars = relation_line_chars(self.charset);
+        Ok(LayeredRelationRouteStyle::new(
+            vertical,
+            horizontal,
+            relation_chars,
+            relation_graph::LayeredRelationRouteProfile::er(),
+        ))
+    }
+
+    fn layered_relation_overlays(
+        &self,
+        relationship: &ErRelationshipRenderModel,
+        geometry: &relation_graph::LayeredRelationRouteGeometry,
+    ) -> Result<Vec<RelationOverlay>> {
+        let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
+        let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+        let label = RelationGraphLabel::new(&relationship.role_a);
+
+        let mut overlays = Vec::new();
+        overlays.push(RelationOverlay::text(
+            geometry.source_x(),
+            geometry.source_marker_y(),
+            top_cardinality.to_string(),
+            AsciiColorRole::EdgeArrow,
+        ));
+        if let Some(label) = label.as_ref() {
+            overlays.push(RelationOverlay::label(
+                (geometry.source_x() + geometry.target_x()) / 2,
+                geometry.label_y_after_source(),
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
+        }
+        overlays.push(RelationOverlay::text(
+            geometry.target_x(),
+            geometry.target_marker_y(),
+            bottom_cardinality.to_string(),
+            AsciiColorRole::EdgeArrow,
+        ));
+        Ok(overlays)
+    }
+
     fn render_vertical(
         &self,
         boxes: &[RenderedEntityBox],
@@ -440,77 +488,9 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         er_relationship_summary_row(relationship, self.entity_labels, self.charset)
     }
 
-    fn draw_layered_edge<'boxes>(
-        &self,
-        scene: &relation_graph::LayeredRelationScene<'boxes>,
-        canvas: &mut Canvas,
-        edge_index: usize,
-        relationship: &ErRelationshipRenderModel,
-        lane_offset: isize,
-    ) -> Result<()> {
-        draw_layered_relationship(
-            scene,
-            canvas,
-            edge_index,
-            relationship,
-            lane_offset,
-            self.charset,
-        )?;
-        Ok(())
-    }
-
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
         er_layered_error(error)
     }
-}
-
-fn draw_layered_relationship(
-    scene: &LayeredRelationScene<'_>,
-    canvas: &mut Canvas,
-    edge_index: usize,
-    relationship: &ErRelationshipRenderModel,
-    lane_offset: isize,
-    charset: ErCharset,
-) -> Result<()> {
-    let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
-    let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
-    let vertical = relationship_line(&relationship.rel_spec.rel_type, charset)?;
-    let horizontal = relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?;
-    let label = RelationGraphLabel::new(&relationship.role_a);
-    let relation_chars = relation_line_chars(charset);
-    let style = LayeredRelationRouteStyle::new(
-        vertical,
-        horizontal,
-        relation_chars,
-        relation_graph::LayeredRelationRouteProfile::er(),
-    );
-
-    scene.draw_edge(canvas, edge_index, lane_offset, style, |geometry| {
-        let mut overlays = Vec::new();
-        overlays.push(RelationOverlay::text(
-            geometry.source_x(),
-            geometry.source_marker_y(),
-            top_cardinality.to_string(),
-            AsciiColorRole::EdgeArrow,
-        ));
-        if let Some(label) = label.as_ref() {
-            overlays.push(RelationOverlay::label(
-                (geometry.source_x() + geometry.target_x()) / 2,
-                geometry.label_y_after_source(),
-                label.clone(),
-                AsciiColorRole::EdgeLabel,
-            ));
-        }
-        overlays.push(RelationOverlay::text(
-            geometry.target_x(),
-            geometry.target_marker_y(),
-            bottom_cardinality.to_string(),
-            AsciiColorRole::EdgeArrow,
-        ));
-        overlays
-    });
-
-    Ok(())
 }
 
 fn cardinality_marker(cardinality: &str) -> Result<&'static str> {

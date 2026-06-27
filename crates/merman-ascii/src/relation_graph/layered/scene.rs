@@ -8,6 +8,7 @@ use super::route::{
     LayeredRelationRouteGeometry, LayeredRelationRouteRequest, LayeredRelationRouteStyle,
     RelationOverlay, draw_layered_relation_route,
 };
+use crate::Result;
 use crate::canvas::Canvas;
 
 #[derive(Debug, Clone)]
@@ -81,10 +82,10 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         edge_index: usize,
         lane_offset: isize,
         style: LayeredRelationRouteStyle,
-        build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Vec<RelationOverlay>,
-    ) {
+        build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Result<Vec<RelationOverlay>>,
+    ) -> Result<()> {
         let Some((top, bottom)) = self.edge_endpoints(edge_index) else {
-            return;
+            return Ok(());
         };
         draw_layered_relation_route(
             canvas,
@@ -97,7 +98,8 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             ),
             style,
             build_overlays,
-        );
+        )?;
+        Ok(())
     }
 
     fn edge_endpoints(

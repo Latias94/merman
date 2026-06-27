@@ -4,6 +4,7 @@ use super::draw::{
     RelationLineChars, draw_relation_span_exclusive, draw_relation_span_inclusive,
     put_relation_char, write_centered_relation_label, write_centered_relation_text,
 };
+use crate::Result;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 
@@ -278,10 +279,10 @@ pub(crate) fn draw_layered_relation_route(
     canvas: &mut Canvas,
     request: LayeredRelationRouteRequest<'_, '_>,
     style: LayeredRelationRouteStyle,
-    build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Vec<RelationOverlay>,
-) {
+    build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Result<Vec<RelationOverlay>>,
+) -> Result<()> {
     let geometry = plan_layered_relation_route(request);
-    let overlays = build_overlays(&geometry);
+    let overlays = build_overlays(&geometry)?;
     LayeredRelationRoutePlan::new(
         geometry,
         style.vertical_char,
@@ -290,6 +291,7 @@ pub(crate) fn draw_layered_relation_route(
         overlays,
     )
     .draw_at(canvas);
+    Ok(())
 }
 
 pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
