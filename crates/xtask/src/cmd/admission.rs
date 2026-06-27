@@ -587,17 +587,14 @@ mod tests {
         let schema_path = crate::cmd::default_config_schema_path();
         let schema_text =
             fs::read_to_string(&schema_path).expect("Mermaid config schema should read");
-        let schema: serde_yaml::Value =
-            serde_yaml::from_str(&schema_text).expect("Mermaid config schema should parse");
+        let schema: serde_json::Value =
+            serde_saphyr::from_str(&schema_text).expect("Mermaid config schema should parse");
         let schema_properties = schema
             .get("properties")
-            .and_then(serde_yaml::Value::as_mapping)
+            .and_then(serde_json::Value::as_object)
             .expect("Mermaid config schema should expose root properties");
-        let schema_keys: BTreeSet<String> = schema_properties
-            .keys()
-            .filter_map(serde_yaml::Value::as_str)
-            .map(str::to_string)
-            .collect();
+        let schema_keys: BTreeSet<String> =
+            schema_properties.keys().map(String::to_string).collect();
 
         let removed_admitted_keys: Vec<String> = admission_inventory()
             .iter()

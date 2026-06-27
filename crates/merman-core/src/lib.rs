@@ -27,6 +27,8 @@ pub mod sanitize;
 mod theme;
 pub mod time;
 pub mod utils;
+#[cfg(feature = "full-config")]
+mod yaml_config;
 
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};

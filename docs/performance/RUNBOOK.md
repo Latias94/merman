@@ -39,6 +39,11 @@ This keeps correctness gates and noisy benchmark evidence independent.
   comment with the gate status, threshold crossings, and a link to the run artifact. For manual
   PR-style comparisons, set `base_ref` and `head_ref`; set `base_repository` or `head_repository`
   when comparing across forks.
+- `perf-frontmatter`: compares the frontmatter preprocessing lane with
+  `frontmatter_basic`, `frontmatter_indented`, and `frontmatter_deep_config`. Pull requests only
+  run this lane when the PR carries a `perf-frontmatter` label. Manual runs can use the same
+  `base_ref` / `head_ref` inputs. The lane comments on PRs with its own sticky marker so it does
+  not collide with the general regression gate.
 - `perf-reference`: explicitly checks out the pinned `mermaid-rs-renderer` reference under
   `repo-ref/mermaid-rs-renderer` and runs `compare_mermaid_renderers.py`. It runs on the weekly
   schedule or manual `reference`/`full` dispatch. Mermaid JS is skipped by default; enable it with

@@ -10,6 +10,7 @@ from typing import Any
 
 
 MARKER = "<!-- merman-perf-regression -->"
+DEFAULT_TITLE = "Merman Performance Regression"
 
 
 def fmt_percent(value: Any) -> str:
@@ -78,8 +79,10 @@ def render_comment(
     *,
     run_url: str,
     artifact_name: str,
+    marker: str = MARKER,
+    title: str = DEFAULT_TITLE,
 ) -> str:
-    lines: list[str] = [MARKER, "## Merman Performance Regression"]
+    lines: list[str] = [marker, f"## {title}"]
     lines.append("")
 
     if report is None:
@@ -156,12 +159,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", required=True, help="Markdown comment output path.")
     ap.add_argument("--run-url", required=True, help="GitHub Actions run URL.")
     ap.add_argument("--artifact", default="perf-regression", help="Artifact name.")
+    ap.add_argument(
+        "--marker",
+        default=MARKER,
+        help="Sticky PR comment marker used to locate the existing comment.",
+    )
+    ap.add_argument(
+        "--title",
+        default=DEFAULT_TITLE,
+        help="Heading used in the rendered PR comment.",
+    )
     args = ap.parse_args(argv)
 
     body = render_comment(
         load_report(Path(args.json)),
         run_url=args.run_url,
         artifact_name=args.artifact,
+        marker=args.marker,
+        title=args.title,
     )
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -20,7 +20,7 @@ build = "build.rs"
 # Disable defaults for pure-WASM/Typst profiles.
 default = ["full", "host"]
 full = ["full-config", "full-sanitization"]
-full-config = ["dep:serde_yaml", "dep:json5"]
+full-config = ["dep:granit-parser", "dep:json5"]
 full-sanitization = ["dep:lol_html", "dep:url"]
 host = ["host-clock", "host-random", "host-timing"]
 host-clock = ["chrono/clock", "chrono/wasmbind"]
@@ -35,7 +35,7 @@ lalrpop-util.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml = { workspace = true, optional = true }
+granit-parser = { workspace = true, optional = true }
 json5 = { workspace = true, optional = true }
 thiserror.workspace = true
 lol_html = { workspace = true, optional = true }
