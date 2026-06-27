@@ -6,6 +6,22 @@ status: active
 # Log
 
 ## 2026-06-27
+- Added the first recovery-state parser expected syntax for flowchart incomplete edge tails.
+  `merman-core` now records `NodeIdentifier` after `A-->`-style operator tails, `merman-analysis`
+  projects that into completion, and `merman-lsp` prefers node-id candidates over operator suffix
+  completions at the cursor.
+- Added a direct analysis regression proving parser expected syntax overrides generic completion
+  for the new `NodeIdentifier` path.
+- Verified the slice with `cargo nextest run -p merman-analysis
+  cursor_context_uses_parser_expected_node_identifier_to_override_generic_completion`,
+  `cargo test -p merman-core --lib parse_flowchart_editor_facts_recovers_from_incomplete_input --
+  --nocapture`, `cargo nextest run -p merman-core
+  parse_flowchart_editor_facts_recovers_from_incomplete_input`, `cargo test -p merman-lsp --test
+  completion completion_uses_flowchart_parser_identifier_context_after_operator -- --nocapture`,
+  `cargo nextest run -p merman-lsp --test completion`, `cargo check -p merman-core -p
+  merman-analysis -p merman-lsp`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Extended parser-fed expected syntax again, this time for flowchart recovery after an incomplete
   edge operator. `merman-core` now records `NodeIdentifier` as the expected syntax kind at
   `A-->`-style tails, and `merman-analysis` projects that into completion so the LSP prefers
