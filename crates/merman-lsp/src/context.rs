@@ -136,7 +136,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn node_text_edit_range(&self) -> Option<Range> {
-        if self.operator_range().is_some() {
+        if self.offer_operator_items() {
             None
         } else {
             self.prefix_range()

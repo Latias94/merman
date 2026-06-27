@@ -62,6 +62,28 @@ fn completion_uses_flowchart_parser_identifier_context_after_operator_with_trail
 }
 
 #[test]
+fn completion_offers_hyphenated_flowchart_node_ids() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "flowchart TD\nwi-fi[\"a node with dashes in its name\"]\n".to_string(),
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 3));
+
+    assert!(list.items.iter().any(|item| item.label == "wi-fi"));
+    assert!(
+        list.items.iter().all(|item| item.label != "-->"),
+        "hyphenated node ids should not be forced into operator completion: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_items_carry_resolve_data() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

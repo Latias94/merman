@@ -528,7 +528,7 @@ fn offer_diagram_headers(prefix: &str) -> bool {
 fn offer_operator_items(prefix: &str) -> bool {
     let prefix = prefix.trim_end();
 
-    prefix.ends_with('-') || prefix.ends_with("--") || prefix.ends_with("->")
+    prefix.ends_with("--") || prefix.ends_with("->")
 }
 
 fn offer_directive_items(prefix: &str, directive_prefix: Option<&str>) -> bool {
@@ -563,7 +563,6 @@ fn offer_node_items(prefix: &str, comment_or_directive_line: bool) -> bool {
     !diagram_header_prefix_matches(prefix)
         && !offer_direction_items(prefix)
         && !comment_or_directive_line
-        && !offer_operator_items(prefix)
         && !offer_shape_items(prefix)
 }
 
@@ -1090,9 +1089,13 @@ mod tests {
         assert!(header.offers(FenceCursorCompletionKind::DiagramHeader));
         assert!(!header.offers(FenceCursorCompletionKind::NodeIdentifier));
 
-        let operator = index.cursor_context("flowchart TD\nA-", "flowchart TD\nA-".len());
+        let ambiguous = index.cursor_context("flowchart TD\nA-", "flowchart TD\nA-".len());
+        assert!(!ambiguous.offers(FenceCursorCompletionKind::Operator));
+        assert!(ambiguous.offers(FenceCursorCompletionKind::NodeIdentifier));
+
+        let operator = index.cursor_context("flowchart TD\nA-->B", "flowchart TD\nA--".len());
         assert!(operator.offers(FenceCursorCompletionKind::Operator));
-        assert!(!operator.offers(FenceCursorCompletionKind::NodeIdentifier));
+        assert!(operator.offers(FenceCursorCompletionKind::NodeIdentifier));
 
         let directive = index.cursor_context("classDef foo fill:#f00", "classDef foo".len());
         assert_eq!(directive.directive_prefix(), Some("classDef"));

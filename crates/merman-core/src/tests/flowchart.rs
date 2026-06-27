@@ -2176,6 +2176,25 @@ fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_preserve_hyphenated_node_id_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nwi-fi[\"a node with dashes in its name\"]\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let node = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "wi-fi")
+        .expect("hyphenated flowchart node symbol");
+    let start = text.find("wi-fi").unwrap();
+    assert_eq!(node.selection.start, start);
+    assert_eq!(node.selection.end, start + "wi-fi".len());
+}
+
+#[test]
 fn parse_flowchart_editor_facts_emit_label_payload_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nA[\"Start node\"] & C -->|go| B{\"Decision\"} & D\n";
