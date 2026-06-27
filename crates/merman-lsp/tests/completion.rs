@@ -379,6 +379,31 @@ fn completion_uses_flowchart_parser_expected_direction_value_context() {
 }
 
 #[test]
+fn completion_uses_flowchart_parser_expected_shape_trigger_context() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "flowchart TD\nA((\n".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 3));
+
+    assert!(
+        list.items
+            .iter()
+            .any(|item| item.label == "@{ shape: circle }"),
+        "parser-backed classic shape context must offer shape keywords"
+    );
+    assert!(
+        list.items
+            .iter()
+            .all(|item| item.kind != Some(tower_lsp::lsp_types::CompletionItemKind::VARIABLE)),
+        "parser-backed classic shape context must not offer node identifiers: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_offers_shape_keywords_for_classic_shapes() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

@@ -377,7 +377,7 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
 
-    let mut lexer = Lexer::new(code);
+    let mut lexer = Lexer::recovering(code);
     while let Some(result) = lexer.next() {
         match result {
             Ok((start, token, end)) => collector.accept(code, token, start, end, &mut facts),
@@ -397,6 +397,11 @@ fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFac
         };
 
         match token {
+            Tok::NodeLabel(label) => {
+                if let Some(trigger_span) = label.trigger_span {
+                    push_flowchart_shape_trigger_expected_syntax(trigger_span, facts);
+                }
+            }
             Tok::ShapeData(_) => {
                 push_flowchart_shape_value_expected_syntax(code, start, end, facts)
             }
@@ -502,12 +507,17 @@ fn collect_editor_fact_from_token(
         Tok::SubgraphHeader(header) => {
             push_flowchart_header_symbol(facts, &header);
         }
-        Tok::NodeLabel(label) => push_flowchart_labeled_payload_symbol(
-            facts,
-            &label.text,
-            Some(SourceSpan::new(start, end)),
-            "flowchart node label",
-        ),
+        Tok::NodeLabel(label) => {
+            if let Some(trigger_span) = label.trigger_span {
+                push_flowchart_shape_trigger_expected_syntax(trigger_span, facts);
+            }
+            push_flowchart_labeled_payload_symbol(
+                facts,
+                &label.text,
+                Some(SourceSpan::new(start, end)),
+                "flowchart node label",
+            )
+        }
         Tok::EdgeLabel(label) => push_flowchart_labeled_payload_symbol(
             facts,
             &label,
@@ -778,6 +788,13 @@ fn push_flowchart_direction_value_expected_syntax(
 
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::DirectionValue,
+        span,
+    ));
+}
+
+fn push_flowchart_shape_trigger_expected_syntax(span: SourceSpan, facts: &mut EditorSemanticFacts) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::ShapeTrigger,
         span,
     ));
 }

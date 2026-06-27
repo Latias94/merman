@@ -172,7 +172,7 @@ NodeGroupRest: Node = {
 
 NodeRef: Node = {
   <l:@L> <id:Id> <r:@R> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => {
-    let NodeLabelToken { shape, text } = nl;
+    let NodeLabelToken { shape, text, .. } = nl;
     let label_span = text.span;
     let label_selection = text.selection;
     Node {
@@ -224,7 +224,7 @@ NodeRef: Node = {
 
 NodeRefChain: Node = {
   <l:@L> <id:Id> <r:@R> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => {
-    let NodeLabelToken { shape, text } = nl;
+    let NodeLabelToken { shape, text, .. } = nl;
     let label_span = text.span;
     let label_selection = text.selection;
     Node {

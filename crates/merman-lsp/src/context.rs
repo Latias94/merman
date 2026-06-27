@@ -92,6 +92,15 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn shape_trigger_range(&self) -> Option<Range> {
+        if matches!(
+            self.expected_syntax,
+            Some(FenceExpectedSyntaxKind::ShapeTrigger)
+        ) {
+            if let Some((start, end)) = self.expected_syntax_span {
+                return self.range_for_offsets(start, end);
+            }
+        }
+
         let prefix = self.prefix.trim_end();
         let trigger_len = if prefix.ends_with("((")
             || prefix.ends_with("{{")
@@ -300,9 +309,15 @@ mod tests {
         assert!(classic_shape_context.offer_shape_items());
         assert!(classic_shape_context.shape_trigger_range().is_some());
 
+        let parsed_classic_shape = store.upsert(uri.clone(), 8, "flowchart TD\nA((\n".to_string());
+        let parsed_classic_shape_context =
+            CompletionContext::from_snapshot(&parsed_classic_shape, Position::new(1, 3)).unwrap();
+        assert!(parsed_classic_shape_context.offer_shape_items());
+        assert!(parsed_classic_shape_context.shape_trigger_range().is_some());
+
         let parser_shape = store.upsert(
             uri.clone(),
-            8,
+            9,
             "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
         );
         let parser_shape_context =

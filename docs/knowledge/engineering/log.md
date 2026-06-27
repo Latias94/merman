@@ -6,6 +6,26 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-backed completion to flowchart classic shape triggers. `merman-core`
+  now runs a recovering lexer for editor-fact extraction, records partial classic-shape openings
+  such as `A((`, `A{{`, `A[`, `A[/`, `A[\\`, and `A>` as parser-backed shape trigger spans,
+  and keeps the strict render/parse path unchanged for complete input.
+- `NodeLabelToken` now carries an optional trigger span, `merman-analysis` projects
+  `ShapeTrigger` into the shape completion context, and `merman-lsp` prefers parser-backed shape
+  trigger ranges before falling back to the old prefix heuristic.
+- Verified the slice with `cargo test -p merman-core --lib
+  parse_flowchart_editor_facts_emit_shape_trigger_expected_syntax -- --nocapture`,
+  `cargo test -p merman-core --lib
+  parse_flowchart_editor_facts_emit_shape_value_expected_syntax -- --nocapture`,
+  `cargo test -p merman-core --lib
+  parse_flowchart_editor_facts_emit_direction_value_expected_syntax -- --nocapture`,
+  `cargo test -p merman-analysis --lib
+  cursor_context_uses_parser_expected_shape_trigger_to_override_generic_completion -- --nocapture`,
+  `cargo test -p merman-lsp --test completion
+  completion_uses_flowchart_parser_expected_shape_trigger_context -- --nocapture`, `cargo fmt
+  --all`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Extended parser-backed completion again, this time for flowchart `direction` values. `merman-core`
   now emits `DirectionValue` expected syntax from flowchart `direction` statements, `merman-analysis`
   maps that into direction completion, and `merman-lsp` now offers direction keywords when the

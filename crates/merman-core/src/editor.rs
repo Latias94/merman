@@ -160,6 +160,7 @@ pub enum EditorExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
     ShapeValue,
+    ShapeTrigger,
     DirectionValue,
     Payload,
 }

@@ -107,6 +107,7 @@ pub enum FenceExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
     Shape,
+    ShapeTrigger,
     Direction,
     Payload,
 }
@@ -638,6 +639,9 @@ fn expected_syntax_kind_from_core(
             FenceExpectedSyntaxKind::NodeIdentifier
         }
         merman_core::EditorExpectedSyntaxKind::ShapeValue => FenceExpectedSyntaxKind::Shape,
+        merman_core::EditorExpectedSyntaxKind::ShapeTrigger => {
+            FenceExpectedSyntaxKind::ShapeTrigger
+        }
         merman_core::EditorExpectedSyntaxKind::DirectionValue => FenceExpectedSyntaxKind::Direction,
         merman_core::EditorExpectedSyntaxKind::Payload => FenceExpectedSyntaxKind::Payload,
     }
@@ -657,6 +661,10 @@ fn apply_expected_syntax_to_completion(
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
         }
         FenceExpectedSyntaxKind::Shape => {
+            completion_kinds.clear();
+            completion_kinds.push(FenceCursorCompletionKind::Shape);
+        }
+        FenceExpectedSyntaxKind::ShapeTrigger => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::Shape);
         }
@@ -1218,6 +1226,30 @@ mod tests {
         assert_eq!(
             context.expected_syntax(),
             Some(FenceExpectedSyntaxKind::Shape)
+        );
+        assert_eq!(
+            context.completion_kinds(),
+            vec![FenceCursorCompletionKind::Shape]
+        );
+        assert!(context.offers(FenceCursorCompletionKind::Shape));
+        assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
+    }
+
+    #[test]
+    fn cursor_context_uses_parser_expected_shape_trigger_to_override_generic_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        let text = "flowchart TD\nA((\n";
+        let trigger_start = text.find("((").unwrap();
+        facts.push_expected_syntax(merman_core::EditorExpectedSyntax::new(
+            merman_core::EditorExpectedSyntaxKind::ShapeTrigger,
+            SourceSpan::new(trigger_start, trigger_start + 2),
+        ));
+        let index = FenceTextIndex::from_core_facts(facts);
+        let context = index.cursor_context(text, trigger_start + 2);
+
+        assert_eq!(
+            context.expected_syntax(),
+            Some(FenceExpectedSyntaxKind::ShapeTrigger)
         );
         assert_eq!(
             context.completion_kinds(),

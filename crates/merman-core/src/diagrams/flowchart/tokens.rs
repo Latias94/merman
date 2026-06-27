@@ -2,6 +2,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickStmt, LabeledText, LinkStyleStmt, LinkToken, StyleStmt,
     SubgraphHeader,
 };
+use crate::SourceSpan;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
@@ -37,6 +38,7 @@ pub(crate) enum Tok {
 pub(crate) struct NodeLabelToken {
     pub shape: String,
     pub text: LabeledText,
+    pub trigger_span: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
