@@ -8,6 +8,7 @@ use super::left_right::{
 };
 use super::top_down::{
     plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
+    plan_top_down_side_entry_route,
 };
 use super::*;
 use crate::AsciiRenderOptions;
@@ -1097,6 +1098,33 @@ fn top_down_direct_route_rejects_adjacent_boxes() {
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
 
     assert!(plan_top_down_direct_route(&from, &to, &edge, &charset).is_none());
+}
+
+#[test]
+fn top_down_side_entry_route_plans_unicode_connector_and_label() {
+    let from = node("a", 0, 0, 3, 3);
+    let to = node("group", 6, 0, 3, 3);
+    let edge = edge(Some("enter"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
+
+    let plan = plan_top_down_side_entry_route(&from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(
+        plan.cells,
+        vec![
+            cell(2, 1, '├', PlannedRouteCellKind::EdgeLine),
+            cell(3, 1, '─', PlannedRouteCellKind::RouteCell),
+            cell(4, 1, '─', PlannedRouteCellKind::RouteCell),
+            cell(5, 1, '►', PlannedRouteCellKind::EdgeArrow),
+        ]
+    );
+    assert_eq!(
+        plan.labels,
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("enter").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(2, 1, 5),
+        )]
+    );
 }
 
 fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {
