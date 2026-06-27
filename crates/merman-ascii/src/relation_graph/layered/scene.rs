@@ -25,8 +25,14 @@ pub(crate) enum LayeredRelationScenePlan<'boxes> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LayeredRelationSummaryReason {
+    ComponentFallback {
+        reason: super::super::RelationComponentSummaryReason,
+    },
     Crossing,
-    GridBudget { actual: usize, limit: usize },
+    GridBudget {
+        actual: usize,
+        limit: usize,
+    },
 }
 
 impl<'boxes> LayeredRelationScene<'boxes> {

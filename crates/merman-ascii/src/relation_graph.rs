@@ -130,7 +130,12 @@ pub(crate) trait RelationComponentAdapter<R> {
         relations: &[R],
         reason: RelationComponentSummaryReason,
         options: &AsciiRenderOptions,
-    ) -> Result<String>;
+    ) -> Result<String> {
+        let layered_reason = LayeredRelationSummaryReason::ComponentFallback { reason };
+        render_relation_summary_rows(boxes, relations, options, |relation| {
+            self.build_summary_row(relation, layered_reason)
+        })
+    }
 
     fn build_summary_row(
         &self,
@@ -847,16 +852,6 @@ mod tests {
             &self,
             _boxes: &[RelationGraphBox],
             _relations: &[(&'static str, &'static str)],
-            _options: &AsciiRenderOptions,
-        ) -> Result<String> {
-            Ok(String::new())
-        }
-
-        fn render_summary(
-            &self,
-            _boxes: &[RelationGraphBox],
-            _relations: &[(&'static str, &'static str)],
-            _reason: RelationComponentSummaryReason,
             _options: &AsciiRenderOptions,
         ) -> Result<String> {
             Ok(String::new())

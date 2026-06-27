@@ -756,19 +756,6 @@ fn parallel_class_lane_rows(
     rows
 }
 
-fn render_dense_relation_fallback(
-    boxes: &[RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-    options: &AsciiRenderOptions,
-) -> Result<String> {
-    relation_graph::render_relation_summary_rows(
-        boxes,
-        layouts,
-        options,
-        class_relation_summary_row,
-    )
-}
-
 fn class_relation_summary_row(layout: &RelationLayout<'_>) -> Result<RelationGraphSummaryRow> {
     Ok(RelationGraphSummaryRow::new(
         layout.top_id,
@@ -911,16 +898,6 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         options: &AsciiRenderOptions,
     ) -> Result<String> {
         render_parallel_vertical_relations(boxes, layouts, options, self.charset)
-    }
-
-    fn render_summary(
-        &self,
-        boxes: &[RenderedClassBox],
-        layouts: &[RelationLayout<'a>],
-        _reason: relation_graph::RelationComponentSummaryReason,
-        options: &AsciiRenderOptions,
-    ) -> Result<String> {
-        render_dense_relation_fallback(boxes, layouts, options)
     }
 
     fn build_summary_row(

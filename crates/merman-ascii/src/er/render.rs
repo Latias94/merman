@@ -347,18 +347,6 @@ fn parallel_er_lane_rows(
     Ok(rows)
 }
 
-fn render_dense_relationship_fallback(
-    boxes: &[RenderedEntityBox],
-    relationships: &[ErRelationshipRenderModel],
-    entity_labels: &HashMap<String, String>,
-    options: &AsciiRenderOptions,
-    charset: ErCharset,
-) -> Result<String> {
-    relation_graph::render_relation_summary_rows(boxes, relationships, options, |relationship| {
-        er_relationship_summary_row(relationship, entity_labels, charset)
-    })
-}
-
 fn er_relationship_summary_row(
     relationship: &ErRelationshipRenderModel,
     entity_labels: &HashMap<String, String>,
@@ -447,22 +435,6 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         options: &AsciiRenderOptions,
     ) -> Result<String> {
         render_parallel_vertical_relationships(boxes, relationships, options, self.charset)
-    }
-
-    fn render_summary(
-        &self,
-        boxes: &[RenderedEntityBox],
-        relationships: &[ErRelationshipRenderModel],
-        _reason: relation_graph::RelationComponentSummaryReason,
-        options: &AsciiRenderOptions,
-    ) -> Result<String> {
-        render_dense_relationship_fallback(
-            boxes,
-            relationships,
-            self.entity_labels,
-            options,
-            self.charset,
-        )
     }
 
     fn build_summary_row(
