@@ -354,18 +354,9 @@ fn render_dense_relationship_fallback(
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
-    let mut rows = Vec::with_capacity(relationships.len());
-    for relationship in relationships {
-        rows.push(er_relationship_summary_row(
-            relationship,
-            entity_labels,
-            charset,
-        )?);
-    }
-
-    Ok(relation_graph::render_stacked_boxes_with_relation_summary(
-        boxes, &rows, options,
-    ))
+    relation_graph::render_relation_summary_rows(boxes, relationships, options, |relationship| {
+        er_relationship_summary_row(relationship, entity_labels, charset)
+    })
 }
 
 fn er_relationship_summary_row(

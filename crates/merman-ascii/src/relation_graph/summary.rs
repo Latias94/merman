@@ -1,6 +1,7 @@
 use super::{
     RelationGraphBox, RelationGraphLabel, RelationGraphLine, render_stacked_boxes_with_section,
 };
+use crate::Result;
 use crate::color::AsciiColorRole;
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
@@ -45,6 +46,22 @@ pub(crate) fn render_stacked_boxes_with_relation_summary(
         &lines,
         options,
     )
+}
+
+pub(crate) fn render_relation_summary_rows<R>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    build_row: impl FnMut(&R) -> Result<RelationGraphSummaryRow>,
+) -> Result<String> {
+    let rows = relations
+        .iter()
+        .map(build_row)
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(render_stacked_boxes_with_relation_summary(
+        boxes, &rows, options,
+    ))
 }
 
 fn relation_summary_lines(rows: &[RelationGraphSummaryRow]) -> Vec<RelationGraphLine> {
@@ -116,6 +133,7 @@ mod tests {
     use super::*;
     use crate::color::{AsciiColorTheme, AsciiRgb};
     use crate::{AsciiColorMode, AsciiRenderOptions};
+    use std::cell::Cell;
 
     #[test]
     fn render_stacked_boxes_with_relation_summary_aligns_columns_and_wraps_labels() {
@@ -188,5 +206,26 @@ mod tests {
         assert!(rendered.contains("<span style=\"color:#222222\">relations:</span>"));
         assert!(rendered.contains("<span style=\"color:#333333\">A --&gt; B : one</span>"));
         assert!(rendered.contains("<span style=\"color:#333333\">          two</span>"));
+    }
+
+    #[test]
+    fn render_relation_summary_rows_builds_each_row_once() {
+        let calls = Cell::new(0);
+        let relations = ["One", "Two"];
+
+        let rendered = render_relation_summary_rows(
+            &[],
+            &relations,
+            &AsciiRenderOptions::ascii(),
+            |relation| {
+                calls.set(calls.get() + 1);
+                Ok(RelationGraphSummaryRow::new(*relation, "-->", *relation))
+            },
+        )
+        .expect("summary rows should render");
+
+        assert_eq!(calls.get(), relations.len());
+        assert!(rendered.contains("One --> One"));
+        assert!(rendered.contains("Two --> Two"));
     }
 }

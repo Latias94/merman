@@ -760,21 +760,22 @@ fn render_dense_relation_fallback(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
-) -> String {
-    let rows = layouts
-        .iter()
-        .map(class_relation_summary_row)
-        .collect::<Vec<_>>();
-    relation_graph::render_stacked_boxes_with_relation_summary(boxes, &rows, options)
+) -> Result<String> {
+    relation_graph::render_relation_summary_rows(
+        boxes,
+        layouts,
+        options,
+        class_relation_summary_row,
+    )
 }
 
-fn class_relation_summary_row(layout: &RelationLayout<'_>) -> RelationGraphSummaryRow {
-    RelationGraphSummaryRow::new(
+fn class_relation_summary_row(layout: &RelationLayout<'_>) -> Result<RelationGraphSummaryRow> {
+    Ok(RelationGraphSummaryRow::new(
         layout.top_id,
         class_relation_summary_connector(layout),
         layout.bottom_id,
     )
-    .with_label(layout.label.as_ref())
+    .with_label(layout.label.as_ref()))
 }
 
 impl RelationLayout<'_> {
@@ -919,7 +920,7 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         _reason: relation_graph::RelationComponentSummaryReason,
         options: &AsciiRenderOptions,
     ) -> Result<String> {
-        Ok(render_dense_relation_fallback(boxes, layouts, options))
+        render_dense_relation_fallback(boxes, layouts, options)
     }
 
     fn build_summary_row(
@@ -927,7 +928,7 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         layout: &RelationLayout<'a>,
         _reason: relation_graph::LayeredRelationSummaryReason,
     ) -> Result<RelationGraphSummaryRow> {
-        Ok(class_relation_summary_row(layout))
+        class_relation_summary_row(layout)
     }
 
     fn draw_layered_edge<'boxes>(

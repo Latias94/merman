@@ -640,13 +640,9 @@ where
     {
         LayeredRelationScenePlan::Routed(scene) => scene,
         LayeredRelationScenePlan::Summary(reason) => {
-            let rows = relations
-                .iter()
-                .map(|relation| adapter.build_summary_row(relation, reason))
-                .collect::<Result<Vec<_>>>()?;
-            return Ok(render_stacked_boxes_with_relation_summary(
-                boxes, &rows, options,
-            ));
+            return render_relation_summary_rows(boxes, relations, options, |relation| {
+                adapter.build_summary_row(relation, reason)
+            });
         }
     };
 
