@@ -820,6 +820,8 @@ mod tests {
 
     struct TestRelationAdapter {
         summary_reason: Cell<Option<LayeredRelationSummaryReason>>,
+        summary_policy: RelationComponentSummaryPolicy,
+        has_endpoint_label: bool,
     }
 
     impl RelationComponentAdapter<(&'static str, &'static str)> for TestRelationAdapter {
@@ -832,7 +834,14 @@ mod tests {
         }
 
         fn summary_policy(&self) -> RelationComponentSummaryPolicy {
-            RelationComponentSummaryPolicy::never_before_layering()
+            self.summary_policy
+        }
+
+        fn relation_facts(
+            &self,
+            _relation: &(&'static str, &'static str),
+        ) -> RelationComponentFacts {
+            RelationComponentFacts::default().with_endpoint_label(self.has_endpoint_label)
         }
 
         fn layered_horizontal_gap(&self) -> usize {
@@ -1001,6 +1010,8 @@ mod tests {
         let relations = vec![("a", "b")];
         let adapter = TestRelationAdapter {
             summary_reason: Cell::new(None),
+            summary_policy: RelationComponentSummaryPolicy::never_before_layering(),
+            has_endpoint_label: false,
         };
 
         let rendered = render_layered_relation_component(
@@ -1021,6 +1032,33 @@ mod tests {
             })
         );
         assert!(rendered.contains("relations:\nA --> B\n"));
+    }
+
+    #[test]
+    fn render_relation_components_uses_component_fallback_summary_reason() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let relations = vec![("a", "b"), ("b", "a")];
+        let adapter = TestRelationAdapter {
+            summary_reason: Cell::new(None),
+            summary_policy:
+                RelationComponentSummaryPolicy::summarize_multi_relation_endpoint_labels(),
+            has_endpoint_label: true,
+        };
+
+        let rendered =
+            render_relation_components(&boxes, &relations, &AsciiRenderOptions::ascii(), &adapter)
+                .expect("component fallback summary should render");
+
+        assert_eq!(
+            adapter.summary_reason.get(),
+            Some(LayeredRelationSummaryReason::ComponentFallback {
+                reason: RelationComponentSummaryReason::MultiRelationEndpointLabels,
+            })
+        );
+        assert_eq!(rendered, "A\n\nB\n\nrelations:\nA --> B\nA --> B\n");
     }
 
     #[test]
