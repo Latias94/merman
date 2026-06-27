@@ -150,12 +150,13 @@ fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
 
 fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
     let range = context.prefix_range();
-    let has_directives = context.fence().text_index.has_directive_prefix("classDef")
-        || context.fence().text_index.has_directive_prefix(":::")
-        || context.fence().text_index.has_directive_prefix("init")
-        || context.fence().text_index.has_directive_prefix("wrap");
+    let has_directives = context
+        .fence()
+        .text_index
+        .directive_prefixes()
+        .any(|prefix| is_directive_helper_prefix(prefix.as_str()));
     let directive_label = if has_directives {
-        "node class directive"
+        "directive helper"
     } else {
         "comment"
     };
@@ -182,6 +183,21 @@ fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
             CompletionDataKind::Directive,
         ),
     ]
+}
+
+fn is_directive_helper_prefix(prefix: &str) -> bool {
+    matches!(
+        prefix,
+        "classDef"
+            | "class"
+            | "style"
+            | "cssClass"
+            | "linkStyle"
+            | "click"
+            | "link"
+            | "callback"
+            | ":::"
+    )
 }
 
 fn direction_items(range: Option<Range>) -> Vec<CompletionItem> {

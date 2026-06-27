@@ -298,6 +298,31 @@ mod tests {
             CompletionContext::from_snapshot(&directive, Position::new(0, 21)).unwrap();
         assert!(directive_context.offer_directive_items());
 
+        for (source, position, expected_prefix) in [
+            (
+                "cssClass A,B service".to_string(),
+                Position::new(0, 8),
+                Some("cssClass"),
+            ),
+            (
+                "link User href \"https://example.com\" \"Open user\" _blank".to_string(),
+                Position::new(0, 4),
+                Some("link"),
+            ),
+            (
+                "callback User open(userId)".to_string(),
+                Position::new(0, 8),
+                Some("callback"),
+            ),
+        ] {
+            let snapshot = store.upsert(uri.clone(), 30, source);
+            let context = CompletionContext::from_snapshot(&snapshot, position).unwrap();
+            assert_eq!(context.directive_prefix(), expected_prefix);
+            assert!(context.offer_directive_items());
+            assert!(context.is_comment_or_directive_line());
+            assert!(!context.offer_node_items());
+        }
+
         let click = store.upsert(
             uri.clone(),
             4,

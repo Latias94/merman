@@ -163,6 +163,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         match token {
             Tok::Newline | Tok::ClassDiagram | Tok::StructStop => self.reset_line_state(),
             Tok::ClassKw => {
+                facts.push_directive_prefix("class");
                 self.pending_relation_source = None;
                 self.expect_name(ExpectedClassName::Class);
             }
@@ -481,7 +482,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         };
         let selection = selection_span_for_class_name(&symbol.name, symbol.span);
         match expected {
-            ExpectedClassName::ClassDef => facts.push_symbol(EditorSemanticSymbol::new(
+            ExpectedClassName::ClassDef => facts.push_symbol(EditorSemanticSymbol::outline(
                 symbol.name,
                 Some(detail.to_string()),
                 kind,

@@ -6,6 +6,18 @@ status: active
 # Log
 
 ## 2026-06-27
+- Tightened class-diagram directive semantics across parser facts, analysis fallback, and LSP
+  completion. `class` statements now carry directive-prefix facts, `classDef` style names are
+  outline-only instead of node-id completion items, and `cssClass` / `link` / `callback` /
+  `:::` no longer leak payload text into text-scan fallback ids.
+- Verified the slice with `cargo test -p merman-core parse_class_editor_facts_preserve_parser_symbol_spans -- --nocapture`,
+  `cargo test -p merman-analysis text_scan_skips_class_directive_payload_prefixes -- --nocapture`,
+  `cargo test -p merman-lsp context_classifies_header_operator_and_directive_prefixes -- --nocapture`,
+  `cargo test -p merman-lsp --test completion completion_offers_directive_items_for_class_directive_variants -- --nocapture`,
+  `cargo test -p merman-lsp --test document_store class_member_outline_facts_do_not_pollute_completion_ids -- --nocapture`,
+  and `cargo fmt --all`.
+
+## 2026-06-27
 - Added a source-backed flowchart lint rule for `style` directives that target unknown nodes.
   `merman-core` now emits a warning fact from the flowchart semantic build path, and
   `merman-analysis` maps it to stable rule id `merman.semantic.flowchart.unknown_style_target`.

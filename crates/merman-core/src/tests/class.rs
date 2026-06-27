@@ -635,7 +635,7 @@ style User fill:#fff
     let service_start = text.find("service").unwrap();
     let service = symbol_at("service", service_start);
     assert_eq!(service.selection.end, service_start + "service".len());
-    assert_eq!(service.role, EditorSemanticRole::Entity);
+    assert_eq!(service.role, EditorSemanticRole::Outline);
     assert_eq!(service.detail.as_deref(), Some("class definition"));
 
     let class_def_style = symbol_with_detail("fill:#eee", "class definition style");

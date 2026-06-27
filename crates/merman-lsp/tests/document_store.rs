@@ -441,6 +441,11 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
     let index = &snapshot.fences[0].text_index;
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.has_directive_prefix("classDef"));
+    assert!(index.has_directive_prefix("class"));
+    assert!(index.has_directive_prefix("cssClass"));
+    assert!(index.has_directive_prefix("style"));
+    assert!(index.has_directive_prefix("click"));
     assert!(index.node_ids().any(|id| id == "User"));
     assert!(!index.node_ids().any(|id| id == "+login()"));
     assert!(!index.node_ids().any(|id| id == "-password: String"));

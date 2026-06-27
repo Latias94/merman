@@ -528,6 +528,50 @@ fn current_line_prefix(text: &str, cursor: usize) -> (usize, String) {
     (prefix_start, trimmed.to_string())
 }
 
+const DIRECTIVE_PREFIXES: &[&str] = &[
+    "classDef",
+    "class",
+    "style",
+    "cssClass",
+    "linkStyle",
+    "click",
+    "link",
+    "callback",
+    "accTitle",
+    "accDescr",
+    "accDescription",
+    "title",
+];
+
+const DIRECTIVE_HELPER_PREFIXES: &[&str] = &[
+    "classDef",
+    "class",
+    "style",
+    "cssClass",
+    "linkStyle",
+    "click",
+    "link",
+    "callback",
+    ":::",
+];
+
+const PAYLOAD_ONLY_TEXT_SCAN_PREFIXES: &[&str] = &[
+    "init",
+    "initialize",
+    "wrap",
+    "classDef",
+    "cssClass",
+    "linkStyle",
+    "click",
+    "link",
+    "callback",
+    "accTitle",
+    "accDescr",
+    "accDescription",
+    "title",
+    ":::",
+];
+
 fn offer_diagram_headers(prefix: &str) -> bool {
     let prefix = prefix.trim_end();
 
@@ -544,10 +588,7 @@ fn offer_directive_items(prefix: &str, directive_prefix: Option<&str>) -> bool {
     let prefix = prefix.trim_end();
 
     prefix.trim_start().starts_with("%%")
-        || matches!(
-            directive_prefix,
-            Some("classDef") | Some("class") | Some("style") | Some("linkStyle") | Some(":::")
-        )
+        || directive_prefix.is_some_and(|prefix| DIRECTIVE_HELPER_PREFIXES.contains(&prefix))
 }
 
 fn offer_direction_items(prefix: &str) -> bool {
@@ -592,18 +633,7 @@ fn diagram_header_prefix_matches(prefix: &str) -> bool {
 }
 
 fn is_payload_only_text_scan_prefix(prefix: &str) -> bool {
-    matches!(
-        prefix,
-        "init"
-            | "initialize"
-            | "wrap"
-            | "linkStyle"
-            | "click"
-            | "accTitle"
-            | "accDescr"
-            | "accDescription"
-            | "title"
-    )
+    PAYLOAD_ONLY_TEXT_SCAN_PREFIXES.contains(&prefix)
 }
 
 fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolKind {
@@ -697,17 +727,7 @@ fn directive_prefix(line: &str) -> Option<&'static str> {
         return Some(":::");
     }
 
-    for prefix in [
-        "classDef",
-        "class",
-        "style",
-        "linkStyle",
-        "click",
-        "accTitle",
-        "accDescr",
-        "accDescription",
-        "title",
-    ] {
+    for &prefix in DIRECTIVE_PREFIXES {
         if has_word_boundary(trimmed, prefix) {
             return Some(prefix);
         }
@@ -1105,6 +1125,39 @@ mod tests {
     }
 
     #[test]
+    fn text_scan_skips_class_directive_payload_prefixes() {
+        let index = FenceTextIndex::from_text(
+            concat!(
+                "flowchart TD\n",
+                "A-->B\n",
+                "classDef service fill:#eee\n",
+                "cssClass A,B service\n",
+                "link Alice: Endpoint @ https://alice.example.com\n",
+                "callback Bob open(userId)\n",
+                ":::service\n",
+            ),
+            Some("flowchart-v2"),
+        );
+
+        for prefix in ["classDef", "cssClass", "link", "callback", ":::"] {
+            assert!(index.has_directive_prefix(prefix));
+        }
+        assert_eq!(
+            index.node_ids().cloned().collect::<Vec<_>>(),
+            vec!["A", "B"]
+        );
+        for leaked in [
+            "service", "Alice", "Endpoint", "https", "alice", "example", "com", "Bob", "open",
+            "userId",
+        ] {
+            assert!(
+                !index.node_ids().any(|id| id == leaked),
+                "class directive payload leaked {leaked:?} as a node id"
+            );
+        }
+    }
+
+    #[test]
     fn text_scan_mindmap_keeps_labels_out_of_node_ids() {
         let index = FenceTextIndex::from_text(
             concat!(
@@ -1195,6 +1248,26 @@ mod tests {
         assert!(directive.is_comment_or_directive_line());
         assert!(directive.offers(FenceCursorCompletionKind::Directive));
         assert!(!directive.offers(FenceCursorCompletionKind::NodeIdentifier));
+
+        for (source, prefix, expected_prefix) in [
+            ("cssClass A,B service", "cssClass".len(), Some("cssClass")),
+            (
+                "link User href \"https://example.com\" \"Open user\" _blank",
+                "link".len(),
+                Some("link"),
+            ),
+            (
+                "callback User open(userId)",
+                "callback".len(),
+                Some("callback"),
+            ),
+        ] {
+            let context = index.cursor_context(source, prefix);
+            assert_eq!(context.directive_prefix(), expected_prefix);
+            assert!(context.is_comment_or_directive_line());
+            assert!(context.offers(FenceCursorCompletionKind::Directive));
+            assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
+        }
 
         let node = index.cursor_context("node_1", "node_1".len());
         assert!(node.offers(FenceCursorCompletionKind::NodeIdentifier));

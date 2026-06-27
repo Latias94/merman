@@ -157,13 +157,27 @@ fn completion_does_not_offer_node_ids_for_directive_lines() {
 }
 
 #[test]
-fn completion_offers_directive_items_for_directive_lines() {
+fn completion_offers_directive_items_for_class_directive_variants() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-    let snapshot = store.upsert(uri, 1, "classDef foo fill:#f00".to_string());
-    let list = completion_for_snapshot(&snapshot, Position::new(0, 12));
+    for (source, cursor, expected_prefix) in [
+        ("classDef foo fill:#f00", 8, "classDef"),
+        ("cssClass A,B service", 8, "cssClass"),
+        (
+            "link User href \"https://example.com\" \"Open user\" _blank",
+            4,
+            "link",
+        ),
+        ("callback User open(userId)", 8, "callback"),
+    ] {
+        let snapshot = store.upsert(uri.clone(), 1, source.to_string());
+        let list = completion_for_snapshot(&snapshot, Position::new(0, cursor));
 
-    assert!(list.items.iter().any(|item| item.label == ":::className"));
+        assert!(
+            list.items.iter().any(|item| item.label == ":::className"),
+            "missing directive completion for {expected_prefix:?}"
+        );
+    }
 }
 
 #[test]
