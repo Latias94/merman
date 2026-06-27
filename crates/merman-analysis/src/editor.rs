@@ -107,6 +107,7 @@ pub enum FenceExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
     Shape,
+    Direction,
     Payload,
 }
 
@@ -637,6 +638,7 @@ fn expected_syntax_kind_from_core(
             FenceExpectedSyntaxKind::NodeIdentifier
         }
         merman_core::EditorExpectedSyntaxKind::ShapeValue => FenceExpectedSyntaxKind::Shape,
+        merman_core::EditorExpectedSyntaxKind::DirectionValue => FenceExpectedSyntaxKind::Direction,
         merman_core::EditorExpectedSyntaxKind::Payload => FenceExpectedSyntaxKind::Payload,
     }
 }
@@ -657,6 +659,10 @@ fn apply_expected_syntax_to_completion(
         FenceExpectedSyntaxKind::Shape => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::Shape);
+        }
+        FenceExpectedSyntaxKind::Direction => {
+            completion_kinds.clear();
+            completion_kinds.push(FenceCursorCompletionKind::Direction);
         }
         FenceExpectedSyntaxKind::Payload => completion_kinds.clear(),
     }
@@ -1218,6 +1224,30 @@ mod tests {
             vec![FenceCursorCompletionKind::Shape]
         );
         assert!(context.offers(FenceCursorCompletionKind::Shape));
+        assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
+    }
+
+    #[test]
+    fn cursor_context_uses_parser_expected_direction_value_to_override_generic_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
+        let value_start = text.find("LR").unwrap();
+        facts.push_expected_syntax(merman_core::EditorExpectedSyntax::new(
+            merman_core::EditorExpectedSyntaxKind::DirectionValue,
+            SourceSpan::new(value_start, value_start + "LR".len()),
+        ));
+        let index = FenceTextIndex::from_core_facts(facts);
+        let context = index.cursor_context(text, value_start + 1);
+
+        assert_eq!(
+            context.expected_syntax(),
+            Some(FenceExpectedSyntaxKind::Direction)
+        );
+        assert_eq!(
+            context.completion_kinds(),
+            vec![FenceCursorCompletionKind::Direction]
+        );
+        assert!(context.offers(FenceCursorCompletionKind::Direction));
         assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
     }
 

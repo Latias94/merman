@@ -2472,6 +2472,27 @@ fn parse_flowchart_editor_facts_emit_shape_value_expected_syntax() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let dir_start = text.find("LR").unwrap();
+    assert!(
+        facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::DirectionValue
+                && expected.span == SourceSpan::new(dir_start, dir_start + "LR".len())
+        }),
+        "missing direction value expected syntax"
+    );
+}
+
+#[test]
 fn parse_flowchart_editor_facts_recover_shape_value_expected_syntax() {
     let engine = Engine::new();
     let text = "flowchart TD\nA@{\n  shape: rounded\n}\nC-->";

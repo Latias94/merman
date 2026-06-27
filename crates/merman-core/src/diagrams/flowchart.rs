@@ -105,7 +105,7 @@ pub fn parse_flowchart_editor_facts(
     match flowchart_grammar::FlowchartAstParser::new().parse(Lexer::new(&code)) {
         Ok(ast) => {
             let mut facts = editor_facts_from_flowchart_ast(&ast);
-            collect_shape_value_expected_syntax_from_tokens(&code, &mut facts);
+            collect_expected_syntax_from_tokens(&code, &mut facts);
             Ok(facts)
         }
         Err(error) => {
@@ -389,15 +389,21 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
     facts
 }
 
-fn collect_shape_value_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFacts) {
+fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFacts) {
     let mut lexer = Lexer::new(code);
     while let Some(result) = lexer.next() {
         let Ok((start, token, end)) = result else {
             continue;
         };
 
-        if matches!(token, Tok::ShapeData(_)) {
-            push_flowchart_shape_value_expected_syntax(code, start, end, facts);
+        match token {
+            Tok::ShapeData(_) => {
+                push_flowchart_shape_value_expected_syntax(code, start, end, facts)
+            }
+            Tok::DirectionStmt(dir) => {
+                push_flowchart_direction_value_expected_syntax(code, start, end, &dir, facts)
+            }
+            _ => {}
         }
     }
 }
@@ -521,10 +527,11 @@ fn collect_editor_fact_from_token(
         | Tok::Sep
         | Tok::Amp
         | Tok::StyleSep
-        | Tok::Direction(_)
-        | Tok::DirectionStmt(_)
-        | Tok::Arrow(_)
-        | Tok::EdgeId(_) => {}
+        | Tok::Direction(_) => {}
+        Tok::DirectionStmt(dir) => {
+            push_flowchart_direction_value_expected_syntax(code, start, end, &dir, facts)
+        }
+        Tok::Arrow(_) | Tok::EdgeId(_) => {}
         Tok::ShapeData(_) => push_flowchart_shape_value_expected_syntax(code, start, end, facts),
     }
 }
@@ -758,6 +765,23 @@ fn push_flowchart_shape_value_expected_syntax(
     ));
 }
 
+fn push_flowchart_direction_value_expected_syntax(
+    code: &str,
+    start: usize,
+    end: usize,
+    dir: &str,
+    facts: &mut EditorSemanticFacts,
+) {
+    let Some(span) = direction_value_expected_span(code, start, end, dir) else {
+        return;
+    };
+
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::DirectionValue,
+        span,
+    ));
+}
+
 fn shape_value_expected_span(code: &str, start: usize, end: usize) -> Option<SourceSpan> {
     let raw = code.get(start..end)?;
     let body = raw.strip_prefix("@{")?;
@@ -904,6 +928,27 @@ fn shape_value_end(body: &str, start: usize) -> usize {
             pos
         }
     }
+}
+
+fn direction_value_expected_span(
+    code: &str,
+    start: usize,
+    end: usize,
+    dir: &str,
+) -> Option<SourceSpan> {
+    let raw = code.get(start..end)?;
+    let trimmed = raw.trim_start();
+    let leading = raw.len().saturating_sub(trimmed.len());
+    let after_keyword = trimmed.strip_prefix("direction")?;
+    let keyword_ws = after_keyword
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(|ch| ch.len_utf8())
+        .sum::<usize>();
+    let value_start = start + leading + "direction".len() + keyword_ws;
+    let value_end = value_start + dir.len();
+
+    Some(SourceSpan::new(value_start, value_end))
 }
 
 fn push_flowchart_subgraph_symbol(facts: &mut EditorSemanticFacts, subgraph: &SubgraphBlock) {

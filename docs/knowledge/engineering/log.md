@@ -6,6 +6,21 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-backed completion again, this time for flowchart `direction` values. `merman-core`
+  now emits `DirectionValue` expected syntax from flowchart `direction` statements, `merman-analysis`
+  maps that into direction completion, and `merman-lsp` now offers direction keywords when the
+  cursor is inside an existing direction value instead of only on the `direction` prefix.
+- Verified the slice with `cargo test -p merman-core --lib
+  parse_flowchart_editor_facts_emit_direction_value_expected_syntax -- --nocapture`,
+  `cargo test -p merman-analysis --lib
+  cursor_context_uses_parser_expected_direction_value_to_override_generic_completion -- --nocapture`,
+  `cargo test -p merman-lsp --test completion
+  completion_uses_flowchart_parser_expected_direction_value_context -- --nocapture`, `cargo fmt
+  --all`, `cargo test -p merman-core --lib flowchart -- --nocapture`,
+  `cargo test -p merman-analysis --lib editor -- --nocapture`, `cargo test -p merman-lsp --test
+  completion -- --nocapture`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Extended parser-backed completion to flowchart `shapeData` value domains. `merman-core`
   now emits `ShapeValue` expected syntax for `@{ shape: ... }` values, including the recovered
   token-scan path, `merman-analysis` maps that into shape completion, and `merman-lsp` now uses
