@@ -157,6 +157,7 @@ impl EditorSemanticDiagnostic {
 /// Parser-known syntax category that is expected at a source span.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorExpectedSyntaxKind {
+    IdList,
     NodeIdentifier,
     Payload,
 }

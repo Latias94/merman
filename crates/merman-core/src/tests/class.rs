@@ -635,7 +635,7 @@ style User fill:#fff
     let service_start = text.find("service").unwrap();
     let service = symbol_at("service", service_start);
     assert_eq!(service.selection.end, service_start + "service".len());
-    assert_eq!(service.role, EditorSemanticRole::Outline);
+    assert_eq!(service.role, EditorSemanticRole::Entity);
     assert_eq!(service.detail.as_deref(), Some("class definition"));
 
     let class_def_style = symbol_with_detail("fill:#eee", "class definition style");
@@ -670,6 +670,21 @@ style User fill:#fff
     assert!(facts.directive_prefixes.iter().any(|p| p == "cssClass"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
+}
+
+#[test]
+fn parse_class_editor_facts_record_expected_node_identifier_spans() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclassDef service fill:#eee\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span.start == text.find("service").unwrap()
+    }));
 }
 
 #[test]

@@ -145,6 +145,54 @@ fn completion_offers_directive_items_for_directive_lines() {
 }
 
 #[test]
+fn completion_uses_er_parser_expected_id_list_context_for_class_def() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "erDiagram\nclassDef pink fill:#f9f\n".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 9));
+
+    assert!(
+        !list.items.is_empty(),
+        "parser id-list context must offer node identifiers"
+    );
+    assert!(list.items.iter().any(|item| item.label == "pink"));
+    assert!(
+        list.items.iter().all(|item| item.label != ":::className"),
+        "parser id-list context must not offer directive completions: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn completion_uses_class_parser_expected_node_identifier_context_for_class_def() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "classDiagram\nclassDef service fill:#eee\n".to_string(),
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 9));
+
+    assert!(
+        !list.items.is_empty(),
+        "parser node-identifier context must offer node identifiers"
+    );
+    assert!(list.items.iter().any(|item| item.label == "service"));
+    assert!(
+        list.items.iter().all(|item| item.label != ":::className"),
+        "parser node-identifier context must not offer directive completions: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_does_not_fallback_to_header_for_other_directive_lines() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

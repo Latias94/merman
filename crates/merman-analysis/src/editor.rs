@@ -104,6 +104,7 @@ pub enum FenceCursorCompletionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FenceExpectedSyntaxKind {
+    IdList,
     NodeIdentifier,
     Payload,
 }
@@ -625,6 +626,7 @@ fn expected_syntax_kind_from_core(
     kind: merman_core::EditorExpectedSyntaxKind,
 ) -> FenceExpectedSyntaxKind {
     match kind {
+        merman_core::EditorExpectedSyntaxKind::IdList => FenceExpectedSyntaxKind::IdList,
         merman_core::EditorExpectedSyntaxKind::NodeIdentifier => {
             FenceExpectedSyntaxKind::NodeIdentifier
         }
@@ -637,6 +639,10 @@ fn apply_expected_syntax_to_completion(
     completion_kinds: &mut Vec<FenceCursorCompletionKind>,
 ) {
     match expected {
+        FenceExpectedSyntaxKind::IdList => {
+            completion_kinds.clear();
+            completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
+        }
         FenceExpectedSyntaxKind::NodeIdentifier => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
@@ -988,7 +994,10 @@ mod tests {
         ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceExpectedSyntaxKind,
         FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, is_candidate_node_id,
     };
-    use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
+    use merman_core::{
+        EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+        EditorSemanticSymbol, SourceSpan,
+    };
 
     #[test]
     fn text_index_collects_node_ids() {
@@ -1171,6 +1180,30 @@ mod tests {
         );
         assert!(context.offers(FenceCursorCompletionKind::NodeIdentifier));
         assert!(!context.offers(FenceCursorCompletionKind::Operator));
+    }
+
+    #[test]
+    fn cursor_context_uses_parser_expected_id_list_to_override_directive_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        let text = "erDiagram\nclassDef pink fill:#f9f";
+        let expected_start = text.find("pink").unwrap();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::IdList,
+            SourceSpan::new(expected_start, expected_start + "pink".len()),
+        ));
+        let index = FenceTextIndex::from_core_facts(facts);
+        let context = index.cursor_context(text, expected_start);
+
+        assert_eq!(
+            context.expected_syntax(),
+            Some(FenceExpectedSyntaxKind::IdList)
+        );
+        assert_eq!(
+            context.completion_kinds(),
+            vec![FenceCursorCompletionKind::NodeIdentifier]
+        );
+        assert!(context.offers(FenceCursorCompletionKind::NodeIdentifier));
+        assert!(!context.offers(FenceCursorCompletionKind::Directive));
     }
 
     #[test]

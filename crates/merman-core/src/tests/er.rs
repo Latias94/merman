@@ -861,3 +861,18 @@ fn parse_er_editor_facts_recovers_from_incomplete_input() {
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "CUSTOMER"));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "ORDER"));
 }
+
+#[test]
+fn parse_er_editor_facts_record_expected_id_list_spans() {
+    let engine = Engine::new();
+    let text = "erDiagram\nclassDef pink fill:#f9f\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("er editor facts");
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::IdList
+            && expected.span.start == text.find("pink").unwrap()
+    }));
+}

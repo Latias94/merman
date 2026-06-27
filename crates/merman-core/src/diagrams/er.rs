@@ -1,6 +1,6 @@
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::lalrpop_recovery_span,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -144,6 +144,12 @@ struct SpannedIdList {
 impl SpannedIdList {
     fn into_names(self) -> Vec<String> {
         self.ids.into_iter().map(|id| id.name).collect()
+    }
+
+    fn span(&self) -> SourceSpan {
+        let start = self.ids.first().map(|id| id.span.start).unwrap_or(0);
+        let end = self.ids.last().map(|id| id.span.end).unwrap_or(start);
+        SourceSpan::new(start, end)
     }
 }
 
@@ -557,6 +563,7 @@ impl ErEditorFactCollector {
 
     fn push_id_list(&mut self, ids: SpannedIdList, facts: &mut EditorSemanticFacts) {
         let expected = self.expected_id_list.take();
+        let span = ids.span();
         let detail = match expected {
             Some(ExpectedErIdList::StyleEntities) => "er style target",
             Some(ExpectedErIdList::ClassDef) => "er class definition",
@@ -571,6 +578,13 @@ impl ErEditorFactCollector {
             | Some(ExpectedErIdList::InlineClasses) => EditorSemanticKind::Property,
             _ => EditorSemanticKind::Struct,
         };
+
+        if expected.is_some() {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::IdList,
+                span,
+            ));
+        }
 
         for id in ids.ids {
             if id.name.is_empty() {

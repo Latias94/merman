@@ -1,7 +1,7 @@
 use crate::models::class_diagram as class_typed;
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::lalrpop_recovery_span,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use serde_json::Value;
 
@@ -254,6 +254,10 @@ impl<'a> ClassEditorFactCollector<'a> {
                 }
 
                 if let Some(expected) = self.expected_name.take() {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        SourceSpan::new(start, end),
+                    ));
                     self.push_symbol(facts, symbol, expected);
                 } else {
                     self.pending_relation_source = Some(symbol);
@@ -477,7 +481,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         };
         let selection = selection_span_for_class_name(&symbol.name, symbol.span);
         match expected {
-            ExpectedClassName::ClassDef => facts.push_symbol(EditorSemanticSymbol::outline(
+            ExpectedClassName::ClassDef => facts.push_symbol(EditorSemanticSymbol::new(
                 symbol.name,
                 Some(detail.to_string()),
                 kind,
