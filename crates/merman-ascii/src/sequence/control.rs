@@ -1,12 +1,14 @@
 use super::model::SequenceControlKind;
 use super::render::SequenceChars;
 use super::text::{SequenceLine, padded_line, trim_right};
-use crate::color::AsciiColorRole;
+use crate::color::{AsciiColorRole, AsciiRgb};
+use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceControlFrame {
     pub(super) kind: SequenceControlKind,
     pub(super) label: String,
+    pub(super) background: Option<AsciiRgb>,
     pub(super) start_row: usize,
     pub(super) separators: Vec<SequenceControlFrameSeparator>,
     pub(super) end_row: Option<usize>,
@@ -27,6 +29,18 @@ impl SequenceControlFrame {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SequenceControlFrameNode {
+    frame_index: usize,
+    children: Vec<SequenceControlFrameNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SequenceControlBodyRow {
+    Content(SequenceLine),
+    Separator(usize),
+}
+
 pub(super) fn render_sequence_control_frames(
     lines: Vec<SequenceLine>,
     frames: &[SequenceControlFrame],
@@ -36,84 +50,203 @@ pub(super) fn render_sequence_control_frames(
         return lines;
     }
 
-    let mut starts = vec![Vec::new(); lines.len()];
-    let mut ends = vec![Vec::new(); lines.len()];
-    let mut separators = vec![Vec::new(); lines.len()];
-    let widths = frames
-        .iter()
-        .map(|frame| frame_width(frame, &lines))
-        .collect::<Vec<_>>();
+    let tree = control_frame_tree(frames, lines.len());
+    if tree.is_empty() {
+        return lines;
+    }
 
-    for (index, frame) in frames.iter().enumerate() {
-        let Some(end_row) = frame.end_row else {
+    render_control_range(&lines, frames, &tree, 0, lines.len(), chars)
+}
+
+fn render_control_range(
+    lines: &[SequenceLine],
+    frames: &[SequenceControlFrame],
+    nodes: &[SequenceControlFrameNode],
+    start_row: usize,
+    end_row: usize,
+    chars: &SequenceChars,
+) -> Vec<SequenceLine> {
+    let mut rendered = Vec::new();
+    let mut row = start_row;
+
+    for node in nodes {
+        let frame = &frames[node.frame_index];
+        let Some(node_end) = valid_frame_end_row(frame, lines.len()) else {
             continue;
         };
-        if frame.start_row >= lines.len() || end_row >= lines.len() || frame.start_row > end_row {
-            continue;
+
+        if row < frame.start_row {
+            rendered.extend(lines[row..frame.start_row].iter().cloned());
         }
-        starts[frame.start_row].push(index);
-        ends[end_row].push(index);
-        for (separator_index, separator) in frame.separators.iter().enumerate() {
-            if separator.row < lines.len() {
-                separators[separator.row].push((index, separator_index));
-            }
-        }
+        rendered.extend(render_frame_node(node, frames, lines, chars));
+        row = node_end + 1;
     }
 
-    let mut active = Vec::new();
-    let mut rendered = Vec::with_capacity(lines.len() + frames.len() * 2);
-
-    for (row_index, row) in lines.into_iter().enumerate() {
-        for frame_index in &starts[row_index] {
-            rendered.push(render_top_border(
-                &frames[*frame_index],
-                widths[*frame_index],
-                chars,
-            ));
-            active.push(*frame_index);
-        }
-
-        for (frame_index, separator_index) in &separators[row_index] {
-            rendered.push(render_separator_border(
-                &frames[*frame_index],
-                &frames[*frame_index].separators[*separator_index],
-                widths[*frame_index],
-                chars,
-            ));
-        }
-
-        if let Some(frame_index) = active.last().copied() {
-            rendered.push(render_content_row(row, widths[frame_index], chars));
-        } else {
-            rendered.push(row);
-        }
-
-        for frame_index in &ends[row_index] {
-            if active.last().copied() == Some(*frame_index) {
-                active.pop();
-            }
-            rendered.push(render_bottom_border(widths[*frame_index], chars));
-        }
+    if row < end_row {
+        rendered.extend(lines[row..end_row].iter().cloned());
     }
-
     rendered
 }
 
-fn frame_width(frame: &SequenceControlFrame, lines: &[SequenceLine]) -> usize {
-    let end_row = frame.end_row.unwrap_or(frame.start_row);
-    let max_row_width = lines
+fn render_frame_node(
+    node: &SequenceControlFrameNode,
+    frames: &[SequenceControlFrame],
+    lines: &[SequenceLine],
+    chars: &SequenceChars,
+) -> Vec<SequenceLine> {
+    let frame = &frames[node.frame_index];
+    let body_rows = render_frame_body(node, frames, lines, chars);
+    let width = frame_width(frame, &body_rows);
+    let mut rendered = Vec::with_capacity(body_rows.len() + 2);
+    rendered.push(render_top_border(frame, width, chars));
+
+    for row in body_rows {
+        match row {
+            SequenceControlBodyRow::Content(line) => {
+                rendered.push(render_content_row(line, width, chars, frame.background));
+            }
+            SequenceControlBodyRow::Separator(separator_index) => {
+                rendered.push(render_separator_border(
+                    frame,
+                    &frame.separators[separator_index],
+                    width,
+                    chars,
+                ));
+            }
+        }
+    }
+
+    rendered.push(render_bottom_border(width, chars, frame.background));
+    rendered
+}
+
+fn render_frame_body(
+    node: &SequenceControlFrameNode,
+    frames: &[SequenceControlFrame],
+    lines: &[SequenceLine],
+    chars: &SequenceChars,
+) -> Vec<SequenceControlBodyRow> {
+    let frame = &frames[node.frame_index];
+    let end_row = frame
+        .end_row
+        .expect("control frame tree should only contain closed frames");
+    let mut body_rows = Vec::new();
+    let mut row = frame.start_row;
+    let mut child_index = 0;
+    let mut separator_index = 0;
+
+    while row <= end_row {
+        while frame
+            .separators
+            .get(separator_index)
+            .is_some_and(|separator| separator.row == row)
+        {
+            body_rows.push(SequenceControlBodyRow::Separator(separator_index));
+            separator_index += 1;
+        }
+
+        if let Some(child) = node.children.get(child_index) {
+            let child_frame = &frames[child.frame_index];
+            if child_frame.start_row == row {
+                body_rows.extend(
+                    indent_child_frame(render_frame_node(child, frames, lines, chars))
+                        .into_iter()
+                        .map(SequenceControlBodyRow::Content),
+                );
+                row = child_frame
+                    .end_row
+                    .expect("control frame tree should only contain closed frames")
+                    + 1;
+                child_index += 1;
+                continue;
+            }
+        }
+
+        body_rows.push(SequenceControlBodyRow::Content(lines[row].clone()));
+        row += 1;
+    }
+
+    body_rows
+}
+
+fn control_frame_tree(
+    frames: &[SequenceControlFrame],
+    line_count: usize,
+) -> Vec<SequenceControlFrameNode> {
+    let mut roots = Vec::new();
+    let mut stack: Vec<SequenceControlFrameNode> = Vec::new();
+
+    for (frame_index, frame) in frames.iter().enumerate() {
+        if valid_frame_end_row(frame, line_count).is_none() {
+            continue;
+        }
+
+        while stack.last().is_some_and(|node| {
+            let active = &frames[node.frame_index];
+            active
+                .end_row
+                .is_some_and(|end_row| end_row < frame.start_row)
+        }) {
+            complete_node(&mut roots, &mut stack);
+        }
+
+        stack.push(SequenceControlFrameNode {
+            frame_index,
+            children: Vec::new(),
+        });
+    }
+
+    while !stack.is_empty() {
+        complete_node(&mut roots, &mut stack);
+    }
+
+    roots
+}
+
+fn complete_node(
+    roots: &mut Vec<SequenceControlFrameNode>,
+    stack: &mut Vec<SequenceControlFrameNode>,
+) {
+    let node = stack
+        .pop()
+        .expect("stack should contain a node to complete");
+    if let Some(parent) = stack.last_mut() {
+        parent.children.push(node);
+    } else {
+        roots.push(node);
+    }
+}
+
+fn valid_frame_end_row(frame: &SequenceControlFrame, line_count: usize) -> Option<usize> {
+    let end_row = frame.end_row?;
+    (frame.start_row < line_count && end_row < line_count && frame.start_row <= end_row)
+        .then_some(end_row)
+}
+
+fn indent_child_frame(lines: Vec<SequenceLine>) -> Vec<SequenceLine> {
+    lines.into_iter().map(indent_child_line).collect()
+}
+
+fn indent_child_line(line: SequenceLine) -> SequenceLine {
+    let mut indented = SequenceLine::blank(line.len() + 1);
+    indented.write_line(1, &line);
+    indented
+}
+
+fn frame_width(frame: &SequenceControlFrame, rows: &[SequenceControlBodyRow]) -> usize {
+    let max_row_width = rows
         .iter()
-        .enumerate()
-        .filter_map(|(index, line)| {
-            (index >= frame.start_row && index <= end_row).then_some(line.len())
+        .filter_map(|row| match row {
+            SequenceControlBodyRow::Content(line) => Some(line.len()),
+            SequenceControlBodyRow::Separator(_) => None,
         })
         .max()
         .unwrap_or(0);
-    let title_width = frame_title(frame).chars().count();
+    let title_width = display_width(&frame_title(frame));
     let separator_width = frame
         .separators
         .iter()
-        .map(|separator| separator_title(frame, separator).chars().count())
+        .map(|separator| display_width(&separator_title(frame, separator)))
         .max()
         .unwrap_or(0);
 
@@ -135,16 +268,22 @@ fn render_top_border(
         chars.horizontal,
         width,
         Some(&frame_title(frame)),
+        frame.background,
     )
 }
 
-fn render_bottom_border(width: usize, chars: &SequenceChars) -> SequenceLine {
+fn render_bottom_border(
+    width: usize,
+    chars: &SequenceChars,
+    background: Option<AsciiRgb>,
+) -> SequenceLine {
     render_border_row(
         chars.bottom_left,
         chars.bottom_right,
         chars.horizontal,
         width,
         None,
+        background,
     )
 }
 
@@ -160,6 +299,7 @@ fn render_separator_border(
         chars.horizontal,
         width,
         Some(&separator_title(frame, separator)),
+        frame.background,
     )
 }
 
@@ -169,8 +309,10 @@ fn render_border_row(
     horizontal: char,
     width: usize,
     label: Option<&str>,
+    background: Option<AsciiRgb>,
 ) -> SequenceLine {
     let mut row = SequenceLine::blank(width);
+    paint_row_background(&mut row, 0..width, background);
     for x in 0..width {
         row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);
     }
@@ -182,11 +324,43 @@ fn render_border_row(
     trim_right(row)
 }
 
-fn render_content_row(row: SequenceLine, width: usize, chars: &SequenceChars) -> SequenceLine {
+fn render_content_row(
+    row: SequenceLine,
+    width: usize,
+    chars: &SequenceChars,
+    background: Option<AsciiRgb>,
+) -> SequenceLine {
     let mut row = padded_line(row, width);
+    paint_row_background_if_unset(&mut row, 0..width, background);
     row.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
     row.set_role(width - 1, chars.vertical, AsciiColorRole::SequenceFrame);
     trim_right(row)
+}
+
+fn paint_row_background(
+    row: &mut SequenceLine,
+    range: impl Iterator<Item = usize>,
+    background: Option<AsciiRgb>,
+) {
+    let Some(background) = background else {
+        return;
+    };
+    for x in range {
+        row.set_background_color(x, background);
+    }
+}
+
+fn paint_row_background_if_unset(
+    row: &mut SequenceLine,
+    range: impl Iterator<Item = usize>,
+    background: Option<AsciiRgb>,
+) {
+    let Some(background) = background else {
+        return;
+    };
+    for x in range {
+        row.set_background_color_if_unset(x, background);
+    }
 }
 
 fn frame_title(frame: &SequenceControlFrame) -> String {

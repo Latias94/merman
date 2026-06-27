@@ -1,5 +1,5 @@
 use super::model::{GraphEdgeStyle, GraphGroupStyle, GraphNodeStyle};
-use crate::color::AsciiRgb;
+use crate::style_color::{parse_border_color, parse_css_color};
 use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartV2Model};
 
 pub(super) fn resolve_node_style(model: &FlowchartV2Model, node: &FlowNode) -> GraphNodeStyle {
@@ -41,36 +41,50 @@ pub(super) fn resolve_group_style(
     style
 }
 
-fn apply_node_declarations(style: &mut GraphNodeStyle, declarations: &[String]) {
-    for (name, value) in style_declarations(declarations) {
-        match name {
-            "color" => style.text = parse_css_color(value),
-            "stroke" => style.border = parse_css_color(value),
-            _ => {}
+pub(crate) fn apply_node_declarations(style: &mut GraphNodeStyle, declarations: &[String]) {
+    for declaration in declarations {
+        apply_node_declaration(style, declaration);
+    }
+}
+
+pub(crate) fn apply_node_declaration(style: &mut GraphNodeStyle, declaration: &str) {
+    for (name, value) in style_declaration(declaration) {
+        if name.eq_ignore_ascii_case("color") {
+            style.text = parse_css_color(value);
+        } else if name.eq_ignore_ascii_case("stroke") || name.eq_ignore_ascii_case("border") {
+            style.border = parse_border_color(value);
+        } else if name.eq_ignore_ascii_case("fill") || name.eq_ignore_ascii_case("background") {
+            style.background = parse_css_color(value);
         }
     }
 }
 
 fn apply_edge_declarations(style: &mut GraphEdgeStyle, declarations: &[String]) {
     for (name, value) in style_declarations(declarations) {
-        match name {
-            "stroke" => {
-                let color = parse_css_color(value);
-                style.line = color;
-                style.arrow = color;
-            }
-            "color" => style.label = parse_css_color(value),
-            _ => {}
+        if name.eq_ignore_ascii_case("stroke") {
+            let color = parse_css_color(value);
+            style.line = color;
+            style.arrow = color;
+        } else if name.eq_ignore_ascii_case("color") {
+            style.label = parse_css_color(value);
         }
     }
 }
 
-fn apply_group_declarations(style: &mut GraphGroupStyle, declarations: &[String]) {
-    for (name, value) in style_declarations(declarations) {
-        match name {
-            "color" => style.title = parse_css_color(value),
-            "stroke" => style.border = parse_css_color(value),
-            _ => {}
+pub(crate) fn apply_group_declarations(style: &mut GraphGroupStyle, declarations: &[String]) {
+    for declaration in declarations {
+        apply_group_declaration(style, declaration);
+    }
+}
+
+pub(crate) fn apply_group_declaration(style: &mut GraphGroupStyle, declaration: &str) {
+    for (name, value) in style_declaration(declaration) {
+        if name.eq_ignore_ascii_case("color") {
+            style.title = parse_css_color(value);
+        } else if name.eq_ignore_ascii_case("stroke") || name.eq_ignore_ascii_case("border") {
+            style.border = parse_border_color(value);
+        } else if name.eq_ignore_ascii_case("fill") || name.eq_ignore_ascii_case("background") {
+            style.background = parse_css_color(value);
         }
     }
 }
@@ -78,64 +92,14 @@ fn apply_group_declarations(style: &mut GraphGroupStyle, declarations: &[String]
 fn style_declarations(declarations: &[String]) -> impl Iterator<Item = (&str, &str)> {
     declarations
         .iter()
-        .flat_map(|declaration| declaration.split([',', ';']))
-        .filter_map(|declaration| {
-            let (name, value) = declaration.split_once(':')?;
-            let name = name.trim();
-            let value = value.trim();
-            (!name.is_empty() && !value.is_empty()).then_some((name, value))
-        })
+        .flat_map(|declaration| style_declaration(declaration))
 }
 
-fn parse_css_color(value: &str) -> Option<AsciiRgb> {
-    let value = value.trim().trim_end_matches(';').trim();
-    if value.eq_ignore_ascii_case("transparent") || value.eq_ignore_ascii_case("none") {
-        return None;
-    }
-    if let Some(hex) = value.strip_prefix('#') {
-        return parse_hex_color(hex);
-    }
-    parse_named_color(value)
-}
-
-fn parse_hex_color(hex: &str) -> Option<AsciiRgb> {
-    match hex.len() {
-        3 => {
-            let r = parse_hex_digit(hex.as_bytes()[0])?;
-            let g = parse_hex_digit(hex.as_bytes()[1])?;
-            let b = parse_hex_digit(hex.as_bytes()[2])?;
-            Some(AsciiRgb::new(r * 17, g * 17, b * 17))
-        }
-        6 => {
-            let rgb = u32::from_str_radix(hex, 16).ok()?;
-            Some(AsciiRgb::from_hex24(rgb))
-        }
-        _ => None,
-    }
-}
-
-fn parse_hex_digit(digit: u8) -> Option<u8> {
-    match digit {
-        b'0'..=b'9' => Some(digit - b'0'),
-        b'a'..=b'f' => Some(digit - b'a' + 10),
-        b'A'..=b'F' => Some(digit - b'A' + 10),
-        _ => None,
-    }
-}
-
-fn parse_named_color(value: &str) -> Option<AsciiRgb> {
-    match value.to_ascii_lowercase().as_str() {
-        "black" => Some(AsciiRgb::from_hex24(0x000000)),
-        "white" => Some(AsciiRgb::from_hex24(0xffffff)),
-        "red" => Some(AsciiRgb::from_hex24(0xff0000)),
-        "green" => Some(AsciiRgb::from_hex24(0x008000)),
-        "blue" => Some(AsciiRgb::from_hex24(0x0000ff)),
-        "yellow" => Some(AsciiRgb::from_hex24(0xffff00)),
-        "cyan" | "aqua" => Some(AsciiRgb::from_hex24(0x00ffff)),
-        "magenta" | "fuchsia" => Some(AsciiRgb::from_hex24(0xff00ff)),
-        "gray" | "grey" => Some(AsciiRgb::from_hex24(0x808080)),
-        "orange" => Some(AsciiRgb::from_hex24(0xffa500)),
-        "purple" => Some(AsciiRgb::from_hex24(0x800080)),
-        _ => None,
-    }
+fn style_declaration(declaration: &str) -> impl Iterator<Item = (&str, &str)> {
+    declaration.split([',', ';']).filter_map(|declaration| {
+        let (name, value) = declaration.split_once(':')?;
+        let name = name.trim();
+        let value = value.trim();
+        (!name.is_empty() && !value.is_empty()).then_some((name, value))
+    })
 }

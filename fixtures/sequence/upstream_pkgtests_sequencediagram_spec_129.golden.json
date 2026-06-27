@@ -12,7 +12,7 @@
     "actors": {
       "API": {
         "name": "API",
-        "description": "API",
+        "description": "Public API",
         "wrap": false,
         "type": "boundary",
         "links": {},
@@ -20,7 +20,7 @@
       },
       "Auth": {
         "name": "Auth",
-        "description": "Auth",
+        "description": "Auth Controller",
         "wrap": false,
         "type": "control",
         "links": {},

@@ -165,3 +165,12 @@ and residual risks in this file or a journal note.
   `cargo nextest run -p merman-core` still fails on unrelated fixture
   `fixtures/flowchart/stress_flowchart_edge_label_position_064.mmd` because the current parser
   emits node `labelType=markdown` while the checked-in golden still expects `text`.
+- 2026-06-26 — AAD-100 removed the duplicate graph route extent helper. `RoutePlan` now owns the
+  canvas extent derived from selected route cells, planned labels, and explicit route-family minimum
+  extents for back-lane width contracts. Passed `cargo nextest run -p merman-ascii`,
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`, and `git diff --check`.
+- 2026-06-26 — AAD-100 introduced `graph::topology::GraphGroupTopology` so routing boundary
+  classification and group layout share group id, node membership, recursive member, and nesting
+  depth lookup instead of rebuilding local parent/member maps. Passed `cargo nextest run -p
+  merman-ascii`, `cargo clippy -p merman-ascii --all-targets -- -D warnings`, and
+  `git diff --check`.

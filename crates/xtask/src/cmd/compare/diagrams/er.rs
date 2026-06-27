@@ -1,10 +1,11 @@
 //! Per-diagram SVG compare commands.
 
 use crate::XtaskError;
-use crate::svgdom;
+use crate::cmd::compare::{
+    CompareFixtureResult, CompareRunOptions, run_svg_compare, write_compare_result_section,
+};
 use regex::Regex;
 use std::fmt::Write as _;
-use std::fs;
 use std::path::PathBuf;
 
 use super::super::{svg_compare_engine_with_site_config, svg_compare_layout_opts};
@@ -47,311 +48,232 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let compare_paths = crate::cmd::compare_diagram_paths("er", out_path);
-    let fixtures_dir = compare_paths.fixtures_dir;
-    let upstream_dir = compare_paths.upstream_dir;
-    let out_path = compare_paths.out_path;
-    let out_svg_dir = compare_paths.out_svg_dir;
-    let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
-
-    if mmd_files.is_empty() {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "no .mmd fixtures matched under {}",
-            fixtures_dir.display()
-        )));
-    }
-
-    fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
-        path: out_svg_dir.display().to_string(),
-        source,
-    })?;
-
-    let re_viewbox = Regex::new(r#"viewBox="([^"]+)""#).unwrap();
-    let re_max_width = Regex::new(r#"max-width:\s*([0-9.]+)px"#).unwrap();
-    let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
-    let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
-
-    let mode = svgdom::DomMode::parse(&dom_mode);
-
-    #[derive(Default)]
-    struct SvgSig {
-        view_box: Option<String>,
-        max_width_px: Option<String>,
-        marker_ids: std::collections::BTreeSet<String>,
-        marker_refs: std::collections::BTreeSet<String>,
-    }
-
-    fn sig_for_svg(
-        svg: &str,
-        re_viewbox: &Regex,
-        re_max_width: &Regex,
-        re_marker_id: &Regex,
-        re_marker_ref: &Regex,
-    ) -> SvgSig {
-        let view_box = re_viewbox
-            .captures(svg)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().trim().to_string());
-        let max_width_px = re_max_width
-            .captures(svg)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().trim().to_string());
-        let mut marker_ids = std::collections::BTreeSet::new();
-        for cap in re_marker_id.captures_iter(svg) {
-            if let Some(m) = cap.get(1) {
-                marker_ids.insert(m.as_str().to_string());
-            }
-        }
-        let mut marker_refs = std::collections::BTreeSet::new();
-        for cap in re_marker_ref.captures_iter(svg) {
-            if let Some(m) = cap.get(1) {
-                marker_refs.insert(m.as_str().to_string());
-            }
-        }
-        SvgSig {
-            view_box,
-            max_width_px,
-            marker_ids,
-            marker_refs,
-        }
-    }
-
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
+    let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
+    let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
+    let mut state = ErCompareState { rows: Vec::new() };
 
-    let mut report = String::new();
-    let _ = writeln!(&mut report, "# ER SVG Compare Report");
-    let _ = writeln!(&mut report);
-    let _ = writeln!(
-        &mut report,
-        "- Upstream: `fixtures/upstream-svgs/er/*.svg` (pinned Mermaid baseline via Mermaid CLI)"
-    );
-    let _ = writeln!(&mut report, "- Local: `render_er_diagram_svg` (Stage B)");
-    let _ = writeln!(&mut report);
-    let _ = writeln!(
-        &mut report,
-        "| fixture | markers ok | dom ok | viewBox (upstream) | viewBox (local) | max-width (upstream) | max-width (local) |"
-    );
-    let _ = writeln!(&mut report, "|---|---:|---:|---|---|---:|---:|");
-
-    let mut failures: Vec<String> = Vec::new();
-    let mut dom_failures: Vec<String> = Vec::new();
-
-    for mmd_path in mmd_files {
-        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
-            continue;
-        };
-
-        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
-        let upstream_svg = match fs::read_to_string(&upstream_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!(
-                    "missing upstream svg for {}: {} ({err})",
-                    mmd_path.display(),
-                    upstream_path.display()
-                ));
-                continue;
+    run_svg_compare(
+        CompareRunOptions {
+            diagram: "er",
+            out_path,
+            filter: filter.as_deref(),
+            check_dom,
+            dom_mode: &dom_mode,
+            dom_decimals,
+        },
+        &mut state,
+        |_, report, _paths, _options| {
+            let _ = writeln!(report, "# ER SVG Compare Report");
+            let _ = writeln!(report);
+            let _ = writeln!(
+                report,
+                "- Upstream: `fixtures/upstream-svgs/er/*.svg` (pinned Mermaid baseline via Mermaid CLI)"
+            );
+            let _ = writeln!(report, "- Local: `render_er_diagram_svg` (Stage B)");
+            let _ = writeln!(report);
+            let _ = writeln!(
+                report,
+                "| fixture | markers ok | viewBox (upstream) | viewBox (local) | max-width (upstream) | max-width (local) |"
+            );
+            let _ = writeln!(report, "|---|---:|---|---|---:|---:|");
+            let _ = writeln!(report);
+        },
+        |_, _, _| None,
+        |state, input| {
+            #[derive(Default)]
+            struct SvgSig {
+                marker_ids: std::collections::BTreeSet<String>,
+                marker_refs: std::collections::BTreeSet<String>,
             }
-        };
 
-        let text = match fs::read_to_string(&mmd_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let parsed = match futures::executor::block_on(engine.parse_diagram(
-            &text,
-            merman::ParseOptions {
-                suppress_errors: true,
-            },
-        )) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let merman_render::model::LayoutDiagram::ErDiagram(layout) = &layouted.layout else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
-
-        let svg_opts = merman_render::svg::SvgRenderOptions {
-            diagram_id: Some(stem.to_string()),
-            ..Default::default()
-        };
-
-        let local_svg = match merman_render::svg::render_er_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
-            layouted.meta.title.as_deref(),
-            layout_opts.text_measurer.as_ref(),
-            &svg_opts,
-        ) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
-        let _ = fs::write(&local_out_path, &local_svg);
-
-        let upstream_sig = sig_for_svg(
-            &upstream_svg,
-            &re_viewbox,
-            &re_max_width,
-            &re_marker_id,
-            &re_marker_ref,
-        );
-        let local_sig = sig_for_svg(
-            &local_svg,
-            &re_viewbox,
-            &re_max_width,
-            &re_marker_id,
-            &re_marker_ref,
-        );
-
-        let mut marker_ok = true;
-        let mut missing: Vec<String> = Vec::new();
-        let mut extra: Vec<String> = Vec::new();
-        for m in &upstream_sig.marker_ids {
-            if !local_sig.marker_ids.contains(m) {
-                marker_ok = false;
-                missing.push(m.clone());
-            }
-        }
-        for m in &local_sig.marker_ids {
-            if !upstream_sig.marker_ids.contains(m) {
-                marker_ok = false;
-                extra.push(m.clone());
-            }
-        }
-        for r in &local_sig.marker_refs {
-            if !local_sig.marker_ids.contains(r) {
-                marker_ok = false;
-                extra.push(format!("ref-missing-def:{r}"));
-            }
-        }
-
-        if check_markers && !marker_ok {
-            failures.push(format!(
-                "marker mismatch for {stem}: missing={:?} extra={:?}",
-                missing, extra
-            ));
-        }
-
-        let mut dom_ok = true;
-        let dom_ok_str = if check_dom {
-            let upstream_dom = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
-                Ok(v) => Some(v),
-                Err(err) => {
-                    dom_ok = false;
-                    dom_failures.push(format!("dom parse failed (upstream) for {stem}: {err}"));
-                    None
+            fn sig_for_svg(svg: &str, re_marker_id: &Regex, re_marker_ref: &Regex) -> SvgSig {
+                let mut marker_ids = std::collections::BTreeSet::new();
+                for cap in re_marker_id.captures_iter(svg) {
+                    if let Some(m) = cap.get(1) {
+                        marker_ids.insert(m.as_str().to_string());
+                    }
                 }
-            };
-            let local_dom = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
-                Ok(v) => Some(v),
+                let mut marker_refs = std::collections::BTreeSet::new();
+                for cap in re_marker_ref.captures_iter(svg) {
+                    if let Some(m) = cap.get(1) {
+                        marker_refs.insert(m.as_str().to_string());
+                    }
+                }
+                SvgSig {
+                    marker_ids,
+                    marker_refs,
+                }
+            }
+
+            let parsed = match futures::executor::block_on(engine.parse_diagram(
+                input.text,
+                merman::ParseOptions {
+                    suppress_errors: true,
+                },
+            )) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    return Err(format!(
+                        "no diagram detected in {}",
+                        input.fixture_path.display()
+                    ));
+                }
                 Err(err) => {
-                    dom_ok = false;
-                    dom_failures.push(format!("dom parse failed (local) for {stem}: {err}"));
-                    None
+                    return Err(format!(
+                        "parse failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
                 }
             };
 
-            if dom_ok
-                && let (Some(upstream_dom), Some(local_dom)) =
-                    (upstream_dom.as_ref(), local_dom.as_ref())
-                && let Some(diff) = svgdom::dom_diff(upstream_dom, local_dom)
-            {
-                dom_ok = false;
-                dom_failures.push(format!("{stem}: {diff}"));
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+                Ok(v) => v,
+                Err(err) => {
+                    return Err(format!(
+                        "layout failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
+                }
+            };
+
+            let merman_render::model::LayoutDiagram::ErDiagram(layout) = &layouted.layout else {
+                return Err(format!(
+                    "unexpected layout type for {}: {}",
+                    input.fixture_path.display(),
+                    layouted.meta.diagram_type
+                ));
+            };
+
+            let svg_opts = merman_render::svg::SvgRenderOptions {
+                diagram_id: Some(input.stem.to_string()),
+                ..Default::default()
+            };
+
+            let local_svg = match merman_render::svg::render_er_diagram_svg(
+                layout,
+                &layouted.semantic,
+                &layouted.meta.effective_config,
+                layouted.meta.title.as_deref(),
+                layout_opts.text_measurer.as_ref(),
+                &svg_opts,
+            ) {
+                Ok(v) => v,
+                Err(err) => {
+                    return Err(format!(
+                        "render failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
+                }
+            };
+
+            let upstream_sig = sig_for_svg(input.upstream_svg, &re_marker_id, &re_marker_ref);
+            let local_sig = sig_for_svg(&local_svg, &re_marker_id, &re_marker_ref);
+
+            let mut issues: Vec<String> = Vec::new();
+            let mut marker_ok = true;
+            let mut missing: Vec<String> = Vec::new();
+            let mut extra: Vec<String> = Vec::new();
+            for m in &upstream_sig.marker_ids {
+                if !local_sig.marker_ids.contains(m) {
+                    marker_ok = false;
+                    missing.push(m.clone());
+                }
+            }
+            for m in &local_sig.marker_ids {
+                if !upstream_sig.marker_ids.contains(m) {
+                    marker_ok = false;
+                    extra.push(m.clone());
+                }
+            }
+            for r in &local_sig.marker_refs {
+                if !local_sig.marker_ids.contains(r) {
+                    marker_ok = false;
+                    extra.push(format!("ref-missing-def:{r}"));
+                }
             }
 
-            if !dom_ok {
-                failures.push(format!(
-                    "dom mismatch for {stem} (mode={dom_mode}, decimals={dom_decimals})"
+            if check_markers && !marker_ok {
+                issues.push(format!(
+                    "marker mismatch for {}: missing={:?} extra={:?}",
+                    input.stem, missing, extra
                 ));
             }
 
-            if dom_ok { "yes" } else { "no" }
-        } else {
-            "-"
-        };
+            state.rows.push(ErCompareRow {
+                stem: input.stem.to_string(),
+                marker_ok,
+                upstream_view_box: extract_view_box(input.upstream_svg),
+                local_view_box: extract_view_box(&local_svg),
+                upstream_max_width: extract_max_width(input.upstream_svg),
+                local_max_width: extract_max_width(&local_svg),
+            });
 
-        let _ = writeln!(
-            &mut report,
-            "| `{}` | {} | {} | `{}` | `{}` | `{}` | `{}` |",
-            stem,
-            if marker_ok { "yes" } else { "no" },
-            dom_ok_str,
-            upstream_sig
-                .view_box
-                .clone()
-                .unwrap_or_else(|| "-".to_string()),
-            local_sig
-                .view_box
-                .clone()
-                .unwrap_or_else(|| "-".to_string()),
-            upstream_sig
-                .max_width_px
-                .clone()
-                .unwrap_or_else(|| "-".to_string()),
-            local_sig
-                .max_width_px
-                .clone()
-                .unwrap_or_else(|| "-".to_string()),
-        );
+            Ok(CompareFixtureResult::Rendered {
+                local_svg,
+                compare_dom: true,
+                issues,
+                notes: Vec::new(),
+            })
+        },
+        |state, report, paths, options, failures, _notes| {
+            for row in &state.rows {
+                let _ = writeln!(
+                    report,
+                    "| `{}` | {} | `{}` | `{}` | `{}` | `{}` |",
+                    row.stem,
+                    if row.marker_ok { "yes" } else { "no" },
+                    row.upstream_view_box,
+                    row.local_view_box,
+                    row.upstream_max_width,
+                    row.local_max_width,
+                );
+            }
+            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
+        },
+    )
+}
+
+struct ErCompareState {
+    rows: Vec<ErCompareRow>,
+}
+
+struct ErCompareRow {
+    stem: String,
+    marker_ok: bool,
+    upstream_view_box: String,
+    local_view_box: String,
+    upstream_max_width: String,
+    local_max_width: String,
+}
+
+fn extract_view_box(svg: &str) -> String {
+    Regex::new(r#"viewBox="([^"]+)""#)
+        .unwrap()
+        .captures(svg)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().trim().to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn extract_max_width(svg: &str) -> String {
+    Regex::new(r#"max-width:\s*([0-9.]+)px"#)
+        .unwrap()
+        .captures(svg)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().trim().to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_svg_root_signatures() {
+        let svg = r#"<svg viewBox="0 0 10 20" style="max-width: 10px;"><g /></svg>"#;
+        assert_eq!(extract_view_box(svg), "0 0 10 20");
+        assert_eq!(extract_max_width(svg), "10");
     }
-
-    if check_dom && !dom_failures.is_empty() {
-        let _ = writeln!(&mut report);
-        let _ = writeln!(&mut report, "## DOM Mismatch Details");
-        let _ = writeln!(&mut report);
-        for f in &dom_failures {
-            let _ = writeln!(&mut report, "- {f}");
-        }
-    }
-
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-            path: parent.display().to_string(),
-            source,
-        })?;
-    }
-    fs::write(&out_path, report).map_err(|source| XtaskError::WriteFile {
-        path: out_path.display().to_string(),
-        source,
-    })?;
-
-    if failures.is_empty() {
-        return Ok(());
-    }
-
-    Err(XtaskError::SvgCompareFailed(failures.join("\n")))
 }

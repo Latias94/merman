@@ -678,10 +678,6 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
             el.remove();
             Ok(())
         }))
-        .append_element_content_handler(element!("script", |el| {
-            el.remove();
-            Ok(())
-        }))
         .append_element_content_handler(element!("iframe", |el| {
             el.remove();
             Ok(())

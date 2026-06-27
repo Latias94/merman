@@ -3,6 +3,7 @@ use merman_ascii::{
 };
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
+use unicode_width::UnicodeWidthStr;
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -25,6 +26,14 @@ fn fixture_expected(directory: &str, name: &str) -> String {
         .split_once("\n---\n")
         .unwrap_or_else(|| panic!("fixture missing separator: {}", path.display()));
     expected.to_string()
+}
+
+fn local_semantic_input(name: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/testdata/local-semantic")
+        .join(name);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -77,6 +86,56 @@ fn strip_html_spans(input: &str) -> String {
         }
     }
     output
+}
+
+fn normalize_ascii_art(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
+fn assert_rectangular_char_grid(rendered: &str) {
+    let mut lines = rendered.lines();
+    let Some(first) = lines.next() else {
+        return;
+    };
+    let width = first.chars().count();
+    for line in lines {
+        assert_eq!(
+            line.chars().count(),
+            width,
+            "rendered lines should stay aligned:\n{rendered}"
+        );
+    }
+}
+
+fn terminal_test_width(input: &str) -> usize {
+    UnicodeWidthStr::width(input)
+}
+
+fn assert_rectangular_terminal_grid(rendered: &str) {
+    let mut lines = rendered.lines();
+    let Some(first) = lines.next() else {
+        return;
+    };
+    let width = terminal_test_width(first);
+    for line in lines {
+        assert_eq!(
+            terminal_test_width(line),
+            width,
+            "rendered lines should stay terminal-cell aligned:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -220,6 +279,12 @@ fn flowchart_style_color_truecolor_maps_classdef_and_inline_node_foreground_with
             "fill/background style should not be emitted as foreground in {rendered:?}"
         );
     }
+    for expected_background_code in ["\u{1b}[48;2;255;238;204m", "\u{1b}[48;2;0;17;34m"] {
+        assert!(
+            rendered.contains(expected_background_code),
+            "missing background {expected_background_code:?} in {rendered:?}"
+        );
+    }
 }
 
 #[test]
@@ -244,6 +309,25 @@ fn flowchart_style_color_html_maps_linkstyle_edge_and_label_foreground_without_p
     assert!(
         rendered.contains("<span style=\"color:#654321\">go</span>"),
         "missing styled edge label in {rendered:?}"
+    );
+}
+
+#[test]
+fn flowchart_style_color_html_maps_node_fill_background_without_plain_text_changes() {
+    let input = concat!(
+        "flowchart LR\n",
+        "  A[Alpha]:::hot\n",
+        "  classDef hot color:#112233,stroke:#445566,fill:#ffeecc\n",
+    );
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html);
+
+    let rendered = render_flowchart(input, &options).unwrap();
+    let plain = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(strip_html_spans(&rendered), plain);
+    assert!(
+        rendered.contains("background-color:#ffeecc"),
+        "missing node fill background in {rendered:?}"
     );
 }
 
@@ -364,6 +448,73 @@ fn flowchart_parser_rl_multi_character_node_labels_stay_readable() {
 }
 
 #[test]
+fn flowchart_parser_rl_cjk_node_labels_reserve_display_cells() {
+    let rendered = render_flowchart(
+        "flowchart RL\nA[中A] --> B[终B]",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-----+     +-----+\n",
+            "|     |     |     |\n",
+            "| 终B |<----| 中A |\n",
+            "|     |     |     |\n",
+            "+-----+     +-----+\n",
+        )
+    );
+}
+
+#[test]
+fn flowchart_parser_multibyte_reference_labels_render_readably() {
+    let cases = [
+        (
+            "graph LR\nA[Café]-->|résumé|B[Über]",
+            ["Café", "résumé", "Über"],
+        ),
+        (
+            "graph LR\nA[Γειά]-->|ετικέτα|B[Κόσμος]",
+            ["Γειά", "ετικέτα", "Κόσμος"],
+        ),
+        (
+            "graph LR\nA[Привет]-->|метка|B[Мир]",
+            ["Привет", "метка", "Мир"],
+        ),
+    ];
+
+    for (input, expected_labels) in cases {
+        let rendered = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+
+        for label in expected_labels {
+            assert!(
+                rendered.contains(label),
+                "missing {label:?} in rendered fixture:\n{rendered}"
+            );
+        }
+        assert_rectangular_char_grid(&rendered);
+    }
+}
+
+#[test]
+fn flowchart_parser_cjk_and_emoji_labels_reserve_terminal_cells() {
+    let rendered = render_flowchart(
+        "flowchart LR\nA[开始] -->|处理🚀| B[完成]",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+
+    for expected in ["开始", "处理🚀", "完成"] {
+        assert!(
+            rendered.contains(expected),
+            "wide label {expected:?} should stay visible:\n{rendered}"
+        );
+    }
+    assert_rectangular_terminal_grid(&rendered);
+}
+
+#[test]
 fn flowchart_parser_rl_edge_labels_stay_readable() {
     let rendered = render_flowchart(
         "flowchart RL\nA -- hello --> B",
@@ -462,11 +613,11 @@ fn flowchart_parser_top_down_branch_merge_uses_connected_unicode_bend_corner() {
     .unwrap();
 
     assert!(
-        rendered.contains("├────────┐"),
+        rendered.contains("├──No────┐"),
         "top-down right/down branch should use a connected top-right bend: {rendered}"
     );
     assert!(
-        !rendered.contains("├────────└"),
+        !rendered.contains("├──No────└"),
         "top-down right/down branch must not use a disconnected bottom-left bend: {rendered}"
     );
     assert!(
@@ -665,38 +816,505 @@ fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_record
     assert_eq!(
         rendered,
         concat!(
-            "+-------+        \n",
-            "|  LR   |        \n",
-            "|       |        \n",
-            "| Group |        \n",
-            "|       |        \n",
-            "|       |        \n",
-            "| +---+ |   +---+\n",
-            "| |   | |   |   |\n",
-            "| | A | |   | X |\n",
-            "| |   | |   |   |\n",
-            "| +---+ |   +---+\n",
-            "|   ^   |     |  \n",
-            "|   +---------+  \n",
-            "|   |   |        \n",
-            "|   |   |        \n",
-            "|   v   |        \n",
-            "| +---+ |        \n",
-            "| |   | |        \n",
-            "| | B |--+       \n",
-            "| |   | ||       \n",
-            "| +---+ ||       \n",
-            "|       ||       \n",
-            "+-------+|       \n",
-            "         |       \n",
-            "         |       \n",
-            "         |       \n",
-            "  +---+  |       \n",
-            "  |   |  |       \n",
-            "  | Y |<-+       \n",
-            "  |   |          \n",
-            "  +---+          \n",
+            "+-----------------+        \n",
+            "|    LR Group     |        \n",
+            "|                 |        \n",
+            "|                 |        \n",
+            "| +---+     +---+ |   +---+\n",
+            "| |   |     |   | |   |   |\n",
+            "| | A |---->| B |+|   | X |\n",
+            "| |   |     |   |||   |   |\n",
+            "| +---+     +---+||   +---+\n",
+            "|   ^            ||     |  \n",
+            "+---+------------+------+  \n",
+            "                 |         \n",
+            "                 |         \n",
+            "                 |         \n",
+            "  +---+          |         \n",
+            "  |   |          |         \n",
+            "  | Y |<---------+         \n",
+            "  |   |                    \n",
+            "  +---+                    \n",
         )
+    );
+}
+
+#[test]
+fn flowchart_parser_nested_subgraph_direction_override_keeps_child_group_as_a_movable_block() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "subgraph outer\n",
+            "    direction LR\n",
+            "    A\n",
+            "    subgraph inner\n",
+            "        direction TD\n",
+            "        B --> C\n",
+            "    end\n",
+            "    A --> B\n",
+            "end\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("nested subgraph direction override should render as a movable child block");
+
+    assert_eq!(
+        normalize_ascii_art(&rendered),
+        normalize_ascii_art(concat!(
+            "+-------------------+\n",
+            "|       outer       |\n",
+            "|                   |\n",
+            "|                   |\n",
+            "|         +-------+ |\n",
+            "|         | inner | |\n",
+            "|         |       | |\n",
+            "|         |       | |\n",
+            "| +---+   | +---+ | |\n",
+            "| |   |   | |   | | |\n",
+            "| | A |---->| B | | |\n",
+            "| |   |   | |   | | |\n",
+            "| +---+   | +---+ | |\n",
+            "|         |   |   | |\n",
+            "|         |   |   | |\n",
+            "|         |   |   | |\n",
+            "|         |   |   | |\n",
+            "|         |   v   | |\n",
+            "|         | +---+ | |\n",
+            "|         | |   | | |\n",
+            "|         | | C | | |\n",
+            "|         | |   | | |\n",
+            "|         | +---+ | |\n",
+            "|         |       | |\n",
+            "|         +-------+ |\n",
+            "|                   |\n",
+            "+-------------------+\n",
+        ))
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_nested_direction_boundary_routes() {
+    let input = local_semantic_input("flowchart/nested_direction_boundary.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic nested flowchart fixture should render");
+
+    for expected in [
+        "Start",
+        "Outer Pipeline",
+        "Inner Steps",
+        "Entry",
+        "Validate",
+        "Persist",
+        "Done",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "nested flowchart fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+
+    assert!(
+        line_index("Start") < line_index("Entry"),
+        "root TD direction should keep Start above the outer group entry:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Entry"),
+        line_index("Validate"),
+        "outer LR override should keep Entry and Validate on the same row:\n{rendered}"
+    );
+    assert!(
+        line_index("Validate") < line_index("Persist"),
+        "inner TD override should keep Validate above Persist:\n{rendered}"
+    );
+    assert!(
+        line_index("Persist") < line_index("Done"),
+        "cross-boundary exit edge should keep Done after Persist in root TD flow:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "local semantic flowchart fixture should produce a non-trivial layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_multiple_boundary_routes() {
+    let input = local_semantic_input("flowchart/multi_boundary_routes.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic multi-boundary flowchart fixture should render");
+
+    for expected in [
+        "Source", "Audit", "Pipeline", "Ingest", "Validate", "Publish", "Success", "Retry", "load",
+        "check", "ok", "fail",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "multi-boundary flowchart fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+
+    assert!(
+        line_index("Source") < line_index("Ingest"),
+        "first entering boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert!(
+        line_index("Audit") < line_index("Validate"),
+        "second entering boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Ingest"),
+        line_index("Validate"),
+        "subgraph LR override should keep Ingest and Validate on the same row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Validate"),
+        line_index("Publish"),
+        "subgraph LR override should keep Validate and Publish on the same row:\n{rendered}"
+    );
+    assert!(
+        line_index("Publish") < line_index("Success"),
+        "first leaving boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert!(
+        line_index("Publish") < line_index("Retry"),
+        "second leaving boundary edge should preserve root TD ordering:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "multi-boundary flowchart fixture should produce a non-trivial layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_parser_boundary_leaving_route_reserves_long_label_extent() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "Start --> Ingest\n",
+            "subgraph pipe [Pipeline]\n",
+            "    direction LR\n",
+            "    Ingest --> Publish\n",
+            "end\n",
+            "Publish -->|boundaryLabelWithEnoughWidth| Success[Success]\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("boundary-leaving flowchart route should render");
+
+    assert!(
+        rendered.contains("boundaryLabelWithEnoughWidth"),
+        "boundary-leaving route should not clip its long label:\n{rendered}"
+    );
+    for expected in ["Pipeline", "Ingest", "Publish"] {
+        assert!(
+            rendered.contains(expected),
+            "boundary-leaving route should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_boundary_label_lane() {
+    let input = local_semantic_input("flowchart/boundary_label_lane.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic boundary-label lane fixture should render");
+
+    for expected in [
+        "Start",
+        "Pipeline",
+        "Ingest",
+        "Publish",
+        "Success",
+        "boundaryLabelWithEnoughWidth",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "boundary-label lane fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let label_line = rendered
+        .lines()
+        .find(|line| line.contains("boundaryLabelWithEnoughWidth"))
+        .unwrap_or_else(|| panic!("boundary label should render:\n{rendered}"));
+    assert!(
+        label_line.contains("|boundaryLabelWithEnoughWidth"),
+        "boundary label should attach to the planned vertical transit lane, not the target node row:\n{rendered}"
+    );
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(
+        line_index("Publish") < line_index("boundaryLabelWithEnoughWidth"),
+        "boundary label should render after the source endpoint on the boundary lane:\n{rendered}"
+    );
+    assert!(
+        line_index("boundaryLabelWithEnoughWidth") < line_index("Success"),
+        "boundary label should render before the target endpoint on the boundary lane:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_multiline_edge_labels() {
+    let input = local_semantic_input("flowchart/multiline_edge_label.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic multiline-edge fixture should render");
+
+    for expected in ["A", "B", "north", "south"] {
+        assert!(
+            rendered.contains(expected),
+            "multiline edge-label fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("<br>"),
+        "multiline edge-label fixture should not leak HTML break markup:\n{rendered}"
+    );
+
+    let north = first_line_index_containing(&rendered, "north");
+    let south = first_line_index_containing(&rendered, "south");
+    assert_eq!(
+        south,
+        north + 1,
+        "multiline edge-label fixture should stack label rows in order:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_back_edge_labels() {
+    let input = local_semantic_input("flowchart/back_edge_labels.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic back-edge label fixture should render");
+
+    for expected in ["A", "B", "C", "back to top", "back to middle"] {
+        assert!(
+            rendered.contains(expected),
+            "back-edge label fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(
+        line_index("A") < line_index("B"),
+        "root TD flow should keep A above B:\n{rendered}"
+    );
+    assert!(
+        line_index("B") < line_index("C"),
+        "root TD flow should keep B above C:\n{rendered}"
+    );
+    assert_ne!(
+        line_index("back to top"),
+        line_index("back to middle"),
+        "separate back-edge labels should not overwrite each other:\n{rendered}"
+    );
+    assert!(
+        line_index("back to top") < line_index("back to middle"),
+        "back-edge labels should retain their planned order without merging:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_sibling_group_boundary_routes() {
+    let input = local_semantic_input("flowchart/sibling_boundary_routes.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic sibling-boundary flowchart fixture should render");
+
+    for expected in [
+        "Left Group",
+        "Right Group",
+        "Alpha",
+        "Beta",
+        "Gamma",
+        "Delta",
+        "handoff",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "sibling-boundary flowchart fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+
+    assert!(
+        line_index("Left Group") < line_index("Right Group"),
+        "root TD direction should place the source sibling group before the target group:\n{rendered}"
+    );
+    assert!(
+        line_index("Alpha") < line_index("Beta"),
+        "source sibling group should preserve its internal TD chain:\n{rendered}"
+    );
+    assert!(
+        line_index("Beta") < line_index("handoff"),
+        "cross-boundary label should render after the source endpoint:\n{rendered}"
+    );
+    assert!(
+        line_index("handoff") < line_index("Gamma"),
+        "cross-boundary label should render before the target endpoint:\n{rendered}"
+    );
+    assert!(
+        line_index("Gamma") < line_index("Delta"),
+        "target sibling group should preserve its internal TD chain:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_disconnected_subgraphs() {
+    let input = local_semantic_input("flowchart/disconnected_subgraphs.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic disconnected-subgraphs flowchart fixture should render");
+
+    for expected in [
+        "Today",
+        "Next Wave",
+        "Today AI",
+        "Today Markdown",
+        "Today Reads",
+        "Next AI",
+        "Next Widget",
+        "Next Acts",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "disconnected-subgraphs fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert_rectangular_char_grid(&rendered);
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(
+        line_index("Today") < line_index("Next Wave"),
+        "LR disconnected subgraphs should stack into separate visible groups without overlap:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Today AI"),
+        line_index("Today Markdown"),
+        "first disconnected group should keep its LR chain on one row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Today Markdown"),
+        line_index("Today Reads"),
+        "first disconnected group should keep its full LR chain on one row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Next AI"),
+        line_index("Next Widget"),
+        "second disconnected group should keep its LR chain on one row:\n{rendered}"
+    );
+    assert_eq!(
+        line_index("Next Widget"),
+        line_index("Next Acts"),
+        "second disconnected group should keep its full LR chain on one row:\n{rendered}"
+    );
+    assert!(
+        line_index("Today Reads") < line_index("Next AI"),
+        "disconnected group content should not overlap or merge into one row:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_local_semantic_fixture_covers_cjk_boundary_routes() {
+    let input = local_semantic_input("flowchart/cjk_boundary_routes.mmd");
+    let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic CJK boundary-route flowchart fixture should render");
+
+    for expected in [
+        "入口",
+        "流程中枢",
+        "校验层",
+        "检查",
+        "解析",
+        "验证",
+        "发布",
+        "完成",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "CJK boundary-route fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("pipe") && !rendered.contains("validate"),
+        "CJK boundary-route fixture should not leak subgraph ids into ASCII output:\n{rendered}"
+    );
+
+    let line_index = |needle: &str| {
+        rendered
+            .lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+    };
+    assert!(
+        line_index("检查") <= line_index("解析"),
+        "CJK entry chain should keep the first step before the second step:\n{rendered}"
+    );
+    assert!(
+        line_index("解析") <= line_index("验证"),
+        "CJK entry chain should keep the second step before the validation step:\n{rendered}"
+    );
+    assert!(
+        line_index("验证") < line_index("发布"),
+        "validation step should precede the publish step in the semantic fixture:\n{rendered}"
+    );
+    assert!(
+        line_index("发布") < line_index("完成"),
+        "success boundary route should keep the completion node after the publish step:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "CJK boundary-route fixture should produce a non-trivial multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_parser_explicit_td_sibling_group_preserves_local_order_after_external_edges() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "subgraph left [Left Group]\n",
+            "    direction LR\n",
+            "    A[Alpha] --> B[Beta]\n",
+            "end\n",
+            "subgraph right [Right Group]\n",
+            "    direction TD\n",
+            "    C[Gamma] --> D[Delta]\n",
+            "end\n",
+            "B -- handoff --> C\n",
+            "A -- audit --> D\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("explicit TD sibling group should render with external edges");
+
+    for expected in [
+        "Left Group",
+        "Right Group",
+        "Alpha",
+        "Beta",
+        "Gamma",
+        "Delta",
+        "handoff",
+        "audit",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "mixed-direction sibling group output should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+
+    assert_eq!(
+        line_index("Alpha"),
+        line_index("Beta"),
+        "left sibling LR group should keep Alpha and Beta on the same row:\n{rendered}"
+    );
+    assert!(
+        line_index("Gamma") < line_index("Delta"),
+        "explicit right sibling TD group should keep Gamma above Delta despite external edges:\n{rendered}"
     );
 }
 

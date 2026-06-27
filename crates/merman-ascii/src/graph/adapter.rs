@@ -17,7 +17,7 @@ pub(crate) fn from_flowchart_model(
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
     } else {
-        match options.fallback_direction {
+        match options.default_direction {
             AsciiDirection::LeftRight => GraphDirection::LeftRight,
             AsciiDirection::TopDown => GraphDirection::TopDown,
         }
@@ -132,17 +132,6 @@ fn validate_supported_flowchart_model(model: &FlowchartV2Model) -> Result<()> {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
             feature: "subgraph member ids with line breaks",
-        });
-    }
-
-    if model.edges.iter().any(|edge| {
-        edge.label
-            .as_deref()
-            .is_some_and(|label| label.contains('\n'))
-    }) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "multiline edge labels",
         });
     }
 

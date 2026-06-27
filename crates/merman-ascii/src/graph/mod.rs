@@ -5,10 +5,16 @@ mod label;
 mod layout;
 mod model;
 mod routing;
-mod style;
+mod shape;
+pub(crate) mod style;
+mod topology;
 
 pub(crate) use adapter::from_flowchart_model;
 pub(crate) use draw::render_graph;
+pub(crate) use model::{
+    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
+    GraphNodeShape, GraphNodeStyle,
+};
 
 #[cfg(test)]
 mod graph_golden {

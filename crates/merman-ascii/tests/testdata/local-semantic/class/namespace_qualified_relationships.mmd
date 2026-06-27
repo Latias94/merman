@@ -1,0 +1,12 @@
+classDiagram
+namespace Platform["Platform Layer"] {
+  namespace FFI {
+    class DartBinding
+    class PythonBinding
+  }
+  namespace Core {
+    class Renderer
+  }
+}
+Platform.FFI.DartBinding --> Platform.Core.Renderer : calls
+Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls

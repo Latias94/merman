@@ -41,6 +41,7 @@ struct ChartConfig {
     height: f64,
     plot_reserved_space_percent: f64,
     show_data_label: bool,
+    show_data_label_outside_bar: bool,
     show_title: bool,
     title_font_size: f64,
     title_padding: f64,
@@ -150,6 +151,11 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
         .unwrap_or(50.0),
         show_data_label: config_bool(effective_config, &["xyChart", "showDataLabel"])
             .unwrap_or(false),
+        show_data_label_outside_bar: config_bool(
+            effective_config,
+            &["xyChart", "showDataLabelOutsideBar"],
+        )
+        .unwrap_or(false),
         show_title: config_bool(effective_config, &["xyChart", "showTitle"]).unwrap_or(true),
         title_font_size: config_f64(effective_config, &["xyChart", "titleFontSize"])
             .unwrap_or(20.0),
@@ -1209,6 +1215,7 @@ pub(crate) fn layout_xychart_diagram_typed(
         height: chart_cfg.height,
         chart_orientation: chart_cfg.chart_orientation,
         show_data_label: chart_cfg.show_data_label,
+        show_data_label_outside_bar: chart_cfg.show_data_label_outside_bar,
         background_color: theme_cfg.background_color,
         label_data,
         drawables,

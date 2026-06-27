@@ -2,7 +2,7 @@
 
 Status: Active
 Baseline: Mermaid `@11.15.0`
-Last updated: 2026-06-12
+Last updated: 2026-06-26
 
 The structured admission inventory lives in `crates/xtask/src/cmd/admission.rs`.
 
@@ -26,6 +26,10 @@ Current consumers:
 
 - `xtask compare-all-svgs` reads the primary SVG matrix projection and the root-viewport-deferred
   projection from the inventory.
+- Per-diagram `xtask compare-*` commands keep their CLI adapters, but shared fixture discovery,
+  upstream/local SVG loading, DOM checks, local SVG output writing, and result sections live in the
+  compare harness. Diagram adapters own only render-specific policy such as marker checks,
+  root/label delta rows, ELK admission, or family-specific skip decisions.
 - `xtask check-alignment` verifies inventory paths, owner docs, semantic/layout fixture evidence,
   upstream SVG directories, compare-command presence for primary diagrams, and defer reasons for
   non-admitted families.

@@ -1,0 +1,102 @@
+# ASCII Reference Comparison
+
+Status: living comparison note
+Last updated: 2026-06-26
+
+This note compares `merman-ascii` with the two local reference checkouts:
+
+- `repo-ref/mermaid-ascii`
+- `repo-ref/beautiful-mermaid`
+
+It is not a support gate. The shipped support matrices and gap registry remain the authoritative
+product boundary.
+
+## Short Read
+
+- `mermaid-ascii` is the narrow reference. It is strongest as a copied-fixture oracle for graph and
+  sequence text output.
+- `beautiful-mermaid` is the broad reference. It covers more families and more terminal styling
+  ideas, but it is not always semantically faithful to Mermaid.
+- `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
+  explicit, and should prefer honest terminal semantics over browser-shaped approximations.
+- CJK/emoji terminal-cell coverage is semantic, not byte-exact: primitive cell ownership plus
+  Flowchart, Sequence, Class, ER, and XYChart tests prove visibility/alignment without copying
+  reference spacing.
+- Class and ER relation output now deliberately shares the `relation_graph` seam. Adapters preserve
+  Mermaid-family semantics, while shared relation planning owns lane placement, routed grids, and
+  structured dense/grid-budget summary fallback. Summary reasons are preserved at that seam for
+  direct topology-policy tests.
+- The SVG compare CLI keeps per-diagram entrypoints, but common fixture discovery, upstream/local
+  SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
+  compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
+
+## Reference Corpus Snapshot
+
+`repo-ref/mermaid-ascii/cmd/testdata` currently provides the copied exact-output oracle admitted
+by this crate: 54 `ascii` graph fixtures, 25 `extended-chars` graph fixtures, 12 `sequence`
+fixtures, and 5 `sequence-ascii` fixtures. Its 3 `multibyte` examples for accented Latin, Greek,
+and Cyrillic labels are useful semantic evidence, but they are not admitted as byte-level fixtures:
+`merman-ascii` preserves the labels readably while intentionally not copying the upstream LR label
+spacing byte-for-byte.
+
+`repo-ref/beautiful-mermaid/src/__tests__/testdata` currently has 63 `ascii` fixtures and 37
+`unicode` fixtures, plus focused tests for edge styles, multiline labels, class arrows, and
+`xychart-beta` ASCII rendering. Treat that corpus as capability discovery. Promote an idea from it
+by writing a small local semantic fixture or model test, not by treating its output as an official
+Mermaid terminal standard.
+
+## Fixture Admissibility
+
+- Use copied `mermaid-ascii` fixtures when the family is graph or sequence and the upstream corpus
+  is a good exact-output oracle. These are byte-level parity tests.
+- Keep `mermaid-ascii` multibyte examples semantic unless the local routing policy deliberately
+  changes to match their spacing. Label visibility, rectangular character grids, and no leaked
+  markup are the relevant checks.
+- Use `beautiful-mermaid` only as capability prior art. It can suggest coverage and layout ideas,
+  but it is not a byte-level standard.
+- Use self-authored local fixtures when the diagram is dense, family-specific, or semantically
+  clearer than a copied render. Those fixtures live under `tests/testdata/local-semantic/`, and they
+  are intentionally outside the copied fixture inventory gate.
+- Class/ER fixtures are local semantic fixtures by default: `mermaid-ascii` does not cover those
+  families, and `beautiful-mermaid` is capability prior art rather than an official output oracle.
+  Admit routed-grid Class/ER cases when the topology remains readable; admit structured
+  relation-summary cases when dense crossings or grid budgets make the honest terminal view a
+  summary.
+- Prefer semantic assertions for local fixtures: visible labels, direction relationships, grouping,
+  routing reachability, unsupported-feature diagnostics, and absence of leaked implementation ids.
+  Use exact ASCII snapshots only when the shape itself is the behavior under review.
+- Reject a reference fixture as an oracle when it depends on a known reference shortcut, a browser
+  rendering artifact, or terminal choices that are not implied by Mermaid semantics.
+
+## Family Comparison
+
+| Family | `mermaid-ascii` | `beautiful-mermaid` | `merman-ascii` | Readout |
+| --- | --- | --- | --- | --- |
+| Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, richer shape handling, disconnected subgraph non-overlap checks, and more styling hooks, but `RL` is approximated as `LR`. | Flowchart is the strongest terminal family here: true `BT`/`RL`, boundary-aware subgraph routing, planner-owned vertical boundary label lanes, disconnected subgraph semantic coverage, multiline edge labels, color roles, and a wider supported subset. | Keep `mermaid-ascii` for routing evidence and `beautiful-mermaid` for UI ideas, but keep Mermaid semantics first. |
+| Sequence | Exact copied-fixture parity for a compact sequence corpus. | Much broader parser/layout coverage, including notes, blocks, theming, and ASCII/Unicode variants. | Typed sequence support is already beyond the narrow reference: activations, create/destroy, boxes, control blocks, mirror actors, and color roles all exist. | Remaining work is mostly layout polish and boundary tightening, not parser rescue. |
+| Class | Not part of the reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | Supported subset through the shared `relation_graph` seam, with multiline relationship labels, same-endpoint and bidirectional same-pair lanes, spanning routes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, dense multiline local semantic fixtures, and typed role colors. | Extend from typed relation facts, not from parser shape. |
+| ER | Not part of the reference scope. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | Supported subset through the same `relation_graph` seam, with entity boxes, cardinality markers, multiline relationship labels, same-endpoint and bidirectional same-pair lanes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, and dense multiline local semantic fixtures. | Relation layout is the shared seam; cardinality and relationship identity stay family-specific. |
+| State | Not part of the reference scope. | State diagram support rides the broader ASCII pipeline and gives useful layout ideas. | Supported subset with start/end, fork/join/choice, notes, composite states, divider regions, and role colors. | Keep state honest to the typed model; do not try to copy browser shapes literally. |
+| XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | Compact terminal plots with bars, lines, mixed charts, horizontal mode, configurable compact plot areas, multi-series legend rows that use typed plot titles when present, axis visibility controls, and Mermaid data-label display policy. | Plot planning is split from row rendering; richer multi-series label placement and terminal tooltip alternatives remain follow-on work. |
+
+## Intentional Differences
+
+- True `RL` inversion is intentional. Treating `RL` as `LR` is a reference-implementation shortcut, not
+  a product goal.
+- Cyclic class and ER shapes should keep rendering through the layered planner when the typed model
+  can support a readable fallback.
+- Wide-cell handling must treat terminal continuation cells as shared ownership, not as independent
+  characters.
+- Sequence `rect` and box colors should stay bounded by what the typed model and terminal can render
+  without inventing browser-only semantics.
+
+## Remaining Pressure
+
+- CJK and emoji placement is covered for the current renderer families; keep the same semantic
+  gate for new families and more complex grapheme clusters.
+- Flowchart route-label placement beyond the shipped boundary transit-lane policy: general
+  grid-path and dense multi-edge labels still need explicit route-plan policy before complex local
+  fixtures should be admitted.
+- Class and ER dense relation topologies beyond the current fallback; new policy decisions should
+  add explicit `LayeredRelationSummaryReason` variants.
+- XYChart richer multi-series label placement and terminal tooltip alternatives.

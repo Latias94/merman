@@ -1,12 +1,12 @@
 //! Per-diagram SVG compare commands.
 
 use crate::XtaskError;
-use crate::svgdom;
+use crate::cmd::compare::{
+    CompareFixtureReportInput, CompareFixtureResult, CompareRunOptions,
+    run_svg_compare_with_fixture_reports,
+};
 use std::fmt::Write as _;
-use std::fs;
 use std::path::PathBuf;
-
-use super::super::{svg_compare_engine, svg_compare_layout_opts};
 
 pub(crate) fn compare_quadrantchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -44,183 +44,99 @@ pub(crate) fn compare_quadrantchart_svgs(args: Vec<String>) -> Result<(), XtaskE
         i += 1;
     }
 
-    let compare_paths = crate::cmd::compare_diagram_paths("quadrantchart", out_path);
-    let fixtures_dir = compare_paths.fixtures_dir;
-    let upstream_dir = compare_paths.upstream_dir;
-    let out_path = compare_paths.out_path;
-    let out_svg_dir = compare_paths.out_svg_dir;
-    let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
+    let engine = crate::cmd::svg_compare_engine();
+    let layout_opts = crate::cmd::svg_compare_layout_opts();
+    run_svg_compare_with_fixture_reports(
+        CompareRunOptions {
+            diagram: "quadrantchart",
+            out_path,
+            filter: filter.as_deref(),
+            check_dom,
+            dom_mode: &dom_mode,
+            dom_decimals,
+        },
+        &mut (),
+        |_, report, _paths, options| {
+            let _ = write!(
+                report,
+                "# QuadrantChart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/quadrantchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_quadrantchart_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n\n",
+                options.dom_mode, options.dom_decimals
+            );
+        },
+        |_, _, _| None,
+        |_, input| {
+            let parsed = match futures::executor::block_on(
+                engine.parse_diagram(input.text, merman::ParseOptions::default()),
+            ) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    return Err(format!(
+                        "no diagram detected in {}",
+                        input.fixture_path.display()
+                    ));
+                }
+                Err(err) => {
+                    return Err(format!(
+                        "parse failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
+                }
+            };
 
-    fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
-        path: out_svg_dir.display().to_string(),
-        source,
-    })?;
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+                Ok(v) => v,
+                Err(err) => {
+                    return Err(format!(
+                        "layout failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
+                }
+            };
 
-    let mode = svgdom::DomMode::parse(&dom_mode);
-    let mut report = String::new();
-    let _ = write!(
-        &mut report,
-        "# QuadrantChart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/quadrantchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_quadrantchart_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n\n",
-        dom_mode, dom_decimals
+            let merman_render::model::LayoutDiagram::QuadrantChartDiagram(layout) =
+                &layouted.layout
+            else {
+                return Err(format!(
+                    "unexpected layout type for {}: {}",
+                    input.fixture_path.display(),
+                    layouted.meta.diagram_type
+                ));
+            };
+
+            let svg_opts = merman_render::svg::SvgRenderOptions {
+                diagram_id: Some(input.stem.to_string()),
+                ..Default::default()
+            };
+
+            let local_svg = merman_render::svg::render_quadrantchart_diagram_svg(
+                layout,
+                &layouted.semantic,
+                &layouted.meta.effective_config,
+                &svg_opts,
+            )
+            .map_err(|err| format!("render failed for {}: {err}", input.fixture_path.display()))?;
+
+            Ok(CompareFixtureResult::RenderedWithPolicy {
+                local_svg,
+                compare_dom: true,
+                compare_svg_when_dom_disabled: true,
+                issues: Vec::new(),
+                notes: Vec::new(),
+            })
+        },
+        |_, report, fixture| write_status_line(report, fixture),
+        |_, _report, _paths, _options, _failures, _notes| {},
+    )
+}
+
+fn write_status_line(report: &mut String, fixture: &CompareFixtureReportInput<'_>) {
+    let status = if fixture.failed { "FAIL" } else { "PASS" };
+    let _ = writeln!(
+        report,
+        "- {status} `{}`\n  - fixture: `{}`\n  - upstream: `{}`\n  - local: `{}`",
+        fixture.stem,
+        fixture.fixture_path.display(),
+        fixture.upstream_path.display(),
+        fixture.local_out_path.display()
     );
-    let mut failures: Vec<String> = Vec::new();
-
-    let engine = svg_compare_engine();
-
-    for mmd_path in &mmd_files {
-        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
-            continue;
-        };
-
-        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
-        if !upstream_path.is_file() {
-            failures.push(format!(
-                "missing upstream svg baseline for {stem}: {}",
-                upstream_path.display()
-            ));
-            continue;
-        }
-        let upstream_svg = match fs::read_to_string(&upstream_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!(
-                    "failed to read upstream svg for {stem} ({}): {err}",
-                    upstream_path.display()
-                ));
-                continue;
-            }
-        };
-
-        let text = match fs::read_to_string(mmd_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let diagram_id: String = stem.to_string();
-
-        let layout_opts = svg_compare_layout_opts();
-        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let merman_render::model::LayoutDiagram::QuadrantChartDiagram(layout) = &layouted.layout
-        else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
-
-        let svg_opts = merman_render::svg::SvgRenderOptions {
-            diagram_id: Some(diagram_id),
-            ..Default::default()
-        };
-
-        let local_svg = match merman_render::svg::render_quadrantchart_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
-            &svg_opts,
-        ) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
-        let _ = fs::write(&local_out_path, &local_svg);
-
-        if check_dom {
-            let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to parse upstream svg dom for {stem} ({}): {err}",
-                        upstream_path.display()
-                    ));
-                    continue;
-                }
-            };
-            let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to parse local svg dom for {stem} ({}): {err}",
-                        local_out_path.display()
-                    ));
-                    continue;
-                }
-            };
-
-            if a != b {
-                let detail = svgdom::dom_diff(&a, &b)
-                    .map(|d| format!(" ({d})"))
-                    .unwrap_or_default();
-                failures.push(format!(
-                    "dom mismatch for {stem}: upstream={} local={}{}",
-                    upstream_path.display(),
-                    local_out_path.display(),
-                    detail
-                ));
-            }
-        } else if upstream_svg != local_svg {
-            failures.push(format!("svg mismatch for {stem}"));
-        }
-
-        let status = if failures.iter().any(|f| f.contains(stem)) {
-            "FAIL"
-        } else {
-            "PASS"
-        };
-        let _ = writeln!(
-            &mut report,
-            "- {status} `{stem}`\n  - fixture: `{}`\n  - upstream: `{}`\n  - local: `{}`",
-            mmd_path.display(),
-            upstream_path.display(),
-            out_svg_dir.join(format!("{stem}.svg")).display()
-        );
-    }
-
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-            path: parent.display().to_string(),
-            source,
-        })?;
-    }
-    fs::write(&out_path, report).map_err(|source| XtaskError::WriteFile {
-        path: out_path.display().to_string(),
-        source,
-    })?;
-
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(XtaskError::SvgCompareFailed(failures.join("\n")))
-    }
 }

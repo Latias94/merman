@@ -1,39 +1,85 @@
 use super::super::layout::{GridCoord, NodeLayout};
 
-pub(super) fn route_grid_path_with_ports(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GridPathPortPolicy {
+    DirectionalShortest,
+    Fixed(PortPair),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct GridPathRoute {
+    pub(super) path: Vec<GridCoord>,
+    pub(super) ports: PortPair,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PortPair {
+    start: Port,
+    end: Port,
+}
+
+impl PortPair {
+    pub(super) fn new(start: Port, end: Port) -> Self {
+        Self { start, end }
+    }
+
+    pub(super) fn start(self) -> Port {
+        self.start
+    }
+
+    pub(super) fn end(self) -> Port {
+        self.end
+    }
+}
+
+pub(super) fn route_grid_path(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
-    start_override: Option<Port>,
-    end_override: Option<Port>,
-) -> Option<(Vec<GridCoord>, Port, Port)> {
-    let (preferred_start, preferred_end, alternative_start, alternative_end) =
-        determine_left_right_ports(from, to);
-    let preferred_start = start_override.unwrap_or(preferred_start);
-    let preferred_end = end_override.unwrap_or(preferred_end);
-    let alternative_start = start_override.unwrap_or(alternative_start);
-    let alternative_end = end_override.unwrap_or(alternative_end);
-    let preferred_path = find_grid_path(
-        layouts,
-        from.grid_for_port(preferred_start),
-        to.grid_for_port(preferred_end),
-    )
-    .map(merge_grid_path);
-    let alternative_path = find_grid_path(
-        layouts,
-        from.grid_for_port(alternative_start),
-        to.grid_for_port(alternative_end),
-    )
-    .map(merge_grid_path);
-
-    match (preferred_path, alternative_path) {
-        (Some(preferred), Some(alternative)) if alternative.len() < preferred.len() => {
-            Some((alternative, alternative_start, alternative_end))
-        }
-        (Some(preferred), _) => Some((preferred, preferred_start, preferred_end)),
-        (None, Some(alternative)) => Some((alternative, alternative_start, alternative_end)),
-        (None, None) => None,
+    port_policy: GridPathPortPolicy,
+) -> Option<GridPathRoute> {
+    match port_policy {
+        GridPathPortPolicy::DirectionalShortest => select_shortest_reachable_grid_path(
+            layouts,
+            from,
+            to,
+            directional_left_right_port_pairs(from, to),
+        ),
+        GridPathPortPolicy::Fixed(ports) => plan_grid_path_for_ports(layouts, from, to, ports),
     }
+}
+
+fn select_shortest_reachable_grid_path(
+    layouts: &[NodeLayout],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    candidates: [PortPair; 2],
+) -> Option<GridPathRoute> {
+    let mut routes = candidates
+        .into_iter()
+        .filter_map(|ports| plan_grid_path_for_ports(layouts, from, to, ports));
+    let mut selected = routes.next()?;
+    for route in routes {
+        if route.path.len() < selected.path.len() {
+            selected = route;
+        }
+    }
+    Some(selected)
+}
+
+fn plan_grid_path_for_ports(
+    layouts: &[NodeLayout],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    ports: PortPair,
+) -> Option<GridPathRoute> {
+    find_grid_path(
+        layouts,
+        from.grid_for_port(ports.start),
+        to.grid_for_port(ports.end),
+    )
+    .map(merge_grid_path)
+    .map(|path| GridPathRoute { path, ports })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +102,7 @@ impl Port {
         }
     }
 
-    pub(super) fn step_fallback(self) -> StepDirection {
+    pub(super) fn terminal_direction(self) -> StepDirection {
         match self {
             Port::Up => StepDirection::Up,
             Port::Down => StepDirection::Down,
@@ -102,17 +148,44 @@ pub(super) enum StepDirection {
     Right,
 }
 
-fn determine_left_right_ports(from: &NodeLayout, to: &NodeLayout) -> (Port, Port, Port, Port) {
+fn directional_left_right_port_pairs(from: &NodeLayout, to: &NodeLayout) -> [PortPair; 2] {
     match relative_direction(from.grid, to.grid) {
-        RelativeDirection::LowerRight => (Port::Down, Port::Left, Port::Right, Port::Up),
-        RelativeDirection::UpperRight => (Port::Up, Port::Left, Port::Right, Port::Down),
-        RelativeDirection::LowerLeft => (Port::Down, Port::Down, Port::Left, Port::Up),
-        RelativeDirection::UpperLeft => (Port::Down, Port::Down, Port::Left, Port::Down),
-        RelativeDirection::Left => (Port::Down, Port::Down, Port::Left, Port::Right),
-        RelativeDirection::Right => (Port::Right, Port::Left, Port::Right, Port::Left),
-        RelativeDirection::Down => (Port::Down, Port::Up, Port::Down, Port::Up),
-        RelativeDirection::Up => (Port::Up, Port::Down, Port::Up, Port::Down),
-        RelativeDirection::Middle => (Port::Middle, Port::Middle, Port::Middle, Port::Middle),
+        RelativeDirection::LowerRight => [
+            PortPair::new(Port::Down, Port::Left),
+            PortPair::new(Port::Right, Port::Up),
+        ],
+        RelativeDirection::UpperRight => [
+            PortPair::new(Port::Up, Port::Left),
+            PortPair::new(Port::Right, Port::Down),
+        ],
+        RelativeDirection::LowerLeft => [
+            PortPair::new(Port::Down, Port::Down),
+            PortPair::new(Port::Left, Port::Up),
+        ],
+        RelativeDirection::UpperLeft => [
+            PortPair::new(Port::Down, Port::Down),
+            PortPair::new(Port::Left, Port::Down),
+        ],
+        RelativeDirection::Left => [
+            PortPair::new(Port::Down, Port::Down),
+            PortPair::new(Port::Left, Port::Right),
+        ],
+        RelativeDirection::Right => [
+            PortPair::new(Port::Right, Port::Left),
+            PortPair::new(Port::Right, Port::Left),
+        ],
+        RelativeDirection::Down => [
+            PortPair::new(Port::Down, Port::Up),
+            PortPair::new(Port::Down, Port::Up),
+        ],
+        RelativeDirection::Up => [
+            PortPair::new(Port::Up, Port::Down),
+            PortPair::new(Port::Up, Port::Down),
+        ],
+        RelativeDirection::Middle => [
+            PortPair::new(Port::Middle, Port::Middle),
+            PortPair::new(Port::Middle, Port::Middle),
+        ],
     }
 }
 
@@ -265,5 +338,75 @@ pub(super) fn step_direction(from: GridCoord, to: GridCoord) -> StepDirection {
         StepDirection::Right
     } else {
         StepDirection::Left
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::label::GraphLabel;
+    use crate::graph::model::{GraphNodeShape, GraphNodeStyle};
+
+    #[test]
+    fn fixed_port_policy_does_not_substitute_directional_candidates() {
+        let from = node("from", 0, 0);
+        let blocker = node("blocker", 1, 2);
+        let to = node("to", 5, 5);
+        let layouts = vec![from.clone(), blocker, to.clone()];
+
+        assert!(
+            route_grid_path(
+                &layouts,
+                &from,
+                &to,
+                GridPathPortPolicy::Fixed(PortPair::new(Port::Down, Port::Left)),
+            )
+            .is_none()
+        );
+
+        let route = route_grid_path(
+            &layouts,
+            &from,
+            &to,
+            GridPathPortPolicy::Fixed(PortPair::new(Port::Right, Port::Up)),
+        )
+        .expect("secondary directional ports should be reachable");
+
+        assert_eq!(route.ports, PortPair::new(Port::Right, Port::Up));
+    }
+
+    #[test]
+    fn directional_shortest_policy_selects_reachable_directional_candidate() {
+        let from = node("from", 0, 0);
+        let blocker = node("blocker", 1, 2);
+        let to = node("to", 5, 5);
+        let layouts = vec![from.clone(), blocker, to.clone()];
+
+        let route = route_grid_path(
+            &layouts,
+            &from,
+            &to,
+            GridPathPortPolicy::DirectionalShortest,
+        )
+        .expect("directional policy should select the reachable candidate");
+
+        assert_eq!(route.ports, PortPair::new(Port::Right, Port::Up));
+    }
+
+    fn node(id: &str, grid_x: usize, grid_y: usize) -> NodeLayout {
+        NodeLayout {
+            id: id.to_string(),
+            label: GraphLabel::new(id),
+            shape: GraphNodeShape::Rect,
+            style: GraphNodeStyle::default(),
+            grid: GridCoord {
+                x: grid_x,
+                y: grid_y,
+            },
+            x: grid_x * 4,
+            y: grid_y * 4,
+            width: 3,
+            height: 3,
+        }
     }
 }

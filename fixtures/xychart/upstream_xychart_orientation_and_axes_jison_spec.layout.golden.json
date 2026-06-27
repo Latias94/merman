@@ -6,6 +6,7 @@
       "height": 500.0,
       "chartOrientation": "horizontal",
       "showDataLabel": false,
+      "showDataLabelOutsideBar": false,
       "backgroundColor": "white",
       "labelData": [],
       "drawables": [

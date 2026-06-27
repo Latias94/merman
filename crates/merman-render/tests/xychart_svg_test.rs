@@ -2,9 +2,22 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
-use merman_render::model::LayoutDiagram;
+use merman_render::model::{LayoutDiagram, XyChartDiagramLayout};
 use merman_render::svg::{SvgRenderOptions, render_xychart_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
+
+fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
+    let engine = legacy_init_theme_compat_engine();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::XyChartDiagram(layout) = out.layout else {
+        panic!("expected XyChartDiagram layout");
+    };
+
+    *layout
+}
 
 fn render_xychart_svg_from_text(text: &str) -> String {
     let engine = legacy_init_theme_compat_engine();
@@ -44,6 +57,27 @@ fn svg_segment<'a>(svg: &'a str, start_needle: &str, end_needle: &str) -> &'a st
     let rest = &svg[start..];
     let end = rest.find(end_needle).expect("expected segment end");
     &rest[..end]
+}
+
+#[test]
+fn xychart_layout_carries_data_label_outside_policy() {
+    let layout = layout_xychart_from_text(
+        r"---
+config:
+  xyChart:
+    showDataLabel: true
+    showDataLabelOutsideBar: true
+---
+xychart
+  x-axis [A]
+  y-axis 0 --> 100
+  bar [73]
+",
+    );
+
+    assert!(layout.show_data_label);
+    assert!(layout.show_data_label_outside_bar);
+    assert_eq!(layout.label_data, vec!["73"]);
 }
 
 #[test]

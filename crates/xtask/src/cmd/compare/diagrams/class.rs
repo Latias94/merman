@@ -2,25 +2,22 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta, RootDeltaReportLimit, collect_root_delta,
-    parse_root_delta_report_limit, write_root_deltas_report,
+    CompareFixtureResult, CompareRunOptions, DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta,
+    RootDeltaReportLimit, collect_root_delta, parse_root_delta_report_limit, run_svg_compare,
+    sanitize_svg_id, svg_compare_engine_with_site_config, svg_compare_layout_opts,
+    write_compare_result_section, write_notes_section, write_root_deltas_report,
 };
-use crate::svgdom;
 use std::fmt::Write as _;
-use std::fs;
 use std::path::PathBuf;
-
-use super::super::{svg_compare_engine_with_site_config, svg_compare_layout_opts};
 
 pub(crate) fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
-    let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "parity".to_string();
     let mut check_dom: bool = false;
     let mut report_root: bool = false;
     let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
-
+    let mut dom_decimals: u32 = 3;
+    let mut dom_mode: String = "parity".to_string();
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -52,7 +49,7 @@ pub(crate) fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 dom_mode = args
                     .get(i)
                     .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "structure".to_string());
+                    .unwrap_or_else(|| "parity".to_string());
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -60,205 +57,133 @@ pub(crate) fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let mode = svgdom::DomMode::parse(&dom_mode);
-    let should_report_root = report_root || mode == svgdom::DomMode::ParityRoot;
-    let compare_paths = crate::cmd::compare_diagram_paths("class", out_path);
-    let fixtures_dir = compare_paths.fixtures_dir;
-    let upstream_dir = compare_paths.upstream_dir;
-    let out_path = compare_paths.out_path;
-    let out_svg_dir = compare_paths.out_svg_dir;
-    let mut mmd_files =
-        crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
-    mmd_files.retain(|path| {
-        path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-            !n.contains("upstream_text_label_variants_spec")
-                && !n.contains("upstream_parser_class_spec")
-        })
-    });
-
-    if mmd_files.is_empty() {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "no .mmd fixtures matched under {}",
-            fixtures_dir.display()
-        )));
-    }
-
-    fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
-        path: out_svg_dir.display().to_string(),
-        source,
-    })?;
-
+    let should_report_root =
+        report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root");
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
+    let mut state = ClassCompareState {
+        root_deltas: Vec::new(),
+    };
 
-    let mut report = String::new();
-    let _ = writeln!(
-        &mut report,
-        "# ClassDiagram SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/class/*.svg` (pinned Mermaid baseline)\n- Local: `render_class_diagram_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
-        dom_mode, dom_decimals
-    );
-
-    let mut failures: Vec<String> = Vec::new();
-    let mut root_deltas: Vec<RootDelta> = Vec::new();
-    for mmd_path in mmd_files {
-        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
-            continue;
-        };
-        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
-        let upstream_svg = match fs::read_to_string(&upstream_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!(
-                    "missing upstream svg for {stem}: {} ({err})",
-                    upstream_path.display()
-                ));
-                continue;
-            }
-        };
-
-        let text = match fs::read_to_string(&mmd_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = &layouted.layout else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
-
-        let is_classdiagram_v2_header = merman::preprocess_diagram(&text, engine.registry())
-            .ok()
-            .map(|p| p.code.trim_start().starts_with("classDiagram-v2"))
-            .unwrap_or(false);
-
-        let svg_opts = merman_render::svg::SvgRenderOptions {
-            diagram_id: Some(stem.to_string()),
-            aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
-            ..Default::default()
-        };
-
-        let local_svg = match merman_render::svg::render_class_diagram_v2_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
-            layouted.meta.title.as_deref(),
-            layout_opts.text_measurer.as_ref(),
-            &svg_opts,
-        ) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
-        let _ = fs::write(&local_out_path, &local_svg);
-
-        if should_report_root {
-            match collect_root_delta(stem, &upstream_svg, &local_svg) {
-                Ok(delta) => root_deltas.push(delta),
-                Err(e) => failures.push(format!("root parse failed for {stem}: {e}")),
-            }
-        }
-
-        if check_dom {
-            let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
-                Ok(v) => v,
+    run_svg_compare(
+        CompareRunOptions {
+            diagram: "class",
+            out_path,
+            filter: filter.as_deref(),
+            check_dom,
+            dom_mode: &dom_mode,
+            dom_decimals,
+        },
+        &mut state,
+        |_, report, _paths, options| {
+            let _ = writeln!(
+                report,
+                "# ClassDiagram SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/class/*.svg` (pinned Mermaid baseline)\n- Local: `render_class_diagram_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+                options.dom_mode, options.dom_decimals,
+            );
+        },
+        |_, stem, _| {
+            crate::cmd::upstream_svg_compare_skip_reason("class", stem)
+                .map(|reason| reason.to_string())
+        },
+        |state, input| {
+            let parsed = match futures::executor::block_on(
+                engine.parse_diagram(input.text, merman::ParseOptions::default()),
+            ) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    return Err(format!(
+                        "no diagram detected in {}",
+                        input.fixture_path.display()
+                    ));
+                }
                 Err(err) => {
-                    failures.push(format!("upstream dom parse failed for {stem}: {err}"));
-                    continue;
+                    return Err(format!(
+                        "parse failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
                 }
             };
-            let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
+
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
                 Ok(v) => v,
                 Err(err) => {
-                    failures.push(format!("local dom parse failed for {stem}: {err}"));
-                    continue;
+                    return Err(format!(
+                        "layout failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
                 }
             };
-            if a != b {
-                let detail = svgdom::dom_diff(&a, &b)
-                    .map(|d| format!(" ({d})"))
-                    .unwrap_or_default();
-                failures.push(format!(
-                    "dom mismatch for {stem}: upstream={} local={}{}",
-                    upstream_path.display(),
-                    local_out_path.display(),
-                    detail
+
+            let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = &layouted.layout
+            else {
+                return Err(format!(
+                    "unexpected layout type for {}: {}",
+                    input.fixture_path.display(),
+                    layouted.meta.diagram_type
                 ));
+            };
+
+            let is_classdiagram_v2_header =
+                merman::preprocess_diagram(input.text, engine.registry())
+                    .ok()
+                    .map(|p| p.code.trim_start().starts_with("classDiagram-v2"))
+                    .unwrap_or(false);
+
+            let svg_opts = merman_render::svg::SvgRenderOptions {
+                diagram_id: Some(sanitize_svg_id(input.stem)),
+                aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
+                ..Default::default()
+            };
+
+            let local_svg = match merman_render::svg::render_class_diagram_v2_svg(
+                layout,
+                &layouted.semantic,
+                &layouted.meta.effective_config,
+                layouted.meta.title.as_deref(),
+                layout_opts.text_measurer.as_ref(),
+                &svg_opts,
+            ) {
+                Ok(v) => v,
+                Err(err) => {
+                    return Err(format!(
+                        "render failed for {}: {err}",
+                        input.fixture_path.display()
+                    ));
+                }
+            };
+
+            if should_report_root {
+                match collect_root_delta(input.stem, input.upstream_svg, &local_svg) {
+                    Ok(delta) => state.root_deltas.push(delta),
+                    Err(e) => {
+                        return Ok(CompareFixtureResult::Rendered {
+                            local_svg,
+                            compare_dom: true,
+                            issues: vec![format!("root parse failed for {}: {e}", input.stem)],
+                            notes: Vec::new(),
+                        });
+                    }
+                }
             }
-        }
-    }
 
-    if should_report_root {
-        write_root_deltas_report(&mut report, &mut root_deltas[..], root_report_limit);
-    }
+            Ok(CompareFixtureResult::Rendered {
+                local_svg,
+                compare_dom: true,
+                issues: Vec::new(),
+                notes: Vec::new(),
+            })
+        },
+        |state, report, paths, options, failures, notes| {
+            if should_report_root {
+                write_root_deltas_report(report, &mut state.root_deltas[..], root_report_limit);
+            }
+            write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
+            write_notes_section(report, notes);
+        },
+    )
+}
 
-    if !check_dom {
-        let _ = writeln!(
-            &mut report,
-            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
-            out_svg_dir.display()
-        );
-    } else if failures.is_empty() {
-        let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
-    } else {
-        let _ = writeln!(&mut report, "\n## Mismatches\n");
-        for f in &failures {
-            let _ = writeln!(&mut report, "- {f}");
-        }
-        let _ = writeln!(
-            &mut report,
-            "\nLocal SVG outputs: `{}`\n",
-            out_svg_dir.display()
-        );
-    }
-
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-            path: parent.display().to_string(),
-            source,
-        })?;
-    }
-    fs::write(&out_path, report).map_err(|source| XtaskError::WriteFile {
-        path: out_path.display().to_string(),
-        source,
-    })?;
-
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(XtaskError::SvgCompareFailed(failures.join("\n")))
-    }
+struct ClassCompareState {
+    root_deltas: Vec<RootDelta>,
 }

@@ -2,7 +2,6 @@ pub use merman_ascii::{
     AsciiCharset, AsciiError, AsciiRenderOptions, AsciiRenderer, render_class, render_er,
     render_flowchart, render_model, render_sequence, render_xychart,
 };
-use std::borrow::Cow;
 
 #[derive(Debug, thiserror::Error)]
 pub enum HeadlessAsciiError {
@@ -25,15 +24,13 @@ pub fn render_ascii_sync(
     parse_options: merman_core::ParseOptions,
     ascii_options: &AsciiRenderOptions,
 ) -> Result<Option<String>> {
-    let (ascii_options, text) = apply_mermaid_ascii_directives(ascii_options, text);
-    let Some(parsed) = engine.parse_diagram_for_render_model_sync(text.as_ref(), parse_options)?
-    else {
+    let Some(parsed) = engine.parse_diagram_for_render_model_sync(text, parse_options)? else {
         return Ok(None);
     };
 
     Ok(Some(merman_ascii::render_model(
         &parsed.model,
-        &ascii_options,
+        ascii_options,
     )?))
 }
 
@@ -134,64 +131,6 @@ impl HeadlessAsciiRenderer {
     pub async fn render_ascii(&self, text: &str) -> Result<Option<String>> {
         render_ascii_sync(&self.engine, text, self.parse, &self.ascii)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PaddingAxis {
-    X,
-    Y,
-}
-
-fn apply_mermaid_ascii_directives<'a>(
-    ascii_options: &AsciiRenderOptions,
-    source: &'a str,
-) -> (AsciiRenderOptions, Cow<'a, str>) {
-    let mut options = *ascii_options;
-    let mut changed = false;
-    let mut output = String::new();
-    let mut before_diagram = true;
-
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if before_diagram {
-            if let Some((axis, value)) = parse_padding_directive(trimmed) {
-                match axis {
-                    PaddingAxis::X => options.graph_padding_x = value,
-                    PaddingAxis::Y => options.graph_padding_y = value,
-                }
-                changed = true;
-                continue;
-            }
-            if is_diagram_header(trimmed) {
-                before_diagram = false;
-            }
-        }
-        output.push_str(line);
-        output.push('\n');
-    }
-
-    if changed {
-        (options, Cow::Owned(output))
-    } else {
-        (options, Cow::Borrowed(source))
-    }
-}
-
-fn parse_padding_directive(line: &str) -> Option<(PaddingAxis, usize)> {
-    let (key, value) = line.split_once('=')?;
-    let axis = if key.trim().eq_ignore_ascii_case("paddingX") {
-        PaddingAxis::X
-    } else if key.trim().eq_ignore_ascii_case("paddingY") {
-        PaddingAxis::Y
-    } else {
-        return None;
-    };
-    let value = value.trim().parse().ok()?;
-    Some((axis, value))
-}
-
-fn is_diagram_header(line: &str) -> bool {
-    line.starts_with("graph ") || line.starts_with("flowchart ")
 }
 
 #[cfg(test)]

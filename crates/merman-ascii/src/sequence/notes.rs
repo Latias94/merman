@@ -3,7 +3,7 @@ use super::{
 };
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use crate::text::{display_width, wrap_display_lines};
+use crate::text::{display_width, split_label_lines, wrap_label_lines};
 
 use super::layout::SequenceLayout;
 use super::model::{SequenceNote, SequenceNotePlacement};
@@ -105,15 +105,11 @@ fn note_border_row(left: char, right: char, horizontal: char, inner_width: usize
 }
 
 fn note_label_lines(note: &SequenceNote, layout: &SequenceLayout) -> Vec<String> {
-    if note.label.is_empty() {
-        return vec![String::new()];
-    }
-
     if !note.wrap {
-        return vec![note.label.clone()];
+        return split_label_lines(&note.label);
     }
 
     let span_width =
         layout.participant_centers[note.from].abs_diff(layout.participant_centers[note.to]);
-    wrap_display_lines(&note.label, span_width.max(NOTE_WRAP_TEXT_WIDTH))
+    wrap_label_lines(&note.label, span_width.max(NOTE_WRAP_TEXT_WIDTH))
 }

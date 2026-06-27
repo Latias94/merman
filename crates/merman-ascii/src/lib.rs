@@ -14,6 +14,9 @@ mod graph;
 mod options;
 mod relation_graph;
 mod sequence;
+mod state;
+mod style_color;
+mod terminal;
 mod text;
 mod xychart;
 
@@ -25,6 +28,7 @@ use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
 use merman_core::diagrams::flowchart::FlowchartV2Model;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::state::StateDiagramRenderModel;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
@@ -55,6 +59,7 @@ pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -
         RenderSemanticModel::Er(model) => render_er(model, options),
         RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
         RenderSemanticModel::Sequence(model) => render_sequence(model, options),
+        RenderSemanticModel::State(model) => render_state(model, options),
         RenderSemanticModel::XyChart(model) => render_xychart(model, options),
         other => Err(AsciiError::UnsupportedDiagram {
             diagram_type: other.kind().to_string(),
@@ -85,6 +90,15 @@ pub fn render_sequence(
     options.validate()?;
     let diagram = sequence::from_sequence_model(model)?;
     sequence::render_sequence_diagram(&diagram, options)
+}
+
+pub fn render_state(
+    model: &StateDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    let graph = state::from_state_model(model)?;
+    graph::render_graph(&graph, options)
 }
 
 pub fn render_xychart(
@@ -158,7 +172,7 @@ mod tests {
     fn default_options_match_initial_reference_defaults() {
         let options = AsciiRenderOptions::default();
         assert_eq!(options.charset, AsciiCharset::Unicode);
-        assert_eq!(options.fallback_direction, AsciiDirection::LeftRight);
+        assert_eq!(options.default_direction, AsciiDirection::LeftRight);
         assert_eq!(options.color_mode, AsciiColorMode::Plain);
         assert_eq!(options.color_theme, AsciiColorTheme::default_light());
         assert_eq!(options.box_border_padding, 1);
@@ -168,6 +182,10 @@ mod tests {
         assert_eq!(options.sequence_message_spacing, 1);
         assert_eq!(options.sequence_self_message_width, 4);
         assert!(!options.sequence_mirror_actors);
+        assert_eq!(options.xychart_vertical_plot_height, 5);
+        assert_eq!(options.xychart_category_band_width, 3);
+        assert_eq!(options.xychart_horizontal_plot_width, 10);
+        assert_eq!(options.max_grid_cells, 250_000);
     }
 
     #[test]
@@ -201,6 +219,25 @@ mod tests {
     }
 
     #[test]
+    fn options_builder_sets_xychart_plot_area_dimensions() {
+        let options = AsciiRenderOptions::ascii()
+            .with_xychart_vertical_plot_height(8)
+            .with_xychart_category_band_width(4)
+            .with_xychart_horizontal_plot_width(24);
+
+        assert_eq!(options.xychart_vertical_plot_height, 8);
+        assert_eq!(options.xychart_category_band_width, 4);
+        assert_eq!(options.xychart_horizontal_plot_width, 24);
+    }
+
+    #[test]
+    fn options_builder_sets_max_grid_cells() {
+        let options = AsciiRenderOptions::ascii().with_max_grid_cells(42);
+
+        assert_eq!(options.max_grid_cells, 42);
+    }
+
+    #[test]
     fn validates_sequence_self_message_width() {
         let options = AsciiRenderOptions {
             sequence_self_message_width: 1,
@@ -214,6 +251,43 @@ mod tests {
                 message: "must be at least 2",
             })
         );
+    }
+
+    #[test]
+    fn validates_xychart_plot_area_dimensions() {
+        let cases = [
+            (
+                AsciiRenderOptions {
+                    xychart_vertical_plot_height: 1,
+                    ..AsciiRenderOptions::default()
+                },
+                "xychart_vertical_plot_height",
+                "must be at least 2",
+            ),
+            (
+                AsciiRenderOptions {
+                    xychart_category_band_width: 0,
+                    ..AsciiRenderOptions::default()
+                },
+                "xychart_category_band_width",
+                "must be greater than 0",
+            ),
+            (
+                AsciiRenderOptions {
+                    xychart_horizontal_plot_width: 1,
+                    ..AsciiRenderOptions::default()
+                },
+                "xychart_horizontal_plot_width",
+                "must be at least 2",
+            ),
+        ];
+
+        for (options, field, message) in cases {
+            assert_eq!(
+                options.validate(),
+                Err(AsciiError::InvalidOption { field, message })
+            );
+        }
     }
 
     #[test]

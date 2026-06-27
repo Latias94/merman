@@ -1,11 +1,9 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphNodeShape};
+use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
+use super::super::super::shape::GraphNodeShapeSemantics;
 use super::super::cell::edge_line_char;
-use super::{
-    PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
-    edge_line_cell, planned_label, route_cell,
-};
+use super::{RoutePlan, edge_arrow_cell, edge_line_cell, planned_label, route_cell};
 
 pub(super) fn plan_left_right_direct_route(
     layouts: &[NodeLayout],
@@ -27,32 +25,14 @@ pub(super) fn plan_left_right_direct_route(
     let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let mut cells = Vec::new();
     if charset.unicode {
-        cells.push(PlannedRouteCell {
-            coord: CanvasCoord { x: from.right(), y },
-            ch: charset.right_connector,
-            kind: PlannedRouteCellKind::EdgeLine,
-            segment: PlannedRouteSegment::Direct,
-        });
+        cells.push(edge_line_cell(from.right(), y, charset.right_connector));
     }
     for x in start..end {
-        cells.push(PlannedRouteCell {
-            coord: CanvasCoord { x, y },
-            ch: line,
-            kind: PlannedRouteCellKind::RouteCell,
-            segment: PlannedRouteSegment::Direct,
-        });
+        cells.push(route_cell(x, y, line));
     }
-    cells.push(PlannedRouteCell {
-        coord: CanvasCoord { x: end, y },
-        ch: match edge.arrow {
-            GraphEdgeArrow::Open => line,
-            GraphEdgeArrow::Point => charset.arrow_right,
-        },
-        kind: match edge.arrow {
-            GraphEdgeArrow::Open => PlannedRouteCellKind::RouteCell,
-            GraphEdgeArrow::Point => PlannedRouteCellKind::EdgeArrow,
-        },
-        segment: PlannedRouteSegment::Direct,
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(end, y, line),
+        GraphEdgeArrow::Point => edge_arrow_cell(end, y, charset.arrow_right),
     });
 
     let labels = planned_label(
@@ -63,7 +43,7 @@ pub(super) fn plan_left_right_direct_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
 }
 
 pub(super) fn plan_left_right_down_route(
@@ -89,10 +69,7 @@ pub(super) fn plan_left_right_down_route(
         GraphEdgeArrow::Point => edge_arrow_cell(x, end, charset.arrow_down),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 pub(super) fn plan_left_right_down_then_right_route(
@@ -144,10 +121,7 @@ pub(super) fn plan_left_right_down_then_right_route(
         GraphEdgeArrow::Point => edge_arrow_cell(end, to.center_y(), charset.arrow_right),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 pub(super) fn plan_left_right_right_then_up_route(
@@ -196,10 +170,7 @@ pub(super) fn plan_left_right_right_then_up_route(
         GraphEdgeArrow::Point => edge_arrow_cell(end, to.center_y(), charset.arrow_right),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 pub(super) fn plan_left_right_bottom_lane_route(
@@ -265,7 +236,12 @@ pub(super) fn plan_left_right_bottom_lane_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::with_min_canvas_extent(
+        cells,
+        labels,
+        max_x + 3,
+        bottom_y + 1,
+    ))
 }
 
 pub(super) fn plan_left_right_reverse_over_self_loop_route(
@@ -310,7 +286,12 @@ pub(super) fn plan_left_right_reverse_over_self_loop_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::with_min_canvas_extent(
+        cells,
+        labels,
+        from.center_x().max(to.center_x()) + 3,
+        0,
+    ))
 }
 
 pub(super) fn plan_left_right_self_loop_route(
@@ -330,7 +311,7 @@ pub(super) fn plan_left_right_self_loop_route(
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let mut cells = Vec::new();
-    if from.shape != GraphNodeShape::Diamond {
+    if GraphNodeShapeSemantics::new(from.shape).uses_external_self_loop_connector() {
         cells.push(edge_line_cell(from.right(), y, charset.right_connector));
     }
     for x in (from.right() + 1)..loop_x {
@@ -366,10 +347,7 @@ pub(super) fn plan_left_right_self_loop_route(
         GraphEdgeArrow::Point => edge_arrow_cell(from.center_x(), arrow_y, charset.arrow_up),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 fn plan_left_right_basic_down_then_right_route(
@@ -401,10 +379,7 @@ fn plan_left_right_basic_down_then_right_route(
         GraphEdgeArrow::Point => edge_arrow_cell(end, corner_y, charset.arrow_right),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 fn plan_left_right_basic_right_then_up_route(
@@ -436,10 +411,7 @@ fn plan_left_right_basic_right_then_up_route(
         GraphEdgeArrow::Point => edge_arrow_cell(corner_x, arrow_y, charset.arrow_up),
     });
 
-    Some(RoutePlan {
-        cells,
-        labels: Vec::new(),
-    })
+    Some(RoutePlan::new(cells, Vec::new()))
 }
 
 fn left_right_direct_route_is_clear(

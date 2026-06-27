@@ -109,13 +109,16 @@ bar [4, 8]
 }
 
 #[test]
-fn render_ascii_sync_applies_mermaid_ascii_padding_directives() {
+fn render_ascii_sync_uses_ascii_options_for_padding() {
     let engine = merman::Engine::new();
+    let mut options = AsciiRenderOptions::ascii();
+    options.graph_padding_x = 2;
+    options.graph_padding_y = 1;
     let rendered = render_ascii_sync(
         &engine,
-        "paddingX=2\npaddingY=1\ngraph LR\nA --> B",
+        "graph LR\nA --> B",
         merman::ParseOptions::strict(),
-        &AsciiRenderOptions::ascii(),
+        &options,
     )
     .unwrap()
     .unwrap();

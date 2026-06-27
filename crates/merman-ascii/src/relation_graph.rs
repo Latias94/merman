@@ -1,8 +1,13 @@
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::options::AsciiRenderOptions;
-use crate::text::{StyledLine, display_width};
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::text::{StyledLine, display_width, split_label_lines};
+use crate::{AsciiError, Result};
+mod layered;
+mod summary;
+
+pub(crate) use self::layered::*;
+pub(crate) use self::summary::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphLine {
@@ -18,145 +23,245 @@ pub(crate) struct RelationGraphBox {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LayeredRelationEdge<'a> {
-    top_id: &'a str,
-    bottom_id: &'a str,
-    has_label: bool,
-    label_half_width: usize,
+pub(crate) struct RelationGraphBoxStyle {
+    pub(crate) top_left: char,
+    pub(crate) top_right: char,
+    pub(crate) bottom_left: char,
+    pub(crate) bottom_right: char,
+    pub(crate) horizontal: char,
+    pub(crate) vertical: char,
+    pub(crate) separator_left: char,
+    pub(crate) separator_right: char,
+    pub(crate) border_role: AsciiColorRole,
+    pub(crate) text_role: AsciiColorRole,
 }
 
-impl<'a> LayeredRelationEdge<'a> {
-    pub(crate) fn new(
-        top_id: &'a str,
-        bottom_id: &'a str,
-        has_label: bool,
-        label_half_width: usize,
-    ) -> Self {
-        Self {
-            top_id,
-            bottom_id,
-            has_label,
-            label_half_width,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LayeredRelationError {
-    MissingEndpoint,
-    UnrelatedBoxes,
-    Cyclic,
-    Crossing,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct PlacedRelationGraphBox<'a> {
-    id: &'a str,
-    relation_box: &'a RelationGraphBox,
-    x: usize,
-    y: usize,
-}
-
-impl PlacedRelationGraphBox<'_> {
-    pub(crate) fn id(&self) -> &str {
-        self.id
-    }
-
-    pub(crate) fn x(&self) -> usize {
-        self.x
-    }
-
-    pub(crate) fn width(&self) -> usize {
-        self.relation_box.width()
-    }
-
-    pub(crate) fn height(&self) -> usize {
-        self.relation_box.height()
-    }
-
-    pub(crate) fn y(&self) -> usize {
-        self.y
-    }
-
-    pub(crate) fn center_x(&self) -> usize {
-        self.x + self.width() / 2
-    }
-
-    pub(crate) fn right(&self) -> usize {
-        self.x + self.width().saturating_sub(1)
-    }
-
-    pub(crate) fn bottom(&self) -> usize {
-        self.y + self.height().saturating_sub(1)
-    }
-
-    pub(crate) fn draw_at(&self, canvas: &mut Canvas) {
-        self.relation_box.draw_at(canvas, self.x, self.y);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct LayeredRelationPlan<'a> {
-    placed: Vec<PlacedRelationGraphBox<'a>>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RelationGraphLabel {
+    lines: Vec<String>,
     width: usize,
 }
 
-impl<'a> LayeredRelationPlan<'a> {
-    pub(crate) fn placed_boxes(&self) -> &[PlacedRelationGraphBox<'a>] {
-        &self.placed
-    }
+pub(crate) trait RelationComponentAdapter<R> {
+    fn build_edges(&self, relation: &R) -> LayeredRelationEdge;
 
-    pub(crate) fn width(&self) -> usize {
-        self.width.max(
-            self.placed
-                .iter()
-                .map(|relation_box| relation_box.x + relation_box.width())
-                .max()
-                .unwrap_or(0),
-        )
-    }
+    fn is_same_endpoint_parallel(&self, relations: &[R]) -> bool;
 
-    pub(crate) fn height(&self) -> usize {
-        self.placed
+    fn layered_horizontal_gap(&self) -> usize;
+
+    fn layered_route_style(&self, relation: &R) -> Result<LayeredRelationRouteStyle>;
+
+    fn layered_relation_overlays(
+        &self,
+        relation: &R,
+        geometry: &LayeredRelationRouteGeometry,
+    ) -> Result<Vec<RelationOverlay>>;
+
+    fn render_vertical(
+        &self,
+        boxes: &[RelationGraphBox],
+        relation: &R,
+        options: &AsciiRenderOptions,
+    ) -> Result<String>;
+
+    fn render_parallel(
+        &self,
+        boxes: &[RelationGraphBox],
+        relations: &[R],
+        options: &AsciiRenderOptions,
+    ) -> Result<String>;
+
+    fn build_summary_row(
+        &self,
+        relation: &R,
+        reason: LayeredRelationSummaryReason,
+    ) -> Result<RelationGraphSummaryRow>;
+
+    fn layered_error(&self, error: LayeredRelationError) -> AsciiError;
+}
+
+impl RelationGraphLabel {
+    pub(crate) fn new(raw: &str) -> Option<Self> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let lines = split_label_lines(trimmed);
+        let width = lines
             .iter()
-            .map(|relation_box| relation_box.y + relation_box.height())
+            .map(|line| display_width(line))
             .max()
-            .unwrap_or(0)
+            .unwrap_or_default();
+
+        Some(Self { lines, width })
+    }
+
+    pub(crate) fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    pub(crate) fn half_width(&self) -> usize {
+        self.width / 2
+    }
+
+    pub(crate) fn line_count(&self) -> usize {
+        self.lines.len()
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RelationGraphComponent<'a> {
-    boxes: Vec<&'a RelationGraphBox>,
-    edge_indices: Vec<usize>,
+pub(crate) struct RelationStackPlan<'a> {
+    top: &'a RelationGraphBox,
+    bottom: &'a RelationGraphBox,
+    center: usize,
+    relation_lines: Vec<RelationGraphLine>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RelationLineChars {
-    line_chars: [char; 4],
-    junction: char,
-}
-
-impl RelationLineChars {
-    pub(crate) fn new(line_chars: [char; 4], junction: char) -> Self {
+impl<'a> RelationStackPlan<'a> {
+    pub(crate) fn from_centered_rows(
+        top: &'a RelationGraphBox,
+        bottom: &'a RelationGraphBox,
+        extra_half_widths: &[usize],
+        build_rows: impl FnOnce(usize) -> Vec<RelationGraphLine>,
+    ) -> Self {
+        let center = vertical_center(top, bottom, extra_half_widths);
+        let relation_lines = build_rows(center);
         Self {
-            line_chars,
-            junction,
+            top,
+            bottom,
+            center,
+            relation_lines,
         }
     }
 
-    fn contains(self, ch: char) -> bool {
-        self.line_chars.contains(&ch) || ch == self.junction
+    pub(crate) fn render_with_options(&self, options: &AsciiRenderOptions) -> String {
+        render_vertical_stack_with_options(
+            self.top,
+            self.bottom,
+            self.center,
+            self.relation_lines.clone(),
+            options,
+        )
     }
 }
 
-impl<'a> RelationGraphComponent<'a> {
-    pub(crate) fn boxes(&self) -> &[&'a RelationGraphBox] {
-        &self.boxes
+#[derive(Debug, Clone)]
+pub(crate) struct RelationParallelPlan<'a> {
+    top: &'a RelationGraphBox,
+    bottom: &'a RelationGraphBox,
+    center: usize,
+    lane_left: usize,
+    lane_gap: usize,
+    lane_widths: Vec<usize>,
+    lanes: Vec<Vec<RelationGraphLine>>,
+}
+
+impl<'a> RelationParallelPlan<'a> {
+    pub(crate) fn new(
+        top: &'a RelationGraphBox,
+        bottom: &'a RelationGraphBox,
+        lanes: Vec<Vec<RelationGraphLine>>,
+        lane_gap: usize,
+    ) -> Self {
+        let lane_widths = lanes
+            .iter()
+            .map(|lane| {
+                lane.iter()
+                    .map(|line| display_width(line.text()))
+                    .max()
+                    .unwrap_or(1)
+                    .max(1)
+            })
+            .collect::<Vec<_>>();
+        let lanes_width = lane_widths.iter().sum::<usize>()
+            + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
+        let lane_center = lanes_width / 2;
+        let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
+        let lane_left = center.saturating_sub(lane_center);
+
+        Self {
+            top,
+            bottom,
+            center,
+            lane_left,
+            lane_gap,
+            lane_widths,
+            lanes,
+        }
     }
 
-    pub(crate) fn edge_indices(&self) -> &[usize] {
-        &self.edge_indices
+    pub(crate) fn render_with_options(&self, options: &AsciiRenderOptions) -> String {
+        if options.color_mode == AsciiColorMode::Plain {
+            let mut relation_lines = Vec::new();
+            let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
+            for row_index in 0..row_count {
+                let mut line = String::new();
+                line.extend(std::iter::repeat_n(' ', self.lane_left));
+                for (lane_index, lane) in self.lanes.iter().enumerate() {
+                    if lane_index > 0 {
+                        line.extend(std::iter::repeat_n(' ', self.lane_gap));
+                    }
+                    let text = lane.get(row_index).map(|line| line.text()).unwrap_or("");
+                    line.push_str(&centered_cell(text, self.lane_widths[lane_index]));
+                }
+                while line.ends_with(' ') {
+                    line.pop();
+                }
+                relation_lines.push(line);
+            }
+
+            return render_vertical_stack(self.top, self.bottom, self.center, relation_lines);
+        }
+
+        let mut relation_lines = Vec::new();
+        let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
+        for row_index in 0..row_count {
+            let mut parts = Vec::new();
+            parts.push(RelationGraphLine::plain(" ".repeat(self.lane_left)));
+            for (lane_index, lane) in self.lanes.iter().enumerate() {
+                if lane_index > 0 {
+                    parts.push(RelationGraphLine::plain(" ".repeat(self.lane_gap)));
+                }
+                let cell = lane
+                    .get(row_index)
+                    .cloned()
+                    .unwrap_or_else(|| RelationGraphLine::plain(String::new()));
+                parts.push(centered_cell_line(&cell, self.lane_widths[lane_index]));
+            }
+            relation_lines.push(concat_relation_lines(parts));
+        }
+
+        render_vertical_stack_with_options(
+            self.top,
+            self.bottom,
+            self.center,
+            relation_lines,
+            options,
+        )
+    }
+
+    #[allow(dead_code)]
+    fn render_plain(&self) -> String {
+        let mut relation_lines = Vec::new();
+        let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
+        for row_index in 0..row_count {
+            let mut line = String::new();
+            line.extend(std::iter::repeat_n(' ', self.lane_left));
+            for (lane_index, lane) in self.lanes.iter().enumerate() {
+                if lane_index > 0 {
+                    line.extend(std::iter::repeat_n(' ', self.lane_gap));
+                }
+                let text = lane.get(row_index).map(|line| line.text()).unwrap_or("");
+                line.push_str(&centered_cell(text, self.lane_widths[lane_index]));
+            }
+            while line.ends_with(' ') {
+                line.pop();
+            }
+            relation_lines.push(line);
+        }
+
+        render_vertical_stack(self.top, self.bottom, self.center, relation_lines)
     }
 }
 
@@ -238,6 +343,54 @@ impl RelationGraphBox {
         Self { id, lines, width }
     }
 
+    pub(crate) fn from_sections(
+        id: String,
+        sections: &[Vec<String>],
+        padding: usize,
+        style: RelationGraphBoxStyle,
+    ) -> Self {
+        let content_width = sectioned_box_content_width(sections, padding);
+        let mut lines = Vec::new();
+
+        lines.push(RelationGraphLine::box_border(
+            style.top_left,
+            style.top_right,
+            style.horizontal,
+            content_width,
+            style.border_role,
+        ));
+        for (section_index, section) in sections.iter().enumerate() {
+            if section_index > 0 {
+                lines.push(RelationGraphLine::box_border(
+                    style.separator_left,
+                    style.separator_right,
+                    style.horizontal,
+                    content_width,
+                    style.border_role,
+                ));
+            }
+            for line in section {
+                lines.push(RelationGraphLine::box_content(
+                    line,
+                    content_width,
+                    padding,
+                    style.vertical,
+                    style.border_role,
+                    style.text_role,
+                ));
+            }
+        }
+        lines.push(RelationGraphLine::box_border(
+            style.bottom_left,
+            style.bottom_right,
+            style.horizontal,
+            content_width,
+            style.border_role,
+        ));
+
+        Self::new_with_lines(id, lines, content_width + 2)
+    }
+
     pub(crate) fn id(&self) -> &str {
         &self.id
     }
@@ -255,6 +408,17 @@ impl RelationGraphBox {
             line.draw_at(canvas, x, y + row_index);
         }
     }
+}
+
+fn sectioned_box_content_width(sections: &[Vec<String>], padding: usize) -> usize {
+    let max_line_width = sections
+        .iter()
+        .flat_map(|section| section.iter())
+        .map(|line| display_width(line))
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    max_line_width + padding.saturating_mul(2)
 }
 
 pub(crate) fn render_stacked_boxes(boxes: &[RelationGraphBox]) -> String {
@@ -278,6 +442,144 @@ pub(crate) fn render_stacked_boxes_with_options(
     }
 
     render_lines_with_options(&lines, options)
+}
+
+pub(crate) fn render_stacked_boxes_with_section(
+    boxes: &[RelationGraphBox],
+    section_title: RelationGraphLine,
+    section_lines: &[RelationGraphLine],
+    options: &AsciiRenderOptions,
+) -> String {
+    let mut lines = Vec::new();
+    for (index, relation_box) in boxes.iter().enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::plain(String::new()));
+        }
+        lines.extend(relation_box.lines.iter().cloned());
+    }
+
+    if !section_lines.is_empty() {
+        if !lines.is_empty() {
+            lines.push(RelationGraphLine::plain(String::new()));
+        }
+        lines.push(section_title);
+        lines.extend(section_lines.iter().cloned());
+    }
+
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    render_lines_with_options(&lines, options)
+}
+
+pub(crate) fn render_relation_components<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    adapter: &A,
+) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+    R: Clone,
+{
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
+    let layered_error = |error| adapter.layered_error(error);
+    let components = relation_components(boxes, &edges).map_err(layered_error)?;
+    if components.len() == 1 {
+        return render_relation_component(boxes, relations, options, adapter);
+    }
+
+    let mut rendered = Vec::new();
+    for component in components {
+        let component_boxes = component
+            .boxes()
+            .iter()
+            .map(|relation_box| (*relation_box).clone())
+            .collect::<Vec<_>>();
+        let component_relations = component
+            .edge_indices()
+            .iter()
+            .map(|index| relations[*index].clone())
+            .collect::<Vec<_>>();
+        rendered.push(render_relation_component(
+            &component_boxes,
+            &component_relations,
+            options,
+            adapter,
+        )?);
+    }
+
+    Ok(rendered.join("\n"))
+}
+
+fn render_relation_component<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    adapter: &A,
+) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+{
+    if relations.is_empty() {
+        return Ok(render_stacked_boxes_with_options(boxes, options));
+    }
+    if adapter.is_same_endpoint_parallel(relations) {
+        return adapter.render_parallel(boxes, relations, options);
+    }
+    if relations.len() == 1 {
+        return adapter.render_vertical(boxes, &relations[0], options);
+    }
+    render_layered_relation_component(
+        boxes,
+        relations,
+        options,
+        adapter.layered_horizontal_gap(),
+        options.max_grid_cells,
+        adapter,
+    )
+}
+
+pub(crate) fn render_layered_relation_component<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    horizontal_gap: usize,
+    max_grid_cells: usize,
+    adapter: &A,
+) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let edges = relations
+        .iter()
+        .map(|relation| adapter.build_edges(relation))
+        .collect::<Vec<_>>();
+    let scene = match plan_layered_relation_scene(boxes, edges, horizontal_gap, max_grid_cells)
+        .map_err(|error| adapter.layered_error(error))?
+    {
+        LayeredRelationScenePlan::Routed(scene) => scene,
+        LayeredRelationScenePlan::Summary(reason) => {
+            return render_relation_summary_rows(boxes, relations, options, |relation| {
+                adapter.build_summary_row(relation, reason)
+            });
+        }
+    };
+
+    let mut canvas = scene.canvas_with_boxes();
+    for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
+        let relation = &relations[edge_index];
+        let style = adapter.layered_route_style(relation)?;
+        scene.draw_edge(&mut canvas, edge_index, lane_offset, style, |geometry| {
+            adapter.layered_relation_overlays(relation, geometry)
+        })?;
+    }
+
+    Ok(canvas.finish_trimmed_with_options(options))
 }
 
 pub(crate) fn find_box<'a>(
@@ -341,596 +643,6 @@ pub(crate) fn render_vertical_stack_with_options(
     render_lines_with_options(&lines, options)
 }
 
-pub(crate) fn render_parallel_vertical_stack(
-    top: &RelationGraphBox,
-    bottom: &RelationGraphBox,
-    lanes: &[Vec<String>],
-    lane_gap: usize,
-) -> String {
-    let lane_widths = lanes
-        .iter()
-        .map(|lane| {
-            lane.iter()
-                .map(|text| display_width(text))
-                .max()
-                .unwrap_or(1)
-                .max(1)
-        })
-        .collect::<Vec<_>>();
-    let lanes_width = lane_widths.iter().sum::<usize>()
-        + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
-    let lane_center = lanes_width / 2;
-    let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
-    let lane_left = center.saturating_sub(lane_center);
-    let row_count = lanes.iter().map(Vec::len).max().unwrap_or(0);
-
-    let mut relation_lines = Vec::new();
-    for row_index in 0..row_count {
-        let mut line = String::new();
-        line.extend(std::iter::repeat_n(' ', lane_left));
-        for (lane_index, lane) in lanes.iter().enumerate() {
-            if lane_index > 0 {
-                line.extend(std::iter::repeat_n(' ', lane_gap));
-            }
-            let text = lane.get(row_index).map(String::as_str).unwrap_or("");
-            line.push_str(&centered_cell(text, lane_widths[lane_index]));
-        }
-        while line.ends_with(' ') {
-            line.pop();
-        }
-        relation_lines.push(line);
-    }
-
-    render_vertical_stack(top, bottom, center, relation_lines)
-}
-
-pub(crate) fn render_parallel_vertical_stack_with_options(
-    top: &RelationGraphBox,
-    bottom: &RelationGraphBox,
-    lanes: &[Vec<RelationGraphLine>],
-    lane_gap: usize,
-    options: &AsciiRenderOptions,
-) -> String {
-    if options.color_mode == AsciiColorMode::Plain {
-        let plain_lanes = lanes
-            .iter()
-            .map(|lane| {
-                lane.iter()
-                    .map(|line| line.text().to_string())
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        return render_parallel_vertical_stack(top, bottom, &plain_lanes, lane_gap);
-    }
-
-    let lane_widths = lanes
-        .iter()
-        .map(|lane| {
-            lane.iter()
-                .map(|line| display_width(line.text()))
-                .max()
-                .unwrap_or(1)
-                .max(1)
-        })
-        .collect::<Vec<_>>();
-    let lanes_width = lane_widths.iter().sum::<usize>()
-        + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
-    let lane_center = lanes_width / 2;
-    let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
-    let lane_left = center.saturating_sub(lane_center);
-    let row_count = lanes.iter().map(Vec::len).max().unwrap_or(0);
-
-    let mut relation_lines = Vec::new();
-    for row_index in 0..row_count {
-        let mut parts = Vec::new();
-        parts.push(RelationGraphLine::plain(" ".repeat(lane_left)));
-        for (lane_index, lane) in lanes.iter().enumerate() {
-            if lane_index > 0 {
-                parts.push(RelationGraphLine::plain(" ".repeat(lane_gap)));
-            }
-            let cell = lane
-                .get(row_index)
-                .cloned()
-                .unwrap_or_else(|| RelationGraphLine::plain(String::new()));
-            parts.push(centered_cell_line(&cell, lane_widths[lane_index]));
-        }
-        relation_lines.push(concat_relation_lines(parts));
-    }
-
-    render_vertical_stack_with_options(top, bottom, center, relation_lines, options)
-}
-
-pub(crate) fn parallel_lane_offset(index: usize, count: usize) -> isize {
-    if count <= 1 {
-        return 0;
-    }
-    (index as isize * 2 - (count as isize - 1)) * 3
-}
-
-pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
-    if offset < 0 {
-        center.saturating_sub(offset.unsigned_abs())
-    } else {
-        center.saturating_add(offset as usize)
-    }
-}
-
-pub(crate) fn spanning_lane_offset(top_width: usize, bottom_width: usize) -> isize {
-    (top_width.max(bottom_width) / 2).saturating_add(3) as isize
-}
-
-pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
-    placed_boxes: &[PlacedRelationGraphBox<'_>],
-    top: &PlacedRelationGraphBox<'_>,
-    bottom: &PlacedRelationGraphBox<'_>,
-    lane_offset: isize,
-) -> isize {
-    let intermediate_boxes = placed_boxes
-        .iter()
-        .filter(|placed_box| placed_box.y() > top.y() && placed_box.y() < bottom.y())
-        .collect::<Vec<_>>();
-    if intermediate_boxes.is_empty() {
-        return lane_offset;
-    }
-
-    let route_clearance = intermediate_boxes
-        .iter()
-        .map(|placed_box| placed_box.width() / 2)
-        .max()
-        .unwrap_or(0);
-    let spanning_offset = spanning_lane_offset(
-        top.width().max(route_clearance.saturating_mul(2)),
-        bottom.width(),
-    );
-    let left_offset = lane_offset - spanning_offset;
-    let right_offset = lane_offset + spanning_offset;
-    let left_is_clear =
-        !route_column_crosses_any_box(top.center_x(), left_offset, &intermediate_boxes);
-    let right_is_clear =
-        !route_column_crosses_any_box(top.center_x(), right_offset, &intermediate_boxes);
-
-    match (left_is_clear, right_is_clear) {
-        (true, false) => left_offset,
-        (false, true) => right_offset,
-        (true, true) if lane_offset < 0 => left_offset,
-        (true, true) if top_is_left_of_intermediate_boxes(top, &intermediate_boxes) => left_offset,
-        (true, true) => right_offset,
-        (false, false) if top_is_left_of_intermediate_boxes(top, &intermediate_boxes) => {
-            route_column_left_of_intermediate_boxes(top, &intermediate_boxes)
-        }
-        (false, false) => route_column_right_of_intermediate_boxes(top, &intermediate_boxes),
-    }
-}
-
-fn route_column_crosses_any_box(
-    center_x: usize,
-    lane_offset: isize,
-    boxes: &[&PlacedRelationGraphBox<'_>],
-) -> bool {
-    let column = offset_center(center_x, lane_offset);
-    boxes
-        .iter()
-        .any(|placed_box| column >= placed_box.x() && column <= placed_box.right())
-}
-
-fn top_is_left_of_intermediate_boxes(
-    top: &PlacedRelationGraphBox<'_>,
-    intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
-) -> bool {
-    intermediate_boxes
-        .iter()
-        .any(|placed_box| top.center_x() < placed_box.center_x())
-}
-
-fn route_column_left_of_intermediate_boxes(
-    top: &PlacedRelationGraphBox<'_>,
-    intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
-) -> isize {
-    let target = intermediate_boxes
-        .iter()
-        .map(|placed_box| placed_box.x())
-        .min()
-        .unwrap_or(0)
-        .saturating_sub(2);
-    target as isize - top.center_x() as isize
-}
-
-fn route_column_right_of_intermediate_boxes(
-    top: &PlacedRelationGraphBox<'_>,
-    intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
-) -> isize {
-    let target = intermediate_boxes
-        .iter()
-        .map(|placed_box| placed_box.right())
-        .max()
-        .unwrap_or(top.center_x())
-        .saturating_add(2);
-    target as isize - top.center_x() as isize
-}
-
-pub(crate) fn marker_line_with_role(
-    marker: char,
-    center: usize,
-    role: AsciiColorRole,
-) -> RelationGraphLine {
-    let mut line = String::new();
-    line.extend(std::iter::repeat_n(' ', center));
-    line.push(marker);
-    let mut roles = vec![None; center];
-    roles.push(Some(role));
-    RelationGraphLine::new(line, roles)
-}
-
-pub(crate) fn centered_text_line_with_role(
-    text: &str,
-    center: usize,
-    role: AsciiColorRole,
-) -> RelationGraphLine {
-    let mut line = String::new();
-    let half_width = display_width(text) / 2;
-    let left_padding = center.saturating_sub(half_width);
-    line.extend(std::iter::repeat_n(' ', left_padding));
-    line.push_str(text);
-
-    let mut roles = vec![None; left_padding];
-    roles.extend(std::iter::repeat_n(Some(role), text.chars().count()));
-    RelationGraphLine::new(line, roles)
-}
-
-pub(crate) fn put_relation_char(
-    canvas: &mut Canvas,
-    x: usize,
-    y: usize,
-    ch: char,
-    chars: RelationLineChars,
-) {
-    let next = match canvas.get(x, y) {
-        Some(existing) if existing == ' ' || existing == ch => ch,
-        Some(existing) if chars.contains(existing) && chars.contains(ch) => chars.junction,
-        _ => ch,
-    };
-    let role = if next == chars.junction {
-        AsciiColorRole::Junction
-    } else {
-        AsciiColorRole::EdgeLine
-    };
-    canvas.set_role(x, y, next, role);
-}
-
-pub(crate) fn write_centered_relation_text(
-    canvas: &mut Canvas,
-    center_x: usize,
-    y: usize,
-    text: &str,
-    role: AsciiColorRole,
-) {
-    let text_half_width = display_width(text) / 2;
-    canvas.write_text_role(center_x.saturating_sub(text_half_width), y, text, role);
-}
-
-pub(crate) fn relation_components<'a>(
-    boxes: &'a [RelationGraphBox],
-    edges: &[LayeredRelationEdge<'_>],
-) -> std::result::Result<Vec<RelationGraphComponent<'a>>, LayeredRelationError> {
-    // Keep every related box in one planning domain so layer reordering can still solve
-    // disjoint adjacent-layer crossings; only truly isolated boxes become standalone components.
-    let mut incident_ids = HashSet::new();
-    for edge in edges {
-        if find_box(boxes, edge.top_id).is_none() || find_box(boxes, edge.bottom_id).is_none() {
-            return Err(LayeredRelationError::MissingEndpoint);
-        }
-
-        incident_ids.insert(edge.top_id);
-        incident_ids.insert(edge.bottom_id);
-    }
-
-    let mut components = Vec::new();
-
-    if !edges.is_empty() {
-        let relation_boxes = boxes
-            .iter()
-            .filter(|relation_box| incident_ids.contains(relation_box.id()))
-            .collect::<Vec<_>>();
-
-        components.push(RelationGraphComponent {
-            boxes: relation_boxes,
-            edge_indices: (0..edges.len()).collect(),
-        });
-    }
-
-    components.extend(
-        boxes
-            .iter()
-            .filter(|relation_box| !incident_ids.contains(relation_box.id()))
-            .map(|relation_box| RelationGraphComponent {
-                boxes: vec![relation_box],
-                edge_indices: Vec::new(),
-            }),
-    );
-
-    Ok(components)
-}
-
-pub(crate) fn plan_layered_relation_boxes<'a>(
-    boxes: &'a [RelationGraphBox],
-    edges: &[LayeredRelationEdge<'_>],
-    horizontal_gap: usize,
-) -> std::result::Result<LayeredRelationPlan<'a>, LayeredRelationError> {
-    let levels = layered_relation_levels(boxes, edges)?;
-    let level_groups = ordered_layered_groups(boxes, edges, &levels);
-    reject_crossing_layered_relations(edges, &levels, &level_groups)?;
-    let (placed, width) = place_layered_boxes(&level_groups, edges, &levels, horizontal_gap);
-
-    Ok(LayeredRelationPlan { placed, width })
-}
-
-fn layered_relation_levels(
-    boxes: &[RelationGraphBox],
-    edges: &[LayeredRelationEdge<'_>],
-) -> std::result::Result<HashMap<String, usize>, LayeredRelationError> {
-    let mut incident = HashSet::new();
-    let mut incoming_count = boxes
-        .iter()
-        .map(|relation_box| (relation_box.id().to_string(), 0usize))
-        .collect::<HashMap<_, _>>();
-    let mut outgoing = HashMap::<String, Vec<String>>::new();
-
-    for edge in edges {
-        if find_box(boxes, edge.top_id).is_none() || find_box(boxes, edge.bottom_id).is_none() {
-            return Err(LayeredRelationError::MissingEndpoint);
-        }
-
-        incident.insert(edge.top_id.to_string());
-        incident.insert(edge.bottom_id.to_string());
-        *incoming_count
-            .entry(edge.bottom_id.to_string())
-            .or_insert(0) += 1;
-        outgoing
-            .entry(edge.top_id.to_string())
-            .or_default()
-            .push(edge.bottom_id.to_string());
-    }
-
-    if incident.len() != boxes.len() {
-        return Err(LayeredRelationError::UnrelatedBoxes);
-    }
-
-    let mut levels = HashMap::<String, usize>::new();
-    let mut queue = boxes
-        .iter()
-        .filter(|relation_box| incoming_count.get(relation_box.id()).copied().unwrap_or(0) == 0)
-        .map(|relation_box| relation_box.id().to_string())
-        .collect::<VecDeque<_>>();
-
-    if queue.is_empty() {
-        return Err(LayeredRelationError::Cyclic);
-    }
-
-    for id in &queue {
-        levels.insert(id.clone(), 0);
-    }
-
-    let level_cap = boxes.len().saturating_sub(1);
-    while let Some(id) = queue.pop_front() {
-        let current_level = levels.get(&id).copied().unwrap_or(0);
-        let Some(children) = outgoing.get(&id) else {
-            continue;
-        };
-        for child_id in children {
-            let next_level = current_level + 1;
-            if next_level > level_cap {
-                return Err(LayeredRelationError::Cyclic);
-            }
-            let should_update = match levels.get(child_id) {
-                Some(existing_level) => *existing_level < next_level,
-                None => true,
-            };
-            if should_update {
-                levels.insert(child_id.clone(), next_level);
-                queue.push_back(child_id.clone());
-            }
-        }
-    }
-
-    if levels.len() != boxes.len() {
-        return Err(LayeredRelationError::Cyclic);
-    }
-
-    for edge in edges {
-        let top_level = levels.get(edge.top_id).copied().unwrap_or(0);
-        let bottom_level = levels.get(edge.bottom_id).copied().unwrap_or(0);
-        if bottom_level <= top_level {
-            return Err(LayeredRelationError::Cyclic);
-        }
-    }
-
-    Ok(levels)
-}
-
-fn reject_crossing_layered_relations(
-    edges: &[LayeredRelationEdge<'_>],
-    levels: &HashMap<String, usize>,
-    level_groups: &[Vec<&RelationGraphBox>],
-) -> std::result::Result<(), LayeredRelationError> {
-    let mut order_by_id = HashMap::new();
-    for group in level_groups {
-        for (index, relation_box) in group.iter().enumerate() {
-            order_by_id.insert(relation_box.id().to_string(), index);
-        }
-    }
-
-    for (left_index, left) in edges.iter().enumerate() {
-        let left_top_level = levels.get(left.top_id).copied().unwrap_or(0);
-        let left_bottom_level = levels.get(left.bottom_id).copied().unwrap_or(0);
-        for right in edges.iter().skip(left_index + 1) {
-            if levels.get(right.top_id).copied().unwrap_or(0) != left_top_level
-                || levels.get(right.bottom_id).copied().unwrap_or(0) != left_bottom_level
-            {
-                continue;
-            }
-
-            let left_top_order = order_by_id.get(left.top_id).copied().unwrap_or(0);
-            let left_bottom_order = order_by_id.get(left.bottom_id).copied().unwrap_or(0);
-            let right_top_order = order_by_id.get(right.top_id).copied().unwrap_or(0);
-            let right_bottom_order = order_by_id.get(right.bottom_id).copied().unwrap_or(0);
-
-            let crosses_left_to_right =
-                left_top_order < right_top_order && left_bottom_order > right_bottom_order;
-            let crosses_right_to_left =
-                left_top_order > right_top_order && left_bottom_order < right_bottom_order;
-            if crosses_left_to_right || crosses_right_to_left {
-                return Err(LayeredRelationError::Crossing);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn ordered_layered_groups<'a>(
-    boxes: &'a [RelationGraphBox],
-    edges: &[LayeredRelationEdge<'_>],
-    levels: &HashMap<String, usize>,
-) -> Vec<Vec<&'a RelationGraphBox>> {
-    let max_level = levels.values().copied().max().unwrap_or(0);
-    let mut level_groups = vec![Vec::<&RelationGraphBox>::new(); max_level + 1];
-    for relation_box in boxes {
-        if let Some(level) = levels.get(relation_box.id()).copied() {
-            level_groups[level].push(relation_box);
-        }
-    }
-
-    for level in 1..=max_level {
-        let previous_order = level_groups[level - 1]
-            .iter()
-            .enumerate()
-            .map(|(index, relation_box)| (relation_box.id(), index))
-            .collect::<HashMap<_, _>>();
-        let original_order = level_groups[level]
-            .iter()
-            .enumerate()
-            .map(|(index, relation_box)| (relation_box.id(), index))
-            .collect::<HashMap<_, _>>();
-
-        level_groups[level].sort_by_key(|relation_box| {
-            let parent_order = edges
-                .iter()
-                .filter(|edge| {
-                    edge.bottom_id == relation_box.id()
-                        && levels.get(edge.top_id).copied() == Some(level - 1)
-                })
-                .filter_map(|edge| previous_order.get(edge.top_id).copied())
-                .min()
-                .unwrap_or(usize::MAX);
-            let original_order = original_order
-                .get(relation_box.id())
-                .copied()
-                .unwrap_or(usize::MAX);
-            (parent_order, original_order)
-        });
-    }
-
-    level_groups
-}
-
-fn place_layered_boxes<'a>(
-    level_groups: &[Vec<&'a RelationGraphBox>],
-    edges: &[LayeredRelationEdge<'_>],
-    levels: &HashMap<String, usize>,
-    horizontal_gap: usize,
-) -> (Vec<PlacedRelationGraphBox<'a>>, usize) {
-    let max_level = level_groups.len().saturating_sub(1);
-
-    let group_widths = level_groups
-        .iter()
-        .map(|group| {
-            let boxes_width = group
-                .iter()
-                .map(|relation_box| relation_box.width())
-                .sum::<usize>();
-            let gaps_width = horizontal_gap.saturating_mul(group.len().saturating_sub(1));
-            boxes_width + gaps_width
-        })
-        .collect::<Vec<_>>();
-    let max_label_half_width = edges
-        .iter()
-        .map(|edge| edge.label_half_width)
-        .max()
-        .unwrap_or(0);
-    let content_width = group_widths
-        .iter()
-        .copied()
-        .max()
-        .unwrap_or(0)
-        .max(max_label_half_width.saturating_mul(2).saturating_add(1))
-        .saturating_add(spanning_lane_margin(level_groups, edges, levels).saturating_mul(2));
-    let global_center = content_width / 2;
-
-    let mut placed = Vec::new();
-    let mut y = 0;
-    for (level, group) in level_groups.iter().enumerate() {
-        let group_width = group_widths[level];
-        let mut x = global_center.saturating_sub(group_width / 2);
-        for relation_box in group {
-            placed.push(PlacedRelationGraphBox {
-                id: relation_box.id(),
-                relation_box,
-                x,
-                y,
-            });
-            x += relation_box.width() + horizontal_gap;
-        }
-
-        let row_height = group
-            .iter()
-            .map(|relation_box| relation_box.height())
-            .max()
-            .unwrap_or(0);
-        y += row_height;
-        if level < max_level {
-            y += layered_relation_gap_height(edges, levels, level);
-        }
-    }
-
-    (placed, content_width)
-}
-
-fn spanning_lane_margin(
-    level_groups: &[Vec<&RelationGraphBox>],
-    edges: &[LayeredRelationEdge<'_>],
-    levels: &HashMap<String, usize>,
-) -> usize {
-    let has_spanning_edge = edges.iter().any(|edge| {
-        let top_level = levels.get(edge.top_id).copied().unwrap_or(0);
-        let bottom_level = levels.get(edge.bottom_id).copied().unwrap_or(0);
-        bottom_level > top_level + 1
-    });
-    if !has_spanning_edge {
-        return 0;
-    }
-
-    level_groups
-        .iter()
-        .flatten()
-        .map(|relation_box| relation_box.width() / 2)
-        .max()
-        .unwrap_or(0)
-        .saturating_add(3)
-}
-
-fn layered_relation_gap_height(
-    edges: &[LayeredRelationEdge<'_>],
-    levels: &HashMap<String, usize>,
-    level: usize,
-) -> usize {
-    let has_label = edges.iter().any(|edge| {
-        levels.get(edge.top_id).copied() == Some(level)
-            && levels.get(edge.bottom_id).copied() == Some(level + 1)
-            && edge.has_label
-    });
-    if has_label { 4 } else { 3 }
-}
-
 fn render_box(relation_box: &RelationGraphBox) -> String {
     let mut rendered = relation_box
         .lines
@@ -961,7 +673,7 @@ fn render_lines_with_options(lines: &[RelationGraphLine], options: &AsciiRenderO
 }
 
 fn line_char_width(line: &RelationGraphLine) -> usize {
-    line.text().chars().count()
+    display_width(line.text())
 }
 
 fn centered_cell(text: &str, width: usize) -> String {
@@ -1021,6 +733,83 @@ mod tests {
     use super::*;
     use crate::canvas::Canvas;
     use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
+    use std::cell::Cell;
+
+    struct TestRelationAdapter {
+        summary_reason: Cell<Option<LayeredRelationSummaryReason>>,
+    }
+
+    impl RelationComponentAdapter<(&'static str, &'static str)> for TestRelationAdapter {
+        fn build_edges(&self, relation: &(&'static str, &'static str)) -> LayeredRelationEdge {
+            LayeredRelationEdge::new(relation.0, relation.1, 0, 0)
+        }
+
+        fn is_same_endpoint_parallel(&self, _relations: &[(&'static str, &'static str)]) -> bool {
+            false
+        }
+
+        fn layered_horizontal_gap(&self) -> usize {
+            1
+        }
+
+        fn layered_route_style(
+            &self,
+            _relation: &(&'static str, &'static str),
+        ) -> Result<LayeredRelationRouteStyle> {
+            Ok(LayeredRelationRouteStyle::new(
+                '-',
+                '-',
+                RelationLineChars::new(['-', '-', '-', '-'], '+'),
+                LayeredRelationRouteProfile::class(),
+            ))
+        }
+
+        fn layered_relation_overlays(
+            &self,
+            _relation: &(&'static str, &'static str),
+            _geometry: &LayeredRelationRouteGeometry,
+        ) -> Result<Vec<RelationOverlay>> {
+            Ok(Vec::new())
+        }
+
+        fn render_vertical(
+            &self,
+            _boxes: &[RelationGraphBox],
+            _relation: &(&'static str, &'static str),
+            _options: &AsciiRenderOptions,
+        ) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn render_parallel(
+            &self,
+            _boxes: &[RelationGraphBox],
+            _relations: &[(&'static str, &'static str)],
+            _options: &AsciiRenderOptions,
+        ) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn build_summary_row(
+            &self,
+            _relation: &(&'static str, &'static str),
+            reason: LayeredRelationSummaryReason,
+        ) -> Result<RelationGraphSummaryRow> {
+            self.summary_reason.set(Some(reason));
+            Ok(RelationGraphSummaryRow::new("A", "-->", "B"))
+        }
+
+        fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
+            AsciiError::UnsupportedFeature {
+                diagram_type: "test",
+                feature: match error {
+                    LayeredRelationError::MissingEndpoint => "missing endpoint",
+                    LayeredRelationError::UnrelatedBoxes => "unrelated boxes",
+                    LayeredRelationError::Crossing => "crossing",
+                },
+            }
+        }
+    }
 
     #[test]
     fn render_stacked_boxes_preserves_plain_text() {
@@ -1030,6 +819,130 @@ mod tests {
         ];
 
         assert_eq!(render_stacked_boxes(&boxes), "A\n|\n\nB\n|\n");
+    }
+
+    #[test]
+    fn render_stacked_boxes_with_section_appends_summary() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let section_lines = vec![
+            RelationGraphLine::plain("A --> B".to_string()),
+            RelationGraphLine::plain("B --> A".to_string()),
+        ];
+
+        assert_eq!(
+            render_stacked_boxes_with_section(
+                &boxes,
+                RelationGraphLine::plain("relations:".to_string()),
+                &section_lines,
+                &AsciiRenderOptions::ascii(),
+            ),
+            "A\n\nB\n\nrelations:\nA --> B\nB --> A\n"
+        );
+    }
+
+    #[test]
+    fn render_stacked_boxes_with_section_colors_title_and_summary_lines() {
+        let boxes = vec![RelationGraphBox::new_with_lines(
+            "a".to_string(),
+            vec![RelationGraphLine::with_role(
+                "A".to_string(),
+                AsciiColorRole::Text,
+            )],
+            1,
+        )];
+        let section_lines = vec![RelationGraphLine::with_role(
+            "A --> B".to_string(),
+            AsciiColorRole::EdgeLabel,
+        )];
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x111111))
+            .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x222222))
+            .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x333333));
+
+        let rendered = render_stacked_boxes_with_section(
+            &boxes,
+            RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
+            &section_lines,
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::Html)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(
+            rendered,
+            concat!(
+                "<span style=\"color:#111111\">A</span>\n",
+                "\n",
+                "<span style=\"color:#222222\">relations:</span>\n",
+                "<span style=\"color:#333333\">A --&gt; B</span>\n",
+            )
+        );
+    }
+
+    #[test]
+    fn relation_graph_box_from_sections_builds_shared_sectioned_boxes() {
+        let style = RelationGraphBoxStyle {
+            top_left: '+',
+            top_right: '+',
+            bottom_left: '+',
+            bottom_right: '+',
+            horizontal: '-',
+            vertical: '|',
+            separator_left: '+',
+            separator_right: '+',
+            border_role: AsciiColorRole::NodeBorder,
+            text_role: AsciiColorRole::Text,
+        };
+        let relation_box = RelationGraphBox::from_sections(
+            "box".to_string(),
+            &[vec!["A".to_string()], vec!["B".to_string()]],
+            1,
+            style,
+        );
+        let mut canvas = Canvas::new(relation_box.width(), relation_box.height());
+
+        relation_box.draw_at(&mut canvas, 0, 0);
+
+        assert_eq!(relation_box.width(), 5);
+        assert_eq!(relation_box.height(), 5);
+        assert_eq!(
+            canvas.finish_trimmed_with_options(&AsciiRenderOptions::ascii()),
+            "+---+\n| A |\n+---+\n| B |\n+---+\n"
+        );
+    }
+
+    #[test]
+    fn render_layered_relation_component_passes_grid_budget_reason_to_row_builder() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let relations = vec![("a", "b")];
+        let adapter = TestRelationAdapter {
+            summary_reason: Cell::new(None),
+        };
+
+        let rendered = render_layered_relation_component(
+            &boxes,
+            &relations,
+            &AsciiRenderOptions::ascii(),
+            1,
+            1,
+            &adapter,
+        )
+        .expect("grid budget fallback should render");
+
+        assert_eq!(
+            adapter.summary_reason.get(),
+            Some(LayeredRelationSummaryReason::GridBudget {
+                actual: 5,
+                limit: 1,
+            })
+        );
+        assert!(rendered.contains("relations:\nA --> B\n"));
     }
 
     #[test]
@@ -1091,5 +1004,281 @@ mod tests {
             canvas.get_color(0, 0),
             Some(crate::canvas::CanvasColor::Role(AsciiColorRole::Junction))
         );
+    }
+
+    #[test]
+    fn parallel_relation_lane_offsets_group_by_endpoint_pair() {
+        let offsets =
+            parallel_relation_lane_offsets([("A", "B"), ("A", "B"), ("A", "C"), ("A", "B")]);
+
+        assert_eq!(offsets, vec![-6, 0, 0, 6]);
+    }
+
+    #[test]
+    fn parallel_relation_lane_offsets_group_reverse_endpoint_pairs() {
+        let offsets = parallel_relation_lane_offsets([("A", "B"), ("B", "A"), ("A", "B")]);
+
+        assert_eq!(offsets, vec![-6, 0, 6]);
+    }
+
+    #[test]
+    fn relation_graph_label_splits_breaks_and_tracks_line_count() {
+        let label = RelationGraphLabel::new("north<br>south").expect("label should be present");
+
+        assert_eq!(label.lines(), ["north", "south"]);
+        assert_eq!(label.half_width(), 2);
+        assert_eq!(label.line_count(), 2);
+    }
+
+    #[test]
+    fn write_centered_relation_label_draws_each_line() {
+        let label = RelationGraphLabel::new("A<br>B").expect("label should be present");
+        let mut canvas = Canvas::new(3, 3);
+
+        write_centered_relation_label(&mut canvas, 1, 1, &label, AsciiColorRole::EdgeLabel);
+
+        assert_eq!(canvas.get(1, 1), Some('A'));
+        assert_eq!(canvas.get(1, 2), Some('B'));
+        assert_eq!(
+            canvas.get_color(1, 1),
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
+        );
+    }
+
+    #[test]
+    fn layered_relation_gap_grows_with_label_line_count() {
+        let boxes = vec![
+            RelationGraphBox::new("top".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("bottom".to_string(), vec!["B".to_string()], 1),
+        ];
+        let no_label_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 0)];
+        let one_line_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 1)];
+        let two_line_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 2)];
+
+        let no_label_plan = plan_layered_relation_boxes(&boxes, &no_label_edges, 1)
+            .expect("unlabeled layered relation should plan");
+        let one_line_plan = plan_layered_relation_boxes(&boxes, &one_line_edges, 1)
+            .expect("single-line labeled relation should plan");
+        let two_line_plan = plan_layered_relation_boxes(&boxes, &two_line_edges, 1)
+            .expect("multiline labeled relation should plan");
+
+        assert_eq!(no_label_plan.height(), 5);
+        assert_eq!(one_line_plan.height(), 6);
+        assert_eq!(two_line_plan.height(), 7);
+    }
+
+    #[test]
+    fn layered_relation_plan_reserves_width_for_reverse_spanning_edges() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+        ];
+        let edges = vec![
+            LayeredRelationEdge::new("a", "b", 0, 0),
+            LayeredRelationEdge::new("b", "c", 0, 0),
+            LayeredRelationEdge::new("c", "a", 0, 0),
+        ];
+
+        let plan =
+            plan_layered_relation_boxes(&boxes, &edges, 1).expect("cyclic plan should render");
+
+        assert_eq!(plan.width(), 7);
+    }
+
+    #[test]
+    fn layered_relation_plan_reserves_width_for_reverse_parallel_lanes() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let edges = vec![
+            LayeredRelationEdge::new("a", "b", 0, 0),
+            LayeredRelationEdge::new("b", "a", 0, 0),
+        ];
+
+        let plan = plan_layered_relation_boxes(&boxes, &edges, 1)
+            .expect("bidirectional plan should render");
+
+        assert_eq!(plan.width(), 7);
+    }
+
+    #[test]
+    fn layered_relation_route_plan_draws_route_and_overlays() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 4,
+            },
+        ];
+        let geometry = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[1],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
+        ));
+        let route = LayeredRelationRoutePlan::new(
+            geometry.clone(),
+            '|',
+            '-',
+            RelationLineChars::new(['-', '|', '.', ':'], '+'),
+            vec![
+                RelationOverlay::text(
+                    geometry.source_x(),
+                    geometry.source_marker_y(),
+                    "T".to_string(),
+                    AsciiColorRole::EdgeArrow,
+                ),
+                RelationOverlay::text(
+                    (geometry.source_x() + geometry.target_x()) / 2,
+                    geometry.route_y().saturating_sub(1),
+                    "L".to_string(),
+                    AsciiColorRole::EdgeLabel,
+                ),
+                RelationOverlay::text(
+                    geometry.target_x(),
+                    geometry.target_marker_y(),
+                    "B".to_string(),
+                    AsciiColorRole::EdgeArrow,
+                ),
+            ],
+        );
+        let mut canvas = Canvas::new(3, 5);
+
+        route.draw_at(&mut canvas);
+
+        assert_eq!(canvas.get(1, 1), Some('T'));
+        assert_eq!(canvas.get(1, 2), Some('L'));
+        assert_eq!(canvas.get(1, 3), Some('B'));
+        assert_eq!(
+            canvas.get_color(1, 1),
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeArrow))
+        );
+        assert_eq!(
+            canvas.get_color(1, 2),
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel))
+        );
+    }
+
+    #[test]
+    fn layered_relation_route_label_y_follows_source_to_target_direction() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 10,
+            },
+        ];
+
+        let downward = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[1],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
+        ));
+        let upward = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[1],
+            &placed[0],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
+        ));
+
+        assert_eq!(downward.label_y_after_source(), 2);
+        assert_eq!(upward.label_y_after_source(), 8);
+    }
+
+    #[test]
+    fn layered_relation_route_profile_reserves_rows_for_multiline_endpoint_labels() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 10,
+            },
+        ];
+
+        let geometry = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[1],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 2),
+        ));
+
+        assert_eq!(geometry.source_marker_y(), 3);
+        assert_eq!(geometry.label_y_after_source(), 4);
+        assert_eq!(geometry.route_y(), 7);
+        assert_eq!(geometry.target_marker_y(), 7);
+    }
+
+    #[test]
+    fn layered_relation_route_plan_avoids_intermediate_boxes() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let middle_box =
+            RelationGraphBox::new("middle".to_string(), vec!["MMMMMMM".to_string()], 7);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "middle",
+                relation_box: &middle_box,
+                x: 0,
+                y: 4,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 10,
+            },
+        ];
+
+        let geometry = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[2],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
+        ));
+
+        assert_eq!(geometry.source_x(), 7);
+        assert_eq!(geometry.target_x(), 7);
+        assert_eq!(geometry.route_y(), 9);
     }
 }

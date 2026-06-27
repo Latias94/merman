@@ -7,15 +7,20 @@ pub(crate) struct CompareDiagramPaths {
     pub out_svg_dir: PathBuf,
 }
 
-pub(crate) fn compare_diagram_paths(
+pub(crate) fn compare_diagram_paths_with_roots(
     diagram: &str,
     out_path: Option<PathBuf>,
+    fixtures_root: Option<PathBuf>,
+    upstream_root: Option<PathBuf>,
 ) -> CompareDiagramPaths {
+    let fixtures_root = resolve_compare_root(fixtures_root, crate::cmd::fixtures_root());
+    let upstream_root = resolve_compare_root(
+        upstream_root,
+        crate::cmd::fixtures_root().join("upstream-svgs"),
+    );
     let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = crate::cmd::fixtures_root().join(diagram);
-    let upstream_dir = crate::cmd::fixtures_root()
-        .join("upstream-svgs")
-        .join(diagram);
+    let fixtures_dir = fixtures_root.join(diagram);
+    let upstream_dir = upstream_root.join(diagram);
     let out_path = out_path.unwrap_or_else(|| {
         crate::cmd::target_root()
             .join("compare")
@@ -29,4 +34,17 @@ pub(crate) fn compare_diagram_paths(
         out_path,
         out_svg_dir,
     }
+}
+
+fn resolve_compare_root(raw: Option<PathBuf>, default: PathBuf) -> PathBuf {
+    let Some(raw) = raw else {
+        return default;
+    };
+    if raw.is_absolute() {
+        return raw;
+    }
+    if raw.as_os_str().is_empty() {
+        return default;
+    }
+    crate::cmd::workspace_root().join(raw)
 }

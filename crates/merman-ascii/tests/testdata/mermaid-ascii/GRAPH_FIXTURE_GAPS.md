@@ -53,6 +53,8 @@ ASCII:
 - `subgraph_with_labels.txt`
 - `three_nodes_single_line.txt`
 - `three_nodes.txt`
+- `tight_arrow_mixed.txt`
+- `tight_arrow.txt`
 - `two_layer_single_graph_longer_names.txt`
 - `two_layer_single_graph.txt`
 - `two_nodes_linked.txt`
@@ -79,6 +81,8 @@ Unicode:
 - `single_node.txt`
 - `three_nodes_single_line.txt`
 - `three_nodes.txt`
+- `tight_arrow_mixed.txt`
+- `tight_arrow.txt`
 - `two_layer_single_graph_longer_names.txt`
 - `two_layer_single_graph.txt`
 - `two_nodes_linked.txt`

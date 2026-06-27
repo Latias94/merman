@@ -1,0 +1,20 @@
+classDiagram
+class Shape {
+  <<interface>>
+  +draw() void
+}
+class Circle {
+  +radius int
+  +draw() void
+}
+class Renderer
+class Canvas
+class Repository
+class Cache
+class Owner
+class Part
+Circle ..|> Shape : implements
+Renderer --> Canvas : paints
+Renderer ..> Repository : loads
+Repository o-- Cache : keeps
+Owner *-- Part : contains

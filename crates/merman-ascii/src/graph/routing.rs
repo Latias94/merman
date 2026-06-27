@@ -1,8 +1,9 @@
 use super::charset::GraphCharset;
-use super::layout::{CanvasCoord, GraphLayout, NodeLayout};
-use super::model::{AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeStyle};
-use crate::canvas::{Canvas, CanvasColor};
-use crate::color::{AsciiColorRole, AsciiRgb};
+use super::label::GraphLabel;
+use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
+use super::model::{AsciiGraph, AsciiGraphEdge, GraphNodeShape, GraphNodeStyle};
+use crate::canvas::Canvas;
+use crate::error::{AsciiError, Result};
 
 mod cell;
 mod label;
@@ -10,194 +11,461 @@ mod path;
 mod plan;
 
 pub(super) use cell::RouteCells;
-use cell::{set_edge_arrow, set_edge_line, set_route_cell};
-pub(super) use label::{EdgeLabel, draw_routed_label};
-use plan::{
-    EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route, route_canvas_extent,
-};
+use cell::{set_edge_cell_with_paint, set_route_cell_with_paint};
+use label::{EdgeLabel, draw_routed_label};
+use plan::{EdgeRoutePlan, EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route};
 
 pub(super) struct RouteDrawing<'a> {
     canvas: &'a mut Canvas,
     route_cells: &'a mut RouteCells,
-    labels: &'a mut Vec<EdgeLabel>,
-}
-
-pub(super) struct DrawEdgeRequest<'a> {
-    pub(super) graph: &'a AsciiGraph,
-    pub(super) graph_layout: &'a GraphLayout,
-    pub(super) edges: &'a [AsciiGraphEdge],
-    pub(super) edge_index: usize,
-    pub(super) edge: &'a AsciiGraphEdge,
-    pub(super) charset: &'a GraphCharset,
 }
 
 impl<'a> RouteDrawing<'a> {
-    pub(super) fn new(
-        canvas: &'a mut Canvas,
-        route_cells: &'a mut RouteCells,
-        labels: &'a mut Vec<EdgeLabel>,
-    ) -> Self {
+    pub(super) fn new(canvas: &'a mut Canvas, route_cells: &'a mut RouteCells) -> Self {
         Self {
             canvas,
             route_cells,
-            labels,
         }
     }
 }
 
-pub(super) fn edge_canvas_extent(
+pub(super) struct RouteScene {
+    routes: Vec<PreparedRoute>,
+    extent: (usize, usize),
+}
+
+struct PreparedRoute {
+    plan: RoutePlan,
+}
+
+impl PreparedRoute {
+    fn paint(&self, drawing: &mut RouteDrawing<'_>) {
+        paint_route_plan(drawing, &self.plan);
+    }
+}
+
+impl RouteScene {
+    pub(super) fn canvas_extent(&self) -> (usize, usize) {
+        self.extent
+    }
+
+    pub(super) fn paint_routes(&self, drawing: &mut RouteDrawing<'_>) {
+        for route in &self.routes {
+            route.paint(drawing);
+        }
+    }
+
+    pub(super) fn draw_labels(&self, canvas: &mut Canvas, transform: RouteLabelTransform) {
+        for route in &self.routes {
+            for label in &route.plan.labels {
+                let label = transform.apply(EdgeLabel {
+                    text: label.text.clone(),
+                    placement: label.placement,
+                    color: label.paint.color,
+                });
+                draw_routed_label(canvas, &label);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RouteLabelTransform {
+    Identity,
+    HorizontalMirror { width: usize },
+    VerticalMirror { height: usize },
+}
+
+impl RouteLabelTransform {
+    fn apply(self, label: EdgeLabel) -> EdgeLabel {
+        match self {
+            Self::Identity => label,
+            Self::HorizontalMirror { width } => EdgeLabel {
+                placement: label.placement.with_position(
+                    width
+                        .saturating_sub(label.placement.x())
+                        .saturating_sub(label.placement.width()),
+                    label.placement.y(),
+                ),
+                ..label
+            },
+            Self::VerticalMirror { height } => {
+                let line_count = label.text.line_count();
+                EdgeLabel {
+                    text: label.text.reversed(),
+                    placement: label.placement.with_position(
+                        label.placement.x(),
+                        height.saturating_sub(label.placement.y().saturating_add(line_count)),
+                    ),
+                    color: label.color,
+                }
+            }
+        }
+    }
+}
+
+pub(super) fn prepare_route_scene(
     graph: &AsciiGraph,
-    layouts: &[NodeLayout],
+    graph_layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
-    direction: GraphDirection,
-) -> (usize, usize) {
-    route_canvas_extent(graph, layouts, edges, direction)
-}
+    charset: &GraphCharset,
+) -> Result<RouteScene> {
+    let mut routes = Vec::with_capacity(edges.len());
+    let mut width = 0;
+    let mut height = 0;
 
-pub(super) fn transform_routed_label(
-    label: &EdgeLabel,
-    mut transform: impl FnMut(CanvasCoord) -> CanvasCoord,
-) -> EdgeLabel {
-    EdgeLabel {
-        start: transform(label.start),
-        end: transform(label.end),
-        text: label.text.clone(),
-        color: label.color,
-    }
-}
-
-pub(super) fn draw_edge(drawing: &mut RouteDrawing<'_>, request: DrawEdgeRequest<'_>) {
-    let layouts = &request.graph_layout.nodes;
-    let Some(from) = layouts.iter().find(|layout| layout.id == request.edge.from) else {
-        return;
-    };
-    let Some(to) = layouts.iter().find(|layout| layout.id == request.edge.to) else {
-        return;
-    };
-    let labels_start = drawing.labels.len();
-    let before = (request.edge.style.line.is_some() || request.edge.style.arrow.is_some())
-        .then(|| drawing.canvas.clone());
-
-    if let Some(plan) = plan_edge_route(EdgeRouteRequest {
-        graph: request.graph,
-        graph_layout: request.graph_layout,
-        edges: request.edges,
-        from,
-        to,
-        edge_index: request.edge_index,
-        edge: request.edge,
-        charset: request.charset,
-    }) {
-        paint_route_plan(drawing, &plan);
-    }
-
-    if let Some(before) = &before {
-        apply_edge_style_delta(drawing.canvas, before, request.edge.style);
-    }
-    if let Some(color) = request.edge.style.label {
-        for label in &mut drawing.labels[labels_start..] {
-            label.color = Some(color);
-        }
-    }
-}
-
-fn apply_edge_style_delta(canvas: &mut Canvas, before: &Canvas, style: GraphEdgeStyle) {
-    for y in 0..canvas.height() {
-        for x in 0..canvas.width() {
-            if before.get(x, y) == canvas.get(x, y)
-                && before.get_color(x, y) == canvas.get_color(x, y)
-            {
-                continue;
+    for (edge_index, edge) in edges.iter().enumerate() {
+        let Some(from) = endpoint_layout(graph_layout, &edge.from) else {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "edges with missing endpoint layouts",
+            });
+        };
+        let Some(to) = endpoint_layout(graph_layout, &edge.to) else {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "edges with missing endpoint layouts",
+            });
+        };
+        let plan = match plan_edge_route(EdgeRouteRequest {
+            graph,
+            graph_layout,
+            edges,
+            from: &from,
+            to: &to,
+            edge_index,
+            edge,
+            charset,
+        }) {
+            EdgeRoutePlan::Routed(plan) => plan,
+            EdgeRoutePlan::Unsupported(route) => {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: graph.diagram_type(),
+                    feature: route.feature(),
+                });
             }
-            let Some(ch) = canvas.get(x, y) else {
-                continue;
-            };
-            let Some(color) = edge_delta_color(ch, canvas.get_color(x, y), style) else {
-                continue;
-            };
-            canvas.set_color(x, y, ch, color);
-        }
+        };
+
+        let plan = plan.with_style(edge.style);
+        let (plan_width, plan_height) = plan.canvas_extent();
+        width = width.max(plan_width);
+        height = height.max(plan_height);
+        routes.push(PreparedRoute { plan });
     }
+
+    Ok(RouteScene {
+        routes,
+        extent: (width, height),
+    })
 }
 
-fn edge_delta_color(
-    ch: char,
-    color: Option<CanvasColor>,
-    style: GraphEdgeStyle,
-) -> Option<AsciiRgb> {
-    match color {
-        Some(CanvasColor::Role(AsciiColorRole::EdgeArrow)) => style.arrow.or(style.line),
-        Some(CanvasColor::Role(AsciiColorRole::EdgeLine | AsciiColorRole::Junction)) => style.line,
-        Some(CanvasColor::Role(_)) | Some(CanvasColor::Direct(_)) | None => {
-            if is_edge_arrow_char(ch) {
-                style.arrow.or(style.line)
-            } else if is_edge_line_char(ch) {
-                style.line
-            } else {
-                None
-            }
-        }
+fn endpoint_layout(graph_layout: &GraphLayout, endpoint_id: &str) -> Option<NodeLayout> {
+    graph_layout
+        .nodes
+        .iter()
+        .find(|layout| layout.id == endpoint_id)
+        .cloned()
+        .or_else(|| {
+            graph_layout
+                .groups
+                .iter()
+                .find(|layout| layout.id == endpoint_id)
+                .map(group_endpoint_layout)
+        })
+}
+
+fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
+    NodeLayout {
+        id: group.id.clone(),
+        label: GraphLabel::new(""),
+        shape: GraphNodeShape::Rect,
+        style: GraphNodeStyle::default(),
+        grid: GridCoord { x: 0, y: 0 },
+        x: group.x,
+        y: group.y,
+        width: group.width,
+        height: group.height,
     }
-}
-
-fn is_edge_arrow_char(ch: char) -> bool {
-    matches!(ch, '>' | '<' | '^' | 'v' | '►' | '◄' | '▲' | '▼')
-}
-
-fn is_edge_line_char(ch: char) -> bool {
-    matches!(
-        ch,
-        '-' | '|'
-            | '+'
-            | '='
-            | '#'
-            | '─'
-            | '┄'
-            | '━'
-            | '│'
-            | '┆'
-            | '┃'
-            | '┌'
-            | '┐'
-            | '└'
-            | '┘'
-            | '├'
-            | '┤'
-            | '┬'
-            | '┴'
-            | '┼'
-            | '╭'
-            | '╮'
-            | '╰'
-            | '╯'
-    )
 }
 
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
     for cell in &plan.cells {
         match cell.kind {
-            PlannedRouteCellKind::EdgeLine => {
-                set_edge_line(drawing.canvas, cell.coord.x, cell.coord.y, cell.ch)
+            PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::EdgeArrow => {
+                set_edge_cell_with_paint(
+                    drawing.canvas,
+                    cell.coord.x,
+                    cell.coord.y,
+                    cell.ch,
+                    cell.paint.color,
+                )
             }
-            PlannedRouteCellKind::RouteCell => set_route_cell(
+            PlannedRouteCellKind::RouteCell => set_route_cell_with_paint(
                 drawing.canvas,
                 drawing.route_cells,
                 cell.coord.x,
                 cell.coord.y,
                 cell.ch,
+                cell.paint.color,
             ),
-            PlannedRouteCellKind::EdgeArrow => {
-                set_edge_arrow(drawing.canvas, cell.coord.x, cell.coord.y, cell.ch)
-            }
         }
     }
+}
 
-    drawing
-        .labels
-        .extend(plan.labels.iter().map(|label| EdgeLabel {
-            start: label.start,
-            end: label.end,
-            text: label.text.clone(),
-            color: None,
-        }));
+#[cfg(test)]
+mod tests {
+    use super::plan::{
+        PlannedRouteCell, PlannedRouteLabel, PlannedRoutePaint, PlannedRouteSegment,
+    };
+    use super::*;
+    use crate::AsciiRenderOptions;
+    use crate::canvas::CanvasColor;
+    use crate::color::{AsciiColorRole, AsciiRgb};
+    use crate::graph::layout::CanvasCoord;
+    use crate::graph::layout::layout_graph;
+    use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
+    use crate::graph::routing::label::{RoutedLabelPlacement, RoutedLabelText};
+
+    #[test]
+    fn edge_style_is_applied_to_route_plan_cells_and_labels() {
+        let line = AsciiRgb::new(1, 2, 3);
+        let arrow = AsciiRgb::new(4, 5, 6);
+        let label = AsciiRgb::new(7, 8, 9);
+        let plan = RoutePlan::new(
+            vec![
+                planned_cell(0, 0, '-', PlannedRouteCellKind::EdgeLine),
+                planned_cell(1, 0, '-', PlannedRouteCellKind::RouteCell),
+                planned_cell(2, 0, '>', PlannedRouteCellKind::EdgeArrow),
+            ],
+            vec![PlannedRouteLabel::new(
+                RoutedLabelText::new("label").expect("single-line label should exist"),
+                RoutedLabelPlacement::new(0, 0, 5),
+            )],
+        );
+
+        let mut canvas = Canvas::new(5, 1);
+        let mut route_cells = RouteCells::new();
+        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
+        let plan = plan.with_style(GraphEdgeStyle {
+            line: Some(line),
+            arrow: Some(arrow),
+            label: Some(label),
+        });
+
+        paint_route_plan(&mut drawing, &plan);
+
+        assert_eq!(
+            canvas.get_color(0, 0),
+            Some(crate::terminal::CanvasColor::Direct(line))
+        );
+        assert_eq!(
+            canvas.get_color(1, 0),
+            Some(crate::terminal::CanvasColor::Direct(line))
+        );
+        assert_eq!(
+            canvas.get_color(2, 0),
+            Some(crate::terminal::CanvasColor::Direct(arrow))
+        );
+
+        let scene = RouteScene {
+            routes: vec![PreparedRoute { plan }],
+            extent: (5, 1),
+        };
+        scene.draw_labels(&mut canvas, RouteLabelTransform::Identity);
+
+        assert_eq!(canvas.get_color(0, 0), Some(CanvasColor::Direct(label)));
+    }
+
+    #[test]
+    fn route_label_transform_mirrors_horizontal_label_placement() {
+        let label = EdgeLabel {
+            text: RoutedLabelText::new("north<br>south").expect("label should exist"),
+            placement: RoutedLabelPlacement::new(2, 4, 5),
+            color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
+        };
+
+        let transformed = RouteLabelTransform::HorizontalMirror { width: 20 }.apply(label);
+
+        assert_eq!(transformed.text.lines(), ["north", "south"]);
+        assert_eq!(transformed.placement, RoutedLabelPlacement::new(13, 4, 5));
+    }
+
+    #[test]
+    fn route_label_transform_reverses_vertical_mirrored_multiline_labels() {
+        let label = EdgeLabel {
+            text: RoutedLabelText::new("north<br>south").expect("label should exist"),
+            placement: RoutedLabelPlacement::new(2, 4, 5),
+            color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
+        };
+
+        let transformed = RouteLabelTransform::VerticalMirror { height: 20 }.apply(label);
+
+        assert_eq!(transformed.text.lines(), ["south", "north"]);
+        assert_eq!(transformed.placement, RoutedLabelPlacement::new(2, 14, 5));
+    }
+
+    #[test]
+    fn edge_arrow_style_falls_back_to_line_style() {
+        let line = AsciiRgb::new(10, 11, 12);
+        let plan = RoutePlan::new(
+            vec![planned_cell(0, 0, '>', PlannedRouteCellKind::EdgeArrow)],
+            Vec::new(),
+        );
+
+        let mut canvas = Canvas::new(1, 1);
+        let mut route_cells = RouteCells::new();
+        let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
+
+        paint_route_plan(
+            &mut drawing,
+            &plan.with_style(GraphEdgeStyle {
+                line: Some(line),
+                arrow: None,
+                label: None,
+            }),
+        );
+
+        assert_eq!(
+            canvas.get_color(0, 0),
+            Some(crate::terminal::CanvasColor::Direct(line))
+        );
+    }
+
+    #[test]
+    fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_node("y", "Y");
+        graph.add_group_with_style(
+            "one",
+            "LR Group",
+            Some(GraphDirection::LeftRight),
+            vec!["a".to_string(), "b".to_string()],
+            Default::default(),
+        );
+        graph.add_edge("a", "b");
+        graph.add_edge_with_attrs(
+            "b",
+            "y",
+            GraphEdgeAttrs {
+                label: Some("boundary label with enough width".to_string()),
+                ..Default::default()
+            },
+        );
+        let graph_layout = layout_graph(&graph, &options);
+        let edge = &graph.edges[1];
+        let from = endpoint_layout(&graph_layout, &edge.from).expect("source layout should exist");
+        let to = endpoint_layout(&graph_layout, &edge.to).expect("target layout should exist");
+        let plan = plan_edge_route(EdgeRouteRequest {
+            graph: &graph,
+            graph_layout: &graph_layout,
+            edges: &graph.edges,
+            from: &from,
+            to: &to,
+            edge_index: 1,
+            edge,
+            charset: &charset,
+        })
+        .expect("boundary route should plan");
+        let label = plan.labels.first().expect("boundary route should label");
+        let (required_width, _) = label.placement.canvas_extent();
+
+        let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
+            .expect("boundary scene should render");
+        let (edge_width, _) = scene.canvas_extent();
+
+        assert!(
+            edge_width >= required_width,
+            "edge canvas extent should reserve boundary label width {required_width}, got {edge_width}; plan: {plan:?}"
+        );
+    }
+
+    #[test]
+    fn prepare_route_scene_reports_missing_endpoint_layouts_before_painting() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_edge("a", "missing");
+        let options = AsciiRenderOptions::ascii();
+        let graph_layout = layout_graph(&graph, &options);
+        let charset = GraphCharset::for_options(&options);
+
+        let error = match prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset) {
+            Ok(_) => panic!("scene planning should fail on missing endpoint layouts"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "edges with missing endpoint layouts",
+            }
+        );
+    }
+
+    #[test]
+    fn prepare_route_scene_tracks_canvas_extent_for_each_route_plan() {
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_node("c", "C");
+        graph.add_edge("a", "b");
+        graph.add_edge_with_attrs(
+            "b",
+            "c",
+            GraphEdgeAttrs {
+                label: Some("wide label".to_string()),
+                ..Default::default()
+            },
+        );
+        let graph_layout = layout_graph(&graph, &options);
+
+        let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
+            .expect("supported graph should produce a prepared route scene");
+
+        let mut expected_width = 0;
+        let mut expected_height = 0;
+        for (edge_index, edge) in graph.edges.iter().enumerate() {
+            let from =
+                endpoint_layout(&graph_layout, &edge.from).expect("source layout should exist");
+            let to = endpoint_layout(&graph_layout, &edge.to).expect("target layout should exist");
+            let plan = plan_edge_route(EdgeRouteRequest {
+                graph: &graph,
+                graph_layout: &graph_layout,
+                edges: &graph.edges,
+                from: &from,
+                to: &to,
+                edge_index,
+                edge,
+                charset: &charset,
+            })
+            .expect("supported graph should route");
+            let (plan_width, plan_height) = plan.canvas_extent();
+            expected_width = expected_width.max(plan_width);
+            expected_height = expected_height.max(plan_height);
+        }
+
+        assert_eq!(scene.canvas_extent(), (expected_width, expected_height));
+    }
+
+    fn planned_cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {
+        PlannedRouteCell {
+            coord: CanvasCoord { x, y },
+            ch,
+            kind,
+            segment: PlannedRouteSegment::Direct,
+            paint: PlannedRoutePaint::role(match kind {
+                PlannedRouteCellKind::EdgeArrow => AsciiColorRole::EdgeArrow,
+                PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {
+                    AsciiColorRole::EdgeLine
+                }
+            }),
+        }
+    }
 }

@@ -1,6 +1,5 @@
 use merman_ascii::{AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -16,10 +15,24 @@ impl GraphFixture {
     }
 
     fn options(self) -> AsciiRenderOptions {
-        match self.directory {
+        let mut options = match self.directory {
             "ascii" => AsciiRenderOptions::ascii(),
             "extended-chars" => AsciiRenderOptions::unicode(),
             other => panic!("unsupported graph fixture directory: {other}"),
+        };
+
+        let (graph_padding_x, graph_padding_y) = self.graph_padding();
+        options.graph_padding_x = graph_padding_x;
+        options.graph_padding_y = graph_padding_y;
+        options
+    }
+
+    fn graph_padding(self) -> (usize, usize) {
+        match self.name {
+            "backlink_with_short_y_padding.txt" => (5, 3),
+            "custom_padding.txt" => (2, 1),
+            "subgraph_td_multiple_paddingy.txt" => (3, 3),
+            _ => (5, 5),
         }
     }
 }
@@ -207,6 +220,14 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "tight_arrow.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "tight_arrow_mixed.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "two_layer_single_graph.txt",
     },
     GraphFixture {
@@ -299,6 +320,14 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
+        name: "tight_arrow.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "tight_arrow_mixed.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
         name: "two_layer_single_graph_longer_names.txt",
     },
     GraphFixture {
@@ -336,63 +365,6 @@ fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::
         .expect("flowchart should be detected");
 
     render_model(&parsed.model, options)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PaddingAxis {
-    X,
-    Y,
-}
-
-fn apply_mermaid_ascii_directives<'a>(
-    mut options: AsciiRenderOptions,
-    source: &'a str,
-) -> (AsciiRenderOptions, Cow<'a, str>) {
-    let mut changed = false;
-    let mut output = String::new();
-    let mut before_diagram = true;
-
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if before_diagram {
-            if let Some((axis, value)) = parse_padding_directive(trimmed) {
-                match axis {
-                    PaddingAxis::X => options.graph_padding_x = value,
-                    PaddingAxis::Y => options.graph_padding_y = value,
-                }
-                changed = true;
-                continue;
-            }
-            if is_diagram_header(trimmed) {
-                before_diagram = false;
-            }
-        }
-        output.push_str(line);
-        output.push('\n');
-    }
-
-    if changed {
-        (options, Cow::Owned(output))
-    } else {
-        (options, Cow::Borrowed(source))
-    }
-}
-
-fn parse_padding_directive(line: &str) -> Option<(PaddingAxis, usize)> {
-    let (key, value) = line.split_once('=')?;
-    let axis = if key.trim().eq_ignore_ascii_case("paddingX") {
-        PaddingAxis::X
-    } else if key.trim().eq_ignore_ascii_case("paddingY") {
-        PaddingAxis::Y
-    } else {
-        return None;
-    };
-    let value = value.trim().parse().ok()?;
-    Some((axis, value))
-}
-
-fn is_diagram_header(line: &str) -> bool {
-    line.starts_with("graph ") || line.starts_with("flowchart ")
 }
 
 fn fixture_cases(directory: &str) -> Vec<PathBuf> {
@@ -437,8 +409,7 @@ fn graph_fixture_allowlist_matches_upstream() {
     for fixture in GRAPH_FIXTURE_ALLOWLIST {
         let path = fixture_path(*fixture);
         let (input, expected) = split_fixture(&path);
-        let (options, input) = apply_mermaid_ascii_directives(fixture.options(), &input);
-        let rendered = render_flowchart(input.as_ref(), &options)
+        let rendered = render_flowchart(&input, &fixture.options())
             .unwrap_or_else(|err| panic!("{} failed: {err}", path.display()));
 
         assert_eq!(rendered, expected, "{}", path.display());

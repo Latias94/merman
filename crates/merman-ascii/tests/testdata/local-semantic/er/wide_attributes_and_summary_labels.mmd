@@ -1,0 +1,10 @@
+erDiagram
+CUSTOMER {
+  string 名称
+}
+ORDER {
+  string 状态🚀
+}
+AUDIT
+CUSTOMER ||--o{ ORDER : "下单🚀"
+ORDER ||--|| AUDIT : "记录数据"

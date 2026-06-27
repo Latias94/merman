@@ -1,10 +1,11 @@
-use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, RelationGraphLine, RelationLineChars,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
+    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
+    RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -71,6 +72,11 @@ impl ErCharset {
 
 type RenderedEntityBox = RelationGraphBox;
 
+struct ErRelationComponentAdapter<'a> {
+    charset: ErCharset,
+    entity_labels: &'a HashMap<String, String>,
+}
+
 pub(crate) fn render_er_diagram(
     model: &ErDiagramRenderModel,
     options: &AsciiRenderOptions,
@@ -85,6 +91,11 @@ pub(crate) fn render_er_diagram(
         .values()
         .map(|entity| render_entity_box(entity, options, charset))
         .collect::<Vec<_>>();
+    let entity_labels = model
+        .entities
+        .values()
+        .map(|entity| (entity.id.clone(), entity_display_label(entity).to_string()))
+        .collect::<HashMap<_, _>>();
 
     if model.relationships.is_empty() {
         return Ok(relation_graph::render_stacked_boxes_with_options(
@@ -92,71 +103,27 @@ pub(crate) fn render_er_diagram(
         ));
     }
 
-    render_er_components(&boxes, &model.relationships, options, charset)
-}
-
-fn render_er_component(
-    boxes: &[RenderedEntityBox],
-    relationships: &[ErRelationshipRenderModel],
-    options: &AsciiRenderOptions,
-    charset: ErCharset,
-) -> Result<String> {
-    if relationships.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            boxes, options,
-        ));
-    }
-    if is_same_endpoint_parallel_relationship(relationships) {
-        return render_parallel_vertical_relationships(boxes, relationships, options, charset);
-    }
-    if relationships.len() == 1 {
-        let relationship = &relationships[0];
-        let top = find_box(boxes, &relationship.entity_a)?;
-        let bottom = find_box(boxes, &relationship.entity_b)?;
-
-        return render_vertical_relationship(top, bottom, relationship, options, charset);
-    }
-
-    render_layered_relationships(boxes, relationships, options, charset)
+    render_er_components(
+        &boxes,
+        &model.relationships,
+        &entity_labels,
+        options,
+        charset,
+    )
 }
 
 fn render_er_components(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
+    entity_labels: &HashMap<String, String>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
-    let edges = relationships
-        .iter()
-        .map(er_layered_edge)
-        .collect::<Vec<_>>();
-    let components =
-        relation_graph::relation_components(boxes, &edges).map_err(er_layered_error)?;
-    if components.len() == 1 {
-        return render_er_component(boxes, relationships, options, charset);
-    }
-
-    let mut rendered = Vec::new();
-    for component in components {
-        let component_boxes = component
-            .boxes()
-            .iter()
-            .map(|relation_box| (*relation_box).clone())
-            .collect::<Vec<_>>();
-        let component_relationships = component
-            .edge_indices()
-            .iter()
-            .map(|index| relationships[*index].clone())
-            .collect::<Vec<_>>();
-        rendered.push(render_er_component(
-            &component_boxes,
-            &component_relationships,
-            options,
-            charset,
-        )?);
-    }
-
-    Ok(rendered.join("\n"))
+    let adapter = ErRelationComponentAdapter {
+        charset,
+        entity_labels,
+    };
+    relation_graph::render_relation_components(boxes, relationships, options, &adapter)
 }
 
 fn render_entity_box(
@@ -165,50 +132,37 @@ fn render_entity_box(
     charset: ErCharset,
 ) -> RenderedEntityBox {
     let sections = entity_sections(entity);
-    let content_width = content_width(&sections, options.box_border_padding);
-    let mut out = Vec::new();
+    render_box_sections(entity.id.clone(), sections, options, charset)
+}
 
-    out.push(border_line(
-        charset.top_left,
-        charset.top_right,
-        charset.horizontal,
-        content_width,
-    ));
-    for (section_index, section) in sections.iter().enumerate() {
-        if section_index > 0 {
-            out.push(border_line(
-                charset.separator_left,
-                charset.separator_right,
-                charset.horizontal,
-                content_width,
-            ));
-        }
-        for line in section {
-            out.push(content_line(
-                line,
-                content_width,
-                options.box_border_padding,
-                charset,
-            ));
-        }
-    }
-    out.push(border_line(
-        charset.bottom_left,
-        charset.bottom_right,
-        charset.horizontal,
-        content_width,
-    ));
-
-    RenderedEntityBox::new_with_lines(entity.id.clone(), out, content_width + 2)
+fn render_box_sections(
+    id: String,
+    sections: Vec<Vec<String>>,
+    options: &AsciiRenderOptions,
+    charset: ErCharset,
+) -> RenderedEntityBox {
+    let style = RelationGraphBoxStyle {
+        top_left: charset.top_left,
+        top_right: charset.top_right,
+        bottom_left: charset.bottom_left,
+        bottom_right: charset.bottom_right,
+        horizontal: charset.horizontal,
+        vertical: charset.vertical,
+        separator_left: charset.separator_left,
+        separator_right: charset.separator_right,
+        border_role: AsciiColorRole::NodeBorder,
+        text_role: AsciiColorRole::Text,
+    };
+    relation_graph::RelationGraphBox::from_sections(
+        id,
+        &sections,
+        options.box_border_padding,
+        style,
+    )
 }
 
 fn entity_sections(entity: &ErEntityRenderModel) -> Vec<Vec<String>> {
-    let label = if entity.alias.is_empty() {
-        entity.label.clone()
-    } else {
-        entity.alias.clone()
-    };
-    let mut sections = vec![vec![label]];
+    let mut sections = vec![vec![entity_display_label(entity).to_string()]];
 
     let attributes = entity
         .attributes
@@ -221,6 +175,14 @@ fn entity_sections(entity: &ErEntityRenderModel) -> Vec<Vec<String>> {
     }
 
     sections
+}
+
+fn entity_display_label(entity: &ErEntityRenderModel) -> &str {
+    if entity.alias.is_empty() {
+        &entity.label
+    } else {
+        &entity.alias
+    }
 }
 
 fn attribute_text(attribute: &ErAttributeRenderModel) -> String {
@@ -247,48 +209,6 @@ fn attribute_text(attribute: &ErAttributeRenderModel) -> String {
     text
 }
 
-fn content_width(sections: &[Vec<String>], padding: usize) -> usize {
-    let max_line_width = sections
-        .iter()
-        .flat_map(|section| section.iter())
-        .map(|line| display_width(line))
-        .max()
-        .unwrap_or(0)
-        .max(1);
-    max_line_width + padding.saturating_mul(2)
-}
-
-fn border_line(
-    left: char,
-    right: char,
-    horizontal: char,
-    content_width: usize,
-) -> RelationGraphLine {
-    RelationGraphLine::box_border(
-        left,
-        right,
-        horizontal,
-        content_width,
-        AsciiColorRole::NodeBorder,
-    )
-}
-
-fn content_line(
-    text: &str,
-    content_width: usize,
-    padding: usize,
-    charset: ErCharset,
-) -> RelationGraphLine {
-    RelationGraphLine::box_content(
-        text,
-        content_width,
-        padding,
-        charset.vertical,
-        AsciiColorRole::NodeBorder,
-        AsciiColorRole::Text,
-    )
-}
-
 fn find_box<'a>(boxes: &'a [RenderedEntityBox], id: &str) -> Result<&'a RenderedEntityBox> {
     relation_graph::find_box(boxes, id).ok_or(AsciiError::UnsupportedFeature {
         diagram_type: "er",
@@ -306,13 +226,12 @@ fn render_vertical_relationship(
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
-    let label = relationship.role_a.trim();
-    let label_half_width = if label.is_empty() {
-        0
-    } else {
-        display_width(label) / 2
-    };
-    let center = relation_graph::vertical_center(
+    let label = RelationGraphLabel::new(&relationship.role_a);
+    let label_half_width = label
+        .as_ref()
+        .map(RelationGraphLabel::half_width)
+        .unwrap_or(0);
+    let plan = RelationStackPlan::from_centered_rows(
         top,
         bottom,
         &[
@@ -320,16 +239,35 @@ fn render_vertical_relationship(
             display_width(bottom_cardinality) / 2,
             label_half_width,
         ],
+        |center| {
+            er_relationship_rows(
+                top_cardinality,
+                bottom_cardinality,
+                line,
+                label.as_ref(),
+                center,
+            )
+        },
     );
 
+    Ok(plan.render_with_options(options))
+}
+
+fn er_relationship_rows(
+    top_cardinality: &str,
+    bottom_cardinality: &str,
+    line: char,
+    label: Option<&RelationGraphLabel>,
+    center: usize,
+) -> Vec<RelationGraphLine> {
     let mut relation_lines = Vec::new();
     relation_lines.push(relation_graph::centered_text_line_with_role(
         top_cardinality,
         center,
         AsciiColorRole::EdgeArrow,
     ));
-    if !label.is_empty() {
-        relation_lines.push(relation_graph::centered_text_line_with_role(
+    if let Some(label) = label {
+        relation_lines.extend(relation_graph::centered_label_lines_with_role(
             label,
             center,
             AsciiColorRole::EdgeLabel,
@@ -345,17 +283,8 @@ fn render_vertical_relationship(
         center,
         AsciiColorRole::EdgeArrow,
     ));
-
-    Ok(relation_graph::render_vertical_stack_with_options(
-        top,
-        bottom,
-        center,
-        relation_lines,
-        options,
-    ))
+    relation_lines
 }
-
-type PlacedEntityBox<'a> = relation_graph::PlacedRelationGraphBox<'a>;
 
 fn is_same_endpoint_parallel_relationship(relationships: &[ErRelationshipRenderModel]) -> bool {
     let Some(first) = relationships.first() else {
@@ -380,10 +309,9 @@ fn render_parallel_vertical_relationships(
         .iter()
         .map(|relationship| parallel_er_lane_rows(relationship, charset))
         .collect::<Result<Vec<_>>>()?;
+    let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
-    Ok(relation_graph::render_parallel_vertical_stack_with_options(
-        top, bottom, &lanes, 2, options,
-    ))
+    Ok(plan.render_with_options(options))
 }
 
 fn parallel_er_lane_rows(
@@ -393,103 +321,65 @@ fn parallel_er_lane_rows(
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
-    Ok(vec![
-        RelationGraphLine::with_role(top_cardinality.to_string(), AsciiColorRole::EdgeArrow),
-        RelationGraphLine::with_role(
-            relationship.role_a.trim().to_string(),
-            AsciiColorRole::EdgeLabel,
-        ),
-        RelationGraphLine::with_role(line.to_string(), AsciiColorRole::EdgeLine),
-        RelationGraphLine::with_role(bottom_cardinality.to_string(), AsciiColorRole::EdgeArrow),
-    ])
-}
-
-fn render_layered_relationships(
-    boxes: &[RenderedEntityBox],
-    relationships: &[ErRelationshipRenderModel],
-    options: &AsciiRenderOptions,
-    charset: ErCharset,
-) -> Result<String> {
-    let edges = relationships
-        .iter()
-        .map(er_layered_edge)
-        .collect::<Vec<_>>();
-    let plan = relation_graph::plan_layered_relation_boxes(boxes, &edges, ER_LEVEL_HORIZONTAL_GAP)
-        .map_err(er_layered_error)?;
-    let width = plan.width();
-    let height = plan.height();
-    let actual_cells = width.saturating_mul(height);
-    if actual_cells > options.max_grid_cells {
-        return Err(AsciiError::RenderLimitExceeded {
-            actual: actual_cells,
-            limit: options.max_grid_cells,
+    let label_lines = RelationGraphLabel::new(&relationship.role_a)
+        .map(|label| relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel))
+        .unwrap_or_else(|| {
+            vec![RelationGraphLine::with_role(
+                String::new(),
+                AsciiColorRole::EdgeLabel,
+            )]
         });
-    }
-
-    let mut canvas = Canvas::new(width, height);
-    for placed_box in plan.placed_boxes() {
-        placed_box.draw_at(&mut canvas);
-    }
-
-    let placed_by_id = plan
-        .placed_boxes()
-        .iter()
-        .map(|placed_box| (placed_box.id(), placed_box))
-        .collect::<HashMap<_, _>>();
-    let mut draw_order = relationships
-        .iter()
-        .zip(parallel_lane_offsets(relationships))
-        .enumerate()
-        .collect::<Vec<_>>();
-    draw_order.sort_by_key(|(index, (_, lane_offset))| (lane_offset.unsigned_abs(), *index));
-    for (_, (relationship, lane_offset)) in draw_order {
-        draw_layered_relationship(
-            &mut canvas,
-            plan.placed_boxes(),
-            &placed_by_id,
-            relationship,
-            lane_offset,
-            charset,
-        )?;
-    }
-
-    Ok(canvas.finish_trimmed_with_options(options))
+    let mut rows = vec![RelationGraphLine::with_role(
+        top_cardinality.to_string(),
+        AsciiColorRole::EdgeArrow,
+    )];
+    rows.extend(label_lines);
+    rows.push(RelationGraphLine::with_role(
+        line.to_string(),
+        AsciiColorRole::EdgeLine,
+    ));
+    rows.push(RelationGraphLine::with_role(
+        bottom_cardinality.to_string(),
+        AsciiColorRole::EdgeArrow,
+    ));
+    Ok(rows)
 }
 
-fn parallel_lane_offsets(relationships: &[ErRelationshipRenderModel]) -> Vec<isize> {
-    let mut counts = HashMap::<(&str, &str), usize>::new();
-    for relationship in relationships {
-        *counts
-            .entry((
-                relationship.entity_a.as_str(),
-                relationship.entity_b.as_str(),
-            ))
-            .or_insert(0) += 1;
-    }
+fn er_relationship_summary_row(
+    relationship: &ErRelationshipRenderModel,
+    entity_labels: &HashMap<String, String>,
+    charset: ErCharset,
+) -> Result<RelationGraphSummaryRow> {
+    let left_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
+    let right_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+    let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
+    let label = RelationGraphLabel::new(&relationship.role_a);
 
-    let mut seen = HashMap::<(&str, &str), usize>::new();
-    relationships
-        .iter()
-        .map(|relationship| {
-            let key = (
-                relationship.entity_a.as_str(),
-                relationship.entity_b.as_str(),
-            );
-            let index = seen.entry(key).or_insert(0);
-            let offset = relation_graph::parallel_lane_offset(*index, counts[&key]);
-            *index += 1;
-            offset
-        })
-        .collect()
+    Ok(RelationGraphSummaryRow::new(
+        relationship_label(entity_labels, &relationship.entity_a),
+        format!("{left_cardinality}{relation}{right_cardinality}"),
+        relationship_label(entity_labels, &relationship.entity_b),
+    )
+    .with_label(label.as_ref()))
 }
 
-fn er_layered_edge(relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge<'_> {
-    let label = relationship.role_a.trim();
+fn relationship_label<'a>(entity_labels: &'a HashMap<String, String>, id: &'a str) -> &'a str {
+    entity_labels.get(id).map(String::as_str).unwrap_or(id)
+}
+
+fn er_layered_edge(relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge {
+    let label = RelationGraphLabel::new(&relationship.role_a);
     LayeredRelationEdge::new(
-        &relationship.entity_a,
-        &relationship.entity_b,
-        !label.is_empty(),
-        display_width(label) / 2,
+        relationship.entity_a.as_str(),
+        relationship.entity_b.as_str(),
+        label
+            .as_ref()
+            .map(RelationGraphLabel::half_width)
+            .unwrap_or(0),
+        label
+            .as_ref()
+            .map(RelationGraphLabel::line_count)
+            .unwrap_or(0),
     )
 }
 
@@ -497,7 +387,6 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     let feature = match error {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint entities",
         LayeredRelationError::UnrelatedBoxes => "ER relationship layouts with unrelated entities",
-        LayeredRelationError::Cyclic => "cyclic ER relationship layouts",
         LayeredRelationError::Crossing => "crossing ER relationship layouts",
     };
     AsciiError::UnsupportedFeature {
@@ -506,83 +395,102 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     }
 }
 
-fn draw_layered_relationship(
-    canvas: &mut Canvas,
-    placed_boxes: &[PlacedEntityBox<'_>],
-    placed_by_id: &HashMap<&str, &PlacedEntityBox<'_>>,
-    relationship: &ErRelationshipRenderModel,
-    lane_offset: isize,
-    charset: ErCharset,
-) -> Result<()> {
-    let Some(top) = placed_by_id.get(relationship.entity_a.as_str()) else {
-        return Ok(());
-    };
-    let Some(bottom) = placed_by_id.get(relationship.entity_b.as_str()) else {
-        return Ok(());
-    };
-    let lane_offset = relation_graph::spanning_lane_offset_around_intermediate_boxes(
-        placed_boxes,
-        top,
-        bottom,
-        lane_offset,
-    );
-    let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
-    let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
-    let vertical = relationship_line(&relationship.rel_spec.rel_type, charset)?;
-    let horizontal = relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?;
-    let label = relationship.role_a.trim();
-    let relation_chars = relation_line_chars(charset);
-
-    let from_x = relation_graph::offset_center(top.center_x(), lane_offset);
-    let from_y = top.bottom();
-    let to_x = relation_graph::offset_center(bottom.center_x(), lane_offset);
-    let to_y = bottom.y();
-    if to_y <= from_y + 2 {
-        return Ok(());
+impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
+    for ErRelationComponentAdapter<'a>
+{
+    fn build_edges(&self, relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge {
+        er_layered_edge(relationship)
     }
 
-    let route_y = to_y - 2;
-
-    for y in (from_y + 2)..=route_y {
-        relation_graph::put_relation_char(canvas, from_x, y, vertical, relation_chars);
+    fn is_same_endpoint_parallel(&self, relationships: &[ErRelationshipRenderModel]) -> bool {
+        is_same_endpoint_parallel_relationship(relationships)
     }
-    if from_x != to_x {
-        let left = from_x.min(to_x);
-        let right = from_x.max(to_x);
-        for x in left..=right {
-            relation_graph::put_relation_char(canvas, x, route_y, horizontal, relation_chars);
+
+    fn layered_horizontal_gap(&self) -> usize {
+        ER_LEVEL_HORIZONTAL_GAP
+    }
+
+    fn layered_route_style(
+        &self,
+        relationship: &ErRelationshipRenderModel,
+    ) -> Result<LayeredRelationRouteStyle> {
+        let vertical = relationship_line(&relationship.rel_spec.rel_type, self.charset)?;
+        let horizontal =
+            relationship_horizontal_line(&relationship.rel_spec.rel_type, self.charset)?;
+        let relation_chars = relation_line_chars(self.charset);
+        Ok(LayeredRelationRouteStyle::new(
+            vertical,
+            horizontal,
+            relation_chars,
+            relation_graph::LayeredRelationRouteProfile::er(),
+        ))
+    }
+
+    fn layered_relation_overlays(
+        &self,
+        relationship: &ErRelationshipRenderModel,
+        geometry: &relation_graph::LayeredRelationRouteGeometry,
+    ) -> Result<Vec<RelationOverlay>> {
+        let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
+        let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+        let label = RelationGraphLabel::new(&relationship.role_a);
+
+        let mut overlays = Vec::new();
+        overlays.push(RelationOverlay::text(
+            geometry.source_x(),
+            geometry.source_marker_y(),
+            top_cardinality.to_string(),
+            AsciiColorRole::EdgeArrow,
+        ));
+        if let Some(label) = label.as_ref() {
+            overlays.push(RelationOverlay::label(
+                (geometry.source_x() + geometry.target_x()) / 2,
+                geometry.label_y_after_source(),
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
         }
-    }
-    for y in route_y..(to_y - 1) {
-        relation_graph::put_relation_char(canvas, to_x, y, vertical, relation_chars);
+        overlays.push(RelationOverlay::text(
+            geometry.target_x(),
+            geometry.target_marker_y(),
+            bottom_cardinality.to_string(),
+            AsciiColorRole::EdgeArrow,
+        ));
+        Ok(overlays)
     }
 
-    relation_graph::write_centered_relation_text(
-        canvas,
-        from_x,
-        from_y + 1,
-        top_cardinality,
-        AsciiColorRole::EdgeArrow,
-    );
-    if !label.is_empty() {
-        let label_y = (from_y + 2).min(route_y);
-        relation_graph::write_centered_relation_text(
-            canvas,
-            (from_x + to_x) / 2,
-            label_y,
-            label,
-            AsciiColorRole::EdgeLabel,
-        );
-    }
-    relation_graph::write_centered_relation_text(
-        canvas,
-        to_x,
-        to_y - 1,
-        bottom_cardinality,
-        AsciiColorRole::EdgeArrow,
-    );
+    fn render_vertical(
+        &self,
+        boxes: &[RenderedEntityBox],
+        relationship: &ErRelationshipRenderModel,
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        let top = find_box(boxes, &relationship.entity_a)?;
+        let bottom = find_box(boxes, &relationship.entity_b)?;
 
-    Ok(())
+        render_vertical_relationship(top, bottom, relationship, options, self.charset)
+    }
+
+    fn render_parallel(
+        &self,
+        boxes: &[RenderedEntityBox],
+        relationships: &[ErRelationshipRenderModel],
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        render_parallel_vertical_relationships(boxes, relationships, options, self.charset)
+    }
+
+    fn build_summary_row(
+        &self,
+        relationship: &ErRelationshipRenderModel,
+        _reason: relation_graph::LayeredRelationSummaryReason,
+    ) -> Result<RelationGraphSummaryRow> {
+        er_relationship_summary_row(relationship, self.entity_labels, self.charset)
+    }
+
+    fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
+        er_layered_error(error)
+    }
 }
 
 fn cardinality_marker(cardinality: &str) -> Result<&'static str> {
@@ -602,6 +510,17 @@ fn relationship_horizontal_line(rel_type: &str, charset: ErCharset) -> Result<ch
     match rel_type {
         "IDENTIFYING" | "" => Ok(charset.solid_horizontal_relation),
         "NON_IDENTIFYING" => Ok(charset.dotted_horizontal_relation),
+        _ => Err(AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "unknown ER relationship identification types",
+        }),
+    }
+}
+
+fn er_relationship_summary_line(rel_type: &str, charset: ErCharset) -> Result<&'static str> {
+    match relationship_horizontal_line(rel_type, charset)? {
+        '-' | '─' => Ok("--"),
+        '.' | '╌' => Ok(".."),
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "er",
             feature: "unknown ER relationship identification types",
