@@ -106,10 +106,11 @@ pub enum FenceCursorCompletionKind {
 pub enum FenceExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
+    Shape,
     Payload,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FenceExpectedSyntax {
     kind: FenceExpectedSyntaxKind,
     span: ByteSpan,
@@ -123,6 +124,7 @@ pub struct FenceCursorContext {
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
     expected_syntax: Option<FenceExpectedSyntaxKind>,
+    expected_syntax_span: Option<ByteSpan>,
     completion_kinds: Vec<FenceCursorCompletionKind>,
 }
 
@@ -149,6 +151,10 @@ impl FenceCursorContext {
 
     pub fn expected_syntax(&self) -> Option<FenceExpectedSyntaxKind> {
         self.expected_syntax
+    }
+
+    pub fn expected_syntax_span(&self) -> Option<ByteSpan> {
+        self.expected_syntax_span
     }
 
     pub fn completion_kinds(&self) -> &[FenceCursorCompletionKind] {
@@ -441,10 +447,10 @@ impl FenceTextIndex {
         if offer_node_items(&prefix, comment_or_directive_line) {
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
         }
-        let expected_syntax = self
-            .expected_syntax_at_offset(cursor)
-            .map(|expected| expected.kind);
-        if let Some(expected_syntax) = expected_syntax {
+        let expected_syntax = self.expected_syntax_at_offset(cursor).copied();
+        let expected_syntax_kind = expected_syntax.map(|expected| expected.kind);
+        let expected_syntax_span = expected_syntax.map(|expected| expected.span);
+        if let Some(expected_syntax) = expected_syntax_kind {
             apply_expected_syntax_to_completion(expected_syntax, &mut completion_kinds);
         }
 
@@ -454,7 +460,8 @@ impl FenceTextIndex {
             cursor,
             directive_prefix,
             comment_or_directive_line,
-            expected_syntax,
+            expected_syntax: expected_syntax_kind,
+            expected_syntax_span,
             completion_kinds,
         }
     }
@@ -629,6 +636,7 @@ fn expected_syntax_kind_from_core(
         merman_core::EditorExpectedSyntaxKind::NodeIdentifier => {
             FenceExpectedSyntaxKind::NodeIdentifier
         }
+        merman_core::EditorExpectedSyntaxKind::ShapeValue => FenceExpectedSyntaxKind::Shape,
         merman_core::EditorExpectedSyntaxKind::Payload => FenceExpectedSyntaxKind::Payload,
     }
 }
@@ -645,6 +653,10 @@ fn apply_expected_syntax_to_completion(
         FenceExpectedSyntaxKind::NodeIdentifier => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
+        }
+        FenceExpectedSyntaxKind::Shape => {
+            completion_kinds.clear();
+            completion_kinds.push(FenceCursorCompletionKind::Shape);
         }
         FenceExpectedSyntaxKind::Payload => completion_kinds.clear(),
     }
@@ -1183,6 +1195,30 @@ mod tests {
         );
         assert!(context.offers(FenceCursorCompletionKind::NodeIdentifier));
         assert!(!context.offers(FenceCursorCompletionKind::Operator));
+    }
+
+    #[test]
+    fn cursor_context_uses_parser_expected_shape_value_to_override_generic_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        let text = "flowchart TD\nA@{\n  shape: rou\n}\n";
+        let value_start = text.find("rou").unwrap();
+        facts.push_expected_syntax(merman_core::EditorExpectedSyntax::new(
+            merman_core::EditorExpectedSyntaxKind::ShapeValue,
+            SourceSpan::new(value_start, value_start + "rou".len()),
+        ));
+        let index = FenceTextIndex::from_core_facts(facts);
+        let context = index.cursor_context(text, value_start + 2);
+
+        assert_eq!(
+            context.expected_syntax(),
+            Some(FenceExpectedSyntaxKind::Shape)
+        );
+        assert_eq!(
+            context.completion_kinds(),
+            vec![FenceCursorCompletionKind::Shape]
+        );
+        assert!(context.offers(FenceCursorCompletionKind::Shape));
+        assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
     }
 
     #[test]

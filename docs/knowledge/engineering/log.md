@@ -6,6 +6,20 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-backed completion to flowchart `shapeData` value domains. `merman-core`
+  now emits `ShapeValue` expected syntax for `@{ shape: ... }` values, including the recovered
+  token-scan path, `merman-analysis` maps that into shape completion, and `merman-lsp` now uses
+  the parser span to edit multiline shape values without falling back to the old prefix-only
+  guess.
+- Added regressions proving both the core parser-fact span and the LSP parser-backed shape edit
+  range behave as expected for complete and recovered flowchart input.
+- Verified the slice with `cargo test -p merman-core --lib flowchart -- --nocapture`,
+  `cargo test -p merman-analysis --lib editor -- --nocapture`,
+  `cargo test -p merman-lsp --lib context::tests::context_classifies_header_operator_and_directive_prefixes -- --nocapture`,
+  `cargo test -p merman-lsp --test completion shape -- --nocapture`, `cargo fmt --all --check`,
+  and `git diff --check`.
+
+## 2026-06-27
 - Narrowed flowchart completion heuristics so a single trailing `-` no longer suppresses node-id
   completion. This keeps parser-backed hyphenated flowchart node ids like `wi-fi` visible instead
   of forcing them into operator-only completion.

@@ -14,6 +14,7 @@ pub struct CompletionContext<'a> {
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
     expected_syntax: Option<FenceExpectedSyntaxKind>,
+    expected_syntax_span: Option<(usize, usize)>,
     completion_kinds: Vec<FenceCursorCompletionKind>,
 }
 
@@ -39,6 +40,9 @@ impl<'a> CompletionContext<'a> {
             directive_prefix: cursor_context.directive_prefix(),
             comment_or_directive_line: cursor_context.is_comment_or_directive_line(),
             expected_syntax: cursor_context.expected_syntax(),
+            expected_syntax_span: cursor_context
+                .expected_syntax_span()
+                .map(|span| (fence.body_start + span.start, fence.body_start + span.end)),
             completion_kinds: cursor_context.completion_kinds().to_vec(),
         })
     }
@@ -65,15 +69,23 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn shape_value_range(&self) -> Option<Range> {
-        self.shape_value_edit_parts().map(|(range, _)| range)
+        self.shape_value_edit_parts().map(|(range, _, _)| range)
     }
 
     pub fn shape_value_edit(&self, value: &str) -> Option<(Range, String)> {
-        let (range, has_separator_space) = self.shape_value_edit_parts()?;
-        let replacement = if has_separator_space {
-            format!("{value} }}")
+        let (range, has_separator_space, append_closing_brace) = self.shape_value_edit_parts()?;
+        let replacement = if append_closing_brace {
+            if has_separator_space {
+                format!("{value} }}")
+            } else {
+                format!(" {value} }}")
+            }
         } else {
-            format!(" {value} }}")
+            if has_separator_space {
+                value.to_string()
+            } else {
+                format!(" {value}")
+            }
         };
 
         Some((range, replacement))
@@ -151,8 +163,21 @@ impl<'a> CompletionContext<'a> {
         })
     }
 
-    fn shape_value_edit_parts(&self) -> Option<(Range, bool)> {
+    fn shape_value_edit_parts(&self) -> Option<(Range, bool, bool)> {
         let prefix = self.prefix.as_str();
+        if let Some((range, has_separator_space)) = self.shape_value_edit_parts_from_prefix(prefix)
+        {
+            return Some((range, has_separator_space, true));
+        }
+
+        if self.expected_syntax == Some(FenceExpectedSyntaxKind::Shape) {
+            return self.shape_value_edit_parts_from_expected_span();
+        }
+
+        None
+    }
+
+    fn shape_value_edit_parts_from_prefix(&self, prefix: &str) -> Option<(Range, bool)> {
         let marker = prefix.rfind("@{ shape:")?;
         let after_colon = marker + "@{ shape:".len();
         let suffix = &prefix[after_colon..];
@@ -168,6 +193,20 @@ impl<'a> CompletionContext<'a> {
         )?;
 
         Some((range, has_separator_space))
+    }
+
+    fn shape_value_edit_parts_from_expected_span(&self) -> Option<(Range, bool, bool)> {
+        let (start, end) = self.expected_syntax_span?;
+        let range = self.range_for_offsets(start, end)?;
+        let has_separator_space = self.snapshot.text[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|ch| ch.is_whitespace());
+        let append_closing_brace = self.snapshot.text[end..]
+            .chars()
+            .all(|ch| ch.is_whitespace());
+
+        Some((range, has_separator_space, append_closing_brace))
     }
 
     fn offers(&self, kind: FenceCursorCompletionKind) -> bool {
@@ -255,15 +294,30 @@ mod tests {
         assert_eq!(shape_range.start.character, 11);
         assert_eq!(shape_replacement, "circle }");
 
-        let classic_shape = store.upsert(uri, 7, "A((".to_string());
+        let classic_shape = store.upsert(uri.clone(), 7, "A((".to_string());
         let classic_shape_context =
             CompletionContext::from_snapshot(&classic_shape, Position::new(0, 3)).unwrap();
         assert!(classic_shape_context.offer_shape_items());
         assert!(classic_shape_context.shape_trigger_range().is_some());
 
+        let parser_shape = store.upsert(
+            uri.clone(),
+            8,
+            "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
+        );
+        let parser_shape_context =
+            CompletionContext::from_snapshot(&parser_shape, Position::new(2, 11)).unwrap();
+        assert!(parser_shape_context.offer_shape_items());
+        let (shape_range, shape_replacement) = parser_shape_context
+            .shape_value_edit("circle")
+            .expect("parser-backed shape edit");
+        assert_eq!(shape_range.start.line, 2);
+        assert_eq!(shape_range.start.character, 9);
+        assert_eq!(shape_replacement, "circle");
+
         let node = store.upsert(
             Url::parse("file:///tmp/example.mmd").unwrap(),
-            8,
+            9,
             "node_1".to_string(),
         );
         let node_context = CompletionContext::from_snapshot(&node, Position::new(0, 6)).unwrap();

@@ -159,6 +159,7 @@ impl EditorSemanticDiagnostic {
 pub enum EditorExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
+    ShapeValue,
     Payload,
 }
 
