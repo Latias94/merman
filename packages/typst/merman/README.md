@@ -261,5 +261,5 @@ cargo run -p xtask -- build-typst-package --profile minimal
 - Output is SVG embedded through Typst `image`; diagrams are not Typst-native vector elements.
 - Font family and size can be forwarded as style intent, but exact Typst font glyph measurement is not automatic.
 - Browser-only Mermaid interactions such as script callbacks and popup behavior are not expected to work in static Typst output.
-- The package is smoke-tested with Typst 0.14.2 and 0.15.0. Typst 0.15 HTML export remains experimental and is not a package promise here.
+- The package is smoke-tested with Typst 0.15.0. Typst 0.15 HTML export remains experimental and is not a package promise here.
 - The `readable` and `parity` pipelines can embed SVG structures that Typst warns about; `resvg-safe` is the intended embedded-image path for package output.

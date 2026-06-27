@@ -83,12 +83,12 @@ jobs:
 
   typst-package:
     name: typst-package
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
-      TYPST_CLI_VERSION: "0.14.2"
-      TYPST_COMPAT_CLI_VERSION: "0.15.0"
+      TYPST_CLI_VERSION: "0.15.0"
     steps:
       - uses: actions/checkout@v6
 
@@ -104,9 +104,6 @@ jobs:
 
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
-
-      - name: Check WASM size budgets
-        run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Download Typst
         shell: bash
@@ -181,6 +178,33 @@ jobs:
           EOF
           "${typst_bin}" compile --package-path target/typst-preview target/typst-smoke/preview-package.typ target/typst-smoke/preview-package.pdf
 
+  typst-package-compat:
+    name: typst-package-compat
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      TYPST_COMPAT_CLI_VERSION: "0.15.0"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@wasm-tools
+
+      - name: Check WASM size budgets
+        run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+
       - name: Download Typst compatibility version
         shell: bash
         run: |
@@ -195,6 +219,9 @@ jobs:
           mkdir -p "${typst_root}"
           install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
           "${typst_root}/typst" --version
+
+      - name: Build Typst package
+        run: cargo run -p xtask -- build-typst-package
 
       - name: Smoke Typst compatibility version
         shell: bash
