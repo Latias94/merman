@@ -3,7 +3,6 @@ use crate::svgdom;
 use crate::util::{extract_add_to_set_string_array, extract_defaults, extract_frozen_string_array};
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use serde_yaml::Value as YamlValue;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -1661,7 +1660,7 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
         path: schema_path.display().to_string(),
         source,
     })?;
-    let schema_yaml: YamlValue = serde_yaml::from_str(&schema_text)?;
+    let schema_yaml = serde_saphyr::from_str::<JsonValue>(&schema_text)?;
 
     let Some(mut root_defaults) = extract_defaults(&schema_yaml, &schema_yaml) else {
         return Err(XtaskError::InvalidRef(

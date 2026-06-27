@@ -28,7 +28,7 @@ enum XtaskError {
         source: std::io::Error,
     },
     #[error("failed to parse YAML schema: {0}")]
-    ParseYaml(#[from] serde_yaml::Error),
+    ParseYaml(#[from] serde_saphyr::Error),
     #[error("failed to process JSON: {0}")]
     Json(#[from] serde_json::Error),
     #[error("invalid $ref: {0}")]

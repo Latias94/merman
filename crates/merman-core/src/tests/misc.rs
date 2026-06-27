@@ -360,6 +360,51 @@ A-->B
 }
 
 #[test]
+#[cfg(feature = "full-config")]
+fn parse_stringifies_truthy_frontmatter_title_like_upstream() {
+    let engine = Engine::new();
+    let meta = engine
+        .parse_metadata_sync(
+            "---
+title: true
+---
+sequenceDiagram
+Alice->Bob: Hi
+",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(meta.title, Some("true".to_string()));
+}
+
+#[test]
+#[cfg(feature = "full-config")]
+fn parse_indented_frontmatter_like_upstream() {
+    let engine = Engine::new();
+    let meta = engine
+        .parse_metadata_sync(
+            "   ---
+   title: Flow
+   config:
+     flowchart:
+       htmlLabels: true
+   ---
+   graph TD
+   A-->B
+",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(meta.diagram_type, "flowchart-v2");
+    assert_eq!(meta.title, Some("Flow".to_string()));
+    assert_eq!(meta.config.get_bool("flowchart.htmlLabels"), Some(true));
+}
+
+#[test]
 fn parse_merges_init_directive_numeric_values_like_upstream() {
     let engine = Engine::new();
     let text = r#"%%{init: { 'logLevel': 0 } }%%

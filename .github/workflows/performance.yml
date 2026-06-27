@@ -29,6 +29,7 @@ on:
         default: regression
         options:
           - contracts
+          - frontmatter
           - regression
           - reference
           - full
@@ -209,6 +210,115 @@ jobs:
           set -euo pipefail
           marker="<!-- merman-perf-regression -->"
           body_file="target/performance/pr_comment.md"
+          comment_ids="$(
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+              --jq ".[] | select(.body | contains(\"$marker\")) | .id"
+          )"
+          comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
+          python3 - "$body_file" <<'PY' > comment_payload.json
+          import json
+          import sys
+
+          body_path = sys.argv[1]
+          body = open(body_path, encoding="utf-8").read()
+          print(json.dumps({"body": body}))
+          PY
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json
+          else
+            gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json
+          fi
+
+  frontmatter:
+    name: perf-frontmatter
+    runs-on: ubuntu-24.04
+    if: (github.event_name == 'workflow_dispatch' && (inputs.run == 'frontmatter' || inputs.run == 'full')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf-frontmatter'))
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@v6
+        with:
+          path: head
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
+
+      - name: Checkout base
+        uses: actions/checkout@v6
+        with:
+          path: base
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Run frontmatter regression comparison
+        working-directory: head
+        run: |
+          set -euo pipefail
+          preset="${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}"
+          warn_threshold="${{ inputs.warn_threshold_percent || '5' }}"
+          fail_threshold="${{ inputs.fail_threshold_percent || '10' }}"
+          base_label="${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}"
+          head_label="${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}"
+          python3 tools/bench/compare_self.py \
+            --base-dir ../base \
+            --head-dir . \
+            --base-target-dir target/performance/base \
+            --head-target-dir target/performance/head \
+            --base-label "$base_label" \
+            --head-label "$head_label" \
+            --preset "$preset" \
+            --suite frontmatter \
+            --group frontmatter_preprocess \
+            --warn-threshold-percent "$warn_threshold" \
+            --fail-threshold-percent "$fail_threshold" \
+            --out target/performance/frontmatter_comparison.md \
+            --json-out target/performance/frontmatter_comparison.json
+
+      - name: Upload frontmatter artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-frontmatter
+          path: |
+            head/target/performance/frontmatter_comparison.md
+            head/target/performance/frontmatter_comparison.json
+
+      - name: Render frontmatter PR comment
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        working-directory: head
+        run: |
+          set -euo pipefail
+          python3 tools/bench/render_perf_comment.py \
+            --json target/performance/frontmatter_comparison.json \
+            --out target/performance/frontmatter_pr_comment.md \
+            --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --artifact perf-frontmatter \
+            --marker "<!-- merman-perf-frontmatter -->" \
+            --title "Merman Frontmatter Performance Regression"
+
+      - name: Comment frontmatter summary
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        working-directory: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker="<!-- merman-perf-frontmatter -->"
+          body_file="target/performance/frontmatter_pr_comment.md"
           comment_ids="$(
             gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
               --jq ".[] | select(.body | contains(\"$marker\")) | .id"

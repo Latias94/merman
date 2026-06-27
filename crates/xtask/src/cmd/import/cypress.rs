@@ -1,4 +1,6 @@
 use super::*;
+use serde_json::{Value, json};
+use std::collections::HashMap;
 
 pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
@@ -369,7 +371,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     fn extract_first_template_literal_with_vars(
         s: &str,
         start: usize,
-        const_strings: Option<&std::collections::HashMap<String, String>>,
+        const_strings: Option<&HashMap<String, String>>,
     ) -> Option<(String, usize)> {
         fn is_template_ident_byte(b: u8) -> bool {
             b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
@@ -443,7 +445,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     fn extract_last_template_literal_with_vars(
         s: &str,
         start: usize,
-        const_strings: Option<&std::collections::HashMap<String, String>>,
+        const_strings: Option<&HashMap<String, String>>,
     ) -> Option<(String, usize)> {
         let mut cursor = start;
         let mut last: Option<(String, usize)> = None;
@@ -537,8 +539,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         score
     }
 
-    fn load_existing_fixtures(fixtures_dir: &Path) -> std::collections::HashMap<String, PathBuf> {
-        let mut map = std::collections::HashMap::new();
+    fn load_existing_fixtures(fixtures_dir: &Path) -> HashMap<String, PathBuf> {
+        let mut map = HashMap::new();
         let Ok(entries) = fs::read_dir(fixtures_dir) else {
             return map;
         };
@@ -921,7 +923,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             Some(args_slice[i..end].to_string())
         }
 
-        fn collect_const_arrays(text: &str) -> std::collections::HashMap<String, Vec<ArrayToken>> {
+        fn collect_const_arrays(text: &str) -> HashMap<String, Vec<ArrayToken>> {
             let bytes = text.as_bytes();
 
             #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -934,8 +936,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 BlockComment,
             }
 
-            let mut out: std::collections::HashMap<String, Vec<ArrayToken>> =
-                std::collections::HashMap::new();
+            let mut out: HashMap<String, Vec<ArrayToken>> = HashMap::new();
             let mut mode = Mode::Normal;
             let mut escaped = false;
 
@@ -1810,7 +1811,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             current
         }
 
-        fn collect_const_string_literals(text: &str) -> std::collections::HashMap<String, String> {
+        fn collect_const_string_literals(text: &str) -> HashMap<String, String> {
             let bytes = text.as_bytes();
 
             #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1823,7 +1824,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 BlockComment,
             }
 
-            let mut out = std::collections::HashMap::new();
+            let mut out = HashMap::new();
             let mut mode = Mode::Normal;
             let mut escaped = false;
 
@@ -2236,7 +2237,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         Ok(out)
     }
 
-    fn js_object_literal_to_yaml_config_map(obj: &str) -> Option<serde_yaml::Mapping> {
+    fn js_object_literal_to_yaml_config_map(obj: &str) -> Option<Value> {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         enum Mode {
             Normal,
@@ -2335,7 +2336,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             (String::from_utf8_lossy(&bytes[start..i]).to_string(), i)
         }
 
-        fn parse_number(bytes: &[u8], mut i: usize) -> Option<(serde_yaml::Value, usize)> {
+        fn parse_number(bytes: &[u8], mut i: usize) -> Option<(Value, usize)> {
             let start = i;
             if bytes.get(i) == Some(&b'-') {
                 i += 1;
@@ -2353,24 +2354,24 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 return None;
             }
             let n: f64 = s.parse().ok()?;
-            Some((serde_yaml::Value::Number(serde_yaml::Number::from(n)), i))
+            Some((json!(n), i))
         }
 
-        fn parse_value(bytes: &[u8], mut i: usize) -> Option<(serde_yaml::Value, usize)> {
+        fn parse_value(bytes: &[u8], mut i: usize) -> Option<(Value, usize)> {
             i = skip_ws_and_comments(bytes, i);
             let b = *bytes.get(i)?;
             match b {
                 b'{' => {
-                    let (m, j) = parse_object(bytes, i)?;
-                    Some((serde_yaml::Value::Mapping(m), j))
+                    let (obj, j) = parse_object(bytes, i)?;
+                    Some((obj, j))
                 }
                 b'[' => {
                     let (seq, j) = parse_array(bytes, i)?;
-                    Some((serde_yaml::Value::Sequence(seq), j))
+                    Some((Value::Array(seq), j))
                 }
                 b'\'' | b'"' => {
                     let (s, j) = parse_string(bytes, i + 1, b)?;
-                    Some((serde_yaml::Value::String(s), j))
+                    Some((Value::String(s), j))
                 }
                 b'-' | b'0'..=b'9' => parse_number(bytes, i),
                 _ => {
@@ -2379,9 +2380,9 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     }
                     let (id, j) = parse_ident(bytes, i);
                     match id.as_str() {
-                        "true" => Some((serde_yaml::Value::Bool(true), j)),
-                        "false" => Some((serde_yaml::Value::Bool(false), j)),
-                        "null" => Some((serde_yaml::Value::Null, j)),
+                        "true" => Some((json!(true), j)),
+                        "false" => Some((json!(false), j)),
+                        "null" => Some((json!(null), j)),
                         _ => None,
                     }
                 }
@@ -2403,16 +2404,16 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             }
         }
 
-        fn parse_object(bytes: &[u8], mut i: usize) -> Option<(serde_yaml::Mapping, usize)> {
+        fn parse_object(bytes: &[u8], mut i: usize) -> Option<(Value, usize)> {
             if bytes.get(i) != Some(&b'{') {
                 return None;
             }
             i += 1;
-            let mut map = serde_yaml::Mapping::new();
+            let mut map = serde_json::Map::new();
             loop {
                 i = skip_ws_and_comments(bytes, i);
                 if bytes.get(i) == Some(&b'}') {
-                    return Some((map, i + 1));
+                    return Some((Value::Object(map), i + 1));
                 }
                 let (key, mut j) = parse_key(bytes, i)?;
                 j = skip_ws_and_comments(bytes, j);
@@ -2421,20 +2422,20 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
                 j += 1;
                 let (val, mut k) = parse_value(bytes, j)?;
-                map.insert(serde_yaml::Value::String(key), val);
+                map.insert(key, val);
                 k = skip_ws_and_comments(bytes, k);
                 match bytes.get(k) {
                     Some(b',') => {
                         i = k + 1;
                         continue;
                     }
-                    Some(b'}') => return Some((map, k + 1)),
+                    Some(b'}') => return Some((Value::Object(map), k + 1)),
                     _ => return None,
                 }
             }
         }
 
-        fn parse_array(bytes: &[u8], mut i: usize) -> Option<(Vec<serde_yaml::Value>, usize)> {
+        fn parse_array(bytes: &[u8], mut i: usize) -> Option<(Vec<Value>, usize)> {
             if bytes.get(i) != Some(&b'[') {
                 return None;
             }
@@ -2543,46 +2544,47 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         None
     }
 
-    fn merge_yaml_mappings(dst: &mut serde_yaml::Mapping, src: serde_yaml::Mapping) {
-        for (k, v) in src {
-            match (dst.get_mut(&k), v) {
-                (
-                    Some(serde_yaml::Value::Mapping(dst_map)),
-                    serde_yaml::Value::Mapping(src_map),
-                ) => {
-                    merge_yaml_mappings(dst_map, src_map);
+    fn merge_json_values(dst: &mut Value, src: Value) {
+        match (dst, src) {
+            (Value::Object(dst_map), Value::Object(src_map)) => {
+                for (k, v) in src_map {
+                    match dst_map.get_mut(&k) {
+                        Some(dst_v) => {
+                            merge_json_values(dst_v, v);
+                        }
+                        None => {
+                            dst_map.insert(k, v);
+                        }
+                    }
                 }
-                (Some(dst_v), src_v) => {
-                    *dst_v = src_v;
-                }
-                (None, src_v) => {
-                    dst.insert(k, src_v);
-                }
+            }
+            (dst_ref, src_val) => {
+                *dst_ref = src_val;
             }
         }
     }
 
     fn with_options_frontmatter(fixture_text: &str, options_obj: &str) -> String {
-        let Some(options_map) = js_object_literal_to_yaml_config_map(options_obj) else {
+        let Some(options) = js_object_literal_to_yaml_config_map(options_obj) else {
             return fixture_text.to_string();
         };
-        if options_map.is_empty() {
+        if options.is_null() {
             return fixture_text.to_string();
         }
 
-        let cfg_key = serde_yaml::Value::String("config".to_string());
+        let cfg_key = "config".to_string();
         if let Some((yaml_raw, rest)) = split_yaml_frontmatter(fixture_text) {
             let yaml_raw = yaml_raw.trim();
             let mut fm = if yaml_raw.is_empty() {
-                serde_yaml::Mapping::new()
+                serde_json::Map::new()
             } else {
-                match serde_yaml::from_str::<serde_yaml::Value>(yaml_raw) {
-                    Ok(serde_yaml::Value::Mapping(m)) => m,
-                    Ok(serde_yaml::Value::Null) => serde_yaml::Mapping::new(),
+                match serde_saphyr::from_str::<Value>(yaml_raw) {
+                    Ok(Value::Object(v)) => v,
+                    Ok(Value::Null) => serde_json::Map::new(),
                     Ok(_) | Err(_) => {
-                        let mut fm = serde_yaml::Mapping::new();
-                        fm.insert(cfg_key.clone(), serde_yaml::Value::Mapping(options_map));
-                        if let Ok(yaml) = serde_yaml::to_string(&fm) {
+                        let mut fm = serde_json::Map::new();
+                        fm.insert(cfg_key.clone(), options);
+                        if let Ok(yaml) = serde_saphyr::to_string(&fm) {
                             let yaml = yaml.trim_end_matches('\n');
                             return format!("---\n{yaml}\n---\n{fixture_text}");
                         }
@@ -2590,29 +2592,29 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     }
                 }
             };
-
             match fm.get_mut(&cfg_key) {
-                Some(serde_yaml::Value::Mapping(existing)) => {
-                    merge_yaml_mappings(existing, options_map);
-                }
                 Some(v) => {
-                    *v = serde_yaml::Value::Mapping(options_map);
+                    if v.is_object() {
+                        merge_json_values(v, options);
+                    } else {
+                        *v = options;
+                    }
                 }
                 None => {
-                    fm.insert(cfg_key, serde_yaml::Value::Mapping(options_map));
+                    fm.insert(cfg_key.clone(), options);
                 }
             }
 
-            if let Ok(yaml) = serde_yaml::to_string(&fm) {
+            if let Ok(yaml) = serde_saphyr::to_string(&fm) {
                 let yaml = yaml.trim_end_matches('\n');
                 return format!("---\n{yaml}\n---\n{rest}");
             }
             return fixture_text.to_string();
         }
 
-        let mut fm = serde_yaml::Mapping::new();
-        fm.insert(cfg_key, serde_yaml::Value::Mapping(options_map));
-        if let Ok(yaml) = serde_yaml::to_string(&fm) {
+        let mut fm = serde_json::Map::new();
+        fm.insert(cfg_key, options);
+        if let Ok(yaml) = serde_saphyr::to_string(&fm) {
             let yaml = yaml.trim_end_matches('\n');
             return format!("---\n{yaml}\n---\n{fixture_text}");
         }
@@ -2661,10 +2663,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     let mut candidates: Vec<Candidate> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
-    let mut existing_by_diagram: std::collections::HashMap<
-        String,
-        std::collections::HashMap<String, PathBuf>,
-    > = std::collections::HashMap::new();
+    let mut existing_by_diagram: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
 
     for spec_path in spec_files {
         if let Some(f) = filter.as_deref() {
@@ -2992,7 +2991,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 {
                     return Some("class frontmatter config.layout=elk (deferred)");
                 }
-                if let Some(look) = crate::cmd::import::imported_fixture_config_look(fixture_text)
+                if let Some(look) = imported_fixture_config_look(fixture_text)
                     && !matches!(look.as_str(), "classic" | "handDrawn")
                 {
                     return Some("class frontmatter config.look unsupported (deferred)");
@@ -3016,7 +3015,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
                 // Flowchart now admits `handDrawn` alongside `classic`; keep other look variants
                 // deferred until their source-backed DOM contract is implemented.
-                if let Some(look) = crate::cmd::import::imported_fixture_config_look(fixture_text)
+                if let Some(look) = imported_fixture_config_look(fixture_text)
                     && !matches!(look.as_str(), "classic" | "handDrawn")
                 {
                     return Some("flowchart frontmatter config.look unsupported (deferred)");
@@ -3063,7 +3062,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 // contains circles on the actor lifelines, e.g. `Alice ()->>() Bob`.
                 // merman does not implement this rendering yet, so keep the upstream SVG for
                 // traceability but move the fixture under `_deferred` to keep `verify` green.
-                if (fixture_text.contains(" ()-") || fixture_text.contains("()-")) => {
+            if fixture_text.contains(" ()-") || fixture_text.contains("()-") => {
                     return Some("sequence central connections (deferred)");
                 }
             _ => {}
@@ -3090,7 +3089,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     fn defer_fixture_files_keep_baselines(f: &CreatedFixture, replace_existing: bool) {
-        let _ = crate::cmd::import::defer_fixture_files_with_replace_existing(
+        let _ = defer_fixture_files_with_replace_existing(
             &f.diagram_dir,
             &f.stem,
             &f.path,
@@ -3100,7 +3099,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     fn defer_fixture_files_no_baselines(f: &CreatedFixture, replace_existing: bool) -> PathBuf {
-        crate::cmd::import::defer_fixture_files_with_replace_existing(
+        defer_fixture_files_with_replace_existing(
             &f.diagram_dir,
             &f.stem,
             &f.path,

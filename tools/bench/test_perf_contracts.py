@@ -35,6 +35,18 @@ class CorpusContractsTest(unittest.TestCase):
             ),
         )
 
+    def test_frontmatter_suite_covers_preprocess_fixtures(self) -> None:
+        corpus = load_corpus(CORPUS_PATH)
+
+        self.assertEqual(
+            fixture_names_for_suite(corpus, "frontmatter"),
+            (
+                "frontmatter_basic",
+                "frontmatter_indented",
+                "frontmatter_deep_config",
+            ),
+        )
+
     def test_full_suite_uses_all_fixtures_in_corpus_order(self) -> None:
         corpus = load_corpus(CORPUS_PATH)
 
@@ -71,6 +83,27 @@ class PerfRunnerContractsTest(unittest.TestCase):
         self.assertIn("cold parse (flowchart_medium)", out)
         self.assertIn("parse_cold_engine/flowchart_medium", out)
         self.assertIn("cold parse (architecture_medium)", out)
+
+    def test_frontmatter_profile_dry_run_adds_preprocess_steps(self) -> None:
+        buf = io.StringIO()
+
+        with redirect_stdout(buf):
+            result = perf_runner.main(
+                [
+                    "--profile",
+                    "triage",
+                    "--stage-fixtures",
+                    "frontmatter_basic,frontmatter_indented,frontmatter_deep_config",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        out = buf.getvalue().replace("\\", "/")
+        self.assertIn(
+            "stage spotcheck (frontmatter_basic,frontmatter_indented,frontmatter_deep_config)",
+            out,
+        )
 
     def test_full_write_docs_dry_run_writes_suite_report_to_docs(self) -> None:
         buf = io.StringIO()
@@ -270,6 +303,38 @@ class PerfCommentContractsTest(unittest.TestCase):
         self.assertIn("`end_to_end/flowchart_medium`", body)
         self.assertIn("+6.20%", body)
         self.assertIn("https://example.test/run", body)
+
+    def test_renders_custom_marker_and_title(self) -> None:
+        body = render_perf_comment.render_comment(
+            {
+                "summary": {
+                    "gate_status": "pass",
+                    "comparable": 0,
+                    "failures": 0,
+                    "warnings": 0,
+                    "improvements": 0,
+                    "geomean_change_percent": 0.0,
+                },
+                "selection": {"suite": "frontmatter"},
+                "comparison": {
+                    "base_label": "base",
+                    "head_label": "head",
+                },
+                "method": {
+                    "preset": "quick",
+                    "warn_threshold_percent": 5.0,
+                    "fail_threshold_percent": 10.0,
+                },
+                "rows": [],
+            },
+            run_url="https://example.test/run",
+            artifact_name="perf-frontmatter",
+            marker="<!-- merman-perf-frontmatter -->",
+            title="Merman Frontmatter Performance Regression",
+        )
+
+        self.assertIn("<!-- merman-perf-frontmatter -->", body)
+        self.assertIn("## Merman Frontmatter Performance Regression", body)
 
     def test_renders_missing_report_fallback(self) -> None:
         body = render_perf_comment.render_comment(
