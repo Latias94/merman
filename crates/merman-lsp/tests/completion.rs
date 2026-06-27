@@ -24,6 +24,44 @@ fn completion_offers_known_node_ids_for_plain_mermaid_documents() {
 }
 
 #[test]
+fn completion_uses_flowchart_parser_identifier_context_after_operator() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nC-->".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 4));
+
+    assert!(list.items.iter().any(|item| item.label == "A"));
+    assert!(list.items.iter().any(|item| item.label == "B"));
+    assert!(
+        list.items.iter().all(|item| item.label != "-->"),
+        "parser identifier context must not offer operator completions: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn completion_uses_flowchart_parser_identifier_context_after_operator_with_trailing_space() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nC-->  ".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 6));
+
+    assert!(list.items.iter().any(|item| item.label == "A"));
+    assert!(list.items.iter().any(|item| item.label == "B"));
+    assert!(
+        list.items.iter().all(|item| item.label != "-->"),
+        "parser identifier context must not offer operator completions: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_items_carry_resolve_data() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

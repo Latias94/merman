@@ -6,6 +6,19 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-fed expected syntax again, this time for flowchart recovery after an incomplete
+  edge operator. `merman-core` now records `NodeIdentifier` as the expected syntax kind at
+  `A-->`-style tails, and `merman-analysis` projects that into completion so the LSP prefers
+  known node ids instead of operator suffix completions.
+- Verified the slice with `cargo test -p merman-core --lib
+  parse_flowchart_editor_facts_recovers_from_incomplete_input -- --nocapture`,
+  `cargo nextest run -p merman-core parse_flowchart_editor_facts_recovers_from_incomplete_input`,
+  `cargo test -p merman-lsp --test completion
+  completion_uses_flowchart_parser_identifier_context_after_operator -- --nocapture`,
+  `cargo nextest run -p merman-lsp --test completion`, `cargo check -p merman-core -p
+  merman-analysis -p merman-lsp`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Extended parser-fed payload expected syntax to `flowchart` labels and directive payloads through
   the shared `push_flowchart_payload_symbol` path. This covers node labels, edge labels, style
   payloads, and classDef style payloads without adding LSP-local parsing.

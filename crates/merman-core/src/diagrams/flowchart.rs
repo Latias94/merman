@@ -371,18 +371,93 @@ fn editor_facts_from_flowchart_ast(ast: &FlowchartAst) -> EditorSemanticFacts {
 fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
+    let mut collector = FlowchartRecoveryFactCollector::default();
 
     let mut lexer = Lexer::new(code);
     while let Some(result) = lexer.next() {
         match result {
-            Ok((start, token, end)) => {
-                collect_editor_fact_from_token(token, start, end, &mut facts)
-            }
+            Ok((start, token, end)) => collector.accept(token, start, end, &mut facts),
             Err(_) => {}
         }
     }
+    collector.finish(code.len(), &mut facts);
 
     facts
+}
+
+#[derive(Debug, Default)]
+struct FlowchartRecoveryFactCollector {
+    pending_node_identifier: Option<FlowchartRecoveryTargetState>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FlowchartRecoveryTargetState {
+    Awaiting(SourceSpan),
+    Sealed(SourceSpan),
+}
+
+impl FlowchartRecoveryFactCollector {
+    fn accept(&mut self, token: Tok, start: usize, end: usize, facts: &mut EditorSemanticFacts) {
+        enum TokenKind {
+            Arrow,
+            EdgeLabel,
+            Id,
+            Sep,
+            Other,
+        }
+
+        let token_kind = match &token {
+            Tok::Arrow(_) => TokenKind::Arrow,
+            Tok::EdgeLabel(_) => TokenKind::EdgeLabel,
+            Tok::Id(_) => TokenKind::Id,
+            Tok::Sep => TokenKind::Sep,
+            _ => TokenKind::Other,
+        };
+        collect_editor_fact_from_token(token, start, end, facts);
+        match token_kind {
+            TokenKind::Arrow => {
+                self.pending_node_identifier = Some(FlowchartRecoveryTargetState::Awaiting(
+                    SourceSpan::new(end, end),
+                ));
+            }
+            TokenKind::EdgeLabel => {}
+            TokenKind::Id => {
+                self.pending_node_identifier = None;
+            }
+            TokenKind::Sep => {
+                if let Some(FlowchartRecoveryTargetState::Awaiting(mut span)) =
+                    self.pending_node_identifier.take()
+                {
+                    span.end = start;
+                    self.pending_node_identifier = Some(FlowchartRecoveryTargetState::Sealed(span));
+                }
+            }
+            TokenKind::Other => {
+                self.pending_node_identifier = None;
+            }
+        }
+    }
+
+    fn finish(self, code_len: usize, facts: &mut EditorSemanticFacts) {
+        let Some(state) = self.pending_node_identifier else {
+            return;
+        };
+
+        let span = match state {
+            FlowchartRecoveryTargetState::Awaiting(mut span) => {
+                span.end = code_len;
+                span
+            }
+            FlowchartRecoveryTargetState::Sealed(span) => span,
+        };
+
+        if span.end >= span.start {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                span,
+            ));
+        }
+    }
 }
 
 fn collect_editor_fact_from_token(

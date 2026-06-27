@@ -104,6 +104,7 @@ pub enum FenceCursorCompletionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FenceExpectedSyntaxKind {
+    NodeIdentifier,
     Payload,
 }
 
@@ -624,6 +625,9 @@ fn expected_syntax_kind_from_core(
     kind: merman_core::EditorExpectedSyntaxKind,
 ) -> FenceExpectedSyntaxKind {
     match kind {
+        merman_core::EditorExpectedSyntaxKind::NodeIdentifier => {
+            FenceExpectedSyntaxKind::NodeIdentifier
+        }
         merman_core::EditorExpectedSyntaxKind::Payload => FenceExpectedSyntaxKind::Payload,
     }
 }
@@ -633,6 +637,10 @@ fn apply_expected_syntax_to_completion(
     completion_kinds: &mut Vec<FenceCursorCompletionKind>,
 ) {
     match expected {
+        FenceExpectedSyntaxKind::NodeIdentifier => {
+            completion_kinds.clear();
+            completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
+        }
         FenceExpectedSyntaxKind::Payload => completion_kinds.clear(),
     }
 }
@@ -1134,6 +1142,35 @@ mod tests {
         assert!(context.completion_kinds().is_empty());
         assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
         assert!(!context.offers(FenceCursorCompletionKind::DiagramHeader));
+    }
+
+    #[test]
+    fn cursor_context_uses_parser_expected_node_identifier_to_override_generic_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+        facts.push_expected_syntax(merman_core::EditorExpectedSyntax::new(
+            merman_core::EditorExpectedSyntaxKind::NodeIdentifier,
+            SourceSpan::new(17, 18),
+        ));
+        let index = FenceTextIndex::from_core_facts(facts);
+        let context = index.cursor_context("flowchart TD\nA--> ", 17);
+
+        assert_eq!(
+            context.expected_syntax(),
+            Some(FenceExpectedSyntaxKind::NodeIdentifier)
+        );
+        assert_eq!(
+            context.completion_kinds(),
+            vec![FenceCursorCompletionKind::NodeIdentifier]
+        );
+        assert!(context.offers(FenceCursorCompletionKind::NodeIdentifier));
+        assert!(!context.offers(FenceCursorCompletionKind::Operator));
     }
 
     #[test]

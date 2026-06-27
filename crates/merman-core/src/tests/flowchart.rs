@@ -2489,4 +2489,9 @@ fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
     let c_start = text.find("C-->").unwrap();
     assert_eq!(symbol("C").selection.start, c_start);
     assert_eq!(symbol("C").selection.end, c_start + "C".len());
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span == SourceSpan::new(text.len(), text.len())
+    }));
 }
