@@ -6,6 +6,23 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended state diagrams to parser-backed expected syntax in `merman-core`. State entity ids,
+  class/style id lists, display labels, descriptions, style payloads, and click payloads now emit
+  `EditorExpectedSyntax`, which lets the editor layer treat state labels and directive payloads as
+  parser-controlled spans.
+- Added a state completion regression in `merman-lsp` proving payload and id-list contexts stay
+  parser-backed for `stateDiagram-v2` documents, including class targets, style targets, and click
+  targets. Added protocol-level completion regressions covering state payload and id-list contexts
+  so the parser-backed contract is guarded at the LSP surface, not only in `CompletionContext`.
+- Verified the slice with `cargo test -p merman-core state -- --nocapture`,
+  `cargo test -p merman-lsp context::tests::context_classifies_header_operator_and_directive_prefixes -- --nocapture`,
+  `cargo test -p merman-lsp context::tests::context_uses_state_parser_expected_syntax_for_payload_and_id_lists -- --nocapture`,
+  `cargo test -p merman-lsp --test completion completion_uses_state_parser_payload_context -- --nocapture`,
+  `cargo test -p merman-lsp --test completion completion_uses_state_parser_id_list_context_for_class_targets -- --nocapture`,
+  `cargo test -p merman-lsp --test completion completion_offers_directive_items_for_class_directive_variants -- --nocapture`,
+  `cargo fmt --all`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Reconciled directive fallback in `merman-analysis`. Text-scan now treats class-family lines as
   classify-only directives, sequence directive payload lines as payload-only, and gantt `section`
   as an outline-bearing directive instead of a generic node id.

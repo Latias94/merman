@@ -1,6 +1,6 @@
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::lalrpop_recovery_span,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
 };
 use serde_json::Value;
 
@@ -108,6 +108,10 @@ enum StateTokenContext {
 #[derive(Debug)]
 enum StateEditorEvent {
     DirectivePrefix(&'static str),
+    ExpectedSyntax {
+        kind: EditorExpectedSyntaxKind,
+        span: SourceSpan,
+    },
     Entity {
         name: String,
         selection: SourceSpan,
@@ -133,6 +137,9 @@ impl StateEditorEvent {
     fn emit(self, facts: &mut EditorSemanticFacts) {
         match self {
             Self::DirectivePrefix(prefix) => facts.push_directive_prefix(prefix),
+            Self::ExpectedSyntax { kind, span } => {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(kind, span))
+            }
             Self::Entity {
                 name,
                 selection,
@@ -382,14 +389,21 @@ impl StateTokenFactCollector<'_> {
                 self.flush_pending_entity(events);
                 events.push(StateEditorEvent::DirectivePrefix("classDef"));
             }
-            Tok::ClassDefId(id) => push_state_outline_event(
-                events,
-                id,
-                start,
-                end,
-                "state class definition",
-                EditorSemanticKind::Property,
-            ),
+            Tok::ClassDefId(id) => {
+                push_state_expected_syntax(
+                    events,
+                    EditorExpectedSyntaxKind::Payload,
+                    SourceSpan::new(start, end),
+                );
+                push_state_outline_event(
+                    events,
+                    id,
+                    start,
+                    end,
+                    "state class definition",
+                    EditorSemanticKind::Property,
+                );
+            }
             Tok::ClassDefStyleOpts(raw) => push_state_payload_event_from_token(
                 events,
                 self.code,
@@ -489,6 +503,11 @@ impl StateTokenFactCollector<'_> {
     ) {
         if self.note_alias_pending {
             self.note_alias_pending = false;
+            push_state_expected_syntax(
+                events,
+                EditorExpectedSyntaxKind::Payload,
+                SourceSpan::new(start, end),
+            );
             return;
         }
 
@@ -514,6 +533,11 @@ impl StateTokenFactCollector<'_> {
         let Some(entity) = state_pending_entity(id, start, end, detail) else {
             return;
         };
+        push_state_expected_syntax(
+            events,
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            entity.selection,
+        );
         self.pending_entity = Some(entity);
     }
 
@@ -584,6 +608,11 @@ fn push_state_entity_event(
     let Some(entity) = state_pending_entity(id, start, end, detail) else {
         return;
     };
+    push_state_expected_syntax(
+        events,
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        entity.selection,
+    );
     events.push(StateEditorEvent::Entity {
         name: entity.name,
         selection: entity.selection,
@@ -602,6 +631,7 @@ fn push_state_entity_event_with_selection(
         return;
     }
 
+    push_state_expected_syntax(events, EditorExpectedSyntaxKind::NodeIdentifier, selection);
     events.push(StateEditorEvent::Entity {
         name: id,
         selection,
@@ -631,6 +661,18 @@ fn push_state_outline_event(
     });
 }
 
+fn push_state_expected_syntax(
+    events: &mut Vec<StateEditorEvent>,
+    kind: EditorExpectedSyntaxKind,
+    span: SourceSpan,
+) {
+    if span.start >= span.end {
+        return;
+    }
+
+    events.push(StateEditorEvent::ExpectedSyntax { kind, span });
+}
+
 fn push_state_id_list_events(
     events: &mut Vec<StateEditorEvent>,
     code: &str,
@@ -639,6 +681,12 @@ fn push_state_id_list_events(
     end: usize,
     detail: &'static str,
 ) {
+    push_state_expected_syntax(
+        events,
+        EditorExpectedSyntaxKind::IdList,
+        SourceSpan::new(start, end),
+    );
+
     let Some(slice) = code.get(start..end) else {
         for id in fallback_ids
             .split(',')
@@ -698,6 +746,7 @@ fn push_state_payload_event_from_token(
 
     let span = SourceSpan::new(start, end);
     let selection = token_value_selection(code, start, end, value).unwrap_or(span);
+    push_state_expected_syntax(events, EditorExpectedSyntaxKind::Payload, selection);
     events.push(StateEditorEvent::Payload {
         value: value.to_string(),
         span,
@@ -725,6 +774,7 @@ fn push_state_string_payload_event(
     } else {
         span
     };
+    push_state_expected_syntax(events, EditorExpectedSyntaxKind::Payload, selection);
     events.push(StateEditorEvent::Payload {
         value: value.to_string(),
         span,

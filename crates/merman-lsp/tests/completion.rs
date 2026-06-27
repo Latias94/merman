@@ -157,6 +157,58 @@ fn completion_does_not_offer_node_ids_for_directive_lines() {
 }
 
 #[test]
+fn completion_uses_state_parser_payload_context() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!("stateDiagram-v2\n", "state \"Small State\" as namedState\n",).to_string(),
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 8));
+
+    assert!(
+        list.items.is_empty(),
+        "state payload context must not offer generic identifiers or headers: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn completion_uses_state_parser_id_list_context_for_class_targets() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "stateDiagram-v2\n",
+            "state \"Small State\" as namedState\n",
+            "class namedState exampleStyleClass\n",
+        )
+        .to_string(),
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 12));
+
+    assert!(
+        !list.items.is_empty(),
+        "state id-list context must offer node identifiers"
+    );
+    assert!(list.items.iter().any(|item| item.label == "namedState"));
+    assert!(
+        list.items.iter().all(|item| item.label != ":::className"),
+        "state id-list context must not offer directive completions: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_offers_directive_items_for_class_directive_variants() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

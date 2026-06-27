@@ -129,6 +129,10 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_directive_items(&self) -> bool {
+        if self.expected_syntax.is_some() {
+            return false;
+        }
+
         self.offers(FenceCursorCompletionKind::Directive)
     }
 
@@ -393,5 +397,61 @@ mod tests {
             Some(FenceExpectedSyntaxKind::NodeIdentifier)
         );
         assert!(gantt_context.offer_node_items());
+    }
+
+    #[test]
+    fn context_uses_state_parser_expected_syntax_for_payload_and_id_lists() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            11,
+            concat!(
+                "stateDiagram-v2\n",
+                "state \"Small State\" as namedState\n",
+                "namedState: Waiting state\n",
+                "classDef exampleStyleClass background:#bbb,border:1px solid red\n",
+                "class namedState exampleStyleClass\n",
+                "style namedState fill:#f00\n",
+                "click namedState \"https://example.com/run\" \"Run details\"\n",
+            )
+            .to_string(),
+        );
+
+        let label_context =
+            CompletionContext::from_snapshot(&snapshot, Position::new(1, 8)).unwrap();
+        assert_eq!(
+            label_context.expected_syntax,
+            Some(FenceExpectedSyntaxKind::Payload)
+        );
+        assert!(!label_context.offer_node_items());
+        assert!(!label_context.offer_directive_items());
+
+        let class_targets_context =
+            CompletionContext::from_snapshot(&snapshot, Position::new(5, 12)).unwrap();
+        assert_eq!(
+            class_targets_context.expected_syntax,
+            Some(FenceExpectedSyntaxKind::IdList)
+        );
+        assert!(class_targets_context.offer_node_items());
+        assert!(!class_targets_context.offer_directive_items());
+
+        let inline_class_context =
+            CompletionContext::from_snapshot(&snapshot, Position::new(5, 6)).unwrap();
+        assert_eq!(
+            inline_class_context.expected_syntax,
+            Some(FenceExpectedSyntaxKind::IdList)
+        );
+        assert!(inline_class_context.offer_node_items());
+        assert!(!inline_class_context.offer_directive_items());
+
+        let click_target_context =
+            CompletionContext::from_snapshot(&snapshot, Position::new(6, 12)).unwrap();
+        assert_eq!(
+            click_target_context.expected_syntax,
+            Some(FenceExpectedSyntaxKind::NodeIdentifier)
+        );
+        assert!(click_target_context.offer_node_items());
+        assert!(!click_target_context.offer_directive_items());
     }
 }

@@ -627,6 +627,124 @@ click Running "https://example.com/run" "Run details""#;
 }
 
 #[test]
+fn parse_state_editor_facts_record_expected_syntax_spans() {
+    let engine = Engine::new();
+    let text = concat!(
+        "stateDiagram-v2\n",
+        "state \"Small State\" as namedState\n",
+        "namedState: Waiting state\n",
+        "classDef exampleStyleClass background:#bbb,border:1px solid red\n",
+        "a --> b:::exampleStyleClass\n",
+        "class namedState exampleStyleClass\n",
+        "style namedState fill:#f00\n",
+        "click namedState \"https://example.com/run\" \"Run details\"",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("state editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "state \"Small State\" as namedState",
+        "Small State",
+        "state display label payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text,
+        "state \"Small State\" as namedState",
+        "namedState",
+        "state alias node identifier",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "namedState: Waiting state",
+        "Waiting state",
+        "state description payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "classDef exampleStyleClass background:#bbb,border:1px solid red",
+        "exampleStyleClass",
+        "state class definition payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text,
+        "a --> b:::exampleStyleClass",
+        "b",
+        "state inline class node identifier",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "a --> b:::exampleStyleClass",
+        "exampleStyleClass",
+        "state inline class payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::IdList,
+        text,
+        "class namedState exampleStyleClass",
+        "namedState",
+        "state class target list",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::IdList,
+        text,
+        "style namedState fill:#f00",
+        "namedState",
+        "state style target list",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "style namedState fill:#f00",
+        "fill:#f00",
+        "state style payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text,
+        "click namedState \"https://example.com/run\" \"Run details\"",
+        "namedState",
+        "state click target",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "click namedState \"https://example.com/run\" \"Run details\"",
+        "https://example.com/run",
+        "state click url",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "click namedState \"https://example.com/run\" \"Run details\"",
+        "Run details",
+        "state click tooltip",
+    );
+}
+
+#[test]
 fn parse_state_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "stateDiagram-v2\nIdle --> Running\nRunning -->";
@@ -645,4 +763,28 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
     );
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Idle"));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Running"));
+}
+
+fn assert_expected_syntax_covers(
+    facts: &EditorSemanticFacts,
+    kind: EditorExpectedSyntaxKind,
+    text: &str,
+    marker: &str,
+    target: &str,
+    label: &str,
+) {
+    let marker_start = text
+        .find(marker)
+        .unwrap_or_else(|| panic!("missing {label} source text"));
+    let target_start = text[marker_start..]
+        .find(target)
+        .map(|offset| marker_start + offset)
+        .unwrap_or_else(|| panic!("missing {label} target"));
+    let end = target_start + target.len();
+    assert!(
+        facts.expected_syntax.iter().any(|expected| {
+            expected.kind == kind && expected.span.start <= target_start && expected.span.end >= end
+        }),
+        "missing {label}"
+    );
 }
