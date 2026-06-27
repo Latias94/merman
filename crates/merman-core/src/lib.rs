@@ -33,9 +33,9 @@ pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
-    ParsedDiagram, ParsedDiagramRender, RenderDiagramRegistry, RenderSemanticModel,
-    RenderSemanticParser,
+    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
+    RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
 };
 pub use editor::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,

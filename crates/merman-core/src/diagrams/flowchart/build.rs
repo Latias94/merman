@@ -1,4 +1,5 @@
 use super::{Edge, Node, Stmt, TitleKind, apply_shape_data_to_node};
+use crate::diagram::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
 use std::collections::{HashMap, HashSet};
 
 pub(super) struct FlowchartBuildState {
@@ -6,19 +7,23 @@ pub(super) struct FlowchartBuildState {
     pub(super) node_index: HashMap<String, usize>,
     pub(super) edges: Vec<Edge>,
     pub(super) used_edge_ids: HashSet<String>,
+    pub(super) subgraph_ids: HashSet<String>,
     pub(super) edge_pair_counts: HashMap<(String, String), usize>,
     pub(super) vertex_calls: Vec<String>,
+    pub(super) warning_facts: Vec<DiagramWarningFact>,
 }
 
 impl FlowchartBuildState {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(subgraph_ids: HashSet<String>) -> Self {
         Self {
             nodes: Vec::new(),
             node_index: HashMap::new(),
             edges: Vec::new(),
             used_edge_ids: HashSet::new(),
+            subgraph_ids,
             edge_pair_counts: HashMap::new(),
             vertex_calls: Vec::new(),
+            warning_facts: Vec::new(),
         }
     }
 
@@ -117,11 +122,25 @@ impl FlowchartBuildState {
                 | Stmt::Click(_)
                 | Stmt::LinkStyle(_) => {}
                 Stmt::Style(s) => {
+                    if self.subgraph_ids.contains(&s.target) {
+                        continue;
+                    }
                     // Mermaid's `style` statement routes through FlowDB `addVertex(id, ..., styles)`.
                     // This increments `vertexCounter` for nodes (but is a no-op for edges).
                     if !self.used_edge_ids.contains(&s.target) {
                         self.vertex_calls.push(s.target.clone());
                         if !self.node_index.contains_key(&s.target) {
+                            let mut warning = DiagramWarningFact::new(
+                                FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+                                format!(
+                                    "Style applied to unknown node \"{}\". This may indicate a typo. The node will be created automatically.",
+                                    s.target
+                                ),
+                            );
+                            if let Some(span) = s.target_span {
+                                warning = warning.with_span(span);
+                            }
+                            self.warning_facts.push(warning);
                             let idx = self.nodes.len();
                             self.nodes.push(Node {
                                 id: s.target.clone(),

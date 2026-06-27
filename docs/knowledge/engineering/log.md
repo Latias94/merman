@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-27
+- Added a source-backed flowchart lint rule for `style` directives that target unknown nodes.
+  `merman-core` now emits a warning fact from the flowchart semantic build path, and
+  `merman-analysis` maps it to stable rule id `merman.semantic.flowchart.unknown_style_target`.
+- Verified the slice with `cargo test -p merman-core parse_diagram_flowchart_style_statement_applies_vertex_styles -- --nocapture`,
+  `cargo test -p merman-core parse_diagram_flowchart_without_direction_preserves_source_and_warns -- --nocapture`,
+  `cargo test -p merman-analysis semantic_warning_facts_map_flowchart_unknown_style_target_rule_id -- --nocapture`,
+  `cargo test -p merman-analysis rule_descriptors_expose_stable_rule_metadata -- --nocapture`,
+  and `cargo fmt --all`.
+
+## 2026-06-27
 - Added a fence-local completion gate for multi-fence Markdown documents. A single file with two
   Mermaid blocks now proves flowchart completion stays in the first fence and sequence payload
   completion stays out of the later fence.

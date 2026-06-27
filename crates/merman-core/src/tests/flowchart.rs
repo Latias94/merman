@@ -1855,6 +1855,16 @@ fn parse_diagram_flowchart_style_statement_applies_vertex_styles() {
         .find(|n| n["id"] == json!("Q"))
         .unwrap();
     assert_eq!(q["styles"], json!(["background:#fff"]));
+    assert_eq!(
+        res.model["warningFacts"],
+        json!([
+            {
+                "ruleId": FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+                "message": "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+                "span": { "start": 15, "end": 16 }
+            }
+        ])
+    );
 }
 
 #[test]

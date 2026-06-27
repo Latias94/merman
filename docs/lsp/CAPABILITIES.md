@@ -61,4 +61,5 @@ facts, it is not considered mature.
   completion IDs and outline entries unless their role explicitly permits it.
 - Flowchart lint: parser-backed warning facts flow through the shared analysis contract, starting
   with a recommended-profile authoring hint and preferred quickfix for flowchart headers that omit
-  an explicit direction.
+  an explicit direction, plus a core compatibility warning for `style` targets that would
+  auto-create unknown nodes.

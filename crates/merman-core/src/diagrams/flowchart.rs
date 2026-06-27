@@ -127,7 +127,23 @@ fn parse_flowchart_semantic_source(
     let (code, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
     let ast = parse_flowchart_ast(&code, meta)?;
 
-    let mut build = FlowchartBuildState::new();
+    let inherit_dir = meta
+        .effective_config
+        .as_value()
+        .get("flowchart")
+        .and_then(|v| v.get("inheritDir"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
+    builder.visit_statements(&ast.statements);
+
+    let subgraph_ids: HashSet<String> = builder
+        .subgraphs
+        .iter()
+        .map(|subgraph| subgraph.id.clone())
+        .collect();
+
+    let mut build = FlowchartBuildState::new(subgraph_ids);
     build
         .add_statements(&ast.statements)
         .map_err(|e| Error::DiagramParse {
@@ -138,20 +154,11 @@ fn parse_flowchart_semantic_source(
         nodes,
         edges,
         vertex_calls,
+        warning_facts: build_warning_facts,
         ..
     } = build;
     let mut nodes = nodes;
     let mut edges = edges;
-
-    let inherit_dir = meta
-        .effective_config
-        .as_value()
-        .get("flowchart")
-        .and_then(|v| v.get("inheritDir"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
-    builder.visit_statements(&ast.statements);
 
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
     let mut tooltips: HashMap<String, String> = HashMap::new();
@@ -188,7 +195,8 @@ fn parse_flowchart_semantic_source(
     }
 
     let direction = ast.direction;
-    let warning_facts = flowchart_warning_facts(&direction, ast.header_span);
+    let mut warning_facts = build_warning_facts;
+    warning_facts.extend(flowchart_warning_facts(&direction, ast.header_span));
     let effective_direction = direction.clone().or_else(|| Some("TB".to_string()));
 
     Ok(FlowchartSemanticSource {

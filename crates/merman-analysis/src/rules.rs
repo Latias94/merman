@@ -5,7 +5,7 @@ use crate::{
 };
 use merman_core::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,6 +31,8 @@ pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_regis
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
     "merman.authoring.flowchart.explicit_direction";
+pub const FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID: &str =
+    "merman.semantic.flowchart.unknown_style_target";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
 
@@ -371,6 +373,20 @@ const FLOWCHART_EXPLICIT_DIRECTION_RULE: RuleDescriptor = RuleDescriptor {
     origin: RuleOrigin::MermanAuthoring,
     fixable: true,
 };
+const FLOWCHART_UNKNOWN_STYLE_TARGET_RULE: RuleDescriptor = RuleDescriptor {
+    id: FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID,
+    description: "Report flowchart `style` directives that would auto-create an unknown node target.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/diagrams/flowchart/flowDb.ts",
+        "crates/merman-core/src/diagrams/flowchart/build.rs",
+    ],
+    default_severity: DiagnosticSeverity::Warning,
+    category: DiagnosticCategory::Semantic,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
     description: "Report duplicate gitGraph commit ids.",
@@ -417,6 +433,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     BLOCK_WIDTH_RULE,
     FLOWCHART_EXPLICIT_DIRECTION_RULE,
+    FLOWCHART_UNKNOWN_STYLE_TARGET_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
     SEMANTIC_WARNING_RULE,
 ];
@@ -681,6 +698,7 @@ fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
     match rule_id {
         BLOCK_WIDTH_WARNING_RULE_ID => Some(BLOCK_WIDTH_RULE),
         FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID => Some(FLOWCHART_EXPLICIT_DIRECTION_RULE),
+        FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID => Some(FLOWCHART_UNKNOWN_STYLE_TARGET_RULE),
         GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => Some(GIT_GRAPH_DUPLICATE_COMMIT_RULE),
         SEMANTIC_WARNING_RULE_ID => Some(SEMANTIC_WARNING_RULE),
         _ => None,
@@ -1226,6 +1244,34 @@ mod tests {
     }
 
     #[test]
+    fn semantic_warning_facts_map_flowchart_unknown_style_target_rule_id() {
+        let source = "flowchart TD\nstyle Q background:#fff\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics = semantic_warning_diagnostics(
+            "flowchart-v2",
+            &json!({
+                "warningFacts": [
+                    {
+                        "ruleId": FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+                        "message": "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+                        "span": { "start": 19, "end": 20 }
+                    }
+                ]
+            }),
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID);
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+        assert_eq!(diagnostics[0].category, DiagnosticCategory::Semantic);
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().byte_start, 19);
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().byte_end, 20);
+    }
+
+    #[test]
     fn semantic_authoring_warning_facts_are_not_enabled_by_core_profile() {
         let source = "flowchart\nA-->B\n";
         let source_map = SourceMap::new(source);
@@ -1279,7 +1325,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 18);
+        assert_eq!(descriptors.len(), 19);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert!(descriptors[0].description.contains("canonical `init`"));
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1340,7 +1386,7 @@ mod tests {
             DiagnosticSeverity::Warning
         );
         assert_eq!(deprecated_html_labels.category, DiagnosticCategory::Config);
-        assert!(!deprecated_html_labels.fixable);
+        assert!(deprecated_html_labels.fixable);
         assert!(
             deprecated_html_labels
                 .evidence
@@ -1459,6 +1505,28 @@ mod tests {
                         && descriptor.origin == RuleOrigin::MermanAuthoring
                 })
         );
+        let flowchart_unknown_style = descriptors
+            .iter()
+            .find(|descriptor| descriptor.id == FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID)
+            .expect("flowchart unknown style target descriptor");
+        assert_eq!(
+            flowchart_unknown_style.default_severity,
+            DiagnosticSeverity::Warning
+        );
+        assert_eq!(
+            flowchart_unknown_style.category,
+            DiagnosticCategory::Semantic
+        );
+        assert!(flowchart_unknown_style.default_enabled);
+        assert_eq!(
+            flowchart_unknown_style.default_profile,
+            AnalysisRuleProfile::Core
+        );
+        assert_eq!(
+            flowchart_unknown_style.origin,
+            RuleOrigin::MermaidCompatibility
+        );
+        assert!(!flowchart_unknown_style.fixable);
         assert!(
             descriptors
                 .iter()
