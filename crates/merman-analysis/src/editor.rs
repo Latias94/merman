@@ -491,14 +491,17 @@ impl FenceTextIndex {
         abs_start: usize,
         abs_end: usize,
     ) {
-        if let Some(prefix) = directive_prefix(line_no_newline) {
+        let directive_prefix = directive_prefix(line_no_newline);
+        if let Some(prefix) = directive_prefix {
             self.directive_prefixes.insert(prefix.to_string());
             if is_payload_only_text_scan_prefix(prefix) {
                 return;
             }
         }
 
-        collect_node_ids(diagram_type, line_no_newline, &mut self.node_ids);
+        if directive_prefix.is_none_or(|prefix| !is_classify_only_text_scan_prefix(prefix)) {
+            collect_node_ids(diagram_type, line_no_newline, &mut self.node_ids);
+        }
 
         if let Some(item) = classify_line_item(diagram_type, trimmed, abs_start, abs_end) {
             self.references
@@ -537,6 +540,20 @@ const DIRECTIVE_PREFIXES: &[&str] = &[
     "click",
     "link",
     "callback",
+    "links",
+    "properties",
+    "details",
+    "dateFormat",
+    "inclusiveEndDates",
+    "topAxis",
+    "axisFormat",
+    "tickInterval",
+    "includes",
+    "excludes",
+    "todayMarker",
+    "weekday",
+    "weekend",
+    "section",
     "accTitle",
     "accDescr",
     "accDescription",
@@ -555,16 +572,35 @@ const DIRECTIVE_HELPER_PREFIXES: &[&str] = &[
     ":::",
 ];
 
+const DIRECTIVE_CLASSIFY_ONLY_PREFIXES: &[&str] = &[
+    "classDef",
+    "class",
+    "style",
+    "linkStyle",
+    "click",
+    "section",
+];
+
 const PAYLOAD_ONLY_TEXT_SCAN_PREFIXES: &[&str] = &[
     "init",
     "initialize",
     "wrap",
-    "classDef",
     "cssClass",
-    "linkStyle",
-    "click",
     "link",
     "callback",
+    "links",
+    "properties",
+    "details",
+    "dateFormat",
+    "inclusiveEndDates",
+    "topAxis",
+    "axisFormat",
+    "tickInterval",
+    "includes",
+    "excludes",
+    "todayMarker",
+    "weekday",
+    "weekend",
     "accTitle",
     "accDescr",
     "accDescription",
@@ -634,6 +670,10 @@ fn diagram_header_prefix_matches(prefix: &str) -> bool {
 
 fn is_payload_only_text_scan_prefix(prefix: &str) -> bool {
     PAYLOAD_ONLY_TEXT_SCAN_PREFIXES.contains(&prefix)
+}
+
+fn is_classify_only_text_scan_prefix(prefix: &str) -> bool {
+    DIRECTIVE_CLASSIFY_ONLY_PREFIXES.contains(&prefix)
 }
 
 fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolKind {
@@ -873,6 +913,7 @@ fn classify_line_item(
         ("style", EditorSymbolKind::Property, "style"),
         ("click", EditorSymbolKind::Function, "interaction"),
         ("linkStyle", EditorSymbolKind::Property, "link style"),
+        ("section", EditorSymbolKind::Namespace, "gantt section"),
         ("accTitle", EditorSymbolKind::String, "accessibility title"),
         (
             "accDescr",
@@ -1121,7 +1162,18 @@ mod tests {
                 "text-scan payload directive leaked {leaked:?} as a node id"
             );
         }
-        assert!(index.outline_items().is_empty());
+        assert!(
+            index
+                .outline_items()
+                .iter()
+                .any(|item| item.name == "A" && item.detail.as_deref() == Some("interaction"))
+        );
+        assert!(
+            index
+                .outline_items()
+                .iter()
+                .any(|item| item.name == "0" && item.detail.as_deref() == Some("link style"))
+        );
     }
 
     #[test]
@@ -1130,6 +1182,9 @@ mod tests {
             concat!(
                 "flowchart TD\n",
                 "A-->B\n",
+                "class User:::service\n",
+                "style User fill:#fff\n",
+                "click User href \"https://example.com\" \"Open user\" _blank\n",
                 "classDef service fill:#eee\n",
                 "cssClass A,B service\n",
                 "link Alice: Endpoint @ https://alice.example.com\n",
@@ -1147,14 +1202,97 @@ mod tests {
             vec!["A", "B"]
         );
         for leaked in [
-            "service", "Alice", "Endpoint", "https", "alice", "example", "com", "Bob", "open",
-            "userId",
+            "service", "User", "Alice", "Endpoint", "https", "alice", "example", "com", "Bob",
+            "open", "userId", "fill", "fff",
         ] {
             assert!(
                 !index.node_ids().any(|id| id == leaked),
                 "class directive payload leaked {leaked:?} as a node id"
             );
         }
+        assert!(
+            index
+                .outline_items()
+                .iter()
+                .any(|item| item.name == "User"
+                    && item.detail.as_deref() == Some("class assignment"))
+        );
+        assert!(index.outline_items().iter().any(
+            |item| item.name == "service" && item.detail.as_deref() == Some("class definition")
+        ));
+    }
+
+    #[test]
+    fn text_scan_skips_sequence_directive_payload_prefixes() {
+        let index = FenceTextIndex::from_text(
+            concat!(
+                "sequenceDiagram\n",
+                "links a: { \"Repo\": \"https://repo.contoso.com/\" }\n",
+                "properties a: { \"class\": \"internal-service-actor\", \"icon\": \"@clock\" }\n",
+                "details Alice: {\"owner\": \"platform\"}\n",
+            ),
+            Some("sequence"),
+        );
+
+        for prefix in ["links", "properties", "details"] {
+            assert!(index.has_directive_prefix(prefix));
+        }
+        assert!(index.node_ids().next().is_none());
+        assert!(index.outline_items().is_empty());
+    }
+
+    #[test]
+    fn text_scan_classifies_gantt_section_without_leaking_payloads() {
+        let index = FenceTextIndex::from_text(
+            concat!(
+                "gantt\n",
+                "dateFormat YYYY-MM-DD\n",
+                "axisFormat %Y-%m-%d\n",
+                "tickInterval 1day\n",
+                "includes 2026-01-09\n",
+                "excludes weekends\n",
+                "todayMarker off\n",
+                "weekday monday\n",
+                "weekend friday\n",
+                "section Demo\n",
+            ),
+            Some("gantt"),
+        );
+
+        for prefix in [
+            "dateFormat",
+            "axisFormat",
+            "tickInterval",
+            "includes",
+            "excludes",
+            "todayMarker",
+            "weekday",
+            "weekend",
+            "section",
+        ] {
+            assert!(index.has_directive_prefix(prefix));
+        }
+        for leaked in [
+            "YYYY-MM-DD",
+            "%Y-%m-%d",
+            "1day",
+            "2026-01-09",
+            "weekends",
+            "off",
+            "monday",
+            "friday",
+        ] {
+            assert!(
+                !index.node_ids().any(|id| id == leaked),
+                "gantt directive payload leaked {leaked:?} as a node id"
+            );
+        }
+        assert!(
+            index
+                .outline_items()
+                .iter()
+                .any(|item| item.name == "Demo" && item.detail.as_deref() == Some("gantt section"))
+        );
     }
 
     #[test]
@@ -1268,6 +1406,21 @@ mod tests {
             assert!(context.offers(FenceCursorCompletionKind::Directive));
             assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
         }
+
+        let sequence_directive = index.cursor_context(
+            "links a: { \"Repo\": \"https://repo.contoso.com/\" }",
+            "links".len(),
+        );
+        assert_eq!(sequence_directive.directive_prefix(), Some("links"));
+        assert!(sequence_directive.is_comment_or_directive_line());
+        assert!(!sequence_directive.offers(FenceCursorCompletionKind::Directive));
+        assert!(!sequence_directive.offers(FenceCursorCompletionKind::NodeIdentifier));
+
+        let gantt_directive = index.cursor_context("section Demo", "section".len());
+        assert_eq!(gantt_directive.directive_prefix(), Some("section"));
+        assert!(gantt_directive.is_comment_or_directive_line());
+        assert!(!gantt_directive.offers(FenceCursorCompletionKind::Directive));
+        assert!(!gantt_directive.offers(FenceCursorCompletionKind::NodeIdentifier));
 
         let node = index.cursor_context("node_1", "node_1".len());
         assert!(node.offers(FenceCursorCompletionKind::NodeIdentifier));
