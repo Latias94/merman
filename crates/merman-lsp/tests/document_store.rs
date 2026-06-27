@@ -51,6 +51,59 @@ fn markdown_documents_create_fences_for_markdown_extensions() {
 }
 
 #[test]
+fn markdown_documents_create_multiple_mermaid_fences() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.markdown").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "before\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "A-->B\n",
+            "```\n",
+            "middle\n",
+            "```mermaid\n",
+            "sequenceDiagram\n",
+            "Alice->>Bob: Hi\n",
+            "```\n",
+            "after\n",
+        )
+        .to_string(),
+    );
+
+    assert_eq!(snapshot.fences.len(), 2);
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert_eq!(snapshot.fences[1].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(
+        snapshot.fences[0].text_index.source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    assert_eq!(
+        snapshot.fences[1].text_index.source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    assert!(snapshot.fences[0].text_index.node_ids().any(|id| id == "A"));
+    assert!(snapshot.fences[0].text_index.node_ids().any(|id| id == "B"));
+    assert!(
+        snapshot.fences[1]
+            .text_index
+            .node_ids()
+            .any(|id| id == "Alice")
+    );
+    assert!(
+        snapshot.fences[1]
+            .text_index
+            .node_ids()
+            .any(|id| id == "Bob")
+    );
+}
+
+#[test]
 fn newer_versions_replace_the_stored_snapshot() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

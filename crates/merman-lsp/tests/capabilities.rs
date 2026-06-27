@@ -1,3 +1,5 @@
+use std::{fs, path::PathBuf};
+
 use merman_analysis::FenceTextIndexSource;
 use merman_lsp::document_store::DocumentStore;
 use tower_lsp::lsp_types::Url;
@@ -161,5 +163,27 @@ fn product_families_are_parser_backed_and_role_aware() {
                 case.label
             );
         }
+    }
+}
+
+#[test]
+fn capability_matrix_document_marks_first_class_families_mature() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/lsp/CAPABILITIES.md");
+    let contents =
+        fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+
+    for expected in [
+        "| Flowchart | Yes | Yes | Yes | Yes | Yes | Yes |",
+        "| Sequence | Yes | Yes | Yes | Yes | Yes | Yes |",
+        "| State | Yes | Yes | Yes | Yes | Yes | Yes |",
+        "| Class | Yes | Yes | Yes | Yes | Yes | Yes |",
+        "| ER | Yes | Yes | Yes | Yes | Yes | Yes |",
+        "| Mindmap | Yes | Yes | Yes | Yes | Yes | Yes |",
+        "| Gantt | Yes | Yes | Yes | Yes | Yes | Yes |",
+    ] {
+        assert!(
+            contents.contains(expected),
+            "capability matrix is missing mature row: {expected}"
+        );
     }
 }

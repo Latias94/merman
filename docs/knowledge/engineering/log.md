@@ -6,6 +6,15 @@ status: active
 # Log
 
 ## 2026-06-27
+- Added two U8 gates: the checked-in capability matrix now has a code-backed test that fails if a
+  first-class family row slips away from `Yes`, and Markdown documents with multiple Mermaid fences
+  now stay split into multiple parser-backed snapshots.
+- Verified the slice with `cargo test -p merman-lsp --test capabilities capability_matrix_document_marks_first_class_families_mature -- --nocapture`,
+  `cargo test -p merman-lsp --test document_store markdown_documents_create_multiple_mermaid_fences -- --nocapture`,
+  `cargo test -p merman-analysis text_scan_mindmap_keeps_labels_out_of_node_ids -- --nocapture`,
+  `cargo fmt --all`, `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Closed the remaining Mindmap role split. Node labels now emit explicit payload symbols, so
   payload text no longer competes with node-id navigation or rename; the analysis text-scan
   fallback also stopped treating mindmap label text as completion ids.

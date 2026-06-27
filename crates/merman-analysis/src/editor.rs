@@ -1127,7 +1127,7 @@ mod tests {
         }
 
         for leaked in [
-            "Root", "Node", "Child", "1", "bomb", "hot", "comment", "about", "ids",
+            "Root", "Node", "Child", "1", ":", "bomb", "hot", "comment", "about", "ids",
         ] {
             assert!(
                 !index.node_ids().any(|id| id == leaked),
