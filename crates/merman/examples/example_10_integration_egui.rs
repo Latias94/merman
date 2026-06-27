@@ -1,8 +1,10 @@
-use eframe::egui::{self, ColorImage, TextureHandle};
+use eframe::Frame;
+use eframe::egui::{self, ColorImage, TextureHandle, Ui};
 use merman::render::{
     HeadlessRenderer,
     raster::{RasterFitBox, RasterOptions, svg_to_png},
 };
+use std::io::Cursor;
 use std::path::Path;
 
 const DEFAULT_SOURCE: &str = r#"flowchart TD
@@ -111,11 +113,11 @@ impl MermanEguiApp {
 }
 
 impl eframe::App for MermanEguiApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        egui::Panel::top("toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Render").clicked() {
-                    self.render(ctx);
+                    self.render(ui);
                 }
                 if ui.button("Save SVG").clicked() {
                     self.save_svg();
@@ -127,10 +129,10 @@ impl eframe::App for MermanEguiApp {
             });
         });
 
-        egui::SidePanel::left("source")
+        egui::Panel::left("source")
             .resizable(true)
-            .default_width(380.0)
-            .show(ctx, |ui| {
+            .default_size(380.0)
+            .show_inside(ui, |ui| {
                 ui.heading("Mermaid source");
                 let response = ui.add(
                     egui::TextEdit::multiline(&mut self.source)
@@ -146,7 +148,7 @@ impl eframe::App for MermanEguiApp {
                 }
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("PNG preview");
             if let Some(texture) = &self.texture {
                 let available = ui.available_size();
@@ -169,11 +171,15 @@ fn fit_size(source: egui::Vec2, bounds: egui::Vec2) -> egui::Vec2 {
 }
 
 fn png_to_color_image(bytes: &[u8]) -> Result<ColorImage, String> {
-    let decoder = png::Decoder::new(bytes);
+    let cursor = Cursor::new(bytes);
+    let decoder = png::Decoder::new(cursor);
     let mut reader = decoder
         .read_info()
         .map_err(|err| format!("invalid PNG preview: {err}"))?;
-    let mut buf = vec![0; reader.output_buffer_size()];
+    let size = reader
+        .output_buffer_size()
+        .expect("invalid PNG output buffer size");
+    let mut buf = vec![0; size];
     let info = reader
         .next_frame(&mut buf)
         .map_err(|err| format!("invalid PNG frame: {err}"))?;
