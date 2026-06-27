@@ -14,7 +14,7 @@ facts, it is not considered mature.
 | Class | Yes | Yes | Yes | Yes | Yes | Yes | Mature for class ids, members, annotations, directives, and style payload roles. |
 | ER | Yes | Yes | Yes | Yes | Yes | Yes | Mature for entities, relationships, attributes, and directive payload roles. |
 | Mindmap | Yes | Yes | Yes | Yes | Yes | Partial | Mature for node/event spans; rename and lint still need more payload depth. |
-| Gantt | Yes | Yes | Yes | Yes | Yes | Partial | Mature for task ids, section outlines, directives, click payloads, and accessibility payloads. |
+| Gantt | Yes | Yes | Yes | Yes | Yes | Yes | Mature for task ids, dependency refs, click targets, section outlines, directives, and accessibility payloads. |
 
 ## Feature Gates
 
