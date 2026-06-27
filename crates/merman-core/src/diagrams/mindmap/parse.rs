@@ -2,13 +2,14 @@ use serde_json::{Map, Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
-    EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
+    EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    ParseMetadata, Result, SourceSpan,
 };
 
 use super::db::{MindmapDb, MindmapParseConfig};
 use super::render_model::MindmapDiagramRenderModel;
-use super::utils::{parse_node_spec, strip_inline_comment};
+use super::utils::{NodeSpec, parse_node_spec, strip_inline_comment};
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 
 static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -43,6 +44,7 @@ struct MindmapParsedNodeLine {
     ty: i32,
     span: SourceSpan,
     selection: SourceSpan,
+    payload_span: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +121,16 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
     for event in parsed.events {
         match event {
             MindmapParsedEvent::Node(node) => {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::NodeIdentifier,
+                    node.selection,
+                ));
+                if let Some(payload_span) = node.payload_span {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::Payload,
+                        payload_span,
+                    ));
+                }
                 facts.push_symbol(EditorSemanticSymbol::new(
                     node.id_raw,
                     Some("mindmap node".to_string()),
@@ -279,7 +291,14 @@ fn parse_mindmap_lines(
                 return Ok(HandleOutcome::Done);
             }
 
-            let (id_raw, descr_raw, ty, descr_is_markdown) = match parse_node_spec(rest) {
+            let NodeSpec {
+                id_raw,
+                descr_raw,
+                ty,
+                descr_is_markdown,
+                id_span,
+                payload_span,
+            } = match parse_node_spec(rest) {
                 Ok(v) => v,
                 Err(message) if message == "unterminated node delimiter" => {
                     return Ok(HandleOutcome::NeedMoreInput);
@@ -302,9 +321,6 @@ fn parse_mindmap_lines(
                     });
                 }
             };
-            let local_selection = rest.find(&id_raw).unwrap_or(0);
-            let selection_start = line_start + rest_offset + local_selection;
-            let selection = SourceSpan::new(selection_start, selection_start + id_raw.len());
             let span = SourceSpan::new(
                 line_start + rest_offset,
                 line_start + rest_offset + rest.len(),
@@ -317,7 +333,16 @@ fn parse_mindmap_lines(
                     descr_is_markdown,
                     ty,
                     span,
-                    selection,
+                    selection: SourceSpan::new(
+                        line_start + rest_offset + id_span.start,
+                        line_start + rest_offset + id_span.end,
+                    ),
+                    payload_span: payload_span.map(|span| {
+                        SourceSpan::new(
+                            line_start + rest_offset + span.start,
+                            line_start + rest_offset + span.end,
+                        )
+                    }),
                 }));
             Ok(HandleOutcome::Done)
         };

@@ -6,6 +6,19 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-backed completion to mindmap node lines. `merman-core` now records parser-backed
+  `NodeIdentifier` spans for mindmap node ids plus `Payload` spans for explicit node labels, so
+  the editor layer can distinguish the label text from the node id instead of treating the whole
+  line as one heuristic bucket.
+- `merman-lsp` now treats parser-known `NodeIdentifier` / `Payload` positions as authoritative
+  before falling back to prefix heuristics, which prevents flowchart shape suggestions from
+  leaking into mindmap node label regions.
+- Verified the slice with `cargo test -p merman-core --lib mindmap -- --nocapture`,
+  `cargo test -p merman-lsp --test completion -- --nocapture`,
+  `cargo test -p merman-analysis --lib editor -- --nocapture`, `cargo fmt --all`,
+  `cargo fmt --all --check`, and `git diff --check`.
+
+## 2026-06-27
 - Extended parser-backed completion to flowchart classic shape triggers. `merman-core`
   now runs a recovering lexer for editor-fact extraction, records partial classic-shape openings
   such as `A((`, `A{{`, `A[`, `A[/`, `A[\\`, and `A>` as parser-backed shape trigger spans,

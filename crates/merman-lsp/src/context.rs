@@ -133,14 +133,32 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_direction_items(&self) -> bool {
+        if let Some(expected) = self.expected_syntax {
+            return matches!(expected, FenceExpectedSyntaxKind::Direction);
+        }
+
         self.offers(FenceCursorCompletionKind::Direction)
     }
 
     pub fn offer_shape_items(&self) -> bool {
+        if let Some(expected) = self.expected_syntax {
+            return matches!(
+                expected,
+                FenceExpectedSyntaxKind::Shape | FenceExpectedSyntaxKind::ShapeTrigger
+            );
+        }
+
         self.offers(FenceCursorCompletionKind::Shape)
     }
 
     pub fn offer_node_items(&self) -> bool {
+        if let Some(expected) = self.expected_syntax {
+            return matches!(
+                expected,
+                FenceExpectedSyntaxKind::NodeIdentifier | FenceExpectedSyntaxKind::IdList
+            );
+        }
+
         self.offers(FenceCursorCompletionKind::NodeIdentifier)
     }
 

@@ -278,6 +278,23 @@ fn completion_uses_gantt_parser_payload_context() {
 }
 
 #[test]
+fn completion_uses_mindmap_parser_payload_context() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "mindmap\nroot(Root Node)\n".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 8));
+
+    assert!(
+        list.items.is_empty(),
+        "mindmap payload context must not offer generic identifiers or headers: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_uses_flowchart_parser_payload_context() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

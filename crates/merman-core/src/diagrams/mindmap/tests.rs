@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    EditorSemanticCompleteness, EditorSemanticRole, Engine, ParseOptions, RenderSemanticModel,
-    SourceSpan,
+    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, ParseOptions,
+    RenderSemanticModel, SourceSpan,
 };
 use futures::executor::block_on;
 use serde_json::Value;
@@ -317,6 +317,17 @@ fn mindmap_editor_facts_preserve_parser_node_spans() {
             && symbol.detail.as_deref() == Some("mindmap icon")
             && symbol.selection.start == icon_start
             && symbol.selection.end == icon_start + "bomb".len()
+    }));
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span.start == root_start
+            && expected.span.end == root_start + "root".len()
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span.start == text.find("Root Node").unwrap()
+            && expected.span.end == text.find("Root Node").unwrap() + "Root Node".len()
     }));
 
     assert!(facts.directive_prefixes.iter().any(|p| p == ":::"));
