@@ -6,6 +6,24 @@ status: active
 # Log
 
 ## 2026-06-27
+- Extended parser-backed completion beyond payload-only contexts. ER editor facts now emit
+  `IdList` expected syntax for parser-recognized identifier lists, `merman-analysis` projects that
+  into node-id completion, and LSP completion now prefers those ids on ER `classDef` lines instead
+  of directive fallback.
+- Extended the same contract to class diagrams. `class`/`classDef`-style name positions now emit
+  parser-backed `NodeIdentifier` expected syntax, and `classDef` symbols were promoted from
+  outline-only to completion-visible entity symbols so name positions can actually surface as
+  completion candidates.
+- Verified the slice with `cargo test -p merman-core --lib
+  parse_er_editor_facts_record_expected_id_list_spans -- --nocapture`, `cargo test -p merman-core
+  --lib -j1 parse_class_editor_facts -- --nocapture`, `cargo test -p merman-analysis --lib -j1
+  cursor_context_uses_parser_expected -- --nocapture`, `cargo test -p merman-lsp --test
+  completion -j1 completion_uses_er_parser_expected_id_list_context_for_class_def -- --nocapture`,
+  `cargo test -p merman-lsp --test completion -j1
+  completion_uses_class_parser_expected_node_identifier_context_for_class_def -- --nocapture`,
+  and `cargo fmt --all --check`.
+
+## 2026-06-27
 - Added the first recovery-state parser expected syntax for flowchart incomplete edge tails.
   `merman-core` now records `NodeIdentifier` after `A-->`-style operator tails, `merman-analysis`
   projects that into completion, and `merman-lsp` prefers node-id candidates over operator suffix
