@@ -42,73 +42,12 @@ pub(crate) struct RelationGraphLabel {
     width: usize,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct RelationComponentFacts {
-    has_endpoint_label: bool,
-}
-
-impl RelationComponentFacts {
-    pub(crate) fn with_endpoint_label(mut self, has_endpoint_label: bool) -> Self {
-        self.has_endpoint_label = has_endpoint_label;
-        self
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RelationComponentSummaryPolicy {
-    summarize_multi_relation_endpoint_labels: bool,
-}
-
-impl RelationComponentSummaryPolicy {
-    pub(crate) fn never_before_layering() -> Self {
-        Self {
-            summarize_multi_relation_endpoint_labels: false,
-        }
-    }
-
-    pub(crate) fn summarize_multi_relation_endpoint_labels() -> Self {
-        Self {
-            summarize_multi_relation_endpoint_labels: true,
-        }
-    }
-
-    fn summary_reason_before_layering<R>(
-        self,
-        relations: &[R],
-        relation_facts: impl Fn(&R) -> RelationComponentFacts,
-    ) -> Option<RelationComponentSummaryReason> {
-        if self.summarize_multi_relation_endpoint_labels
-            && relations.len() > 1
-            && relations
-                .iter()
-                .map(relation_facts)
-                .any(|facts| facts.has_endpoint_label)
-        {
-            return Some(RelationComponentSummaryReason::MultiRelationEndpointLabels);
-        }
-
-        None
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RelationComponentSummaryReason {
-    MultiRelationEndpointLabels,
-}
-
 pub(crate) trait RelationComponentAdapter<R> {
     fn build_edges(&self, relation: &R) -> LayeredRelationEdge;
 
     fn is_same_endpoint_parallel(&self, relations: &[R]) -> bool;
 
-    fn summary_policy(&self) -> RelationComponentSummaryPolicy;
-
     fn layered_horizontal_gap(&self) -> usize;
-
-    fn relation_facts(&self, relation: &R) -> RelationComponentFacts {
-        let _ = relation;
-        RelationComponentFacts::default()
-    }
 
     fn render_vertical(
         &self,
@@ -123,19 +62,6 @@ pub(crate) trait RelationComponentAdapter<R> {
         relations: &[R],
         options: &AsciiRenderOptions,
     ) -> Result<String>;
-
-    fn render_summary(
-        &self,
-        boxes: &[RelationGraphBox],
-        relations: &[R],
-        reason: RelationComponentSummaryReason,
-        options: &AsciiRenderOptions,
-    ) -> Result<String> {
-        let layered_reason = LayeredRelationSummaryReason::ComponentFallback { reason };
-        render_relation_summary_rows(boxes, relations, options, |relation| {
-            self.build_summary_row(relation, layered_reason)
-        })
-    }
 
     fn build_summary_row(
         &self,
@@ -600,8 +526,6 @@ fn render_relation_component<R, A>(
 where
     A: RelationComponentAdapter<R>,
 {
-    let summary_policy = adapter.summary_policy();
-    let relation_facts = |relation: &R| adapter.relation_facts(relation);
     if relations.is_empty() {
         return Ok(render_stacked_boxes_with_options(boxes, options));
     }
@@ -611,10 +535,6 @@ where
     if relations.len() == 1 {
         return adapter.render_vertical(boxes, &relations[0], options);
     }
-    if let Some(reason) = summary_policy.summary_reason_before_layering(relations, relation_facts) {
-        return adapter.render_summary(boxes, relations, reason, options);
-    }
-
     render_layered_relation_component(
         boxes,
         relations,
@@ -820,8 +740,6 @@ mod tests {
 
     struct TestRelationAdapter {
         summary_reason: Cell<Option<LayeredRelationSummaryReason>>,
-        summary_policy: RelationComponentSummaryPolicy,
-        has_endpoint_label: bool,
     }
 
     impl RelationComponentAdapter<(&'static str, &'static str)> for TestRelationAdapter {
@@ -831,17 +749,6 @@ mod tests {
 
         fn is_same_endpoint_parallel(&self, _relations: &[(&'static str, &'static str)]) -> bool {
             false
-        }
-
-        fn summary_policy(&self) -> RelationComponentSummaryPolicy {
-            self.summary_policy
-        }
-
-        fn relation_facts(
-            &self,
-            _relation: &(&'static str, &'static str),
-        ) -> RelationComponentFacts {
-            RelationComponentFacts::default().with_endpoint_label(self.has_endpoint_label)
         }
 
         fn layered_horizontal_gap(&self) -> usize {
@@ -1002,7 +909,7 @@ mod tests {
     }
 
     #[test]
-    fn render_layered_relation_component_passes_summary_reason_to_row_builder() {
+    fn render_layered_relation_component_passes_grid_budget_reason_to_row_builder() {
         let boxes = vec![
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
@@ -1010,8 +917,6 @@ mod tests {
         let relations = vec![("a", "b")];
         let adapter = TestRelationAdapter {
             summary_reason: Cell::new(None),
-            summary_policy: RelationComponentSummaryPolicy::never_before_layering(),
-            has_endpoint_label: false,
         };
 
         let rendered = render_layered_relation_component(
@@ -1022,7 +927,7 @@ mod tests {
             1,
             &adapter,
         )
-        .expect("summary fallback should render");
+        .expect("grid budget fallback should render");
 
         assert_eq!(
             adapter.summary_reason.get(),
@@ -1032,33 +937,6 @@ mod tests {
             })
         );
         assert!(rendered.contains("relations:\nA --> B\n"));
-    }
-
-    #[test]
-    fn render_relation_components_uses_component_fallback_summary_reason() {
-        let boxes = vec![
-            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
-            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
-        ];
-        let relations = vec![("a", "b"), ("b", "a")];
-        let adapter = TestRelationAdapter {
-            summary_reason: Cell::new(None),
-            summary_policy:
-                RelationComponentSummaryPolicy::summarize_multi_relation_endpoint_labels(),
-            has_endpoint_label: true,
-        };
-
-        let rendered =
-            render_relation_components(&boxes, &relations, &AsciiRenderOptions::ascii(), &adapter)
-                .expect("component fallback summary should render");
-
-        assert_eq!(
-            adapter.summary_reason.get(),
-            Some(LayeredRelationSummaryReason::ComponentFallback {
-                reason: RelationComponentSummaryReason::MultiRelationEndpointLabels,
-            })
-        );
-        assert_eq!(rendered, "A\n\nB\n\nrelations:\nA --> B\nA --> B\n");
     }
 
     #[test]
@@ -1242,7 +1120,7 @@ mod tests {
             &placed[0],
             &placed[1],
             0,
-            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ));
         let route = LayeredRelationRoutePlan::new(
             geometry.clone(),
@@ -1311,18 +1189,51 @@ mod tests {
             &placed[0],
             &placed[1],
             0,
-            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ));
         let upward = plan_layered_relation_route(LayeredRelationRouteRequest::new(
             &placed,
             &placed[1],
             &placed[0],
             0,
-            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ));
 
         assert_eq!(downward.label_y_after_source(), 2);
         assert_eq!(upward.label_y_after_source(), 8);
+    }
+
+    #[test]
+    fn layered_relation_route_profile_reserves_rows_for_multiline_endpoint_labels() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["AAA".to_string()], 3);
+        let bottom_box = RelationGraphBox::new("bottom".to_string(), vec!["BBB".to_string()], 3);
+        let placed = vec![
+            PlacedRelationGraphBox {
+                id: "top",
+                relation_box: &top_box,
+                x: 0,
+                y: 0,
+            },
+            PlacedRelationGraphBox {
+                id: "bottom",
+                relation_box: &bottom_box,
+                x: 0,
+                y: 10,
+            },
+        ];
+
+        let geometry = plan_layered_relation_route(LayeredRelationRouteRequest::new(
+            &placed,
+            &placed[0],
+            &placed[1],
+            0,
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 2),
+        ));
+
+        assert_eq!(geometry.source_marker_y(), 3);
+        assert_eq!(geometry.label_y_after_source(), 4);
+        assert_eq!(geometry.route_y(), 7);
+        assert_eq!(geometry.target_marker_y(), 7);
     }
 
     #[test]
@@ -1357,7 +1268,7 @@ mod tests {
             &placed[0],
             &placed[2],
             0,
-            LayeredRelationRouteProfile::new(1, 1, 1, 0),
+            LayeredRelationRouteProfile::new(1, 1, 1, 0, 0),
         ));
 
         assert_eq!(geometry.source_x(), 7);

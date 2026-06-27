@@ -7,9 +7,8 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationComponentFacts, RelationComponentSummaryPolicy, RelationGraphBoxStyle,
-    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow,
+    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
@@ -765,12 +764,6 @@ fn class_relation_summary_row(layout: &RelationLayout<'_>) -> Result<RelationGra
     .with_label(layout.label.as_ref()))
 }
 
-impl RelationLayout<'_> {
-    fn has_endpoint_label(&self) -> bool {
-        self.top_endpoint_label.is_some() || self.bottom_endpoint_label.is_some()
-    }
-}
-
 fn class_relation_summary_connector(layout: &RelationLayout<'_>) -> String {
     let symbol = class_relation_summary_symbol(layout);
     let top_label = layout
@@ -861,16 +854,8 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         is_same_endpoint_parallel_layout(layouts)
     }
 
-    fn summary_policy(&self) -> RelationComponentSummaryPolicy {
-        RelationComponentSummaryPolicy::summarize_multi_relation_endpoint_labels()
-    }
-
     fn layered_horizontal_gap(&self) -> usize {
         CLASS_LEVEL_HORIZONTAL_GAP
-    }
-
-    fn relation_facts(&self, layout: &RelationLayout<'a>) -> RelationComponentFacts {
-        RelationComponentFacts::default().with_endpoint_label(layout.has_endpoint_label())
     }
 
     fn render_vertical(
@@ -940,10 +925,20 @@ fn draw_layered_relation(
         vertical,
         horizontal,
         relation_chars,
-        relation_graph::LayeredRelationRouteProfile::class(),
+        class_route_profile(layout),
     );
     scene.draw_edge(canvas, edge_index, lane_offset, style, |geometry| {
         let mut overlays = Vec::new();
+        if let Some(label) = layout.top_endpoint_label.as_ref() {
+            overlays.push(RelationOverlay::label(
+                geometry.source_x(),
+                geometry
+                    .source_marker_y()
+                    .saturating_sub(label.line_count()),
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
+        }
         if let Some(label) = layout.label.as_ref() {
             overlays.push(RelationOverlay::label(
                 (geometry.source_x() + geometry.target_x()) / 2,
@@ -970,8 +965,38 @@ fn draw_layered_relation(
             }
         }
 
+        if let Some(label) = layout.bottom_endpoint_label.as_ref() {
+            overlays.push(RelationOverlay::label(
+                geometry.target_x(),
+                geometry.target_marker_y() + 1,
+                label.clone(),
+                AsciiColorRole::EdgeLabel,
+            ));
+        }
+
         overlays
     });
+}
+
+fn class_route_profile(layout: &RelationLayout<'_>) -> relation_graph::LayeredRelationRouteProfile {
+    let endpoint_label_gap = layout
+        .top_endpoint_label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(0)
+        .max(
+            layout
+                .bottom_endpoint_label
+                .as_ref()
+                .map(RelationGraphLabel::line_count)
+                .unwrap_or(0),
+        );
+
+    if endpoint_label_gap > 0 {
+        relation_graph::LayeredRelationRouteProfile::class_with_endpoint_labels(endpoint_label_gap)
+    } else {
+        relation_graph::LayeredRelationRouteProfile::class()
+    }
 }
 
 fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) -> char {

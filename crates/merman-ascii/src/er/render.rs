@@ -5,9 +5,8 @@ use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, LayeredRelationScene,
-    RelationComponentSummaryPolicy, RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLine,
-    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
-    RelationStackPlan,
+    RelationGraphBoxStyle, RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow,
+    RelationLineChars, RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
 use crate::text::display_width;
 use crate::{AsciiError, Result};
@@ -406,10 +405,6 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
 
     fn is_same_endpoint_parallel(&self, relationships: &[ErRelationshipRenderModel]) -> bool {
         is_same_endpoint_parallel_relationship(relationships)
-    }
-
-    fn summary_policy(&self) -> RelationComponentSummaryPolicy {
-        RelationComponentSummaryPolicy::never_before_layering()
     }
 
     fn layered_horizontal_gap(&self) -> usize {

@@ -186,6 +186,7 @@ pub(crate) struct LayeredRelationRouteProfile {
     source_path_start_offset: usize,
     route_y_offset_from_target: usize,
     target_path_end_offset_from_target: usize,
+    endpoint_label_gap: usize,
 }
 
 impl LayeredRelationRouteProfile {
@@ -194,21 +195,27 @@ impl LayeredRelationRouteProfile {
         source_path_start_offset: usize,
         route_y_offset_from_target: usize,
         target_path_end_offset_from_target: usize,
+        endpoint_label_gap: usize,
     ) -> Self {
         Self {
             min_vertical_gap,
             source_path_start_offset,
             route_y_offset_from_target,
             target_path_end_offset_from_target,
+            endpoint_label_gap,
         }
     }
 
     pub(crate) const fn class() -> Self {
-        Self::new(1, 1, 1, 0)
+        Self::new(1, 1, 1, 0, 0)
+    }
+
+    pub(crate) const fn class_with_endpoint_labels(endpoint_label_gap: usize) -> Self {
+        Self::new(1, 1, 1, 0, endpoint_label_gap)
     }
 
     pub(crate) const fn er() -> Self {
-        Self::new(2, 2, 2, 1)
+        Self::new(2, 2, 2, 1, 0)
     }
 }
 
@@ -357,18 +364,27 @@ pub(crate) fn plan_layered_relation_route(
     let source_bottom = request.top.bottom();
     let target_top = request.bottom.y();
     let target_bottom = request.bottom.bottom();
+    let endpoint_label_gap = request.profile.endpoint_label_gap;
 
     if target_top > source_bottom.saturating_add(request.profile.min_vertical_gap) {
         return LayeredRelationRouteGeometry {
             from_x,
             to_x,
             source_path_start_y: source_bottom
-                .saturating_add(request.profile.source_path_start_offset),
-            source_marker_y: source_bottom.saturating_add(1),
-            route_y: target_top.saturating_sub(request.profile.route_y_offset_from_target),
-            target_marker_y: target_top.saturating_sub(1),
+                .saturating_add(request.profile.source_path_start_offset)
+                .saturating_add(endpoint_label_gap),
+            source_marker_y: source_bottom
+                .saturating_add(1)
+                .saturating_add(endpoint_label_gap),
+            route_y: target_top
+                .saturating_sub(request.profile.route_y_offset_from_target)
+                .saturating_sub(endpoint_label_gap),
+            target_marker_y: target_top
+                .saturating_sub(1)
+                .saturating_sub(endpoint_label_gap),
             target_path_end_y: target_top
-                .saturating_sub(request.profile.target_path_end_offset_from_target),
+                .saturating_sub(request.profile.target_path_end_offset_from_target)
+                .saturating_sub(endpoint_label_gap),
         };
     }
 
@@ -377,26 +393,42 @@ pub(crate) fn plan_layered_relation_route(
             from_x,
             to_x,
             source_path_start_y: source_top
-                .saturating_sub(request.profile.source_path_start_offset),
-            source_marker_y: source_top.saturating_sub(1),
-            route_y: target_bottom.saturating_add(request.profile.route_y_offset_from_target),
-            target_marker_y: target_bottom.saturating_add(1),
+                .saturating_sub(request.profile.source_path_start_offset)
+                .saturating_sub(endpoint_label_gap),
+            source_marker_y: source_top
+                .saturating_sub(1)
+                .saturating_sub(endpoint_label_gap),
+            route_y: target_bottom
+                .saturating_add(request.profile.route_y_offset_from_target)
+                .saturating_add(endpoint_label_gap),
+            target_marker_y: target_bottom
+                .saturating_add(1)
+                .saturating_add(endpoint_label_gap),
             target_path_end_y: target_bottom
-                .saturating_add(request.profile.target_path_end_offset_from_target),
+                .saturating_add(request.profile.target_path_end_offset_from_target)
+                .saturating_add(endpoint_label_gap),
         };
     }
 
     LayeredRelationRouteGeometry {
         from_x,
         to_x,
-        source_path_start_y: source_bottom.saturating_add(request.profile.source_path_start_offset),
-        source_marker_y: source_bottom.saturating_add(1),
+        source_path_start_y: source_bottom
+            .saturating_add(request.profile.source_path_start_offset)
+            .saturating_add(endpoint_label_gap),
+        source_marker_y: source_bottom
+            .saturating_add(1)
+            .saturating_add(endpoint_label_gap),
         route_y: source_bottom
             .max(target_bottom)
-            .saturating_add(request.profile.route_y_offset_from_target),
-        target_marker_y: target_bottom.saturating_add(1),
+            .saturating_add(request.profile.route_y_offset_from_target)
+            .saturating_add(endpoint_label_gap),
+        target_marker_y: target_bottom
+            .saturating_add(1)
+            .saturating_add(endpoint_label_gap),
         target_path_end_y: target_bottom
-            .saturating_add(request.profile.target_path_end_offset_from_target),
+            .saturating_add(request.profile.target_path_end_offset_from_target)
+            .saturating_add(endpoint_label_gap),
     }
 }
 

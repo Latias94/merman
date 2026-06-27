@@ -818,7 +818,7 @@ fn class_parser_reverse_extension_endpoint_labels_follow_normalized_endpoints() 
 }
 
 #[test]
-fn class_parser_endpoint_labels_are_preserved_in_relation_summary() {
+fn class_parser_endpoint_labels_are_routed_without_fallback_summary() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nclass C\nA \"1\" --> \"*\" B : ab\nB \"1\" --> \"*\" C : bc",
         &AsciiRenderOptions::ascii(),
@@ -826,15 +826,17 @@ fn class_parser_endpoint_labels_are_preserved_in_relation_summary() {
     .expect("class diagram should render");
 
     assert!(
-        rendered.contains("relations:"),
-        "endpoint-label fixture should fall back to relation summary:\n{rendered}"
+        !rendered.contains("relations:"),
+        "endpoint-label fixture should stay routed, not summarize:\n{rendered}"
     );
-    for expected in ["A \"1\" --> \"*\" B : ab", "B \"1\" --> \"*\" C : bc"] {
-        assert!(
-            rendered.contains(expected),
-            "endpoint labels should stay visible as {expected:?}:\n{rendered}"
-        );
-    }
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+\n", "| A |\n", "+---+\n", "  1\n", "  |\n", " av\n", "  *\n", "+---+\n",
+            "| B |\n", "+---+\n", "  1\n", "  |\n", " bv\n", "  *\n", "+---+\n", "| C |\n",
+            "+---+\n",
+        )
+    );
 }
 
 #[test]
