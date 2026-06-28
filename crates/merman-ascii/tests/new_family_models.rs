@@ -17,6 +17,15 @@ fn render(model: RenderSemanticModel) -> String {
     render_model(&model, &AsciiRenderOptions::ascii()).unwrap()
 }
 
+fn render_parsed(input: &str) -> String {
+    let engine = merman_core::Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, merman_core::ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    render_model(&parsed.model, &AsciiRenderOptions::ascii()).unwrap()
+}
+
 fn tree_node(
     id: i64,
     level: i64,
@@ -435,6 +444,25 @@ fn packet_render_model_renders_rows_and_ranges() {
             "accDescr: Packet description\n",
             "row 1: [0..7] header (8 bits) | [8..15] payload (8 bits)\n",
             "row 2: [16..31] footer (16 bits)",
+        )
+    );
+}
+
+#[test]
+fn packet_parser_split_blocks_render_upstream_split_bit_counts() {
+    let rendered = render_parsed(
+        r#"packet
+0-10: "test"
+11-90: "multiple"
+"#,
+    );
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "row 1: [0..10] test (11 bits) | [11..31] multiple (20 bits)\n",
+            "row 2: [32..63] multiple (31 bits)\n",
+            "row 3: [64..90] multiple (26 bits)",
         )
     );
 }

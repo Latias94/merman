@@ -210,6 +210,11 @@ impl Engine {
         self
     }
 
+    /// Returns the fixed local timezone offset configured for this engine.
+    pub fn fixed_local_offset_minutes(&self) -> Option<i32> {
+        self.fixed_local_offset_minutes
+    }
+
     /// Applies site-level Mermaid config defaults.
     pub fn with_site_config(mut self, mut site_config: MermaidConfig) -> Self {
         // Merge overrides onto Mermaid schema defaults so detectors keep working.
