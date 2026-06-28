@@ -1,7 +1,7 @@
 # Web WASM Playground
 
-Status: Active
-Last updated: 2026-06-01
+Status: Closed
+Last updated: 2026-06-29
 
 ## Why This Lane Exists
 

@@ -1,22 +1,22 @@
 # Web WASM Playground - Handoff
 
-Status: Active
-Last updated: 2026-06-01
+Status: Closed
+Last updated: 2026-06-29
 
 ## Current State
 
-The lane is open. Scope is frozen around a browser WASM crate, TypeScript package, playground
-integration, and Pages workflow. The formal WASM crate, TypeScript web package, live editor
-integration, and Pages build gate are now in place.
+The lane is closed. Scope was frozen around a browser WASM crate, TypeScript package, playground
+integration, and Pages workflow. The browser WASM crate, TypeScript web package, live editor
+integration, Pages build gate, and shared editor-core browser API surface are now in place.
 
-## Active Task
+## Closed Task
 
 - Task ID: WWP-060
 - Owner: planner
 - Files: `docs/workstreams/web-wasm-playground`, `docs/release`
-- Validation: verify-rust-workstream records fresh final gate evidence
-- Status: READY
-- Review: pending
+- Validation: `verify-rust-workstream` and focused web/package gates recorded in `EVIDENCE_AND_GATES.md`
+- Status: DONE
+- Review: no blocking findings recorded in the closeout pass
 - Evidence: `docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -50,5 +50,12 @@ integration, and Pages build gate are now in place.
 
 ## Next Recommended Action
 
-- Run closeout for WWP-060: verify the recorded gate set, review the workstream, and either close
-  the lane or split npm publishing, raster/PDF export, and broader browser QA into follow-ons.
+- Lane closed.
+
+## Follow-Ons
+
+Split these into separate workstreams when they become concrete:
+
+- npm publishing
+- raster/PDF export
+- broader browser QA

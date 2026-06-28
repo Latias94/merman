@@ -1,7 +1,7 @@
 # Web WASM Playground - Milestones
 
-Status: Active
-Last updated: 2026-06-01
+Status: Closed
+Last updated: 2026-06-29
 
 ## M0 - Scope And Evidence Freeze
 
@@ -91,3 +91,6 @@ Exit criteria:
 - Gate set is recorded.
 - Remaining work is either completed, deferred, or split into follow-ons.
 - `WORKSTREAM.json` status is updated.
+
+Status: complete. The lane is closed, the recorded gate set is current, and residual publishing or
+browser-qa work is split into follow-ons instead of staying inside the lane.
