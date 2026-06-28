@@ -1,7 +1,7 @@
 # V1 Mermaid-Ascii Coverage Contract
 
 Status: active v1 release gate
-Last updated: 2026-06-02
+Last updated: 2026-06-28
 
 This document defines the first `merman-ascii` release boundary for compatibility with the
 MIT-licensed `AlexanderGrooff/mermaid-ascii` reference implementation.
@@ -70,6 +70,14 @@ The following families are product extensions beyond the `mermaid-ascii` v1 gate
 - `erDiagram`
 - `stateDiagram`
 - `xychart`
+- `mindmap`
+- `treeView`
+- `gantt`
+- `timeline`
+- `journey`
+- `kanban`
+- `packet`
+- `gitGraph`
 - any Mermaid family not rendered by `repo-ref/mermaid-ascii`
 
 These families should keep their own parser-backed tests and support matrices, but they are not

@@ -45,12 +45,30 @@ impl GraphNodeShapeSemantics {
                 width: framed_width + 2,
                 height: framed_height,
             },
-            GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => {
-                GraphNodeShapeSize {
-                    width: framed_width,
-                    height: framed_height,
-                }
-            }
+            GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft => GraphNodeShapeSize {
+                width: framed_width + framed_height.saturating_sub(1),
+                height: framed_height,
+            },
+            GraphNodeShape::Rect
+            | GraphNodeShape::Rounded
+            | GraphNodeShape::Circle
+            | GraphNodeShape::DoubleCircle
+            | GraphNodeShape::Diamond
+            | GraphNodeShape::Hexagon
+            | GraphNodeShape::Asymmetric
+            | GraphNodeShape::Trapezoid
+            | GraphNodeShape::TrapezoidAlt => GraphNodeShapeSize {
+                width: framed_width,
+                height: framed_height,
+            },
+            GraphNodeShape::Stadium => GraphNodeShapeSize {
+                width: framed_width + 2,
+                height: framed_height,
+            },
+            GraphNodeShape::Datastore | GraphNodeShape::Document => GraphNodeShapeSize {
+                width: framed_width,
+                height: framed_height,
+            },
         }
     }
 
@@ -100,6 +118,52 @@ mod tests {
         assert_eq!(subroutine.height, rect.height);
         assert_eq!(cylinder.width, rect.width + 2);
         assert_eq!(cylinder.height, rect.height);
+    }
+
+    #[test]
+    fn shape_size_accounts_for_corner_decorated_boxes() {
+        let options = AsciiRenderOptions::unicode();
+        let label = GraphLabel::new("中A");
+
+        let rect =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Rect).size_for_label(&label, &options);
+        let choice =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Choice).size_for_label(&label, &options);
+
+        for shape in [
+            GraphNodeShape::Circle,
+            GraphNodeShape::DoubleCircle,
+            GraphNodeShape::Hexagon,
+            GraphNodeShape::Asymmetric,
+            GraphNodeShape::Trapezoid,
+            GraphNodeShape::TrapezoidAlt,
+        ] {
+            assert_eq!(
+                GraphNodeShapeSemantics::new(shape).size_for_label(&label, &options),
+                rect
+            );
+        }
+        assert_eq!(
+            choice,
+            GraphNodeShapeSize {
+                width: 5,
+                height: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn shape_size_accounts_for_stadium_width() {
+        let options = AsciiRenderOptions::unicode();
+        let label = GraphLabel::new("中A");
+
+        let rect =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Rect).size_for_label(&label, &options);
+        let stadium =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Stadium).size_for_label(&label, &options);
+
+        assert_eq!(stadium.width, rect.width + 2);
+        assert_eq!(stadium.height, rect.height);
     }
 
     #[test]

@@ -90,7 +90,8 @@
 //!
 //! Text output is intentionally terminal-native rather than SVG-derived. The
 //! currently supported public subset covers flowchart/graph, sequenceDiagram,
-//! classDiagram, erDiagram, and xychart.
+//! classDiagram, erDiagram, stateDiagram, xychart, mindmap, treeView,
+//! timeline, gantt, journey, kanban, packet, and gitGraph.
 //!
 //! # Raster output
 //!

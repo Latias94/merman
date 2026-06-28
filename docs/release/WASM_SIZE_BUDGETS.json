@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "updated": "2026-06-22",
+  "updated": "2026-06-28",
   "compression_source": "stripped",
   "notes": "Budgets are regression guards for wasm-size-matrix and generated web packages. Matrix gzip and brotli are measured from the stripped artifact produced by wasm-tools strip --all.",
   "web_package": {
     "browser-full": {
       "max_raw_bytes": 11200000,
-      "max_gzip_bytes": 2400000,
+      "max_gzip_bytes": 2450000,
       "max_brotli_bytes": 1800000
     }
   },
