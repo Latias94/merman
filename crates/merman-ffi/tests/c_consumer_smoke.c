@@ -237,7 +237,7 @@ int merman_c_consumer_smoke(MermanApi api) {
     rc = expect_ok_with(
         api.ascii_supported_diagrams_json(),
         api.buffer_free,
-        api.ascii_enabled ? "sequence" : "[]"
+        api.ascii_enabled ? "treeView" : "[]"
     );
     if (rc != 0) {
         return rc;

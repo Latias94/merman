@@ -1121,7 +1121,17 @@ mod tests {
                 .unwrap()
                 .contains(&Value::String("flowchart".to_string()))
         );
-        assert!(ascii_diagrams.is_array());
+        let ascii_diagrams = ascii_diagrams.as_array().unwrap();
+        if cfg!(feature = "ascii") {
+            for diagram in ["sequence", "gantt", "treeView"] {
+                assert!(
+                    ascii_diagrams.contains(&Value::String(diagram.to_string())),
+                    "expected ASCII metadata to include {diagram}"
+                );
+            }
+        } else {
+            assert!(ascii_diagrams.is_empty());
+        }
         assert!(family_capabilities.as_array().unwrap().iter().any(
             |capability| capability["diagram_type"] == "flowchart"
                 && capability["metadata_id"] == "flowchart"

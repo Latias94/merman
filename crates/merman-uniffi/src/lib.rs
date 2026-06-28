@@ -719,11 +719,13 @@ mod tests {
                 .supported_diagrams()
                 .contains(&"flowchart".to_string())
         );
-        assert!(
-            engine
-                .ascii_supported_diagrams()
-                .contains(&"sequence".to_string())
-        );
+        let ascii_supported_diagrams = engine.ascii_supported_diagrams();
+        for diagram in ["sequence", "gantt", "treeView"] {
+            assert!(
+                ascii_supported_diagrams.contains(&diagram.to_string()),
+                "expected UniFFI ASCII metadata to include {diagram}"
+            );
+        }
         assert!(engine.supported_themes().contains(&"default".to_string()));
         assert!(
             engine
