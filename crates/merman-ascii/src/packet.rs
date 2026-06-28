@@ -1,6 +1,10 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, trim_trailing_blank_lines};
-use merman_core::diagrams::packet::PacketDiagramRenderModel;
+use crate::text::{
+    display_width, normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines,
+};
+use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
+
+const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_packet_diagram(
     model: &PacketDiagramRenderModel,
@@ -19,13 +23,24 @@ pub fn render_packet_diagram(
     }
 
     for (row_idx, row) in model.packet.iter().enumerate() {
-        let blocks = row
-            .iter()
-            .map(|block| format!("[{}..{}] {}", block.start, block.end, block.label))
-            .collect::<Vec<_>>()
-            .join(" | ");
-        lines.push(format!("row {}: {}", row_idx + 1, blocks));
+        let blocks = row.iter().map(render_block).collect::<Vec<_>>().join(" | ");
+        let prefix = format!("row {}: ", row_idx + 1);
+        let continuation_prefix = " ".repeat(display_width(&prefix));
+        push_wrapped_prefixed_line(
+            &mut lines,
+            &prefix,
+            &continuation_prefix,
+            &blocks,
+            SUMMARY_WRAP_WIDTH,
+        );
     }
 
     trim_trailing_blank_lines(lines).join("\n")
+}
+
+fn render_block(block: &PacketRenderBlock) -> String {
+    format!(
+        "[{}..{}] {} ({} bits)",
+        block.start, block.end, block.label, block.bits
+    )
 }

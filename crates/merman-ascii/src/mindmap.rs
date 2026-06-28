@@ -1,10 +1,12 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{display_width, wrap_display_lines};
+use crate::text::{push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
+const SUMMARY_WRAP_WIDTH: usize = 80;
 const BRANCH: &str = "|-- ";
 const CONTINUE: &str = "|   ";
 const EMPTY: &str = "    ";
@@ -24,11 +26,19 @@ pub fn render_mindmap_diagram(
         }
         if let Some(root) = nodes_by_id.get(root_id.as_str()) {
             push_wrapped_label(&mut lines, "", &root.label);
-            render_children(root, "", &children_by_id, &nodes_by_id, &mut lines);
+            let mut visiting = HashSet::from([root.id.as_str()]);
+            render_children(
+                root,
+                "",
+                &children_by_id,
+                &nodes_by_id,
+                &mut visiting,
+                &mut lines,
+            );
         }
     }
 
-    crate::text::trim_trailing_blank_lines(lines).join("\n")
+    trim_trailing_blank_lines(lines).join("\n")
 }
 
 fn index_nodes<'a>(
@@ -44,10 +54,10 @@ fn index_nodes<'a>(
 fn build_children_map(edges: &[MindmapDiagramRenderEdge]) -> HashMap<String, Vec<String>> {
     let mut children: HashMap<String, Vec<String>> = HashMap::new();
     for edge in edges {
-        children
-            .entry(edge.start.clone())
-            .or_default()
-            .push(edge.end.clone());
+        let siblings = children.entry(edge.start.clone()).or_default();
+        if !siblings.iter().any(|child| child == &edge.end) {
+            siblings.push(edge.end.clone());
+        }
     }
     children
 }
@@ -79,6 +89,7 @@ fn render_children<'a>(
     prefix: &str,
     children_by_id: &HashMap<String, Vec<String>>,
     nodes_by_id: &HashMap<&'a str, &'a MindmapDiagramRenderNode>,
+    visiting: &mut HashSet<&'a str>,
     lines: &mut Vec<String>,
 ) {
     let Some(children) = children_by_id.get(node.id.as_str()) else {
@@ -101,7 +112,13 @@ fn render_children<'a>(
         } else {
             format!("{prefix}{BRANCH}")
         };
-        push_wrapped_label(lines, &branch, &child.label);
+        let is_cycle = visiting.contains(child.id.as_str());
+        let label = if is_cycle {
+            Cow::Owned(format!("{} (cycle)", child.label))
+        } else {
+            Cow::Borrowed(child.label.as_str())
+        };
+        push_wrapped_label(lines, &branch, &label);
 
         let next_prefix = if prefix.is_empty() {
             if is_last {
@@ -115,23 +132,30 @@ fn render_children<'a>(
             format!("{prefix}{CONTINUE}")
         };
 
-        render_children(child, &next_prefix, children_by_id, nodes_by_id, lines);
+        if is_cycle {
+            continue;
+        }
+
+        visiting.insert(child.id.as_str());
+        render_children(
+            child,
+            &next_prefix,
+            children_by_id,
+            nodes_by_id,
+            visiting,
+            lines,
+        );
+        visiting.remove(child.id.as_str());
     }
 }
 
 fn push_wrapped_label(lines: &mut Vec<String>, prefix: &str, label: &str) {
-    let available = 80usize.saturating_sub(display_width(prefix)).max(1);
-    let wrapped = wrap_display_lines(label, available);
-    if wrapped.is_empty() {
-        lines.push(prefix.to_string());
-        return;
-    }
-
-    for (index, line) in wrapped.iter().enumerate() {
-        if index == 0 {
-            lines.push(format!("{prefix}{line}"));
-        } else {
-            lines.push(format!("{}{}", " ".repeat(display_width(prefix)), line));
-        }
-    }
+    let continuation_prefix = " ".repeat(crate::text::display_width(prefix));
+    push_wrapped_prefixed_line(
+        lines,
+        prefix,
+        &continuation_prefix,
+        label,
+        SUMMARY_WRAP_WIDTH,
+    );
 }

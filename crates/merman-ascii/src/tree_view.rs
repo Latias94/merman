@@ -1,9 +1,10 @@
 use crate::options::AsciiRenderOptions;
 use crate::text::{
-    display_width, normalize_optional_text, trim_trailing_blank_lines, wrap_display_lines,
+    display_width, normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines,
 };
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 
+const SUMMARY_WRAP_WIDTH: usize = 80;
 const TREE_BRANCH: &str = "|-- ";
 const TREE_CHILD_CONTINUE: &str = "|   ";
 const TREE_CHILD_EMPTY: &str = "    ";
@@ -70,18 +71,12 @@ fn render_node(
 }
 
 fn push_wrapped_label(lines: &mut Vec<String>, prefix: &str, label: &str) {
-    let available = 80usize.saturating_sub(display_width(prefix));
-    let wrapped = wrap_display_lines(label, available.max(1));
-    if wrapped.is_empty() {
-        lines.push(prefix.to_string());
-        return;
-    }
-
-    for (index, line) in wrapped.iter().enumerate() {
-        if index == 0 {
-            lines.push(format!("{prefix}{line}"));
-        } else {
-            lines.push(format!("{}{}", " ".repeat(display_width(prefix)), line));
-        }
-    }
+    let continuation_prefix = " ".repeat(display_width(prefix));
+    push_wrapped_prefixed_line(
+        lines,
+        prefix,
+        &continuation_prefix,
+        label,
+        SUMMARY_WRAP_WIDTH,
+    );
 }

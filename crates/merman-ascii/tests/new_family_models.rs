@@ -158,6 +158,25 @@ fn mindmap_render_model_renders_rooted_outline() {
 }
 
 #[test]
+fn mindmap_render_model_marks_cycles_and_deduplicates_edges() {
+    let model = MindmapDiagramRenderModel {
+        nodes: vec![
+            mindmap_node("root", "Root", 0),
+            mindmap_node("child", "Child", 1),
+        ],
+        edges: vec![
+            mindmap_edge("e1", "root", "child"),
+            mindmap_edge("e2", "root", "child"),
+            mindmap_edge("e3", "child", "root"),
+        ],
+    };
+
+    let rendered = render(RenderSemanticModel::Mindmap(model));
+
+    assert_eq!(rendered, "Root\n\\-- Child\n    \\-- Root (cycle)");
+}
+
+#[test]
 fn timeline_render_model_renders_sections_tasks_and_events() {
     let model = TimelineDiagramRenderModel {
         title: Some("Timeline".to_string()),
@@ -203,6 +222,39 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
 }
 
 #[test]
+fn timeline_render_model_wraps_long_task_and_event_text() {
+    let model = TimelineDiagramRenderModel {
+        title: None,
+        acc_title: None,
+        acc_descr: None,
+        sections: vec!["Planning".to_string()],
+        tasks: vec![TimelineRenderTask {
+            id: 0,
+            section: "Planning".to_string(),
+            task_type: "Planning".to_string(),
+            task: "Design a very long integration event stream normalization workflow that still fits readable terminal output".to_string(),
+            score: 0,
+            events: vec![
+                "Capture every upstream payload variant without losing the important operational context".to_string(),
+            ],
+        }],
+    };
+
+    let rendered = render(RenderSemanticModel::Timeline(model));
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "section: Planning\n",
+            "  - Design a very long integration event stream normalization workflow that\n",
+            "    still fits readable terminal output\n",
+            "    * Capture every upstream payload variant without losing the important\n",
+            "      operational context",
+        )
+    );
+}
+
+#[test]
 fn gantt_render_model_renders_sections_tasks_and_flags() {
     let model = GanttDiagramRenderModel {
         title: Some("Gantt".to_string()),
@@ -240,7 +292,8 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
             "dateFormat: YYYY-MM-DD\n",
             "axisFormat: %d\n",
             "section: Build\n",
-            "  - Implement [9223372036854775000 -> 9223372036854775002] [milestone, active, done, crit, vert]",
+            "  - Implement [9223372036854775000 -> 9223372036854775002] [milestone, active,\n",
+            "    done, crit, vert]",
         )
     );
 }
@@ -380,8 +433,8 @@ fn packet_render_model_renders_rows_and_ranges() {
             "Packet\n",
             "accTitle: Packet title\n",
             "accDescr: Packet description\n",
-            "row 1: [0..7] header | [8..15] payload\n",
-            "row 2: [16..31] footer",
+            "row 1: [0..7] header (8 bits) | [8..15] payload (8 bits)\n",
+            "row 2: [16..31] footer (16 bits)",
         )
     );
 }

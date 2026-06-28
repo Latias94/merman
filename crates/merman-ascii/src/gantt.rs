@@ -1,6 +1,8 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, trim_trailing_blank_lines};
+use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+
+const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_gantt_diagram(
     model: &GanttDiagramRenderModel,
@@ -30,13 +32,19 @@ pub fn render_gantt_diagram(
             current_section = Some(task.section.as_str());
             lines.push(format!("section: {}", task.section));
         }
-        lines.push(render_task_line(task));
+        push_wrapped_prefixed_line(
+            &mut lines,
+            "  - ",
+            "    ",
+            &render_task_text(task),
+            SUMMARY_WRAP_WIDTH,
+        );
     }
 
     trim_trailing_blank_lines(lines).join("\n")
 }
 
-fn render_task_line(task: &GanttRenderTask) -> String {
+fn render_task_text(task: &GanttRenderTask) -> String {
     let start = format_date(task.start_ms);
     let end = format_date(task.render_end_ms.unwrap_or(task.end_ms));
     let mut flags = Vec::new();
@@ -60,7 +68,7 @@ fn render_task_line(task: &GanttRenderTask) -> String {
     } else {
         format!(" [{}]", flags.join(", "))
     };
-    format!("  - {} [{} -> {}]{}", task.task, start, end, suffix)
+    format!("{} [{} -> {}]{}", task.task, start, end, suffix)
 }
 
 fn format_date(ms: i64) -> String {

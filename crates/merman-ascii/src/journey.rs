@@ -1,7 +1,9 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, trim_trailing_blank_lines};
+use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use std::collections::BTreeSet;
+
+const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_journey_diagram(
     model: &JourneyDiagramRenderModel,
@@ -75,5 +77,11 @@ fn push_task(lines: &mut Vec<String>, task: &JourneyRenderTask) {
     } else {
         format!(" ({})", task.people.join(", "))
     };
-    lines.push(format!("  - {} [score {}]{}", task.task, score, people));
+    push_wrapped_prefixed_line(
+        lines,
+        "  - ",
+        "    ",
+        &format!("{} [score {}]{}", task.task, score, people),
+        SUMMARY_WRAP_WIDTH,
+    );
 }

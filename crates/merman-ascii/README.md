@@ -20,7 +20,7 @@ parse Mermaid syntax itself.
 
 This crate contains the public API foundation, options, errors, third-party provenance, copied
 upstream golden fixtures, and model-driven Flowchart, Sequence, State, Class, ER, XYChart,
-Mindmap, TreeView, Gantt, Journey, Kanban, Packet, and GitGraph rendering. Flowcharts with
+Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, Packet, and GitGraph rendering. Flowcharts with
 LR/TD/TB/BT/RL root directions, boxed nodes, multiline node labels, common terminal shape
 approximations, edge labels including multiline edge labels, open/dotted and thick edges, length spacing, and titled/nested
 subgraphs with multiline and wrapped title rows can render through `render_flowchart`.

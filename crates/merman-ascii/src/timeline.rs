@@ -1,6 +1,8 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, trim_trailing_blank_lines, wrap_display_lines};
+use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
+
+const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_timeline_diagram(
     model: &TimelineDiagramRenderModel,
@@ -49,14 +51,14 @@ fn push_task(lines: &mut Vec<String>, task: &TimelineRenderTask) {
     } else {
         format!(" (score {})", task.score)
     };
-    lines.push(format!("  - {}{score}", task.task));
+    push_wrapped_prefixed_line(
+        lines,
+        "  - ",
+        "    ",
+        &format!("{}{score}", task.task),
+        SUMMARY_WRAP_WIDTH,
+    );
     for event in &task.events {
-        for (index, line) in wrap_display_lines(event, 72).iter().enumerate() {
-            if index == 0 {
-                lines.push(format!("    * {line}"));
-            } else {
-                lines.push(format!("      {line}"));
-            }
-        }
+        push_wrapped_prefixed_line(lines, "    * ", "      ", event, SUMMARY_WRAP_WIDTH);
     }
 }

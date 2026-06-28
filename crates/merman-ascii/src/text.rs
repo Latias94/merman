@@ -251,6 +251,32 @@ pub(crate) fn trim_trailing_blank_lines(mut lines: Vec<String>) -> Vec<String> {
     lines
 }
 
+pub(crate) fn push_wrapped_prefixed_line(
+    lines: &mut Vec<String>,
+    first_prefix: &str,
+    continuation_prefix: &str,
+    text: &str,
+    max_width: usize,
+) {
+    let available = max_width
+        .saturating_sub(display_width(first_prefix))
+        .min(max_width.saturating_sub(display_width(continuation_prefix)))
+        .max(1);
+    let wrapped = wrap_display_lines(text, available);
+    if wrapped.is_empty() {
+        lines.push(first_prefix.to_string());
+        return;
+    }
+
+    for (index, line) in wrapped.iter().enumerate() {
+        if index == 0 {
+            lines.push(format!("{first_prefix}{line}"));
+        } else {
+            lines.push(format!("{continuation_prefix}{line}"));
+        }
+    }
+}
+
 pub(crate) fn split_label_lines(raw: &str) -> Vec<String> {
     normalize_label_breaks(raw)
         .split('\n')

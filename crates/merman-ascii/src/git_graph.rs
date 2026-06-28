@@ -1,6 +1,8 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, trim_trailing_blank_lines};
+use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
+
+const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_git_graph_diagram(
     model: &GitGraphRenderModel,
@@ -31,20 +33,26 @@ pub fn render_git_graph_diagram(
     }
 
     for commit in &model.commits {
-        lines.push(render_commit_line(commit));
+        push_wrapped_prefixed_line(
+            &mut lines,
+            "  - ",
+            "    ",
+            &render_commit_text(commit),
+            SUMMARY_WRAP_WIDTH,
+        );
     }
 
     if !model.warnings.is_empty() {
         lines.push("warnings:".to_string());
         for warning in &model.warnings {
-            lines.push(format!("  - {warning}"));
+            push_wrapped_prefixed_line(&mut lines, "  - ", "    ", warning, SUMMARY_WRAP_WIDTH);
         }
     }
 
     trim_trailing_blank_lines(lines).join("\n")
 }
 
-fn render_commit_line(commit: &GitGraphCommitRenderModel) -> String {
+fn render_commit_text(commit: &GitGraphCommitRenderModel) -> String {
     let mut parts = vec![format!("{} {} {}", commit.seq, commit.branch, commit.id)];
     if let Some(kind) = commit_kind(commit.commit_type) {
         parts.push(format!("[{kind}]"));
@@ -64,7 +72,7 @@ fn render_commit_line(commit: &GitGraphCommitRenderModel) -> String {
     if let Some(custom_id) = commit.custom_id {
         parts.push(format!("customId={custom_id}"));
     }
-    format!("  - {}", parts.join(" "))
+    parts.join(" ")
 }
 
 fn commit_kind(commit_type: i64) -> Option<&'static str> {

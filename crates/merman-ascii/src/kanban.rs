@@ -1,6 +1,9 @@
 use crate::options::AsciiRenderOptions;
+use crate::text::{push_wrapped_prefixed_line, trim_trailing_blank_lines};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use std::collections::HashMap;
+
+const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_kanban_diagram(
     model: &KanbanDiagramRenderModel,
@@ -19,7 +22,13 @@ pub fn render_kanban_diagram(
         lines.push(group.label.clone());
         if let Some(children) = children_by_parent.get(group.id.as_str()) {
             for child in children {
-                lines.push(format!("  - {}{}", child.label, render_metadata(child)));
+                push_wrapped_prefixed_line(
+                    &mut lines,
+                    "  - ",
+                    "    ",
+                    &format!("{}{}", child.label, render_metadata(child)),
+                    SUMMARY_WRAP_WIDTH,
+                );
             }
         }
     }
@@ -27,7 +36,13 @@ pub fn render_kanban_diagram(
     if lines.is_empty() {
         for node in &model.nodes {
             if !node.is_group {
-                lines.push(format!("- {}{}", node.label, render_metadata(node)));
+                push_wrapped_prefixed_line(
+                    &mut lines,
+                    "- ",
+                    "  ",
+                    &format!("{}{}", node.label, render_metadata(node)),
+                    SUMMARY_WRAP_WIDTH,
+                );
             }
         }
     }
@@ -54,11 +69,4 @@ fn render_metadata(node: &KanbanRenderNode) -> String {
     } else {
         format!(" [{}]", parts.join(", "))
     }
-}
-
-fn trim_trailing_blank_lines(mut lines: Vec<String>) -> Vec<String> {
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
-        lines.pop();
-    }
-    lines
 }
