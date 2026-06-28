@@ -1319,14 +1319,134 @@ fn flowchart_parser_explicit_td_sibling_group_preserves_local_order_after_extern
 }
 
 #[test]
-fn flowchart_parser_circle_shape_renders_as_round_terminal_shape() {
-    let rendered =
-        render_flowchart("flowchart LR\nA((A)) --> B", &AsciiRenderOptions::ascii()).unwrap();
+fn flowchart_parser_circle_shape_renders_as_circular_terminal_shape() {
+    for shape in ["circle", "circ"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"C\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
 
-    assert_eq!(
-        rendered,
-        "/---\\     +---+\n|   |     |   |\n| A |---->| B |\n|   |     |   |\n\\---/     +---+\n"
+        assert!(rendered.contains("C"), "circle shape should keep its label");
+        assert!(
+            rendered
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with('o')),
+            "circle shape should use circular corner markers:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_ellipse_shape_renders_as_rounded_terminal_shape() {
+    let rendered =
+        render_flowchart("flowchart LR\nA(-Ellipse-)", &AsciiRenderOptions::ascii()).unwrap();
+
+    assert!(
+        rendered.contains("Ellipse"),
+        "ellipse shape should keep its label"
     );
+    assert!(
+        rendered
+            .lines()
+            .next()
+            .is_some_and(|line| line.starts_with('/') && line.ends_with('\\')),
+        "ellipse shape should reuse rounded box markers:\n{rendered}"
+    );
+}
+
+#[test]
+fn flowchart_parser_stadium_shape_renders_as_pill_terminal_shape() {
+    for shape in ["stadium", "pill", "terminal"] {
+        let ascii_rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"S\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            ascii_rendered.contains("S"),
+            "stadium shape should keep its label"
+        );
+        let ascii_first_line = ascii_rendered
+            .lines()
+            .next()
+            .expect("stadium shape should render at least one line");
+        assert!(
+            ascii_first_line.starts_with('(') && ascii_first_line.ends_with(')'),
+            "stadium shape should use pill-style terminal markers:\n{ascii_rendered}"
+        );
+
+        let unicode_rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"S\" }}"),
+            &AsciiRenderOptions::unicode(),
+        )
+        .unwrap();
+        let unicode_first_line = unicode_rendered
+            .lines()
+            .next()
+            .expect("stadium shape should render at least one line");
+        assert!(
+            unicode_first_line.starts_with('╭') && unicode_first_line.ends_with('╮'),
+            "stadium shape should use rounded corners in unicode mode:\n{unicode_rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_doublecircle_shape_renders_as_double_terminal_shape() {
+    for shape in ["doublecircle", "dbl-circ", "double-circle"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"D\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("D"),
+            "double-circle shape should keep its label"
+        );
+        assert!(
+            rendered
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with('@')),
+            "double-circle shape should use bullseye corner markers:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_state_pseudo_and_fork_join_shapes_render() {
+    let cases = [
+        ("fork", true),
+        ("join", true),
+        ("forkJoin", true),
+        ("stateStart", false),
+        ("stateEnd", false),
+    ];
+
+    for (shape, should_show_label) in cases {
+        let label = if shape == "stateStart" { "S" } else { "F" };
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"{label}\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        if should_show_label {
+            assert!(
+                rendered.contains(label),
+                "{shape} shape should keep its label:\n{rendered}"
+            );
+        } else {
+            assert!(
+                !rendered.contains(label),
+                "{shape} shape should not keep its label:\n{rendered}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -1470,7 +1590,7 @@ fn flowchart_parser_hexagon_shape_renders() {
 
 #[test]
 fn flowchart_parser_asymmetric_shape_renders() {
-    for shape in ["odd"] {
+    for shape in ["odd", "flag", "paper-tape"] {
         let rendered = render_flowchart(
             &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Odd\" }}"),
             &AsciiRenderOptions::ascii(),
@@ -1578,8 +1698,43 @@ fn flowchart_parser_document_shape_renders() {
 }
 
 #[test]
+fn flowchart_parser_document_variants_render_like_document_shape() {
+    for shape in [
+        "docs",
+        "documents",
+        "st-doc",
+        "stacked-document",
+        "lin-doc",
+        "lined-document",
+        "tag-doc",
+        "tagged-document",
+    ] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Doc\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Doc"),
+            "{shape} shape should keep its label"
+        );
+        assert!(
+            rendered.contains('~'),
+            "{shape} shape should reuse the folded bottom edge:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_parser_rejects_remaining_uncommon_shapes() {
-    for shape in ["paper-tape", "flag", "docs", "lin-doc", "tag-doc"] {
+    for shape in [
+        "icon",
+        "iconSquare",
+        "iconCircle",
+        "iconRounded",
+        "imageSquare",
+    ] {
         let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
         let err = render_flowchart(&input, &AsciiRenderOptions::ascii())
             .expect_err("unsupported shape should be rejected");

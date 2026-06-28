@@ -51,12 +51,18 @@ impl GraphNodeShapeSemantics {
             },
             GraphNodeShape::Rect
             | GraphNodeShape::Rounded
+            | GraphNodeShape::Circle
+            | GraphNodeShape::DoubleCircle
             | GraphNodeShape::Diamond
             | GraphNodeShape::Hexagon
             | GraphNodeShape::Asymmetric
             | GraphNodeShape::Trapezoid
             | GraphNodeShape::TrapezoidAlt => GraphNodeShapeSize {
                 width: framed_width,
+                height: framed_height,
+            },
+            GraphNodeShape::Stadium => GraphNodeShapeSize {
+                width: framed_width + 2,
                 height: framed_height,
             },
             GraphNodeShape::Datastore | GraphNodeShape::Document => GraphNodeShapeSize {
@@ -121,8 +127,12 @@ mod tests {
 
         let rect =
             GraphNodeShapeSemantics::new(GraphNodeShape::Rect).size_for_label(&label, &options);
+        let choice =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Choice).size_for_label(&label, &options);
 
         for shape in [
+            GraphNodeShape::Circle,
+            GraphNodeShape::DoubleCircle,
             GraphNodeShape::Hexagon,
             GraphNodeShape::Asymmetric,
             GraphNodeShape::Trapezoid,
@@ -133,6 +143,27 @@ mod tests {
                 rect
             );
         }
+        assert_eq!(
+            choice,
+            GraphNodeShapeSize {
+                width: 5,
+                height: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn shape_size_accounts_for_stadium_width() {
+        let options = AsciiRenderOptions::unicode();
+        let label = GraphLabel::new("中A");
+
+        let rect =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Rect).size_for_label(&label, &options);
+        let stadium =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Stadium).size_for_label(&label, &options);
+
+        assert_eq!(stadium.width, rect.width + 2);
+        assert_eq!(stadium.height, rect.height);
     }
 
     #[test]

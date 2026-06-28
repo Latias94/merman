@@ -561,6 +561,65 @@ fn parse_diagram_flowchart_node_data_shape_data_accepts_datastore() {
 }
 
 #[test]
+fn parse_diagram_flowchart_node_data_shape_data_accepts_document_variants() {
+    let engine = Engine::new();
+
+    for shape in [
+        "doc",
+        "document",
+        "docs",
+        "documents",
+        "st-doc",
+        "stacked-document",
+        "lin-doc",
+        "lined-document",
+        "tag-doc",
+        "tagged-document",
+    ] {
+        let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Doc\" }}");
+        let res = block_on(engine.parse_diagram(&diagram, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let nodes = res.model["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 1, "diagram: {diagram}");
+        assert_eq!(nodes[0]["id"], json!("D"), "diagram: {diagram}");
+        assert_eq!(nodes[0]["layoutShape"], json!(shape), "diagram: {diagram}");
+        assert_eq!(nodes[0]["label"], json!("Doc"), "diagram: {diagram}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_node_data_shape_data_accepts_process_variants() {
+    let engine = Engine::new();
+
+    for shape in [
+        "st-rect",
+        "stacked-rectangle",
+        "processes",
+        "procs",
+        "tag-rect",
+        "tag-proc",
+        "tagged-process",
+        "tagged-rectangle",
+        "lin-rect",
+        "lin-proc",
+        "lined-process",
+        "lined-rectangle",
+        "shaded-process",
+    ] {
+        let diagram = format!("flowchart TB\nP@{{ shape: {shape}, label: \"Proc\" }}");
+        let res = block_on(engine.parse_diagram(&diagram, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let nodes = res.model["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 1, "diagram: {diagram}");
+        assert_eq!(nodes[0]["id"], json!("P"), "diagram: {diagram}");
+        assert_eq!(nodes[0]["layoutShape"], json!(shape), "diagram: {diagram}");
+        assert_eq!(nodes[0]["label"], json!("Proc"), "diagram: {diagram}");
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_shape_data_amp_and_edge_matrix() {
     let engine = Engine::new();
 
@@ -742,6 +801,32 @@ fn parse_diagram_flowchart_node_data_shape_data_allows_brace_and_at_in_strings()
     let nodes = res.model["nodes"].as_array().unwrap();
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0]["label"], json!("This is a string with @"));
+}
+
+#[test]
+fn parse_diagram_flowchart_node_data_shape_data_accepts_state_and_fork_join_variants() {
+    let engine = Engine::new();
+
+    let text = r#"flowchart TB
+A@{ shape: choice, label: "Choice" }
+B@{ shape: fork, label: "Fork" }
+C@{ shape: join, label: "Join" }
+D@{ shape: forkJoin, label: "ForkJoin" }
+E@{ shape: stateStart, label: "Start" }
+F@{ shape: stateEnd, label: "End" }
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let nodes = res.model["nodes"].as_array().unwrap();
+    let find = |id: &str| nodes.iter().find(|n| n["id"] == json!(id)).unwrap();
+
+    assert_eq!(find("A")["layoutShape"], json!("choice"));
+    assert_eq!(find("B")["layoutShape"], json!("fork"));
+    assert_eq!(find("C")["layoutShape"], json!("join"));
+    assert_eq!(find("D")["layoutShape"], json!("forkJoin"));
+    assert_eq!(find("E")["layoutShape"], json!("stateStart"));
+    assert_eq!(find("F")["layoutShape"], json!("stateEnd"));
 }
 
 #[test]

@@ -227,6 +227,8 @@ fn mirror_horizontal_char(ch: char) -> char {
         '⌝' => '⌜',
         '⌞' => '⌟',
         '⌟' => '⌞',
+        '(' => ')',
+        ')' => '(',
         ch => ch,
     }
 }
@@ -267,6 +269,9 @@ fn draw_node(
     match layout.shape {
         GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
         GraphNodeShape::Rounded => draw_rounded_node(canvas, layout, charset, options),
+        GraphNodeShape::Circle => draw_circle_node(canvas, layout, charset, options),
+        GraphNodeShape::Stadium => draw_stadium_node(canvas, layout, charset, options),
+        GraphNodeShape::DoubleCircle => draw_double_circle_node(canvas, layout, charset, options),
         GraphNodeShape::Diamond => draw_diamond_node(canvas, layout, charset, options),
         GraphNodeShape::Subroutine => draw_subroutine_node(canvas, layout, charset, options),
         GraphNodeShape::Cylinder => draw_cylinder_node(canvas, layout, charset, options),
@@ -280,8 +285,12 @@ fn draw_node(
         GraphNodeShape::TrapezoidAlt => draw_trapezoid_alt_node(canvas, layout, charset, options),
         GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset),
         GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset),
-        GraphNodeShape::ForkJoinHorizontal => draw_fork_join_node(canvas, layout, charset, false),
-        GraphNodeShape::ForkJoinVertical => draw_fork_join_node(canvas, layout, charset, true),
+        GraphNodeShape::ForkJoinHorizontal => {
+            draw_fork_join_node(canvas, layout, charset, options, false)
+        }
+        GraphNodeShape::ForkJoinVertical => {
+            draw_fork_join_node(canvas, layout, charset, options, true)
+        }
         GraphNodeShape::Choice => draw_choice_node(canvas, layout),
     }
 }
@@ -485,6 +494,71 @@ fn draw_rounded_node(
             top_right: charset.rounded_top_right,
             bottom_left: charset.rounded_bottom_left,
             bottom_right: charset.rounded_bottom_right,
+        },
+    );
+}
+
+fn draw_circle_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '◯' } else { 'o' },
+            top_right: if charset.unicode { '◯' } else { 'o' },
+            bottom_left: if charset.unicode { '◯' } else { 'o' },
+            bottom_right: if charset.unicode { '◯' } else { 'o' },
+        },
+    );
+}
+
+fn draw_stadium_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    let corners = if layout.height == 3 || !charset.unicode {
+        RoundedCorners {
+            top_left: '(',
+            top_right: ')',
+            bottom_left: '(',
+            bottom_right: ')',
+        }
+    } else {
+        RoundedCorners {
+            top_left: charset.rounded_top_left,
+            top_right: charset.rounded_top_right,
+            bottom_left: charset.rounded_bottom_left,
+            bottom_right: charset.rounded_bottom_right,
+        }
+    };
+
+    draw_node_with_corners(canvas, layout, charset, options, corners);
+}
+
+fn draw_double_circle_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '◎' } else { '@' },
+            top_right: if charset.unicode { '◎' } else { '@' },
+            bottom_left: if charset.unicode { '◎' } else { '@' },
+            bottom_right: if charset.unicode { '◎' } else { '@' },
         },
     );
 }
@@ -895,18 +969,28 @@ fn draw_fork_join_node(
     canvas: &mut Canvas,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    vertical: bool,
+    options: &AsciiRenderOptions,
+    _vertical: bool,
 ) {
-    let ch = if vertical {
-        charset.thick_vertical
-    } else {
-        charset.thick_horizontal
-    };
-    for y in layout.y..=layout.bottom() {
-        for x in layout.x..=layout.right() {
-            set_node_border(canvas, x, y, ch, layout.style);
-        }
+    let right = layout.right();
+    let bottom = layout.bottom();
+
+    set_node_border(canvas, layout.x, layout.y, charset.top_left, layout.style);
+    set_node_border(canvas, right, layout.y, charset.top_right, layout.style);
+    set_node_border(canvas, layout.x, bottom, charset.bottom_left, layout.style);
+    set_node_border(canvas, right, bottom, charset.bottom_right, layout.style);
+
+    for x in (layout.x + 1)..right {
+        set_node_border(canvas, x, layout.y, charset.thick_horizontal, layout.style);
+        set_node_border(canvas, x, bottom, charset.thick_horizontal, layout.style);
     }
+
+    for y in (layout.y + 1)..bottom {
+        set_node_border(canvas, layout.x, y, charset.thick_vertical, layout.style);
+        set_node_border(canvas, right, y, charset.thick_vertical, layout.style);
+    }
+
+    write_centered_label(canvas, layout, options);
 }
 
 fn draw_choice_node(canvas: &mut Canvas, layout: &NodeLayout) {

@@ -53,6 +53,9 @@ pub(crate) struct GraphNodeStyle {
 pub(crate) enum GraphNodeShape {
     Rect,
     Rounded,
+    Circle,
+    Stadium,
+    DoubleCircle,
     Diamond,
     Subroutine,
     Cylinder,
