@@ -116,6 +116,10 @@ fn parse_node_shape(shape: Option<&str>) -> Result<GraphNodeShape> {
             Ok(GraphNodeShape::Subroutine)
         }
         "cylinder" | "cyl" | "db" | "database" => Ok(GraphNodeShape::Cylinder),
+        "lean_right" | "lean-r" | "lean-right" | "in-out" => Ok(GraphNodeShape::LeanRight),
+        "lean_left" | "lean-l" | "lean-left" | "out-in" => Ok(GraphNodeShape::LeanLeft),
+        "datastore" | "data-store" => Ok(GraphNodeShape::Datastore),
+        "doc" | "document" => Ok(GraphNodeShape::Document),
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
             feature: "non-rectangular node shapes",

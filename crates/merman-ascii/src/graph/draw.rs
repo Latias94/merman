@@ -260,6 +260,10 @@ fn draw_node(
         GraphNodeShape::Diamond => draw_diamond_node(canvas, layout, charset, options),
         GraphNodeShape::Subroutine => draw_subroutine_node(canvas, layout, charset, options),
         GraphNodeShape::Cylinder => draw_cylinder_node(canvas, layout, charset, options),
+        GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset, options, true),
+        GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options, false),
+        GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset, options),
+        GraphNodeShape::Document => draw_document_node(canvas, layout, charset, options),
         GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset),
         GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset),
         GraphNodeShape::ForkJoinHorizontal => draw_fork_join_node(canvas, layout, charset, false),
@@ -623,6 +627,136 @@ fn draw_cylinder_node(
         canvas.set(x, text_y, ' ');
     }
     write_centered_label(canvas, layout, options);
+}
+
+fn draw_lean_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+    lean_right: bool,
+) {
+    let right = layout.right();
+    let top = layout.y;
+    let bottom = layout.bottom();
+    let slant = layout
+        .height
+        .saturating_sub(1)
+        .min(layout.width.saturating_sub(2));
+    let left_shift = if lean_right { 0 } else { slant };
+    let right_shift = if lean_right { slant } else { 0 };
+    let top_left = layout.x + left_shift;
+    let top_right = right.saturating_sub(right_shift);
+    let bottom_left = layout.x + right_shift;
+    let bottom_right = right.saturating_sub(left_shift);
+
+    set_node_border(
+        canvas,
+        top_left,
+        top,
+        if lean_right { '/' } else { '\\' },
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        top_right,
+        top,
+        if lean_right { '\\' } else { '/' },
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        bottom_left,
+        bottom,
+        if lean_right { '\\' } else { '/' },
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        bottom_right,
+        bottom,
+        if lean_right { '/' } else { '\\' },
+        layout.style,
+    );
+
+    let top_inner_start = top_left + 1;
+    let top_inner_end = top_right;
+    for x in top_inner_start..top_inner_end {
+        set_node_border(canvas, x, top, charset.horizontal, layout.style);
+    }
+
+    let bottom_inner_start = bottom_left + 1;
+    let bottom_inner_end = bottom_right;
+    for x in bottom_inner_start..bottom_inner_end {
+        set_node_border(canvas, x, bottom, charset.horizontal, layout.style);
+    }
+
+    let start_y = top + 1;
+    let end_y = bottom.saturating_sub(1);
+    let denom = end_y.saturating_sub(start_y).max(1);
+    for y in start_y..end_y {
+        let progress = y - start_y;
+        let left_x = if lean_right {
+            top_left + progress.saturating_mul(slant) / denom
+        } else {
+            top_left.saturating_add(slant.saturating_sub(progress.saturating_mul(slant) / denom))
+        };
+        let right_x = if lean_right {
+            top_right + progress.saturating_mul(slant) / denom
+        } else {
+            top_right.saturating_sub(slant.saturating_sub(progress.saturating_mul(slant) / denom))
+        };
+        set_node_border(
+            canvas,
+            left_x,
+            y,
+            if lean_right { '/' } else { '\\' },
+            layout.style,
+        );
+        set_node_border(
+            canvas,
+            right_x,
+            y,
+            if lean_right { '\\' } else { '/' },
+            layout.style,
+        );
+        for x in (left_x + 1)..right_x {
+            canvas.set(x, y, ' ');
+        }
+    }
+
+    write_centered_label(canvas, layout, options);
+}
+
+fn draw_datastore_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_rect_node(canvas, layout, charset, options);
+
+    let right = layout.right();
+    for y in (layout.y + 1)..layout.bottom() {
+        set_node_border(canvas, layout.x, y, ' ', layout.style);
+        set_node_border(canvas, right, y, ' ', layout.style);
+    }
+}
+
+fn draw_document_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_rect_node(canvas, layout, charset, options);
+
+    let bottom = layout.bottom();
+    let fold_start = layout.right().saturating_sub(2);
+    for x in layout.x..=layout.right() {
+        let ch = if x >= fold_start { '/' } else { '~' };
+        set_node_border(canvas, x, bottom, ch, layout.style);
+    }
 }
 
 fn draw_state_start_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {

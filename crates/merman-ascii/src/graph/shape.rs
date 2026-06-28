@@ -45,12 +45,20 @@ impl GraphNodeShapeSemantics {
                 width: framed_width + 2,
                 height: framed_height,
             },
+            GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft => GraphNodeShapeSize {
+                width: framed_width + framed_height.saturating_sub(1),
+                height: framed_height,
+            },
             GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => {
                 GraphNodeShapeSize {
                     width: framed_width,
                     height: framed_height,
                 }
             }
+            GraphNodeShape::Datastore | GraphNodeShape::Document => GraphNodeShapeSize {
+                width: framed_width,
+                height: framed_height,
+            },
         }
     }
 

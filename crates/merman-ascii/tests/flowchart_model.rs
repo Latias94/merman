@@ -1406,6 +1406,102 @@ fn flowchart_parser_thick_top_down_edges_render_with_heavy_ascii_line() {
 }
 
 #[test]
+fn flowchart_parser_lean_right_shape_renders() {
+    for shape in ["lean-r", "lean-right", "in-out"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Lean\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Lean"),
+            "lean shape should keep its label"
+        );
+        assert!(
+            rendered.lines().any(|line| line.starts_with('/')),
+            "lean shape should be slanted:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_lean_left_shape_renders() {
+    for shape in ["lean-l", "lean-left", "out-in"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Lean\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Lean"),
+            "lean shape should keep its label"
+        );
+        assert!(
+            rendered.contains('\\') && rendered.contains('/'),
+            "lean shape should be slanted:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_datastore_shape_renders() {
+    for shape in ["datastore", "data-store"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Store\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Store"),
+            "datastore shape should keep its label"
+        );
+        assert!(
+            rendered.lines().any(|line| line.contains("Store")),
+            "datastore shape should render as a box:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_document_shape_renders() {
+    for shape in ["doc", "document"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Doc\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Doc"),
+            "document shape should keep its label"
+        );
+        assert!(
+            rendered.contains('~'),
+            "document shape should use a folded bottom edge:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_rejects_remaining_uncommon_shapes() {
+    for shape in ["docs", "lin-doc", "tag-doc"] {
+        let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
+        let err = render_flowchart(&input, &AsciiRenderOptions::ascii())
+            .expect_err("unsupported shape should be rejected");
+        assert!(matches!(
+            err,
+            merman_ascii::AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "non-rectangular node shapes",
+            }
+        ));
+    }
+}
+
+#[test]
 fn flowchart_parser_open_edges_render_without_arrowhead() {
     let rendered = render_flowchart("flowchart LR\nA --- B", &AsciiRenderOptions::ascii()).unwrap();
 

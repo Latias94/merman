@@ -11,7 +11,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | --- | --- | --- |
 | Diagram family | Supported | `flowchart`, `graph`, and `flowchart-v2` inputs that parse into `FlowchartV2Model`. |
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
-| Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
+| Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, cylinder/database shapes, lean-left/right shapes, datastore shapes, and document shapes. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
 | Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels including multiline labels, deterministic length spacing, and TD same-rank merge edges. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
@@ -38,6 +38,9 @@ approximations. These mappings are product behavior once shipped and should be s
 | Diamond/decision shapes | Supported approximation. | Rendered with a decision-like terminal outline using `< label >` on the center row. |
 | Subroutine shapes | Supported approximation. | Rendered as boxes with inner vertical rails. |
 | Cylinder/database shapes | Supported approximation. | Rendered as rounded boxes with an inner top separator. |
+| Lean left/right shapes | Supported approximation. | Rendered with mirrored slanted terminal outlines that keep the label centered. |
+| Datastore shapes | Supported approximation. | Rendered as a box with blanked side rails to approximate the database barrel. |
+| Document shapes | Supported approximation. | Rendered as a box with a folded bottom edge. |
 | Subgraphs | Supported subset. | Titled, multiline-title, wrapped-title, nested, disconnected, external-edge, and boundary-aware cross-boundary group layouts for the shipped `LR`-inside-`TD` subset are covered by parser/model tests, local semantic fixtures, and copied `mermaid-ascii` graph fixtures. |
 
 ## Explicitly Unsupported
@@ -48,7 +51,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | --- | --- |
 | Hand-built subgraph member ids with line breaks | `subgraph member ids with line breaks` |
 | Hand-built models with directions outside Mermaid's supported root-direction set | `unsupported graph directions` |
-| Hexagon, lean, document, fork/join, icon, image, and other uncommon shapes | `non-rectangular node shapes` |
+| Hexagon, stacked/tagged document variants, fork/join, icon, image, and other uncommon shapes | `non-rectangular node shapes` |
 | Invisible or otherwise non-normal/non-dotted/non-thick strokes | `non-normal edge strokes` |
 | Cross, circle, or otherwise non-point edge arrows | `non-point edge arrows` |
 | Hand-built models with edges whose endpoints are missing from `nodes` | `edges with missing endpoint nodes` |
