@@ -19,6 +19,8 @@ product boundary.
   ideas, but it is not always semantically faithful to Mermaid.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
+- Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, Packet, and GitGraph now render as compact
+  terminal summaries; keep those projections readable and headless rather than browser-shaped.
 - CJK/emoji terminal-cell coverage is semantic, not byte-exact: primitive cell ownership plus
   Flowchart, Sequence, Class, ER, and XYChart tests prove visibility/alignment without copying
   reference spacing.
@@ -78,6 +80,10 @@ Mermaid terminal standard.
 | ER | Not part of the reference scope. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | Supported subset through the same `relation_graph` seam, with entity boxes, cardinality markers, multiline relationship labels, same-endpoint and bidirectional same-pair lanes, cyclic reverse-span lanes, structured dense/grid-budget relation-summary fallback, and dense multiline local semantic fixtures. | Relation layout is the shared seam; cardinality and relationship identity stay family-specific. |
 | State | Not part of the reference scope. | State diagram support rides the broader ASCII pipeline and gives useful layout ideas. | Supported subset with start/end, fork/join/choice, notes, composite states, divider regions, and role colors. | Keep state honest to the typed model; do not try to copy browser shapes literally. |
 | XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | Compact terminal plots with bars, lines, mixed charts, horizontal mode, configurable compact plot areas, multi-series legend rows that use typed plot titles when present, axis visibility controls, and Mermaid data-label display policy. | Plot planning is split from row rendering; richer multi-series label placement and terminal tooltip alternatives remain follow-on work. |
+| Mindmap / TreeView | Not part of the reference scope. | Broader mindmap/tree examples can suggest readable outline shapes. | Compact hierarchy summaries with preserved order and wrapped labels. | Keep the output readable and compact; do not imitate browser geometry. |
+| Timeline / Gantt | Not part of the reference scope. | Broader schedule renderers can suggest readable summary patterns. | Readable rows that preserve sections, tasks, spans, and flags. | Favor honest text summaries over pseudo-graphs. |
+| Journey / Kanban | Not part of the reference scope. | Broader board renderers can suggest grouping and actor/card metadata patterns. | Readable summaries that preserve section order, actor order, and card metadata. | Keep the projection stable and compact. |
+| Packet / GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane summaries. | Readable summaries that preserve ranges, parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
 
 ## Intentional Differences
 

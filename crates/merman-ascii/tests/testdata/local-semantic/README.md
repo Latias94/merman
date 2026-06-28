@@ -21,6 +21,10 @@ rather than copied upstream output.
 - Local semantic fixtures should name the Mermaid behavior being protected: visible labels,
   preserved relationship direction, routed reachability, grouped content, supported terminal color
   roles, or explicit unsupported-feature diagnostics.
+- Summary-oriented families such as `mindmap`, `treeView`, `timeline`, `gantt`, `journey`,
+  `kanban`, `packet`, and `gitGraph` can be protected either with tiny local `.mmd` fixtures or
+  with focused typed-model renderer tests when the terminal contract is a readable textual summary
+  rather than parser-specific syntax coverage.
 - Exact text snapshots are appropriate only when the text shape is itself the behavior. Otherwise,
   prefer targeted semantic assertions so future layout improvements do not rewrite unrelated
   fixtures.

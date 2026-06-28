@@ -19,8 +19,8 @@ parse Mermaid syntax itself.
 ## Current Status
 
 This crate contains the public API foundation, options, errors, third-party provenance, copied
-upstream golden fixtures, and model-driven Flowchart, Sequence, State, Class, ER, and XYChart
-rendering. Flowcharts with
+upstream golden fixtures, and model-driven Flowchart, Sequence, State, Class, ER, XYChart,
+Mindmap, TreeView, Gantt, Journey, Kanban, Packet, and GitGraph rendering. Flowcharts with
 LR/TD/TB/BT/RL root directions, boxed nodes, multiline node labels, common terminal shape
 approximations, edge labels including multiline edge labels, open/dotted and thick edges, length spacing, and titled/nested
 subgraphs with multiline and wrapped title rows can render through `render_flowchart`.
@@ -65,7 +65,9 @@ layout remains follow-on work. Shipped
 diagram families have opt-in ANSI/HTML foreground color roles through `AsciiColorMode`; flowchart
 also maps Mermaid `classDef`, `class`, inline `style`, and `linkStyle` colors for `color`,
 `stroke`, and node/subgraph `fill`/`background`; state maps node/group text, border, and
-background; sequence maps box fill and parseable rect colors to terminal backgrounds.
+background; sequence maps box fill and parseable rect colors to terminal backgrounds. Mindmap and
+TreeView render as compact hierarchy outlines. Timeline, Gantt, Journey, Kanban, Packet, and
+GitGraph render as readable terminal summaries over their typed render models.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,
@@ -88,6 +90,14 @@ copied, normalized, and self-authored cases.
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, multiline relationship labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, dense crossing/grid-budget relation-summary fallback, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
 | stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground/background `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML color roles. |
 | xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, axis visibility controls, inferred numeric labels, configurable compact plot areas, multi-series legend rows, opt-in data labels, outside-bar vertical data labels, and opt-in ANSI/HTML foreground color roles. |
+| mindmap | `render_mindmap`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact hierarchy outlines with preserved node order and readable wrapped labels. |
+| treeView | `render_tree_view`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact hierarchy outlines with parent-child depth, sibling order, and wrapped labels. |
+| timeline | `render_timeline`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Readable timeline summaries with section order, task order, events, and score annotations. |
+| gantt | `render_gantt`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Readable task summaries with section order, date spans, and task flags. |
+| journey | `render_journey`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Readable journey summaries with actor lists, section order, and task scores. |
+| kanban | `render_kanban`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Column-first card summaries that preserve group order and card metadata. |
+| packet | `render_packet`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Row summaries with contiguous bit ranges and labels. |
+| gitGraph | `render_git_graph`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Branch/commit summaries with commit order, parents, tags, and warnings. |
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the
 typed `render_model` path.

@@ -238,6 +238,19 @@ pub(crate) fn wrap_display_lines(text: &str, max_width: usize) -> Vec<String> {
     lines
 }
 
+pub(crate) fn normalize_optional_text(text: Option<&str>) -> Option<String> {
+    text.map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string)
+}
+
+pub(crate) fn trim_trailing_blank_lines(mut lines: Vec<String>) -> Vec<String> {
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+    lines
+}
+
 pub(crate) fn split_label_lines(raw: &str) -> Vec<String> {
     normalize_label_breaks(raw)
         .split('\n')

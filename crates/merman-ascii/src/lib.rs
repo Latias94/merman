@@ -10,14 +10,22 @@ mod class;
 mod color;
 mod er;
 mod error;
+mod gantt;
+mod git_graph;
 mod graph;
+mod journey;
+mod kanban;
+mod mindmap;
 mod options;
+mod packet;
 mod relation_graph;
 mod sequence;
 mod state;
 mod style_color;
 mod terminal;
 mod text;
+mod timeline;
+mod tree_view;
 mod xychart;
 
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
@@ -27,8 +35,16 @@ pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
 use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::gantt::GanttDiagramRenderModel;
+use merman_core::diagrams::git_graph::GitGraphRenderModel;
+use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+use merman_core::diagrams::kanban::KanbanDiagramRenderModel;
+use merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
+use merman_core::diagrams::packet::PacketDiagramRenderModel;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use merman_core::diagrams::state::StateDiagramRenderModel;
+use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
+use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
@@ -58,9 +74,17 @@ pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -
         RenderSemanticModel::Class(model) => render_class(model, options),
         RenderSemanticModel::Er(model) => render_er(model, options),
         RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
+        RenderSemanticModel::Gantt(model) => render_gantt(model, options),
+        RenderSemanticModel::GitGraph(model) => render_git_graph(model, options),
+        RenderSemanticModel::Journey(model) => render_journey(model, options),
+        RenderSemanticModel::Kanban(model) => render_kanban(model, options),
+        RenderSemanticModel::Mindmap(model) => render_mindmap(model, options),
+        RenderSemanticModel::Packet(model) => render_packet(model, options),
         RenderSemanticModel::Sequence(model) => render_sequence(model, options),
         RenderSemanticModel::State(model) => render_state(model, options),
+        RenderSemanticModel::Timeline(model) => render_timeline(model, options),
         RenderSemanticModel::XyChart(model) => render_xychart(model, options),
+        RenderSemanticModel::TreeView(model) => render_tree_view(model, options),
         other => Err(AsciiError::UnsupportedDiagram {
             diagram_type: other.kind().to_string(),
         }),
@@ -83,6 +107,54 @@ pub fn render_flowchart(model: &FlowchartV2Model, options: &AsciiRenderOptions) 
     graph::render_graph(&graph, options)
 }
 
+pub fn render_mindmap(
+    model: &MindmapDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(mindmap::render_mindmap_diagram(model, options))
+}
+
+pub fn render_gantt(
+    model: &GanttDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(gantt::render_gantt_diagram(model, options))
+}
+
+pub fn render_git_graph(
+    model: &GitGraphRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(git_graph::render_git_graph_diagram(model, options))
+}
+
+pub fn render_journey(
+    model: &JourneyDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(journey::render_journey_diagram(model, options))
+}
+
+pub fn render_kanban(
+    model: &KanbanDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(kanban::render_kanban_diagram(model, options))
+}
+
+pub fn render_packet(
+    model: &PacketDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(packet::render_packet_diagram(model, options))
+}
+
 pub fn render_sequence(
     model: &SequenceDiagramRenderModel,
     options: &AsciiRenderOptions,
@@ -101,6 +173,14 @@ pub fn render_state(
     graph::render_graph(&graph, options)
 }
 
+pub fn render_timeline(
+    model: &TimelineDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(timeline::render_timeline_diagram(model, options))
+}
+
 pub fn render_xychart(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
@@ -109,10 +189,20 @@ pub fn render_xychart(
     xychart::render_xychart_diagram(model, options)
 }
 
+pub fn render_tree_view(
+    model: &TreeViewDiagramRenderModel,
+    options: &AsciiRenderOptions,
+) -> Result<String> {
+    options.validate()?;
+    Ok(tree_view::render_tree_view_diagram(model, options))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartV2Model};
+    use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
+    use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 
     fn empty_flowchart() -> FlowchartV2Model {
         FlowchartV2Model {
@@ -297,6 +387,109 @@ mod tests {
         let rendered = render_model(&model, &AsciiRenderOptions::default()).unwrap();
 
         assert_eq!(rendered, "");
+    }
+
+    fn tree_view_model() -> TreeViewDiagramRenderModel {
+        TreeViewDiagramRenderModel {
+            acc_title: None,
+            acc_descr: None,
+            title: None,
+            root: TreeViewNodeRenderModel {
+                id: 0,
+                level: -1,
+                name: "/".to_string(),
+                children: vec![TreeViewNodeRenderModel {
+                    id: 1,
+                    level: 0,
+                    name: "Root".to_string(),
+                    children: vec![
+                        TreeViewNodeRenderModel {
+                            id: 2,
+                            level: 1,
+                            name: "Child1".to_string(),
+                            children: Vec::new(),
+                        },
+                        TreeViewNodeRenderModel {
+                            id: 3,
+                            level: 1,
+                            name: "Child2".to_string(),
+                            children: Vec::new(),
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
+    fn mindmap_model() -> MindmapDiagramRenderModel {
+        MindmapDiagramRenderModel {
+            nodes: vec![
+                MindmapDiagramRenderNode {
+                    id: "0".to_string(),
+                    dom_id: "node_0".to_string(),
+                    label: "Root".to_string(),
+                    label_type: String::new(),
+                    is_group: false,
+                    shape: "defaultMindmapNode".to_string(),
+                    width: 40.0,
+                    height: 24.0,
+                    padding: 10.0,
+                    css_classes: "mindmap-node section-root section--1".to_string(),
+                    css_styles: Vec::new(),
+                    look: "classic".to_string(),
+                    icon: None,
+                    x: None,
+                    y: None,
+                    level: 0,
+                    node_id: "0".to_string(),
+                    node_type: 0,
+                    section: None,
+                },
+                MindmapDiagramRenderNode {
+                    id: "1".to_string(),
+                    dom_id: "node_1".to_string(),
+                    label: "Child".to_string(),
+                    label_type: String::new(),
+                    is_group: false,
+                    shape: "defaultMindmapNode".to_string(),
+                    width: 40.0,
+                    height: 24.0,
+                    padding: 10.0,
+                    css_classes: "mindmap-node section-0".to_string(),
+                    css_styles: Vec::new(),
+                    look: "classic".to_string(),
+                    icon: None,
+                    x: None,
+                    y: None,
+                    level: 1,
+                    node_id: "1".to_string(),
+                    node_type: 0,
+                    section: None,
+                },
+            ],
+            edges: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn render_model_routes_tree_view_to_hierarchy_renderer() {
+        let model = RenderSemanticModel::TreeView(tree_view_model());
+
+        let rendered = render_model(&model, &AsciiRenderOptions::ascii()).unwrap();
+
+        assert!(rendered.contains("Root"));
+        assert!(rendered.contains("Child1"));
+        assert!(rendered.contains("Child2"));
+    }
+
+    #[test]
+    fn render_model_routes_mindmap_to_hierarchy_renderer() {
+        let model = RenderSemanticModel::Mindmap(mindmap_model());
+
+        let rendered = render_model(&model, &AsciiRenderOptions::ascii()).unwrap();
+
+        assert!(rendered.contains("Root"));
+        assert!(rendered.contains("Child"));
     }
 
     #[test]
