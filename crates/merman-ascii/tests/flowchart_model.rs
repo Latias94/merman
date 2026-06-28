@@ -1,6 +1,8 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
 };
+use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagrams::flowchart::{FlowNode, FlowchartV2Model};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
@@ -12,6 +14,13 @@ fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::
         .expect("flowchart should be detected");
 
     render_model(&parsed.model, options)
+}
+
+fn parse_flowchart_error(input: &str) -> String {
+    Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect_err("flowchart should fail to parse")
+        .to_string()
 }
 
 fn fixture_expected(directory: &str, name: &str) -> String {
@@ -135,6 +144,38 @@ fn assert_rectangular_terminal_grid(rendered: &str) {
             width,
             "rendered lines should stay terminal-cell aligned:\n{rendered}"
         );
+    }
+}
+
+fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartV2Model {
+    FlowchartV2Model {
+        acc_descr: None,
+        acc_title: None,
+        class_defs: Default::default(),
+        direction: Some("LR".to_string()),
+        edge_defaults: None,
+        vertex_calls: Vec::new(),
+        nodes: vec![FlowNode {
+            id: "A".to_string(),
+            label: Some(label.to_string()),
+            label_type: None,
+            layout_shape: Some(layout_shape.to_string()),
+            icon: None,
+            form: None,
+            pos: None,
+            img: None,
+            constraint: None,
+            asset_width: None,
+            asset_height: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            link: None,
+            link_target: None,
+            have_callback: false,
+        }],
+        edges: Vec::new(),
+        subgraphs: Vec::new(),
+        tooltips: Default::default(),
     }
 }
 
@@ -1418,17 +1459,16 @@ fn flowchart_parser_doublecircle_shape_renders_as_double_terminal_shape() {
 }
 
 #[test]
-fn flowchart_parser_state_pseudo_and_fork_join_shapes_render() {
+fn flowchart_parser_public_state_pseudo_and_fork_join_shapes_render() {
     let cases = [
         ("fork", true),
         ("join", true),
-        ("forkJoin", true),
-        ("stateStart", false),
-        ("stateEnd", false),
+        ("start", false),
+        ("stop", false),
     ];
 
     for (shape, should_show_label) in cases {
-        let label = if shape == "stateStart" { "S" } else { "F" };
+        let label = if shape == "start" { "S" } else { "F" };
         let rendered = render_flowchart(
             &format!("flowchart LR\nA@{{ shape: {shape}, label: \"{label}\" }}"),
             &AsciiRenderOptions::ascii(),
@@ -1444,6 +1484,33 @@ fn flowchart_parser_state_pseudo_and_fork_join_shapes_render() {
             assert!(
                 !rendered.contains(label),
                 "{shape} shape should not keep its label:\n{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_typed_model_internal_shape_aliases_render() {
+    let cases = [
+        ("forkJoin", "F", true),
+        ("stateStart", "S", false),
+        ("stateEnd", "E", false),
+        ("rect_left_inv_arrow", "Odd", true),
+    ];
+
+    for (shape, label, should_show_label) in cases {
+        let model = RenderSemanticModel::Flowchart(single_node_flowchart_model(shape, label));
+        let rendered = render_model(&model, &AsciiRenderOptions::ascii()).unwrap();
+
+        if should_show_label {
+            assert!(
+                rendered.contains(label),
+                "{shape} internal shape should keep its label:\n{rendered}"
+            );
+        } else {
+            assert!(
+                !rendered.contains(label),
+                "{shape} internal shape should not keep its label:\n{rendered}"
             );
         }
     }
@@ -1728,13 +1795,7 @@ fn flowchart_parser_document_variants_render_like_document_shape() {
 
 #[test]
 fn flowchart_parser_rejects_remaining_uncommon_shapes() {
-    for shape in [
-        "icon",
-        "iconSquare",
-        "iconCircle",
-        "iconRounded",
-        "imageSquare",
-    ] {
+    for shape in ["icon"] {
         let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
         let err = render_flowchart(&input, &AsciiRenderOptions::ascii())
             .expect_err("unsupported shape should be rejected");
@@ -1745,6 +1806,20 @@ fn flowchart_parser_rejects_remaining_uncommon_shapes() {
                 feature: "non-rectangular node shapes",
             }
         ));
+    }
+}
+
+#[test]
+fn flowchart_parser_rejects_internal_icon_layout_shape_names() {
+    for shape in ["iconSquare", "iconCircle", "iconRounded", "imageSquare"] {
+        let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
+        let err = parse_flowchart_error(&input);
+        assert!(
+            err.contains(&format!(
+                "No such shape: {shape}. Shape names should be lowercase."
+            )),
+            "internal layout shape should be rejected before ASCII rendering:\n{err}"
+        );
     }
 }
 

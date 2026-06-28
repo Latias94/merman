@@ -804,29 +804,28 @@ fn parse_diagram_flowchart_node_data_shape_data_allows_brace_and_at_in_strings()
 }
 
 #[test]
-fn parse_diagram_flowchart_node_data_shape_data_accepts_state_and_fork_join_variants() {
+fn parse_diagram_flowchart_node_data_shape_data_rejects_internal_only_shape_variants() {
     let engine = Engine::new();
 
-    let text = r#"flowchart TB
-A@{ shape: choice, label: "Choice" }
-B@{ shape: fork, label: "Fork" }
-C@{ shape: join, label: "Join" }
-D@{ shape: forkJoin, label: "ForkJoin" }
-E@{ shape: stateStart, label: "Start" }
-F@{ shape: stateEnd, label: "End" }
-"#;
-    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .unwrap()
-        .unwrap();
-    let nodes = res.model["nodes"].as_array().unwrap();
-    let find = |id: &str| nodes.iter().find(|n| n["id"] == json!(id)).unwrap();
-
-    assert_eq!(find("A")["layoutShape"], json!("choice"));
-    assert_eq!(find("B")["layoutShape"], json!("fork"));
-    assert_eq!(find("C")["layoutShape"], json!("join"));
-    assert_eq!(find("D")["layoutShape"], json!("forkJoin"));
-    assert_eq!(find("E")["layoutShape"], json!("stateStart"));
-    assert_eq!(find("F")["layoutShape"], json!("stateEnd"));
+    for shape in [
+        "forkJoin",
+        "stateStart",
+        "stateEnd",
+        "rect_left_inv_arrow",
+        "iconSquare",
+        "iconCircle",
+        "iconRounded",
+        "imageSquare",
+    ] {
+        let diagram = format!("flowchart TB\nA@{{ shape: {shape}, label: \"Internal\" }}");
+        let err = block_on(engine.parse_diagram(&diagram, ParseOptions::default())).unwrap_err();
+        assert!(
+            err.to_string().contains(&format!(
+                "No such shape: {shape}. Shape names should be lowercase."
+            )),
+            "diagram: {diagram}\nerror: {err}"
+        );
+    }
 }
 
 #[test]

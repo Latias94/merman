@@ -211,9 +211,10 @@ pub(super) fn apply_shape_data_to_node(
         match k.as_str() {
             "shape" => {
                 let Some(shape) = v.as_str() else { continue };
-                if shape.contains('_') {
+                // Mermaid rejects camelCase and underscore shapeData before shape-map lookup.
+                if shape != shape.to_lowercase() || shape.contains('_') {
                     return Err(format!(
-                        "No such shape: {shape}. Shape names should not contain underscores."
+                        "No such shape: {shape}. Shape names should be lowercase."
                     ));
                 }
                 if !is_valid_shape_11_12_2(shape) {

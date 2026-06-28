@@ -130,8 +130,8 @@ fn parse_node_shape(shape: Option<&str>) -> Result<GraphNodeShape> {
         "odd" | "rect_left_inv_arrow" | "flag" | "paper-tape" => Ok(GraphNodeShape::Asymmetric),
         "choice" => Ok(GraphNodeShape::Choice),
         "fork" | "join" | "forkJoin" => Ok(GraphNodeShape::ForkJoinHorizontal),
-        "stateStart" => Ok(GraphNodeShape::StateStart),
-        "stateEnd" => Ok(GraphNodeShape::StateEnd),
+        "start" | "small-circle" | "sm-circ" | "stateStart" => Ok(GraphNodeShape::StateStart),
+        "stop" | "framed-circle" | "fr-circ" | "stateEnd" => Ok(GraphNodeShape::StateEnd),
         "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => Ok(GraphNodeShape::Trapezoid),
         "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
             Ok(GraphNodeShape::TrapezoidAlt)
