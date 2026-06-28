@@ -1446,6 +1446,98 @@ fn flowchart_parser_lean_left_shape_renders() {
 }
 
 #[test]
+fn flowchart_parser_hexagon_shape_renders() {
+    for shape in ["hexagon", "hex", "prepare"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Hex\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Hex"),
+            "hexagon shape should keep its label"
+        );
+        assert!(
+            rendered
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with('*')),
+            "hexagon shape should use decorated corners:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_asymmetric_shape_renders() {
+    for shape in ["odd"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Odd\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Odd"),
+            "asymmetric shape should keep its label"
+        );
+        assert!(
+            rendered
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with('>')),
+            "asymmetric shape should use a left-pointing corner:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_trapezoid_shape_renders() {
+    for shape in ["trapezoid", "trap-b", "priority", "trapezoid-bottom"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Trap\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Trap"),
+            "trapezoid shape should keep its label"
+        );
+        assert!(
+            rendered
+                .lines()
+                .next()
+                .is_some_and(|line| line.starts_with('/')),
+            "trapezoid shape should use slanted top corners:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_inverse_trapezoid_shape_renders() {
+    for shape in ["inv-trapezoid", "trap-t", "manual", "trapezoid-top"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Inv\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+
+        assert!(
+            rendered.contains("Inv"),
+            "inverse trapezoid shape should keep its label"
+        );
+        assert!(
+            rendered
+                .lines()
+                .last()
+                .is_some_and(|line| line.starts_with('\\')),
+            "inverse trapezoid shape should use slanted bottom corners:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_parser_datastore_shape_renders() {
     for shape in ["datastore", "data-store"] {
         let rendered = render_flowchart(
@@ -1487,7 +1579,7 @@ fn flowchart_parser_document_shape_renders() {
 
 #[test]
 fn flowchart_parser_rejects_remaining_uncommon_shapes() {
-    for shape in ["docs", "lin-doc", "tag-doc"] {
+    for shape in ["paper-tape", "flag", "docs", "lin-doc", "tag-doc"] {
         let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
         let err = render_flowchart(&input, &AsciiRenderOptions::ascii())
             .expect_err("unsupported shape should be rejected");

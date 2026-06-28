@@ -49,12 +49,16 @@ impl GraphNodeShapeSemantics {
                 width: framed_width + framed_height.saturating_sub(1),
                 height: framed_height,
             },
-            GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => {
-                GraphNodeShapeSize {
-                    width: framed_width,
-                    height: framed_height,
-                }
-            }
+            GraphNodeShape::Rect
+            | GraphNodeShape::Rounded
+            | GraphNodeShape::Diamond
+            | GraphNodeShape::Hexagon
+            | GraphNodeShape::Asymmetric
+            | GraphNodeShape::Trapezoid
+            | GraphNodeShape::TrapezoidAlt => GraphNodeShapeSize {
+                width: framed_width,
+                height: framed_height,
+            },
             GraphNodeShape::Datastore | GraphNodeShape::Document => GraphNodeShapeSize {
                 width: framed_width,
                 height: framed_height,
@@ -108,6 +112,27 @@ mod tests {
         assert_eq!(subroutine.height, rect.height);
         assert_eq!(cylinder.width, rect.width + 2);
         assert_eq!(cylinder.height, rect.height);
+    }
+
+    #[test]
+    fn shape_size_accounts_for_corner_decorated_boxes() {
+        let options = AsciiRenderOptions::unicode();
+        let label = GraphLabel::new("中A");
+
+        let rect =
+            GraphNodeShapeSemantics::new(GraphNodeShape::Rect).size_for_label(&label, &options);
+
+        for shape in [
+            GraphNodeShape::Hexagon,
+            GraphNodeShape::Asymmetric,
+            GraphNodeShape::Trapezoid,
+            GraphNodeShape::TrapezoidAlt,
+        ] {
+            assert_eq!(
+                GraphNodeShapeSemantics::new(shape).size_for_label(&label, &options),
+                rect
+            );
+        }
     }
 
     #[test]

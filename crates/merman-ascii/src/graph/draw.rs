@@ -207,6 +207,8 @@ fn mirror_horizontal_char(ch: char) -> char {
     match ch {
         '>' => '<',
         '<' => '>',
+        '▷' => '◁',
+        '◁' => '▷',
         '►' => '◄',
         '◄' => '►',
         '/' => '\\',
@@ -221,6 +223,10 @@ fn mirror_horizontal_char(ch: char) -> char {
         '╮' => '╭',
         '╰' => '╯',
         '╯' => '╰',
+        '⌜' => '⌝',
+        '⌝' => '⌜',
+        '⌞' => '⌟',
+        '⌟' => '⌞',
         ch => ch,
     }
 }
@@ -243,6 +249,10 @@ fn mirror_vertical_char(ch: char) -> char {
         '╰' => '╭',
         '╮' => '╯',
         '╯' => '╮',
+        '⌜' => '⌞',
+        '⌞' => '⌜',
+        '⌝' => '⌟',
+        '⌟' => '⌝',
         ch => ch,
     }
 }
@@ -264,6 +274,10 @@ fn draw_node(
         GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options, false),
         GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset, options),
         GraphNodeShape::Document => draw_document_node(canvas, layout, charset, options),
+        GraphNodeShape::Hexagon => draw_hexagon_node(canvas, layout, charset, options),
+        GraphNodeShape::Asymmetric => draw_asymmetric_node(canvas, layout, charset, options),
+        GraphNodeShape::Trapezoid => draw_trapezoid_node(canvas, layout, charset, options),
+        GraphNodeShape::TrapezoidAlt => draw_trapezoid_alt_node(canvas, layout, charset, options),
         GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset),
         GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset),
         GraphNodeShape::ForkJoinHorizontal => draw_fork_join_node(canvas, layout, charset, false),
@@ -757,6 +771,86 @@ fn draw_document_node(
         let ch = if x >= fold_start { '/' } else { '~' };
         set_node_border(canvas, x, bottom, ch, layout.style);
     }
+}
+
+fn draw_hexagon_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '⌜' } else { '*' },
+            top_right: if charset.unicode { '⌝' } else { '*' },
+            bottom_left: if charset.unicode { '⌞' } else { '*' },
+            bottom_right: if charset.unicode { '⌟' } else { '*' },
+        },
+    );
+}
+
+fn draw_asymmetric_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '▷' } else { '>' },
+            top_right: if charset.unicode { '┐' } else { '+' },
+            bottom_left: if charset.unicode { '▷' } else { '>' },
+            bottom_right: if charset.unicode { '┘' } else { '+' },
+        },
+    );
+}
+
+fn draw_trapezoid_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: '/',
+            top_right: '\\',
+            bottom_left: if charset.unicode { '└' } else { '+' },
+            bottom_right: if charset.unicode { '┘' } else { '+' },
+        },
+    );
+}
+
+fn draw_trapezoid_alt_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '┌' } else { '+' },
+            top_right: if charset.unicode { '┐' } else { '+' },
+            bottom_left: '\\',
+            bottom_right: '/',
+        },
+    );
 }
 
 fn draw_state_start_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {

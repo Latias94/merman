@@ -11,7 +11,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | --- | --- | --- |
 | Diagram family | Supported | `flowchart`, `graph`, and `flowchart-v2` inputs that parse into `FlowchartV2Model`. |
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
-| Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, cylinder/database shapes, lean-left/right shapes, datastore shapes, and document shapes. |
+| Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, cylinder/database shapes, hexagon shapes, asymmetric/odd shapes, trapezoid shapes, lean-left/right shapes, datastore shapes, and document shapes. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
 | Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels including multiline labels, deterministic length spacing, and TD same-rank merge edges. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
@@ -51,7 +51,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | --- | --- |
 | Hand-built subgraph member ids with line breaks | `subgraph member ids with line breaks` |
 | Hand-built models with directions outside Mermaid's supported root-direction set | `unsupported graph directions` |
-| Hexagon, stacked/tagged document variants, fork/join, icon, image, and other uncommon shapes | `non-rectangular node shapes` |
+| Paper-tape/flag, stacked/tagged document variants, fork/join, icon, image, and other remaining uncommon shapes | `non-rectangular node shapes` |
 | Invisible or otherwise non-normal/non-dotted/non-thick strokes | `non-normal edge strokes` |
 | Cross, circle, or otherwise non-point edge arrows | `non-point edge arrows` |
 | Hand-built models with edges whose endpoints are missing from `nodes` | `edges with missing endpoint nodes` |
@@ -73,7 +73,7 @@ reference implementation is only an implementation aid.
 | ANSI/HTML color roles | Ported | ADR 0067 added an opt-in color API, and flowchart now assigns semantic foreground/background roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
 | `classDef`, `class`, inline node styles, and `linkStyle` colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps safe terminal semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, node/subgraph `fill`/`background` to ANSI/HTML backgrounds, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |
 | State diagram graph rendering | Split to state adapter | `stateDiagram` uses a different typed model, not `FlowchartV2Model`; it now renders through the state-to-graph adapter rather than the flowchart adapter. | See `STATE_SUPPORT.md`. |
-| Additional uncommon flowchart shapes | Defer | `beautiful-mermaid` has more shape renderers; current `merman-ascii` intentionally supports the high-frequency terminal approximations first. | Add one shape family at a time with public `render_model` snapshots. |
+| Additional uncommon flowchart shapes | Ported subset | `beautiful-mermaid`'s hexagon, asymmetric, trapezoid, and trapezoid-alt renderers now have terminal approximations in `merman-ascii`. Paper-tape/flag, tagged/stacked document variants, icons, images, and browser-only metadata remain deferred. | Add the remaining shape families one at a time with public `render_model` snapshots. |
 
 ## Known Limitations
 

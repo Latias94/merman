@@ -120,6 +120,12 @@ fn parse_node_shape(shape: Option<&str>) -> Result<GraphNodeShape> {
         "lean_left" | "lean-l" | "lean-left" | "out-in" => Ok(GraphNodeShape::LeanLeft),
         "datastore" | "data-store" => Ok(GraphNodeShape::Datastore),
         "doc" | "document" => Ok(GraphNodeShape::Document),
+        "hexagon" | "hex" | "prepare" => Ok(GraphNodeShape::Hexagon),
+        "odd" | "rect_left_inv_arrow" => Ok(GraphNodeShape::Asymmetric),
+        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => Ok(GraphNodeShape::Trapezoid),
+        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
+            Ok(GraphNodeShape::TrapezoidAlt)
+        }
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
             feature: "non-rectangular node shapes",
