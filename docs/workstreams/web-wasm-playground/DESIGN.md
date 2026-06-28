@@ -74,6 +74,8 @@ merman-core / merman-render / merman
         |
 merman-bindings-core       (safe facade, options JSON, error classification)
         |
+merman-editor-core         (shared editor diagnostics, completion, symbols, navigation)
+        |
 crates/merman-wasm        (wasm-bindgen transport, JS values, panic hook)
         |
 platforms/web             (TypeScript package, typed options, dynamic WASM init)
@@ -82,7 +84,10 @@ playground                (live editor / GitHub Pages app)
 ```
 
 The WASM crate should expose strings and JSON instead of Rust structs. The TypeScript package can
-layer typed options over the same JSON contract already used by native bindings.
+layer typed options over the same JSON contract already used by native bindings. Browser editor
+APIs are stateless document queries over `merman-editor-core`; the playground projects those results
+into Monaco providers for diagnostics, completion, hover, document symbols, definition,
+references, rename, code actions, and semantic tokens.
 
 ## Closeout Condition
 

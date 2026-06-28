@@ -1,0 +1,24 @@
+[package]
+name = "merman-editor-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Protocol-neutral editor intelligence core for Merman."
+documentation = "https://docs.rs/merman-editor-core"
+readme = "README.md"
+keywords = ["mermaid", "editor", "language-tools", "diagnostics"]
+categories = ["development-tools", "text-editors"]
+
+[features]
+default = ["core-full", "core-host"]
+core-full = ["merman-analysis/core-full", "merman-core/full"]
+core-host = ["merman-analysis/core-host", "merman-core/host"]
+
+[dependencies]
+merman-analysis.workspace = true
+merman-core.workspace = true
+serde.workspace = true

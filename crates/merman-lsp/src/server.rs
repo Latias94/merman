@@ -1,5 +1,6 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
+use crate::diagnostics::analysis_payload_to_diagnostics;
 use crate::document_store::DocumentStore;
 use crate::document_store::SemanticTokensState;
 use crate::protocol::{
@@ -19,10 +20,7 @@ use crate::structure::{
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
-    AnalysisOptions, Analyzer,
-    document::analyze_document,
-    lsp::{analysis_payload_to_diagnostics, uri_is_markdown},
-    markdown::markdown_source_descriptor,
+    AnalysisOptions, Analyzer, document::analyze_document, markdown::markdown_source_descriptor,
     options_json::analysis_options_from_json_value,
 };
 use std::hash::{Hash, Hasher};
@@ -132,7 +130,7 @@ impl MermanLanguageServer {
         &self,
         snapshot: &DocumentSnapshot,
     ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
-        let source = if uri_is_markdown(&snapshot.uri) {
+        let source = if crate::document_store::is_markdown_uri(&snapshot.uri) {
             markdown_source_descriptor(Some(snapshot.uri.as_str()))
         } else {
             merman_analysis::SourceDescriptor::diagram().with_path(snapshot.uri.as_str())
@@ -617,6 +615,7 @@ impl LanguageServer for MermanLanguageServer {
 #[cfg(test)]
 mod tests {
     use super::MermanLanguageServer;
+    use crate::diagnostics::analysis_diagnostic_to_lsp;
     use crate::document_store::DocumentStore;
     use crate::protocol::{
         CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
@@ -626,7 +625,6 @@ mod tests {
     };
     use merman_analysis::{
         AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, SourceMap,
-        lsp::analysis_diagnostic_to_lsp,
     };
     use tower::{Service, ServiceExt};
     use tower_lsp::LanguageServer;

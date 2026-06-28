@@ -8,7 +8,6 @@
 mod analyzer;
 pub mod document;
 pub mod editor;
-pub mod lsp;
 pub mod markdown;
 pub mod options_json;
 mod payload;

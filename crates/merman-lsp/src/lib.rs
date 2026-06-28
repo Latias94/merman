@@ -2,7 +2,7 @@
 
 pub mod code_actions;
 pub mod completion;
-pub mod context;
+pub mod diagnostics;
 pub mod document_store;
 pub mod protocol;
 pub mod semantic_tokens;

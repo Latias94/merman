@@ -1,4 +1,4 @@
-use merman_analysis::lsp::DiagnosticCodeActionData;
+use merman_editor_core::DiagnosticCodeActionData;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
     Diagnostic, Position, Range, TextEdit, Url, WorkspaceEdit,
@@ -116,13 +116,13 @@ fn position_from_lsp(value: merman_analysis::Utf16Position) -> Position {
 #[cfg(test)]
 mod tests {
     use super::code_actions_for_params;
+    use crate::diagnostics::analysis_payload_to_diagnostics;
     use merman_analysis::{
         AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticFix,
-        DiagnosticFixEdit, DiagnosticSpan, Utf16Position,
-        document::analyze_document,
-        lsp::{DiagnosticCodeActionData, analysis_payload_to_diagnostics},
+        DiagnosticFixEdit, DiagnosticSpan, Utf16Position, document::analyze_document,
         markdown::markdown_source_descriptor,
     };
+    use merman_editor_core::DiagnosticCodeActionData;
     use tower_lsp::lsp_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, Diagnostic,
         DiagnosticSeverity, NumberOrString, Position, Range, TextDocumentIdentifier, Url,

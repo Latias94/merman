@@ -20,8 +20,6 @@ pub(crate) fn init_directives_to_frontmatter_fix(
         return None;
     }
 
-    let mut config = config;
-    let _ = move_flowchart_html_labels_to_root(&mut config);
     let removals = init_directives
         .into_iter()
         .map(|directive| directive_removal_span(source, directive.full))
@@ -40,7 +38,7 @@ pub(crate) fn flowchart_html_labels_to_root_fix(
     source: &str,
     source_map: &SourceMap,
 ) -> Option<DiagnosticFix> {
-    let mut config = merged_diagram_config(source)?;
+    let mut config = merged_deprecated_html_labels_config(source)?;
     if !move_flowchart_html_labels_to_root(&mut config) {
         return None;
     }
@@ -116,9 +114,48 @@ fn merged_diagram_config(source: &str) -> Option<Value> {
         .map(|metadata| metadata.config.as_value().clone())
 }
 
+fn merged_deprecated_html_labels_config(source: &str) -> Option<Value> {
+    let mut config = merged_diagram_config(source)?;
+    for directive_config in init_directive_config_values(source) {
+        deep_merge_config(&mut config, directive_config);
+    }
+    Some(config)
+}
+
 fn migration_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(Engine::new)
+}
+
+fn init_directive_config_values(source: &str) -> Vec<Value> {
+    init_directive_spans(source)
+        .into_iter()
+        .filter_map(|directive| {
+            let body = source.get(directive.keyword.end..directive.full.end)?;
+            let rest = body.trim_start();
+            let rest = rest.strip_prefix(':')?.trim_start();
+            let body = rest.strip_suffix("}%%").unwrap_or(rest).trim();
+            json5::from_str::<Value>(body).ok()
+        })
+        .collect()
+}
+
+fn deep_merge_config(target: &mut Value, source: Value) {
+    match (target, source) {
+        (Value::Object(target), Value::Object(source)) => {
+            for (key, value) in source {
+                match target.get_mut(&key) {
+                    Some(existing) => deep_merge_config(existing, value),
+                    None => {
+                        target.insert(key, value);
+                    }
+                }
+            }
+        }
+        (target, source) => {
+            *target = source;
+        }
+    }
 }
 
 struct FrontmatterEdit {
@@ -173,25 +210,90 @@ fn move_flowchart_html_labels_to_root(config: &mut Value) -> bool {
         return false;
     };
     let root_had_html_labels = root.contains_key("htmlLabels");
-    let (html_labels, flowchart_is_empty) = {
-        let Some(Value::Object(flowchart)) = root.get_mut("flowchart") else {
-            return false;
-        };
-        let Some(html_labels) = flowchart.remove("htmlLabels") else {
-            return false;
-        };
-        let flowchart_is_empty = flowchart.is_empty();
-        (html_labels, flowchart_is_empty)
+
+    let Some((html_labels, cleanup_path)) = take_flowchart_html_labels(root) else {
+        return false;
     };
 
     if !root_had_html_labels {
         root.insert("htmlLabels".to_string(), html_labels);
     }
-    if flowchart_is_empty {
-        root.remove("flowchart");
+
+    match cleanup_path {
+        FlowchartHtmlLabelsPath::Direct { flowchart_is_empty } => {
+            if flowchart_is_empty {
+                root.remove("flowchart");
+            }
+        }
+        FlowchartHtmlLabelsPath::ConfigWrapped {
+            flowchart_is_empty,
+            config_is_empty,
+        } => {
+            if flowchart_is_empty && let Some(Value::Object(config)) = root.get_mut("config") {
+                config.remove("flowchart");
+            }
+            if config_is_empty {
+                root.remove("config");
+            }
+        }
     }
 
     true
+}
+
+enum FlowchartHtmlLabelsPath {
+    Direct {
+        flowchart_is_empty: bool,
+    },
+    ConfigWrapped {
+        flowchart_is_empty: bool,
+        config_is_empty: bool,
+    },
+}
+
+fn take_flowchart_html_labels(
+    root: &mut Map<String, Value>,
+) -> Option<(Value, FlowchartHtmlLabelsPath)> {
+    let (html_labels, flowchart_is_empty) = {
+        let Some(Value::Object(flowchart)) = root.get_mut("flowchart") else {
+            return take_config_wrapped_flowchart_html_labels(root);
+        };
+        let Some(html_labels) = flowchart.remove("htmlLabels") else {
+            return take_config_wrapped_flowchart_html_labels(root);
+        };
+        let flowchart_is_empty = flowchart.is_empty();
+        (html_labels, flowchart_is_empty)
+    };
+
+    Some((
+        html_labels,
+        FlowchartHtmlLabelsPath::Direct { flowchart_is_empty },
+    ))
+}
+
+fn take_config_wrapped_flowchart_html_labels(
+    root: &mut Map<String, Value>,
+) -> Option<(Value, FlowchartHtmlLabelsPath)> {
+    let Value::Object(config) = root.get_mut("config")? else {
+        return None;
+    };
+    let (html_labels, flowchart_is_empty, config_is_empty) = {
+        let Value::Object(flowchart) = config.get_mut("flowchart")? else {
+            return None;
+        };
+        let html_labels = flowchart.remove("htmlLabels")?;
+        let flowchart_is_empty = flowchart.is_empty();
+        let config_is_empty = flowchart_is_empty && config.len() == 1;
+        (html_labels, flowchart_is_empty, config_is_empty)
+    };
+
+    Some((
+        html_labels,
+        FlowchartHtmlLabelsPath::ConfigWrapped {
+            flowchart_is_empty,
+            config_is_empty,
+        },
+    ))
 }
 
 fn parse_frontmatter_fields(yaml_body: &str) -> Option<Map<String, Value>> {

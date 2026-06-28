@@ -366,6 +366,166 @@ export interface AnalysisResult {
   }>;
 }
 
+export interface EditorPosition {
+  line: number;
+  character: number;
+}
+
+export interface EditorRange {
+  start: EditorPosition;
+  end: EditorPosition;
+}
+
+export interface EditorTextEdit {
+  range: EditorRange;
+  newText: string;
+}
+
+export type EditorCompletionItemKind = "keyword" | "variable";
+
+export interface EditorCompletionResolveData {
+  kind:
+    | "diagram_header"
+    | "operator"
+    | "direction"
+    | "directive"
+    | "shape"
+    | "node_identifier";
+  label: string;
+}
+
+export interface EditorCompletionTextEdit {
+  range: EditorRange;
+  new_text: string;
+}
+
+export interface EditorCompletionItem {
+  label: string;
+  kind: EditorCompletionItemKind;
+  detail?: string | null;
+  data?: EditorCompletionResolveData | null;
+  insert_text?: string | null;
+  text_edit?: EditorCompletionTextEdit | null;
+  label_details?: {
+    description?: string | null;
+    detail?: string | null;
+  } | null;
+}
+
+export interface EditorCompletionList {
+  is_incomplete: boolean;
+  items: EditorCompletionItem[];
+}
+
+export type EditorDiagnosticSeverity = "error" | "warning" | "info" | "hint";
+
+export interface EditorDiagnosticRelated {
+  message: string;
+  range: EditorRange;
+}
+
+export interface EditorDiagnostic {
+  range: EditorRange;
+  severity: EditorDiagnosticSeverity;
+  code: number | string;
+  source: string;
+  message: string;
+  related: EditorDiagnosticRelated[];
+  data?: {
+    id: string;
+    fixes: Array<{
+      title: string;
+      edits: Array<{
+        span: unknown;
+        replacement: string;
+      }>;
+      is_preferred?: boolean;
+    }>;
+  } | null;
+}
+
+export interface EditorDiagnosticsResult {
+  version: number;
+  valid: boolean;
+  summary: AnalysisResult["summary"];
+  source: AnalysisResult["source"];
+  diagnostics: EditorDiagnostic[];
+}
+
+export interface EditorCodeAction {
+  title: string;
+  kind: "quickfix";
+  diagnostics: EditorDiagnostic[];
+  edit: EditorWorkspaceEdit;
+  isPreferred: boolean;
+}
+
+export interface EditorMarkupContent {
+  kind: "markdown";
+  value: string;
+}
+
+export interface EditorHover {
+  contents: EditorMarkupContent;
+  range?: EditorRange | null;
+}
+
+export type EditorSymbolKind =
+  | "class"
+  | "event"
+  | "function"
+  | "module"
+  | "namespace"
+  | "object"
+  | "package"
+  | "property"
+  | "string"
+  | "struct"
+  | "variable";
+
+export interface EditorDocumentSymbol {
+  name: string;
+  detail?: string | null;
+  kind: EditorSymbolKind;
+  range: EditorRange;
+  selectionRange: EditorRange;
+  children: EditorDocumentSymbol[];
+}
+
+export interface EditorLocation {
+  uri: string;
+  range: EditorRange;
+}
+
+export interface EditorSymbolInformation {
+  name: string;
+  kind: EditorSymbolKind;
+  location: EditorLocation;
+  containerName?: string | null;
+}
+
+export interface EditorPrepareRename {
+  range: EditorRange;
+  placeholder: string;
+}
+
+export interface EditorWorkspaceEdit {
+  changes: Record<string, EditorTextEdit[]>;
+}
+
+export interface EditorSemanticTokenLegend {
+  tokenTypes: string[];
+  tokenModifiers: string[];
+}
+
+export interface EditorSemanticToken {
+  line: number;
+  start: number;
+  length: number;
+  tokenType: string;
+  tokenModifier: string;
+}
+
 export interface MermanWasmModule {
   default: (input?: unknown) => Promise<unknown>;
   abiVersion: () => number;
@@ -387,6 +547,68 @@ export interface MermanWasmModule {
   analyze: (source: string, optionsJson?: string | null) => AnalysisResult;
   analyzeJson?: (source: string, optionsJson?: string | null) => AnalysisResult;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
+  editorDiagnostics?: (
+    source: string,
+    optionsJson?: string | null,
+    uri?: string | null
+  ) => EditorDiagnosticsResult;
+  editorCodeActions?: (
+    source: string,
+    optionsJson?: string | null,
+    uri?: string | null
+  ) => EditorCodeAction[];
+  editorCompletions?: (
+    source: string,
+    line: number,
+    character: number,
+    uri?: string | null
+  ) => EditorCompletionList;
+  editorHover?: (
+    source: string,
+    line: number,
+    character: number,
+    uri?: string | null
+  ) => EditorHover | null;
+  editorDocumentSymbols?: (
+    source: string,
+    uri?: string | null
+  ) => EditorDocumentSymbol[];
+  editorWorkspaceSymbols?: (
+    source: string,
+    query: string,
+    uri?: string | null
+  ) => EditorSymbolInformation[];
+  editorDefinition?: (
+    source: string,
+    line: number,
+    character: number,
+    uri?: string | null
+  ) => EditorLocation | null;
+  editorReferences?: (
+    source: string,
+    line: number,
+    character: number,
+    includeDeclaration: boolean,
+    uri?: string | null
+  ) => EditorLocation[];
+  editorPrepareRename?: (
+    source: string,
+    line: number,
+    character: number,
+    uri?: string | null
+  ) => EditorPrepareRename | null;
+  editorRename?: (
+    source: string,
+    line: number,
+    character: number,
+    newName: string,
+    uri?: string | null
+  ) => EditorWorkspaceEdit | null;
+  editorSemanticTokenLegend?: () => EditorSemanticTokenLegend;
+  editorSemanticTokens?: (
+    source: string,
+    uri?: string | null
+  ) => EditorSemanticToken[];
   asciiSupportedDiagrams: () => string[];
   bindingCapabilities?: () => BindingCapabilities;
   selectedRegistryProfile?: () => string;
@@ -677,6 +899,146 @@ export function analyzeJson(
 
 export function validate(source: string, options?: SvgBindingOptions | string): ValidationResult {
   return getMerman().validate(source, encodeOptions(options));
+}
+
+export function editorDiagnostics(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): EditorDiagnosticsResult {
+  const diagnostics = getMerman().editorDiagnostics;
+  if (!diagnostics) {
+    throw new Error("Merman editorDiagnostics() is not available in this artifact.");
+  }
+  return diagnostics(source, encodeOptions(options), uri);
+}
+
+export function editorCodeActions(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): EditorCodeAction[] {
+  const codeActions = getMerman().editorCodeActions;
+  if (!codeActions) {
+    throw new Error("Merman editorCodeActions() is not available in this artifact.");
+  }
+  return codeActions(source, encodeOptions(options), uri);
+}
+
+export function editorCompletions(
+  source: string,
+  position: EditorPosition,
+  uri?: string
+): EditorCompletionList {
+  const completions = getMerman().editorCompletions;
+  if (!completions) {
+    throw new Error("Merman editorCompletions() is not available in this artifact.");
+  }
+  return completions(source, position.line, position.character, uri);
+}
+
+export function editorHover(
+  source: string,
+  position: EditorPosition,
+  uri?: string
+): EditorHover | null {
+  const hover = getMerman().editorHover;
+  if (!hover) {
+    throw new Error("Merman editorHover() is not available in this artifact.");
+  }
+  return hover(source, position.line, position.character, uri);
+}
+
+export function editorDocumentSymbols(
+  source: string,
+  uri?: string
+): EditorDocumentSymbol[] {
+  const documentSymbols = getMerman().editorDocumentSymbols;
+  if (!documentSymbols) {
+    throw new Error("Merman editorDocumentSymbols() is not available in this artifact.");
+  }
+  return documentSymbols(source, uri);
+}
+
+export function editorWorkspaceSymbols(
+  source: string,
+  query: string,
+  uri?: string
+): EditorSymbolInformation[] {
+  const workspaceSymbols = getMerman().editorWorkspaceSymbols;
+  if (!workspaceSymbols) {
+    throw new Error("Merman editorWorkspaceSymbols() is not available in this artifact.");
+  }
+  return workspaceSymbols(source, query, uri);
+}
+
+export function editorDefinition(
+  source: string,
+  position: EditorPosition,
+  uri?: string
+): EditorLocation | null {
+  const definition = getMerman().editorDefinition;
+  if (!definition) {
+    throw new Error("Merman editorDefinition() is not available in this artifact.");
+  }
+  return definition(source, position.line, position.character, uri);
+}
+
+export function editorReferences(
+  source: string,
+  position: EditorPosition,
+  includeDeclaration = true,
+  uri?: string
+): EditorLocation[] {
+  const refs = getMerman().editorReferences;
+  if (!refs) {
+    throw new Error("Merman editorReferences() is not available in this artifact.");
+  }
+  return refs(source, position.line, position.character, includeDeclaration, uri);
+}
+
+export function editorPrepareRename(
+  source: string,
+  position: EditorPosition,
+  uri?: string
+): EditorPrepareRename | null {
+  const prepare = getMerman().editorPrepareRename;
+  if (!prepare) {
+    throw new Error("Merman editorPrepareRename() is not available in this artifact.");
+  }
+  return prepare(source, position.line, position.character, uri);
+}
+
+export function editorRename(
+  source: string,
+  position: EditorPosition,
+  newName: string,
+  uri?: string
+): EditorWorkspaceEdit | null {
+  const rename = getMerman().editorRename;
+  if (!rename) {
+    throw new Error("Merman editorRename() is not available in this artifact.");
+  }
+  return rename(source, position.line, position.character, newName, uri);
+}
+
+export function editorSemanticTokenLegend(): EditorSemanticTokenLegend {
+  const legend = getMerman().editorSemanticTokenLegend;
+  if (!legend) {
+    throw new Error("Merman editorSemanticTokenLegend() is not available in this artifact.");
+  }
+  return legend();
+}
+
+export function editorSemanticTokens(
+  source: string,
+  uri?: string
+): EditorSemanticToken[] {
+  const tokens = getMerman().editorSemanticTokens;
+  if (!tokens) {
+    throw new Error("Merman editorSemanticTokens() is not available in this artifact.");
+  }
+  return tokens(source, uri);
 }
 
 export function bindingCapabilities(): BindingCapabilities {

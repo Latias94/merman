@@ -187,6 +187,7 @@ export function useMerman() {
     ready,
     loading,
     loadError,
+    wasm: wasmRef.current,
     render,
     validate,
     getThemes,

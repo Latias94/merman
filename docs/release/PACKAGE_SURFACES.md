@@ -132,7 +132,7 @@ current default `browser-full` package artifact is:
 
 | Package artifact | Raw bytes | gzip bytes | brotli bytes | Budget source |
 | --- | ---: | ---: | ---: | --- |
-| `platforms/web/pkg/merman_wasm_bg.wasm` | 5,580,151 | 2,135,543 | 1,589,052 | `docs/release/WASM_SIZE_BUDGETS.json` |
+| `platforms/web/pkg/merman_wasm_bg.wasm` | 6,649,826 | 2,532,845 | 1,874,082 | `docs/release/WASM_SIZE_BUDGETS.json` |
 
 For the current Typst render artifact, also run:
 

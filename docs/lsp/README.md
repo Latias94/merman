@@ -6,7 +6,12 @@ status: active
 # Merman LSP
 
 `merman-lsp` is the canonical LSP transport for diagnostics, completion, structure-aware
-navigation, code-action, and semantic-token foundations.
+navigation, code-action, and semantic-token foundations. The semantic editor queries are shared
+with browser integrations through `merman-editor-core`; this crate owns protocol-neutral document
+snapshots, UTF-16 ranges, completion, diagnostics, symbols, navigation, rename, code-action
+metadata, and semantic-token selection. `merman-lsp` keeps the LSP lifecycle, capability
+negotiation, diagnostics publication, semantic-token delta state, custom requests, and
+`tower_lsp::lsp_types` projection.
 
 ## Responsibilities
 

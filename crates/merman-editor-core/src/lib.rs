@@ -1,0 +1,39 @@
+#![forbid(unsafe_code)]
+
+//! Protocol-neutral editor intelligence for Merman.
+//!
+//! This crate owns editor-facing document state and query semantics without depending on LSP,
+//! WASM, Monaco, or TypeScript protocol types.
+
+pub mod completion;
+pub mod context;
+pub mod diagnostics;
+pub mod semantic_tokens;
+pub mod snapshot;
+pub mod structure;
+pub mod types;
+pub mod workspace;
+
+pub use completion::{
+    CompletionDataKind, CompletionItem, CompletionItemKind, CompletionItemLabelDetails,
+    CompletionList, CompletionResolveData, CompletionTextEdit, completion_documentation,
+    completion_for_snapshot,
+};
+pub use context::CompletionContext;
+pub use diagnostics::{
+    DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticCode, EditorDiagnosticRelated,
+    analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,
+};
+pub use semantic_tokens::{
+    SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
+    semantic_token_legend, semantic_tokens_for_snapshot,
+};
+pub use snapshot::{DocumentSnapshot, FenceSnapshot};
+pub use structure::{
+    EditorDocumentSymbol, EditorHover, EditorLocation, EditorMarkupContent, EditorPrepareRename,
+    EditorSymbolInformation, EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols,
+    goto_definition, hover, prepare_rename, references, rename, workspace_symbols,
+    workspace_symbols_for_snapshots,
+};
+pub use types::{DocumentKind, DocumentUri, Position, Range};
+pub use workspace::DocumentWorkspace;

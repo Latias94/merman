@@ -1056,7 +1056,7 @@ mod tests {
             "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
         );
         assert!(diagnostic.fixes[0].is_preferred);
-        assert_eq!(diagnostic.fixes[0].edits.len(), 2);
+        assert_eq!(diagnostic.fixes[0].edits.len(), 1);
         assert!(
             diagnostic.fixes[0].edits[0]
                 .replacement
@@ -1693,7 +1693,7 @@ mod tests {
             RuleOrigin::MermaidCompatibility
         );
         assert!(deprecated_html_labels.default_enabled);
-        assert!(!deprecated_html_labels.fixable);
+        assert!(deprecated_html_labels.fixable);
 
         let json: serde_json::Value =
             serde_json::from_slice(&rule_catalog_json_bytes().expect("catalog JSON"))

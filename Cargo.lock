@@ -2719,13 +2719,12 @@ name = "merman-analysis"
 version = "0.8.0-alpha.2"
 dependencies = [
  "chrono",
- "lsp-types",
+ "json5",
  "merman-core",
  "serde",
  "serde_json",
  "serde_yaml",
  "thiserror 2.0.18",
- "url",
 ]
 
 [[package]]
@@ -2796,6 +2795,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-editor-core"
+version = "0.8.0-alpha.2"
+dependencies = [
+ "merman-analysis",
+ "merman-core",
+ "serde",
+]
+
+[[package]]
 name = "merman-elk-layered"
 version = "0.8.0-alpha.2"
 dependencies = [
@@ -2830,6 +2838,7 @@ dependencies = [
  "lsp-types",
  "merman-analysis",
  "merman-core",
+ "merman-editor-core",
  "serde",
  "serde_json",
  "tempfile",
@@ -2907,7 +2916,9 @@ version = "0.8.0-alpha.2"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
+ "merman-analysis",
  "merman-bindings-core",
+ "merman-editor-core",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

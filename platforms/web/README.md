@@ -227,11 +227,18 @@ initialization is usually simpler.
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
 - `analyze()`, `analyzeJson()`, `validate()`
+- `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
+  `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
+  `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
+  `editorSemanticTokenLegend()`, `editorSemanticTokens()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
-All render, parse, layout, analysis, validation, and metadata functions require `initMerman()` first.
+All render, parse, layout, analysis, validation, editor, and metadata functions require
+`initMerman()` first. The editor functions are stateless document queries backed by
+`merman-editor-core`; they return UTF-16 positions/ranges so Monaco and LSP adapters can project the
+same completion, diagnostics, hover, symbol, code-action, rename, and semantic-token semantics.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()`, and `lintRuleCatalog()` return typed metadata and fail fast if the
 generated WebAssembly metadata drifts from the TypeScript surface.

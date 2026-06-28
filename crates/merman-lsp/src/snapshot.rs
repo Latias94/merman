@@ -22,6 +22,51 @@ pub struct FenceSnapshot {
 }
 
 impl DocumentSnapshot {
+    pub fn from_editor(snapshot: merman_editor_core::DocumentSnapshot, uri: Url) -> Self {
+        Self {
+            uri,
+            version: snapshot.version,
+            text: snapshot.text,
+            source_map: snapshot.source_map,
+            fences: snapshot
+                .fences
+                .into_iter()
+                .map(|fence| FenceSnapshot {
+                    index: fence.index,
+                    start: fence.start,
+                    body_start: fence.body_start,
+                    end: fence.end,
+                    text: fence.text,
+                    diagram_type: fence.diagram_type,
+                    text_index: fence.text_index,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn to_editor(&self) -> merman_editor_core::DocumentSnapshot {
+        merman_editor_core::DocumentSnapshot {
+            uri: merman_editor_core::DocumentUri::new(self.uri.as_str()),
+            version: self.version,
+            kind: merman_editor_core::DocumentKind::from_path(self.uri.path()),
+            text: self.text.clone(),
+            source_map: self.source_map.clone(),
+            fences: self
+                .fences
+                .iter()
+                .map(|fence| merman_editor_core::FenceSnapshot {
+                    index: fence.index,
+                    start: fence.start,
+                    body_start: fence.body_start,
+                    end: fence.end,
+                    text: fence.text.clone(),
+                    diagram_type: fence.diagram_type.clone(),
+                    text_index: fence.text_index.clone(),
+                })
+                .collect(),
+        }
+    }
+
     pub fn byte_offset_for_position(&self, position: Position) -> Option<usize> {
         self.source_map
             .byte_offset_for_utf16_position(merman_analysis::Utf16Position {

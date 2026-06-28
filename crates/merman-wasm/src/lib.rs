@@ -5,8 +5,20 @@
 //! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
 //! classification are delegated to `merman-bindings-core`.
 
-use merman_bindings_core::BindingError;
+use merman_analysis::{
+    AnalysisOptions, AnalysisPayload, Analyzer, EditorSymbolKind, SourceDescriptor, Summary,
+};
+use merman_bindings_core::{BindingError, BindingStatus};
+use merman_editor_core::{
+    DocumentKind, DocumentSnapshot, DocumentWorkspace, EditorDiagnostic, EditorDocumentSymbol,
+    EditorHover, EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit,
+    Position, Range, SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
+    analysis_payload_to_diagnostics, completion_for_snapshot, document_symbols, goto_definition,
+    hover, prepare_rename, references, rename, semantic_token_legend, semantic_tokens_for_snapshot,
+    workspace_symbols,
+};
 use serde::Serialize;
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
@@ -25,6 +37,213 @@ struct WasmErrorPayload<'a> {
     code: i32,
     code_name: &'a str,
     message: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmEditorDiagnostics {
+    version: u32,
+    valid: bool,
+    summary: Summary,
+    source: SourceDescriptor,
+    diagnostics: Vec<EditorDiagnostic>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmHover {
+    contents: WasmMarkupContent,
+    range: Option<Range>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmMarkupContent {
+    kind: &'static str,
+    value: String,
+}
+
+impl From<EditorHover> for WasmHover {
+    fn from(value: EditorHover) -> Self {
+        Self {
+            contents: WasmMarkupContent {
+                kind: "markdown",
+                value: value.contents.value,
+            },
+            range: value.range,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmDocumentSymbol {
+    name: String,
+    detail: Option<String>,
+    kind: &'static str,
+    range: Range,
+    selection_range: Range,
+    children: Vec<WasmDocumentSymbol>,
+}
+
+impl From<EditorDocumentSymbol> for WasmDocumentSymbol {
+    fn from(value: EditorDocumentSymbol) -> Self {
+        Self {
+            name: value.name,
+            detail: value.detail,
+            kind: symbol_kind_name(value.kind),
+            range: value.range,
+            selection_range: value.selection_range,
+            children: value.children.into_iter().map(Self::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmSymbolInformation {
+    name: String,
+    kind: &'static str,
+    location: WasmLocation,
+    container_name: Option<String>,
+}
+
+impl From<merman_editor_core::EditorSymbolInformation> for WasmSymbolInformation {
+    fn from(value: merman_editor_core::EditorSymbolInformation) -> Self {
+        Self {
+            name: value.name,
+            kind: symbol_kind_name(value.kind),
+            location: WasmLocation::from(value.location),
+            container_name: value.container_name,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmLocation {
+    uri: String,
+    range: Range,
+}
+
+impl From<EditorLocation> for WasmLocation {
+    fn from(value: EditorLocation) -> Self {
+        Self {
+            uri: value.uri.as_str().to_string(),
+            range: value.range,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmPrepareRename {
+    range: Range,
+    placeholder: String,
+}
+
+impl From<EditorPrepareRename> for WasmPrepareRename {
+    fn from(value: EditorPrepareRename) -> Self {
+        Self {
+            range: value.range,
+            placeholder: value.placeholder,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmWorkspaceEdit {
+    changes: HashMap<String, Vec<WasmTextEdit>>,
+}
+
+impl From<EditorWorkspaceEdit> for WasmWorkspaceEdit {
+    fn from(value: EditorWorkspaceEdit) -> Self {
+        Self {
+            changes: value
+                .changes
+                .into_iter()
+                .map(|(uri, edits)| {
+                    (
+                        uri.as_str().to_string(),
+                        edits.into_iter().map(WasmTextEdit::from).collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmTextEdit {
+    range: Range,
+    new_text: String,
+}
+
+impl From<EditorTextEdit> for WasmTextEdit {
+    fn from(value: EditorTextEdit) -> Self {
+        Self {
+            range: value.range,
+            new_text: value.new_text,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmCodeAction {
+    title: String,
+    kind: &'static str,
+    diagnostics: Vec<EditorDiagnostic>,
+    edit: WasmWorkspaceEdit,
+    is_preferred: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmSemanticTokenLegend {
+    token_types: Vec<&'static str>,
+    token_modifiers: Vec<&'static str>,
+}
+
+impl From<SemanticTokenLegend> for WasmSemanticTokenLegend {
+    fn from(value: SemanticTokenLegend) -> Self {
+        Self {
+            token_types: value
+                .token_types
+                .into_iter()
+                .map(semantic_token_kind_name)
+                .collect(),
+            token_modifiers: value
+                .token_modifiers
+                .into_iter()
+                .map(semantic_token_modifier_name)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmSemanticToken {
+    line: u32,
+    start: u32,
+    length: u32,
+    token_type: &'static str,
+    token_modifier: &'static str,
+}
+
+impl From<SemanticToken> for WasmSemanticToken {
+    fn from(value: SemanticToken) -> Self {
+        Self {
+            line: value.line,
+            start: value.start,
+            length: value.length,
+            token_type: semantic_token_kind_name(value.kind),
+            token_modifier: semantic_token_modifier_name(value.modifier),
+        }
+    }
 }
 
 #[wasm_bindgen(start)]
@@ -174,8 +393,309 @@ pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = editorDiagnostics)]
+pub fn editor_diagnostics(
+    source: &str,
+    options_json: Option<String>,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let uri = editor_uri(uri);
+    let payload = editor_analysis_payload(source, options_json.as_deref(), &uri)?;
+    let diagnostics = analysis_payload_to_diagnostics(&payload);
+    let response = WasmEditorDiagnostics {
+        version: payload.version,
+        valid: payload.valid,
+        summary: payload.summary,
+        source: payload.source,
+        diagnostics,
+    };
+    js_value(&response)
+}
+
+#[wasm_bindgen(js_name = editorCodeActions)]
+pub fn editor_code_actions(
+    source: &str,
+    options_json: Option<String>,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let uri = editor_uri(uri);
+    let payload = editor_analysis_payload(source, options_json.as_deref(), &uri)?;
+    let diagnostics = analysis_payload_to_diagnostics(&payload);
+    js_value(&code_actions_for_diagnostics(&diagnostics, &uri))
+}
+
+#[wasm_bindgen(js_name = editorCompletions)]
+pub fn editor_completions(
+    source: &str,
+    line: usize,
+    character: usize,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    js_value(&completion_for_snapshot(
+        &snapshot,
+        Position::new(line, character),
+    ))
+}
+
+#[wasm_bindgen(js_name = editorHover)]
+pub fn editor_hover(
+    source: &str,
+    line: usize,
+    character: usize,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    js_value(&hover(&snapshot, Position::new(line, character)).map(WasmHover::from))
+}
+
+#[wasm_bindgen(js_name = editorDocumentSymbols)]
+pub fn editor_document_symbols(source: &str, uri: Option<String>) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    let symbols = document_symbols(&snapshot)
+        .into_iter()
+        .map(WasmDocumentSymbol::from)
+        .collect::<Vec<_>>();
+    js_value(&symbols)
+}
+
+#[wasm_bindgen(js_name = editorWorkspaceSymbols)]
+pub fn editor_workspace_symbols(
+    source: &str,
+    query: &str,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    let symbols = workspace_symbols(&snapshot, query)
+        .into_iter()
+        .map(WasmSymbolInformation::from)
+        .collect::<Vec<_>>();
+    js_value(&symbols)
+}
+
+#[wasm_bindgen(js_name = editorDefinition)]
+pub fn editor_definition(
+    source: &str,
+    line: usize,
+    character: usize,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    js_value(&goto_definition(&snapshot, Position::new(line, character)).map(WasmLocation::from))
+}
+
+#[wasm_bindgen(js_name = editorReferences)]
+pub fn editor_references(
+    source: &str,
+    line: usize,
+    character: usize,
+    include_declaration: bool,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    let locations = references(
+        &snapshot,
+        Position::new(line, character),
+        include_declaration,
+    )
+    .unwrap_or_default()
+    .into_iter()
+    .map(WasmLocation::from)
+    .collect::<Vec<_>>();
+    js_value(&locations)
+}
+
+#[wasm_bindgen(js_name = editorPrepareRename)]
+pub fn editor_prepare_rename(
+    source: &str,
+    line: usize,
+    character: usize,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    js_value(
+        &prepare_rename(&snapshot, Position::new(line, character)).map(WasmPrepareRename::from),
+    )
+}
+
+#[wasm_bindgen(js_name = editorRename)]
+pub fn editor_rename(
+    source: &str,
+    line: usize,
+    character: usize,
+    new_name: &str,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    match rename(&snapshot, Position::new(line, character), new_name) {
+        Ok(edit) => js_value(&edit.map(WasmWorkspaceEdit::from)),
+        Err(err) => Err(JsValue::from_str(&err.to_string())),
+    }
+}
+
+#[wasm_bindgen(js_name = editorSemanticTokenLegend)]
+pub fn editor_semantic_token_legend() -> Result<JsValue, JsValue> {
+    js_value(&WasmSemanticTokenLegend::from(semantic_token_legend()))
+}
+
+#[wasm_bindgen(js_name = editorSemanticTokens)]
+pub fn editor_semantic_tokens(source: &str, uri: Option<String>) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri);
+    let tokens = semantic_tokens_for_snapshot(&snapshot)
+        .into_iter()
+        .map(WasmSemanticToken::from)
+        .collect::<Vec<_>>();
+    js_value(&tokens)
+}
+
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
     options_json.unwrap_or_default().as_bytes()
+}
+
+fn js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(value).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
+fn editor_uri(uri: Option<String>) -> String {
+    uri.filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "file:///merman/document.mmd".to_string())
+}
+
+fn editor_snapshot(source: &str, uri: Option<String>) -> DocumentSnapshot {
+    let uri = editor_uri(uri);
+    let kind = document_kind_for_uri(&uri);
+    let mut workspace = DocumentWorkspace::new();
+    workspace.upsert(uri, 1, source.to_string(), kind)
+}
+
+fn document_kind_for_uri(uri: &str) -> DocumentKind {
+    DocumentKind::from_path(uri.split(['?', '#']).next().unwrap_or(uri))
+}
+
+fn editor_analysis_payload(
+    source: &str,
+    options_json: Option<&str>,
+    uri: &str,
+) -> Result<AnalysisPayload, JsValue> {
+    let options = parse_analysis_options(options_json).map_err(binding_error_to_js)?;
+    let analyzer = Analyzer::with_options(options);
+    let kind = document_kind_for_uri(uri);
+    let descriptor = source_descriptor_for_kind(kind, uri);
+    Ok(merman_analysis::document::analyze_document(
+        source, &analyzer, descriptor,
+    ))
+}
+
+fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions, BindingError> {
+    let Some(options_json) = options_json else {
+        return Ok(AnalysisOptions::default());
+    };
+    if options_json.trim().is_empty() {
+        return Ok(AnalysisOptions::default());
+    }
+    let value = serde_json::from_str::<serde_json::Value>(options_json).map_err(|err| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid options_json: {err}"),
+        )
+    })?;
+    merman_analysis::analysis_options_from_json_value(&value)
+        .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))
+}
+
+fn source_descriptor_for_kind(kind: DocumentKind, uri: &str) -> SourceDescriptor {
+    match kind {
+        DocumentKind::Diagram => SourceDescriptor::diagram().with_path(uri.to_string()),
+        DocumentKind::Markdown | DocumentKind::Mdx => {
+            merman_analysis::markdown::markdown_source_descriptor(Some(uri))
+        }
+    }
+}
+
+fn code_actions_for_diagnostics(
+    diagnostics: &[EditorDiagnostic],
+    uri: &str,
+) -> Vec<WasmCodeAction> {
+    diagnostics
+        .iter()
+        .flat_map(|diagnostic| {
+            let Some(data) = diagnostic.data.as_ref() else {
+                return Vec::new();
+            };
+            data.fixes
+                .iter()
+                .filter_map(|fix| {
+                    let edits = fix
+                        .edits
+                        .iter()
+                        .map(|edit| WasmTextEdit {
+                            range: Range::new(
+                                Position::new(
+                                    edit.span.lsp_range.start.line,
+                                    edit.span.lsp_range.start.character,
+                                ),
+                                Position::new(
+                                    edit.span.lsp_range.end.line,
+                                    edit.span.lsp_range.end.character,
+                                ),
+                            ),
+                            new_text: edit.replacement.clone(),
+                        })
+                        .collect::<Vec<_>>();
+                    if edits.is_empty() {
+                        return None;
+                    }
+
+                    Some(WasmCodeAction {
+                        title: fix.title.clone(),
+                        kind: "quickfix",
+                        diagnostics: vec![diagnostic.clone()],
+                        edit: WasmWorkspaceEdit {
+                            changes: HashMap::from([(uri.to_string(), edits)]),
+                        },
+                        is_preferred: fix.is_preferred,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn symbol_kind_name(kind: EditorSymbolKind) -> &'static str {
+    match kind {
+        EditorSymbolKind::Class => "class",
+        EditorSymbolKind::Event => "event",
+        EditorSymbolKind::Function => "function",
+        EditorSymbolKind::Module => "module",
+        EditorSymbolKind::Namespace => "namespace",
+        EditorSymbolKind::Object => "object",
+        EditorSymbolKind::Package => "package",
+        EditorSymbolKind::Property => "property",
+        EditorSymbolKind::String => "string",
+        EditorSymbolKind::Struct => "struct",
+        EditorSymbolKind::Variable => "variable",
+    }
+}
+
+fn semantic_token_kind_name(kind: SemanticTokenKind) -> &'static str {
+    match kind {
+        SemanticTokenKind::Namespace => "namespace",
+        SemanticTokenKind::Class => "class",
+        SemanticTokenKind::Struct => "struct",
+        SemanticTokenKind::Variable => "variable",
+        SemanticTokenKind::Property => "property",
+        SemanticTokenKind::Event => "event",
+        SemanticTokenKind::Function => "function",
+        SemanticTokenKind::String => "string",
+    }
+}
+
+fn semantic_token_modifier_name(modifier: SemanticTokenModifier) -> &'static str {
+    match modifier {
+        SemanticTokenModifier::Entity => "entity",
+        SemanticTokenModifier::Outline => "outline",
+        SemanticTokenModifier::Payload => "payload",
+    }
 }
 
 fn string_result(result: Result<Vec<u8>, BindingError>) -> Result<String, JsValue> {

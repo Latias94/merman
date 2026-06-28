@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/merman",
   "crates/merman-analysis",
+  "crates/merman-editor-core",
   "crates/merman-core",
   "crates/merman-ascii",
   "crates/merman-bindings-core",
@@ -104,6 +105,7 @@ merman-analysis = { path = "crates/merman-analysis", version = "0.8.0-alpha.2", 
 merman-ascii = { path = "crates/merman-ascii", version = "0.8.0-alpha.2" }
 merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.8.0-alpha.2", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.8.0-alpha.2", default-features = false }
+merman-editor-core = { path = "crates/merman-editor-core", version = "0.8.0-alpha.2", default-features = false }
 merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.8.0-alpha.2", default-features = false }
 merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.8.0-alpha.2", default-features = false }
 merman-ffi = { path = "crates/merman-ffi", version = "0.8.0-alpha.2" }

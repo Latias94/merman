@@ -478,6 +478,16 @@ mod tests {
     }
 
     #[test]
+    fn init_directive_config_key_spans_match_quoted_config_wrapper_path() {
+        let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\n";
+
+        let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
     fn init_directive_config_key_spans_skip_root_keys_and_non_init_directives() {
         let source = "%%{ init: { htmlLabels: false, flowchart: { curve: \"linear\" } } }%%\n%%{ other: { flowchart: { htmlLabels: true } } }%%\nflowchart TD\n";
 

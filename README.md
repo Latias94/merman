@@ -824,6 +824,11 @@ sanitization.
   owned semantic/layout JSON between steps.
 - Parity renderers live under `svg/parity/*`; large renderers are split by diagram responsibility
   and generated overrides are treated as compatibility data, not as default model fixes.
+- `merman-editor-core` owns protocol-neutral language intelligence for editor surfaces: document
+  snapshots, UTF-16 ranges, completion, diagnostics, symbols, navigation, rename, code-action
+  metadata, and semantic-token selection. `merman-lsp` and the browser WASM package project those
+  shared results into LSP and Monaco-facing shapes instead of carrying separate semantic
+  implementations.
 
 ## Workspace crates
 
@@ -834,6 +839,7 @@ sanitization.
 | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rendering Mermaid fences in rustdoc as inline headless SVG. |
 | [`merman-core`](https://crates.io/crates/merman-core) | Detection, parsing, metadata, semantic JSON, and typed render models. |
 | [`merman-analysis`](https://crates.io/crates/merman-analysis) | Diagnostics-first payload and source-map contracts for validation, linting, and future LSP adapters. |
+| [`merman-editor-core`](https://crates.io/crates/merman-editor-core) | Protocol-neutral editor language intelligence shared by LSP and browser integrations. |
 | [`merman-render`](https://crates.io/crates/merman-render) | Headless layout, SVG rendering, SVG pipelines, and raster-friendly postprocessing. |
 | [`merman-ascii`](https://crates.io/crates/merman-ascii) | ASCII/Unicode terminal rendering for typed models. |
 | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI for native hosts and platform wrappers. |
