@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
+import { FALLBACK_ASCII_SUPPORTED_TYPES } from "@/src/lib/ascii-support";
 import {
   getWasm,
   isWasmLoaded,
@@ -178,7 +179,7 @@ export function useMerman() {
 
   const getAsciiSupportedDiagrams = useCallback((): string[] => {
     if (!ready || !wasmRef.current) {
-      return ['flowchart', 'sequence', 'class', 'er', 'xychart'];
+      return [...FALLBACK_ASCII_SUPPORTED_TYPES];
     }
     return wasmRef.current.get_ascii_supported_diagrams();
   }, [ready]);

@@ -10,7 +10,22 @@ static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static BINDING_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[cfg(feature = "ascii")]
-pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &["class", "er", "flowchart", "sequence", "xychart"];
+pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &[
+    "class",
+    "er",
+    "flowchart",
+    "gantt",
+    "gitgraph",
+    "journey",
+    "kanban",
+    "mindmap",
+    "packet",
+    "sequence",
+    "state",
+    "timeline",
+    "treeView",
+    "xychart",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BindingCapabilities {
@@ -296,7 +311,22 @@ mod tests {
         if cfg!(feature = "ascii") {
             assert_eq!(
                 ascii_supported_diagrams(),
-                &["class", "er", "flowchart", "sequence", "xychart"]
+                &[
+                    "class",
+                    "er",
+                    "flowchart",
+                    "gantt",
+                    "gitgraph",
+                    "journey",
+                    "kanban",
+                    "mindmap",
+                    "packet",
+                    "sequence",
+                    "state",
+                    "timeline",
+                    "treeView",
+                    "xychart"
+                ]
             );
         } else {
             assert!(ascii_supported_diagrams().is_empty());

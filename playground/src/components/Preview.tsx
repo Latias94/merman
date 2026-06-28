@@ -11,6 +11,8 @@ import {
   mermanRuntimeErrorI18nKey,
   useMerman,
 } from "@/src/hooks/useMerman";
+import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import { detectDiagramType } from "@/src/lib/diagram-detection";
 import { prewarmWasmRenderer } from "@/src/lib/wasm-loader";
 import { useAppStore } from "@/src/store";
 import {
@@ -77,8 +79,6 @@ interface DiagnosticArtifact {
   elapsedMs: number | null;
 }
 
-const ASCII_SUPPORTED_TYPES = ["flowchart", "sequence", "class", "er", "xychart"];
-
 const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
   parse: { json: null, error: null, elapsedMs: null },
   layout: { json: null, error: null, elapsedMs: null },
@@ -98,6 +98,7 @@ export function Preview({ className }: PreviewProps) {
     isDarkMode,
   } = useAppStore();
   const { ready, loading, render, renderAscii, parseJson, layoutJson } = useMerman();
+  const asciiSupport = useAsciiSupport();
   const [svg, setSvg] = useState<string | null>(null);
   const [ascii, setAscii] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -147,37 +148,7 @@ export function Preview({ className }: PreviewProps) {
     [activeHostThemePreset, diagramFont, textMeasurementMode]
   );
 
-  const detectDiagramType = useCallback((source: string): string => {
-    const firstLine = source.trim().split("\n")[0]?.toLowerCase() || "";
-    if (firstLine.startsWith("flowchart") || firstLine.startsWith("graph")) return "flowchart";
-    if (firstLine.startsWith("sequencediagram")) return "sequence";
-    if (firstLine.startsWith("classdiagram")) return "class";
-    if (firstLine.startsWith("statediagram")) return "state";
-    if (firstLine.startsWith("erdiagram")) return "er";
-    if (firstLine.startsWith("gantt")) return "gantt";
-    if (firstLine.startsWith("pie")) return "pie";
-    if (firstLine.startsWith("mindmap")) return "mindmap";
-    if (firstLine.startsWith("gitgraph")) return "gitgraph";
-    if (firstLine.startsWith("timeline")) return "timeline";
-    if (firstLine.startsWith("journey")) return "journey";
-    if (firstLine.startsWith("info")) return "info";
-    if (firstLine.startsWith("zenuml")) return "zenuml";
-    if (firstLine.startsWith("eventmodeling")) return "eventmodeling";
-    if (firstLine.startsWith("c4")) return "c4";
-    if (firstLine.startsWith("xychart")) return "xychart";
-    if (firstLine.startsWith("architecture")) return "architecture";
-    if (firstLine.startsWith("block")) return "block";
-    if (firstLine.startsWith("packet")) return "packet";
-    if (firstLine.startsWith("kanban")) return "kanban";
-    if (firstLine.startsWith("quadrantchart")) return "quadrantchart";
-    if (firstLine.startsWith("sankey")) return "sankey";
-    if (firstLine.startsWith("radar")) return "radar";
-    if (firstLine.startsWith("treemap")) return "treemap";
-    if (firstLine.startsWith("requirementdiagram")) return "requirement";
-    return "unknown";
-  }, []);
-
-  const isAsciiSupported = ASCII_SUPPORTED_TYPES.includes(currentDiagramType);
+  const isAsciiSupported = asciiSupport.isSupported(currentDiagramType);
   const localizeMermanError = useCallback(
     (message: string | null): string | null => {
       if (!message) return null;
@@ -235,7 +206,7 @@ export function Preview({ className }: PreviewProps) {
           setMermanRenderTime(result.error ? null : result.renderTime);
           setLastRenderTime(result.renderTime);
 
-          if (ASCII_SUPPORTED_TYPES.includes(diagramType)) {
+          if (asciiSupport.isSupported(diagramType)) {
             setAscii(renderAscii(code, diagramTheme, mermaidConfig));
           } else {
             setAscii(null);
@@ -258,7 +229,7 @@ export function Preview({ className }: PreviewProps) {
   }, [
     code,
     activeHostThemePreset,
-    detectDiagramType,
+    asciiSupport,
     diagramTheme,
     localizeMermanError,
     mermaidConfig,

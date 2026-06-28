@@ -19,8 +19,8 @@ import {
   exportASCII,
   copySVGToClipboard,
   copyCodeToClipboard,
-  isAsciiSupported,
 } from "@/src/lib/export";
+import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import { useMerman } from "@/src/hooks/useMerman";
 import { BenchDialog } from "@/src/components/BenchDialog";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
@@ -104,6 +104,7 @@ export function Toolbar() {
   } = useAppStore();
   const { copyShareUrl } = useShare();
   const { render, renderAscii, getThemes } = useMerman();
+  const asciiSupport = useAsciiSupport();
   const [isExporting, setIsExporting] = useState(false);
   const currentLang = getCurrentLanguage();
 
@@ -191,7 +192,7 @@ export function Toolbar() {
 
   // 导出 ASCII
   const handleExportASCII = useCallback(() => {
-    if (!isAsciiSupported(diagramType)) {
+    if (!asciiSupport.isSupported(diagramType)) {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
@@ -202,7 +203,7 @@ export function Toolbar() {
     }
     exportASCII(ascii, "merman-diagram");
     toast.success(t("export.asciiSuccess"));
-  }, [code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
+  }, [asciiSupport, code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
 
   // 复制代码
   const handleCopyCode = useCallback(async () => {
@@ -388,7 +389,7 @@ export function Toolbar() {
     </DropdownMenuContent>
   );
 
-  const asciiSupported = isAsciiSupported(diagramType);
+  const asciiSupported = asciiSupport.isSupported(diagramType);
 
   return (
     <>

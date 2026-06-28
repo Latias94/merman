@@ -204,6 +204,25 @@ export const SUPPORTED_DIAGRAMS = [
 
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 
+export const SUPPORTED_ASCII_DIAGRAMS = [
+  "class",
+  "er",
+  "flowchart",
+  "gantt",
+  "gitgraph",
+  "journey",
+  "kanban",
+  "mindmap",
+  "packet",
+  "sequence",
+  "state",
+  "timeline",
+  "treeView",
+  "xychart",
+] as const;
+
+export type AsciiDiagramType = (typeof SUPPORTED_ASCII_DIAGRAMS)[number];
+
 export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_OK",
   "MERMAN_INVALID_ARGUMENT",
@@ -267,6 +286,12 @@ export function isHostThemePresetName(
 
 export function isDiagramType(diagram: string): diagram is DiagramType {
   return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
+}
+
+export function isAsciiDiagramType(
+  diagram: string
+): diagram is AsciiDiagramType {
+  return (SUPPORTED_ASCII_DIAGRAMS as readonly string[]).includes(diagram);
 }
 
 export function isBindingStatusCodeName(
@@ -346,7 +371,7 @@ export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
 let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
 let supportedDiagramsCache: DiagramType[] | null = null;
-let asciiSupportedDiagramsCache: DiagramType[] | null = null;
+let asciiSupportedDiagramsCache: AsciiDiagramType[] | null = null;
 let diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null = null;
 let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
 let supportedThemesCache: ThemeName[] | null = null;
@@ -626,10 +651,10 @@ export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
   return diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
 }
 
-export function asciiSupportedDiagrams(): DiagramType[] {
+export function asciiSupportedDiagrams(): AsciiDiagramType[] {
   asciiSupportedDiagramsCache ??= getMerman()
     .asciiSupportedDiagrams()
-    .map(assertDiagramType);
+    .map(assertAsciiDiagramType);
   return [...asciiSupportedDiagramsCache];
 }
 
@@ -667,6 +692,13 @@ function assertDiagramType(diagram: string): DiagramType {
     return diagram;
   }
   throw new Error(`Merman WASM returned unknown diagram type: ${diagram}`);
+}
+
+function assertAsciiDiagramType(diagram: string): AsciiDiagramType {
+  if (isAsciiDiagramType(diagram)) {
+    return diagram;
+  }
+  throw new Error(`Merman WASM returned unknown ASCII diagram type: ${diagram}`);
 }
 
 function normalizeDiagramFamilyCapability(

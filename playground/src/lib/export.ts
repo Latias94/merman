@@ -1,26 +1,6 @@
 import { normalizeSvgDimensions } from "@/src/lib/svg-geometry";
 
 /**
- * 支持 ASCII 导出的图表类型
- */
-export const ASCII_SUPPORTED_TYPES = [
-  'flowchart',
-  'sequence',
-  'class',
-  'er',
-  'xychart',
-] as const;
-
-export type AsciiSupportedType = (typeof ASCII_SUPPORTED_TYPES)[number];
-
-/**
- * 检查图表类型是否支持 ASCII 导出
- */
-export function isAsciiSupported(diagramType: string): boolean {
-  return ASCII_SUPPORTED_TYPES.includes(diagramType as AsciiSupportedType);
-}
-
-/**
  * 导出 SVG 文件
  */
 export function exportSVG(svg: string, filename: string = 'diagram'): void {

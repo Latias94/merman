@@ -223,13 +223,16 @@ initialization is usually simpler.
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
 - `validate()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
+- `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
 - `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
-metadata drifts from the TypeScript surface.
+metadata drifts from the TypeScript surface. ASCII support is typed separately from SVG diagram
+metadata because some terminal-friendly renderers, such as `treeView`, can be exposed through
+`asciiSupportedDiagrams()` even when they are not part of the public SVG `supportedDiagrams()` list.
 
 ## Benchmarking against Mermaid JS
 

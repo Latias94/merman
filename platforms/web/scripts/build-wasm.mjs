@@ -111,13 +111,13 @@ console.log(
 
 const wasmPackArgs = [
   "build",
-  "../../crates/merman-wasm",
   "--target",
   "web",
   "--profile",
   "wasm-size",
   "--out-dir",
   "../../platforms/web/pkg",
+  "../../crates/merman-wasm",
 ];
 const cargoArgs = cargoFeatureArgs(preset);
 
