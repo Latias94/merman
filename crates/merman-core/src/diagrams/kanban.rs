@@ -1,6 +1,9 @@
-use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
+use crate::diagrams::scan::{split_indent, starts_with_case_insensitive, strip_line_ending};
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
+    ParseMetadata, Result, SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
@@ -60,6 +63,13 @@ struct KanbanDb {
     nodes: Vec<KanbanNode>,
     section_indices: Vec<usize>,
     next_auto_id: i64,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+    kind: EditorSemanticKind,
 }
 
 impl KanbanDb {
@@ -798,6 +808,281 @@ pub fn parse_kanban_model_for_render(
     })
 }
 
+fn parse_node_spec_spanned(
+    trimmed: &str,
+    line: &str,
+    line_start: usize,
+) -> std::result::Result<Option<SpannedText>, String> {
+    if let Some((id, descr, ty, span)) = parse_node_spec_spanned_inner(trimmed, line, line_start)? {
+        let text = if id.is_empty() { descr } else { id };
+        return Ok(Some(SpannedText {
+            text,
+            span,
+            kind: if ty == NODE_TYPE_CIRCLE
+                || ty == NODE_TYPE_CLOUD
+                || ty == NODE_TYPE_BANG
+                || ty == NODE_TYPE_HEXAGON
+            {
+                EditorSemanticKind::Object
+            } else {
+                EditorSemanticKind::Variable
+            },
+        }));
+    }
+    Ok(None)
+}
+
+fn parse_node_spec_spanned_inner(
+    input: &str,
+    line: &str,
+    line_start: usize,
+) -> std::result::Result<Option<(String, String, i32, SourceSpan)>, String> {
+    let input = input.trim_end();
+    if input.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some((start, end)) = node_delimiter_pair_at_start(input) {
+        let (inner, tail) = extract_delimited(input, start, end)?;
+        if !tail.trim().is_empty() {
+            return Err("unexpected trailing input".to_string());
+        }
+        let descr = unquote_node_descr(inner);
+        let ty = node_type_for(start, end);
+        let rel = line.find(inner).unwrap_or(0);
+        return Ok(Some((
+            descr.clone(),
+            descr,
+            ty,
+            SourceSpan::new(line_start + rel, line_start + rel + inner.len()),
+        )));
+    }
+
+    let (id_raw, rest) = split_node_id(input);
+    let id_raw = id_raw.to_string();
+    let rest = rest.trim_end();
+    let id_span = line.find(id_raw.as_str()).unwrap_or(0);
+    if rest.is_empty() {
+        let span_end = line_start + id_span + id_raw.len();
+        return Ok(Some((
+            id_raw.clone(),
+            id_raw,
+            NODE_TYPE_DEFAULT,
+            SourceSpan::new(line_start + id_span, span_end),
+        )));
+    }
+
+    let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
+        return Err("expected node delimiter".to_string());
+    };
+
+    let (inner, tail) = extract_delimited(rest, start, end)?;
+    if !tail.trim().is_empty() {
+        return Err("unexpected trailing input".to_string());
+    }
+
+    let descr = unquote_node_descr(inner);
+    let ty = node_type_for(start, end);
+    let rel = line.find(inner).unwrap_or(id_span);
+    Ok(Some((
+        id_raw,
+        descr,
+        ty,
+        SourceSpan::new(line_start + rel, line_start + rel + inner.len()),
+    )))
+}
+
+fn parse_icon_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
+    let t = line.trim_start();
+    let prefix = "::icon(";
+    if !t.starts_with(prefix) {
+        return None;
+    }
+    let rest = &t[prefix.len()..];
+    let end = rest.find(')')?;
+    let value = rest[..end].trim();
+    let rel = line.find(value).unwrap_or(0);
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + rel, line_start + rel + value.len()),
+        kind: EditorSemanticKind::String,
+    })
+}
+
+fn parse_css_class_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
+    let t = line.trim_start();
+    if !t.starts_with(":::") {
+        return None;
+    }
+    let value = t.trim_start_matches(":::").trim();
+    if value.is_empty() {
+        return None;
+    }
+    let rel = line.find(value).unwrap_or(0);
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + rel, line_start + rel + value.len()),
+        kind: EditorSemanticKind::String,
+    })
+}
+
+pub fn parse_kanban_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+    let mut section_level: Option<usize> = None;
+
+    for segment in code.split_inclusive('\n') {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        let stripped = strip_inline_comment(line);
+        let trimmed = stripped.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if !starts_with_case_insensitive(trimmed, "kanban") {
+                return facts;
+            }
+            header_seen = true;
+            if trimmed.len() > "kanban".len() {
+                let after_keyword = &trimmed["kanban".len()..];
+                let rest = after_keyword.trim_start();
+                if !rest.is_empty() {
+                    let indent = after_keyword
+                        .chars()
+                        .take_while(|c| c.is_whitespace())
+                        .count();
+                    section_level.get_or_insert(indent);
+                    let rel = line.find(rest).unwrap_or(0);
+                    if let Some(icon) = parse_icon_spanned(rest, line_start + rel) {
+                        facts.push_directive_prefix("icon");
+                        facts.push_symbol(EditorSemanticSymbol::payload(
+                            icon.text,
+                            Some("kanban icon".to_string()),
+                            EditorSemanticKind::String,
+                            icon.span,
+                            icon.span,
+                        ));
+                    } else if let Some(class_name) = parse_css_class_spanned(rest, line_start + rel)
+                    {
+                        facts.push_directive_prefix(":::");
+                        facts.push_symbol(EditorSemanticSymbol::payload(
+                            class_name.text,
+                            Some("kanban class".to_string()),
+                            EditorSemanticKind::String,
+                            class_name.span,
+                            class_name.span,
+                        ));
+                    } else {
+                        match parse_node_spec_spanned(rest, line, line_start)
+                            .ok()
+                            .flatten()
+                        {
+                            Some(value) => {
+                                facts.push_symbol(EditorSemanticSymbol::outline(
+                                    value.text,
+                                    Some("kanban section".to_string()),
+                                    EditorSemanticKind::Namespace,
+                                    value.span,
+                                    value.span,
+                                ));
+                            }
+                            None => {
+                                facts.mark_recovered_with_diagnostic(
+                                    "无法从 kanban 头部同一行恢复节点语义",
+                                    Some(SourceSpan::new(
+                                        line_start + rel,
+                                        line_start + rel + rest.len(),
+                                    )),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
+        let (indent, rest) = split_indent(stripped);
+        let rest = rest.trim_end();
+        let rest_offset = line_start + line.find(rest).unwrap_or(0);
+
+        if let Some(icon) = parse_icon_spanned(rest, rest_offset) {
+            facts.push_directive_prefix("icon");
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                icon.text,
+                Some("kanban icon".to_string()),
+                EditorSemanticKind::String,
+                icon.span,
+                icon.span,
+            ));
+            continue;
+        }
+
+        if let Some(class_name) = parse_css_class_spanned(rest, rest_offset) {
+            facts.push_directive_prefix(":::");
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                class_name.text,
+                Some("kanban class".to_string()),
+                EditorSemanticKind::String,
+                class_name.span,
+                class_name.span,
+            ));
+            continue;
+        }
+
+        if let Some(value) = parse_node_spec_spanned(rest, line, line_start)
+            .ok()
+            .flatten()
+        {
+            let is_section = match section_level {
+                Some(level) => indent == level,
+                None => {
+                    section_level = Some(indent);
+                    true
+                }
+            };
+
+            if is_section {
+                facts.push_symbol(EditorSemanticSymbol::outline(
+                    value.text,
+                    Some("kanban section".to_string()),
+                    EditorSemanticKind::Namespace,
+                    value.span,
+                    value.span,
+                ));
+            } else {
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    value.text,
+                    Some("kanban item".to_string()),
+                    value.kind,
+                    value.span,
+                    value.span,
+                ));
+            }
+            continue;
+        } else if rest.contains('[')
+            || rest.contains('(')
+            || rest.contains('{')
+            || rest.contains(')')
+            || rest.contains(']')
+        {
+            facts.mark_recovered_with_diagnostic(
+                "无法完整恢复 kanban 节点语义",
+                Some(SourceSpan::new(
+                    line_start + line.find(rest).unwrap_or(0),
+                    line_start + line.find(rest).unwrap_or(0) + rest.len(),
+                )),
+            );
+        }
+    }
+
+    facts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -818,6 +1103,25 @@ mod tests {
 
     fn data_nodes(model: &Value) -> Vec<Value> {
         model["nodes"].as_array().cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn parse_kanban_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = "kanban\n    root\n      child1\n    :::highlight\n";
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("kanban", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "child1"));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "highlight")
+        );
     }
 
     #[test]

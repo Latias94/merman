@@ -1018,32 +1018,48 @@ fn push_flowchart_token_symbol(
 
 impl FlowchartSemanticSource {
     fn into_compat_json(self, diagram_type: &str, config: &MermaidConfig) -> Value {
-        let warning_facts = self.warning_facts;
+        let FlowchartSemanticSource {
+            keyword,
+            direction,
+            acc_title,
+            acc_descr,
+            class_defs,
+            tooltips,
+            edge_defaults,
+            vertex_calls,
+            mut nodes,
+            edges,
+            subgraphs,
+            warning_facts,
+            ..
+        } = self;
+
+        if diagram_type == "flowchart-elk" {
+            append_missing_subgraph_nodes(&mut nodes, &subgraphs);
+        }
+
         let mut model = json!({
             "type": diagram_type,
-            "keyword": self.keyword,
-            "direction": self.direction,
-            "accTitle": self.acc_title,
-            "accDescr": self.acc_descr,
-            "classDefs": self.class_defs,
-            "tooltips": self.tooltips,
+            "keyword": keyword,
+            "direction": direction,
+            "accTitle": acc_title,
+            "accDescr": acc_descr,
+            "classDefs": class_defs,
+            "tooltips": tooltips,
             "edgeDefaults": {
-                "style": self.edge_defaults.style,
-                "interpolate": self.edge_defaults.interpolate,
+                "style": edge_defaults.style,
+                "interpolate": edge_defaults.interpolate,
             },
-            "vertexCalls": self.vertex_calls,
-            "nodes": self
-                .nodes
+            "vertexCalls": vertex_calls,
+            "nodes": nodes
                 .into_iter()
                 .map(|node| flow_node_to_json(node, config))
                 .collect::<Vec<_>>(),
-            "edges": self
-                .edges
+            "edges": edges
                 .into_iter()
                 .map(|edge| flow_edge_to_json(edge, config))
                 .collect::<Vec<_>>(),
-            "subgraphs": self
-                .subgraphs
+            "subgraphs": subgraphs
                 .into_iter()
                 .map(flow_subgraph_to_json)
                 .collect::<Vec<_>>(),
@@ -1057,34 +1073,81 @@ impl FlowchartSemanticSource {
     }
 
     fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartV2Model> {
+        let FlowchartSemanticSource {
+            acc_descr,
+            acc_title,
+            class_defs,
+            direction: _,
+            edge_defaults,
+            vertex_calls,
+            mut nodes,
+            edges,
+            subgraphs,
+            warning_facts,
+            effective_direction,
+            tooltips,
+            keyword: _,
+        } = self;
+
+        if meta.diagram_type == "flowchart-elk" {
+            append_missing_subgraph_nodes(&mut nodes, &subgraphs);
+        }
+
         Ok(FlowchartV2Model {
-            acc_descr: self.acc_descr,
-            acc_title: self.acc_title,
-            class_defs: self.class_defs,
-            direction: self.effective_direction,
+            acc_descr,
+            acc_title,
+            class_defs,
+            direction: effective_direction,
             edge_defaults: Some(FlowEdgeDefaults {
-                style: self.edge_defaults.style,
-                interpolate: self.edge_defaults.interpolate,
+                style: edge_defaults.style,
+                interpolate: edge_defaults.interpolate,
             }),
-            vertex_calls: self.vertex_calls,
-            nodes: self
-                .nodes
+            vertex_calls,
+            nodes: nodes
                 .into_iter()
                 .map(|node| flow_node_to_model(node, &meta.effective_config))
                 .collect::<Vec<_>>(),
-            edges: self
-                .edges
+            edges: edges
                 .into_iter()
                 .map(|edge| flow_edge_to_model(edge, meta))
                 .collect::<Result<Vec<_>>>()?,
-            subgraphs: self
-                .subgraphs
+            subgraphs: subgraphs
                 .into_iter()
                 .map(flow_subgraph_to_model)
                 .collect::<Vec<_>>(),
-            tooltips: self.tooltips.into_iter().collect(),
-            warning_facts: self.warning_facts,
+            tooltips: tooltips.into_iter().collect(),
+            warning_facts,
         })
+    }
+}
+
+fn append_missing_subgraph_nodes(nodes: &mut Vec<Node>, subgraphs: &[FlowSubGraph]) {
+    let mut existing_ids: HashSet<String> = nodes.iter().map(|node| node.id.clone()).collect();
+    for subgraph in subgraphs {
+        if existing_ids.insert(subgraph.id.clone()) {
+            nodes.push(Node {
+                id: subgraph.id.clone(),
+                id_span: None,
+                label: None,
+                label_type: TitleKind::Text,
+                label_span: None,
+                label_selection: None,
+                shape: None,
+                shape_data: None,
+                icon: None,
+                form: None,
+                pos: None,
+                img: None,
+                constraint: None,
+                asset_width: None,
+                asset_height: None,
+                styles: Vec::new(),
+                classes: Vec::new(),
+                link: None,
+                link_target: None,
+                have_callback: false,
+            });
+        }
     }
 }
 

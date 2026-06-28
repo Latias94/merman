@@ -1,5 +1,10 @@
-use crate::diagrams::scan::{split_statement_suffix_hash_or_semi, starts_with_case_insensitive};
-use crate::{Error, ParseMetadata, Result};
+use crate::diagrams::scan::{
+    split_statement_suffix_hash_or_semi, starts_with_case_insensitive, strip_line_ending,
+};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -109,6 +114,72 @@ fn parse_section_value(line: &str) -> Option<String> {
     let rest = parse_keyword_arg_full_line_after_one_ws(line, "section")?;
     let end = rest.find(':').unwrap_or(rest.len());
     Some(rest[..end].to_string())
+}
+
+fn parse_key_colon_value_spanned<'a>(
+    line: &'a str,
+    line_start: usize,
+    key: &str,
+) -> Option<SpannedText<'a>> {
+    let t = line.trim_start();
+    if !starts_with_case_insensitive(t, key) {
+        return None;
+    }
+    let rest = t[key.len()..].trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let value = split_statement_suffix_hash_or_semi(rest).trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_section_value_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
+    let rest = parse_keyword_arg_full_line_after_one_ws(line, "section")?;
+    let end = rest.find(':').unwrap_or(rest.len());
+    let value = rest[..end].trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn push_timeline_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    text: &str,
+    start: usize,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    let end = start + text.len();
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        SourceSpan::new(start, end),
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.to_string(),
+        Some(detail.to_string()),
+        kind,
+        SourceSpan::new(start, end),
+        SourceSpan::new(start, end),
+    ));
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SpannedText<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
 }
 
 fn parse_key_colon_value_hash_or_semi(line: &str, key: &str) -> Option<String> {
@@ -227,6 +298,127 @@ pub fn parse_timeline_model_for_render(
         TimelineParseOutput::Empty => Ok(TimelineDiagramRenderModel::default()),
         TimelineParseOutput::Model(model) => Ok(model),
     }
+}
+
+pub fn parse_timeline_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("%%") {
+            continue;
+        }
+
+        if !header_seen {
+            if starts_with_case_insensitive(trimmed, "timeline") {
+                header_seen = true;
+            }
+            continue;
+        }
+
+        if let Some(value) = parse_keyword_arg_full_line_after_one_ws(line, "title") {
+            facts.push_directive_prefix("title");
+            push_timeline_payload_fact(
+                &mut facts,
+                value,
+                line_start + line.find(value).unwrap_or(0),
+                "timeline title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_key_colon_value_spanned(line, line_start, "accTitle") {
+            facts.push_directive_prefix("accTitle");
+            push_timeline_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "timeline accessibility title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_key_colon_value_spanned(line, line_start, "accDescr") {
+            facts.push_directive_prefix("accDescr");
+            push_timeline_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "timeline accessibility description",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_section_value_spanned(line, line_start) {
+            facts.push_symbol(EditorSemanticSymbol::outline(
+                value.text.to_string(),
+                Some("timeline section".to_string()),
+                EditorSemanticKind::Namespace,
+                SourceSpan::new(line_start, line_start + line.len()),
+                SourceSpan::new(value.start, value.end),
+            ));
+            continue;
+        }
+
+        let content = line.trim_start();
+        let content_start = line_start + (line.len() - content.len());
+        if content.starts_with(':') {
+            let payload = content[1..].trim_start();
+            if !payload.is_empty() {
+                let payload_start = content_start + 1 + content[1..].find(payload).unwrap_or(0);
+                push_timeline_payload_fact(
+                    &mut facts,
+                    payload,
+                    payload_start,
+                    "timeline event",
+                    EditorSemanticKind::String,
+                );
+            }
+            continue;
+        }
+
+        let colon = content.find(':').unwrap_or(content.len());
+        let task_name = content[..colon].trim();
+        if task_name.is_empty() {
+            continue;
+        }
+        let task_start = content_start + content[..colon].find(task_name).unwrap_or(0);
+        let task_end = task_start + task_name.len();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            SourceSpan::new(task_start, task_end),
+        ));
+        facts.push_symbol(EditorSemanticSymbol::new(
+            task_name.to_string(),
+            Some("timeline task".to_string()),
+            EditorSemanticKind::Event,
+            SourceSpan::new(content_start, line_start + line.len()),
+            SourceSpan::new(task_start, task_end),
+        ));
+
+        if colon < content.len() {
+            let payload = content[colon + 1..].trim_start();
+            if !payload.is_empty() {
+                let payload_start =
+                    content_start + colon + 1 + content[colon + 1..].find(payload).unwrap_or(0);
+                push_timeline_payload_fact(
+                    &mut facts,
+                    payload,
+                    payload_start,
+                    "timeline event",
+                    EditorSemanticKind::String,
+                );
+            }
+        }
+    }
+
+    facts
 }
 
 fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelineParseOutput> {
@@ -356,7 +548,10 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{
+        EditorExpectedSyntaxKind, EditorSemanticKind, EditorSemanticRole, Engine, ParseOptions,
+        SourceSpan,
+    };
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -609,5 +804,48 @@ task1: #ev#ent1# : #ev#ent2# : #ev#ent3#
                 "#ev#ent3#".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn timeline_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = "timeline\n\
+title My timeline\n\
+accTitle: My acc title\n\
+accDescr: My acc descr\n\
+section alpha\n\
+task1: event1\n\
+task2: event2: event3\n";
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("timeline", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "alpha"
+                && symbol.kind == EditorSemanticKind::Namespace
+                && symbol.role == EditorSemanticRole::Outline
+        }));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "task1" && symbol.kind == EditorSemanticKind::Event)
+        );
+
+        let task_start = text.find("task1").unwrap();
+        let event_start = text.find("event1").unwrap();
+
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                && expected.span == SourceSpan::new(task_start, task_start + "task1".len())
+        }));
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(event_start, event_start + "event1".len())
+        }));
     }
 }

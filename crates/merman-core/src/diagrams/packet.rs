@@ -1,4 +1,8 @@
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::diagrams::scan::{starts_with_case_insensitive, strip_line_ending};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Map, Value, json};
 
 const MAX_PACKET_SIZE: usize = 10_000;
@@ -71,6 +75,92 @@ pub fn parse_packet_model_for_render(
         PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::default()),
         PacketParseOutput::Model(model) => Ok(model),
     }
+}
+
+pub fn parse_packet_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        let stripped = strip_inline_comment(line);
+        let trimmed = stripped.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if is_packet_header(trimmed) {
+                header_seen = true;
+            }
+            continue;
+        }
+
+        if let Some(value) = parse_title_spanned(line, line_start) {
+            facts.push_directive_prefix("title");
+            push_packet_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "packet title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_key_value_spanned(line, line_start, "accTitle") {
+            facts.push_directive_prefix("accTitle");
+            push_packet_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "packet accessibility title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
+            facts.push_directive_prefix("accDescr");
+            push_packet_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "packet accessibility description",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_acc_descr_block_spanned(&mut lines, line, line_start) {
+            facts.push_directive_prefix("accDescr");
+            push_packet_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "packet accessibility description",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(block) = parse_packet_block_spanned(line, line_start) {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                block.numeric_span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                block.label.text.to_string(),
+                Some("packet block".to_string()),
+                EditorSemanticKind::String,
+                SourceSpan::new(block.label.start, block.label.end),
+                SourceSpan::new(block.label.start, block.label.end),
+            ));
+            continue;
+        }
+    }
+
+    facts
 }
 
 fn parse_packet_model(code: &str, meta: &ParseMetadata) -> Result<PacketParseOutput> {
@@ -258,11 +348,237 @@ fn strip_inline_comment(line: &str) -> &str {
     }
 }
 
+fn parse_title_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(line).trim_start();
+    if !starts_with_case_insensitive(t, "title") {
+        return None;
+    }
+    let rest = t.strip_prefix("title")?;
+    let ws = rest.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let value = rest.trim_start();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_key_value_spanned<'a>(
+    line: &'a str,
+    line_start: usize,
+    key: &str,
+) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(line).trim_start();
+    if !starts_with_case_insensitive(t, key) {
+        return None;
+    }
+    let rest = t.strip_prefix(key)?.trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_acc_descr_inline_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(line).trim_start();
+    if !starts_with_case_insensitive(t, "accDescr") {
+        return None;
+    }
+    let rest = t.strip_prefix("accDescr")?.trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_acc_descr_block_spanned<'a>(
+    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
+    first_line: &'a str,
+    line_start: usize,
+) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(first_line).trim_start();
+    if !starts_with_case_insensitive(t, "accDescr") {
+        return None;
+    }
+    let rest = t.strip_prefix("accDescr")?.trim_start();
+    let rest = rest.strip_prefix('{')?;
+    if let Some(end) = rest.find('}') {
+        let value = rest[..end].trim();
+        let value_rel = first_line.find(value)?;
+        return Some(SpannedText {
+            text: value,
+            start: line_start + value_rel,
+            end: line_start + value_rel + value.len(),
+        });
+    }
+    let value = rest.trim();
+    if value.is_empty() {
+        for next_line in lines.by_ref() {
+            if next_line.contains('}') {
+                break;
+            }
+        }
+        return None;
+    }
+    let value_rel = first_line.find(value)?;
+    for next_line in lines.by_ref() {
+        if next_line.contains('}') {
+            break;
+        }
+    }
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_packet_block_spanned<'a>(
+    line: &'a str,
+    line_start: usize,
+) -> Option<PacketBlockSpanned<'a>> {
+    let stripped = strip_inline_comment(line);
+    let trimmed = stripped.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let leading = stripped.len() - trimmed.len();
+    let base = line_start + leading;
+    let bytes = trimmed.as_bytes();
+    let mut idx = 0usize;
+
+    let numeric_span = if bytes.first() == Some(&b'+') {
+        idx = 1;
+        let digits_start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+            idx += 1;
+        }
+        if idx == digits_start {
+            return None;
+        }
+        SourceSpan::new(base + digits_start, base + idx)
+    } else {
+        let digits_start = idx;
+        while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+            idx += 1;
+        }
+        if idx == digits_start {
+            return None;
+        }
+        let start_span = SourceSpan::new(base + digits_start, base + idx);
+        if idx < bytes.len() && bytes[idx] == b'-' {
+            idx += 1;
+            let end_digits_start = idx;
+            while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+                idx += 1;
+            }
+            if idx == end_digits_start {
+                return None;
+            }
+            SourceSpan::new(start_span.start, base + idx)
+        } else {
+            start_span
+        }
+    };
+
+    let mut rest = &trimmed[idx..];
+    let rest_trimmed = rest.trim_start();
+    let ws1 = rest.len() - rest_trimmed.len();
+    rest = rest_trimmed;
+    if !rest.starts_with(':') {
+        return None;
+    }
+    let after_colon_base = base + idx + ws1 + 1;
+    rest = &rest[1..];
+    let rest_trimmed = rest.trim_start();
+    let ws2 = rest.len() - rest_trimmed.len();
+    rest = rest_trimmed;
+    let label_base = after_colon_base + ws2;
+    let (label, tail) = parse_quoted_string_spanned(rest, label_base)?;
+    if !tail.trim().is_empty() {
+        return None;
+    }
+
+    Some(PacketBlockSpanned {
+        numeric_span,
+        label,
+    })
+}
+
+fn parse_quoted_string_spanned<'a>(
+    input: &'a str,
+    base_offset: usize,
+) -> Option<(SpannedText<'a>, &'a str)> {
+    let mut chars = input.char_indices();
+    let (_, quote) = chars.next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let mut escaped = false;
+    for (idx, c) in chars {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' {
+            escaped = true;
+            continue;
+        }
+        if c == quote {
+            let text = &input[1..idx];
+            let text = text.trim();
+            return Some((
+                SpannedText {
+                    text,
+                    start: base_offset + 1,
+                    end: base_offset + idx,
+                },
+                &input[idx + c.len_utf8()..],
+            ));
+        }
+    }
+    None
+}
+
+fn packet_header_token_len(line: &str) -> Option<usize> {
+    if starts_with_case_insensitive(line, "packet-beta") {
+        let rest = &line["packet-beta".len()..];
+        if rest.is_empty() {
+            return Some("packet-beta".len());
+        }
+    }
+    if starts_with_case_insensitive(line, "packet") {
+        let rest = &line["packet".len()..];
+        if rest.is_empty() {
+            return Some("packet".len());
+        }
+    }
+    None
+}
+
 fn is_packet_header(line: &str) -> bool {
-    let t = line.trim_start();
-    // Mermaid CLI treats the header keyword as a standalone token.
-    // Do not accept arbitrary trailing text like `packet diagrams`.
-    t == "packet" || t == "packet-beta"
+    packet_header_token_len(line.trim_start()).is_some()
 }
 
 fn parse_title(line: &str) -> Option<String> {
@@ -393,6 +709,40 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     }
 }
 
+fn push_packet_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    text: &str,
+    start: usize,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    let end = start + text.len();
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        SourceSpan::new(start, end),
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.to_string(),
+        Some(detail.to_string()),
+        kind,
+        SourceSpan::new(start, end),
+        SourceSpan::new(start, end),
+    ));
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SpannedText<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PacketBlockSpanned<'a> {
+    numeric_span: SourceSpan,
+    label: SpannedText<'a>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,6 +867,53 @@ accDescr: Packet accDescription
               ]
             ])
         );
+    }
+
+    #[test]
+    fn packet_editor_facts_expose_parser_backed_spans() {
+        let engine = crate::Engine::new();
+        let text = r#"packet
+title Packet diagram
+accTitle: Packet accTitle
+accDescr: Packet accDescription
+0-10: "test"
+11: "single"
+"#;
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync(
+                "packet",
+                text,
+                crate::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "test" && symbol.kind == EditorSemanticKind::String)
+        );
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "single" && symbol.kind == EditorSemanticKind::String)
+        );
+
+        let start = text.find("0-10").unwrap();
+        let single_start = text.find("11").unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(start, start + "0-10".len())
+        }));
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(single_start, single_start + "11".len())
+        }));
     }
 
     #[test]

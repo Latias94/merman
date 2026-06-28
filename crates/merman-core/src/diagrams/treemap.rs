@@ -1,5 +1,8 @@
 use crate::diagrams::scan::split_ascii_indent;
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -102,6 +105,200 @@ struct TreemapParsedInput {
     acc_title: Option<String>,
     acc_descr: Option<String>,
     rows: Vec<TreemapRow>,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+}
+
+fn find_span(text: &str, needle: &str, base_offset: usize) -> Option<SpannedText> {
+    let rel = text.find(needle)?;
+    Some(SpannedText {
+        text: needle.to_string(),
+        span: SourceSpan::new(base_offset + rel, base_offset + rel + needle.len()),
+    })
+}
+
+fn push_treemap_entity(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::new(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_treemap_payload(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn parse_treemap_stmt_facts(
+    stmt: &str,
+    stmt_start: usize,
+    facts: &mut EditorSemanticFacts,
+) -> std::result::Result<(), ()> {
+    let trimmed = stmt.trim_start();
+    if let Some(title) = parse_title(trimmed)
+        && let Some(span) = find_span(stmt, &title, stmt_start)
+    {
+        facts.push_directive_prefix("title");
+        push_treemap_payload(facts, span, "treemap title", EditorSemanticKind::String);
+        return Ok(());
+    }
+    if let Some(acc_title) = parse_key_value(trimmed, "accTitle")
+        && let Some(span) = find_span(stmt, &acc_title, stmt_start)
+    {
+        facts.push_directive_prefix("accTitle");
+        push_treemap_payload(
+            facts,
+            span,
+            "treemap accessibility title",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if let Some(acc_descr) = parse_acc_descr(trimmed)
+        && let Some(span) = find_span(stmt, &acc_descr, stmt_start)
+    {
+        facts.push_directive_prefix("accDescr");
+        push_treemap_payload(
+            facts,
+            span,
+            "treemap accessibility description",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+
+    let (indent, rest) = split_ascii_indent(trimmed);
+    let rest = rest.trim_end();
+    if rest.is_empty() {
+        return Ok(());
+    }
+
+    if let Some(class_def) = parse_class_def(rest)
+        && let Some(span) = find_span(stmt, &class_def.class_name, stmt_start)
+    {
+        facts.push_symbol(EditorSemanticSymbol::outline(
+            class_def.class_name,
+            Some("treemap class definition".to_string()),
+            EditorSemanticKind::Class,
+            span.span,
+            span.span,
+        ));
+        if let Some(style) = class_def.style_text.as_deref()
+            && let Some(style_span) = find_span(stmt, style, stmt_start)
+        {
+            push_treemap_payload(
+                facts,
+                style_span,
+                "treemap class style",
+                EditorSemanticKind::String,
+            );
+        }
+        return Ok(());
+    }
+
+    if let Ok(item) = parse_item_row(indent, rest) {
+        if let Some(span) = find_span(stmt, &item.name, stmt_start) {
+            let kind = match item.item_type {
+                ItemType::Section => EditorSemanticKind::Namespace,
+                ItemType::Leaf => EditorSemanticKind::Variable,
+            };
+            push_treemap_entity(
+                facts,
+                span,
+                match item.item_type {
+                    ItemType::Section => "treemap section",
+                    ItemType::Leaf => "treemap leaf",
+                },
+                kind,
+            );
+        }
+        if let Some(cls) = item.class_selector.as_deref()
+            && let Some(span) = find_span(stmt, cls, stmt_start)
+        {
+            push_treemap_payload(
+                facts,
+                span,
+                "treemap class selector",
+                EditorSemanticKind::String,
+            );
+        }
+        if let Some(value) = item.value.as_ref() {
+            let token = value.to_string();
+            if let Some(span) = find_span(stmt, &token, stmt_start) {
+                push_treemap_payload(facts, span, "treemap value", EditorSemanticKind::String);
+            }
+        }
+        return Ok(());
+    }
+
+    Err(())
+}
+
+pub fn parse_treemap_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    for segment in code.split_inclusive('\n') {
+        let line_start = offset;
+        offset += segment.len();
+        let raw = strip_inline_comment_aware(segment.trim_end_matches('\n'));
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if !is_treemap_header(trimmed) {
+                return facts;
+            }
+            header_seen = true;
+            continue;
+        }
+
+        let stmt_start = line_start + raw.find(trimmed).unwrap_or(0);
+        if parse_treemap_stmt_facts(trimmed, stmt_start, &mut facts).is_err() {
+            facts.mark_recovered();
+        }
+    }
+
+    facts
 }
 
 pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {

@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ByteSpan {
@@ -653,19 +654,14 @@ fn offer_node_items(prefix: &str, comment_or_directive_line: bool) -> bool {
 }
 
 fn diagram_header_prefix_matches(prefix: &str) -> bool {
+    let prefix = prefix.trim_end();
     if prefix.is_empty() {
         return false;
     }
 
-    [
-        "flowchart TD",
-        "sequenceDiagram",
-        "stateDiagram-v2",
-        "gantt",
-        "mindmap",
-    ]
-    .iter()
-    .any(|candidate| candidate.starts_with(prefix))
+    diagram_header_facts()
+        .iter()
+        .any(|fact| fact.label.starts_with(prefix))
 }
 
 fn is_payload_only_text_scan_prefix(prefix: &str) -> bool {
@@ -1037,53 +1033,43 @@ fn token_after_prefix(trimmed: &str, prefix: &str, abs_start: usize) -> Option<(
 }
 
 fn is_header_line(trimmed: &str) -> bool {
-    matches!(
-        trimmed,
-        "flowchart"
-            | "flowchart TD"
-            | "flowchart TB"
-            | "flowchart BT"
-            | "flowchart LR"
-            | "flowchart RL"
-            | "graph"
-            | "graph TD"
-            | "graph TB"
-            | "graph BT"
-            | "graph LR"
-            | "graph RL"
-            | "sequenceDiagram"
-            | "stateDiagram"
-            | "stateDiagram-v2"
-            | "mindmap"
-            | "classDiagram"
-            | "erDiagram"
-            | "gantt"
-            | "block-beta"
-            | "journey"
-            | "timeline"
-            | "pie"
-            | "quadrantChart"
-            | "xychart-beta"
-            | "C4Context"
-            | "C4Container"
-            | "C4Component"
-            | "C4Dynamic"
-    ) || trimmed.starts_with("flowchart ")
-        || trimmed.starts_with("graph ")
-        || trimmed.starts_with("sequenceDiagram ")
-        || trimmed.starts_with("stateDiagram ")
-        || trimmed.starts_with("stateDiagram-v2 ")
-        || trimmed.starts_with("classDiagram ")
-        || trimmed.starts_with("erDiagram ")
-        || trimmed.starts_with("mindmap ")
-        || trimmed.starts_with("gantt ")
-        || trimmed.starts_with("block-beta ")
-        || trimmed.starts_with("journey ")
-        || trimmed.starts_with("timeline ")
-        || trimmed.starts_with("pie ")
-        || trimmed.starts_with("quadrantChart ")
-        || trimmed.starts_with("xychart-beta ")
-        || trimmed.starts_with("C4")
+    let trimmed = trimmed.trim_end();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    diagram_header_facts()
+        .iter()
+        .any(|fact| header_line_matches_fact(trimmed, fact.label))
+}
+
+fn diagram_header_facts() -> &'static [merman_core::DiagramHeaderFact] {
+    static FACTS: OnceLock<Vec<merman_core::DiagramHeaderFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            merman_core::diagram_header_facts_for_profile(
+                merman_core::selected_baseline_registry_profile(),
+            )
+            .iter()
+            .copied()
+            .collect()
+        })
+        .as_slice()
+}
+
+fn header_line_matches_fact(trimmed: &str, label: &str) -> bool {
+    if trimmed == label {
+        return true;
+    }
+
+    let starter = label.split_whitespace().next().unwrap_or(label);
+    if trimmed == starter {
+        return true;
+    }
+
+    trimmed
+        .strip_prefix(starter)
+        .is_some_and(|rest| rest.chars().next().is_some_and(|ch| ch.is_whitespace()))
 }
 
 fn generic_kind(diagram_type: Option<&str>) -> EditorSymbolKind {
@@ -1372,6 +1358,10 @@ mod tests {
         assert_eq!(header.prefix_start(), 0);
         assert!(header.offers(FenceCursorCompletionKind::DiagramHeader));
         assert!(!header.offers(FenceCursorCompletionKind::NodeIdentifier));
+
+        let kanban_header = index.cursor_context("kan", 3);
+        assert!(kanban_header.offers(FenceCursorCompletionKind::DiagramHeader));
+        assert!(!kanban_header.offers(FenceCursorCompletionKind::NodeIdentifier));
 
         let ambiguous = index.cursor_context("flowchart TD\nA-", "flowchart TD\nA-".len());
         assert!(!ambiguous.offers(FenceCursorCompletionKind::Operator));

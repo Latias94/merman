@@ -261,6 +261,369 @@ fn sequence_payload_facts_do_not_pollute_completion_ids() {
 }
 
 #[test]
+fn architecture_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "architecture-beta\n",
+            "group platform(cloud)[Platform]\n",
+            "service api(server)[API] in platform\n",
+            "junction hub in platform\n",
+            "api:R -- L:hub\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("architecture")
+    );
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    for id in ["platform", "api", "hub"] {
+        assert!(index.node_ids().any(|candidate| candidate == id));
+    }
+    assert!(index.outline_items().iter().any(
+        |item| item.name == "platform" && item.detail.as_deref() == Some("architecture group")
+    ));
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "Platform" && item.role == FenceSemanticRole::Payload)
+    );
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "API" && item.role == FenceSemanticRole::Payload)
+    );
+}
+
+#[test]
+fn radar_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "radar-beta\n",
+            "title Radar diagram\n",
+            "accTitle: Radar accTitle\n",
+            "accDescr: Radar accDescription\n",
+            "axis A[\"Axis A\"], B[\"Axis B\"], C[\"Axis C\"]\n",
+            "curve mycurve[\"My Curve\"]{1,2,3}\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("radar"));
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    for id in ["A", "B", "C", "mycurve"] {
+        assert!(index.node_ids().any(|candidate| candidate == id));
+    }
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "Axis A" && item.role == FenceSemanticRole::Payload)
+    );
+}
+
+#[test]
+fn treemap_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "treemap\n",
+            "title Treemap Title\n",
+            "accTitle: Treemap accTitle\n",
+            "accDescr: Treemap accDescr\n",
+            "\"Root\"\n",
+            "  \"Leaf\": 42 :::highlight\n",
+            "classDef highlight fill:#f00\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("treemap"));
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.node_ids().any(|candidate| candidate == "Root"));
+    assert!(index.node_ids().any(|candidate| candidate == "Leaf"));
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "highlight" && item.role == FenceSemanticRole::Outline)
+    );
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "42" && item.role == FenceSemanticRole::Payload)
+    );
+}
+
+#[test]
+fn block_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "block\n",
+            "  columns 2\n",
+            "  block:group[\"Group label\"]\n",
+            "    A[\"Start\"] -- \"edge label\" --> B[\"End\"]\n",
+            "  end\n",
+            "  arrow<[\"go\"]>(right, down)\n",
+            "  classDef hot fill:#f00\n",
+            "  class A,B hot\n",
+            "  style B stroke:#333\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("block"));
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    for id in ["group", "A", "B", "arrow"] {
+        assert!(index.node_ids().any(|candidate| candidate == id));
+    }
+    assert!(
+        index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "hot" && item.role == FenceSemanticRole::Outline)
+    );
+    for payload in ["Group label", "Start", "edge label", "End", "go", "right"] {
+        assert!(
+            index
+                .semantic_items()
+                .iter()
+                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+            "missing block payload semantic item {payload:?}"
+        );
+    }
+}
+
+#[test]
+fn c4_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "C4Context\n",
+            "title Banking Context\n",
+            "accTitle: Banking accessibility title\n",
+            "accDescr: Banking accessibility description\n",
+            "Boundary(bank, \"Bank\") {\n",
+            "Person(customer, \"Customer\", \"Uses the system\")\n",
+            "System(system, \"Internet Banking\", \"Core system\")\n",
+            "}\n",
+            "Rel(customer, system, \"Uses\", \"HTTPS\")\n",
+            "UpdateElementStyle(system, $bgColor=\"red\")\n",
+            "UpdateRelStyle(customer, system, $lineColor=\"blue\")\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("c4"));
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    for id in ["bank", "customer", "system"] {
+        assert!(index.node_ids().any(|candidate| candidate == id));
+    }
+    for prefix in ["title", "accTitle", "accDescr"] {
+        assert!(index.has_directive_prefix(prefix));
+    }
+    for payload in [
+        "Banking Context",
+        "Banking accessibility title",
+        "Banking accessibility description",
+        "Bank",
+        "Customer",
+        "Uses the system",
+        "Internet Banking",
+        "Core system",
+        "Uses",
+        "HTTPS",
+        "red",
+        "blue",
+    ] {
+        assert!(
+            index
+                .semantic_items()
+                .iter()
+                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+            "missing C4 payload semantic item {payload:?}"
+        );
+        assert!(!index.node_ids().any(|candidate| candidate == payload));
+    }
+}
+
+#[test]
+fn zenuml_documents_use_parser_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        concat!(
+            "zenuml\n",
+            "title Login Flow\n",
+            "accTitle Login accessibility title\n",
+            "accDescr Login accessibility description\n",
+            "Alice\n",
+            "Bob\n",
+            "A as API\n",
+            "Alice->Bob: Login\n",
+            "SomeType result = A.SyncMessage()\n",
+            "new Session(with, params)\n",
+        )
+        .to_string(),
+    );
+    let index = &snapshot.fences[0].text_index;
+
+    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("zenuml"));
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    for id in ["Alice", "Bob", "A", "Session"] {
+        assert!(index.node_ids().any(|candidate| candidate == id));
+    }
+    for prefix in ["title", "accTitle", "accDescr"] {
+        assert!(index.has_directive_prefix(prefix));
+    }
+    for payload in [
+        "Login Flow",
+        "Login accessibility title",
+        "Login accessibility description",
+        "API",
+        "Login",
+        "SyncMessage()",
+        "result",
+        "Session(with, params)",
+    ] {
+        assert!(
+            index
+                .semantic_items()
+                .iter()
+                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+            "missing ZenUML payload semantic item {payload:?}"
+        );
+        assert!(!index.node_ids().any(|candidate| candidate == payload));
+    }
+}
+
+#[test]
+fn newer_family_documents_keep_parser_facts_when_recovered() {
+    for case in [
+        (
+            "gitGraph",
+            concat!("gitGraph\n", "commit id:\"C1\"\n", "commit id:\"broken\n",),
+            "C1",
+            FenceSemanticRole::Entity,
+        ),
+        (
+            "radar",
+            concat!(
+                "radar-beta\n",
+                "axis A[\"Axis A\"], B[\"Axis B\"]\n",
+                "curve mycurve{1,2}\n",
+                "curve broken\n",
+            ),
+            "A",
+            FenceSemanticRole::Entity,
+        ),
+        (
+            "kanban",
+            concat!(
+                "kanban\n",
+                "    root\n",
+                "      child1\n",
+                "      broken[unfinished\n",
+            ),
+            "child1",
+            FenceSemanticRole::Entity,
+        ),
+        (
+            "treemap",
+            concat!(
+                "treemap\n",
+                "\"Root\"\n",
+                "  \"Leaf\": 42\n",
+                "\"Broken\":\n",
+            ),
+            "Leaf",
+            FenceSemanticRole::Entity,
+        ),
+        (
+            "block",
+            concat!(
+                "block\n",
+                "  block:group[\"Group label\"]\n",
+                "    A[\"Start\"]\n",
+            ),
+            "A",
+            FenceSemanticRole::Entity,
+        ),
+        (
+            "c4",
+            concat!(
+                "C4Context\n",
+                "Person(customer, \"Customer\")\n",
+                "NotAMacro customer\n",
+            ),
+            "customer",
+            FenceSemanticRole::Entity,
+        ),
+        (
+            "zenuml",
+            concat!(
+                "zenuml\n",
+                "Alice\n",
+                "Unsupported ? statement\n",
+                "Alice->Bob: Hi\n",
+            ),
+            "Alice",
+            FenceSemanticRole::Entity,
+        ),
+    ] {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(uri, 1, case.1.to_string());
+        let index = &snapshot.fences[0].text_index;
+
+        assert_eq!(
+            index.source(),
+            FenceTextIndexSource::ParserRecovered,
+            "unexpected recovered provenance for {}",
+            case.0
+        );
+        assert!(
+            index
+                .semantic_items()
+                .iter()
+                .any(|item| item.name == case.2 && item.role == case.3),
+            "missing recovered semantic item {:?} for {}",
+            case.2,
+            case.0
+        );
+    }
+}
+
+#[test]
 fn incomplete_sequence_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

@@ -45,6 +45,12 @@ navigation, code-action, and semantic-token foundations.
 
 - LSP behavior is driven by parser-backed semantic facts.
 - Raw-text scans are migration shims, not the target architecture.
+- `docs/lsp/CAPABILITIES.md` is the maturity contract. Families outside that matrix may still
+  parse or render, but they are not first-class LSP commitments yet.
+- The current supported product-family set is first-class in the capability matrix. `error`
+  remains an internal fallback diagram rather than a user-facing LSP family.
+- Payload-first families such as Info, Pie, Packet, and XY Chart can be mature without exposing
+  many rename/reference targets; sparse navigation is a family property, not a server defect.
 - Workspace symbols reuse the tracked outline projection from snapshots instead of a separate
   parser path.
 - Payload facts should be retained in the analysis index but excluded from completion, outline, and

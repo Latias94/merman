@@ -1,5 +1,8 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -89,6 +92,289 @@ pub fn parse_eventmodeling_model_for_render(
         frames,
         data_entities,
         ..Default::default()
+    })
+}
+
+pub fn parse_eventmodeling_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut saw_header = false;
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let line = segment.trim_end_matches(['\n', '\r']);
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("%%") {
+            continue;
+        }
+
+        if !saw_header {
+            if !trimmed.starts_with("eventmodeling") {
+                return facts;
+            }
+            saw_header = true;
+            let rel = line.find("eventmodeling").unwrap_or(0);
+            let span = SourceSpan::new(line_start + rel, line_start + rel + "eventmodeling".len());
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                "eventmodeling".to_string(),
+                Some("eventmodeling header".to_string()),
+                EditorSemanticKind::String,
+                span,
+                span,
+            ));
+            continue;
+        }
+
+        if let Some(frame) = parse_frame_facts(trimmed, line_start) {
+            let name_span = frame.name_span;
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                name_span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::new(
+                frame.name.clone(),
+                Some("eventmodeling frame".to_string()),
+                EditorSemanticKind::Namespace,
+                frame.name_span,
+                frame.name_span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                frame.model_entity_type.clone(),
+                Some("eventmodeling entity type".to_string()),
+                EditorSemanticKind::String,
+                frame.model_entity_type_span,
+                frame.model_entity_type_span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                frame.entity_identifier.clone(),
+                Some("eventmodeling entity identifier".to_string()),
+                EditorSemanticKind::String,
+                frame.entity_identifier_span,
+                frame.entity_identifier_span,
+            ));
+            for source in frame.source_frames {
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    source.text.to_string(),
+                    Some("eventmodeling source frame".to_string()),
+                    EditorSemanticKind::Namespace,
+                    source.span,
+                    source.span,
+                ));
+            }
+            if let Some(data_ref) = frame.data_reference {
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    data_ref.text.to_string(),
+                    Some("eventmodeling data reference".to_string()),
+                    EditorSemanticKind::String,
+                    data_ref.span,
+                    data_ref.span,
+                ));
+            }
+            if let Some(data_inline) = frame.data_inline_value {
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    data_inline.text.to_string(),
+                    Some("eventmodeling inline data".to_string()),
+                    EditorSemanticKind::String,
+                    data_inline.span,
+                    data_inline.span,
+                ));
+            }
+            continue;
+        }
+
+        if let Some(data_entity) = parse_data_entity_line(trimmed, line_start) {
+            facts.push_symbol(EditorSemanticSymbol::new(
+                data_entity.name.text.to_string(),
+                Some("eventmodeling data entity".to_string()),
+                EditorSemanticKind::Namespace,
+                data_entity.name.span,
+                data_entity.name.span,
+            ));
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                data_entity.block_span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                data_entity.block_text.to_string(),
+                Some("eventmodeling data block".to_string()),
+                EditorSemanticKind::String,
+                data_entity.block_span,
+                data_entity.block_span,
+            ));
+        }
+    }
+
+    facts
+}
+
+#[derive(Debug, Clone)]
+struct EventModelingFieldSpan {
+    text: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+struct EventModelingFrameFacts {
+    name: String,
+    name_span: SourceSpan,
+    model_entity_type: String,
+    model_entity_type_span: SourceSpan,
+    entity_identifier: String,
+    entity_identifier_span: SourceSpan,
+    source_frames: Vec<EventModelingFieldSpan>,
+    data_reference: Option<EventModelingFieldSpan>,
+    data_inline_value: Option<EventModelingFieldSpan>,
+}
+
+#[derive(Debug, Clone)]
+struct EventModelingDataEntityFacts {
+    name: EventModelingFieldSpan,
+    block_text: String,
+    block_span: SourceSpan,
+}
+
+fn parse_frame_facts(line: &str, line_start: usize) -> Option<EventModelingFrameFacts> {
+    let (_frame_kind, rest) = if let Some(rest) = strip_keyword(line, "tf") {
+        ("timeframe", rest)
+    } else if let Some(rest) = strip_keyword(line, "timeframe") {
+        ("timeframe", rest)
+    } else if let Some(rest) = strip_keyword(line, "rf") {
+        ("resetframe", rest)
+    } else if let Some(rest) = strip_keyword(line, "resetframe") {
+        ("resetframe", rest)
+    } else {
+        return None;
+    };
+
+    let rest = rest.trim_start();
+    let mut parts = rest.splitn(4, char::is_whitespace);
+    let name = parts.next()?.to_string();
+    let model_entity_type = parts.next()?.to_string();
+    let entity_identifier = parts.next()?.to_string();
+    let tail = parts.next().unwrap_or("").trim();
+
+    let name_rel = line.find(&name)?;
+    let type_rel = line.find(&model_entity_type)?;
+    let id_rel = line.find(&entity_identifier)?;
+
+    let source_frames = parse_source_frames_spanned(tail, line_start, line);
+    let data_reference = parse_data_reference_spanned(tail, line_start, line);
+    let data_inline_value = parse_inline_data_spanned(tail, line_start, line);
+
+    Some(EventModelingFrameFacts {
+        name: name.clone(),
+        name_span: SourceSpan::new(line_start + name_rel, line_start + name_rel + name.len()),
+        model_entity_type: model_entity_type.clone(),
+        model_entity_type_span: SourceSpan::new(
+            line_start + type_rel,
+            line_start + type_rel + model_entity_type.len(),
+        ),
+        entity_identifier: entity_identifier.clone(),
+        entity_identifier_span: SourceSpan::new(
+            line_start + id_rel,
+            line_start + id_rel + entity_identifier.len(),
+        ),
+        source_frames,
+        data_reference,
+        data_inline_value,
+    })
+}
+
+fn parse_source_frames_spanned(
+    tail: &str,
+    line_start: usize,
+    line: &str,
+) -> Vec<EventModelingFieldSpan> {
+    let mut out = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = tail[search_from..].find("->>") {
+        let arrow = search_from + rel;
+        let after = tail[arrow + 3..].trim_start();
+        let Some(name) = after.split_whitespace().next() else {
+            break;
+        };
+        if name.is_empty() {
+            break;
+        }
+        if let Some(line_rel) = line.find(name) {
+            out.push(EventModelingFieldSpan {
+                text: name.to_string(),
+                span: SourceSpan::new(line_start + line_rel, line_start + line_rel + name.len()),
+            });
+        }
+        search_from = arrow + 3;
+    }
+    out
+}
+
+fn parse_data_reference_spanned(
+    tail: &str,
+    line_start: usize,
+    line: &str,
+) -> Option<EventModelingFieldSpan> {
+    let start = tail.find("[[")?;
+    let rest = &tail[start + 2..];
+    let end = rest.find("]]")?;
+    let text = rest[..end].trim();
+    let rel = line.find(text)?;
+    Some(EventModelingFieldSpan {
+        text: text.to_string(),
+        span: SourceSpan::new(line_start + rel, line_start + rel + text.len()),
+    })
+}
+
+fn parse_inline_data_spanned(
+    tail: &str,
+    line_start: usize,
+    line: &str,
+) -> Option<EventModelingFieldSpan> {
+    let start = tail.find('{')?;
+    let mut depth = 0usize;
+    for (offset, ch) in tail[start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let text = tail[start..start + offset + 1].trim();
+                    let rel = line.find(text)?;
+                    return Some(EventModelingFieldSpan {
+                        text: text.to_string(),
+                        span: SourceSpan::new(line_start + rel, line_start + rel + text.len()),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_data_entity_line(line: &str, line_start: usize) -> Option<EventModelingDataEntityFacts> {
+    let rest = strip_keyword(line, "data")?.trim_start();
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let name = parts.next()?.trim();
+    let first_tail = parts.next().unwrap_or("").trim();
+    if !first_tail.starts_with('{') {
+        return None;
+    }
+    let name_rel = line.find(name)?;
+    let block_start = line.find('{')?;
+    let block_text = first_tail.trim().to_string();
+    let block_end = line_start + block_start + block_text.len();
+    Some(EventModelingDataEntityFacts {
+        name: EventModelingFieldSpan {
+            text: name.to_string(),
+            span: SourceSpan::new(line_start + name_rel, line_start + name_rel + name.len()),
+        },
+        block_text,
+        block_span: SourceSpan::new(line_start + block_start, block_end),
     })
 }
 
@@ -282,7 +568,7 @@ fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MermaidConfig, ParseMetadata};
+    use crate::{Engine, MermaidConfig, ParseMetadata, ParseOptions};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -355,5 +641,47 @@ data ItemAddedData {
                 .data_block_value
                 .contains("productId")
         );
+    }
+
+    #[test]
+    fn parse_eventmodeling_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = r#"eventmodeling
+tf 01 cmd AddItem { productId: 7 }
+tf 02 evt ItemAdded [[ItemAddedData]] ->> 01
+
+data ItemAddedData {
+  productId: 7
+}
+"#;
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync(
+                "eventmodeling",
+                text,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "01"));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "ItemAddedData")
+        );
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "ItemAdded")
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "AddItem"));
+
+        let frame_start = text.find("01").unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(frame_start, frame_start + "01".len())
+        }));
     }
 }

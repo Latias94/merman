@@ -255,7 +255,7 @@ fn completion_uses_er_parser_expected_id_list_context_for_class_def() {
 }
 
 #[test]
-fn completion_uses_class_parser_expected_node_identifier_context_for_class_def() {
+fn completion_does_not_offer_class_def_style_names_as_node_ids() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
@@ -266,13 +266,16 @@ fn completion_uses_class_parser_expected_node_identifier_context_for_class_def()
     let list = completion_for_snapshot(&snapshot, Position::new(1, 9));
 
     assert!(
-        !list.items.is_empty(),
-        "parser node-identifier context must offer node identifiers"
+        list.items.is_empty(),
+        "classDef style names stay outline-only and must not surface as node-id completion candidates: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
     );
-    assert!(list.items.iter().any(|item| item.label == "service"));
     assert!(
         list.items.iter().all(|item| item.label != ":::className"),
-        "parser node-identifier context must not offer directive completions: {:?}",
+        "classDef context must not offer directive completions: {:?}",
         list.items
             .iter()
             .map(|item| &item.label)
@@ -428,6 +431,23 @@ fn completion_uses_flowchart_parser_payload_context() {
     assert!(
         list.items.is_empty(),
         "flowchart payload context must not offer generic identifiers or headers: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn completion_uses_block_parser_payload_context() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "block\nA[\"Start node\"] --> B\n".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 5));
+
+    assert!(
+        list.items.is_empty(),
+        "block payload context must not offer generic identifiers or headers: {:?}",
         list.items
             .iter()
             .map(|item| &item.label)
@@ -606,6 +626,28 @@ fn completion_offers_gantt_header() {
     match item.text_edit.as_ref().unwrap() {
         CompletionTextEdit::Edit(edit) => {
             assert_eq!(edit.new_text, "gantt");
+            assert_eq!(edit.range.start.character, 0);
+            assert_eq!(edit.range.end.character, 2);
+        }
+        other => panic!("unexpected text edit: {other:?}"),
+    }
+}
+
+#[test]
+fn completion_offers_graph_header_from_core_facts() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "gr".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 2));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "graph TD")
+        .expect("expected graph header completion");
+    match item.text_edit.as_ref().unwrap() {
+        CompletionTextEdit::Edit(edit) => {
+            assert_eq!(edit.new_text, "graph TD");
             assert_eq!(edit.range.start.character, 0);
             assert_eq!(edit.range.end.character, 2);
         }

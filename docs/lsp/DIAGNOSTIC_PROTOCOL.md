@@ -21,18 +21,18 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Plain Mermaid documents publish diagnostics against the file URI directly.
 - Markdown/MDX documents publish diagnostics against the containing document URI.
 
-## Residuals
+## Current Surface
 
 - Client font metrics, rendering, and HTML label behavior are not part of the LSP contract.
 - Completion covers diagram structure, directions, operators, shapes, directives, and local
   identifiers with stable replacement edits.
 - Hover, go to definition, references, prepare-rename, rename, full-document semantic tokens,
   range/delta semantic tokens, and fix-backed code actions are wired.
+- That claim applies to the first-class matrix in `CAPABILITIES.md`; `error` remains an internal
+  fallback diagram rather than a product-family contract.
 - `textDocument/diagnostic` and `workspace/diagnostic` are wired for pull clients; both report the
   same shared analysis payloads as the push path.
 - Workspace symbols are wired from tracked document snapshots.
-- Code actions remain intentionally sparse until lint rules emit source-span-backed
-  `DiagnosticFix` metadata.
 - Core config diagnostics include source-backed Mermaid compatibility warnings such as deprecated
   directive usage of `flowchart.htmlLabels` (now with a preferred migration quickfix) and
   deprecated external diagram loading config; diagnostics without `DiagnosticFix` metadata do not
@@ -40,4 +40,7 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Recommended-profile authoring hints include the canonical `init` alias reminder and the
   frontmatter `config` preference; the frontmatter-config rule now carries a migration fix that
   rewrites init/initialize directive config into YAML frontmatter.
+
+## Deferred
+
 - Formatting remains deferred.

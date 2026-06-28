@@ -71,3 +71,40 @@ pie
     assert_eq!(pie["legendPosition"], json!("bottom"));
     assert_eq!(pie["highlightSlice"], json!("A"));
 }
+
+#[test]
+fn parse_pie_editor_facts_expose_parser_backed_spans() {
+    let engine = Engine::new();
+    let text = r#"pie showData
+  title Market Share
+  accTitle: Accessibility title
+  accDescr: Accessibility description
+  "Cats": 2
+  "Dogs": 3
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("pie", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Cats" && symbol.kind == EditorSemanticKind::String)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Dogs" && symbol.kind == EditorSemanticKind::String)
+    );
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span
+                == SourceSpan::new(text.find("2").unwrap(), text.find("2").unwrap() + 1)
+    }));
+}

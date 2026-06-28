@@ -1,5 +1,9 @@
+use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -37,6 +41,68 @@ struct FlatNode {
 struct ArenaNode {
     text: String,
     children: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct IshikawaNodeLine {
+    text: String,
+    span: SourceSpan,
+    selection: SourceSpan,
+}
+
+pub fn parse_ishikawa_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+    let mut emitted_root = false;
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        if is_space_or_comment_line(line) {
+            continue;
+        }
+
+        if !header_seen {
+            match parse_ishikawa_header_line(line, line_start, meta) {
+                Ok(Some(root)) => {
+                    header_seen = true;
+                    push_ishikawa_node_fact(&mut facts, root, true);
+                    emitted_root = true;
+                }
+                Ok(None) => {
+                    header_seen = true;
+                }
+                Err(err) => {
+                    facts.mark_recovered_with_diagnostic(
+                        format!("ishikawa parser recovered after parse error: {err}"),
+                        Some(SourceSpan::new(line_start, line_start + line.len())),
+                    );
+                    return facts;
+                }
+            }
+            continue;
+        }
+
+        match parse_ishikawa_node_line(line, line_start, meta) {
+            Ok(node) => {
+                let is_root = !emitted_root;
+                push_ishikawa_node_fact(&mut facts, node, is_root);
+                emitted_root = true;
+            }
+            Err(err) => {
+                facts.mark_recovered_with_diagnostic(
+                    format!("ishikawa parser recovered after parse error: {err}"),
+                    Some(SourceSpan::new(line_start, line_start + line.len())),
+                );
+                return facts;
+            }
+        }
+    }
+
+    facts
 }
 
 pub fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -116,6 +182,86 @@ fn parse_ishikawa_nodes(code: &str, meta: &ParseMetadata) -> Result<Vec<FlatNode
     }
 
     Ok(nodes)
+}
+
+fn parse_ishikawa_header_line(
+    line: &str,
+    line_start: usize,
+    meta: &ParseMetadata,
+) -> Result<Option<IshikawaNodeLine>> {
+    let trimmed_start = line.len().saturating_sub(line.trim_start().len());
+    let trimmed = &line[trimmed_start..];
+    for header in ["ishikawa-beta", "ishikawa"] {
+        if !starts_with_ignore_ascii_case(trimmed, header) {
+            continue;
+        }
+        let rest = &trimmed[header.len()..];
+        if rest
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        {
+            continue;
+        }
+        let text = rest.trim();
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let rel = rest.find(text).unwrap_or(0);
+        let start = line_start + trimmed_start + header.len() + rel;
+        let end = start + text.len();
+        return Ok(Some(IshikawaNodeLine {
+            text: text.to_string(),
+            span: SourceSpan::new(line_start, line_start + line.len()),
+            selection: SourceSpan::new(start, end),
+        }));
+    }
+
+    Err(parse_error(meta, "expected ishikawa"))
+}
+
+fn parse_ishikawa_node_line(
+    line: &str,
+    line_start: usize,
+    meta: &ParseMetadata,
+) -> Result<IshikawaNodeLine> {
+    let indent = line
+        .chars()
+        .take_while(|ch| matches!(ch, ' ' | '\t'))
+        .count();
+    let body = &line[indent..];
+    let text = body.trim();
+    if text.is_empty() {
+        return Err(parse_error(meta, "expected ishikawa node"));
+    }
+
+    let rel = body.find(text).unwrap_or(0);
+    let start = line_start + indent + rel;
+    let end = start + text.len();
+    Ok(IshikawaNodeLine {
+        text: text.to_string(),
+        span: SourceSpan::new(line_start, line_start + line.len()),
+        selection: SourceSpan::new(start, end),
+    })
+}
+
+fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: IshikawaNodeLine, is_root: bool) {
+    let detail = if is_root {
+        "ishikawa effect"
+    } else {
+        "ishikawa cause"
+    };
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        node.selection,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::new(
+        node.text,
+        Some(detail.to_string()),
+        EditorSemanticKind::Namespace,
+        node.span,
+        node.selection,
+    ));
 }
 
 fn parse_header(line: &str, meta: &ParseMetadata) -> Result<Option<String>> {
@@ -286,7 +432,10 @@ fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MermaidConfig, ParseMetadata};
+    use crate::{
+        EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticKind,
+        EditorSemanticRole, Engine, MermaidConfig, ParseMetadata, ParseOptions, SourceSpan,
+    };
 
     const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
 
@@ -388,6 +537,81 @@ Cause B
         assert_eq!(
             semantic["root"]["children"][0]["children"][0]["text"].as_str(),
             Some("Node 1")
+        );
+    }
+
+    #[test]
+    fn parse_ishikawa_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = r#"ishikawa-beta
+    Problem
+Cause A
+  Subcause A1
+"#;
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", text, ParseOptions::strict())
+            .unwrap()
+            .expect("ishikawa editor facts");
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+        for name in ["Problem", "Cause A", "Subcause A1"] {
+            let start = text.find(name).unwrap();
+            assert!(
+                facts.expected_syntax.iter().any(|expected| {
+                    expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                        && expected.span == SourceSpan::new(start, start + name.len())
+                }),
+                "missing expected syntax for {name}"
+            );
+        }
+
+        let effect = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Problem")
+            .expect("missing ishikawa effect");
+        assert_eq!(effect.detail.as_deref(), Some("ishikawa effect"));
+        assert_eq!(effect.role, EditorSemanticRole::Entity);
+        assert_eq!(effect.kind, EditorSemanticKind::Namespace);
+        let effect_start = text.find("Problem").unwrap();
+        assert_eq!(
+            effect.selection,
+            SourceSpan::new(effect_start, effect_start + "Problem".len())
+        );
+
+        let cause = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Cause A")
+            .expect("missing ishikawa cause");
+        assert_eq!(cause.detail.as_deref(), Some("ishikawa cause"));
+        let cause_start = text.find("Cause A").unwrap();
+        assert_eq!(
+            cause.selection,
+            SourceSpan::new(cause_start, cause_start + "Cause A".len())
+        );
+    }
+
+    #[test]
+    fn parse_ishikawa_editor_facts_support_inline_root() {
+        let engine = Engine::new();
+        let text = "ishikawa Problem\n  Cause\n";
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", text, ParseOptions::strict())
+            .unwrap()
+            .expect("ishikawa editor facts");
+
+        let effect = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Problem")
+            .expect("missing inline root");
+        assert_eq!(effect.detail.as_deref(), Some("ishikawa effect"));
+        let effect_start = text.find("Problem").unwrap();
+        assert_eq!(
+            effect.selection,
+            SourceSpan::new(effect_start, effect_start + "Problem".len())
         );
     }
 }

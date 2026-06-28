@@ -1,4 +1,8 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::diagrams::scan::strip_line_ending;
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::Peekable;
@@ -331,6 +335,504 @@ pub fn parse_requirement_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<RequirementDiagramRenderModel> {
     parse_requirement_model(code, meta)
+}
+
+fn parse_colon_value_ci(line: &str, key: &str) -> Option<String> {
+    let t = line.trim_start();
+    if !t
+        .get(..key.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(key))
+    {
+        return None;
+    }
+    let rest = &t[key.len()..];
+    let rest = rest.trim_start();
+    let value = rest.strip_prefix(':')?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    Some(value.to_string())
+}
+
+fn parse_keyword_rest_ci(line: &str, key: &str) -> Option<String> {
+    let t = line.trim_start();
+    if !t
+        .get(..key.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(key))
+    {
+        return None;
+    }
+    Some(t[key.len()..].trim_start().to_string())
+}
+
+pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut saw_header = false;
+    let mut current_block: Option<RequirementBlockKind> = None;
+    let mut acc_descr_block_start = 0usize;
+    let mut acc_descr_buf = String::new();
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        let stripped = strip_inline_comment(line);
+        let trimmed = stripped.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Some(kind) = current_block {
+            if trimmed == "}" {
+                if matches!(kind, RequirementBlockKind::AccDescr) {
+                    let value = acc_descr_buf.trim().to_string();
+                    if !value.is_empty() {
+                        push_requirement_payload_fact(
+                            &mut facts,
+                            &value,
+                            acc_descr_block_start,
+                            "requirement accessibility description",
+                            EditorSemanticKind::String,
+                        );
+                    }
+                    acc_descr_buf.clear();
+                }
+                current_block = None;
+                continue;
+            }
+
+            match kind {
+                RequirementBlockKind::Requirement => {
+                    if let Some((key, value)) = split_key_value(trimmed) {
+                        match key.to_ascii_lowercase().as_str() {
+                            "id" => push_requirement_payload_fact(
+                                &mut facts,
+                                value,
+                                line_start + line.find(value).unwrap_or(0),
+                                "requirement id",
+                                EditorSemanticKind::String,
+                            ),
+                            "text" => push_requirement_payload_fact(
+                                &mut facts,
+                                value,
+                                line_start + line.find(value).unwrap_or(0),
+                                "requirement text",
+                                EditorSemanticKind::String,
+                            ),
+                            "risk" => push_requirement_payload_fact(
+                                &mut facts,
+                                value,
+                                line_start + line.find(value).unwrap_or(0),
+                                "requirement risk",
+                                EditorSemanticKind::String,
+                            ),
+                            "verifymethod" => push_requirement_payload_fact(
+                                &mut facts,
+                                value,
+                                line_start + line.find(value).unwrap_or(0),
+                                "requirement verify method",
+                                EditorSemanticKind::String,
+                            ),
+                            _ => {}
+                        }
+                    }
+                }
+                RequirementBlockKind::Element => {
+                    if let Some((key, value)) = split_key_value(trimmed) {
+                        match key.to_ascii_lowercase().as_str() {
+                            "type" => push_requirement_payload_fact(
+                                &mut facts,
+                                value,
+                                line_start + line.find(value).unwrap_or(0),
+                                "requirement element type",
+                                EditorSemanticKind::String,
+                            ),
+                            "docref" => push_requirement_payload_fact(
+                                &mut facts,
+                                value,
+                                line_start + line.find(value).unwrap_or(0),
+                                "requirement doc ref",
+                                EditorSemanticKind::String,
+                            ),
+                            _ => {}
+                        }
+                    }
+                }
+                RequirementBlockKind::AccDescr => {
+                    if let Some(end_rel) = stripped.find('}') {
+                        let body = stripped[..end_rel].trim_end();
+                        if !body.is_empty() {
+                            if !acc_descr_buf.is_empty() {
+                                acc_descr_buf.push('\n');
+                            }
+                            acc_descr_buf.push_str(body);
+                        }
+                        let start = acc_descr_block_start;
+                        let value = acc_descr_buf.trim().to_string();
+                        if !value.is_empty() {
+                            push_requirement_payload_fact(
+                                &mut facts,
+                                &value,
+                                start,
+                                "requirement accessibility description",
+                                EditorSemanticKind::String,
+                            );
+                        }
+                        acc_descr_buf.clear();
+                        current_block = None;
+                        continue;
+                    }
+                    if !acc_descr_buf.is_empty() {
+                        acc_descr_buf.push('\n');
+                    }
+                    acc_descr_buf.push_str(trimmed);
+                    continue;
+                }
+            }
+            continue;
+        }
+
+        if !saw_header {
+            if trimmed.eq_ignore_ascii_case("requirementDiagram") {
+                saw_header = true;
+            }
+            continue;
+        }
+
+        if let Some(dir) = parse_direction(trimmed) {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::DirectionValue,
+                SourceSpan::new(
+                    line_start + line.find(dir).unwrap_or(0),
+                    line_start + line.find(dir).unwrap_or(0) + dir.len(),
+                ),
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                dir.to_string(),
+                Some("requirement direction".to_string()),
+                EditorSemanticKind::String,
+                SourceSpan::new(line_start, line_start + line.len()),
+                SourceSpan::new(
+                    line_start + line.find(dir).unwrap_or(0),
+                    line_start + line.find(dir).unwrap_or(0) + dir.len(),
+                ),
+            ));
+            continue;
+        }
+
+        if let Some(v) = parse_colon_value_ci(trimmed, "accTitle") {
+            facts.push_directive_prefix("accTitle");
+            if let Some(rel) = line.find(&v) {
+                push_requirement_payload_fact(
+                    &mut facts,
+                    &v,
+                    line_start + rel,
+                    "requirement accessibility title",
+                    EditorSemanticKind::String,
+                );
+            }
+            continue;
+        }
+
+        if let Some(rest) = parse_keyword_rest_ci(trimmed, "accDescr") {
+            let rest = rest.trim_start();
+            if let Some(v) = rest.strip_prefix(':') {
+                let value = v.trim();
+                facts.push_directive_prefix("accDescr");
+                if let Some(rel) = line.find(value) {
+                    push_requirement_payload_fact(
+                        &mut facts,
+                        value,
+                        line_start + rel,
+                        "requirement accessibility description",
+                        EditorSemanticKind::String,
+                    );
+                }
+                continue;
+            }
+            if let Some(after_lbrace) = rest.strip_prefix('{') {
+                facts.push_directive_prefix("accDescr");
+                let after = after_lbrace.trim_start();
+                let value_start = line_start
+                    + line.find('{').unwrap_or(0)
+                    + 1
+                    + after_lbrace.len().saturating_sub(after.len());
+                if let Some(end_rel) = after.find('}') {
+                    let value = after[..end_rel].trim();
+                    if !value.is_empty() {
+                        push_requirement_payload_fact(
+                            &mut facts,
+                            value,
+                            line_start + line.find(value).unwrap_or(0),
+                            "requirement accessibility description",
+                            EditorSemanticKind::String,
+                        );
+                    }
+                    continue;
+                }
+                current_block = Some(RequirementBlockKind::AccDescr);
+                acc_descr_block_start = value_start;
+                acc_descr_buf.clear();
+                if !after.is_empty() {
+                    acc_descr_buf.push_str(after.trim_end());
+                }
+                continue;
+            }
+        }
+
+        if let Some((name, requirement_type, classes)) =
+            parse_requirement_def_open(trimmed).ok().flatten()
+        {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                SourceSpan::new(
+                    line_start + line.find(&name).unwrap_or(0),
+                    line_start + line.find(&name).unwrap_or(0) + name.len(),
+                ),
+            ));
+            facts.push_symbol(EditorSemanticSymbol::new(
+                name.clone(),
+                Some(requirement_type.to_lowercase()),
+                EditorSemanticKind::Struct,
+                SourceSpan::new(line_start, line_start + line.len()),
+                SourceSpan::new(
+                    line_start + line.find(&name).unwrap_or(0),
+                    line_start + line.find(&name).unwrap_or(0) + name.len(),
+                ),
+            ));
+            if let Some(classes) = classes {
+                push_requirement_class_refs(
+                    &mut facts,
+                    line,
+                    line_start,
+                    &classes,
+                    "requirement class",
+                );
+            }
+            current_block = Some(RequirementBlockKind::Requirement);
+            continue;
+        }
+
+        if let Some((name, classes)) = parse_element_def_open(trimmed).ok().flatten() {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                SourceSpan::new(
+                    line_start + line.find(&name).unwrap_or(0),
+                    line_start + line.find(&name).unwrap_or(0) + name.len(),
+                ),
+            ));
+            facts.push_symbol(EditorSemanticSymbol::new(
+                name.clone(),
+                Some("requirement element".to_string()),
+                EditorSemanticKind::Object,
+                SourceSpan::new(line_start, line_start + line.len()),
+                SourceSpan::new(
+                    line_start + line.find(&name).unwrap_or(0),
+                    line_start + line.find(&name).unwrap_or(0) + name.len(),
+                ),
+            ));
+            if let Some(classes) = classes {
+                push_requirement_class_refs(
+                    &mut facts,
+                    line,
+                    line_start,
+                    &classes,
+                    "requirement class",
+                );
+            }
+            current_block = Some(RequirementBlockKind::Element);
+            continue;
+        }
+
+        if let Some((target, classes)) = parse_shorthand_class_stmt(trimmed).ok().flatten() {
+            if let Some(rel) = line.find(&target) {
+                facts.push_symbol(EditorSemanticSymbol::outline(
+                    target.clone(),
+                    Some("requirement class target".to_string()),
+                    EditorSemanticKind::Namespace,
+                    SourceSpan::new(line_start, line_start + line.len()),
+                    SourceSpan::new(line_start + rel, line_start + rel + target.len()),
+                ));
+            }
+            push_requirement_class_refs(
+                &mut facts,
+                line,
+                line_start,
+                &classes,
+                "requirement class",
+            );
+            continue;
+        }
+
+        if let Some((ids, styles)) = parse_style_stmt(trimmed).ok().flatten() {
+            if let Some(first) = ids.first() {
+                if let Some(rel) = line.find(first) {
+                    facts.push_symbol(EditorSemanticSymbol::payload(
+                        first.clone(),
+                        Some("requirement style target".to_string()),
+                        EditorSemanticKind::Property,
+                        SourceSpan::new(line_start, line_start + line.len()),
+                        SourceSpan::new(line_start + rel, line_start + rel + first.len()),
+                    ));
+                }
+            }
+            push_requirement_style_refs(&mut facts, line, line_start, &styles, "requirement style");
+            continue;
+        }
+
+        if let Some((ids, styles)) = parse_classdef_stmt(trimmed).ok().flatten() {
+            if let Some(first) = ids.first() {
+                if let Some(rel) = line.find(first) {
+                    facts.push_symbol(EditorSemanticSymbol::outline(
+                        first.clone(),
+                        Some("requirement class definition".to_string()),
+                        EditorSemanticKind::Property,
+                        SourceSpan::new(line_start, line_start + line.len()),
+                        SourceSpan::new(line_start + rel, line_start + rel + first.len()),
+                    ));
+                }
+            }
+            push_requirement_style_refs(
+                &mut facts,
+                line,
+                line_start,
+                &styles,
+                "requirement class style",
+            );
+            continue;
+        }
+
+        if let Some((ids, classes)) = parse_class_stmt(trimmed).ok().flatten() {
+            push_requirement_class_refs(
+                &mut facts,
+                line,
+                line_start,
+                &classes,
+                "requirement class",
+            );
+            if let Some(first) = ids.first()
+                && let Some(rel) = line.find(first)
+            {
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    first.clone(),
+                    Some("requirement class target".to_string()),
+                    EditorSemanticKind::Namespace,
+                    SourceSpan::new(line_start, line_start + line.len()),
+                    SourceSpan::new(line_start + rel, line_start + rel + first.len()),
+                ));
+            }
+            continue;
+        }
+
+        if let Some((rel, src, dst)) = parse_relationship_stmt(trimmed).ok().flatten() {
+            if let Some(rel_pos) = line.find(&rel) {
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    rel.clone(),
+                    Some("requirement relationship".to_string()),
+                    EditorSemanticKind::String,
+                    SourceSpan::new(line_start, line_start + line.len()),
+                    SourceSpan::new(line_start + rel_pos, line_start + rel_pos + rel.len()),
+                ));
+            }
+            if let Some(src_pos) = line.find(&src) {
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    src.clone(),
+                    Some("requirement relationship source".to_string()),
+                    EditorSemanticKind::Struct,
+                    SourceSpan::new(line_start, line_start + line.len()),
+                    SourceSpan::new(line_start + src_pos, line_start + src_pos + src.len()),
+                ));
+            }
+            if let Some(dst_pos) = line.rfind(&dst) {
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    dst.clone(),
+                    Some("requirement relationship target".to_string()),
+                    EditorSemanticKind::Struct,
+                    SourceSpan::new(line_start, line_start + line.len()),
+                    SourceSpan::new(line_start + dst_pos, line_start + dst_pos + dst.len()),
+                ));
+            }
+            continue;
+        }
+    }
+
+    facts
+}
+
+#[derive(Clone, Copy)]
+enum RequirementBlockKind {
+    Requirement,
+    Element,
+    AccDescr,
+}
+
+fn push_requirement_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    text: &str,
+    start: usize,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    let text = text.trim();
+    if text.is_empty() {
+        return;
+    }
+    let span = SourceSpan::new(start, start + text.len());
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.to_string(),
+        Some(detail.to_string()),
+        kind,
+        span,
+        span,
+    ));
+}
+
+fn push_requirement_class_refs(
+    facts: &mut EditorSemanticFacts,
+    line: &str,
+    line_start: usize,
+    classes: &[String],
+    detail: &'static str,
+) {
+    for class_name in classes {
+        if let Some(rel) = line.find(class_name) {
+            let span = SourceSpan::new(line_start + rel, line_start + rel + class_name.len());
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                class_name.clone(),
+                Some(detail.to_string()),
+                EditorSemanticKind::Property,
+                span,
+                span,
+            ));
+        }
+    }
+}
+
+fn push_requirement_style_refs(
+    facts: &mut EditorSemanticFacts,
+    line: &str,
+    line_start: usize,
+    styles: &[String],
+    detail: &'static str,
+) {
+    for style in styles {
+        if let Some(rel) = line.find(style) {
+            let span = SourceSpan::new(line_start + rel, line_start + rel + style.len());
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                style.clone(),
+                Some(detail.to_string()),
+                EditorSemanticKind::Property,
+                span,
+                span,
+            ));
+        }
+    }
 }
 
 fn requirement_model_to_value(model: RequirementDiagramRenderModel, meta: &ParseMetadata) -> Value {

@@ -1,4 +1,8 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::diagrams::scan::strip_line_ending;
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -552,6 +556,530 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
         buf.push('\n');
     }
     Some(buf.trim().to_string())
+}
+
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+}
+
+struct SpanParser<'a> {
+    input: &'a str,
+    pos: usize,
+    base_offset: usize,
+}
+
+impl<'a> SpanParser<'a> {
+    fn new(input: &'a str, base_offset: usize) -> Self {
+        Self {
+            input,
+            pos: 0,
+            base_offset,
+        }
+    }
+
+    fn is_eof(&self) -> bool {
+        self.pos >= self.input.len()
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.input[self.pos..].chars().next()
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let ch = self.peek_char()?;
+        self.pos += ch.len_utf8();
+        Some(ch)
+    }
+
+    fn skip_ws(&mut self) {
+        while self.peek_char().is_some_and(char::is_whitespace) {
+            self.bump();
+        }
+    }
+
+    fn consume_literal(&mut self, literal: &str) -> bool {
+        self.skip_ws();
+        if !self.input[self.pos..].starts_with(literal) {
+            return false;
+        }
+        self.pos += literal.len();
+        true
+    }
+
+    fn consume_keyword(&mut self, kw: &str) -> bool {
+        self.skip_ws();
+        if !self.input[self.pos..].starts_with(kw) {
+            return false;
+        }
+        let after = &self.input[self.pos + kw.len()..];
+        if !after
+            .chars()
+            .next()
+            .is_none_or(|ch| ch.is_whitespace() || ch == ':' || ch == '[' || ch == '(')
+        {
+            return false;
+        }
+        self.pos += kw.len();
+        true
+    }
+
+    fn parse_id(&mut self) -> Option<SpannedText> {
+        self.skip_ws();
+        let start = self.pos;
+        let mut last_word_end: Option<usize> = None;
+        let mut seen_any = false;
+        while let Some(ch) = self.peek_char() {
+            let is_word = ch.is_ascii_alphanumeric() || ch == '_';
+            let is_allowed = is_word || ch == '-';
+            if !seen_any {
+                if !is_word {
+                    return None;
+                }
+                seen_any = true;
+                self.bump();
+                last_word_end = Some(self.pos);
+                continue;
+            }
+            if !is_allowed {
+                break;
+            }
+            self.bump();
+            if is_word {
+                last_word_end = Some(self.pos);
+            }
+        }
+        let end = last_word_end?;
+        self.pos = end;
+        Some(SpannedText {
+            text: self.input[start..end].to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + end),
+        })
+    }
+
+    fn parse_bracketed(&mut self, open: char, close: char) -> Option<SpannedText> {
+        self.skip_ws();
+        if self.peek_char()? != open {
+            return None;
+        }
+        self.bump();
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch == close {
+                break;
+            }
+            self.bump();
+        }
+        if self.peek_char()? != close {
+            return None;
+        }
+        let end = self.pos;
+        self.bump();
+
+        let raw = &self.input[start..end];
+        let leading = raw.len() - raw.trim_start().len();
+        let trailing = raw.len() - raw.trim_end().len();
+        let inner_start = start + leading;
+        let inner_end = end.saturating_sub(trailing);
+        Some(SpannedText {
+            text: raw.trim().to_string(),
+            span: SourceSpan::new(self.base_offset + inner_start, self.base_offset + inner_end),
+        })
+    }
+
+    fn parse_quoted(&mut self) -> Option<SpannedText> {
+        self.skip_ws();
+        let quote = self.peek_char()?;
+        if quote != '"' && quote != '\'' {
+            return None;
+        }
+        self.bump();
+        let start = self.pos;
+        let mut escaped = false;
+        while let Some(ch) = self.peek_char() {
+            if escaped {
+                escaped = false;
+                self.bump();
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                self.bump();
+                continue;
+            }
+            if ch == quote {
+                break;
+            }
+            self.bump();
+        }
+        if self.peek_char()? != quote {
+            return None;
+        }
+        let end = self.pos;
+        self.bump();
+        Some(SpannedText {
+            text: self.input[start..end].to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + end),
+        })
+    }
+
+    fn consume_group_modifier(&mut self) {
+        self.skip_ws();
+        if self.input[self.pos..].starts_with("{group}") {
+            self.pos += "{group}".len();
+        }
+    }
+}
+
+fn push_architecture_entity(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::new(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_architecture_payload(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn value_after_keyword_span(line: &str, keyword: &str, base_offset: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with(keyword) {
+        return None;
+    }
+    let rest = &trimmed[keyword.len()..];
+    let rest = rest.strip_prefix(|ch: char| ch.is_whitespace())?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(base_offset + rel, base_offset + rel + value.len()),
+    })
+}
+
+fn value_after_colon_span(line: &str, keyword: &str, base_offset: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with(keyword) {
+        return None;
+    }
+    let rest = &trimmed[keyword.len()..];
+    let rest = rest.trim_start().strip_prefix(':')?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(base_offset + rel, base_offset + rel + value.len()),
+    })
+}
+
+fn parse_architecture_stmt_facts(
+    stmt: &str,
+    stmt_start: usize,
+    facts: &mut EditorSemanticFacts,
+) -> std::result::Result<(), ()> {
+    if let Some(title) = value_after_keyword_span(stmt, "title", stmt_start) {
+        facts.push_directive_prefix("title");
+        push_architecture_payload(
+            facts,
+            title,
+            "architecture title",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if let Some(title) = value_after_colon_span(stmt, "accTitle", stmt_start) {
+        facts.push_directive_prefix("accTitle");
+        push_architecture_payload(
+            facts,
+            title,
+            "architecture accessibility title",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if let Some(descr) = value_after_colon_span(stmt, "accDescr", stmt_start) {
+        facts.push_directive_prefix("accDescr");
+        push_architecture_payload(
+            facts,
+            descr,
+            "architecture accessibility description",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if stmt.trim_start().starts_with("accDescr") {
+        facts.push_directive_prefix("accDescr");
+        return Ok(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    if parser.consume_keyword("group") {
+        let Some(id) = parser.parse_id() else {
+            return Err(());
+        };
+        push_architecture_entity(
+            facts,
+            id,
+            "architecture group",
+            EditorSemanticKind::Namespace,
+        );
+        if let Some(icon) = parser.parse_bracketed('(', ')') {
+            push_architecture_payload(
+                facts,
+                icon,
+                "architecture group icon",
+                EditorSemanticKind::String,
+            );
+        }
+        if let Some(title) = parser.parse_bracketed('[', ']') {
+            push_architecture_payload(
+                facts,
+                title,
+                "architecture group title",
+                EditorSemanticKind::String,
+            );
+        }
+        if parser.consume_keyword("in") {
+            let Some(parent) = parser.parse_id() else {
+                return Err(());
+            };
+            push_architecture_entity(
+                facts,
+                parent,
+                "architecture group parent",
+                EditorSemanticKind::Namespace,
+            );
+        }
+        return parser.is_eof().then_some(()).ok_or(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    if parser.consume_keyword("service") {
+        let Some(id) = parser.parse_id() else {
+            return Err(());
+        };
+        push_architecture_entity(
+            facts,
+            id,
+            "architecture service",
+            EditorSemanticKind::Variable,
+        );
+        if let Some(icon) = parser.parse_bracketed('(', ')') {
+            push_architecture_payload(
+                facts,
+                icon,
+                "architecture service icon",
+                EditorSemanticKind::String,
+            );
+        } else if let Some(icon_text) = parser.parse_quoted() {
+            push_architecture_payload(
+                facts,
+                icon_text,
+                "architecture service icon text",
+                EditorSemanticKind::String,
+            );
+        }
+        if let Some(title) = parser.parse_bracketed('[', ']') {
+            push_architecture_payload(
+                facts,
+                title,
+                "architecture service title",
+                EditorSemanticKind::String,
+            );
+        }
+        if parser.consume_keyword("in") {
+            let Some(parent) = parser.parse_id() else {
+                return Err(());
+            };
+            push_architecture_entity(
+                facts,
+                parent,
+                "architecture service parent",
+                EditorSemanticKind::Namespace,
+            );
+        }
+        return parser.is_eof().then_some(()).ok_or(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    if parser.consume_keyword("junction") {
+        let Some(id) = parser.parse_id() else {
+            return Err(());
+        };
+        push_architecture_entity(
+            facts,
+            id,
+            "architecture junction",
+            EditorSemanticKind::Object,
+        );
+        if parser.consume_keyword("in") {
+            let Some(parent) = parser.parse_id() else {
+                return Err(());
+            };
+            push_architecture_entity(
+                facts,
+                parent,
+                "architecture junction parent",
+                EditorSemanticKind::Namespace,
+            );
+        }
+        return parser.is_eof().then_some(()).ok_or(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    let Some(lhs) = parser.parse_id() else {
+        return Err(());
+    };
+    push_architecture_entity(
+        facts,
+        lhs,
+        "architecture edge endpoint",
+        EditorSemanticKind::Variable,
+    );
+    parser.consume_group_modifier();
+    if !parser.consume_literal(":") {
+        return Err(());
+    }
+    parser.skip_ws();
+    if !parser.peek_char().is_some_and(is_arch_dir) {
+        return Err(());
+    }
+    parser.bump();
+    parser.skip_ws();
+    if parser.peek_char().is_some_and(|ch| ch == '<' || ch == '>') {
+        parser.bump();
+    }
+    parser.skip_ws();
+    if parser.input[parser.pos..].starts_with("--") {
+        parser.pos += 2;
+    } else if parser.input[parser.pos..].starts_with('-') {
+        parser.pos += 1;
+        let Some(title) = parser.parse_bracketed('[', ']') else {
+            return Err(());
+        };
+        push_architecture_payload(
+            facts,
+            title,
+            "architecture edge title",
+            EditorSemanticKind::String,
+        );
+        if !parser.consume_literal("-") {
+            return Err(());
+        }
+    } else {
+        return Err(());
+    }
+    parser.skip_ws();
+    if parser.peek_char().is_some_and(|ch| ch == '<' || ch == '>') {
+        parser.bump();
+    }
+    parser.skip_ws();
+    if !parser.peek_char().is_some_and(is_arch_dir) {
+        return Err(());
+    }
+    parser.bump();
+    if !parser.consume_literal(":") {
+        return Err(());
+    }
+    parser.skip_ws();
+    if parser.peek_char() == Some(':') {
+        parser.bump();
+    }
+    let Some(rhs) = parser.parse_id() else {
+        return Err(());
+    };
+    push_architecture_entity(
+        facts,
+        rhs,
+        "architecture edge endpoint",
+        EditorSemanticKind::Variable,
+    );
+    parser.consume_group_modifier();
+    parser.is_eof().then_some(()).ok_or(())
+}
+
+pub fn parse_architecture_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    for segment in code.split_inclusive('\n') {
+        let line_start = offset;
+        offset += segment.len();
+        let raw_line = strip_line_ending(segment);
+        let line = strip_inline_comment(raw_line);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
+                header_seen = true;
+                let rest = rest.trim_start();
+                if !rest.is_empty() {
+                    let rel = line.find(rest).unwrap_or(0);
+                    if parse_architecture_stmt_facts(rest, line_start + rel, &mut facts).is_err() {
+                        facts.mark_recovered();
+                    }
+                }
+                continue;
+            }
+            return facts;
+        }
+
+        if parse_architecture_stmt_facts(
+            trimmed,
+            line_start + line.find(trimmed).unwrap_or(0),
+            &mut facts,
+        )
+        .is_err()
+        {
+            facts.mark_recovered();
+        }
+    }
+
+    facts
 }
 
 fn take_id_prefix(input: &str) -> Option<(&str, &str)> {

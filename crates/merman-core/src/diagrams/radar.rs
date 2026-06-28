@@ -1,4 +1,8 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::diagrams::scan::strip_line_ending;
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone)]
@@ -218,6 +222,254 @@ impl RadarDb {
             options: self.options,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+}
+
+fn find_span(text: &str, needle: &str, base_offset: usize) -> Option<SpannedText> {
+    let rel = text.find(needle)?;
+    Some(SpannedText {
+        text: needle.to_string(),
+        span: SourceSpan::new(base_offset + rel, base_offset + rel + needle.len()),
+    })
+}
+
+fn push_radar_entity(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::new(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_radar_payload(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn value_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        _ => v.to_string(),
+    }
+}
+
+fn parse_radar_stmt_facts(
+    stmt: &str,
+    stmt_start: usize,
+    facts: &mut EditorSemanticFacts,
+) -> std::result::Result<(), ()> {
+    let trimmed = stmt.trim_start();
+    if let Some(title) = parse_title(trimmed) {
+        let Some(span) = find_span(stmt, &title, stmt_start) else {
+            return Err(());
+        };
+        facts.push_directive_prefix("title");
+        push_radar_payload(facts, span, "radar title", EditorSemanticKind::String);
+        return Ok(());
+    }
+    if let Some(acc_title) = parse_key_value(trimmed, "accTitle") {
+        let Some(span) = find_span(stmt, &acc_title, stmt_start) else {
+            return Err(());
+        };
+        facts.push_directive_prefix("accTitle");
+        push_radar_payload(
+            facts,
+            span,
+            "radar accessibility title",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if let Some(acc_descr) = parse_acc_descr(trimmed) {
+        let Some(span) = find_span(stmt, &acc_descr, stmt_start) else {
+            return Err(());
+        };
+        facts.push_directive_prefix("accDescr");
+        push_radar_payload(
+            facts,
+            span,
+            "radar accessibility description",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("axis") {
+        let rest = rest.trim_start();
+        if rest.is_empty() {
+            return Err(());
+        }
+        let axes = parse_axes_list(rest).map_err(|_| ())?;
+        for axis in axes {
+            if let Some(span) = find_span(stmt, &axis.name, stmt_start) {
+                push_radar_entity(facts, span, "radar axis", EditorSemanticKind::Variable);
+            }
+            if let Some(label) = axis.label.as_deref()
+                && let Some(span) = find_span(stmt, label, stmt_start)
+            {
+                push_radar_payload(facts, span, "radar axis label", EditorSemanticKind::String);
+            }
+        }
+        return Ok(());
+    }
+
+    if trimmed.starts_with("curve") {
+        let rest = trimmed.strip_prefix("curve").ok_or(())?.trim_start();
+        if rest.is_empty() {
+            return Err(());
+        }
+        let chunks = split_top_level(rest, ',');
+        for chunk in chunks {
+            let chunk = chunk.trim();
+            if chunk.is_empty() {
+                continue;
+            }
+            let curve = parse_curve(chunk).map_err(|_| ())?;
+            if let Some(span) = find_span(stmt, &curve.name, stmt_start) {
+                push_radar_entity(facts, span, "radar curve", EditorSemanticKind::Variable);
+            }
+            if let Some(label) = curve.label.as_deref()
+                && let Some(span) = find_span(stmt, label, stmt_start)
+            {
+                push_radar_payload(facts, span, "radar curve label", EditorSemanticKind::String);
+            }
+
+            for entry in curve.entries {
+                let token = value_text(&entry.value);
+                if let Some(axis) = entry.axis.as_deref()
+                    && let Some(span) = find_span(stmt, axis, stmt_start)
+                {
+                    push_radar_entity(
+                        facts,
+                        span,
+                        "radar curve axis reference",
+                        EditorSemanticKind::Variable,
+                    );
+                }
+                if let Some(span) = find_span(stmt, &token, stmt_start) {
+                    push_radar_payload(
+                        facts,
+                        span,
+                        "radar curve entry",
+                        EditorSemanticKind::String,
+                    );
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if let Some(opt) = parse_option_stmt(trimmed).map_err(|_| ())? {
+        let token = match &opt.value {
+            OptionValueAst::Bool(v) => v.to_string(),
+            OptionValueAst::Number(v) => value_text(v),
+            OptionValueAst::Graticule(v) => v.clone(),
+        };
+        if let Some(span) = find_span(stmt, &token, stmt_start) {
+            push_radar_payload(facts, span, "radar option", EditorSemanticKind::String);
+        }
+        return Ok(());
+    }
+
+    if let Some(opts) = parse_option_list_stmt(trimmed).map_err(|_| ())? {
+        for opt in opts {
+            let token = match &opt.value {
+                OptionValueAst::Bool(v) => v.to_string(),
+                OptionValueAst::Number(v) => value_text(v),
+                OptionValueAst::Graticule(v) => v.clone(),
+            };
+            if let Some(span) = find_span(stmt, &token, stmt_start) {
+                push_radar_payload(facts, span, "radar option", EditorSemanticKind::String);
+            }
+        }
+        return Ok(());
+    }
+
+    Err(())
+}
+
+pub fn parse_radar_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    let mut lines = code.split_inclusive('\n').peekable();
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let raw = strip_line_ending(segment);
+        let line = strip_inline_comment(raw);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if !is_radar_header(trimmed) {
+                return facts;
+            }
+            header_seen = true;
+            continue;
+        }
+
+        let mut stmt = trimmed.to_string();
+        if stmt.starts_with("curve") && stmt.contains('{') && !braces_balanced_outside_quotes(&stmt)
+        {
+            while let Some(next_segment) = lines.peek().copied() {
+                let next_line = strip_inline_comment(strip_line_ending(next_segment));
+                stmt.push('\n');
+                stmt.push_str(next_line);
+                offset += next_segment.len();
+                lines.next();
+                if braces_balanced_outside_quotes(&stmt) {
+                    break;
+                }
+            }
+        }
+
+        let stmt_start = line_start + line.find(trimmed).unwrap_or(0);
+        if parse_radar_stmt_facts(&stmt, stmt_start, &mut facts).is_err() {
+            facts.mark_recovered();
+        }
+    }
+
+    facts
 }
 
 fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Result<Vec<Value>> {

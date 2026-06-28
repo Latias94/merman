@@ -43,7 +43,7 @@ pub use editor::{
     EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, Result};
-pub use family::DiagramFamilyCapability;
+pub use family::{DiagramFamilyCapability, DiagramHeaderFact};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
@@ -76,6 +76,18 @@ pub fn diagram_family_capabilities_for_profile(
     profile: baseline::BaselineRegistryProfile,
 ) -> &'static [DiagramFamilyCapability] {
     family::diagram_family_capabilities(profile)
+}
+
+/// Returns header completion facts for Mermaid diagram starters in the selected profile.
+pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
+    diagram_header_facts_for_profile(selected_baseline_registry_profile())
+}
+
+/// Returns header completion facts for Mermaid diagram starters in an explicit registry profile.
+pub fn diagram_header_facts_for_profile(
+    profile: baseline::BaselineRegistryProfile,
+) -> &'static [DiagramHeaderFact] {
+    family::diagram_header_facts(profile)
 }
 
 /// Returns the Mermaid registry profile selected by this crate's enabled feature set.

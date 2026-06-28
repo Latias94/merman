@@ -1,4 +1,8 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::diagrams::scan::starts_with_case_insensitive;
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
@@ -61,6 +65,271 @@ pub fn parse_pie_model_for_render(
         }),
         PieParseOutput::Model(model) => Ok(model),
     }
+}
+
+pub fn parse_pie_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut raw_lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    while let Some(segment) = raw_lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
+        let trimmed = strip_inline_comment(line).trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if starts_with_case_insensitive(trimmed, "pie") {
+                header_seen = true;
+                if let Some(rest) = trimmed.strip_prefix("pie") {
+                    let rest = rest.trim_start();
+                    if !rest.is_empty() {
+                        facts.push_directive_prefix("showData");
+                        if rest.starts_with("showData") {
+                            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                                EditorExpectedSyntaxKind::Payload,
+                                SourceSpan::new(
+                                    line_start + line.find("showData").unwrap_or(0),
+                                    line_start
+                                        + line.find("showData").unwrap_or(0)
+                                        + "showData".len(),
+                                ),
+                            ));
+                        }
+                    }
+                }
+                continue;
+            }
+            continue;
+        }
+
+        if let Some(value) = parse_title_statement_spanned(line, line_start) {
+            facts.push_directive_prefix("title");
+            push_pie_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "pie title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_key_value_spanned(line, line_start, "accTitle") {
+            facts.push_directive_prefix("accTitle");
+            push_pie_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "pie accessibility title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
+            facts.push_directive_prefix("accDescr");
+            push_pie_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "pie accessibility description",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = parse_acc_descr_block_spanned(&mut raw_lines, line, line_start) {
+            facts.push_directive_prefix("accDescr");
+            push_pie_payload_fact(
+                &mut facts,
+                value.text,
+                value.start,
+                "pie accessibility description",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+
+        if let Some((label, value_span)) = parse_section_spanned(line, line_start) {
+            facts.push_symbol(EditorSemanticSymbol::outline(
+                label.text.to_string(),
+                Some("pie section".to_string()),
+                EditorSemanticKind::String,
+                SourceSpan::new(line_start, line_start + line.len()),
+                SourceSpan::new(label.start, label.end),
+            ));
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                SourceSpan::new(value_span.start, value_span.end),
+            ));
+            continue;
+        }
+    }
+
+    facts
+}
+
+fn parse_title_statement_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(line).trim_start();
+    if !t.starts_with("title") {
+        return None;
+    }
+    let rest = t.strip_prefix("title")?;
+    let ws = rest.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let value = rest.trim_start();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_key_value_spanned<'a>(
+    line: &'a str,
+    line_start: usize,
+    key: &str,
+) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(line).trim_start();
+    if !t.starts_with(key) {
+        return None;
+    }
+    let rest = t.strip_prefix(key)?.trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_acc_descr_inline_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(line).trim_start();
+    if !t.starts_with("accDescr") {
+        return None;
+    }
+    let rest = t.strip_prefix("accDescr")?.trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_acc_descr_block_spanned<'a>(
+    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
+    first_line: &'a str,
+    line_start: usize,
+) -> Option<SpannedText<'a>> {
+    let t = strip_inline_comment(first_line).trim_start();
+    if !t.starts_with("accDescr") {
+        return None;
+    }
+    let rest = t.strip_prefix("accDescr")?.trim_start();
+    let rest = rest.strip_prefix('{')?;
+    if let Some(end) = rest.find('}') {
+        let value = rest[..end].trim();
+        let value_rel = first_line.find(value)?;
+        return Some(SpannedText {
+            text: value,
+            start: line_start + value_rel,
+            end: line_start + value_rel + value.len(),
+        });
+    }
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = first_line.find(value)?;
+    let _ = lines.peek();
+    Some(SpannedText {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn parse_section_spanned<'a>(
+    line: &'a str,
+    line_start: usize,
+) -> Option<(SpannedText<'a>, SpannedText<'a>)> {
+    let t = strip_inline_comment(line).trim_start();
+    let (label, rest) = parse_quoted_string(t)?;
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix(':')?.trim_start();
+
+    let mut num = String::new();
+    for c in rest.chars() {
+        if c.is_ascii_digit() || c == '-' || c == '.' {
+            num.push(c);
+        } else {
+            break;
+        }
+    }
+    if num.is_empty() {
+        return None;
+    }
+    let label_rel = line.find(&label)?;
+    let value_rel = line.find(&num)?;
+    Some((
+        SpannedText {
+            text: &line[label_rel..label_rel + label.len()],
+            start: line_start + label_rel,
+            end: line_start + label_rel + label.len(),
+        },
+        SpannedText {
+            text: &line[value_rel..value_rel + num.len()],
+            start: line_start + value_rel,
+            end: line_start + value_rel + num.len(),
+        },
+    ))
+}
+
+fn push_pie_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    text: &str,
+    start: usize,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    let end = start + text.len();
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        SourceSpan::new(start, end),
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.to_string(),
+        Some(detail.to_string()),
+        kind,
+        SourceSpan::new(start, end),
+        SourceSpan::new(start, end),
+    ));
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SpannedText<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
 }
 
 fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {

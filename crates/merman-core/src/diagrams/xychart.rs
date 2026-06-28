@@ -1,5 +1,9 @@
+use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
 
@@ -396,6 +400,113 @@ pub fn parse_xychart_model_for_render(
     Ok(parse_xychart_model(code, meta)?.unwrap_or_else(empty_render_model))
 }
 
+pub fn parse_xychart_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        let stripped = strip_inline_comment(line);
+        let trimmed = stripped.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if let Some((prefix_len, _rest)) = header_token_len_and_rest(trimmed) {
+                let header_rel = line.find(trimmed).unwrap_or(0);
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    SourceSpan::new(
+                        line_start + header_rel,
+                        line_start + header_rel + prefix_len,
+                    ),
+                ));
+                header_seen = true;
+            }
+            continue;
+        }
+
+        if let Some(rest) = strip_keyword(trimmed, "title") {
+            if let Some(value) = parse_text_spanned(rest, line, line_start) {
+                facts.push_directive_prefix("title");
+                push_xychart_payload_fact(
+                    &mut facts,
+                    value.as_str(),
+                    SourceSpan::new(value.start, value.end),
+                    "xychart title",
+                    EditorSemanticKind::String,
+                );
+            }
+            continue;
+        }
+        if let Some(rest) = strip_keyword(trimmed, "accTitle") {
+            if let Some(value) = parse_colon_value_spanned(rest, line, line_start) {
+                facts.push_directive_prefix("accTitle");
+                push_xychart_payload_fact(
+                    &mut facts,
+                    value.as_str(),
+                    SourceSpan::new(value.start, value.end),
+                    "xychart accessibility title",
+                    EditorSemanticKind::String,
+                );
+            }
+            continue;
+        }
+        if let Some(rest) = strip_keyword(trimmed, "accDescr") {
+            if let Some(value) = parse_acc_descr_spanned(rest, line, line_start) {
+                facts.push_directive_prefix("accDescr");
+                push_xychart_payload_fact(
+                    &mut facts,
+                    value.as_str(),
+                    SourceSpan::new(value.start, value.end),
+                    "xychart accessibility description",
+                    EditorSemanticKind::String,
+                );
+            }
+            continue;
+        }
+        if let Some(rest) = strip_keyword(trimmed, "x-axis") {
+            if let Some(value) = parse_axis_title_or_categories_spanned(rest, line, line_start) {
+                push_xychart_payload_fact(
+                    &mut facts,
+                    value.as_str(),
+                    SourceSpan::new(value.start, value.end),
+                    "xychart x-axis",
+                    EditorSemanticKind::String,
+                );
+            }
+            continue;
+        }
+        if let Some(rest) = strip_keyword(trimmed, "y-axis") {
+            if let Some(value) = parse_axis_title_or_categories_spanned(rest, line, line_start) {
+                push_xychart_payload_fact(
+                    &mut facts,
+                    value.as_str(),
+                    SourceSpan::new(value.start, value.end),
+                    "xychart y-axis",
+                    EditorSemanticKind::String,
+                );
+            }
+            continue;
+        }
+        if let Some(rest) = strip_keyword(trimmed, "line") {
+            push_xychart_plot_facts(&mut facts, rest, line, line_start, "xychart line");
+            continue;
+        }
+        if let Some(rest) = strip_keyword(trimmed, "bar") {
+            push_xychart_plot_facts(&mut facts, rest, line, line_start, "xychart bar");
+            continue;
+        }
+    }
+
+    facts
+}
+
 fn parse_xychart_model(
     code: &str,
     meta: &ParseMetadata,
@@ -560,6 +671,18 @@ fn parse_header(stmt: &str, state: &mut XyChartState) -> Result<()> {
     })
 }
 
+fn header_token_len_and_rest(stmt: &str) -> Option<(usize, &str)> {
+    let t = stmt.trim_start();
+    let lower = t.to_ascii_lowercase();
+    if lower.starts_with("xychart-beta") {
+        return Some(("xychart-beta".len(), &t["xychart-beta".len()..]));
+    }
+    if lower.starts_with("xychart") {
+        return Some(("xychart".len(), &t["xychart".len()..]));
+    }
+    None
+}
+
 fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
     let s = stmt.trim_start();
     let lower = s.to_ascii_lowercase();
@@ -568,6 +691,189 @@ fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
         return None;
     }
     Some(&s[kw.len()..])
+}
+
+fn parse_text_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
+    let (value, _tail) = parse_text_prefix(input).ok()?;
+    let value_rel = line.find(&value)?;
+    let start = line_start + value_rel;
+    let len = value.len();
+    Some(SpannedText {
+        text: value,
+        start,
+        end: start + len,
+    })
+}
+
+fn parse_colon_value_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
+    let rest = input.trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    let start = line_start + value_rel;
+    Some(SpannedText {
+        text: value.to_string(),
+        start,
+        end: start + value.len(),
+    })
+}
+
+fn parse_acc_descr_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
+    let rest = input.trim_start();
+    if let Some(v) = rest.strip_prefix(':') {
+        let value = v.trim();
+        if value.is_empty() {
+            return None;
+        }
+        let value_rel = line.find(value)?;
+        let start = line_start + value_rel;
+        return Some(SpannedText {
+            text: value.to_string(),
+            start,
+            end: start + value.len(),
+        });
+    }
+    let after = rest.strip_prefix('{')?;
+    let end = after.find('}')?;
+    let value = after[..end].trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    let start = line_start + value_rel;
+    Some(SpannedText {
+        text: value.to_string(),
+        start,
+        end: start + value.len(),
+    })
+}
+
+fn parse_axis_title_or_categories_spanned(
+    input: &str,
+    line: &str,
+    line_start: usize,
+) -> Option<SpannedText> {
+    let rest = input.trim_start();
+    if rest.is_empty() {
+        return None;
+    }
+    if rest.starts_with('[') {
+        let start_rel = line.find('[')? + 1;
+        let end_rel = line.rfind(']')?;
+        if end_rel <= start_rel {
+            return None;
+        }
+        let value = line[start_rel..end_rel].trim();
+        if value.is_empty() {
+            return None;
+        }
+        let value_rel = line.find(value)?;
+        let start = line_start + value_rel;
+        return Some(SpannedText {
+            text: value.to_string(),
+            start,
+            end: start + value.len(),
+        });
+    }
+    let (title, _tail) = parse_text_prefix(rest).ok()?;
+    let title_rel = line.find(&title)?;
+    let start = line_start + title_rel;
+    let len = title.len();
+    Some(SpannedText {
+        text: title,
+        start,
+        end: start + len,
+    })
+}
+
+fn push_xychart_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    text: &str,
+    span: SourceSpan,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.to_string(),
+        Some(detail.to_string()),
+        kind,
+        span,
+        span,
+    ));
+}
+
+fn push_xychart_plot_facts(
+    facts: &mut EditorSemanticFacts,
+    input: &str,
+    line: &str,
+    line_start: usize,
+    detail: &'static str,
+) {
+    if let Some(title) = parse_text_prefix_spanned(input, line, line_start) {
+        push_xychart_payload_fact(
+            facts,
+            title.as_str(),
+            SourceSpan::new(title.start, title.end),
+            detail,
+            EditorSemanticKind::String,
+        );
+    }
+    if let Some(open) = line.find('[') {
+        let close = line.rfind(']').unwrap_or(line.len());
+        if close > open + 1 {
+            let value = line[open + 1..close].trim();
+            if !value.is_empty() {
+                let value_rel = line.find(value).unwrap_or(open + 1);
+                let start = line_start + value_rel;
+                push_xychart_payload_fact(
+                    facts,
+                    value,
+                    SourceSpan::new(start, start + value.len()),
+                    detail,
+                    EditorSemanticKind::String,
+                );
+            }
+        }
+    }
+}
+
+fn parse_text_prefix_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
+    let (title, _rest) = parse_text_prefix(input).ok()?;
+    let title_rel = line.find(&title)?;
+    let start = line_start + title_rel;
+    let len = title.len();
+    Some(SpannedText {
+        text: title,
+        start,
+        end: start + len,
+    })
+}
+
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    start: usize,
+    end: usize,
+}
+
+impl SpannedText {
+    fn as_str(&self) -> &str {
+        &self.text
+    }
+}
+
+fn strip_inline_comment(line: &str) -> &str {
+    match line.find("%%") {
+        Some(idx) => &line[..idx],
+        None => line,
+    }
 }
 
 fn parse_text(input: &str) -> Result<String> {

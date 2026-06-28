@@ -1,5 +1,8 @@
 use crate::diagrams::scan::{split_statement_suffix_hash_or_semi, starts_with_case_insensitive};
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -307,10 +310,220 @@ fn parse_journey_model(code: &str, meta: &ParseMetadata) -> Result<JourneyParseO
     }))
 }
 
+pub fn parse_journey_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut lines = code.split_inclusive('\n').peekable();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    while let Some(line) = lines.next() {
+        let line_start = offset;
+        offset += line.len();
+        let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
+        let stripped = strip_comment_prefix(line_no_newline);
+        let trimmed = stripped.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if starts_with_case_insensitive(trimmed, "journey") {
+                header_seen = true;
+                continue;
+            }
+            continue;
+        }
+
+        if let Some(value) = spanned_keyword_value(line_no_newline, line_start, "title") {
+            push_journey_payload_fact(
+                &mut facts,
+                value,
+                "journey title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = spanned_colon_value(line_no_newline, line_start, "accTitle") {
+            facts.push_directive_prefix("accTitle");
+            push_journey_payload_fact(
+                &mut facts,
+                value,
+                "journey accessibility title",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = spanned_colon_value(line_no_newline, line_start, "accDescr") {
+            facts.push_directive_prefix("accDescr");
+            push_journey_payload_fact(
+                &mut facts,
+                value,
+                "journey accessibility description",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if let Some(value) = spanned_keyword_value(line_no_newline, line_start, "section") {
+            let section_text = value.text.split(':').next().unwrap_or("").trim();
+            if section_text.is_empty() {
+                continue;
+            }
+            let section_end = value.start + section_text.len();
+            facts.push_symbol(EditorSemanticSymbol::outline(
+                section_text.to_string(),
+                Some("journey section".to_string()),
+                EditorSemanticKind::Namespace,
+                SourceSpan::new(line_start, line_start + line_no_newline.len()),
+                SourceSpan::new(value.start, section_end),
+            ));
+            continue;
+        }
+
+        let Some(colon) = stripped.find(':') else {
+            continue;
+        };
+        let task_name = stripped[..colon].trim();
+        if task_name.is_empty() {
+            continue;
+        }
+        let task_start = line_start + stripped.find(task_name).unwrap_or(0);
+        let task_end = task_start + task_name.len();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            SourceSpan::new(task_start, task_end),
+        ));
+        facts.push_symbol(EditorSemanticSymbol::new(
+            task_name.to_string(),
+            Some("journey task".to_string()),
+            EditorSemanticKind::Event,
+            SourceSpan::new(line_start, line_start + line_no_newline.len()),
+            SourceSpan::new(task_start, task_end),
+        ));
+
+        let rest = stripped[colon + ':'.len_utf8()..].trim_start();
+        if rest.is_empty() {
+            continue;
+        }
+        let score_end = rest.find(':').unwrap_or(rest.len());
+        let score_text = rest[..score_end].trim();
+        if !score_text.is_empty() {
+            let score_start = line_start + stripped.find(score_text).unwrap_or(colon + 1);
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                SourceSpan::new(score_start, score_start + score_text.len()),
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                score_text.to_string(),
+                Some("journey score".to_string()),
+                EditorSemanticKind::String,
+                SourceSpan::new(score_start, score_start + score_text.len()),
+                SourceSpan::new(score_start, score_start + score_text.len()),
+            ));
+        }
+
+        if score_end < rest.len() {
+            let people = rest[score_end + ':'.len_utf8()..].trim();
+            if !people.is_empty() {
+                let people_start = line_start + stripped.find(people).unwrap_or(colon + 1);
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    SourceSpan::new(people_start, people_start + people.len()),
+                ));
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    people.to_string(),
+                    Some("journey people".to_string()),
+                    EditorSemanticKind::String,
+                    SourceSpan::new(people_start, people_start + people.len()),
+                    SourceSpan::new(people_start, people_start + people.len()),
+                ));
+            }
+        }
+    }
+
+    facts
+}
+
+fn spanned_keyword_value<'a>(
+    line: &'a str,
+    line_start: usize,
+    keyword: &str,
+) -> Option<EditorPayloadSpan<'a>> {
+    let trimmed = line.trim_start();
+    if !starts_with_case_insensitive(trimmed, keyword) {
+        return None;
+    }
+    let after = &trimmed[keyword.len()..];
+    let ws = after.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let value = split_statement_suffix_hash_or_semi(&after[ws.len_utf8()..]).trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(EditorPayloadSpan {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn spanned_colon_value<'a>(
+    line: &'a str,
+    line_start: usize,
+    key: &str,
+) -> Option<EditorPayloadSpan<'a>> {
+    let trimmed = line.trim_start();
+    if !starts_with_case_insensitive(trimmed, key) {
+        return None;
+    }
+    let rest = trimmed[key.len()..].trim_start();
+    let rest = rest.strip_prefix(':')?;
+    let value = split_statement_suffix_hash_or_semi(rest).trim();
+    if value.is_empty() {
+        return None;
+    }
+    let value_rel = line.find(value)?;
+    Some(EditorPayloadSpan {
+        text: value,
+        start: line_start + value_rel,
+        end: line_start + value_rel + value.len(),
+    })
+}
+
+fn push_journey_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    span: EditorPayloadSpan<'_>,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        SourceSpan::new(span.start, span.end),
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        span.text.to_string(),
+        Some(detail.to_string()),
+        kind,
+        SourceSpan::new(span.start, span.end),
+        SourceSpan::new(span.start, span.end),
+    ));
+}
+
+struct EditorPayloadSpan<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{
+        EditorExpectedSyntaxKind, EditorSemanticKind, EditorSemanticRole, Engine, ParseOptions,
+        SourceSpan,
+    };
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -384,6 +597,62 @@ section Order from website\n",
             model["title"],
             json!("Adding journey diagram functionality to mermaid")
         );
+    }
+
+    #[test]
+    fn journey_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = "journey\n\
+title Adding journey diagram functionality to mermaid\n\
+accTitle: Adding acc journey diagram functionality to mermaid\n\
+accDescr: A user journey for family shopping\n\
+section Order from website\n\
+A task: 5: Alice, Bob\n";
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("journey", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(
+            facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "accTitle")
+        );
+        assert!(
+            facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "accDescr")
+        );
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Order from website"
+                && symbol.kind == EditorSemanticKind::Namespace
+                && symbol.role == EditorSemanticRole::Outline
+        }));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "A task" && symbol.kind == EditorSemanticKind::Event)
+        );
+
+        let task_start = text.find("A task").unwrap();
+        let score_start = text.find("5: Alice, Bob").unwrap();
+        let people_start = text.find("Alice, Bob").unwrap();
+
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                && expected.span == SourceSpan::new(task_start, task_start + "A task".len())
+        }));
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(score_start, score_start + 1)
+        }));
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(people_start, people_start + "Alice, Bob".len())
+        }));
     }
 
     #[test]

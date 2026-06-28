@@ -1,6 +1,10 @@
 use crate::diagram::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
+use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
+    ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
@@ -122,6 +126,19 @@ struct GitGraphDb {
     acc_title: String,
     acc_descr: String,
     prng: Option<XorShift64Star>,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedValue {
+    text: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedKvPair {
+    key: String,
+    value: String,
+    value_span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -637,11 +654,21 @@ fn parse_commit_type(raw: &str) -> Result<i64> {
 struct LineParser<'a> {
     input: &'a str,
     pos: usize,
+    base_offset: usize,
 }
 
 impl<'a> LineParser<'a> {
     fn new(input: &'a str) -> Self {
-        Self { input, pos: 0 }
+        Self {
+            input,
+            pos: 0,
+            base_offset: 0,
+        }
+    }
+
+    fn with_base(mut self, base_offset: usize) -> Self {
+        self.base_offset = base_offset;
+        self
     }
 
     fn is_eof(&self) -> bool {
@@ -677,6 +704,24 @@ impl<'a> LineParser<'a> {
             return None;
         }
         Some(self.input[start..self.pos].to_string())
+    }
+
+    fn parse_word_until_ws_or_colon_spanned(&mut self) -> Option<SpannedValue> {
+        self.skip_ws();
+        let start = self.pos;
+        while let Some(c) = self.peek_char() {
+            if c.is_whitespace() || c == ':' {
+                break;
+            }
+            self.bump();
+        }
+        if self.pos == start {
+            return None;
+        }
+        Some(SpannedValue {
+            text: self.input[start..self.pos].to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+        })
     }
 
     fn consume_char(&mut self, ch: char) -> bool {
@@ -715,6 +760,34 @@ impl<'a> LineParser<'a> {
         Ok(s)
     }
 
+    fn parse_quoted_spanned(&mut self) -> Result<SpannedValue> {
+        self.skip_ws();
+        if self.peek_char() != Some('"') {
+            return Err(Error::DiagramParse {
+                diagram_type: "gitGraph".to_string(),
+                message: "expected quoted string".to_string(),
+            });
+        }
+        self.bump();
+        let start = self.pos;
+        while let Some(c) = self.peek_char() {
+            if c == '"' {
+                break;
+            }
+            self.bump();
+        }
+        if self.peek_char() != Some('"') {
+            return Err(Error::DiagramParse {
+                diagram_type: "gitGraph".to_string(),
+                message: "unterminated quoted string".to_string(),
+            });
+        }
+        let s = self.input[start..self.pos].to_string();
+        let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
+        self.bump();
+        Ok(SpannedValue { text: s, span })
+    }
+
     fn parse_name_token(&mut self) -> Result<String> {
         self.skip_ws();
         if self.peek_char() == Some('"') {
@@ -734,6 +807,30 @@ impl<'a> LineParser<'a> {
             });
         }
         Ok(self.input[start..self.pos].to_string())
+    }
+
+    fn parse_name_token_spanned(&mut self) -> Result<SpannedValue> {
+        self.skip_ws();
+        if self.peek_char() == Some('"') {
+            return self.parse_quoted_spanned();
+        }
+        let start = self.pos;
+        while let Some(c) = self.peek_char() {
+            if c.is_whitespace() {
+                break;
+            }
+            self.bump();
+        }
+        if self.pos == start {
+            return Err(Error::DiagramParse {
+                diagram_type: "gitGraph".to_string(),
+                message: "expected name".to_string(),
+            });
+        }
+        Ok(SpannedValue {
+            text: self.input[start..self.pos].to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+        })
     }
 
     fn parse_kv_pairs(&mut self) -> Result<Vec<(String, String)>> {
@@ -760,6 +857,45 @@ impl<'a> LineParser<'a> {
                 self.parse_word_until_ws_or_colon().unwrap_or_default()
             };
             out.push((key, value));
+        }
+        Ok(out)
+    }
+
+    fn parse_kv_pairs_spanned(&mut self) -> Result<Vec<SpannedKvPair>> {
+        let mut out = Vec::new();
+        while !self.is_eof() {
+            self.skip_ws();
+            if self.is_eof() {
+                break;
+            }
+            let Some(key) = self.parse_word_until_ws_or_colon_spanned() else {
+                break;
+            };
+            self.skip_ws();
+            if !self.consume_char(':') {
+                return Err(Error::DiagramParse {
+                    diagram_type: "gitGraph".to_string(),
+                    message: format!("expected ':' after {}", key.text),
+                });
+            }
+            self.skip_ws();
+            let value = if self.peek_char() == Some('"') {
+                self.parse_quoted_spanned()?
+            } else {
+                self.parse_word_until_ws_or_colon_spanned()
+                    .unwrap_or(SpannedValue {
+                        text: String::new(),
+                        span: SourceSpan::new(
+                            self.base_offset + self.pos,
+                            self.base_offset + self.pos,
+                        ),
+                    })
+            };
+            out.push(SpannedKvPair {
+                key: key.text,
+                value: value.text,
+                value_span: value.span,
+            });
         }
         Ok(out)
     }
@@ -846,6 +982,314 @@ pub fn parse_git_graph_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<GitGraphRenderModel> {
     parse_git_graph_model(code, meta)
+}
+
+fn push_gitgraph_entity_fact(
+    facts: &mut EditorSemanticFacts,
+    value: SpannedValue,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if value.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::new(
+        value.text,
+        Some(detail.to_string()),
+        kind,
+        value.span,
+        value.span,
+    ));
+}
+
+fn push_gitgraph_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    value: SpannedValue,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if value.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        value.text,
+        Some(detail.to_string()),
+        kind,
+        value.span,
+        value.span,
+    ));
+}
+
+fn parse_acc_title_spanned(line: &str, base_offset: usize) -> Option<SpannedValue> {
+    let t = line.trim_start();
+    if !t.starts_with("accTitle") {
+        return None;
+    }
+    let rest = &t["accTitle".len()..];
+    let rest = rest.trim_start();
+    if !rest.starts_with(':') {
+        return None;
+    }
+    let value = rest[1..].trim();
+    let leading = line.find(value).unwrap_or(0);
+    Some(SpannedValue {
+        text: value.to_string(),
+        span: SourceSpan::new(base_offset + leading, base_offset + leading + value.len()),
+    })
+}
+
+fn parse_acc_descr_inline_spanned(line: &str, base_offset: usize) -> Option<SpannedValue> {
+    let t = line.trim_start();
+    if !t.starts_with("accDescr") {
+        return None;
+    }
+    let rest = &t["accDescr".len()..];
+    let rest = rest.trim_start();
+    if !rest.starts_with(':') {
+        return None;
+    }
+    let value = rest[1..].trim();
+    let leading = line.find(value).unwrap_or(0);
+    Some(SpannedValue {
+        text: value.to_string(),
+        span: SourceSpan::new(base_offset + leading, base_offset + leading + value.len()),
+    })
+}
+
+pub fn parse_git_graph_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    for segment in code.split_inclusive('\n') {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if !trimmed.starts_with("gitGraph") {
+                return facts;
+            }
+            header_seen = true;
+            continue;
+        }
+
+        if let Some(value) = parse_acc_title_spanned(line, line_start) {
+            facts.push_directive_prefix("accTitle");
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                value.text,
+                Some("gitGraph accessibility title".to_string()),
+                EditorSemanticKind::String,
+                value.span,
+                value.span,
+            ));
+            continue;
+        }
+        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
+            facts.push_directive_prefix("accDescr");
+            push_gitgraph_payload_fact(
+                &mut facts,
+                value,
+                "gitGraph accessibility description",
+                EditorSemanticKind::String,
+            );
+            continue;
+        }
+        if parse_acc_descr_block_start(line) {
+            facts.push_directive_prefix("accDescr");
+            continue;
+        }
+
+        let mut lp = LineParser::new(line).with_base(line_start);
+        let Some(cmd) = lp.parse_word_until_ws_or_colon_spanned() else {
+            continue;
+        };
+
+        match cmd.text.as_str() {
+            "commit" => {
+                if let Some(msg) = lp.parse_quoted_spanned().ok() {
+                    push_gitgraph_payload_fact(
+                        &mut facts,
+                        msg,
+                        "gitGraph commit message",
+                        EditorSemanticKind::String,
+                    );
+                    continue;
+                }
+
+                let kv = match lp.parse_kv_pairs_spanned() {
+                    Ok(kv) => kv,
+                    Err(_) => {
+                        facts.mark_recovered();
+                        continue;
+                    }
+                };
+                for pair in kv {
+                    match pair.key.as_str() {
+                        "id" => push_gitgraph_entity_fact(
+                            &mut facts,
+                            SpannedValue {
+                                text: pair.value,
+                                span: pair.value_span,
+                            },
+                            "gitGraph commit id",
+                            EditorSemanticKind::Object,
+                        ),
+                        "msg" => push_gitgraph_payload_fact(
+                            &mut facts,
+                            SpannedValue {
+                                text: pair.value,
+                                span: pair.value_span,
+                            },
+                            "gitGraph commit message",
+                            EditorSemanticKind::String,
+                        ),
+                        "tag" => push_gitgraph_payload_fact(
+                            &mut facts,
+                            SpannedValue {
+                                text: pair.value,
+                                span: pair.value_span,
+                            },
+                            "gitGraph commit tag",
+                            EditorSemanticKind::String,
+                        ),
+                        "type" => push_gitgraph_payload_fact(
+                            &mut facts,
+                            SpannedValue {
+                                text: pair.value,
+                                span: pair.value_span,
+                            },
+                            "gitGraph commit type",
+                            EditorSemanticKind::String,
+                        ),
+                        _ => {}
+                    }
+                }
+            }
+            "branch" => {
+                if let Ok(name) = lp.parse_name_token_spanned() {
+                    push_gitgraph_entity_fact(
+                        &mut facts,
+                        name,
+                        "gitGraph branch",
+                        EditorSemanticKind::Variable,
+                    );
+                }
+                if let Ok(kv) = lp.parse_kv_pairs_spanned() {
+                    for pair in kv {
+                        if pair.key == "order" {
+                            push_gitgraph_payload_fact(
+                                &mut facts,
+                                SpannedValue {
+                                    text: pair.value,
+                                    span: pair.value_span,
+                                },
+                                "gitGraph branch order",
+                                EditorSemanticKind::String,
+                            );
+                        }
+                    }
+                }
+            }
+            "checkout" | "switch" => {
+                if let Ok(name) = lp.parse_name_token_spanned() {
+                    push_gitgraph_entity_fact(
+                        &mut facts,
+                        name,
+                        "gitGraph branch",
+                        EditorSemanticKind::Variable,
+                    );
+                }
+            }
+            "merge" => {
+                if let Ok(branch) = lp.parse_name_token_spanned() {
+                    push_gitgraph_entity_fact(
+                        &mut facts,
+                        branch,
+                        "gitGraph merge branch",
+                        EditorSemanticKind::Variable,
+                    );
+                }
+                if let Ok(kv) = lp.parse_kv_pairs_spanned() {
+                    for pair in kv {
+                        match pair.key.as_str() {
+                            "id" => push_gitgraph_entity_fact(
+                                &mut facts,
+                                SpannedValue {
+                                    text: pair.value,
+                                    span: pair.value_span,
+                                },
+                                "gitGraph merge id",
+                                EditorSemanticKind::Object,
+                            ),
+                            "tag" => push_gitgraph_payload_fact(
+                                &mut facts,
+                                SpannedValue {
+                                    text: pair.value,
+                                    span: pair.value_span,
+                                },
+                                "gitGraph merge tag",
+                                EditorSemanticKind::String,
+                            ),
+                            "type" => push_gitgraph_payload_fact(
+                                &mut facts,
+                                SpannedValue {
+                                    text: pair.value,
+                                    span: pair.value_span,
+                                },
+                                "gitGraph merge type",
+                                EditorSemanticKind::String,
+                            ),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            "cherry-pick" | "cherryPick" => {
+                if let Ok(kv) = lp.parse_kv_pairs_spanned() {
+                    for pair in kv {
+                        match pair.key.as_str() {
+                            "id" => push_gitgraph_entity_fact(
+                                &mut facts,
+                                SpannedValue {
+                                    text: pair.value,
+                                    span: pair.value_span,
+                                },
+                                "gitGraph cherry-pick id",
+                                EditorSemanticKind::Object,
+                            ),
+                            "parent" => push_gitgraph_entity_fact(
+                                &mut facts,
+                                SpannedValue {
+                                    text: pair.value,
+                                    span: pair.value_span,
+                                },
+                                "gitGraph cherry-pick parent",
+                                EditorSemanticKind::Object,
+                            ),
+                            "tag" => push_gitgraph_payload_fact(
+                                &mut facts,
+                                SpannedValue {
+                                    text: pair.value,
+                                    span: pair.value_span,
+                                },
+                                "gitGraph cherry-pick tag",
+                                EditorSemanticKind::String,
+                            ),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    facts
 }
 
 fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRenderModel> {
@@ -1185,6 +1629,38 @@ merge feature id:"M1"
         assert_eq!(parsed_json.model["commits"][1]["id"], json!("F1"));
         assert_eq!(parsed_json.model["commits"][1]["tags"], json!(["v1"]));
         assert!(parsed_json.model.get("config").is_some());
+    }
+
+    #[test]
+    fn parse_gitgraph_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = concat!(
+            "gitGraph TB\n",
+            "accTitle: Git title\n",
+            "accDescr: Git description\n",
+            "branch feature order: 2\n",
+            "commit id:\"C1\" msg:\"commit message\" tag:\"v1\" type: HIGHLIGHT\n",
+            "checkout feature\n",
+            "merge feature id:\"M1\" tag:\"merge tag\"\n",
+            "cherry-pick id:\"C1\" parent:\"P1\" tag:\"pick tag\"\n",
+        );
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "feature"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "C1"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "M1"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "P1"));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "commit message")
+        );
     }
 
     #[test]

@@ -1560,6 +1560,111 @@ bar [1]"#,
 }
 
 #[test]
+fn parse_xychart_editor_facts_expose_parser_backed_spans() {
+    let engine = Engine::new();
+    let text = r#"
+xychart horizontal
+title "Typed XYChart"
+accTitle: XY accTitle
+accDescr: XY accDescription
+x-axis "X Axis" [Alpha, Beta]
+y-axis "Y Axis" 1 --> 5
+bar "Series 1" [1, 2]
+line "Series 2" [2, 3]
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Typed XYChart"
+                && symbol.kind == EditorSemanticKind::String)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "X Axis" && symbol.kind == EditorSemanticKind::String)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Series 1" && symbol.kind == EditorSemanticKind::String)
+    );
+
+    let title_start = text.find("Typed XYChart").unwrap();
+    let axis_start = text.find("X Axis").unwrap();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(title_start, title_start + "Typed XYChart".len())
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(axis_start, axis_start + "X Axis".len())
+    }));
+}
+
+#[test]
+fn parse_quadrant_chart_editor_facts_expose_parser_backed_spans() {
+    let engine = Engine::new();
+    let text = r#"
+quadrantChart
+title "Typed Quadrant"
+accTitle: Quadrant accTitle
+accDescr: Quadrant accDescription
+x-axis Low --> High
+y-axis Low --> High
+quadrant-1 Expand
+quadrant-2 "Maintain"
+classDef class1 color: #109060, radius: 10
+Point A:::class1: [0.9, 0.0]
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+    assert!(facts.symbols.iter().any(
+        |symbol| symbol.name == "Typed Quadrant" && symbol.role == EditorSemanticRole::Payload
+    ));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Low" && symbol.role == EditorSemanticRole::Outline)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Expand" && symbol.role == EditorSemanticRole::Outline)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "class1" && symbol.kind == EditorSemanticKind::Class)
+    );
+
+    let title_start = text.find("Typed Quadrant").unwrap();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(title_start, title_start + "Typed Quadrant".len())
+    }));
+}
+
+#[test]
 fn parse_class_exposes_11_15_hierarchical_namespaces_default_and_override() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata("classDiagram\nclass A", ParseOptions::default()))
@@ -1578,6 +1683,44 @@ class A"#,
     .unwrap();
     let class = &configured.effective_config.as_value()["class"];
     assert_eq!(class["hierarchicalNamespaces"], json!(false));
+}
+
+#[test]
+fn parse_requirement_editor_facts_expose_parser_backed_spans() {
+    let engine = Engine::new();
+    let text = r#"
+requirementDiagram
+accTitle: Requirement accTitle
+accDescr: Requirement accDescription
+requirement test_req {
+  id: test_id
+  text: the test text.
+  risk: high
+  verifymethod: analysis
+}
+element test_el {
+  type: test_type
+  docref: test_ref
+}
+a - contains -> b
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "test_req"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "test_el"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "a"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "contains"));
+
+    let id_start = text.find("test_id").unwrap();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(id_start, id_start + "test_id".len())
+    }));
 }
 
 #[test]

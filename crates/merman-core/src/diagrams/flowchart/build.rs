@@ -122,7 +122,11 @@ impl FlowchartBuildState {
                 | Stmt::Click(_)
                 | Stmt::LinkStyle(_) => {}
                 Stmt::Style(s) => {
+                    // Mermaid still advances the vertex counter for `style <subgraph-id>`.
+                    // Record that observable call, but do not synthesize a node or warning
+                    // for subgraph targets because the style belongs to the cluster.
                     if self.subgraph_ids.contains(&s.target) {
+                        self.vertex_calls.push(s.target.clone());
                         continue;
                     }
                     // Mermaid's `style` statement routes through FlowDB `addVertex(id, ..., styles)`.

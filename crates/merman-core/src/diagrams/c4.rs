@@ -1,5 +1,10 @@
+use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticRole, EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result,
+    SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -205,12 +210,755 @@ struct C4Db {
     c4_boundary_in_row: i64,
 }
 
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedKvArg {
+    key: String,
+    value: SpannedText,
+}
+
+#[derive(Debug, Clone)]
+enum SpannedArgValue {
+    Text(SpannedText),
+    KeyValue(SpannedKvArg),
+}
+
+#[derive(Debug, Clone)]
+struct SpannedArg {
+    value: SpannedArgValue,
+}
+
+impl SpannedArg {
+    fn text(&self) -> &str {
+        match &self.value {
+            SpannedArgValue::Text(value) => value.text.as_str(),
+            SpannedArgValue::KeyValue(value) => value.value.text.as_str(),
+        }
+    }
+
+    fn span(&self) -> SourceSpan {
+        match &self.value {
+            SpannedArgValue::Text(value) => value.span,
+            SpannedArgValue::KeyValue(value) => value.value.span,
+        }
+    }
+
+    fn key(&self) -> Option<&str> {
+        match &self.value {
+            SpannedArgValue::Text(_) => None,
+            SpannedArgValue::KeyValue(value) => Some(value.key.as_str()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SpannedMacroStmt {
+    name: String,
+    args: Vec<SpannedArg>,
+    span: SourceSpan,
+}
+
 pub fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse_c4_db(code, meta)?.to_model(meta))
 }
 
 pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4DiagramRenderModel> {
     parse_c4_db(code, meta)?.to_render_model()
+}
+
+pub fn parse_c4_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut header_seen = false;
+    let mut offset = 0usize;
+    let mut lines = code.split_inclusive('\n').peekable();
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let raw_line = strip_line_ending(segment);
+        let line = strip_inline_comment(raw_line);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if trimmed.starts_with("%%") {
+                continue;
+            }
+            if is_c4_header(trimmed) {
+                header_seen = true;
+                continue;
+            }
+            return facts;
+        }
+
+        if trimmed.starts_with("%%") || trimmed == "{" || trimmed == "}" {
+            continue;
+        }
+
+        if let Some(value) = parse_title_spanned_c4(&line, line_start) {
+            facts.push_directive_prefix("title");
+            push_c4_payload_fact(&mut facts, &value, "c4 title");
+            continue;
+        }
+
+        if let Some(value) = parse_acc_title_spanned_c4(&line, line_start) {
+            facts.push_directive_prefix("accTitle");
+            push_c4_payload_fact(&mut facts, &value, "c4 accessibility title");
+            continue;
+        }
+
+        if let Some(value) = parse_acc_description_stmt_spanned_c4(&line, line_start) {
+            facts.push_directive_prefix("accDescription");
+            push_c4_payload_fact(&mut facts, &value, "c4 accessibility description");
+            continue;
+        }
+
+        if let Some((value, closed)) =
+            parse_acc_descr_spanned_c4(&mut lines, &line, line_start, &mut offset)
+        {
+            facts.push_directive_prefix("accDescr");
+            push_c4_payload_fact(&mut facts, &value, "c4 accessibility description");
+            if !closed {
+                facts.mark_recovered_with_diagnostic(
+                    "unterminated C4 accDescr block",
+                    Some(value.span),
+                );
+            }
+            continue;
+        }
+
+        if parse_direction_stmt_facts_c4(&line, line_start, &mut facts) {
+            continue;
+        }
+
+        let stmt_start = line_start + line.find(trimmed).unwrap_or(0);
+        match parse_macro_stmt_spanned(trimmed, stmt_start) {
+            Ok(Some(stmt)) => {
+                if parse_macro_stmt_facts_c4(&stmt, &mut facts).is_err() {
+                    facts.mark_recovered_with_diagnostic(
+                        "unable to recover C4 statement semantics",
+                        Some(stmt.span),
+                    );
+                }
+            }
+            Ok(None) => {
+                let span = SourceSpan::new(stmt_start, stmt_start + trimmed.len());
+                facts.mark_recovered_with_diagnostic("unsupported C4 statement", Some(span));
+            }
+            Err(_) => {
+                let span = SourceSpan::new(stmt_start, stmt_start + trimmed.len());
+                facts.mark_recovered_with_diagnostic("unable to parse C4 statement", Some(span));
+            }
+        }
+    }
+
+    facts
+}
+
+fn is_c4_header(line: &str) -> bool {
+    matches!(
+        line.trim(),
+        "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment"
+    )
+}
+
+fn push_c4_entity_fact(
+    facts: &mut EditorSemanticFacts,
+    value: &SpannedText,
+    detail: impl Into<String>,
+) {
+    if value.text.is_empty() {
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            value.span,
+        ));
+        return;
+    }
+
+    facts.push_symbol(EditorSemanticSymbol::with_role(
+        value.text.clone(),
+        Some(detail.into()),
+        EditorSemanticKind::Object,
+        EditorSemanticRole::Entity,
+        value.span,
+        value.span,
+    ));
+}
+
+fn push_c4_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    value: &SpannedText,
+    detail: impl Into<String>,
+) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        value.span,
+    ));
+    if value.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        value.text.clone(),
+        Some(detail.into()),
+        EditorSemanticKind::String,
+        value.span,
+        value.span,
+    ));
+}
+
+fn push_c4_payload_arg(facts: &mut EditorSemanticFacts, arg: &SpannedArg, fallback_detail: &str) {
+    let detail = arg
+        .key()
+        .map(|key| format!("c4 {key}"))
+        .unwrap_or_else(|| fallback_detail.to_string());
+    let value = SpannedText {
+        text: arg.text().to_string(),
+        span: arg.span(),
+    };
+    push_c4_payload_fact(facts, &value, detail);
+}
+
+fn push_c4_entity_arg(facts: &mut EditorSemanticFacts, arg: &SpannedArg, detail: &str) {
+    let value = SpannedText {
+        text: arg.text().to_string(),
+        span: arg.span(),
+    };
+    push_c4_entity_fact(facts, &value, detail.to_string());
+}
+
+fn parse_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("title")?;
+    let ws = rest.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let value = rest.trim_start();
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+    })
+}
+
+fn parse_acc_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("accTitle")?.trim_start();
+    let value = rest.strip_prefix(':')?.trim();
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+    })
+}
+
+fn parse_acc_description_stmt_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("accDescription")?;
+    let ws = rest.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let value = rest.trim_start();
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+    })
+}
+
+fn parse_acc_descr_spanned_c4<'a>(
+    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
+    line: &str,
+    line_start: usize,
+    offset: &mut usize,
+) -> Option<(SpannedText, bool)> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("accDescr")?.trim_start();
+    if let Some(after) = rest.strip_prefix(':') {
+        let value = after.trim();
+        let value_rel = line.find(value)?;
+        return Some((
+            SpannedText {
+                text: value.to_string(),
+                span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+            },
+            true,
+        ));
+    }
+
+    let rest = rest.strip_prefix('{')?;
+    if let Some(end) = rest.find('}') {
+        let value = rest[..end].trim();
+        let value_rel = line.find(value)?;
+        return Some((
+            SpannedText {
+                text: value.to_string(),
+                span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+            },
+            true,
+        ));
+    }
+
+    let mut parts = Vec::new();
+    let mut span_start = None;
+    let mut span_end = None;
+
+    let first = rest.trim();
+    if !first.is_empty() {
+        let rel = line.find(first)?;
+        parts.push(first.to_string());
+        span_start = Some(line_start + rel);
+        span_end = Some(line_start + rel + first.len());
+    }
+
+    let mut closed = false;
+    while let Some(segment) = lines.next() {
+        let segment_start = *offset;
+        *offset += segment.len();
+        let next_line = strip_line_ending(segment);
+        if let Some(close_pos) = next_line.find('}') {
+            let before = next_line[..close_pos].trim();
+            if !before.is_empty() {
+                let rel = next_line.find(before)?;
+                parts.push(before.to_string());
+                span_start.get_or_insert(segment_start + rel);
+                span_end = Some(segment_start + rel + before.len());
+            }
+            closed = true;
+            break;
+        }
+
+        let text = next_line.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let rel = next_line.find(text)?;
+        parts.push(text.to_string());
+        span_start.get_or_insert(segment_start + rel);
+        span_end = Some(segment_start + rel + text.len());
+    }
+
+    let start = span_start.unwrap_or_else(|| line_start + line.find('{').unwrap_or(line.len()));
+    let end = span_end.unwrap_or(start);
+    Some((
+        SpannedText {
+            text: parts.join("\n"),
+            span: SourceSpan::new(start, end),
+        },
+        closed,
+    ))
+}
+
+fn parse_direction_stmt_facts_c4(
+    line: &str,
+    line_start: usize,
+    facts: &mut EditorSemanticFacts,
+) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix("direction") else {
+        return false;
+    };
+    if rest.chars().next().is_some_and(|ch| !ch.is_whitespace()) {
+        return false;
+    }
+
+    let value = rest.trim_start();
+    if value.is_empty() {
+        let span_start = line_start + line.find("direction").unwrap_or(0) + "direction".len();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::DirectionValue,
+            SourceSpan::new(span_start, span_start),
+        ));
+        return true;
+    }
+
+    let token = value.split_whitespace().next().unwrap_or(value);
+    let value_rel = line.find(token).unwrap_or(0);
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::DirectionValue,
+        SourceSpan::new(line_start + value_rel, line_start + value_rel + token.len()),
+    ));
+    true
+}
+
+fn parse_macro_stmt_facts_c4(
+    stmt: &SpannedMacroStmt,
+    facts: &mut EditorSemanticFacts,
+) -> Result<()> {
+    match stmt.name.as_str() {
+        "Person" | "Person_Ext" | "System" | "SystemDb" | "SystemQueue" | "System_Ext"
+        | "SystemDb_Ext" | "SystemQueue_Ext" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, c4_shape_detail(&stmt.name));
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(descr) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(3) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Container" | "ContainerDb" | "ContainerQueue" | "Container_Ext" | "ContainerDb_Ext"
+        | "ContainerQueue_Ext" | "Component" | "ComponentDb" | "ComponentQueue"
+        | "Component_Ext" | "ComponentDb_Ext" | "ComponentQueue_Ext" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, c4_shape_detail(&stmt.name));
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(techn) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, techn, "c4 technology");
+            }
+            if let Some(descr) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(4) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Boundary" | "Enterprise_Boundary" | "System_Boundary" | "Container_Boundary" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, "c4 boundary");
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(boundary_type) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, boundary_type, "c4 boundary type");
+            }
+            for arg in stmt.args.iter().skip(3) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Node" | "Deployment_Node" | "Node_L" | "Node_R" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, "c4 deployment node");
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(node_type) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, node_type, "c4 node type");
+            }
+            if let Some(descr) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(4) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
+        | "Rel_R" | "Rel_Right" | "Rel_Back" => {
+            let Some(from) = stmt.args.first() else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing relation source".to_string(),
+                });
+            };
+            push_c4_entity_arg(facts, from, "c4 relation source");
+            let Some(to) = stmt.args.get(1) else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing relation target".to_string(),
+                });
+            };
+            push_c4_entity_arg(facts, to, "c4 relation target");
+            if let Some(label) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, label, "c4 relation label");
+            } else {
+                return Ok(());
+            }
+            if let Some(techn) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, techn, "c4 technology");
+            }
+            if let Some(descr) = stmt.args.get(4) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(5) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "RelIndex" => {
+            let Some(index) = stmt.args.first() else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing relation index".to_string(),
+                });
+            };
+            push_c4_payload_arg(facts, index, "c4 relation index");
+            let Some(from) = stmt.args.get(1) else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing relation source".to_string(),
+                });
+            };
+            push_c4_entity_arg(facts, from, "c4 relation source");
+            let Some(to) = stmt.args.get(2) else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing relation target".to_string(),
+                });
+            };
+            push_c4_entity_arg(facts, to, "c4 relation target");
+            if let Some(label) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, label, "c4 relation label");
+            } else {
+                return Ok(());
+            }
+            if let Some(techn) = stmt.args.get(4) {
+                push_c4_payload_arg(facts, techn, "c4 technology");
+            }
+            if let Some(descr) = stmt.args.get(5) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(6) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "UpdateElementStyle" => {
+            let Some(target) = stmt.args.first() else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing style target".to_string(),
+                });
+            };
+            push_c4_entity_arg(facts, target, "c4 style target");
+            for arg in stmt.args.iter().skip(1) {
+                push_c4_payload_arg(facts, arg, "c4 style value");
+            }
+            Ok(())
+        }
+        "UpdateRelStyle" => {
+            let Some(from) = stmt.args.first() else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing relation style source".to_string(),
+                });
+            };
+            push_c4_entity_arg(facts, from, "c4 relation style source");
+            let Some(to) = stmt.args.get(1) else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "c4".to_string(),
+                    message: "missing relation style target".to_string(),
+                });
+            };
+            push_c4_entity_arg(facts, to, "c4 relation style target");
+            for arg in stmt.args.iter().skip(2) {
+                push_c4_payload_arg(facts, arg, "c4 relation style value");
+            }
+            Ok(())
+        }
+        "UpdateLayoutConfig" => {
+            for arg in &stmt.args {
+                push_c4_payload_arg(facts, arg, "c4 layout value");
+            }
+            Ok(())
+        }
+        other => Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("unsupported C4 macro: {other}"),
+        }),
+    }
+}
+
+fn c4_shape_detail(name: &str) -> &'static str {
+    match name {
+        "Person" | "Person_Ext" => "c4 person",
+        "System" | "SystemDb" | "SystemQueue" | "System_Ext" | "SystemDb_Ext"
+        | "SystemQueue_Ext" => "c4 system",
+        "Container" | "ContainerDb" | "ContainerQueue" | "Container_Ext" | "ContainerDb_Ext"
+        | "ContainerQueue_Ext" => "c4 container",
+        "Component" | "ComponentDb" | "ComponentQueue" | "Component_Ext" | "ComponentDb_Ext"
+        | "ComponentQueue_Ext" => "c4 component",
+        _ => "c4 element",
+    }
+}
+
+fn parse_macro_stmt_spanned(t: &str, stmt_start: usize) -> Result<Option<SpannedMacroStmt>> {
+    let t = t.trim_end();
+    let Some(paren) = t.find('(') else {
+        return Ok(None);
+    };
+    let name = t[..paren].trim().to_string();
+    if name.is_empty() {
+        return Ok(None);
+    }
+
+    let after = &t[paren + 1..];
+    let Some(end_paren) = after.rfind(')') else {
+        return Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("unterminated macro call: {t}"),
+        });
+    };
+
+    let args_raw = &after[..end_paren];
+    let rest = after[end_paren + 1..].trim();
+    let mut has_lbrace = false;
+    if let Some(after) = rest.strip_prefix('{') {
+        if after.trim().is_empty() {
+            has_lbrace = true;
+        } else {
+            return Err(Error::DiagramParse {
+                diagram_type: "c4".to_string(),
+                message: format!("unexpected tokens after '{{' in macro: {t}"),
+            });
+        }
+    } else if !rest.is_empty() {
+        return Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("unexpected trailing tokens in macro: {t}"),
+        });
+    }
+
+    let args = parse_args_csv_spanned(args_raw, stmt_start + paren + 1)?;
+    let _ = has_lbrace;
+    Ok(Some(SpannedMacroStmt {
+        name,
+        args,
+        span: SourceSpan::new(stmt_start, stmt_start + t.len()),
+    }))
+}
+
+fn parse_args_csv_spanned(input: &str, base_offset: usize) -> Result<Vec<SpannedArg>> {
+    let mut out = Vec::new();
+    let mut cur = input;
+    let mut cursor = base_offset;
+    loop {
+        if cur.trim().is_empty() {
+            break;
+        }
+        let (seg, rest) = split_next_arg(cur);
+        out.push(parse_arg_spanned(seg, cursor)?);
+        let Some(rest) = rest else {
+            break;
+        };
+        cursor += seg.len() + 1;
+        cur = rest;
+    }
+    Ok(out)
+}
+
+fn parse_arg_spanned(seg: &str, seg_base: usize) -> Result<SpannedArg> {
+    let trimmed_start = seg
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, _)| idx)
+        .unwrap_or(seg.len());
+    let trimmed_end = seg
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, ch)| idx + ch.len_utf8())
+        .unwrap_or(trimmed_start);
+    let trimmed = &seg[trimmed_start..trimmed_end];
+    let value_base = seg_base + trimmed_start;
+
+    if trimmed.is_empty() {
+        return Ok(SpannedArg {
+            value: SpannedArgValue::Text(SpannedText {
+                text: String::new(),
+                span: SourceSpan::new(value_base, seg_base + trimmed_end),
+            }),
+        });
+    }
+
+    if let Some(value) = try_parse_kv_spanned(trimmed, value_base)? {
+        return Ok(value);
+    }
+
+    if trimmed.starts_with('"') {
+        return Ok(SpannedArg {
+            value: SpannedArgValue::Text(parse_quoted_spanned(trimmed, value_base)?),
+        });
+    }
+
+    Ok(SpannedArg {
+        value: SpannedArgValue::Text(SpannedText {
+            text: trimmed.to_string(),
+            span: SourceSpan::new(value_base, value_base + trimmed.len()),
+        }),
+    })
+}
+
+fn try_parse_kv_spanned(seg: &str, seg_base: usize) -> Result<Option<SpannedArg>> {
+    if !seg.starts_with('$') {
+        return Ok(None);
+    }
+    let rest = &seg[1..];
+    let Some(eq) = rest.find('=') else {
+        return Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("invalid attribute kv: {seg}"),
+        });
+    };
+    let key = rest[..eq].trim();
+    if key.is_empty() {
+        return Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("invalid attribute kv key: {seg}"),
+        });
+    }
+
+    let val_raw = rest[eq + 1..].trim_start();
+    let leading_ws = rest[eq + 1..]
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, _)| idx)
+        .unwrap_or(rest[eq + 1..].len());
+    let value = parse_quoted_spanned(val_raw, seg_base + 1 + eq + 1 + leading_ws)?;
+    Ok(Some(SpannedArg {
+        value: SpannedArgValue::KeyValue(SpannedKvArg {
+            key: key.to_string(),
+            value,
+        }),
+    }))
+}
+
+fn parse_quoted_spanned(input: &str, input_base: usize) -> Result<SpannedText> {
+    let input = input.trim();
+    let Some(rest) = input.strip_prefix('"') else {
+        return Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("expected quoted string, got: {input}"),
+        });
+    };
+    let Some(end) = rest.find('"') else {
+        return Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: "unterminated string".to_string(),
+        });
+    };
+    let value = &rest[..end];
+    let trailing = rest[end + 1..].trim();
+    if !trailing.is_empty() {
+        return Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("unexpected trailing tokens after string: {trailing}"),
+        });
+    }
+    Ok(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(input_base + 1, input_base + 1 + value.len()),
+    })
 }
 
 impl C4Db {
@@ -1905,5 +2653,98 @@ Rel(customer, system, "Uses", "HTTPS")
             json!("Customer")
         );
         assert_eq!(parsed_json.model["rels"][0]["label"]["text"], json!("Uses"));
+    }
+
+    #[test]
+    fn c4_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let input = r#"C4Context
+title Banking Context
+accTitle: Banking accessibility title
+accDescr: Banking accessibility description
+Boundary(bank, "Bank") {
+  Person(customer, "Customer", "Uses the system")
+  System(system, "Internet Banking", "Core system")
+}
+Rel(customer, system, "Uses", "HTTPS")
+UpdateElementStyle(system, $bgColor="red")
+UpdateRelStyle(customer, system, $lineColor="blue")
+"#;
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("c4", input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+        for entity in ["bank", "customer", "system"] {
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == entity
+                        && symbol.kind == EditorSemanticKind::Object
+                        && symbol.role == EditorSemanticRole::Entity
+                }),
+                "missing C4 entity fact for {entity}"
+            );
+        }
+        for payload in [
+            "Banking Context",
+            "Banking accessibility title",
+            "Banking accessibility description",
+            "Customer",
+            "Core system",
+            "Uses",
+            "HTTPS",
+            "red",
+            "blue",
+        ] {
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == payload
+                        && symbol.kind == EditorSemanticKind::String
+                        && symbol.role == EditorSemanticRole::Payload
+                }),
+                "missing C4 payload fact for {payload}"
+            );
+        }
+
+        let system_refs = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "system" && symbol.role == EditorSemanticRole::Entity)
+            .count();
+        assert_eq!(
+            system_refs, 4,
+            "system should appear in definition, relation target, element style, and relation style"
+        );
+
+        let title_start = input.find("Banking Context").unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span
+                    == SourceSpan::new(title_start, title_start + "Banking Context".len())
+        }));
+    }
+
+    #[test]
+    fn c4_editor_facts_recover_unsupported_statements_without_losing_prior_facts() {
+        let engine = Engine::new();
+        let input = "C4Context\nPerson(customer, \"Customer\")\nNotAMacro customer\n";
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("c4", input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "customer" && symbol.role == EditorSemanticRole::Entity
+        }));
+        assert!(!facts.diagnostics.is_empty());
     }
 }

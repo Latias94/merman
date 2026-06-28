@@ -102,6 +102,39 @@ impl<'a> ParsePipeline<'a> {
             "er" | "erDiagram" => crate::diagrams::er::parse_er_editor_facts(self.text, &meta),
             "mindmap" => crate::diagrams::mindmap::parse_mindmap_editor_facts(self.text, &meta),
             "gantt" => crate::diagrams::gantt::parse_gantt_editor_facts(self.text, &meta),
+            "architecture" => {
+                crate::diagrams::architecture::parse_architecture_editor_facts(self.text, &meta)
+            }
+            "block" => crate::diagrams::block::parse_block_editor_facts(self.text, &meta),
+            "c4" => crate::diagrams::c4::parse_c4_editor_facts(self.text, &meta),
+            "gitGraph" => {
+                crate::diagrams::git_graph::parse_git_graph_editor_facts(self.text, &meta)
+            }
+            "kanban" => crate::diagrams::kanban::parse_kanban_editor_facts(self.text, &meta),
+            "ishikawa" => crate::diagrams::ishikawa::parse_ishikawa_editor_facts(self.text, &meta),
+            "journey" => crate::diagrams::journey::parse_journey_editor_facts(self.text, &meta),
+            "info" => crate::diagrams::info::parse_info_editor_facts(self.text, &meta),
+            "timeline" => crate::diagrams::timeline::parse_timeline_editor_facts(self.text, &meta),
+            "pie" => crate::diagrams::pie::parse_pie_editor_facts(self.text, &meta),
+            "packet" => crate::diagrams::packet::parse_packet_editor_facts(self.text, &meta),
+            "sankey" => crate::diagrams::sankey::parse_sankey_editor_facts(self.text, &meta),
+            "treeView" => {
+                crate::diagrams::tree_view::parse_tree_view_editor_facts(self.text, &meta)
+            }
+            "eventmodeling" => {
+                crate::diagrams::eventmodeling::parse_eventmodeling_editor_facts(self.text, &meta)
+            }
+            "quadrantChart" => {
+                crate::diagrams::quadrant_chart::parse_quadrant_chart_editor_facts(self.text, &meta)
+            }
+            "radar" => crate::diagrams::radar::parse_radar_editor_facts(self.text, &meta),
+            "treemap" => crate::diagrams::treemap::parse_treemap_editor_facts(self.text, &meta),
+            "requirement" => {
+                crate::diagrams::requirement::parse_requirement_editor_facts(self.text, &meta)
+            }
+            "venn" => crate::diagrams::venn::parse_venn_editor_facts(self.text, &meta),
+            "xychart" => crate::diagrams::xychart::parse_xychart_editor_facts(self.text, &meta),
+            "zenuml" => crate::diagrams::zenuml::parse_zenuml_editor_facts(self.text, &meta),
             _ => return Ok(None),
         };
 

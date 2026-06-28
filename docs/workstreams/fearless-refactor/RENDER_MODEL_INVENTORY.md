@@ -26,6 +26,8 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `gantt` | `typed-first` | typed layout + typed SVG | Migrated after kanban; keep date/timezone parity gates tight. |
 | `kanban` | `typed-first` | typed layout + layout-only SVG | Migrated after sequence; keep as the small-diagram typed model pattern. |
 | `er`, `erDiagram` | `typed-first` | typed layout + typed SVG | ER entities/classes/relationships now share the core render model; keep parity gates tight. |
+| `ishikawa` | `typed-first` | typed layout + typed SVG | Cause/effect hierarchy now shares the core render model and parser-backed editor facts. |
+| `eventmodeling` | `typed-first` | typed layout + typed SVG | Timeline/frame/entity/data transport now shares the core render model and parser-backed editor facts. |
 | `block` | `typed-first` | typed layout + typed SVG | Block tree/edge transport now shares the core render model; keep shape/SVG parity gates tight. |
 | `requirement` | `typed-first` | typed layout + typed SVG | Requirements/relations/classes now share the core render model. |
 | `radar` | `typed-first` | typed layout + typed SVG | Axes/curves/options now share the core render model. |
@@ -36,6 +38,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `journey` | `typed-first` | typed layout + typed SVG | Small-to-moderate migration; watch render midpoint drift. |
 | `gitGraph` | `typed-first` | typed layout + typed SVG | Commit graph transport now shares the core render model. |
 | `pie` | `typed-first` | typed layout + typed SVG | Small typed migration; keep as a simple-diagram pattern. |
+| `treeView` | `typed-first` | typed layout + typed SVG | Tree hierarchy nodes and labels now share the core render model. |
 | `xychart` | `typed-first` | typed layout + layout-only SVG | Keep the typed model lightweight; SVG emission is layout-only. |
 | `quadrantChart` | `typed-first` | typed layout + layout-only SVG | Axes/quadrants/points/classes now share the core render model. |
 | `sankey` | `typed-first` | typed layout + layout-only SVG | CSV graph now shares the core render model. |

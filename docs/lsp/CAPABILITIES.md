@@ -4,6 +4,13 @@ This matrix records the current product readiness bar for Mermaid families and e
 It is intentionally conservative: if a capability depends on text scanning instead of parser-backed
 facts, it is not considered mature.
 
+This table is the maturity contract for first-class LSP families. The parser and render registries
+also include additional diagram types, but they are not treated as mature LSP commitments unless
+they appear here.
+
+Families outside this table can still be parser-backed in the core engine. That is useful for
+rendering and compatibility, but it is not enough to count as a mature editor contract.
+
 ## Family Coverage
 
 | Family | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
@@ -15,6 +22,41 @@ facts, it is not considered mature.
 | ER | Yes | Yes | Yes | Yes | Yes | Yes | Mature for entities, relationships, attributes, and directive payload roles. |
 | Mindmap | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, explicit labels, directives, and role-separated payloads. |
 | Gantt | Yes | Yes | Yes | Yes | Yes | Yes | Mature for task ids, dependency refs, click targets, section outlines, directives, and accessibility payloads. |
+| Architecture | Yes | Yes | Yes | Yes | Yes | Yes | Mature for groups, services, junctions, edges, and accessibility/title payloads. |
+| GitGraph | Yes | Yes | Yes | Yes | Yes | Yes | Mature for commits, branches, merges, cherry-picks, and accessibility/title payloads. |
+| Kanban | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, items, icons, classes, and role-separated payloads. |
+| Radar | Yes | Yes | Yes | Yes | Yes | Yes | Mature for axes, curves, options, and accessibility/title payloads. |
+| Treemap | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, leaves, class defs, values, and accessibility/title payloads. |
+| Block | Yes | Yes | Yes | Yes | Yes | Yes | Mature for block ids, nested composites, edges, class/style targets, arrow directions, and role-separated payload spans. |
+| C4 | Yes | Yes | Yes | Yes | Yes | Yes | Mature for C4 aliases, boundaries, relations, style/update targets, layout values, and role-separated title/accessibility/payload spans. |
+| ZenUML | Yes | Yes | Yes | Yes | Yes | Yes | Mature for the supported headless ZenUML subset, with source-mapped participants, messages, calls, assignments, titles, and payload spans. |
+| Journey | Yes | Yes | Yes | Yes | Yes | Yes | Mature for section outlines, task rows, scores, and actor payloads. |
+| Info | Yes | Yes | Yes | Yes | Yes | Yes | Mature for free-form metadata payloads and directive prefixes. |
+| Timeline | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, accessibility text, section outlines, and event payloads. |
+| Pie | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title and slice payloads. |
+| Packet | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title, accessibility text, and bit-field payloads. |
+| Sankey | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node and link payloads. |
+| Tree View | Yes | Yes | Yes | Yes | Yes | Yes | Mature for tree node ids, labels, and structural outline roles. |
+| Ishikawa | Yes | Yes | Yes | Yes | Yes | Yes | Mature for effect/cause ids, outline entries, and parser-backed payload spans. |
+| Event Modeling | Yes | Yes | Yes | Yes | Yes | Yes | Mature for timeline entities, time frames, and event payloads. |
+| Quadrant Chart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for quadrant labels, axes, and point payloads. |
+| Requirement | Yes | Yes | Yes | Yes | Yes | Yes | Mature for requirements, elements, relationships, and traced payloads. |
+| Venn | Yes | Yes | Yes | Yes | Yes | Yes | Mature for set ids, unions, text nodes, and styling payloads. |
+| XY Chart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, axes, and series payloads. |
+
+## Coverage Boundary
+
+The matrix above is intentionally narrower than the full parser/render registry. The following
+entries are still outside the first-class LSP product-family contract:
+
+| Family | Status | Why |
+| --- | --- | --- |
+| Error | Internal only | Fallback diagram only; not a product-family commitment. |
+
+Payload-first first-class families deserve a separate note: Info, Pie, Packet, and XY Chart are
+intentionally sparse on rename/reference targets. They still belong in the first-class contract
+because completion, hover, diagnostics, and semantic indexing are wired, but the family itself
+does not expose many entity-bearing spans.
 
 ## Feature Gates
 

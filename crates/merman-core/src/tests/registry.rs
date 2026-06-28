@@ -94,6 +94,110 @@ fn selected_supported_diagrams_follow_feature_profile() {
 }
 
 #[test]
+fn diagram_header_facts_follow_feature_profile() {
+    let full_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full)
+        .iter()
+        .map(|fact| fact.label)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        full_labels,
+        vec![
+            "flowchart TD",
+            "graph TD",
+            "sequenceDiagram",
+            "classDiagram",
+            "classDiagram-v2",
+            "stateDiagram-v2",
+            "stateDiagram",
+            "erDiagram",
+            "gantt",
+            "mindmap",
+            "info",
+            "journey",
+            "timeline",
+            "pie",
+            "requirementDiagram",
+            "sankey",
+            "packet",
+            "packet-beta",
+            "xychart",
+            "xychart-beta",
+            "treeView-beta",
+            "ishikawa-beta",
+            "eventmodeling",
+            "quadrantChart",
+            "venn-beta",
+            "zenuml",
+            "C4Context",
+            "C4Container",
+            "C4Component",
+            "C4Dynamic",
+            "C4Deployment",
+            "kanban",
+            "architecture-beta",
+            "block-beta",
+            "radar-beta",
+            "treemap-beta",
+            "flowchart-elk TD",
+        ]
+    );
+
+    let full_only_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full)
+        .iter()
+        .filter(|fact| fact.full_only)
+        .map(|fact| fact.label)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        full_only_labels,
+        vec!["mindmap", "architecture-beta", "flowchart-elk TD"]
+    );
+
+    let tiny_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Tiny)
+        .iter()
+        .map(|fact| fact.label)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tiny_labels,
+        vec![
+            "flowchart TD",
+            "graph TD",
+            "sequenceDiagram",
+            "classDiagram",
+            "classDiagram-v2",
+            "stateDiagram-v2",
+            "stateDiagram",
+            "erDiagram",
+            "gantt",
+            "info",
+            "journey",
+            "timeline",
+            "pie",
+            "requirementDiagram",
+            "sankey",
+            "packet",
+            "packet-beta",
+            "xychart",
+            "xychart-beta",
+            "treeView-beta",
+            "ishikawa-beta",
+            "eventmodeling",
+            "quadrantChart",
+            "venn-beta",
+            "zenuml",
+            "C4Context",
+            "C4Container",
+            "C4Component",
+            "C4Dynamic",
+            "C4Deployment",
+            "kanban",
+            "block-beta",
+            "radar-beta",
+            "treemap-beta",
+        ]
+    );
+}
+
+#[test]
 fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
     assert_eq!(
         crate::supported_diagrams_for_profile(BaselineRegistryProfile::Full),

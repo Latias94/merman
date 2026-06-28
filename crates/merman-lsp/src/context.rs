@@ -292,6 +292,20 @@ mod tests {
         assert!(header_context.offer_diagram_headers());
         assert!(!header_context.offer_node_items());
 
+        let completion = crate::completion::completion_for_snapshot(&header, Position::new(0, 9));
+        let expected: Vec<_> = merman_core::diagram_header_facts_for_profile(
+            merman_core::selected_baseline_registry_profile(),
+        )
+        .iter()
+        .map(|fact| fact.label)
+        .collect();
+        let labels: Vec<_> = completion
+            .items
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect();
+        assert_eq!(labels, expected);
+
         let operator = store.upsert(uri.clone(), 2, "flowchart TD\nA-->B".to_string());
         let operator_context =
             CompletionContext::from_snapshot(&operator, Position::new(1, 3)).unwrap();

@@ -12,8 +12,9 @@ deepened: "2026-06-26"
 This plan turns the current diagnostics-first LSP foundation into a product-grade Mermaid language
 tooling surface. It keeps parser technology family-local, removes heuristic editor semantics as the
 parser-backed contract matures, and aligns lint, CLI, FFI/WASM payloads, and LSP features around one
-shared semantic index. The finish line is explicit: maturity is only declared when the capability
-matrix, rule catalog, and fixture gates all agree.
+shared semantic index. This is intended to be the last broad family-coverage pass for Mermaid LSP:
+the finish line is explicit, and maturity is only declared when the capability matrix, rule
+catalog, and fixture gates all agree for the current supported family set.
 
 ---
 
@@ -26,6 +27,10 @@ maturity: several capabilities still depend on a migration index, the lint layer
 semantic-warning projection, and deferred LSP surfaces such as code actions and semantic tokens are
 not yet implemented. The remaining gap is not only more surface area; it is a single auditable bar
 that says the surface is actually mature.
+
+The remaining family work is the closure pass for the current supported diagram set. It should
+absorb the last raw-text and translation-shim families into parser-backed editor facts rather than
+leave any supported family in a permanent middle tier.
 
 The prior plans are the base layer:
 
@@ -83,6 +88,8 @@ shared analysis instead of transport-local scans.
   fixture parity checks, and performance budgets for large Markdown documents.
 - R13. Documentation must describe the canonical analysis/LSP contract, supported features by
   diagram family, migration boundaries, and known deferred editor-product work.
+- R14. Every currently supported diagram family must end this plan either in the first-class
+  matrix or as explicitly internal-only; no supported family may remain in a silent partial state.
 
 ---
 
@@ -125,6 +132,10 @@ shared analysis instead of transport-local scans.
   indentation-tree or text-heavy families such as mindmap, kanban, treemap, journey, and timeline
   unless the family first defines a line event stream and the remaining ambiguity is genuinely
   grammar-shaped.
+- **KTD9. Close the remaining family boundary in one pass:** supported families that still rely on
+  text-scan fallback, translation shims, or incomplete spans should be rewritten into
+  parser-backed editor facts or source-mapped seams now rather than preserved as a permanent
+  partial tier. This plan is the closure plan for the current supported set.
 
 ---
 
@@ -153,13 +164,15 @@ adapter over snapshots, diagnostics, and semantic queries.
 
 In scope:
 
-- Parser-backed semantic facts and recovery diagnostics for the families that feed LSP and lint.
+- Parser-backed semantic facts and recovery diagnostics for the families that feed LSP and lint,
+  including the remaining supported families that still need closure.
 - A richer shared semantic index in `merman-analysis`.
 - A rule engine with stable diagnostics and fix metadata.
 - Product LSP features for code actions and semantic tokens, plus hardening of existing completion,
   hover, symbols, definition, references, and rename.
 - Shared configuration for CLI lint, LSP initialization, and binding consumers.
 - Test and documentation gates that make product readiness auditable.
+- No supported family is allowed to remain in an undocumented partial state at the end of the plan.
 
 Deferred to follow-up work:
 
@@ -168,6 +181,7 @@ Deferred to follow-up work:
 - Visual Mermaid editing, diagram preview UI, and MCP server surfaces.
 - Formatting, unless rule-engine fixes naturally expose a narrow safe subset first.
 - Workspace-wide cross-file Mermaid symbol resolution.
+- A second broad family-coverage plan for the current supported set.
 
 Outside this product slice:
 
@@ -188,13 +202,15 @@ Outside this product slice:
 - `merman-cli`, FFI, UniFFI, and WASM inherit richer diagnostics without reimplementing rule logic.
 - Tests move from checking isolated LSP helpers toward proving family capability coverage,
   recovery behavior, and shared payload stability.
+- This is the final broad family-coverage pass for the current supported set; future family work
+  should be about new families or new surfaces, not reopening the existing matrix.
 
 ---
 
 ## Success Metrics
 
-- Every first-class family in `docs/lsp/CAPABILITIES.md` is either fully mature or explicitly
-  partial with a documented residual and next action.
+- Every currently supported family in `docs/lsp/CAPABILITIES.md` is either fully mature or
+  explicitly internal-only; there is no silent partial tier left for the current family set.
 - The public lint catalog, config schema, and binding surfaces expose the same configurable rule
   ids, severities, profiles, origins, evidence, and fixability metadata on every supported
   transport.
@@ -251,7 +267,7 @@ residual.
 
 - **Goal:** Add an auditable capability matrix for diagram families, semantic fact kinds, lint rule
   coverage, and LSP feature support.
-- **Requirements:** R1, R2, R3, R12, R13
+- **Requirements:** R1, R2, R3, R12, R13, R14
 - **Dependencies:** None
 - **Files:**
   - `docs/lsp/README.md`
@@ -259,58 +275,66 @@ residual.
   - `crates/merman-analysis/src/editor.rs`
   - `crates/merman-lsp/tests/document_store.rs`
   - `crates/merman-lsp/tests/server_smoke.rs`
+  - `crates/merman-lsp/tests/capabilities.rs`
 - **Approach:** Record family support as a test-backed product contract rather than prose only.
   Capability rows should distinguish parser-complete facts, parser-recovered facts, text-scan
-  fallback, lint payload facts, rename safety, semantic-token readiness, and code-action readiness.
+  fallback, lint payload facts, rename safety, semantic-token readiness, and code-action readiness,
+  and they should prove that the current supported family set is fully classified.
 - **Patterns to follow:** The existing `FenceTextIndexSource::ParserComplete` /
   `ParserRecovered` tests and the role split from `EditorSemanticRole`.
 - **Test scenarios:**
+  - `Ishikawa` is listed as first-class and is enforced by the capability gate.
+  - Every currently supported family is either first-class or explicitly boundary-classified; the
+    matrix test fails if a supported family is missing.
   - A first-class family reports parser-backed complete and recovered provenance for its supported
     semantic roles.
   - A family without full facts is visible as incomplete instead of silently passing through
     `TextScan`.
   - LSP tests fail if a first-class family regresses from parser-backed facts to text-scan
     provenance.
-- **Verification:** Product docs and tests agree on which families and features are mature.
+- **Verification:** Product docs and tests agree on the full supported-family set and on which
+  families are mature, boundary, or internal-only.
 
-### U2. Complete parser-backed fact coverage and remove mature text scans
+### U2. Refactor remaining supported families into parser-backed facts
 
-- **Goal:** Finish residual semantic facts for the high-value families and delete heuristic paths
-  once parser-backed coverage is sufficient.
-- **Requirements:** R1, R2, R3, R4, R10
+- **Goal:** Close the remaining family boundary by converting `Block`, `C4`, and `ZenUML` to
+  parser-backed editor facts or source-mapped spans.
+- **Requirements:** R1, R2, R3, R4, R10, R14
 - **Dependencies:** U1
 - **Files:**
-  - `crates/merman-core/src/diagrams/flowchart.rs`
-  - `crates/merman-core/src/diagrams/sequence/mod.rs`
-  - `crates/merman-core/src/diagrams/state/mod.rs`
-  - `crates/merman-core/src/diagrams/class/mod.rs`
-  - `crates/merman-core/src/diagrams/er.rs`
-  - `crates/merman-core/src/diagrams/gantt/*`
-  - `crates/merman-core/src/diagrams/mindmap/*`
+  - `crates/merman-core/src/diagrams/block.rs`
+  - `crates/merman-core/src/diagrams/c4.rs`
+  - `crates/merman-core/src/diagrams/zenuml.rs`
+  - `crates/merman-core/src/family.rs`
+  - `crates/merman-core/src/parse_pipeline.rs`
   - `crates/merman-core/src/tests/*`
   - `crates/merman-analysis/src/editor.rs`
   - `crates/merman-lsp/tests/document_store.rs`
-- **Approach:** Prefer grammar spans for parser-backed families and explicit event streams for
-  hand-written families. Promote residual payloads such as flowchart click/linkStyle/shapeData,
-  sequence messages and notes, and remaining ER/class directive values into core facts before LSP
-  or lint consumes them.
-- **Patterns to follow:** State's `StateEditorEvent` stream, Mindmap's line-event projection, Gantt
-  payload spans, and Flowchart directive payload roles.
+- `crates/merman-lsp/tests/completion.rs`
+- `crates/merman-lsp/tests/server_smoke.rs`
+- `docs/lsp/CAPABILITIES.md`
+- **Approach:** Treat the remaining family gap as a closure pass with two refactor shapes. The
+  structural families (`block`, `c4`, `zenuml`) need source-mapped editor facts or replacement
+  seams that preserve original positions. The pass is deliberately fearless: the supported families
+  in this cluster should be made parser-backed, not left as a permanent partial tier.
+- **Patterns to follow:** The parser-backed families already in the mature matrix, the current
+  family registry, and the `FenceTextIndex` role split.
 - **Test scenarios:**
-  - Complete and recovered paths emit the same semantic roles for each targeted construct.
-  - Payload-only spans are available for lint but do not enter completion, outline, references, or
-    rename.
-  - Text-scan fallback is unreachable for families marked mature in the capability matrix.
+  - Each targeted family reports parser-backed complete or recovered provenance for the semantic
+    roles the LSP uses.
+  - Completion, hover, symbols, references, and rename never depend on raw-text fallback for the
+    targeted families.
+  - `ZenUML` preserves original positions through its translation seam or replaces the seam with
+    native facts.
+  - The capability matrix and LSP tests fail if any supported family in the closure set remains
+    unclassified or silently partial.
   - Existing render and parser fixture tests remain green after fact extraction changes.
-- **Verification:** Supported families have parser-backed facts for all product-critical semantic
-  roles, and mature LSP tests do not depend on raw-text structure scans.
+- **Verification:** No supported family in the closure set depends on transport-local scans for a
+  product-critical LSP feature, and the capability matrix can be treated as complete for the
+  current supported set.
 
-**Recommended ordering:** deepen `mindmap` and `gantt` first, because they are already the
-documented partial families in the capability matrix and they most clearly show whether the
-family-local parser shape is still the right fit. After that, move outward to the simpler
-line-oriented families (`pie`, `timeline`, `journey`) and then the more specialized product
-families (`quadrantChart`, `xychart-beta`, `C4`, `architecture`) as each one earns parser-backed
-facts and test coverage.
+**Recommended ordering:** start with `block`, `c4`, and `zenuml`, because they force the seam
+decision. Use the already mature families as regression anchors while the closure pass lands.
 
 ### U3. Replace the migration index with a semantic index
 
@@ -551,5 +575,7 @@ facts and test coverage.
   boundaries change. Do not create an ADR for every family-local payload addition.
 - Treat `docs/lsp/CAPABILITIES.md` as the source of truth for maturity. Do not declare the plan
   complete while any first-class family is partial without a documented residual.
+- Do not open a second family-coverage plan for the current supported set; this plan is meant to
+  close that boundary.
 - Keep plan progress out of this document. Progress should be derived from git, tests, and the
   engineering wiki memory bundle.

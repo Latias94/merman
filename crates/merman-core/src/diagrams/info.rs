@@ -1,4 +1,8 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::diagrams::scan::strip_line_ending;
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -32,6 +36,52 @@ pub fn parse_info_model_for_render(
         InfoParseOutput::Empty | InfoParseOutput::Error(_) => Ok(InfoDiagramRenderModel::default()),
         InfoParseOutput::Model(model) => Ok(model),
     }
+}
+
+pub fn parse_info_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut header_seen = false;
+    let mut offset = 0usize;
+
+    for segment in code.split_inclusive('\n') {
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
+        let trimmed = strip_inline_comment(line).trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if !trimmed.starts_with("info") {
+                return facts;
+            }
+            header_seen = true;
+            let rest = trimmed["info".len()..].trim();
+            if rest.is_empty() {
+                continue;
+            }
+            if rest == "showInfo" {
+                facts.push_directive_prefix("showInfo");
+                let rel = line.find("showInfo").unwrap_or(0);
+                let span = SourceSpan::new(line_start + rel, line_start + rel + "showInfo".len());
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    span,
+                ));
+                facts.push_symbol(EditorSemanticSymbol::payload(
+                    "showInfo".to_string(),
+                    Some("info showInfo".to_string()),
+                    EditorSemanticKind::String,
+                    span,
+                    span,
+                ));
+            }
+            continue;
+        }
+    }
+
+    facts
 }
 
 fn parse_info_model(code: &str, meta: &ParseMetadata) -> Result<InfoParseOutput> {
@@ -118,5 +168,31 @@ fn strip_inline_comment(line: &str) -> &str {
     match line.find("%%") {
         Some(idx) => &line[..idx],
         None => line,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Engine, ParseOptions};
+
+    #[test]
+    fn parse_info_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = "info showInfo\n";
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("info", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.directive_prefixes.iter().any(|p| p == "showInfo"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "showInfo"));
+
+        let show_info_start = text.find("showInfo").unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span
+                    == SourceSpan::new(show_info_start, show_info_start + "showInfo".len())
+        }));
     }
 }

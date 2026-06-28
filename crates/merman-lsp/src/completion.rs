@@ -1,5 +1,6 @@
 use crate::context::CompletionContext;
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
+use merman_core::{diagram_header_facts_for_profile, selected_baseline_registry_profile};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tower_lsp::lsp_types::{
@@ -12,13 +13,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     let Some(context) = CompletionContext::from_snapshot(snapshot, position) else {
         return CompletionList {
             is_incomplete: false,
-            items: vec![keyword_completion(
-                "flowchart TD",
-                "diagram kind",
-                None,
-                None,
-                CompletionDataKind::DiagramHeader,
-            )],
+            items: diagram_header_items(None),
         };
     };
 
@@ -60,13 +55,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
             };
         }
 
-        items.push(keyword_completion(
-            "flowchart TD",
-            "diagram kind",
-            None,
-            None,
-            CompletionDataKind::DiagramHeader,
-        ));
+        items.extend(diagram_header_items(context.prefix_range()));
     }
 
     CompletionList {
@@ -76,43 +65,18 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
 }
 
 fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
-    vec![
-        keyword_completion(
-            "flowchart TD",
-            "flowchart header",
-            range.clone(),
-            None,
-            CompletionDataKind::DiagramHeader,
-        ),
-        keyword_completion(
-            "sequenceDiagram",
-            "sequence header",
-            range.clone(),
-            None,
-            CompletionDataKind::DiagramHeader,
-        ),
-        keyword_completion(
-            "stateDiagram-v2",
-            "state header",
-            range.clone(),
-            None,
-            CompletionDataKind::DiagramHeader,
-        ),
-        keyword_completion(
-            "gantt",
-            "gantt header",
-            range.clone(),
-            None,
-            CompletionDataKind::DiagramHeader,
-        ),
-        keyword_completion(
-            "mindmap",
-            "mindmap header",
-            range,
-            None,
-            CompletionDataKind::DiagramHeader,
-        ),
-    ]
+    diagram_header_facts_for_profile(selected_baseline_registry_profile())
+        .iter()
+        .map(|fact| {
+            keyword_completion(
+                fact.label,
+                fact.detail,
+                range.clone(),
+                None,
+                CompletionDataKind::DiagramHeader,
+            )
+        })
+        .collect()
 }
 
 fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
@@ -391,5 +355,27 @@ fn completion_documentation(data: &CompletionResolveData) -> String {
             "Reuses the `{}` identifier already present in the current Mermaid fence.",
             data.label
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::diagram_header_items;
+    use merman_core::{diagram_header_facts_for_profile, selected_baseline_registry_profile};
+    use tower_lsp::lsp_types::Range;
+
+    #[test]
+    fn diagram_header_items_follow_core_header_facts() {
+        let labels: Vec<_> = diagram_header_items(Some(Range::default()))
+            .into_iter()
+            .map(|item| item.label)
+            .collect();
+        let expected: Vec<_> =
+            diagram_header_facts_for_profile(selected_baseline_registry_profile())
+                .iter()
+                .map(|fact| fact.label)
+                .collect();
+
+        assert_eq!(labels, expected);
     }
 }

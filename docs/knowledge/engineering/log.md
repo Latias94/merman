@@ -5,6 +5,51 @@ status: active
 
 # Log
 
+## 2026-06-28
+- Promoted `C4` and `ZenUML` into the mature Mermaid LSP matrix. `C4` now exposes source-spanned
+  macro aliases, boundaries, relations, style/update targets, title/accessibility payloads, and
+  recovery diagnostics through parser-backed editor facts; `ZenUML` keeps the render translation
+  seam but now exposes source-mapped editor facts for the supported headless subset. The current
+  supported product-family boundary is closed; `error` remains internal-only.
+- Added the LSP recovered-provenance gate for the newly promoted family set. `GitGraph`, `Radar`,
+  `Kanban`, `Treemap`, `Block`, `C4`, and `ZenUML` now have `DocumentStore` coverage proving that
+  malformed/incomplete input keeps parser-backed semantic items and reports `ParserRecovered`
+  instead of silently falling back to text scanning.
+
+## 2026-06-28
+- Promoted `Block` into the mature Mermaid LSP matrix by wiring parser-backed editor facts for
+  block ids, nested composites, edges, class/style targets, arrow directions, and role-separated
+  payload spans. At this point, the remaining out-of-matrix family boundary was `C4` and `ZenUML`;
+  a later 2026-06-28 entry closes that boundary.
+
+## 2026-06-28
+- Closed the remaining family-coverage gap for the current supported set by promoting
+  `Architecture`, `GitGraph`, `Kanban`, `Radar`, and `Treemap` into the mature Mermaid LSP matrix.
+  All five families now ship parser-backed editor facts through `parse_pipeline` and the shared
+  document-store path, so `docs/lsp/CAPABILITIES.md` and the LSP protocol docs now match the real
+  editor contract. At this point, `C4` and `ZenUML` still stayed outside the first-class contract;
+  a later 2026-06-28 entry promotes them.
+
+## 2026-06-28
+- Reframed the mature Mermaid LSP roadmap as the final broad family-coverage pass for the current
+  supported set. The plan now treats Block, C4, and ZenUML as the remaining closure cluster, keeps
+  `Ishikawa` in the first-class matrix, and states that no second family-coverage plan should
+  reopen the same supported set.
+- Updated the current-state snapshot to match the closure framing and make the supported-family
+  boundary explicit for future sessions.
+
+## 2026-06-28
+- Reconciled the class-diagram completion regression with the existing parser and document-store
+  semantics. `classDef` style names stay outline-only and must not leak into node-id completion
+  candidates; the LSP regression now asserts the classDef fence stays empty instead of expecting
+  a node-id suggestion. The parser-backed `journey` and `timeline` editor-fact slices still pass
+  their completion-projection tests, and the capability matrix test suite remains green.
+- Verified the slice with `cargo test -j1 -p merman-core journey_editor_facts_expose_parser_backed_spans -- --nocapture`,
+  `cargo test -j1 -p merman-core timeline_editor_facts_expose_parser_backed_spans -- --nocapture`,
+  `cargo test -j1 -p merman-lsp --test completion completion_does_not_offer_class_def_style_names_as_node_ids -- --exact --nocapture`,
+  `cargo test -j1 -p merman-lsp --test capabilities -- --nocapture`, `cargo fmt --all`, and
+  `cargo fmt --all --check`.
+
 ## 2026-06-27
 - Extended state diagrams to parser-backed expected syntax in `merman-core`. State entity ids,
   class/style id lists, display labels, descriptions, style payloads, and click payloads now emit
