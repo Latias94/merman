@@ -78,7 +78,7 @@ fn render_control_range(
         if row < frame.start_row {
             rendered.extend(lines[row..frame.start_row].iter().cloned());
         }
-        rendered.extend(render_frame_node(node, frames, lines, chars));
+        rendered.extend(render_frame_node(node, frames, lines, chars, 0));
         row = node_end + 1;
     }
 
@@ -93,22 +93,30 @@ fn render_frame_node(
     frames: &[SequenceControlFrame],
     lines: &[SequenceLine],
     chars: &SequenceChars,
+    inset: usize,
 ) -> Vec<SequenceLine> {
     let frame = &frames[node.frame_index];
-    let body_rows = render_frame_body(node, frames, lines, chars);
-    let width = frame_width(frame, &body_rows);
+    let body_rows = render_frame_body(node, frames, lines, chars, inset);
+    let width = frame_width(frame, &body_rows, inset);
     let mut rendered = Vec::with_capacity(body_rows.len() + 2);
-    rendered.push(render_top_border(frame, width, chars));
+    rendered.push(render_top_border(frame, inset, width, chars));
 
     for row in body_rows {
         match row {
             SequenceControlBodyRow::Content(line) => {
-                rendered.push(render_content_row(line, width, chars, frame.background));
+                rendered.push(render_content_row(
+                    line,
+                    inset,
+                    width,
+                    chars,
+                    frame.background,
+                ));
             }
             SequenceControlBodyRow::Separator(separator_index) => {
                 rendered.push(render_separator_border(
                     frame,
                     &frame.separators[separator_index],
+                    inset,
                     width,
                     chars,
                 ));
@@ -116,7 +124,7 @@ fn render_frame_node(
         }
     }
 
-    rendered.push(render_bottom_border(width, chars, frame.background));
+    rendered.push(render_bottom_border(inset, width, chars, frame.background));
     rendered
 }
 
@@ -125,6 +133,7 @@ fn render_frame_body(
     frames: &[SequenceControlFrame],
     lines: &[SequenceLine],
     chars: &SequenceChars,
+    inset: usize,
 ) -> Vec<SequenceControlBodyRow> {
     let frame = &frames[node.frame_index];
     let end_row = frame
@@ -149,7 +158,7 @@ fn render_frame_body(
             let child_frame = &frames[child.frame_index];
             if child_frame.start_row == row {
                 body_rows.extend(
-                    indent_child_frame(render_frame_node(child, frames, lines, chars))
+                    render_frame_node(child, frames, lines, chars, inset + 2)
                         .into_iter()
                         .map(SequenceControlBodyRow::Content),
                 );
@@ -223,21 +232,15 @@ fn valid_frame_end_row(frame: &SequenceControlFrame, line_count: usize) -> Optio
         .then_some(end_row)
 }
 
-fn indent_child_frame(lines: Vec<SequenceLine>) -> Vec<SequenceLine> {
-    lines.into_iter().map(indent_child_line).collect()
-}
-
-fn indent_child_line(line: SequenceLine) -> SequenceLine {
-    let mut indented = SequenceLine::blank(line.len() + 2);
-    indented.write_line(2, &line);
-    indented
-}
-
-fn frame_width(frame: &SequenceControlFrame, rows: &[SequenceControlBodyRow]) -> usize {
+fn frame_width(
+    frame: &SequenceControlFrame,
+    rows: &[SequenceControlBodyRow],
+    inset: usize,
+) -> usize {
     let max_row_width = rows
         .iter()
         .filter_map(|row| match row {
-            SequenceControlBodyRow::Content(line) => Some(line.len()),
+            SequenceControlBodyRow::Content(line) => Some(line.len().saturating_sub(inset)),
             SequenceControlBodyRow::Separator(_) => None,
         })
         .max()
@@ -259,6 +262,7 @@ fn frame_width(frame: &SequenceControlFrame, rows: &[SequenceControlBodyRow]) ->
 
 fn render_top_border(
     frame: &SequenceControlFrame,
+    inset: usize,
     width: usize,
     chars: &SequenceChars,
 ) -> SequenceLine {
@@ -266,6 +270,7 @@ fn render_top_border(
         chars.top_left,
         chars.top_right,
         chars.horizontal,
+        inset,
         width,
         Some(&frame_title(frame)),
         frame.background,
@@ -273,6 +278,7 @@ fn render_top_border(
 }
 
 fn render_bottom_border(
+    inset: usize,
     width: usize,
     chars: &SequenceChars,
     background: Option<AsciiRgb>,
@@ -281,6 +287,7 @@ fn render_bottom_border(
         chars.bottom_left,
         chars.bottom_right,
         chars.horizontal,
+        inset,
         width,
         None,
         background,
@@ -290,6 +297,7 @@ fn render_bottom_border(
 fn render_separator_border(
     frame: &SequenceControlFrame,
     separator: &SequenceControlFrameSeparator,
+    inset: usize,
     width: usize,
     chars: &SequenceChars,
 ) -> SequenceLine {
@@ -297,6 +305,7 @@ fn render_separator_border(
         chars.tee_right,
         chars.tee_left,
         chars.horizontal,
+        inset,
         width,
         Some(&separator_title(frame, separator)),
         frame.background,
@@ -307,33 +316,41 @@ fn render_border_row(
     left: char,
     right: char,
     horizontal: char,
+    inset: usize,
     width: usize,
     label: Option<&str>,
     background: Option<AsciiRgb>,
 ) -> SequenceLine {
-    let mut row = SequenceLine::blank(width);
-    paint_row_background(&mut row, 0..width, background);
-    for x in 0..width {
+    let total_width = inset + width;
+    let mut row = SequenceLine::blank(total_width);
+    paint_row_background(&mut row, inset..total_width, background);
+    for x in inset..total_width {
         row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);
     }
-    row.set_role(0, left, AsciiColorRole::SequenceFrame);
-    row.set_role(width - 1, right, AsciiColorRole::SequenceFrame);
+    row.set_role(inset, left, AsciiColorRole::SequenceFrame);
+    row.set_role(total_width - 1, right, AsciiColorRole::SequenceFrame);
     if let Some(label) = label {
-        row.write_text_role(1, label, AsciiColorRole::Text);
+        row.write_text_role(inset + 1, label, AsciiColorRole::Text);
     }
     trim_right(row)
 }
 
 fn render_content_row(
     row: SequenceLine,
+    inset: usize,
     width: usize,
     chars: &SequenceChars,
     background: Option<AsciiRgb>,
 ) -> SequenceLine {
-    let mut row = padded_line(row, width);
-    paint_row_background_if_unset(&mut row, 0..width, background);
-    row.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
-    row.set_role(width - 1, chars.vertical, AsciiColorRole::SequenceFrame);
+    let total_width = inset + width;
+    let mut row = padded_line(row, total_width);
+    paint_row_background_if_unset(&mut row, inset..total_width, background);
+    row.set_role(inset, chars.vertical, AsciiColorRole::SequenceFrame);
+    row.set_role(
+        total_width - 1,
+        chars.vertical,
+        AsciiColorRole::SequenceFrame,
+    );
     trim_right(row)
 }
 
