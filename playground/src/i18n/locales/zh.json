@@ -260,12 +260,18 @@
     "diagramType": "类型",
     "lines": "行数",
     "chars": "字符",
+    "wasm": "WASM",
+    "editorLanguage": "编辑能力",
+    "registryProfile": "Registry",
     "renderTime": "渲染",
     "theme": "主题",
     "measurement": "测量",
     "font": "字体",
     "ready": "就绪",
+    "enabled": "已启用",
+    "disabled": "已禁用",
     "rendering": "渲染中...",
+    "loading": "加载中...",
     "error": "错误"
   },
   "themes": {

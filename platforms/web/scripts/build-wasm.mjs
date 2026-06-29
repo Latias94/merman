@@ -4,8 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pkgRoot = path.join(packageRoot, "pkg");
-const presetManifestPath = path.join(pkgRoot, "merman_wasm_preset.json");
 
 const presets = {
   "browser-core": {
@@ -95,11 +93,12 @@ const presets = {
 };
 
 const defaultPresetName = "browser-full";
-const presetName =
-  parsePreset(process.argv.slice(2)) ??
-  process.env.MERMAN_WEB_PRESET ??
-  defaultPresetName;
+const args = process.argv.slice(2);
+const presetName = parsePreset(args) ?? process.env.MERMAN_WEB_PRESET ?? defaultPresetName;
 const preset = presets[presetName];
+const outDirRel = parseOutDirRel(args) ?? "pkg";
+const outputRoot = path.join(packageRoot, outDirRel);
+const presetManifestPath = path.join(outputRoot, "merman_wasm_preset.json");
 
 if (!preset) {
   console.error(`Unknown @mermanjs/web WASM preset: ${presetName}`);
@@ -123,7 +122,7 @@ const wasmPackArgs = [
   "--profile",
   "wasm-size",
   "--out-dir",
-  "../../platforms/web/pkg",
+  outputRoot,
 ];
 const cargoArgs = cargoFeatureArgs(preset);
 
@@ -132,8 +131,8 @@ if (cargoArgs.length > 0) {
 }
 
 run("wasm-pack", wasmPackArgs);
-run(process.execPath, ["scripts/clean-pkg.mjs"]);
-writePresetManifest(presetName, preset);
+run(process.execPath, ["scripts/clean-pkg.mjs", "--pkg-dir-rel", outDirRel]);
+writePresetManifest(presetName, preset, outputRoot);
 
 function parsePreset(args) {
   for (let index = 0; index < args.length; index += 1) {
@@ -152,6 +151,19 @@ function parsePreset(args) {
   return null;
 }
 
+function parseOutDirRel(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--out-dir-rel") {
+      return args[index + 1];
+    }
+    if (arg.startsWith("--out-dir-rel=")) {
+      return arg.slice("--out-dir-rel=".length);
+    }
+  }
+  return null;
+}
+
 function cargoFeatureArgs(selectedPreset) {
   const args = [];
   if (!selectedPreset.defaultFeatures) {
@@ -163,8 +175,8 @@ function cargoFeatureArgs(selectedPreset) {
   return args;
 }
 
-function writePresetManifest(name, selectedPreset) {
-  mkdirSync(pkgRoot, { recursive: true });
+function writePresetManifest(name, selectedPreset, outDir) {
+  mkdirSync(outDir, { recursive: true });
   const manifest = {
     schema_version: 1,
     preset: name,

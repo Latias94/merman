@@ -1,0 +1,183 @@
+{
+  "name": "merman-vscode",
+  "displayName": "Merman",
+  "description": "VS Code language support powered by merman-lsp.",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "publisher": "local",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Latias94/merman.git"
+  },
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:mermaid",
+    "onLanguage:markdown",
+    "onLanguage:mdx",
+    "onCommand:merman.restartLanguageServer",
+    "workspaceContains:**/*.mmd",
+    "workspaceContains:**/*.mermaid"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mermaid",
+        "aliases": [
+          "Mermaid",
+          "mermaid"
+        ],
+        "extensions": [
+          ".mmd",
+          ".mermaid"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "title": "Merman",
+      "properties": {
+        "merman.server.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to auto-detect `target/debug/merman-lsp` or fall back to `cargo run -p merman-lsp`."
+        },
+        "merman.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional arguments appended when launching `merman-lsp` directly."
+        },
+        "merman.server.useCargoRun": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Force the extension to launch `merman-lsp` through `cargo run -p merman-lsp --` even when a local debug binary exists."
+        },
+        "merman.server.cargoArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Extra Cargo arguments inserted before `--` when the extension launches the server through Cargo."
+        },
+        "merman.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "markdownDescription": "LSP trace level forwarded to the VS Code language client."
+        },
+        "merman.analysis.fixed_today": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional deterministic local date forwarded to `merman-lsp` analysis options in `YYYY-MM-DD` format."
+        },
+        "merman.analysis.fixed_local_offset_minutes": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "markdownDescription": "Optional deterministic local UTC offset in minutes forwarded to `merman-lsp` analysis options."
+        },
+        "merman.analysis.parse.suppress_errors": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Forward lenient parse mode to `merman-lsp`."
+        },
+        "merman.analysis.resources.max_source_bytes": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` means unset."
+        },
+        "merman.analysis.lint.profile": {
+          "type": "string",
+          "enum": [
+            "",
+            "core",
+            "recommended",
+            "strict"
+          ],
+          "default": "recommended",
+          "markdownDescription": "Lint profile forwarded to `merman-lsp`."
+        },
+        "merman.analysis.lint.enable_rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional lint rules enabled in `merman-lsp`."
+        },
+        "merman.analysis.lint.disable_rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Lint rules disabled in `merman-lsp`."
+        },
+        "merman.analysis.lint.rule_severities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "rule_id",
+              "severity"
+            ],
+            "properties": {
+              "rule_id": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "error",
+                  "warning",
+                  "info",
+                  "hint"
+                ]
+              }
+            }
+          },
+          "default": [],
+          "markdownDescription": "Per-rule severity overrides forwarded to `merman-lsp`."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "merman.restartLanguageServer",
+        "title": "Merman: Restart Language Server"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "check": "tsc -p . --noEmit",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "10.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.1",
+    "@types/vscode": "1.125.0",
+    "@vscode/vsce": "3.9.2",
+    "typescript": "6.0.3"
+  }
+}

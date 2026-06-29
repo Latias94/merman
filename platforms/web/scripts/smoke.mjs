@@ -5,23 +5,32 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
+const args = process.argv.slice(2);
+const entrySubpath = parseArgValue(args, "--entry") ?? ".";
+const pkgDirRel = parseArgValue(args, "--pkg-dir-rel") ?? "pkg";
+const wasmModuleSubpath =
+  parseArgValue(args, "--wasm-module-subpath") ?? "./pkg/merman_wasm.js";
+const wasmBinaryRel =
+  parseArgValue(args, "--wasm-binary-rel") ??
+  normalizePath(path.join(pkgDirRel, "merman_wasm_bg.wasm"));
+const manifestRel =
+  parseArgValue(args, "--manifest-rel") ??
+  normalizePath(path.join(pkgDirRel, "merman_wasm_preset.json"));
 
-const api = await import(pathToFileURL(path.join(packageRoot, "dist", "index.js")).href);
-const exportedWasmModule = await import("@mermanjs/web/pkg/merman_wasm.js");
+const api = await import(resolveEntryModuleHref(entrySubpath));
+const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
 
 assert.equal(typeof exportedWasmModule.default, "function");
 if (typeof import.meta.resolve === "function") {
   assert.match(
-    import.meta.resolve("@mermanjs/web/pkg/merman_wasm_bg.wasm"),
+    import.meta.resolve(toPackageSpecifier(wasmBinaryRel)),
     /merman_wasm_bg\.wasm$/
   );
 }
 
 await api.initMerman({
   wasm: {
-    module_or_path: await readFile(
-      path.join(packageRoot, "pkg", "merman_wasm_bg.wasm")
-    ),
+    module_or_path: await readFile(path.join(packageRoot, wasmBinaryRel)),
   },
 });
 
@@ -36,7 +45,7 @@ const options = {
   layout: { text_measurer: "deterministic" },
 };
 const presetManifest = JSON.parse(
-  await readFile(path.join(packageRoot, "pkg", "merman_wasm_preset.json"), "utf8")
+  await readFile(path.join(packageRoot, manifestRel), "utf8")
 );
 
 class FakeMeasureElement {
@@ -327,6 +336,7 @@ if (capabilities.render) {
 console.log(
   [
     "@mermanjs/web smoke passed",
+    `entry=${entrySubpath}`,
     `diagrams=${api.supportedDiagrams().length}`,
     `render=${capabilities.render}`,
     `ascii=${capabilities.ascii}`,
@@ -387,4 +397,36 @@ function assertUnsupportedFormat(run) {
   }
   assert.ok(error, "expected MERMAN_UNSUPPORTED_FORMAT error");
   assert.equal(error.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+}
+
+function parseArgValue(inputArgs, name) {
+  for (let index = 0; index < inputArgs.length; index += 1) {
+    const arg = inputArgs[index];
+    if (arg === name) {
+      return inputArgs[index + 1];
+    }
+    if (arg.startsWith(`${name}=`)) {
+      return arg.slice(name.length + 1);
+    }
+  }
+  return null;
+}
+
+function resolveEntryModuleHref(subpath) {
+  if (subpath === "." || subpath === "./index") {
+    return pathToFileURL(path.join(packageRoot, "dist", "index.js")).href;
+  }
+  const trimmed = subpath.replace(/^\.\//, "").replace(/^\//, "");
+  return pathToFileURL(path.join(packageRoot, "dist", `${trimmed}.js`)).href;
+}
+
+function toPackageSpecifier(subpath) {
+  if (subpath.startsWith("./")) {
+    return `@mermanjs/web/${subpath.slice(2)}`;
+  }
+  return `@mermanjs/web/${subpath.replace(/^\//, "")}`;
+}
+
+function normalizePath(value) {
+  return value.split(path.sep).join("/");
 }

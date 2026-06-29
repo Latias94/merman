@@ -1,5 +1,6 @@
 import {
   asciiSupportedDiagrams,
+  bindingCapabilities,
   createBrowserTextMeasurer,
   editorCodeActions,
   editorCompletions,
@@ -22,10 +23,13 @@ import {
   renderSvgWithTextMeasurer,
   supportedDiagrams,
   supportedThemes,
+  selectedRegistryProfile,
   validate as validateDiagram,
+  type BindingCapabilities,
   type HostTextMeasurer,
   type HostThemePresetName,
   type MermanWasmModule,
+  type RegistryProfile,
   type SvgBindingOptions,
   type EditorCodeAction,
   type EditorCompletionList,
@@ -50,6 +54,7 @@ import {
 } from "@/src/lib/diagram-font";
 
 export { SUPPORTED_THEMES };
+export type { BindingCapabilities, RegistryProfile };
 
 export interface ValidationResult {
   valid: boolean;
@@ -70,6 +75,8 @@ export interface WasmRenderOptions {
 
 export interface MermanWasm {
   init(): Promise<void>;
+  binding_capabilities(): BindingCapabilities;
+  selected_registry_profile(): RegistryProfile;
   render_svg(
     code: string,
     theme: string,
@@ -243,6 +250,14 @@ export function getWasm(): MermanWasm {
 function createWasmAdapter(): MermanWasm {
   return {
     async init() {},
+
+    binding_capabilities(): BindingCapabilities {
+      return bindingCapabilities();
+    },
+
+    selected_registry_profile(): RegistryProfile {
+      return selectedRegistryProfile();
+    },
 
     render_svg(
       code: string,
