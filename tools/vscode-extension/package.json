@@ -1,7 +1,7 @@
 {
   "name": "merman-vscode",
   "displayName": "Merman",
-  "description": "VS Code language support powered by merman-lsp.",
+  "description": "Local Mermaid authoring, diagnostics, preview, and export powered by Merman.",
   "version": "0.1.0",
   "private": true,
   "license": "MIT OR Apache-2.0",
@@ -11,7 +11,7 @@
     "url": "https://github.com/Latias94/merman.git"
   },
   "engines": {
-    "vscode": "^1.125.0"
+    "vscode": "^1.121.0"
   },
   "categories": [
     "Programming Languages",
@@ -24,6 +24,10 @@
     "onLanguage:mdx",
     "onCommand:merman.restartLanguageServer",
     "onCommand:merman.openPreview",
+    "onCommand:merman.exportSvg",
+    "onCommand:merman.exportPng",
+    "onCommand:merman.copySvg",
+    "onCommand:merman.copyPng",
     "onCommand:merman.showRuleCatalog",
     "onCommand:merman.showConfigSchema",
     "workspaceContains:**/*.mmd",
@@ -45,13 +49,19 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "mermaid",
+        "path": "./snippets/mermaid.json"
+      }
+    ],
     "configuration": {
       "title": "Merman",
       "properties": {
         "merman.server.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to auto-detect `target/debug/merman-lsp` or fall back to `cargo run -p merman-lsp`."
+          "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to use the packaged binary or a workspace debug binary."
         },
         "merman.server.args": {
           "type": "array",
@@ -64,7 +74,7 @@
         "merman.server.useCargoRun": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Force the extension to launch `merman-lsp` through `cargo run -p merman-lsp --` even when a local debug binary exists."
+          "markdownDescription": "Development only: launch `merman-lsp` through `cargo run -p merman-lsp --` instead of packaged or debug binaries."
         },
         "merman.server.cargoArgs": {
           "type": "array",
@@ -72,7 +82,25 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Extra Cargo arguments inserted before `--` when the extension launches the server through Cargo."
+          "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-lsp` through Cargo."
+        },
+        "merman.cli.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional absolute path to a prebuilt `merman-cli` executable used for local preview and export. Leave empty to use the packaged binary or a workspace debug binary."
+        },
+        "merman.cli.useCargoRun": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Development only: launch `merman-cli` through `cargo run -p merman-cli --` instead of packaged or debug binaries."
+        },
+        "merman.cli.cargoArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-cli` through Cargo."
         },
         "merman.trace.server": {
           "type": "string",
@@ -169,21 +197,131 @@
       },
       {
         "command": "merman.openPreview",
-        "title": "Merman: Open Preview"
+        "title": "Merman: Open Preview",
+        "category": "Merman",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "merman.exportSvg",
+        "title": "Merman: Export SVG",
+        "category": "Merman",
+        "icon": "$(export)"
+      },
+      {
+        "command": "merman.exportPng",
+        "title": "Merman: Export PNG",
+        "category": "Merman",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "merman.copySvg",
+        "title": "Merman: Copy SVG",
+        "category": "Merman",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "merman.copyPng",
+        "title": "Merman: Copy PNG",
+        "category": "Merman",
+        "icon": "$(file-media)"
       },
       {
         "command": "merman.showRuleCatalog",
-        "title": "Merman: Show Rule Catalog"
+        "title": "Merman: Show Rule Catalog",
+        "category": "Merman"
       },
       {
         "command": "merman.showConfigSchema",
-        "title": "Merman: Show Config Schema"
+        "title": "Merman: Show Config Schema",
+        "category": "Merman"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@10"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@11"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@10"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@11"
+        },
+        {
+          "command": "merman.exportPng",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@12"
+        },
+        {
+          "command": "merman.copySvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@13"
+        },
+        {
+          "command": "merman.copyPng",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@14"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@10"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@11"
+        },
+        {
+          "command": "merman.exportPng",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@12"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.exportPng",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.copySvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.copyPng",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "tsc -p .",
     "check": "tsc -p . --noEmit",
+    "test": "npm run build && node --test dist/test/**/*.test.js",
+    "prepare:binaries": "node scripts/prepare-binaries.mjs",
     "package": "vsce package"
   },
   "dependencies": {
@@ -191,7 +329,7 @@
   },
   "devDependencies": {
     "@types/node": "26.0.1",
-    "@types/vscode": "1.125.0",
+    "@types/vscode": "1.120.0",
     "@vscode/vsce": "3.9.2",
     "typescript": "6.0.3"
   }

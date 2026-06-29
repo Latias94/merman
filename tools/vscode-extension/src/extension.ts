@@ -9,6 +9,7 @@ import {
   pushConfiguration,
   serverStateLabel,
 } from "./server.js";
+import { registerExport } from "./export.js";
 import { registerPreview } from "./preview.js";
 
 let client: LanguageClient | undefined;
@@ -17,6 +18,7 @@ let statusItem: vscode.StatusBarItem | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   ensureStatusItem(context);
   registerPreview(context);
+  registerExport(context);
 
   client = await createLanguageClient(context);
   wireClientStatus(client);

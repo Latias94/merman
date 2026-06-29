@@ -1,0 +1,261 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+}
+
+button,
+select {
+  font: inherit;
+}
+
+.frame {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+.meta {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-sideBar-background);
+}
+
+.meta-top {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.meta h1 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.meta p {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.toolbar button,
+.toolbar select {
+  min-height: 26px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-radius: 3px;
+}
+
+.toolbar button {
+  min-width: 28px;
+  padding: 0 8px;
+}
+
+.toolbar select {
+  padding: 0 6px;
+}
+
+.toolbar button:hover,
+.toolbar select:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.toolbar button[aria-pressed="true"] {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.diagnostics {
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+}
+
+.diagnostics-summary {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.diagnostics-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.diagnostic-item {
+  margin: 0;
+  border-left: 3px solid transparent;
+  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
+}
+
+.diagnostic-button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+}
+
+.diagnostic-button:hover {
+  background: color-mix(in srgb, var(--vscode-list-hoverBackground) 70%, transparent 30%);
+}
+
+.diagnostic-actions {
+  margin: 0;
+  padding: 0 10px 10px;
+  font-size: 12px;
+}
+
+.diagnostic-action {
+  border: 0;
+  padding: 0;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+}
+
+.diagnostic-action:hover {
+  text-decoration: underline;
+}
+
+.diagnostic-item[data-severity="error"] {
+  border-left-color: var(--vscode-errorForeground);
+}
+
+.diagnostic-item[data-severity="warning"] {
+  border-left-color: var(--vscode-editorWarning-foreground);
+}
+
+.diagnostic-item[data-severity="info"] {
+  border-left-color: var(--vscode-editorInfo-foreground);
+}
+
+.diagnostic-item[data-severity="hint"] {
+  border-left-color: var(--vscode-terminal-ansiBrightBlack);
+}
+
+.diagnostic-header {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
+.diagnostic-severity {
+  font-weight: 600;
+}
+
+.diagnostic-location,
+.diagnostic-source {
+  color: var(--vscode-descriptionForeground);
+}
+
+.diagnostic-message {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.viewport,
+.empty {
+  box-sizing: border-box;
+}
+
+.viewport {
+  overflow: auto;
+  background:
+    linear-gradient(45deg, var(--preview-grid-a) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--preview-grid-a) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--preview-grid-a) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--preview-grid-a) 75%);
+  background-color: var(--preview-background);
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  background-size: 20px 20px;
+}
+
+.canvas {
+  min-height: calc(100vh - 110px);
+  padding: 24px;
+  box-sizing: border-box;
+  transform-origin: 0 0;
+}
+
+.canvas svg {
+  max-width: none;
+  height: auto;
+}
+
+.frame[data-fit="true"] .canvas svg {
+  max-width: 100%;
+}
+
+.frame[data-theme="dark"] {
+  --preview-background: #111827;
+  --preview-grid-a: rgba(255, 255, 255, 0.04);
+}
+
+.frame[data-theme="light"] {
+  --preview-background: #ffffff;
+  --preview-grid-a: rgba(15, 23, 42, 0.04);
+}
+
+.frame[data-background="transparent"] {
+  --preview-background: transparent;
+}
+
+.frame[data-background="paper"] {
+  --preview-background: #ffffff;
+}
+
+.frame[data-background="dark"] {
+  --preview-background: #111827;
+}
+
+.empty {
+  padding: 18px;
+}
+
+.empty h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.empty p {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.5;
+}

@@ -16,7 +16,8 @@ import {
   getServerSettings,
   getTraceSetting,
 } from "./config.js";
-import { findWorkspaceDebugBinary, workspaceRoot } from "./workspace.js";
+import { resolveMermanBinary } from "./binaries.js";
+import { workspaceRoots } from "./workspace.js";
 
 export const RULE_CATALOG_METHOD = "merman/ruleCatalog";
 export const CONFIG_SCHEMA_METHOD = "merman/configSchema";
@@ -58,7 +59,7 @@ export async function createLanguageClient(
   );
   context.subscriptions.push(outputChannel);
 
-  const serverOptions = await resolveServerOptions(outputChannel);
+  const serverOptions = await resolveServerOptions(context, outputChannel);
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "mermaid" },
@@ -128,72 +129,37 @@ export function serverStateLabel(state: State): string {
 }
 
 async function resolveServerOptions(
+  context: vscode.ExtensionContext,
   outputChannel: vscode.OutputChannel,
 ): Promise<ServerOptions> {
   const settings = getServerSettings();
-  const explicitPath = settings.path;
-
-  if (explicitPath) {
-    return createExecutableServerOptions(explicitPath, settings.args, outputChannel);
-  }
-
-  if (!settings.useCargoRun) {
-    const workspaceBinary = findWorkspaceDebugBinary("merman-lsp");
-    if (workspaceBinary) {
-      return createExecutableServerOptions(workspaceBinary, settings.args, outputChannel);
-    }
-  }
-
-  return createCargoServerOptions(settings.cargoArgs, settings.args, outputChannel);
-}
-
-function createExecutableServerOptions(
-  commandPath: string,
-  args: string[],
-  outputChannel: vscode.OutputChannel,
-): ServerOptions {
-  outputChannel.appendLine(`[server] executable ${commandPath} ${args.join(" ")}`.trim());
+  const invocation = resolveMermanBinary({
+    binaryName: "merman-lsp",
+    packageName: "merman-lsp",
+    extensionPath: context.extensionUri.fsPath,
+    workspaceRoots: workspaceRoots(),
+    directArgs: settings.args,
+    explicitPath: settings.path,
+    useCargoRun: settings.useCargoRun,
+    cargoArgs: settings.cargoArgs,
+  });
+  outputChannel.appendLine(
+    `[server] ${invocation.label}: ${invocation.command} ${invocation.args.join(" ")}`.trim(),
+  );
+  const options = invocation.cwd ? { cwd: invocation.cwd } : undefined;
   return {
     run: {
-      command: commandPath,
-      args,
-      transport: TransportKind.stdio,
-    },
-    debug: {
-      command: commandPath,
-      args,
-      transport: TransportKind.stdio,
-    },
-  };
-}
-
-function createCargoServerOptions(
-  cargoArgs: string[],
-  serverArgs: string[],
-  outputChannel: vscode.OutputChannel,
-): ServerOptions {
-  const args = ["run", "-p", "merman-lsp", ...cargoArgs, "--", ...serverArgs];
-  outputChannel.appendLine(`[server] cargo ${args.join(" ")}`);
-  const options = workspaceShellOptions();
-  return {
-    run: {
-      command: "cargo",
-      args,
+      command: invocation.command,
+      args: invocation.args,
       options,
       transport: TransportKind.stdio,
     },
     debug: {
-      command: "cargo",
-      args,
+      command: invocation.command,
+      args: invocation.args,
       options,
       transport: TransportKind.stdio,
     },
-  };
-}
-
-function workspaceShellOptions(): { cwd?: string } {
-  return {
-    cwd: workspaceRoot(),
   };
 }
 

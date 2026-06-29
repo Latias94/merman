@@ -1,12 +1,18 @@
-import * as cp from "node:child_process";
 import * as vscode from "vscode";
 
-import { extractPreviewInput, type PreviewInput } from "./preview-source.js";
-import { findWorkspaceDebugBinary, workspaceRoot } from "./workspace.js";
+import {
+  extractPreviewInput,
+  listPreviewInputsFromDocument,
+  type PreviewInput,
+} from "./preview-source.js";
+import {
+  renderPreviewHtml,
+  type PreviewDiagnosticTarget,
+  type PreviewDiagnostics,
+} from "./preview-html.js";
+import { renderMermanSource } from "./renderer.js";
 
 const PREVIEW_COMMAND = "merman.openPreview";
-const REVEAL_DIAGNOSTIC_COMMAND = "merman.revealPreviewDiagnostic";
-const SHOW_DIAGNOSTIC_FIXES_COMMAND = "merman.showPreviewDiagnosticFixes";
 const PREVIEW_TITLE = "Merman Preview";
 const RENDER_DEBOUNCE_MS = 180;
 const DIAGNOSTICS_PREVIEW_LIMIT = 8;
@@ -21,33 +27,17 @@ class MermanPreviewController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
   private renderVersion = 0;
-  private activeRender: cp.ChildProcess | undefined;
   private lastPreviewEditorUri: string | undefined;
+  private pinnedSource: PreviewSourcePin | undefined;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.outputChannel = vscode.window.createOutputChannel("Merman Preview", { log: true });
     this.disposables.push(this.outputChannel);
     this.disposables.push(
-      vscode.commands.registerCommand(PREVIEW_COMMAND, async () => {
-        await this.open();
+      vscode.commands.registerCommand(PREVIEW_COMMAND, async (resource?: vscode.Uri) => {
+        await this.open(resource);
       }),
-    );
-    this.disposables.push(
-      vscode.commands.registerCommand(
-        REVEAL_DIAGNOSTIC_COMMAND,
-        async (target: PreviewDiagnosticTarget) => {
-          await revealDiagnosticTarget(target);
-        },
-      ),
-    );
-    this.disposables.push(
-      vscode.commands.registerCommand(
-        SHOW_DIAGNOSTIC_FIXES_COMMAND,
-        async (target: PreviewDiagnosticTarget) => {
-          await showDiagnosticFixes(target);
-        },
-      ),
     );
     this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor(() => {
@@ -89,17 +79,26 @@ class MermanPreviewController implements vscode.Disposable {
     }
   }
 
-  private async open(): Promise<void> {
+  private async open(resource?: vscode.Uri): Promise<void> {
+    await this.openResource(resource);
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "mermanPreview",
         PREVIEW_TITLE,
         vscode.ViewColumn.Beside,
         {
-          enableCommandUris: true,
-          enableScripts: false,
+          enableCommandUris: false,
+          enableScripts: true,
+          localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
           retainContextWhenHidden: true,
         },
+      );
+      this.panel.webview.onDidReceiveMessage(
+        (message: PreviewWebviewMessage) => {
+          void this.handleWebviewMessage(message);
+        },
+        null,
+        this.disposables,
       );
       this.panel.onDidDispose(() => {
         this.clearPendingRender();
@@ -115,6 +114,22 @@ class MermanPreviewController implements vscode.Disposable {
     }
 
     this.scheduleRefresh("manual-open", true);
+  }
+
+  private async openResource(resource?: vscode.Uri): Promise<void> {
+    if (!resource) {
+      return;
+    }
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor?.document.uri.toString() === resource.toString()) {
+      return;
+    }
+    this.lastPreviewEditorUri = resource.toString();
+    const document = await vscode.workspace.openTextDocument(resource);
+    await vscode.window.showTextDocument(document, {
+      preview: true,
+      preserveFocus: false,
+    });
   }
 
   private scheduleRefresh(reason: string, immediate = false): void {
@@ -142,10 +157,11 @@ class MermanPreviewController implements vscode.Disposable {
     }
 
     const editor = this.resolvePreviewEditor();
-    const input = editor ? extractPreviewInput(editor) : null;
+    const input = editor ? this.resolvePreviewInput(editor) : null;
     if (!input) {
+      this.pinnedSource = undefined;
       panel.title = PREVIEW_TITLE;
-      panel.webview.html = renderPreviewHtml(panel.webview, undefined, undefined, undefined, {
+      panel.webview.html = this.renderHtml(undefined, undefined, undefined, {
         heading: "No Mermaid source available",
         detail:
           "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
@@ -154,81 +170,69 @@ class MermanPreviewController implements vscode.Disposable {
     }
 
     this.lastPreviewEditorUri = editor?.document.uri.toString();
-
     const diagnostics = editor
       ? collectPreviewDiagnostics(editor.document.uri, input.diagnosticRange)
       : undefined;
+    const sources = editor ? listPreviewInputsFromDocument(editor.document, editor.selection.active.line) : [];
 
     panel.title = `${PREVIEW_TITLE}: ${input.title}`;
     const currentRender = ++this.renderVersion;
-    panel.webview.html = renderPreviewHtml(panel.webview, input, undefined, diagnostics, {
+    panel.webview.html = this.renderHtml(input, undefined, diagnostics, {
       heading: "Rendering preview",
       detail: `Source: ${input.subtitle}`,
-    });
+    }, sources);
 
     try {
-      this.outputChannel.info(`refresh=${reason} source="${input.title}"`);
+      this.outputChannel.info(`refresh=${reason} source="${input.title}" id="${input.sourceId}"`);
       const svg = await this.renderSvg(input.source);
       if (!this.panel || currentRender !== this.renderVersion) {
         return;
       }
-      panel.webview.html = renderPreviewHtml(panel.webview, input, svg, diagnostics);
+      panel.webview.html = this.renderHtml(input, svg, diagnostics, undefined, sources);
     } catch (error) {
       if (!this.panel || currentRender !== this.renderVersion) {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
       this.outputChannel.error(message);
-      panel.webview.html = renderPreviewHtml(panel.webview, input, undefined, diagnostics, {
+      panel.webview.html = this.renderHtml(input, undefined, diagnostics, {
         heading: "Render failed",
         detail: message,
-      });
+      }, sources);
     }
   }
 
   private async renderSvg(source: string): Promise<string> {
-    const invocation = resolveCliInvocation();
-    if (!invocation) {
-      throw new Error("No workspace root found for merman-cli preview.");
-    }
+    const result = await renderMermanSource({
+      context: this.context,
+      source,
+      format: "svg",
+      outputChannel: this.outputChannel,
+      signalLabel: "preview",
+    });
+    return result.stdout.toString("utf8");
+  }
 
-    this.activeRender?.kill();
-    return new Promise<string>((resolve, reject) => {
-      const child = cp.spawn(invocation.command, invocation.args, {
-        cwd: invocation.cwd,
-        env: process.env,
-        stdio: "pipe",
-      });
-      this.activeRender = child;
-
-      let stdout = "";
-      let stderr = "";
-      child.stdout?.setEncoding("utf8");
-      child.stderr?.setEncoding("utf8");
-      child.stdout?.on("data", (chunk: string) => {
-        stdout += chunk;
-      });
-      child.stderr?.on("data", (chunk: string) => {
-        stderr += chunk;
-      });
-      child.on("error", (error) => {
-        reject(error);
-      });
-      child.on("close", (code, signal) => {
-        if (this.activeRender === child) {
-          this.activeRender = undefined;
-        }
-        if (signal === "SIGTERM") {
-          return reject(new Error("Preview render was superseded by a newer update."));
-        }
-        if (code !== 0) {
-          return reject(
-            new Error(stderr.trim() || `merman-cli exited with status ${code ?? "unknown"}`),
-          );
-        }
-        resolve(stdout);
-      });
-      child.stdin?.end(source, "utf8");
+  private renderHtml(
+    input?: PreviewInput,
+    svg?: string,
+    diagnostics?: PreviewDiagnostics,
+    message?: { heading: string; detail: string },
+    sources: readonly PreviewInput[] = [],
+  ): string {
+    const webview = this.panel?.webview;
+    return renderPreviewHtml({
+      resources: {
+        cspSource: webview?.cspSource ?? "'self'",
+        stylesUri: webviewResourceUri(webview, this.context.extensionUri, "preview.css"),
+        scriptUri: webviewResourceUri(webview, this.context.extensionUri, "preview.js"),
+      },
+      input,
+      svg,
+      diagnostics,
+      message,
+      sources,
+      pinned: this.isPinnedInput(input),
     });
   }
 
@@ -237,13 +241,11 @@ class MermanPreviewController implements vscode.Disposable {
       clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
     }
-    this.activeRender?.kill();
-    this.activeRender = undefined;
   }
 
   private resolvePreviewEditor(): vscode.TextEditor | undefined {
     const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor && extractPreviewInput(activeEditor)) {
+    if (activeEditor && this.resolvePreviewInput(activeEditor)) {
       return activeEditor;
     }
 
@@ -254,260 +256,128 @@ class MermanPreviewController implements vscode.Disposable {
     return vscode.window.visibleTextEditors.find(
       (editor) =>
         editor.document.uri.toString() === this.lastPreviewEditorUri &&
-        extractPreviewInput(editor) !== null,
+        this.resolvePreviewInput(editor) !== null,
     );
   }
-}
 
-function resolveCliInvocation():
-  | { command: string; args: string[]; cwd?: string }
-  | undefined {
-  const binary = findWorkspaceDebugBinary("merman-cli");
-  if (binary) {
-    return {
-      command: binary,
-      args: ["-q", "-i", "-", "-o", "-", "-e", "svg"],
-      cwd: workspaceRoot(),
+  private resolvePreviewInput(editor: vscode.TextEditor): PreviewInput | null {
+    const editorUri = editor.document.uri.toString();
+    if (this.pinnedSource?.uri === editorUri) {
+      const pinned = extractPreviewInput(editor, this.pinnedSource.sourceId);
+      if (pinned) {
+        return pinned;
+      }
+      this.pinnedSource = undefined;
+    }
+    return extractPreviewInput(editor);
+  }
+
+  private isPinnedInput(input: PreviewInput | undefined): boolean {
+    return (
+      !!input &&
+      !!this.pinnedSource &&
+      this.lastPreviewEditorUri === this.pinnedSource.uri &&
+      input.sourceId === this.pinnedSource.sourceId
+    );
+  }
+
+  private async handleWebviewMessage(message: PreviewWebviewMessage): Promise<void> {
+    if (!isPreviewMessage(message)) {
+      return;
+    }
+    switch (message.type) {
+      case "copySvg":
+        await vscode.env.clipboard.writeText(message.svg);
+        void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
+        return;
+      case "revealDiagnostic":
+        await revealDiagnosticTarget(parseDiagnosticTarget(message.target));
+        return;
+      case "showDiagnosticFixes":
+        await showDiagnosticFixes(parseDiagnosticTarget(message.target));
+        return;
+      case "togglePin":
+        this.togglePin();
+        return;
+      case "selectSource":
+        this.selectSource(message.sourceId);
+        return;
+    }
+  }
+
+  private togglePin(): void {
+    const editor = this.resolvePreviewEditor();
+    const input = editor ? this.resolvePreviewInput(editor) : null;
+    if (!editor || !input) {
+      return;
+    }
+    const editorUri = editor.document.uri.toString();
+    if (this.pinnedSource?.uri === editorUri && this.pinnedSource.sourceId === input.sourceId) {
+      this.pinnedSource = undefined;
+    } else {
+      this.pinnedSource = {
+        uri: editorUri,
+        sourceId: input.sourceId,
+      };
+    }
+    this.scheduleRefresh("pin-toggle", true);
+  }
+
+  private selectSource(sourceId: string): void {
+    const editor = this.resolvePreviewEditor();
+    if (!editor || sourceId.length === 0) {
+      return;
+    }
+    const input = extractPreviewInput(editor, sourceId);
+    if (!input) {
+      return;
+    }
+    this.pinnedSource = {
+      uri: editor.document.uri.toString(),
+      sourceId: input.sourceId,
     };
+    this.scheduleRefresh("source-select", true);
   }
-
-  const root = workspaceRoot();
-  if (!root) {
-    return undefined;
-  }
-
-  return {
-    command: "cargo",
-    args: ["run", "-q", "-p", "merman-cli", "--", "-q", "-i", "-", "-o", "-", "-e", "svg"],
-    cwd: root,
-  };
 }
 
-function renderPreviewHtml(
-  webview: vscode.Webview,
-  input?: PreviewInput,
-  svg?: string,
-  diagnostics?: PreviewDiagnostics,
-  message?: { heading: string; detail: string },
-): string {
-  const title = input ? escapeHtml(input.title) : PREVIEW_TITLE;
-  const subtitle = input ? escapeHtml(input.subtitle) : "No active Mermaid source";
-  const diagnosticsSection = renderDiagnosticsSection(diagnostics);
-  const body = svg
-    ? `<section class="canvas">${svg}</section>`
-    : `<section class="empty"><h2>${escapeHtml(message?.heading ?? "No preview")}</h2><p>${escapeHtml(message?.detail ?? "")}</p></section>`;
-
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} data:;"
-    />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${title}</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-      }
-      body {
-        margin: 0;
-        font-family: var(--vscode-font-family);
-        color: var(--vscode-editor-foreground);
-        background: var(--vscode-editor-background);
-      }
-      .frame {
-        min-height: 100vh;
-        display: grid;
-        grid-template-rows: auto auto 1fr;
-      }
-      .meta {
-        padding: 12px 16px;
-        border-bottom: 1px solid var(--vscode-panel-border);
-        background: var(--vscode-sideBar-background);
-      }
-      .meta h1 {
-        margin: 0 0 4px;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      .meta p {
-        margin: 0;
-        color: var(--vscode-descriptionForeground);
-        font-size: 12px;
-      }
-      .diagnostics {
-        padding: 10px 16px 12px;
-        border-bottom: 1px solid var(--vscode-panel-border);
-        background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
-      }
-      .diagnostics-summary {
-        margin: 0 0 8px;
-        font-size: 12px;
-        color: var(--vscode-descriptionForeground);
-      }
-      .diagnostics-list {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-        display: grid;
-        gap: 6px;
-      }
-      .diagnostic-item {
-        margin: 0;
-        border-left: 3px solid transparent;
-        background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
-      }
-      .diagnostic-link {
-        display: block;
-        padding: 8px 10px;
-        color: inherit;
-        text-decoration: none;
-      }
-      .diagnostic-link:hover {
-        background: color-mix(in srgb, var(--vscode-list-hoverBackground) 70%, transparent 30%);
-      }
-      .diagnostic-actions {
-        margin: 0;
-        padding: 0 10px 10px;
-        font-size: 12px;
-      }
-      .diagnostic-action-link {
-        color: var(--vscode-textLink-foreground);
-        text-decoration: none;
-      }
-      .diagnostic-action-link:hover {
-        text-decoration: underline;
-      }
-      .diagnostic-item[data-severity="error"] {
-        border-left-color: var(--vscode-errorForeground);
-      }
-      .diagnostic-item[data-severity="warning"] {
-        border-left-color: var(--vscode-editorWarning-foreground);
-      }
-      .diagnostic-item[data-severity="info"] {
-        border-left-color: var(--vscode-editorInfo-foreground);
-      }
-      .diagnostic-item[data-severity="hint"] {
-        border-left-color: var(--vscode-terminal-ansiBrightBlack);
-      }
-      .diagnostic-header {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
-        flex-wrap: wrap;
-        margin: 0 0 4px;
-        font-size: 12px;
-      }
-      .diagnostic-severity {
-        font-weight: 600;
-      }
-      .diagnostic-location,
-      .diagnostic-source {
-        color: var(--vscode-descriptionForeground);
-      }
-      .diagnostic-message {
-        margin: 0;
-        font-size: 12px;
-        line-height: 1.45;
-        white-space: pre-wrap;
-      }
-      .canvas,
-      .empty {
-        padding: 18px;
-        box-sizing: border-box;
-      }
-      .canvas {
-        overflow: auto;
-      }
-      .canvas svg {
-        max-width: 100%;
-        height: auto;
-      }
-      .empty h2 {
-        margin: 0 0 8px;
-        font-size: 14px;
-      }
-      .empty p {
-        margin: 0;
-        white-space: pre-wrap;
-        color: var(--vscode-descriptionForeground);
-        line-height: 1.5;
-      }
-    </style>
-  </head>
-  <body>
-    <main class="frame">
-      <header class="meta">
-        <h1>${title}</h1>
-        <p>${subtitle}</p>
-      </header>
-      ${diagnosticsSection}
-      ${body}
-    </main>
-  </body>
-</html>`;
-}
-
-interface PreviewDiagnosticItem {
-  severityLabel: string;
-  severityKey: "error" | "warning" | "info" | "hint";
-  line: number;
-  column: number;
-  commandUri: string;
-  quickFixCommandUri?: string;
-  source?: string;
-  code?: string;
-  message: string;
-}
-
-interface PreviewDiagnostics {
-  summary: string;
-  visibleCount: number;
-  totalCount: number;
-  items: PreviewDiagnosticItem[];
-}
-
-interface PreviewDiagnosticTarget {
+interface PreviewSourcePin {
   uri: string;
-  startLine: number;
-  startCharacter: number;
-  endLine: number;
-  endCharacter: number;
+  sourceId: string;
 }
 
-function collectPreviewDiagnostics(
+function webviewResourceUri(
+  webview: vscode.Webview | undefined,
+  extensionUri: vscode.Uri,
+  fileName: string,
+): string {
+  const resource = vscode.Uri.joinPath(extensionUri, "media", fileName);
+  return webview ? webview.asWebviewUri(resource).toString() : resource.toString();
+}
+
+export function collectPreviewDiagnostics(
   uri: vscode.Uri,
   diagnosticRange: { startLine: number; endLine: number },
 ): PreviewDiagnostics {
-  const diagnostics = vscode.languages
-    .getDiagnostics(uri)
-    .filter((diagnostic) => isDiagnosticInRange(diagnostic, diagnosticRange))
-    .sort(compareDiagnostics);
+  const diagnostics = deduplicateDiagnostics(
+    vscode.languages
+      .getDiagnostics(uri)
+      .filter((diagnostic) => isDiagnosticInRange(diagnostic, diagnosticRange))
+      .sort(compareDiagnostics),
+  );
 
   const items = diagnostics.slice(0, DIAGNOSTICS_PREVIEW_LIMIT).map((diagnostic) => ({
     severityLabel: diagnosticSeverityLabel(diagnostic.severity),
     severityKey: diagnosticSeverityKey(diagnostic.severity),
     line: diagnostic.range.start.line + 1,
     column: diagnostic.range.start.character + 1,
-    commandUri: createDiagnosticCommandUri({
+    target: {
       uri: uri.toString(),
       startLine: diagnostic.range.start.line,
       startCharacter: diagnostic.range.start.character,
       endLine: diagnostic.range.end.line,
       endCharacter: diagnostic.range.end.character,
-    }),
-    quickFixCommandUri:
-      diagnostic.source === "merman"
-        ? createQuickFixCommandUri({
-            uri: uri.toString(),
-            startLine: diagnostic.range.start.line,
-            startCharacter: diagnostic.range.start.character,
-            endLine: diagnostic.range.end.line,
-            endCharacter: diagnostic.range.end.character,
-          })
-        : undefined,
+    },
+    hasQuickFixes: diagnostic.source === "merman",
     source: diagnostic.source,
     code: diagnosticCodeLabel(diagnostic.code),
     message: diagnostic.message,
@@ -533,49 +403,25 @@ function collectPreviewDiagnostics(
   };
 }
 
-function renderDiagnosticsSection(diagnostics?: PreviewDiagnostics): string {
-  if (!diagnostics) {
-    return "";
-  }
-
-  const suffix =
-    diagnostics.totalCount > diagnostics.visibleCount
-      ? ` Showing first ${diagnostics.visibleCount} of ${diagnostics.totalCount}.`
-      : diagnostics.totalCount > 0
-        ? ` Showing ${diagnostics.totalCount}.`
-        : "";
-
-  if (diagnostics.items.length === 0) {
-    return `<section class="diagnostics"><p class="diagnostics-summary">${escapeHtml(`${diagnostics.summary}. No issues in the active preview range.`)}</p></section>`;
-  }
-
-  const items = diagnostics.items
-    .map((item) => {
-      const headerParts = [
-        `<span class="diagnostic-severity">${escapeHtml(item.severityLabel)}</span>`,
-        `<span class="diagnostic-location">Ln ${item.line}, Col ${item.column}</span>`,
-      ];
-      const sourceLabel = [item.source, item.code].filter(Boolean).join(": ");
-      if (sourceLabel) {
-        headerParts.push(`<span class="diagnostic-source">${escapeHtml(sourceLabel)}</span>`);
-      }
-      const actions = item.quickFixCommandUri
-        ? `<p class="diagnostic-actions"><a class="diagnostic-action-link" href="${escapeHtml(item.quickFixCommandUri)}" title="Request available quick fixes">Quick Fixes</a></p>`
-        : "";
-      return `<li class="diagnostic-item" data-severity="${item.severityKey}">
-        <a class="diagnostic-link" href="${escapeHtml(item.commandUri)}" title="Open diagnostic location in editor">
-          <p class="diagnostic-header">${headerParts.join("")}</p>
-          <p class="diagnostic-message">${escapeHtml(item.message)}</p>
-        </a>
-        ${actions}
-      </li>`;
-    })
-    .join("");
-
-  return `<section class="diagnostics">
-    <p class="diagnostics-summary">${escapeHtml(`${diagnostics.summary}.${suffix}`)}</p>
-    <ol class="diagnostics-list">${items}</ol>
-  </section>`;
+function deduplicateDiagnostics(diagnostics: readonly vscode.Diagnostic[]): vscode.Diagnostic[] {
+  const seen = new Set<string>();
+  return diagnostics.filter((diagnostic) => {
+    const key = [
+      diagnostic.range.start.line,
+      diagnostic.range.start.character,
+      diagnostic.range.end.line,
+      diagnostic.range.end.character,
+      diagnostic.severity,
+      diagnostic.source ?? "",
+      diagnosticCodeLabel(diagnostic.code) ?? "",
+      diagnostic.message,
+    ].join("\u0000");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function isDiagnosticInRange(
@@ -584,10 +430,7 @@ function isDiagnosticInRange(
 ): boolean {
   const startLine = diagnostic.range.start.line;
   const endLine = diagnostic.range.end.line;
-  return (
-    startLine <= diagnosticRange.endLine &&
-    endLine >= diagnosticRange.startLine
-  );
+  return startLine <= diagnosticRange.endLine && endLine >= diagnosticRange.startLine;
 }
 
 function compareDiagnostics(a: vscode.Diagnostic, b: vscode.Diagnostic): number {
@@ -652,12 +495,24 @@ function diagnosticCodeLabel(code: vscode.Diagnostic["code"]): string | undefine
   return undefined;
 }
 
-function createDiagnosticCommandUri(target: PreviewDiagnosticTarget): string {
-  return `command:${REVEAL_DIAGNOSTIC_COMMAND}?${encodeURIComponent(JSON.stringify([target]))}`;
-}
-
-function createQuickFixCommandUri(target: PreviewDiagnosticTarget): string {
-  return `command:${SHOW_DIAGNOSTIC_FIXES_COMMAND}?${encodeURIComponent(JSON.stringify([target]))}`;
+function parseDiagnosticTarget(raw: string): PreviewDiagnosticTarget {
+  const parsed = JSON.parse(raw) as Partial<PreviewDiagnosticTarget>;
+  if (
+    typeof parsed.uri !== "string" ||
+    typeof parsed.startLine !== "number" ||
+    typeof parsed.startCharacter !== "number" ||
+    typeof parsed.endLine !== "number" ||
+    typeof parsed.endCharacter !== "number"
+  ) {
+    throw new Error("Invalid preview diagnostic target");
+  }
+  return {
+    uri: parsed.uri,
+    startLine: parsed.startLine,
+    startCharacter: parsed.startCharacter,
+    endLine: parsed.endLine,
+    endCharacter: parsed.endCharacter,
+  };
 }
 
 async function revealDiagnosticTarget(target: PreviewDiagnosticTarget): Promise<void> {
@@ -716,10 +571,7 @@ async function showDiagnosticFixes(target: PreviewDiagnosticTarget): Promise<voi
       matchOnDetail: true,
     },
   );
-  if (!picked) {
-    return;
-  }
-  if (!picked.action) {
+  if (!picked?.action) {
     return;
   }
 
@@ -765,11 +617,29 @@ async function applyCodeActionLike(action: vscode.Command | vscode.CodeAction): 
   }
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+type PreviewWebviewMessage =
+  | { type: "copySvg"; svg: string }
+  | { type: "revealDiagnostic"; target: string }
+  | { type: "showDiagnosticFixes"; target: string }
+  | { type: "togglePin" }
+  | { type: "selectSource"; sourceId: string };
+
+function isPreviewMessage(value: unknown): value is PreviewWebviewMessage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  switch (record.type) {
+    case "copySvg":
+      return typeof record.svg === "string";
+    case "revealDiagnostic":
+    case "showDiagnosticFixes":
+      return typeof record.target === "string";
+    case "selectSource":
+      return typeof record.sourceId === "string";
+    case "togglePin":
+      return true;
+    default:
+      return false;
+  }
 }

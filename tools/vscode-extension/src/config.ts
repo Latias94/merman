@@ -9,6 +9,12 @@ export interface MermanServerSettings {
   cargoArgs: string[];
 }
 
+export interface MermanCliSettings {
+  path: string;
+  useCargoRun: boolean;
+  cargoArgs: string[];
+}
+
 export interface LintRuleSeverityOverride {
   rule_id: string;
   severity: "error" | "warning" | "info" | "hint";
@@ -48,6 +54,15 @@ export function getServerSettings(): MermanServerSettings {
     args: sanitizeStringArray(config.get<unknown[]>("server.args", [])),
     useCargoRun: config.get<boolean>("server.useCargoRun", false),
     cargoArgs: sanitizeStringArray(config.get<unknown[]>("server.cargoArgs", [])),
+  };
+}
+
+export function getCliSettings(): MermanCliSettings {
+  const config = getMermanConfiguration();
+  return {
+    path: config.get<string>("cli.path", "").trim(),
+    useCargoRun: config.get<boolean>("cli.useCargoRun", false),
+    cargoArgs: sanitizeStringArray(config.get<unknown[]>("cli.cargoArgs", [])),
   };
 }
 
