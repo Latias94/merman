@@ -85,6 +85,7 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             "common relationship markers",
             "endpoint labels",
             "routed relation lanes",
+            "independent relation components",
             "dense relation summaries",
         ],
         limits: &[
@@ -122,6 +123,7 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             "cardinality markers",
             "identifying relationships",
             "routed relation lanes",
+            "independent relation components",
             "dense relation summaries",
         ],
         limits: &[

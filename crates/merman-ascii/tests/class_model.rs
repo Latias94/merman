@@ -905,6 +905,28 @@ fn class_local_semantic_fixture_covers_wide_members_and_summary_labels() {
 }
 
 #[test]
+fn class_parser_independent_relation_pairs_do_not_share_grid_budget() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nclass D\nA --> B : ab\nC --> D : cd",
+        &options,
+    )
+    .expect("independent relation pairs should render separately");
+
+    for expected in ["A", "B", "C", "D", "ab", "cd"] {
+        assert!(
+            rendered.contains(expected),
+            "independent class relation pairs should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "independent class relation pairs should not share one tight grid budget:\n{rendered}"
+    );
+}
+
+#[test]
 fn class_local_semantic_fixture_covers_annotation_methods() {
     let input = read_local_semantic_fixture("class/annotation_methods.mmd");
     let rendered = render_class(&input, &AsciiRenderOptions::ascii())

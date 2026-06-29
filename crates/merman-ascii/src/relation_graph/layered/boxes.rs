@@ -138,9 +138,8 @@ pub(crate) fn relation_components<'a>(
     boxes: &'a [RelationGraphBox],
     edges: &[LayeredRelationEdge],
 ) -> std::result::Result<Vec<RelationGraphComponent<'a>>, LayeredRelationError> {
-    // Keep every related box in one planning domain so layer reordering can still solve
-    // disjoint adjacent-layer crossings; only truly isolated boxes become standalone components.
     let mut incident_ids = HashSet::new();
+    let mut neighbors = HashMap::<&str, Vec<&str>>::new();
     for edge in edges {
         if find_box(boxes, edge.source_id()).is_none()
             || find_box(boxes, edge.target_id()).is_none()
@@ -150,19 +149,57 @@ pub(crate) fn relation_components<'a>(
 
         incident_ids.insert(edge.source_id());
         incident_ids.insert(edge.target_id());
+        neighbors
+            .entry(edge.source_id())
+            .or_default()
+            .push(edge.target_id());
+        neighbors
+            .entry(edge.target_id())
+            .or_default()
+            .push(edge.source_id());
     }
 
     let mut components = Vec::new();
+    let mut visited = HashSet::new();
 
-    if !edges.is_empty() {
-        let relation_boxes = boxes
+    for edge in edges {
+        let start_id = edge.source_id();
+        if visited.contains(start_id) {
+            continue;
+        }
+
+        let mut component_ids = HashSet::new();
+        let mut queue = VecDeque::new();
+        visited.insert(start_id);
+        component_ids.insert(start_id);
+        queue.push_back(start_id);
+
+        while let Some(id) = queue.pop_front() {
+            for neighbor_id in neighbors.get(id).into_iter().flatten() {
+                if visited.insert(*neighbor_id) {
+                    component_ids.insert(*neighbor_id);
+                    queue.push_back(*neighbor_id);
+                }
+            }
+        }
+
+        let component_boxes = boxes
             .iter()
-            .filter(|relation_box| incident_ids.contains(relation_box.id()))
+            .filter(|relation_box| component_ids.contains(relation_box.id()))
+            .collect::<Vec<_>>();
+        let component_edge_indices = edges
+            .iter()
+            .enumerate()
+            .filter_map(|(index, edge)| {
+                (component_ids.contains(edge.source_id())
+                    && component_ids.contains(edge.target_id()))
+                .then_some(index)
+            })
             .collect::<Vec<_>>();
 
         components.push(RelationGraphComponent {
-            boxes: relation_boxes,
-            edge_indices: (0..edges.len()).collect(),
+            boxes: component_boxes,
+            edge_indices: component_edge_indices,
         });
     }
 

@@ -3,6 +3,7 @@ use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::options::AsciiRenderOptions;
 use crate::text::{StyledLine, display_width, split_label_lines};
 use crate::{AsciiError, Result};
+use std::collections::HashSet;
 mod layered;
 mod summary;
 
@@ -492,6 +493,16 @@ where
     if components.len() == 1 {
         return render_relation_component(boxes, relations, options, adapter);
     }
+    if let Some(rendered) = render_combined_relation_components(
+        boxes,
+        relations,
+        options,
+        adapter,
+        &components,
+        &edges,
+    )? {
+        return Ok(rendered);
+    }
 
     let mut rendered = Vec::new();
     for component in components {
@@ -514,6 +525,113 @@ where
     }
 
     Ok(rendered.join("\n"))
+}
+
+fn render_combined_relation_components<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    adapter: &A,
+    components: &[RelationGraphComponent<'_>],
+    edges: &[LayeredRelationEdge],
+) -> Result<Option<String>>
+where
+    A: RelationComponentAdapter<R>,
+    R: Clone,
+{
+    let relation_component_count = components
+        .iter()
+        .filter(|component| !component.edge_indices().is_empty())
+        .count();
+    if relation_component_count < 2 {
+        return Ok(None);
+    }
+
+    let relation_ids = components
+        .iter()
+        .filter(|component| !component.edge_indices().is_empty())
+        .flat_map(|component| {
+            component
+                .boxes()
+                .iter()
+                .map(|relation_box| relation_box.id())
+        })
+        .collect::<HashSet<_>>();
+    let relation_boxes = boxes
+        .iter()
+        .filter(|relation_box| relation_ids.contains(relation_box.id()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut relation_indices = components
+        .iter()
+        .flat_map(|component| component.edge_indices().iter().copied())
+        .collect::<Vec<_>>();
+    relation_indices.sort_unstable();
+    relation_indices.dedup();
+    let component_relations = relation_indices
+        .iter()
+        .map(|index| relations[*index].clone())
+        .collect::<Vec<_>>();
+
+    let combined = match render_layered_relation_component_result(
+        &relation_boxes,
+        &component_relations,
+        options,
+        adapter.layered_horizontal_gap(),
+        options.max_grid_cells,
+        adapter,
+    )? {
+        Ok(rendered) => rendered,
+        Err(reason) => {
+            if split_summary_fallback_is_safe(components, edges) {
+                return Ok(None);
+            }
+            render_relation_summary_rows(
+                &relation_boxes,
+                &component_relations,
+                options,
+                |relation| adapter.build_summary_row(relation, reason),
+            )?
+        }
+    };
+
+    let mut rendered = vec![combined];
+    for component in components
+        .iter()
+        .filter(|component| component.edge_indices().is_empty())
+    {
+        let component_boxes = component
+            .boxes()
+            .iter()
+            .map(|relation_box| (*relation_box).clone())
+            .collect::<Vec<_>>();
+        rendered.push(render_relation_component(
+            &component_boxes,
+            &[],
+            options,
+            adapter,
+        )?);
+    }
+
+    Ok(Some(rendered.join("\n")))
+}
+
+fn split_summary_fallback_is_safe(
+    components: &[RelationGraphComponent<'_>],
+    edges: &[LayeredRelationEdge],
+) -> bool {
+    components
+        .iter()
+        .filter(|component| !component.edge_indices().is_empty())
+        .all(|component| {
+            let [edge_index] = component.edge_indices() else {
+                return false;
+            };
+            let Some(edge) = edges.get(*edge_index) else {
+                return false;
+            };
+            edge.source_id() != edge.target_id()
+        })
 }
 
 fn render_relation_component<R, A>(
@@ -555,6 +673,32 @@ pub(crate) fn render_layered_relation_component<R, A>(
 where
     A: RelationComponentAdapter<R>,
 {
+    match render_layered_relation_component_result(
+        boxes,
+        relations,
+        options,
+        horizontal_gap,
+        max_grid_cells,
+        adapter,
+    )? {
+        Ok(rendered) => Ok(rendered),
+        Err(reason) => render_relation_summary_rows(boxes, relations, options, |relation| {
+            adapter.build_summary_row(relation, reason)
+        }),
+    }
+}
+
+fn render_layered_relation_component_result<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    horizontal_gap: usize,
+    max_grid_cells: usize,
+    adapter: &A,
+) -> Result<std::result::Result<String, LayeredRelationSummaryReason>>
+where
+    A: RelationComponentAdapter<R>,
+{
     let edges = relations
         .iter()
         .map(|relation| adapter.build_edges(relation))
@@ -564,9 +708,7 @@ where
     {
         LayeredRelationScenePlan::Routed(scene) => scene,
         LayeredRelationScenePlan::Summary(reason) => {
-            return render_relation_summary_rows(boxes, relations, options, |relation| {
-                adapter.build_summary_row(relation, reason)
-            });
+            return Ok(Err(reason));
         }
     };
 
@@ -581,12 +723,10 @@ where
     }
 
     if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
-        return render_relation_summary_rows(boxes, relations, options, |relation| {
-            adapter.build_summary_row(relation, LayeredRelationSummaryReason::BoxOverlap)
-        });
+        return Ok(Err(LayeredRelationSummaryReason::BoxOverlap));
     }
 
-    Ok(canvas.finish_trimmed_with_options(options))
+    Ok(Ok(canvas.finish_trimmed_with_options(options)))
 }
 
 pub(crate) fn find_box<'a>(
@@ -929,6 +1069,43 @@ mod tests {
             canvas.finish_trimmed_with_options(&AsciiRenderOptions::ascii()),
             "+---+\n| A |\n+---+\n| B |\n+---+\n"
         );
+    }
+
+    #[test]
+    fn relation_components_split_disconnected_relation_subgraphs() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+            RelationGraphBox::new("d".to_string(), vec!["D".to_string()], 1),
+            RelationGraphBox::new("isolated".to_string(), vec!["I".to_string()], 1),
+        ];
+        let edges = vec![
+            LayeredRelationEdge::new("a", "b", 0, 0),
+            LayeredRelationEdge::new("c", "d", 0, 0),
+        ];
+
+        let components = relation_components(&boxes, &edges).expect("components should split");
+        let component_box_ids = components
+            .iter()
+            .map(|component| {
+                component
+                    .boxes()
+                    .iter()
+                    .map(|relation_box| relation_box.id())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let component_edge_indices = components
+            .iter()
+            .map(|component| component.edge_indices().to_vec())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            component_box_ids,
+            vec![vec!["a", "b"], vec!["c", "d"], vec!["isolated"]]
+        );
+        assert_eq!(component_edge_indices, vec![vec![0], vec![1], vec![]]);
     }
 
     #[test]

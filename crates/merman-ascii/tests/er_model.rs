@@ -773,6 +773,30 @@ fn er_parser_relationship_layout_falls_back_to_summary_when_grid_budget_is_tight
 }
 
 #[test]
+fn er_parser_independent_relationship_pairs_do_not_share_grid_budget() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_er(
+        "erDiagram\nCUSTOMER ||--o{ ORDER : places\nINVOICE ||--|| PAYMENT : captures",
+        &options,
+    )
+    .expect("independent ER relationship pairs should render separately");
+
+    for expected in [
+        "CUSTOMER", "ORDER", "INVOICE", "PAYMENT", "places", "captures",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "independent ER relationship pairs should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "independent ER relationship pairs should not share one tight grid budget:\n{rendered}"
+    );
+}
+
+#[test]
 fn er_color_html_wraps_dense_relation_summary_roles_without_changing_plain_text() {
     let theme = AsciiColorTheme::default_light()
         .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))
