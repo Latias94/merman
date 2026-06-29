@@ -228,8 +228,8 @@ fn indent_child_frame(lines: Vec<SequenceLine>) -> Vec<SequenceLine> {
 }
 
 fn indent_child_line(line: SequenceLine) -> SequenceLine {
-    let mut indented = SequenceLine::blank(line.len() + 1);
-    indented.write_line(1, &line);
+    let mut indented = SequenceLine::blank(line.len() + 2);
+    indented.write_line(2, &line);
     indented
 }
 

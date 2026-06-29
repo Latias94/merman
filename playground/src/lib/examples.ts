@@ -323,6 +323,7 @@ export const examples: Example[] = [
     id: "mindmap-shapes-icons",
     name: "Shapes and Icons",
     category: "Mindmap",
+    asciiSupported: false,
     code: `mindmap
   root((Merman))
     Parser[Parser]
@@ -343,20 +344,20 @@ export const examples: Example[] = [
     name: "Git Graph",
     category: "Git",
     code: `gitGraph
-    commit
-    commit
+    commit id: "init"
+    commit id: "main-api"
     branch develop
     checkout develop
-    commit
-    commit
+    commit id: "parser"
+    commit id: "renderer"
     checkout main
-    merge develop
-    commit
+    merge develop id: "merge-develop"
+    commit id: "release"
     branch feature
     checkout feature
-    commit
+    commit id: "playground"
     checkout main
-    merge feature`,
+    merge feature id: "merge-feature"`,
   },
   {
     id: "gitgraph-tags-cherrypick",

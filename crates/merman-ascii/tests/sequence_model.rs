@@ -1199,6 +1199,51 @@ fn sequence_sectioned_control_blocks_frame_multiple_sections_and_notes() {
 }
 
 #[test]
+fn sequence_nested_loop_inside_alt_keeps_frame_padding() {
+    let rendered = render_sequence(
+        "sequenceDiagram
+    participant Client
+    participant API
+    participant Worker
+    Client->>API: Submit job
+    alt Valid request
+      API->>Worker: Queue work
+      loop Poll status
+        Client->>API: GET /jobs/123
+        API-->>Client: Running
+      end
+    else Invalid request
+      API-->>Client: 400 Bad Request
+    end",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("nested loop inside alt should render");
+
+    let loop_top = rendered
+        .lines()
+        .find(|line| line.contains("loop Poll status"))
+        .unwrap_or_else(|| panic!("loop frame should render:\n{rendered}"));
+    assert!(
+        loop_top.starts_with("| + loop Poll status "),
+        "nested loop frame should not touch the parent frame border:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("| |") && line.contains("GET /jobs/123")),
+        "nested loop body should keep the inner frame border separated from the parent border:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("|+")),
+        "nested frame top border must not touch the parent border:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("||")),
+        "nested frame body border must not touch the parent border:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_rect_par_over_blocks_are_core_control_signals() {
     struct Case {
         name: &'static str,
@@ -1470,13 +1515,13 @@ fn sequence_rect_par_over_nested_control_blocks_render() {
         assert!(
             rendered
                 .lines()
-                .any(|line| line.starts_with("│┌") && line.contains(inner)),
+                .any(|line| line.starts_with("│ ┌") && line.contains(inner)),
             "{name} should render the inner frame inside the outer frame:\n{rendered}"
         );
         assert!(
             rendered
                 .lines()
-                .any(|line| line.starts_with("││") && line.contains("Work")),
+                .any(|line| line.starts_with("│ │") && line.contains("Work")),
             "{name} should keep messages inside both nested frames:\n{rendered}"
         );
     }
@@ -1551,13 +1596,13 @@ fn sequence_nested_control_blocks_render() {
     assert!(
         rendered
             .lines()
-            .any(|line| line.starts_with("│┌ opt Inner ")),
+            .any(|line| line.starts_with("│ ┌ opt Inner ")),
         "inner frame should render inside the outer frame:\n{rendered}"
     );
     assert!(
         rendered
             .lines()
-            .any(|line| line.starts_with("││") && line.contains("Work")),
+            .any(|line| line.starts_with("│ │") && line.contains("Work")),
         "message rows should stay inside both frames:\n{rendered}"
     );
 }
