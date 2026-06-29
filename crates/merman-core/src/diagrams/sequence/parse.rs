@@ -1,6 +1,7 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
 };
 use serde_json::Value;
 
@@ -29,7 +30,10 @@ pub fn parse_sequence_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorS
     if let Err(error) = parse_result {
         let span = lalrpop_recovery_span(&error, code.len());
         facts.mark_recovered_with_diagnostic(
-            format!("sequence parser recovered after parse error: {error:?}"),
+            format!(
+                "sequence parser recovered after parse error: {}",
+                format_lalrpop_parse_error(&error)
+            ),
             Some(span),
         );
     }
@@ -59,7 +63,7 @@ fn parse_sequence_db(code: &str, meta: &ParseMetadata) -> Result<SequenceDb> {
         .parse(Lexer::new(code))
         .map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
-            message: format!("{e:?}"),
+            message: format_lalrpop_parse_error(&e),
         })?;
 
     let mut db = SequenceDb::new(wrap_enabled);

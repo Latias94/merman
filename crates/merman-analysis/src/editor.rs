@@ -329,6 +329,11 @@ impl FenceTextIndex {
         index
     }
 
+    pub fn merge_text_scan_node_ids(&mut self, text: &str, diagram_type: Option<&str>) {
+        let text_index = Self::from_text(text, diagram_type);
+        self.node_ids.extend(text_index.node_ids);
+    }
+
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
         self.node_ids.iter()
     }

@@ -1,6 +1,7 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
 };
 use serde_json::Value;
 
@@ -12,7 +13,7 @@ pub fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
         .parse(Lexer::new(code))
         .map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
-            message: format!("{e:?}"),
+            message: format_lalrpop_parse_error(&e),
         })?;
 
     let mut divider_cnt = 0usize;
@@ -31,7 +32,7 @@ pub fn parse_state_model_for_render(
         .parse(Lexer::new(code))
         .map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
-            message: format!("{e:?}"),
+            message: format_lalrpop_parse_error(&e),
         })?;
 
     let mut divider_cnt = 0usize;
@@ -48,7 +49,10 @@ pub fn parse_state_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSema
     if let Err(error) = parse_result {
         let span = lalrpop_recovery_span(&error, code.len());
         facts.mark_recovered_with_diagnostic(
-            format!("state parser recovered after parse error: {error:?}"),
+            format!(
+                "state parser recovered after parse error: {}",
+                format_lalrpop_parse_error(&error)
+            ),
             Some(span),
         );
     }

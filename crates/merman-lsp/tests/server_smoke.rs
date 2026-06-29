@@ -160,6 +160,62 @@ async fn lsp_service_smoke_pulls_workspace_diagnostics() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                },
+                "workspace": {
+                    "diagnostic": {}
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri,
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let pushed = timeout(Duration::from_millis(200), socket.next()).await;
+    assert!(
+        pushed.is_err(),
+        "diagnostic pull clients should not receive push diagnostics"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_rule_catalog_custom_request() {
     let (mut service, _socket) = MermanLanguageServer::service();
 

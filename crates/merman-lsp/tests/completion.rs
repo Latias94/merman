@@ -62,6 +62,23 @@ fn completion_uses_flowchart_parser_identifier_context_after_operator_with_trail
 }
 
 #[test]
+fn completion_keeps_known_node_ids_when_flowchart_parser_recovers() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nC-->; \n".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 5));
+
+    assert!(
+        list.items.iter().any(|item| item.label == "A"),
+        "recovered parser context should still offer existing node ids"
+    );
+    assert!(
+        list.items.iter().any(|item| item.label == "B"),
+        "recovered parser context should still offer existing node ids"
+    );
+}
+
+#[test]
 fn completion_offers_hyphenated_flowchart_node_ids() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

@@ -1,6 +1,7 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::lalrpop_recovery_span,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -361,7 +362,7 @@ fn parse_er_db(code: &str, meta: &ParseMetadata) -> Result<ErDb> {
         .parse(Lexer::new(code))
         .map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
-            message: format!("{e:?}"),
+            message: format_lalrpop_parse_error(&e),
         })?;
 
     let mut db = ErDb::new();
@@ -387,7 +388,10 @@ pub fn parse_er_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanti
     if let Err(error) = parse_result {
         let span = lalrpop_recovery_span(&error, code.len());
         facts.mark_recovered_with_diagnostic(
-            format!("er parser recovered after parse error: {error:?}"),
+            format!(
+                "er parser recovered after parse error: {}",
+                format_lalrpop_parse_error(&error)
+            ),
             Some(span),
         );
     }

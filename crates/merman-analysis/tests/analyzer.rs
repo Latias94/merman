@@ -38,6 +38,8 @@ fn invalid_syntax_returns_parse_error_with_diagram_type() {
     assert_eq!(diagnostic.code, Some(AnalysisStatus::ParseError.code()));
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
     assert!(diagnostic.span.is_some());
+    assert!(!diagnostic.message.contains("UnrecognizedToken"));
+    assert!(diagnostic.message.contains("unexpected"));
 }
 
 #[test]

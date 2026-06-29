@@ -177,6 +177,10 @@ impl MermanLanguageServer {
     }
 
     async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url, version: Option<i32>) {
+        if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+            return;
+        }
+
         let snapshot = self.snapshot_for_uri(uri).await;
 
         let Some(snapshot) = snapshot else {

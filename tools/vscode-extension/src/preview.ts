@@ -22,6 +22,7 @@ class MermanPreviewController implements vscode.Disposable {
   private renderTimer: NodeJS.Timeout | undefined;
   private renderVersion = 0;
   private activeRender: cp.ChildProcess | undefined;
+  private lastPreviewEditorUri: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -62,15 +63,17 @@ class MermanPreviewController implements vscode.Disposable {
     );
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((event) => {
-        if (event.document === vscode.window.activeTextEditor?.document) {
+        const trackedEditor = this.resolvePreviewEditor();
+        if (trackedEditor && event.document === trackedEditor.document) {
           this.scheduleRefresh("document-change");
         }
       }),
     );
     this.disposables.push(
       vscode.languages.onDidChangeDiagnostics((event) => {
-        const activeUri = vscode.window.activeTextEditor?.document.uri;
-        if (activeUri && event.uris.some((uri) => uri.toString() === activeUri.toString())) {
+        const trackedEditor = this.resolvePreviewEditor();
+        const trackedUri = trackedEditor?.document.uri;
+        if (trackedUri && event.uris.some((uri) => uri.toString() === trackedUri.toString())) {
           this.scheduleRefresh("diagnostics");
         }
       }),
@@ -138,16 +141,19 @@ class MermanPreviewController implements vscode.Disposable {
       return;
     }
 
-    const editor = vscode.window.activeTextEditor;
+    const editor = this.resolvePreviewEditor();
     const input = editor ? extractPreviewInput(editor) : null;
     if (!input) {
       panel.title = PREVIEW_TITLE;
       panel.webview.html = renderPreviewHtml(panel.webview, undefined, undefined, undefined, {
         heading: "No Mermaid source available",
-        detail: "Open a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
+        detail:
+          "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
       });
       return;
     }
+
+    this.lastPreviewEditorUri = editor?.document.uri.toString();
 
     const diagnostics = editor
       ? collectPreviewDiagnostics(editor.document.uri, input.diagnosticRange)
@@ -233,6 +239,23 @@ class MermanPreviewController implements vscode.Disposable {
     }
     this.activeRender?.kill();
     this.activeRender = undefined;
+  }
+
+  private resolvePreviewEditor(): vscode.TextEditor | undefined {
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && extractPreviewInput(activeEditor)) {
+      return activeEditor;
+    }
+
+    if (!this.lastPreviewEditorUri) {
+      return undefined;
+    }
+
+    return vscode.window.visibleTextEditors.find(
+      (editor) =>
+        editor.document.uri.toString() === this.lastPreviewEditorUri &&
+        extractPreviewInput(editor) !== null,
+    );
   }
 }
 

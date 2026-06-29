@@ -1,6 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
-use merman_analysis::{FenceTextIndex, SourceMap, markdown::extract_charts_with_spans};
+use merman_analysis::{
+    FenceTextIndex, FenceTextIndexSource, SourceMap, markdown::extract_charts_with_spans,
+};
 use merman_core::{Engine, ParseOptions};
 use std::collections::HashMap;
 
@@ -104,7 +106,11 @@ impl DocumentWorkspace {
                 ParseOptions::strict(),
             )
         {
-            return FenceTextIndex::from_core_facts(facts);
+            let mut index = FenceTextIndex::from_core_facts(facts);
+            if index.source() == FenceTextIndexSource::ParserRecovered {
+                index.merge_text_scan_node_ids(text, Some(diagram_type));
+            }
+            return index;
         }
 
         FenceTextIndex::from_text(text, diagram_type)

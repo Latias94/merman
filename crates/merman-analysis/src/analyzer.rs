@@ -160,12 +160,11 @@ impl Analyzer {
                     if let Some(diagnostic) = core_diagnostic {
                         diagnostics.push(diagnostic);
                     }
-                    if let Some(diagram_type) = diagram_type {
-                        diagnostics.extend(self.editor_recovery_diagnostics(
-                            source,
-                            &diagram_type,
-                            &source_map,
-                        ));
+                    if let Some(_diagram_type) = diagram_type {
+                        // When the main parse already failed, surfacing a second recovery diagnostic
+                        // tends to duplicate the same parser failure in editor surfaces. Keep the
+                        // recovery path for successfully parsed documents only, where it still
+                        // adds value for completion/navigation fallback.
                     }
                     self.payload(diagnostics)
                 }
@@ -414,7 +413,7 @@ mod tests {
 
         assert!(!payload.valid);
         assert_eq!(payload.summary.errors, 1);
-        assert_eq!(payload.summary.warnings, 1);
+        assert_eq!(payload.summary.warnings, 0);
 
         let parse_error = payload
             .diagnostics
@@ -424,21 +423,12 @@ mod tests {
         assert_eq!(parse_error.severity, DiagnosticSeverity::Error);
         assert_eq!(parse_error.category, DiagnosticCategory::Parse);
         assert_eq!(parse_error.diagram_type.as_deref(), Some("stateDiagram"));
-
-        let recovery = payload
-            .diagnostics
-            .iter()
-            .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
-            .expect("recovery diagnostic");
-        assert_eq!(recovery.severity, DiagnosticSeverity::Warning);
-        assert_eq!(recovery.category, DiagnosticCategory::Parse);
-        assert_eq!(recovery.diagram_type.as_deref(), Some("stateDiagram"));
         assert!(
-            recovery
-                .message
-                .contains("state parser recovered after parse error")
+            payload
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.id != "merman.parse.recovered_editor_facts")
         );
-        assert!(recovery.span.is_some());
     }
 
     #[test]
