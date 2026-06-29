@@ -73,6 +73,17 @@ The extension intentionally coexists with VS Code's built-in Mermaid support in 
 Use Merman for semantic editing, `.mmd` files, fence-aware diagnostics, local preview inspection,
 and export; it does not replace VS Code's Markdown preview renderer.
 
+## Preview behavior
+
+The preview panel keeps a stable webview shell while diagram content, diagnostics, source choices,
+and editor selection updates are delivered through VS Code webview messages. Moving the cursor
+inside the currently rendered source does not rerender the diagram or reset pan/zoom state.
+
+When edits require a rerender, the previous SVG stays visible while the new render runs. If rendering
+fails, the old SVG remains inspectable and the error appears as an overlay. Zoom is applied by
+resizing the SVG surface from its `viewBox` instead of scaling the whole canvas layer, so the preview
+continues to inspect vector output rather than a PNG snapshot.
+
 ## Settings
 
 - `merman.server.path`: absolute path to a prebuilt `merman-lsp`
