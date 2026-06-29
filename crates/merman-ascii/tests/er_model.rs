@@ -392,6 +392,28 @@ fn er_parser_self_relationship_renders_single_box_with_loop() {
 }
 
 #[test]
+fn er_parser_parallel_self_relationships_share_single_box_loop() {
+    let rendered = render_er(
+        "erDiagram\nNODE ||--o{ NODE : \"leads to\"\nNODE o|--|| NODE : mirrors",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parallel self ER relationships should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| NODE |----||\n",
+            "+------+    |\n",
+            " leads to   |\n",
+            "    o{------+\n",
+            "o| mirrors  |\n",
+            "    ||------+\n",
+        )
+    );
+}
+
+#[test]
 fn er_parser_zero_or_one_cardinality_renders_marker() {
     let rendered = render_er(
         "erDiagram\nA ||--o| B : maybe",

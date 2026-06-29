@@ -820,6 +820,28 @@ fn class_parser_self_relation_renders_single_box_with_loop() {
 }
 
 #[test]
+fn class_parser_parallel_self_relations_share_single_box_loop() {
+    let rendered = render_class(
+        "classDiagram\nclass Node\nNode --> Node : next\nNode ..> Node : loads",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parallel self class relations should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| Node |---+\n",
+            "+------+   |\n",
+            "   next    |\n",
+            "    v------+\n",
+            "  loads    :\n",
+            "    v......+\n",
+        )
+    );
+}
+
+#[test]
 fn class_parser_endpoint_labels_render_near_relation_endpoints() {
     let rendered = render_class(
         "classDiagram\nclass Customer\nclass Order\nCustomer \"1\" --> \"*\" Order : places",

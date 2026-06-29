@@ -416,25 +416,29 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         relationship: &ErRelationshipRenderModel,
         options: &AsciiRenderOptions,
     ) -> Result<String> {
-        let top_marker = RelationGraphLine::with_role(
-            cardinality_marker(&relationship.rel_spec.card_b)?.to_string(),
-            AsciiColorRole::EdgeArrow,
-        );
-        let bottom_marker = RelationGraphLine::with_role(
-            cardinality_marker(&relationship.rel_spec.card_a)?.to_string(),
-            AsciiColorRole::EdgeArrow,
-        );
-        let label_lines = RelationGraphLabel::new(&relationship.role_a)
-            .map(|label| relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel))
-            .unwrap_or_default();
+        let rows = self_loop_rows_for_er_relationship(relationship, self.charset)?;
 
-        Ok(relation_graph::render_self_loop_with_options(
+        Ok(relation_graph::render_parallel_self_loops_with_options(
             relation_box,
-            top_marker,
-            label_lines,
-            bottom_marker,
-            relationship_horizontal_line(&relationship.rel_spec.rel_type, self.charset)?,
-            relationship_line(&relationship.rel_spec.rel_type, self.charset)?,
+            vec![rows],
+            options,
+        ))
+    }
+
+    fn render_self_relations(
+        &self,
+        relation_box: &RenderedEntityBox,
+        relationships: &[ErRelationshipRenderModel],
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        let loops = relationships
+            .iter()
+            .map(|relationship| self_loop_rows_for_er_relationship(relationship, self.charset))
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(relation_graph::render_parallel_self_loops_with_options(
+            relation_box,
+            loops,
             options,
         ))
     }
@@ -524,6 +528,35 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
         er_layered_error(error)
     }
+}
+
+fn self_loop_rows_for_er_relationship(
+    relationship: &ErRelationshipRenderModel,
+    charset: ErCharset,
+) -> Result<relation_graph::RelationSelfLoopRows> {
+    let top_marker = RelationGraphLine::with_role(
+        cardinality_marker(&relationship.rel_spec.card_b)?.to_string(),
+        AsciiColorRole::EdgeArrow,
+    );
+    let bottom_marker = RelationGraphLine::with_role(
+        cardinality_marker(&relationship.rel_spec.card_a)?.to_string(),
+        AsciiColorRole::EdgeArrow,
+    );
+    let label_lines = RelationGraphLabel::new(&relationship.role_a)
+        .map(|label| relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel))
+        .unwrap_or_default();
+
+    Ok(relation_graph::RelationSelfLoopRows::new(
+        top_marker,
+        label_lines,
+        bottom_marker,
+        relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?,
+        relationship_line(&relationship.rel_spec.rel_type, charset)?,
+    )
+    .with_tail_prefix(RelationGraphLine::with_role(
+        cardinality_marker(&relationship.rel_spec.card_b)?.to_string(),
+        AsciiColorRole::EdgeArrow,
+    )))
 }
 
 fn cardinality_marker(cardinality: &str) -> Result<&'static str> {

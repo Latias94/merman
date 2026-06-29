@@ -57,6 +57,13 @@ pub(crate) trait RelationComponentAdapter<R> {
         options: &AsciiRenderOptions,
     ) -> Result<String>;
 
+    fn render_self_relations(
+        &self,
+        relation_box: &RelationGraphBox,
+        relations: &[R],
+        options: &AsciiRenderOptions,
+    ) -> Result<String>;
+
     fn layered_horizontal_gap(&self) -> usize;
 
     fn layered_route_style(&self, relation: &R) -> Result<LayeredRelationRouteStyle>;
@@ -655,6 +662,22 @@ where
     if relations.is_empty() {
         return Ok(render_stacked_boxes_with_options(boxes, options));
     }
+    if relations.len() > 1
+        && relations
+            .iter()
+            .all(|relation| adapter.is_self_relation(relation))
+    {
+        let edge = adapter.build_edges(&relations[0]);
+        let same_endpoint = relations.iter().all(|relation| {
+            let next_edge = adapter.build_edges(relation);
+            next_edge.source_id() == edge.source_id() && next_edge.target_id() == edge.target_id()
+        });
+        if same_endpoint {
+            let relation_box = find_box(boxes, edge.source_id())
+                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
+            return adapter.render_self_relations(relation_box, relations, options);
+        }
+    }
     if relations.len() == 1 && adapter.is_self_relation(&relations[0]) {
         let edge = adapter.build_edges(&relations[0]);
         let relation_box = find_box(boxes, edge.source_id())
@@ -744,22 +767,110 @@ where
     Ok(Ok(canvas.finish_trimmed_with_options(options)))
 }
 
-pub(crate) fn render_self_loop_with_options(
+pub(crate) fn render_parallel_self_loops_with_options(
     relation_box: &RelationGraphBox,
+    loops: Vec<RelationSelfLoopRows>,
+    options: &AsciiRenderOptions,
+) -> String {
+    if loops.is_empty() {
+        return render_lines_with_options(&relation_box.lines, options);
+    }
+
+    let geometry = SelfLoopGeometry::for_loops(relation_box, &loops);
+    let mut loop_iter = loops.into_iter();
+    let mut lines = loop_iter
+        .next()
+        .map(|first_loop| first_self_loop_lines(relation_box, first_loop, &geometry))
+        .unwrap_or_else(|| relation_box.lines.clone());
+    for loop_rows in loop_iter {
+        lines.extend(tail_self_loop_lines(relation_box, loop_rows, &geometry));
+    }
+
+    render_lines_with_options(&lines, options)
+}
+
+pub(crate) struct RelationSelfLoopRows {
     top_marker: RelationGraphLine,
     label_lines: Vec<RelationGraphLine>,
     bottom_marker: RelationGraphLine,
+    tail_prefix: Option<RelationGraphLine>,
     horizontal: char,
     vertical: char,
-    options: &AsciiRenderOptions,
-) -> String {
-    let label_width = label_lines
+}
+
+impl RelationSelfLoopRows {
+    pub(crate) fn new(
+        top_marker: RelationGraphLine,
+        label_lines: Vec<RelationGraphLine>,
+        bottom_marker: RelationGraphLine,
+        horizontal: char,
+        vertical: char,
+    ) -> Self {
+        Self {
+            top_marker,
+            label_lines,
+            bottom_marker,
+            tail_prefix: None,
+            horizontal,
+            vertical,
+        }
+    }
+
+    pub(crate) fn with_tail_prefix(mut self, tail_prefix: RelationGraphLine) -> Self {
+        self.tail_prefix = Some(tail_prefix);
+        self
+    }
+}
+
+struct SelfLoopGeometry {
+    bottom_start: usize,
+    loop_col: usize,
+}
+
+impl SelfLoopGeometry {
+    fn for_loops(relation_box: &RelationGraphBox, loops: &[RelationSelfLoopRows]) -> Self {
+        let bottom_start = relation_box.width().saturating_div(2);
+        let loop_col = loops.iter().enumerate().fold(
+            relation_box.width().saturating_add(3),
+            |loop_col, (loop_index, loop_rows)| {
+                let label_width = max_self_loop_label_width(&loop_rows.label_lines);
+                let label_start = self_loop_label_start(
+                    relation_box,
+                    label_width,
+                    loop_rows.tail_prefix.as_ref().filter(|_| loop_index > 0),
+                );
+                let bottom_marker_width = display_width(loop_rows.bottom_marker.text());
+                loop_col
+                    .max(label_start.saturating_add(label_width).saturating_add(2))
+                    .max(
+                        bottom_start
+                            .saturating_add(bottom_marker_width)
+                            .saturating_add(3),
+                    )
+            },
+        );
+
+        Self {
+            bottom_start,
+            loop_col,
+        }
+    }
+}
+
+fn max_self_loop_label_width(label_lines: &[RelationGraphLine]) -> usize {
+    label_lines
         .iter()
         .map(|line| display_width(line.text()))
         .max()
-        .unwrap_or(0);
-    let bottom_marker_width = display_width(bottom_marker.text());
-    let label_start = if label_width >= relation_box.width() {
+        .unwrap_or(0)
+}
+
+fn self_loop_label_start(
+    relation_box: &RelationGraphBox,
+    label_width: usize,
+    prefix: Option<&RelationGraphLine>,
+) -> usize {
+    let centered_start = if label_width >= relation_box.width() {
         1
     } else {
         relation_box
@@ -768,20 +879,30 @@ pub(crate) fn render_self_loop_with_options(
             .saturating_div(2)
             .saturating_add(1)
     };
-    let bottom_start = relation_box.width().saturating_div(2);
-    let loop_col = relation_box
-        .width()
-        .saturating_add(3)
-        .max(label_start.saturating_add(label_width).saturating_add(2))
-        .max(
-            bottom_start
-                .saturating_add(bottom_marker_width)
-                .saturating_add(3),
-        );
-    let mut lines = relation_box.lines.clone();
+    let prefix_start = prefix
+        .map(|prefix| display_width(prefix.text()).saturating_add(1))
+        .unwrap_or(0);
+    centered_start.max(prefix_start)
+}
+
+fn first_self_loop_lines(
+    relation_box: &RelationGraphBox,
+    loop_rows: RelationSelfLoopRows,
+    geometry: &SelfLoopGeometry,
+) -> Vec<RelationGraphLine> {
+    let RelationSelfLoopRows {
+        top_marker,
+        label_lines,
+        bottom_marker,
+        tail_prefix: _,
+        horizontal,
+        vertical,
+    } = loop_rows;
     let label_start_row = relation_box.height();
     let bottom_row = label_start_row.saturating_add(label_lines.len());
     let row_count = bottom_row.saturating_add(1).max(3);
+    let mut lines = Vec::new();
+    lines.extend(relation_box.lines.clone());
     lines.resize_with(row_count, || {
         RelationGraphLine::plain(" ".repeat(relation_box.width()))
     });
@@ -790,7 +911,7 @@ pub(crate) fn render_self_loop_with_options(
         lines[1].clone(),
         repeated_line(
             horizontal,
-            loop_col.saturating_sub(relation_box.width()),
+            geometry.loop_col.saturating_sub(relation_box.width()),
             AsciiColorRole::EdgeLine,
         ),
         top_marker,
@@ -799,35 +920,111 @@ pub(crate) fn render_self_loop_with_options(
     for row_index in 2..label_start_row {
         lines[row_index] = concat_relation_lines(vec![
             lines[row_index].clone(),
-            RelationGraphLine::plain(" ".repeat(loop_col.saturating_sub(relation_box.width()))),
+            RelationGraphLine::plain(
+                " ".repeat(geometry.loop_col.saturating_sub(relation_box.width())),
+            ),
             RelationGraphLine::with_role(vertical.to_string(), AsciiColorRole::EdgeLine),
         ]);
     }
 
     for (label_index, label_line) in label_lines.into_iter().enumerate() {
         let row_index = label_start_row + label_index;
-        let label_width = display_width(label_line.text());
-        let right_padding = loop_col.saturating_sub(label_start.saturating_add(label_width));
-        lines[row_index] = concat_relation_lines(vec![
-            RelationGraphLine::plain(" ".repeat(label_start)),
-            label_line,
-            RelationGraphLine::plain(" ".repeat(right_padding)),
-            RelationGraphLine::with_role(vertical.to_string(), AsciiColorRole::EdgeLine),
-        ]);
+        lines[row_index] = self_loop_label_line(relation_box, None, label_line, vertical, geometry);
     }
 
-    lines[bottom_row] = concat_relation_lines(vec![
-        RelationGraphLine::plain(" ".repeat(bottom_start)),
+    lines[bottom_row] = self_loop_bottom_line(bottom_marker, horizontal, geometry);
+    lines
+}
+
+fn tail_self_loop_lines(
+    relation_box: &RelationGraphBox,
+    loop_rows: RelationSelfLoopRows,
+    geometry: &SelfLoopGeometry,
+) -> Vec<RelationGraphLine> {
+    let RelationSelfLoopRows {
+        top_marker: _,
+        label_lines,
+        bottom_marker,
+        tail_prefix,
+        horizontal,
+        vertical,
+    } = loop_rows;
+    let mut lines = label_lines
+        .into_iter()
+        .enumerate()
+        .map(|(label_index, label_line)| {
+            let prefix = if label_index == 0 {
+                tail_prefix.clone()
+            } else {
+                None
+            };
+            self_loop_label_line(relation_box, prefix, label_line, vertical, geometry)
+        })
+        .collect::<Vec<_>>();
+    lines.push(self_loop_bottom_line(bottom_marker, horizontal, geometry));
+    lines
+}
+
+fn self_loop_label_line(
+    relation_box: &RelationGraphBox,
+    prefix: Option<RelationGraphLine>,
+    label_line: RelationGraphLine,
+    vertical: char,
+    geometry: &SelfLoopGeometry,
+) -> RelationGraphLine {
+    let label_width = display_width(label_line.text());
+    let prefix_width = prefix
+        .as_ref()
+        .map(|prefix| display_width(prefix.text()))
+        .unwrap_or(0);
+    let label_start = self_loop_label_start(relation_box, label_width, prefix.as_ref());
+    let prefix_start = label_start.saturating_sub(prefix_width.saturating_add(1));
+    let gap_after_prefix = label_start
+        .saturating_sub(prefix_start)
+        .saturating_sub(prefix_width);
+    let right_padding = geometry
+        .loop_col
+        .saturating_sub(label_start.saturating_add(label_width));
+
+    let mut segments = Vec::new();
+    match prefix {
+        Some(prefix) => {
+            segments.push(RelationGraphLine::plain(" ".repeat(prefix_start)));
+            segments.push(prefix);
+            segments.push(RelationGraphLine::plain(" ".repeat(gap_after_prefix)));
+        }
+        None => {
+            segments.push(RelationGraphLine::plain(" ".repeat(label_start)));
+        }
+    }
+    segments.push(label_line);
+    segments.push(RelationGraphLine::plain(" ".repeat(right_padding)));
+    segments.push(RelationGraphLine::with_role(
+        vertical.to_string(),
+        AsciiColorRole::EdgeLine,
+    ));
+
+    concat_relation_lines(segments)
+}
+
+fn self_loop_bottom_line(
+    bottom_marker: RelationGraphLine,
+    horizontal: char,
+    geometry: &SelfLoopGeometry,
+) -> RelationGraphLine {
+    let bottom_marker_width = display_width(bottom_marker.text());
+    concat_relation_lines(vec![
+        RelationGraphLine::plain(" ".repeat(geometry.bottom_start)),
         bottom_marker,
         repeated_line(
             horizontal,
-            loop_col.saturating_sub(bottom_start + bottom_marker_width),
+            geometry
+                .loop_col
+                .saturating_sub(geometry.bottom_start + bottom_marker_width),
             AsciiColorRole::EdgeLine,
         ),
         RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine),
-    ]);
-
-    render_lines_with_options(&lines, options)
+    ])
 }
 
 fn repeated_line(ch: char, count: usize, role: AsciiColorRole) -> RelationGraphLine {
@@ -1009,6 +1206,15 @@ mod tests {
             &self,
             _relation_box: &RelationGraphBox,
             _relation: &(&'static str, &'static str),
+            _options: &AsciiRenderOptions,
+        ) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn render_self_relations(
+            &self,
+            _relation_box: &RelationGraphBox,
+            _relations: &[(&'static str, &'static str)],
             _options: &AsciiRenderOptions,
         ) -> Result<String> {
             Ok(String::new())

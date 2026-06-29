@@ -872,28 +872,29 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         layout: &RelationLayout<'a>,
         options: &AsciiRenderOptions,
     ) -> Result<String> {
-        let top_marker = RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine);
-        let bottom_marker = RelationGraphLine::with_role(
-            layout
-                .endpoint_marker
-                .map(|marker| marker_char(marker.marker, marker.side, self.charset))
-                .unwrap_or_else(|| line_char(layout.line, self.charset))
-                .to_string(),
-            AsciiColorRole::EdgeArrow,
-        );
-        let label_lines = layout
-            .label
-            .as_ref()
-            .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
-            .unwrap_or_default();
+        let rows = self_loop_rows_for_class_layout(layout, self.charset);
 
-        Ok(relation_graph::render_self_loop_with_options(
+        Ok(relation_graph::render_parallel_self_loops_with_options(
             relation_box,
-            top_marker,
-            label_lines,
-            bottom_marker,
-            horizontal_line_char(layout.line, self.charset),
-            line_char(layout.line, self.charset),
+            vec![rows],
+            options,
+        ))
+    }
+
+    fn render_self_relations(
+        &self,
+        relation_box: &RenderedClassBox,
+        layouts: &[RelationLayout<'a>],
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        let loops = layouts
+            .iter()
+            .map(|layout| self_loop_rows_for_class_layout(layout, self.charset))
+            .collect::<Vec<_>>();
+
+        Ok(relation_graph::render_parallel_self_loops_with_options(
+            relation_box,
+            loops,
             options,
         ))
     }
@@ -1009,6 +1010,34 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
         class_layered_error(error)
     }
+}
+
+fn self_loop_rows_for_class_layout(
+    layout: &RelationLayout<'_>,
+    charset: ClassCharset,
+) -> relation_graph::RelationSelfLoopRows {
+    let top_marker = RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine);
+    let bottom_marker = RelationGraphLine::with_role(
+        layout
+            .endpoint_marker
+            .map(|marker| marker_char(marker.marker, marker.side, charset))
+            .unwrap_or_else(|| line_char(layout.line, charset))
+            .to_string(),
+        AsciiColorRole::EdgeArrow,
+    );
+    let label_lines = layout
+        .label
+        .as_ref()
+        .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
+        .unwrap_or_default();
+
+    relation_graph::RelationSelfLoopRows::new(
+        top_marker,
+        label_lines,
+        bottom_marker,
+        horizontal_line_char(layout.line, charset),
+        line_char(layout.line, charset),
+    )
 }
 
 fn class_route_profile(layout: &RelationLayout<'_>) -> relation_graph::LayeredRelationRouteProfile {
