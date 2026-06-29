@@ -848,6 +848,54 @@ fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
 }
 
 #[test]
+fn er_parser_complex_styled_example_falls_back_to_readable_relation_summary() {
+    let rendered = render_er(
+        r#"erDiagram
+    CAR ||--o{ DRIVER : "insured for"
+    CAR }o--|| PERSON : "owned by"
+    NODE ||--o{ NODE : "leads to"
+    BOOK["Book"]:::core {
+      string *title PK "Title"
+      string[] author-ref[name](1) FK "Author ref"
+    }
+    BOOK ||--o{ PAGE : has
+    PAGE {
+      int number PK
+    }
+    classDef core fill:#f96,stroke:#333,stroke-width:2px,color:#fff
+    class BOOK core"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("complex styled ER example should render");
+
+    for expected in [
+        "Book",
+        "string *title PK Title",
+        "string[] author-ref[name](1) FK Author ref",
+        "PAGE",
+        "int number PK",
+        "CAR",
+        "DRIVER",
+        "PERSON",
+        "NODE",
+        "relations:",
+        "CAR  ||--o{ DRIVER",
+        "CAR  o{--|| PERSON",
+        "NODE ||--o{ NODE",
+        "Book ||--o{ PAGE",
+        "insured for",
+        "owned by",
+        "leads to",
+        "has",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "complex styled ER example should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn er_local_semantic_fixture_covers_routed_schema_with_attributes() {
     let input = read_local_semantic_fixture("er/routed_schema_with_attributes.mmd");
 

@@ -10,6 +10,7 @@ use super::route::{
 };
 use crate::Result;
 use crate::canvas::Canvas;
+use crate::terminal::CanvasStyle;
 
 #[derive(Debug, Clone)]
 pub(crate) struct LayeredRelationScene<'boxes> {
@@ -27,7 +28,29 @@ pub(crate) enum LayeredRelationScenePlan<'boxes> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LayeredRelationSummaryReason {
     Crossing,
+    BoxOverlap,
     GridBudget { actual: usize, limit: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LayeredRelationBoxSnapshot {
+    cells: Vec<LayeredRelationBoxSnapshotCell>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LayeredRelationBoxSnapshotCell {
+    x: usize,
+    y: usize,
+    ch: Option<char>,
+    style: Option<CanvasStyle>,
+}
+
+impl LayeredRelationBoxSnapshot {
+    fn matches(&self, canvas: &Canvas) -> bool {
+        self.cells.iter().all(|cell| {
+            canvas.get(cell.x, cell.y) == cell.ch && canvas.get_style(cell.x, cell.y) == cell.style
+        })
+    }
 }
 
 impl<'boxes> LayeredRelationScene<'boxes> {
@@ -70,6 +93,32 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             placed_box.draw_at(&mut canvas);
         }
         canvas
+    }
+
+    pub(crate) fn capture_box_snapshot(&self, canvas: &Canvas) -> LayeredRelationBoxSnapshot {
+        let mut cells = Vec::new();
+        for placed_box in self.plan.placed_boxes() {
+            for y in placed_box.y()..=placed_box.bottom() {
+                for x in placed_box.x()..=placed_box.right() {
+                    cells.push(LayeredRelationBoxSnapshotCell {
+                        x,
+                        y,
+                        ch: canvas.get(x, y),
+                        style: canvas.get_style(x, y),
+                    });
+                }
+            }
+        }
+
+        LayeredRelationBoxSnapshot { cells }
+    }
+
+    pub(crate) fn box_snapshot_matches(
+        &self,
+        canvas: &Canvas,
+        snapshot: &LayeredRelationBoxSnapshot,
+    ) -> bool {
+        snapshot.matches(canvas)
     }
 
     pub(crate) fn draw_order(&self) -> &[(usize, isize)] {

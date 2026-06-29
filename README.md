@@ -484,10 +484,14 @@ unavailable unless `ascii` is enabled explicitly.
 Library users enable the `ascii` feature when they want terminal-friendly text instead of SVG.
 `merman-cli` enables ASCII/Unicode output by default:
 
-Current public text support covers flowchart/graph, sequenceDiagram, classDiagram, erDiagram, and
-xychart through `merman::ascii::render_ascii_sync`, typed `merman::ascii::render_model`, the direct
-typed helpers (`render_flowchart`, `render_sequence`, `render_class`, `render_er`,
-`render_xychart`), and `merman-cli render --format ascii|unicode`.
+Current public text support covers Flowchart, Sequence, State, Class, ER, XYChart, Gantt, GitGraph,
+Journey, Kanban, Mindmap, Packet, Timeline, TreeView, and ZenUML through
+`merman::ascii::render_ascii_sync`, typed `merman::ascii::render_model`, the direct typed helpers,
+and `merman-cli render --format ascii|unicode`.
+
+See [`docs/rendering/ASCII_SUPPORT_MATRIX.md`](docs/rendering/ASCII_SUPPORT_MATRIX.md) for the
+current support levels. Some families render full terminal diagrams, while dense or
+terminal-hostile families intentionally use readable structured summaries.
 
 Flowchart text output covers LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape
 approximations, labels, open/dotted/thick edges, length spacing, and titled/nested subgraphs with
@@ -505,9 +509,10 @@ support boxes, labels, single relationships, layered chain/star multi-relationsh
 adjacent-layer crossing layouts resolved by layer reordering. Same-endpoint and simple
 mixed-parallel relationships render as distinct lanes, simple spanning-level relationships route
 through side lanes, and isolated unrelated classes/entities render as standalone components beside
-the relationship layout. Cyclic and denser graph shapes still return clear diagnostics. XYChart
-renders deterministic compact bars, lines, mixed plots, titles, axes, legends, and configurable
-compact plot areas instead of SVG coordinates.
+the relationship layout. Dense, cyclic, grid-budget-limited, or collision-prone Class/ER layouts
+fall back to a structured `relations:` summary instead of drawing unreadable overlapping lines.
+XYChart renders deterministic compact bars, lines, mixed plots, titles, axes, legends, and
+configurable compact plot areas instead of SVG coordinates.
 
 ```rust
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};

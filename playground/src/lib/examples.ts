@@ -3,6 +3,7 @@ export interface Example {
   name: string;
   category: string;
   code: string;
+  asciiSupported?: boolean;
 }
 
 export const examples: Example[] = [
@@ -139,6 +140,7 @@ export const examples: Example[] = [
     id: "class-nested-namespace",
     name: "Nested Namespace",
     category: "Class",
+    asciiSupported: false,
     code: `classDiagram
     namespace Platform["Platform Layer"] {
       namespace FFI {

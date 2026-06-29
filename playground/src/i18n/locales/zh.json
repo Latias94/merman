@@ -92,6 +92,8 @@
     "description": "选择一个示例加载到编辑器",
     "all": "全部",
     "asciiOnly": "支持 ASCII",
+    "asciiFilterAvailable": "有 {{count}} 个示例支持 ASCII 筛选",
+    "asciiFilterActive": "正在显示 {{count}} / {{total}} 个支持 ASCII 的示例",
     "lines": "行",
     "categories": {
       "flowchart": "流程图",

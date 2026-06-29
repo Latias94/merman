@@ -92,6 +92,8 @@
     "description": "Select an example to load into the editor",
     "all": "All",
     "asciiOnly": "ASCII supported",
+    "asciiFilterAvailable": "{{count}} ASCII-ready examples available",
+    "asciiFilterActive": "Showing {{count}} of {{total}} ASCII-ready examples",
     "lines": "lines",
     "categories": {
       "flowchart": "Flowchart",

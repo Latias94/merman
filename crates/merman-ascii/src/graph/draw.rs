@@ -781,18 +781,19 @@ fn draw_lean_node(
 
     let start_y = top + 1;
     let end_y = bottom.saturating_sub(1);
-    let denom = end_y.saturating_sub(start_y).max(1);
-    for y in start_y..end_y {
-        let progress = y - start_y;
+    let denom = bottom.saturating_sub(top).max(1);
+    for y in start_y..=end_y {
+        let progress = y - top;
+        let shift = progress.saturating_mul(slant) / denom;
         let left_x = if lean_right {
-            top_left + progress.saturating_mul(slant) / denom
+            top_left + shift
         } else {
-            top_left.saturating_add(slant.saturating_sub(progress.saturating_mul(slant) / denom))
+            top_left.saturating_sub(shift)
         };
         let right_x = if lean_right {
-            top_right + progress.saturating_mul(slant) / denom
+            top_right + shift
         } else {
-            top_right.saturating_sub(slant.saturating_sub(progress.saturating_mul(slant) / denom))
+            top_right.saturating_sub(shift)
         };
         set_node_border(
             canvas,
