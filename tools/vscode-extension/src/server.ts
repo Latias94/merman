@@ -1,10 +1,9 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   LanguageClient,
   LanguageClientOptions,
   RevealOutputChannelOn,
+  StateChangeEvent,
   ServerOptions,
   State,
   Trace,
@@ -17,6 +16,38 @@ import {
   getServerSettings,
   getTraceSetting,
 } from "./config.js";
+import { findWorkspaceDebugBinary, workspaceRoot } from "./workspace.js";
+
+export const RULE_CATALOG_METHOD = "merman/ruleCatalog";
+export const CONFIG_SCHEMA_METHOD = "merman/configSchema";
+
+export interface LspRuleCatalogEntry {
+  id: string;
+  description: string;
+  evidence: string[];
+  default_severity: string;
+  category: string;
+  default_enabled: boolean;
+  default_profile: string;
+  origin: string;
+  configurable: boolean;
+  fixable: boolean;
+}
+
+export interface RuleCatalogResponse {
+  version: number;
+  rules: LspRuleCatalogEntry[];
+}
+
+export interface ConfigSchemaResponse {
+  version: number;
+  rule_catalog_method: string;
+  accepted_roots: string[];
+  profiles: string[];
+  severities: string[];
+  configurable_rule_ids: string[];
+  schema: unknown;
+}
 
 export async function createLanguageClient(
   context: vscode.ExtensionContext,
@@ -60,7 +91,7 @@ export async function createLanguageClient(
     clientOptions,
   );
   await client.setTrace(toTrace(getTraceSetting()));
-  client.onDidChangeState((event: { oldState: State; newState: State }) => {
+  client.onDidChangeState((event: StateChangeEvent) => {
     outputChannel.appendLine(
       `[state] ${event.oldState.toString()} -> ${event.newState.toString()}`,
     );
@@ -74,6 +105,28 @@ export async function pushConfiguration(client: LanguageClient): Promise<void> {
   });
 }
 
+export async function fetchRuleCatalog(client: LanguageClient): Promise<RuleCatalogResponse> {
+  return client.sendRequest<RuleCatalogResponse>(RULE_CATALOG_METHOD);
+}
+
+export async function fetchConfigSchema(client: LanguageClient): Promise<ConfigSchemaResponse> {
+  return client.sendRequest<ConfigSchemaResponse>(CONFIG_SCHEMA_METHOD);
+}
+
+export function serverStateLabel(state: State): string {
+  switch (state) {
+    case State.Starting:
+      return "Starting";
+    case State.Running:
+      return "Running";
+    case State.StartFailed:
+      return "Failed";
+    case State.Stopped:
+    default:
+      return "Stopped";
+  }
+}
+
 async function resolveServerOptions(
   outputChannel: vscode.OutputChannel,
 ): Promise<ServerOptions> {
@@ -85,7 +138,7 @@ async function resolveServerOptions(
   }
 
   if (!settings.useCargoRun) {
-    const workspaceBinary = findWorkspaceBinary();
+    const workspaceBinary = findWorkspaceDebugBinary("merman-lsp");
     if (workspaceBinary) {
       return createExecutableServerOptions(workspaceBinary, settings.args, outputChannel);
     }
@@ -138,23 +191,9 @@ function createCargoServerOptions(
   };
 }
 
-function findWorkspaceBinary(): string | undefined {
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const binaryPath = path.join(folder.uri.fsPath, "target", "debug", binaryName());
-    if (fs.existsSync(binaryPath)) {
-      return binaryPath;
-    }
-  }
-  return undefined;
-}
-
-function binaryName(): string {
-  return process.platform === "win32" ? "merman-lsp.exe" : "merman-lsp";
-}
-
 function workspaceShellOptions(): { cwd?: string } {
   return {
-    cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    cwd: workspaceRoot(),
   };
 }
 

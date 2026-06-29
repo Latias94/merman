@@ -8,10 +8,12 @@ current workspace build.
 
 - Mermaid source files: `.mmd`, `.mermaid`
 - Markdown-family documents: `markdown`, `.markdown`, `.mdx` Mermaid fences through the same LSP
+- Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped diagnostics summary for the visible Mermaid source
 - Local `merman-lsp` launch through:
   - `target/debug/merman-lsp` when already built
   - `cargo run -p merman-lsp --` as fallback
 - Runtime analysis settings forwarded through `initialize` and `workspace/didChangeConfiguration`
+- Rule catalog and config schema inspection commands backed by the custom LSP requests
 
 ## Quick start
 
@@ -36,6 +38,13 @@ current workspace build.
    ```
 
 4. Open a `.mmd`, `.mermaid`, `.md`, `.markdown`, or `.mdx` file and edit a Mermaid diagram.
+
+## Commands
+
+- `Merman: Restart Language Server`
+- `Merman: Open Preview`
+- `Merman: Show Rule Catalog`
+- `Merman: Show Config Schema`
 
 ## Settings
 

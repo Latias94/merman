@@ -23,6 +23,9 @@
     "onLanguage:markdown",
     "onLanguage:mdx",
     "onCommand:merman.restartLanguageServer",
+    "onCommand:merman.openPreview",
+    "onCommand:merman.showRuleCatalog",
+    "onCommand:merman.showConfigSchema",
     "workspaceContains:**/*.mmd",
     "workspaceContains:**/*.mermaid"
   ],
@@ -163,6 +166,18 @@
       {
         "command": "merman.restartLanguageServer",
         "title": "Merman: Restart Language Server"
+      },
+      {
+        "command": "merman.openPreview",
+        "title": "Merman: Open Preview"
+      },
+      {
+        "command": "merman.showRuleCatalog",
+        "title": "Merman: Show Rule Catalog"
+      },
+      {
+        "command": "merman.showConfigSchema",
+        "title": "Merman: Show Config Schema"
       }
     ]
   },
