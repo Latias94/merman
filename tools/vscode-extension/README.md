@@ -16,7 +16,8 @@ remote AI.
 - Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped
   diagnostics, quick-fix entry points, source pinning, multi-fence selection, zoom, theme/background
   inspection controls, and local SVG copy
-- Local SVG and PNG export for Mermaid files and the active Markdown/MDX Mermaid fence
+- Local SVG and PNG export for Mermaid files and the active Markdown/MDX Mermaid fence, including
+  an export picker with open-after-export options
 - Local runtime launch through one shared resolver:
   - packaged `bin/<platform>-<arch>/merman-lsp` and `merman-cli`
   - user-configured absolute executable paths
@@ -60,10 +61,11 @@ is required for normal use.
 
 - `Merman: Restart Language Server`
 - `Merman: Open Preview`
+- `Merman: Export...`
 - `Merman: Export SVG`
 - `Merman: Export PNG`
 - `Merman: Copy SVG`
-- `Merman: Copy PNG` (falls back to PNG file export when VS Code cannot write binary clipboard data)
+- `Merman: Copy PNG` (uses the local platform clipboard when available, otherwise falls back to PNG export)
 - `Merman: Show Rule Catalog`
 - `Merman: Show Config Schema`
 

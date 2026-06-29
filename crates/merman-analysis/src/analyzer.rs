@@ -160,11 +160,12 @@ impl Analyzer {
                     if let Some(diagnostic) = core_diagnostic {
                         diagnostics.push(diagnostic);
                     }
-                    if let Some(_diagram_type) = diagram_type {
-                        // When the main parse already failed, surfacing a second recovery diagnostic
-                        // tends to duplicate the same parser failure in editor surfaces. Keep the
-                        // recovery path for successfully parsed documents only, where it still
-                        // adds value for completion/navigation fallback.
+                    if let Some(diagram_type) = diagram_type {
+                        diagnostics.extend(self.editor_recovery_diagnostics(
+                            source,
+                            &diagram_type,
+                            &source_map,
+                        ));
                     }
                     self.payload(diagnostics)
                 }
@@ -413,7 +414,7 @@ mod tests {
 
         assert!(!payload.valid);
         assert_eq!(payload.summary.errors, 1);
-        assert_eq!(payload.summary.warnings, 0);
+        assert_eq!(payload.summary.warnings, 1);
 
         let parse_error = payload
             .diagnostics
@@ -423,12 +424,14 @@ mod tests {
         assert_eq!(parse_error.severity, DiagnosticSeverity::Error);
         assert_eq!(parse_error.category, DiagnosticCategory::Parse);
         assert_eq!(parse_error.diagram_type.as_deref(), Some("stateDiagram"));
-        assert!(
-            payload
-                .diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.id != "merman.parse.recovered_editor_facts")
-        );
+        let recovered = payload
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
+            .expect("recovered editor diagnostic");
+        assert_eq!(recovered.severity, DiagnosticSeverity::Warning);
+        assert_eq!(recovered.category, DiagnosticCategory::Parse);
+        assert_eq!(recovered.diagram_type.as_deref(), Some("stateDiagram"));
     }
 
     #[test]

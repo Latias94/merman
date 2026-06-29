@@ -134,5 +134,30 @@
       "accDescr: ${2:Diagram description}"
     ],
     "description": "Accessibility title and description"
+  },
+  "Frontmatter Config": {
+    "prefix": "front",
+    "body": [
+      "---",
+      "config:",
+      "  theme: ${1|default,dark,forest,neutral,base|}",
+      "---",
+      "${2:flowchart TD}",
+      "  ${3:A} --> ${4:B}"
+    ],
+    "description": "Mermaid frontmatter config"
+  },
+  "Theme CSS": {
+    "prefix": "themecss",
+    "body": [
+      "---",
+      "config:",
+      "  themeCSS: |",
+      "    ${1:.node rect { filter: drop-shadow(1px 1px 1px #999); }}",
+      "---",
+      "${2:flowchart TD}",
+      "  ${3:A} --> ${4:B}"
+    ],
+    "description": "Mermaid themeCSS frontmatter"
   }
 }

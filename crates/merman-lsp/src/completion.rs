@@ -31,6 +31,7 @@ fn core_item_to_lsp(item: merman_editor_core::CompletionItem) -> CompletionItem 
         kind: Some(match item.kind {
             CompletionItemKind::Keyword => LspCompletionItemKind::KEYWORD,
             CompletionItemKind::Variable => LspCompletionItemKind::VARIABLE,
+            CompletionItemKind::Class => LspCompletionItemKind::CLASS,
             CompletionItemKind::Snippet => LspCompletionItemKind::SNIPPET,
         }),
         detail: item.detail,

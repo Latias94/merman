@@ -1,6 +1,6 @@
 use merman_editor_core::{
-    CompletionContext, CompletionDataKind, CompletionInsertTextFormat, DocumentKind,
-    DocumentWorkspace, Position, completion_documentation, completion_for_snapshot,
+    CompletionContext, CompletionDataKind, CompletionInsertTextFormat, CompletionItemKind,
+    DocumentKind, DocumentWorkspace, Position, completion_documentation, completion_for_snapshot,
 };
 
 #[test]
@@ -20,6 +20,96 @@ fn completion_offers_known_node_ids_with_text_edits() {
     assert_eq!(edit.new_text, "B");
     assert_eq!(edit.range.start.line, 1);
     assert_eq!(edit.range.start.character, 0);
+}
+
+#[test]
+fn completion_offers_node_ids_for_directive_targets() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\nstyle \n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 6));
+
+    let item = list.items.iter().find(|item| item.label == "A").unwrap();
+    let edit = item.text_edit.as_ref().unwrap();
+
+    assert_eq!(edit.new_text, "A");
+    assert_eq!(edit.range.start.line, 2);
+    assert_eq!(edit.range.start.character, 6);
+    assert!(list.items.iter().any(|item| item.label == "B"));
+}
+
+#[test]
+fn completion_offers_class_names_for_class_references() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\nclassDef hot fill:#f00\nclass A h\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(3, 9));
+
+    let item = list.items.iter().find(|item| item.label == "hot").unwrap();
+    let edit = item.text_edit.as_ref().unwrap();
+
+    assert_eq!(item.kind, CompletionItemKind::Class);
+    assert_eq!(
+        item.data.as_ref().unwrap().kind,
+        CompletionDataKind::ClassName
+    );
+    assert_eq!(edit.new_text, "hot");
+    assert_eq!(edit.range.start.line, 3);
+    assert_eq!(edit.range.start.character, 8);
+}
+
+#[test]
+fn completion_offers_style_snippets_after_style_targets() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\nstyle A \n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 8));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "fill/stroke style")
+        .unwrap();
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+    assert_eq!(item.data.as_ref().unwrap().kind, CompletionDataKind::Style);
+    assert!(item.insert_text.as_ref().unwrap().contains("stroke-width"));
+}
+
+#[test]
+fn completion_offers_interaction_snippets_after_click_targets() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\nclick A \n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 8));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "href link action")
+        .unwrap();
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+    assert_eq!(
+        item.data.as_ref().unwrap().kind,
+        CompletionDataKind::Interaction
+    );
 }
 
 #[test]
@@ -116,6 +206,71 @@ fn completion_offers_snippet_templates_at_diagram_start() {
     assert_eq!(
         item.data.as_ref().unwrap().kind,
         CompletionDataKind::Template
+    );
+}
+
+#[test]
+fn completion_offers_icon_template_from_icon_prefix() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "icon".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "icon node template")
+        .expect("icon node template completion");
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+}
+
+#[test]
+fn completion_offers_frontmatter_templates_at_document_start() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        String::new(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 0));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "frontmatter config template")
+        .expect("frontmatter template completion");
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+    assert!(item.insert_text.as_ref().unwrap().contains("config:"));
+}
+
+#[test]
+fn completion_offers_themecss_inside_frontmatter() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "---\nconfig:\n  theme\n---\nflowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 7));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "themeCSS: |")
+        .expect("themeCSS frontmatter completion");
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+    assert_eq!(
+        item.data.as_ref().unwrap().kind,
+        CompletionDataKind::Frontmatter
     );
 }
 

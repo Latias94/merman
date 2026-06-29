@@ -252,17 +252,22 @@ fn completion_offers_directive_items_for_class_directive_variants() {
 }
 
 #[test]
-fn completion_uses_er_parser_expected_id_list_context_for_class_def() {
+fn completion_does_not_treat_er_class_def_names_as_node_ids() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "erDiagram\nclassDef pink fill:#f9f\n".to_string());
     let list = completion_for_snapshot(&snapshot, Position::new(1, 9));
 
     assert!(
-        !list.items.is_empty(),
-        "parser id-list context must offer node identifiers"
+        list.items
+            .iter()
+            .all(|item| item.kind != Some(tower_lsp::lsp_types::CompletionItemKind::VARIABLE)),
+        "classDef context must not offer node identifiers: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
     );
-    assert!(list.items.iter().any(|item| item.label == "pink"));
     assert!(
         list.items.iter().all(|item| item.label != ":::className"),
         "parser id-list context must not offer directive completions: {:?}",
@@ -697,6 +702,37 @@ fn completion_projects_core_snippet_items_to_lsp_snippets() {
             assert!(edit.new_text.contains("${1|TD,TB,BT,LR,RL|}"));
             assert_eq!(edit.range.start.character, 0);
             assert_eq!(edit.range.end.character, 4);
+        }
+        other => panic!("unexpected text edit: {other:?}"),
+    }
+}
+
+#[test]
+fn completion_projects_class_name_items_to_lsp_classes() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(
+        uri,
+        1,
+        "flowchart TD\nA-->B\nclassDef hot fill:#f00\nclass A h\n".to_string(),
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(3, 9));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "hot")
+        .expect("class name completion");
+
+    assert_eq!(
+        item.kind,
+        Some(tower_lsp::lsp_types::CompletionItemKind::CLASS)
+    );
+    match item.text_edit.as_ref().unwrap() {
+        CompletionTextEdit::Edit(edit) => {
+            assert_eq!(edit.new_text, "hot");
+            assert_eq!(edit.range.start.character, 8);
+            assert_eq!(edit.range.end.character, 9);
         }
         other => panic!("unexpected text edit: {other:?}"),
     }

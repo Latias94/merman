@@ -24,6 +24,7 @@
     "onLanguage:mdx",
     "onCommand:merman.restartLanguageServer",
     "onCommand:merman.openPreview",
+    "onCommand:merman.export",
     "onCommand:merman.exportSvg",
     "onCommand:merman.exportPng",
     "onCommand:merman.copySvg",
@@ -202,6 +203,12 @@
         "icon": "$(open-preview)"
       },
       {
+        "command": "merman.export",
+        "title": "Merman: Export...",
+        "category": "Merman",
+        "icon": "$(export)"
+      },
+      {
         "command": "merman.exportSvg",
         "title": "Merman: Export SVG",
         "category": "Merman",
@@ -244,9 +251,14 @@
           "group": "navigation@10"
         },
         {
-          "command": "merman.exportSvg",
+          "command": "merman.export",
           "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
           "group": "navigation@11"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@12"
         }
       ],
       "editor/context": [
@@ -256,24 +268,29 @@
           "group": "navigation@10"
         },
         {
-          "command": "merman.exportSvg",
+          "command": "merman.export",
           "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
           "group": "navigation@11"
         },
         {
-          "command": "merman.exportPng",
+          "command": "merman.exportSvg",
           "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
           "group": "navigation@12"
         },
         {
-          "command": "merman.copySvg",
+          "command": "merman.exportPng",
           "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
           "group": "navigation@13"
         },
         {
-          "command": "merman.copyPng",
+          "command": "merman.copySvg",
           "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
           "group": "navigation@14"
+        },
+        {
+          "command": "merman.copyPng",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@15"
         }
       ],
       "explorer/context": [
@@ -283,19 +300,28 @@
           "group": "navigation@10"
         },
         {
-          "command": "merman.exportSvg",
+          "command": "merman.export",
           "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
           "group": "navigation@11"
         },
         {
-          "command": "merman.exportPng",
+          "command": "merman.exportSvg",
           "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
           "group": "navigation@12"
+        },
+        {
+          "command": "merman.exportPng",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@13"
         }
       ],
       "commandPalette": [
         {
           "command": "merman.openPreview",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.export",
           "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
         },
         {
@@ -318,11 +344,13 @@
     }
   },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "npm run compile && npm run bundle",
+    "compile": "tsc -p .",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js --sourcemap --sources-content=false",
     "check": "tsc -p . --noEmit",
     "test": "npm run build && node --test dist/test/**/*.test.js",
     "prepare:binaries": "node scripts/prepare-binaries.mjs",
-    "package": "vsce package"
+    "package": "npm run build && vsce package"
   },
   "dependencies": {
     "vscode-languageclient": "10.0.1"
@@ -331,6 +359,12 @@
     "@types/node": "26.0.1",
     "@types/vscode": "1.120.0",
     "@vscode/vsce": "3.9.2",
+    "esbuild": "0.28.1",
     "typescript": "6.0.3"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.0.9": true,
+    "esbuild@0.28.1": true,
+    "keytar@7.9.0": true
   }
 }

@@ -73,7 +73,10 @@ does not expose many entity-bearing spans.
   options accepted by initialization options and `workspace/didChangeConfiguration`.
 - Completion: semantic roles must exclude payload-only spans. Static authoring templates and
   context-sensitive helper inserts may use LSP snippet completion items, while semantic target
-  reuse such as node identifiers stays plain text.
+  reuse such as node identifiers and class names stays plain text. Directive-aware completion
+  offers node targets for `style`, `class`, `cssClass`, `click`, `link`, and `callback` target
+  slots; class names for class-reference slots; and snippets for style properties, interaction
+  actions, icon nodes, frontmatter config, and `themeCSS`.
 - Completion resolve: completion items carry Merman-owned `data`, and `completionItem/resolve`
   fills Markdown documentation without changing `insertText`, `textEdit`, filtering, or sorting
   fields.

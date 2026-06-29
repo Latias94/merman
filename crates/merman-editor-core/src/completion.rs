@@ -19,10 +19,16 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     if context.offer_diagram_headers() {
         items.extend(diagram_header_items(context.prefix_range()));
         items.extend(template_items(context.prefix_range()));
+    } else if context.offer_template_items() {
+        items.extend(template_items(context.prefix_range()));
     }
 
     if context.offer_operator_items() {
         items.extend(operator_items(context.operator_range()));
+    }
+
+    if context.offer_frontmatter_items() {
+        items.extend(frontmatter_items(context.frontmatter_text_edit_range()));
     }
 
     if context.offer_direction_items() {
@@ -35,6 +41,24 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
 
     if context.offer_shape_items() {
         items.extend(shape_items(&context));
+    }
+
+    if context.offer_class_name_items() {
+        items.extend(class_name_items(
+            context.fence(),
+            context.document_uri(),
+            context.class_name_text_edit_range(),
+        ));
+    }
+
+    if context.offer_style_snippet_items() {
+        items.extend(style_snippet_items(context.style_text_edit_range()));
+    }
+
+    if context.offer_interaction_snippet_items() {
+        items.extend(interaction_snippet_items(
+            context.interaction_text_edit_range(),
+        ));
     }
 
     if context.offer_node_items() {
@@ -103,6 +127,34 @@ fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
         keyword_completion(
             "==>",
             "edge operator",
+            range,
+            None,
+            CompletionDataKind::Operator,
+        ),
+        snippet_completion(
+            "-->|label|",
+            "labeled edge operator",
+            range,
+            "-->|${1:label}|",
+            CompletionDataKind::Operator,
+        ),
+        keyword_completion(
+            "<|--",
+            "inheritance operator",
+            range,
+            None,
+            CompletionDataKind::Operator,
+        ),
+        keyword_completion(
+            "*--",
+            "composition operator",
+            range,
+            None,
+            CompletionDataKind::Operator,
+        ),
+        keyword_completion(
+            "o--",
+            "aggregation operator",
             range,
             None,
             CompletionDataKind::Operator,
@@ -241,6 +293,114 @@ fn node_items(
         .collect()
 }
 
+fn class_name_items(
+    fence: &FenceSnapshot,
+    document_uri: &str,
+    range: Option<Range>,
+) -> Vec<CompletionItem> {
+    fence
+        .text_index
+        .class_names()
+        .map(|name| CompletionItem {
+            label: name.clone(),
+            kind: CompletionItemKind::Class,
+            detail: Some("class name".to_string()),
+            data: Some(CompletionResolveData {
+                kind: CompletionDataKind::ClassName,
+                label: name.clone(),
+            }),
+            insert_text: Some(name.clone()),
+            insert_text_format: CompletionInsertTextFormat::PlainText,
+            text_edit: range.map(|range| CompletionTextEdit {
+                range,
+                new_text: name.clone(),
+            }),
+            label_details: Some(CompletionItemLabelDetails {
+                description: Some(document_uri.to_string()),
+                detail: Some(format!("fence {}", fence.index + 1)),
+            }),
+        })
+        .collect()
+}
+
+fn style_snippet_items(range: Option<Range>) -> Vec<CompletionItem> {
+    vec![
+        snippet_completion(
+            "fill/stroke style",
+            "style properties",
+            range,
+            "fill:${1:#eef},stroke:${2:#447},stroke-width:${3:1px}",
+            CompletionDataKind::Style,
+        ),
+        snippet_completion(
+            "text style",
+            "style properties",
+            range,
+            "color:${1:#222},font-size:${2:14px},font-weight:${3|normal,bold|}",
+            CompletionDataKind::Style,
+        ),
+        snippet_completion(
+            "dashed stroke style",
+            "style properties",
+            range,
+            "stroke-dasharray:${1:5 5},stroke:${2:#447},stroke-width:${3:2px}",
+            CompletionDataKind::Style,
+        ),
+    ]
+}
+
+fn interaction_snippet_items(range: Option<Range>) -> Vec<CompletionItem> {
+    vec![
+        snippet_completion(
+            "href link action",
+            "interaction action",
+            range,
+            "href \"${1:https://example.com}\" \"${2:Tooltip}\" ${3|_blank,_self|}",
+            CompletionDataKind::Interaction,
+        ),
+        snippet_completion(
+            "callback action",
+            "interaction action",
+            range,
+            "call ${1:callback}(${2:arg})",
+            CompletionDataKind::Interaction,
+        ),
+    ]
+}
+
+fn frontmatter_items(range: Option<Range>) -> Vec<CompletionItem> {
+    vec![
+        snippet_completion(
+            "config:",
+            "frontmatter config",
+            range,
+            "config:\n  ${1:theme}: ${2:default}",
+            CompletionDataKind::Frontmatter,
+        ),
+        snippet_completion(
+            "theme:",
+            "frontmatter config",
+            range,
+            "theme: ${1|default,dark,forest,neutral,base|}",
+            CompletionDataKind::Frontmatter,
+        ),
+        snippet_completion(
+            "themeCSS: |",
+            "frontmatter config",
+            range,
+            "themeCSS: |\n  ${1:.node rect { filter: drop-shadow(1px 1px 1px #999); }}",
+            CompletionDataKind::Frontmatter,
+        ),
+        snippet_completion(
+            "themeVariables:",
+            "frontmatter config",
+            range,
+            "themeVariables:\n  ${1:primaryColor}: ${2:#f4f4f4}",
+            CompletionDataKind::Frontmatter,
+        ),
+    ]
+}
+
 fn keyword_completion(
     label: &str,
     detail: &str,
@@ -321,6 +481,20 @@ fn template_items(range: Option<Range>) -> Vec<CompletionItem> {
             "accTitle: ${1:Diagram title}\naccDescr: ${2:Diagram description}",
             CompletionDataKind::Template,
         ),
+        snippet_completion(
+            "frontmatter config template",
+            COMMON_TEMPLATE_DETAIL,
+            range,
+            "---\nconfig:\n  theme: ${1|default,dark,forest,neutral,base|}\n---\n${2:flowchart TD}\n  ${3:A} --> ${4:B}",
+            CompletionDataKind::Template,
+        ),
+        snippet_completion(
+            "themeCSS frontmatter template",
+            COMMON_TEMPLATE_DETAIL,
+            range,
+            "---\nconfig:\n  themeCSS: |\n    ${1:.node rect { filter: drop-shadow(1px 1px 1px #999); }}\n---\n${2:flowchart TD}\n  ${3:A} --> ${4:B}",
+            CompletionDataKind::Template,
+        ),
     ]
 }
 
@@ -367,8 +541,23 @@ pub fn completion_documentation(data: &CompletionResolveData) -> String {
             "Inserts Mermaid flowchart shape object syntax for `{}`.",
             data.label
         ),
+        CompletionDataKind::ClassName => format!(
+            "Reuses the `{}` class name already defined in the current Mermaid fence.",
+            data.label
+        ),
         CompletionDataKind::NodeIdentifier => format!(
             "Reuses the `{}` identifier already present in the current Mermaid fence.",
+            data.label
+        ),
+        CompletionDataKind::Style => {
+            format!("Inserts Mermaid style properties for `{}`.", data.label)
+        }
+        CompletionDataKind::Interaction => format!(
+            "Inserts a Mermaid click/link/callback action for `{}`.",
+            data.label
+        ),
+        CompletionDataKind::Frontmatter => format!(
+            "Inserts Mermaid frontmatter configuration for `{}`.",
             data.label
         ),
         CompletionDataKind::Template => format!(
@@ -401,6 +590,7 @@ pub struct CompletionItem {
 pub enum CompletionItemKind {
     Keyword,
     Variable,
+    Class,
     Snippet,
 }
 
@@ -431,7 +621,11 @@ pub enum CompletionDataKind {
     Direction,
     Directive,
     Shape,
+    ClassName,
     NodeIdentifier,
+    Style,
+    Interaction,
+    Frontmatter,
     Template,
 }
 

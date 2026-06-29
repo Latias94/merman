@@ -158,7 +158,46 @@ impl<'a> CompletionContext<'a> {
             );
         }
 
+        if self.offer_directive_target_node_items() {
+            return true;
+        }
+
         self.offers(FenceCursorCompletionKind::NodeIdentifier)
+    }
+
+    pub fn offer_template_items(&self) -> bool {
+        if self.directive_prefix.is_some() {
+            return false;
+        }
+        let prefix = self.prefix.trim_end();
+        !prefix.is_empty()
+            && !prefix.chars().any(char::is_whitespace)
+            && TEMPLATE_PREFIXES
+                .iter()
+                .any(|template_prefix| template_prefix.starts_with(prefix))
+    }
+
+    pub fn offer_frontmatter_items(&self) -> bool {
+        let relative_cursor = self
+            .cursor_offset
+            .saturating_sub(self.fence.body_start)
+            .min(self.fence.text.len());
+        is_frontmatter_authoring_position(&self.fence.text, relative_cursor, &self.prefix)
+    }
+
+    pub fn offer_class_name_items(&self) -> bool {
+        directive_slot_for_prefix(&self.prefix, self.directive_prefix)
+            == DirectiveCompletionSlot::ClassName
+    }
+
+    pub fn offer_style_snippet_items(&self) -> bool {
+        directive_slot_for_prefix(&self.prefix, self.directive_prefix)
+            == DirectiveCompletionSlot::Style
+    }
+
+    pub fn offer_interaction_snippet_items(&self) -> bool {
+        directive_slot_for_prefix(&self.prefix, self.directive_prefix)
+            == DirectiveCompletionSlot::Interaction
     }
 
     pub fn is_comment_or_directive_line(&self) -> bool {
@@ -174,11 +213,39 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn node_text_edit_range(&self) -> Option<Range> {
+        if matches!(
+            self.expected_syntax,
+            Some(FenceExpectedSyntaxKind::NodeIdentifier | FenceExpectedSyntaxKind::IdList)
+        ) && let Some((start, end)) = self.expected_syntax_span
+        {
+            return self.range_for_offsets(start, end);
+        }
+
+        if self.offer_directive_target_node_items() {
+            return self.current_token_range(is_directive_target_delimiter);
+        }
+
         if self.offer_operator_items() {
             None
         } else {
             self.prefix_range()
         }
+    }
+
+    pub fn class_name_text_edit_range(&self) -> Option<Range> {
+        self.current_token_range(is_class_name_delimiter)
+    }
+
+    pub fn style_text_edit_range(&self) -> Option<Range> {
+        self.current_token_range(is_style_token_delimiter)
+    }
+
+    pub fn interaction_text_edit_range(&self) -> Option<Range> {
+        self.current_token_range(is_style_token_delimiter)
+    }
+
+    pub fn frontmatter_text_edit_range(&self) -> Option<Range> {
+        self.current_token_range(is_frontmatter_token_delimiter)
     }
 
     fn range_for_offsets(&self, start: usize, end: usize) -> Option<Range> {
@@ -244,6 +311,22 @@ impl<'a> CompletionContext<'a> {
     fn offers(&self, kind: FenceCursorCompletionKind) -> bool {
         self.completion_kinds.contains(&kind)
     }
+
+    fn offer_directive_target_node_items(&self) -> bool {
+        directive_slot_for_prefix(&self.prefix, self.directive_prefix)
+            == DirectiveCompletionSlot::Target
+    }
+
+    fn current_token_range(&self, is_delimiter: fn(char) -> bool) -> Option<Range> {
+        let prefix = self.prefix.as_str();
+        let token_start = prefix
+            .char_indices()
+            .rev()
+            .find_map(|(idx, ch)| is_delimiter(ch).then_some(idx + ch.len_utf8()))
+            .unwrap_or(0);
+
+        self.range_for_offsets(self.prefix_start_offset + token_start, self.cursor_offset)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -267,3 +350,162 @@ fn operator_suffix_start(prefix: &str) -> Option<usize> {
 
     seen_operator.then_some(start)
 }
+
+const TEMPLATE_PREFIXES: &[&str] = &[
+    "flow", "seq", "icon", "acc", "class", "state", "er", "gantt", "pie", "journey", "mind",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DirectiveCompletionSlot {
+    Target,
+    ClassName,
+    Style,
+    Interaction,
+    None,
+}
+
+fn directive_slot_for_prefix(
+    prefix: &str,
+    directive_prefix: Option<&str>,
+) -> DirectiveCompletionSlot {
+    if prefix
+        .rfind(":::")
+        .is_some_and(|index| index + 3 <= prefix.len())
+    {
+        return DirectiveCompletionSlot::ClassName;
+    }
+
+    let Some(directive_prefix) = directive_prefix else {
+        return DirectiveCompletionSlot::None;
+    };
+    let Some(rest) = rest_after_keyword(prefix, directive_prefix) else {
+        return DirectiveCompletionSlot::None;
+    };
+
+    match directive_prefix {
+        "class" => {
+            if first_argument_is_complete(rest) {
+                DirectiveCompletionSlot::ClassName
+            } else {
+                DirectiveCompletionSlot::Target
+            }
+        }
+        "cssClass" => {
+            if first_argument_is_complete(rest) {
+                DirectiveCompletionSlot::ClassName
+            } else {
+                DirectiveCompletionSlot::Target
+            }
+        }
+        "classDef" => {
+            if first_argument_is_complete(rest) {
+                DirectiveCompletionSlot::Style
+            } else if first_argument_end(rest).is_some() {
+                DirectiveCompletionSlot::ClassName
+            } else {
+                DirectiveCompletionSlot::None
+            }
+        }
+        "style" => {
+            if first_argument_is_complete(rest) {
+                DirectiveCompletionSlot::Style
+            } else {
+                DirectiveCompletionSlot::Target
+            }
+        }
+        "click" | "link" | "callback" => {
+            if first_argument_is_complete(rest) {
+                DirectiveCompletionSlot::Interaction
+            } else {
+                DirectiveCompletionSlot::Target
+            }
+        }
+        _ => DirectiveCompletionSlot::None,
+    }
+}
+
+fn rest_after_keyword<'a>(prefix: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = prefix.strip_prefix(keyword)?;
+    if rest.chars().next().is_none_or(|ch| ch.is_whitespace()) {
+        Some(rest)
+    } else {
+        None
+    }
+}
+
+fn first_argument_is_complete(rest: &str) -> bool {
+    let Some(argument_end) = first_argument_end(rest) else {
+        return false;
+    };
+
+    rest[argument_end..].chars().any(char::is_whitespace)
+}
+
+fn first_argument_end(rest: &str) -> Option<usize> {
+    let leading = rest
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>();
+    let body = &rest[leading..];
+    if body.is_empty() {
+        return None;
+    }
+
+    if let Some(quote) = body.chars().next().filter(|ch| matches!(ch, '"' | '\'')) {
+        let close = body[quote.len_utf8()..].find(quote)?;
+        return Some(leading + quote.len_utf8() + close + quote.len_utf8());
+    }
+
+    let body_end = body
+        .char_indices()
+        .find_map(|(idx, ch)| ch.is_whitespace().then_some(idx))
+        .unwrap_or(body.len());
+    Some(leading + body_end)
+}
+
+fn is_directive_target_delimiter(ch: char) -> bool {
+    ch.is_whitespace() || matches!(ch, ',' | '"' | '\'')
+}
+
+fn is_class_name_delimiter(ch: char) -> bool {
+    is_directive_target_delimiter(ch) || ch == ':'
+}
+
+fn is_style_token_delimiter(ch: char) -> bool {
+    ch.is_whitespace() || matches!(ch, ',' | '"' | '\'')
+}
+
+fn is_frontmatter_token_delimiter(ch: char) -> bool {
+    ch.is_whitespace() || ch == ':'
+}
+
+fn is_frontmatter_authoring_position(text: &str, cursor: usize, prefix: &str) -> bool {
+    let trimmed_prefix = prefix.trim_end();
+    if text.starts_with("---") {
+        return frontmatter_closing_start(text)
+            .is_none_or(|closing_start| cursor <= closing_start + "---".len());
+    }
+
+    cursor == 0
+        || trimmed_prefix == "---"
+        || (!trimmed_prefix.is_empty()
+            && FRONTMATTER_PREFIXES
+                .iter()
+                .any(|frontmatter_prefix| frontmatter_prefix.starts_with(trimmed_prefix)))
+}
+
+fn frontmatter_closing_start(text: &str) -> Option<usize> {
+    text.get("---".len()..)?
+        .find("\n---")
+        .map(|offset| "---".len() + offset + "\n".len())
+}
+
+const FRONTMATTER_PREFIXES: &[&str] = &[
+    "config",
+    "theme",
+    "themeCSS",
+    "themeVariables",
+    "look",
+    "layout",
+];

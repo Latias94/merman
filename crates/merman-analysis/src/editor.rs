@@ -172,6 +172,7 @@ impl FenceCursorContext {
 #[derive(Debug, Clone, Default)]
 pub struct FenceTextIndex {
     node_ids: BTreeSet<String>,
+    class_names: BTreeSet<String>,
     directive_prefixes: BTreeSet<String>,
     references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
     outline_items: Vec<FenceLineItem>,
@@ -285,7 +286,11 @@ impl FenceTextIndex {
                     .or_default()
                     .push(item.selection);
             }
-            if role.contributes_completion() {
+            let is_class_definition = is_class_definition_detail(item.detail.as_deref());
+            if is_class_definition {
+                index.class_names.insert(item.name.clone());
+            }
+            if role.contributes_completion() && !is_class_definition {
                 index.node_ids.insert(item.name.clone());
             }
             if role.contributes_outline() {
@@ -336,6 +341,10 @@ impl FenceTextIndex {
 
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
         self.node_ids.iter()
+    }
+
+    pub fn class_names(&self) -> impl Iterator<Item = &String> {
+        self.class_names.iter()
     }
 
     pub fn directive_prefixes(&self) -> impl Iterator<Item = &String> {
@@ -510,6 +519,9 @@ impl FenceTextIndex {
         }
 
         if let Some(item) = classify_line_item(diagram_type, trimmed, abs_start, abs_end) {
+            if is_class_definition_detail(item.detail.as_deref()) {
+                self.class_names.insert(item.name.clone());
+            }
             self.references
                 .entry(FenceReferenceGroup::new(item.name.clone(), item.kind))
                 .or_default()
@@ -675,6 +687,10 @@ fn is_payload_only_text_scan_prefix(prefix: &str) -> bool {
 
 fn is_classify_only_text_scan_prefix(prefix: &str) -> bool {
     DIRECTIVE_CLASSIFY_ONLY_PREFIXES.contains(&prefix)
+}
+
+fn is_class_definition_detail(detail: Option<&str>) -> bool {
+    detail.is_some_and(|detail| detail.ends_with("class definition"))
 }
 
 fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolKind {
@@ -1211,6 +1227,10 @@ mod tests {
         assert!(index.outline_items().iter().any(
             |item| item.name == "service" && item.detail.as_deref() == Some("class definition")
         ));
+        assert_eq!(
+            index.class_names().cloned().collect::<Vec<_>>(),
+            vec!["service"]
+        );
     }
 
     #[test]
@@ -1617,6 +1637,33 @@ mod tests {
             Some("flowchart node")
         );
         assert!(index.has_directive_prefix("classDef"));
+    }
+
+    #[test]
+    fn parser_backed_class_definitions_are_not_node_id_completions() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+        facts.push_symbol(EditorSemanticSymbol::outline(
+            "hot",
+            Some("flowchart class definition".to_string()),
+            EditorSemanticKind::Property,
+            SourceSpan::new(24, 27),
+            SourceSpan::new(24, 27),
+        ));
+
+        let index = FenceTextIndex::from_core_facts(facts);
+
+        assert_eq!(index.node_ids().cloned().collect::<Vec<_>>(), vec!["A"]);
+        assert_eq!(
+            index.class_names().cloned().collect::<Vec<_>>(),
+            vec!["hot"]
+        );
     }
 
     #[test]
