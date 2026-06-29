@@ -22,6 +22,8 @@
     autoFit: persisted.autoFit !== false,
     background: typeof persisted.background === "string" ? persisted.background : "transparent",
     sourceKeyId: typeof persisted.sourceKeyId === "string" ? persisted.sourceKeyId : undefined,
+    sourceIdentityKey:
+      typeof persisted.sourceIdentityKey === "string" ? persisted.sourceIdentityKey : undefined,
     activeRequestId: undefined,
     dragging: false,
     pointerId: undefined,
@@ -43,6 +45,7 @@
       autoFit: state.autoFit,
       background: state.background,
       sourceKeyId: state.sourceKeyId,
+      sourceIdentityKey: state.sourceIdentityKey,
     });
   }
 
@@ -60,6 +63,14 @@
     }
     const key = snapshot.sourceKey;
     return [key.documentUri, key.sourceId, key.sourceHash, key.diagramTheme].join("\u0000");
+  }
+
+  function sourceIdentityKey(snapshot) {
+    if (!snapshot?.sourceKey) {
+      return undefined;
+    }
+    const key = snapshot.sourceKey;
+    return [key.documentUri, key.sourceId, key.sourceHash].join("\u0000");
   }
 
   function updateCanvas() {
@@ -399,8 +410,21 @@
     if (!canvas) {
       return;
     }
+    const nextSourceKeyId = sourceKeyId(snapshot);
+    const nextSourceIdentityKey = sourceIdentityKey(snapshot);
+    const shouldResetViewport =
+      state.sourceIdentityKey !== undefined &&
+      nextSourceIdentityKey !== undefined &&
+      state.sourceIdentityKey !== nextSourceIdentityKey;
+    if (shouldResetViewport) {
+      state.autoFit = true;
+      state.zoom = 1;
+      state.panX = 0;
+      state.panY = 0;
+    }
     canvas.innerHTML = svg;
-    state.sourceKeyId = sourceKeyId(snapshot);
+    state.sourceKeyId = nextSourceKeyId;
+    state.sourceIdentityKey = nextSourceIdentityKey;
     normalizeSvgSize();
     applyVectorZoom();
     updateCanvas();

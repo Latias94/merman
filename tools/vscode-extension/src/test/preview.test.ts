@@ -62,6 +62,9 @@ describe("preview html", () => {
 
     assert.match(script, /vscode\.getState/);
     assert.match(script, /vscode\.setState/);
+    assert.match(script, /sourceIdentityKey/);
+    assert.match(script, /key\.documentUri, key\.sourceId, key\.sourceHash/);
+    assert.match(script, /state\.sourceIdentityKey !== nextSourceIdentityKey/);
     assert.match(script, /post\("ready"/);
     assert.match(script, /window\.addEventListener\("message"/);
     assert.match(script, /case "renderStarted"/);
