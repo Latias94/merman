@@ -372,6 +372,26 @@ fn er_parser_non_identifying_relationship_renders_dotted_line() {
 }
 
 #[test]
+fn er_parser_self_relationship_renders_single_box_with_loop() {
+    let rendered = render_er(
+        "erDiagram\nNODE ||--o{ NODE : \"leads to\"",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("self ER relationship should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| NODE |---||\n",
+            "+------+   |\n",
+            " leads to  |\n",
+            "    o{-----+\n",
+        )
+    );
+}
+
+#[test]
 fn er_parser_zero_or_one_cardinality_renders_marker() {
     let rendered = render_er(
         "erDiagram\nA ||--o| B : maybe",

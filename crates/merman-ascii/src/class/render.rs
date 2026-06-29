@@ -862,6 +862,42 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         is_same_endpoint_parallel_layout(layouts)
     }
 
+    fn is_self_relation(&self, layout: &RelationLayout<'a>) -> bool {
+        layout.top_id == layout.bottom_id
+    }
+
+    fn render_self_relation(
+        &self,
+        relation_box: &RenderedClassBox,
+        layout: &RelationLayout<'a>,
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        let top_marker = RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine);
+        let bottom_marker = RelationGraphLine::with_role(
+            layout
+                .endpoint_marker
+                .map(|marker| marker_char(marker.marker, marker.side, self.charset))
+                .unwrap_or_else(|| line_char(layout.line, self.charset))
+                .to_string(),
+            AsciiColorRole::EdgeArrow,
+        );
+        let label_lines = layout
+            .label
+            .as_ref()
+            .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
+            .unwrap_or_default();
+
+        Ok(relation_graph::render_self_loop_with_options(
+            relation_box,
+            top_marker,
+            label_lines,
+            bottom_marker,
+            horizontal_line_char(layout.line, self.charset),
+            line_char(layout.line, self.charset),
+            options,
+        ))
+    }
+
     fn layered_horizontal_gap(&self) -> usize {
         CLASS_LEVEL_HORIZONTAL_GAP
     }

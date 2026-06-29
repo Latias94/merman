@@ -800,6 +800,26 @@ fn class_parser_dotted_association_relation_renders_plain_dotted_line_without_ma
 }
 
 #[test]
+fn class_parser_self_relation_renders_single_box_with_loop() {
+    let rendered = render_class(
+        "classDiagram\nclass Node\nNode --> Node : next",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("self class relation should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| Node |---+\n",
+            "+------+   |\n",
+            "   next    |\n",
+            "    v------+\n",
+        )
+    );
+}
+
+#[test]
 fn class_parser_endpoint_labels_render_near_relation_endpoints() {
     let rendered = render_class(
         "classDiagram\nclass Customer\nclass Order\nCustomer \"1\" --> \"*\" Order : places",

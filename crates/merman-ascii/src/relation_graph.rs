@@ -48,6 +48,15 @@ pub(crate) trait RelationComponentAdapter<R> {
 
     fn is_same_endpoint_parallel(&self, relations: &[R]) -> bool;
 
+    fn is_self_relation(&self, relation: &R) -> bool;
+
+    fn render_self_relation(
+        &self,
+        relation_box: &RelationGraphBox,
+        relation: &R,
+        options: &AsciiRenderOptions,
+    ) -> Result<String>;
+
     fn layered_horizontal_gap(&self) -> usize;
 
     fn layered_route_style(&self, relation: &R) -> Result<LayeredRelationRouteStyle>;
@@ -646,6 +655,12 @@ where
     if relations.is_empty() {
         return Ok(render_stacked_boxes_with_options(boxes, options));
     }
+    if relations.len() == 1 && adapter.is_self_relation(&relations[0]) {
+        let edge = adapter.build_edges(&relations[0]);
+        let relation_box = find_box(boxes, edge.source_id())
+            .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
+        return adapter.render_self_relation(relation_box, &relations[0], options);
+    }
     if adapter.is_same_endpoint_parallel(relations) {
         return adapter.render_parallel(boxes, relations, options);
     }
@@ -727,6 +742,96 @@ where
     }
 
     Ok(Ok(canvas.finish_trimmed_with_options(options)))
+}
+
+pub(crate) fn render_self_loop_with_options(
+    relation_box: &RelationGraphBox,
+    top_marker: RelationGraphLine,
+    label_lines: Vec<RelationGraphLine>,
+    bottom_marker: RelationGraphLine,
+    horizontal: char,
+    vertical: char,
+    options: &AsciiRenderOptions,
+) -> String {
+    let label_width = label_lines
+        .iter()
+        .map(|line| display_width(line.text()))
+        .max()
+        .unwrap_or(0);
+    let bottom_marker_width = display_width(bottom_marker.text());
+    let label_start = if label_width >= relation_box.width() {
+        1
+    } else {
+        relation_box
+            .width()
+            .saturating_sub(label_width)
+            .saturating_div(2)
+            .saturating_add(1)
+    };
+    let bottom_start = relation_box.width().saturating_div(2);
+    let loop_col = relation_box
+        .width()
+        .saturating_add(3)
+        .max(label_start.saturating_add(label_width).saturating_add(2))
+        .max(
+            bottom_start
+                .saturating_add(bottom_marker_width)
+                .saturating_add(3),
+        );
+    let mut lines = relation_box.lines.clone();
+    let label_start_row = relation_box.height();
+    let bottom_row = label_start_row.saturating_add(label_lines.len());
+    let row_count = bottom_row.saturating_add(1).max(3);
+    lines.resize_with(row_count, || {
+        RelationGraphLine::plain(" ".repeat(relation_box.width()))
+    });
+
+    lines[1] = concat_relation_lines(vec![
+        lines[1].clone(),
+        repeated_line(
+            horizontal,
+            loop_col.saturating_sub(relation_box.width()),
+            AsciiColorRole::EdgeLine,
+        ),
+        top_marker,
+    ]);
+
+    for row_index in 2..label_start_row {
+        lines[row_index] = concat_relation_lines(vec![
+            lines[row_index].clone(),
+            RelationGraphLine::plain(" ".repeat(loop_col.saturating_sub(relation_box.width()))),
+            RelationGraphLine::with_role(vertical.to_string(), AsciiColorRole::EdgeLine),
+        ]);
+    }
+
+    for (label_index, label_line) in label_lines.into_iter().enumerate() {
+        let row_index = label_start_row + label_index;
+        let label_width = display_width(label_line.text());
+        let right_padding = loop_col.saturating_sub(label_start.saturating_add(label_width));
+        lines[row_index] = concat_relation_lines(vec![
+            RelationGraphLine::plain(" ".repeat(label_start)),
+            label_line,
+            RelationGraphLine::plain(" ".repeat(right_padding)),
+            RelationGraphLine::with_role(vertical.to_string(), AsciiColorRole::EdgeLine),
+        ]);
+    }
+
+    lines[bottom_row] = concat_relation_lines(vec![
+        RelationGraphLine::plain(" ".repeat(bottom_start)),
+        bottom_marker,
+        repeated_line(
+            horizontal,
+            loop_col.saturating_sub(bottom_start + bottom_marker_width),
+            AsciiColorRole::EdgeLine,
+        ),
+        RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine),
+    ]);
+
+    render_lines_with_options(&lines, options)
+}
+
+fn repeated_line(ch: char, count: usize, role: AsciiColorRole) -> RelationGraphLine {
+    RelationGraphLine::with_role(std::iter::repeat_n(ch, count).collect(), role)
 }
 
 pub(crate) fn find_box<'a>(
@@ -894,6 +999,19 @@ mod tests {
 
         fn is_same_endpoint_parallel(&self, _relations: &[(&'static str, &'static str)]) -> bool {
             false
+        }
+
+        fn is_self_relation(&self, relation: &(&'static str, &'static str)) -> bool {
+            relation.0 == relation.1
+        }
+
+        fn render_self_relation(
+            &self,
+            _relation_box: &RelationGraphBox,
+            _relation: &(&'static str, &'static str),
+            _options: &AsciiRenderOptions,
+        ) -> Result<String> {
+            Ok(String::new())
         }
 
         fn layered_horizontal_gap(&self) -> usize {

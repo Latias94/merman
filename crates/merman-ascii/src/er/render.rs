@@ -406,6 +406,39 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         is_same_endpoint_parallel_relationship(relationships)
     }
 
+    fn is_self_relation(&self, relationship: &ErRelationshipRenderModel) -> bool {
+        relationship.entity_a == relationship.entity_b
+    }
+
+    fn render_self_relation(
+        &self,
+        relation_box: &RenderedEntityBox,
+        relationship: &ErRelationshipRenderModel,
+        options: &AsciiRenderOptions,
+    ) -> Result<String> {
+        let top_marker = RelationGraphLine::with_role(
+            cardinality_marker(&relationship.rel_spec.card_b)?.to_string(),
+            AsciiColorRole::EdgeArrow,
+        );
+        let bottom_marker = RelationGraphLine::with_role(
+            cardinality_marker(&relationship.rel_spec.card_a)?.to_string(),
+            AsciiColorRole::EdgeArrow,
+        );
+        let label_lines = RelationGraphLabel::new(&relationship.role_a)
+            .map(|label| relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel))
+            .unwrap_or_default();
+
+        Ok(relation_graph::render_self_loop_with_options(
+            relation_box,
+            top_marker,
+            label_lines,
+            bottom_marker,
+            relationship_horizontal_line(&relationship.rel_spec.rel_type, self.charset)?,
+            relationship_line(&relationship.rel_spec.rel_type, self.charset)?,
+            options,
+        ))
+    }
+
     fn layered_horizontal_gap(&self) -> usize {
         ER_LEVEL_HORIZONTAL_GAP
     }
