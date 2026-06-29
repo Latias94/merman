@@ -5,6 +5,14 @@ status: active
 
 # Log
 
+## 2026-06-30
+- Prepared an implementation-ready refactor plan for the VS Code preview lifecycle:
+  `docs/plans/2026-06-30-001-refactor-vscode-preview-lifecycle-plan.md`. The core finding is that
+  cursor movement resets preview because selection, diagnostics, edits, and settings all flow
+  through `scheduleRefresh()` and repeated `panel.webview.html` replacement. The planned fix is a
+  stable webview shell, typed `postMessage` updates, explicit `PreviewSnapshot` event policy,
+  stale-safe render queue, persisted viewport state, vector-aware zoom, and regression tests.
+
 ## 2026-06-28
 - Promoted `C4` and `ZenUML` into the mature Mermaid LSP matrix. `C4` now exposes source-spanned
   macro aliases, boundaries, relations, style/update targets, title/accessibility payloads, and
