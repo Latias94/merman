@@ -1,4 +1,6 @@
 import * as assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { describe, it } from "node:test";
 
 import { renderPreviewHtml, type PreviewDiagnostics } from "../preview-html.js";
@@ -27,6 +29,22 @@ describe("preview html", () => {
 
     assert.match(html, /data-action="source"/);
     assert.match(html, /value="fence-2" selected/);
+  });
+
+  it("renders canvas viewport controls for fit, zoom, and pan", () => {
+    const html = renderPreviewHtml({
+      resources: previewResources(),
+      input: previewInput("document"),
+      svg: '<svg viewBox="0 0 1200 800"></svg>',
+    });
+
+    assert.match(html, /<section class="viewport"/);
+    assert.match(html, /<div class="stage"><div class="canvas"/);
+    assert.match(html, /data-action="fit"/);
+    assert.match(html, /data-action="reset"/);
+    assert.match(html, /data-zoom-value/);
+    assert.match(html, /data-action="diagram-theme"/);
+    assert.match(html, /value="forest"/);
   });
 
   it("renders diagnostics as validated message targets", () => {
@@ -64,6 +82,23 @@ describe("preview html", () => {
     assert.match(html, /data-action="diagnostic"/);
     assert.match(html, /data-action="quick-fix"/);
     assert.match(html, /&quot;startLine&quot;:1/);
+  });
+
+  it("ships viewport media with wheel zoom, pointer pan, and auto-fit", () => {
+    const script = fs.readFileSync(path.join(process.cwd(), "media", "preview.js"), "utf8");
+    const styles = fs.readFileSync(path.join(process.cwd(), "media", "preview.css"), "utf8");
+
+    assert.match(script, /addEventListener\("wheel"/);
+    assert.match(script, /setPointerCapture/);
+    assert.match(script, /ResizeObserver/);
+    assert.match(script, /fitToView/);
+    assert.match(script, /setZoom\(state\.zoom \* factor/);
+    assert.match(script, /post\("setDiagramTheme"/);
+    assert.doesNotMatch(script, /dataset\.action\) {\n\s+case "theme":/);
+    assert.match(styles, /touch-action:\s*none/);
+    assert.match(styles, /cursor:\s*grab/);
+    assert.match(styles, /\.stage/);
+    assert.match(styles, /--preview-zoom/);
   });
 });
 

@@ -3,15 +3,17 @@ import * as vscode from "vscode";
 
 import { resolveMermanBinary, type BinaryInvocation } from "./binaries.js";
 import { getCliSettings } from "./config.js";
+import { renderMermanArgs, type RenderFormat } from "./render-options.js";
 import { workspaceRoots } from "./workspace.js";
 
-export type RenderFormat = "svg" | "png" | "pdf";
+export type { RenderFormat } from "./render-options.js";
 
 export interface RenderRequest {
   context: vscode.ExtensionContext;
   source: string;
   format: RenderFormat;
   outputPath?: string;
+  theme?: string;
   outputChannel: vscode.LogOutputChannel;
   signalLabel?: string;
 }
@@ -40,15 +42,7 @@ export function resolveCliInvocation(
 }
 
 export async function renderMermanSource(request: RenderRequest): Promise<RenderResult> {
-  const args = [
-    "-q",
-    "-i",
-    "-",
-    "-o",
-    request.outputPath ?? "-",
-    "-e",
-    request.format,
-  ];
+  const args = renderMermanArgs(request);
   const invocation = resolveCliInvocation(request.context, args);
   request.outputChannel.info(
     `${request.signalLabel ?? "render"}=${invocation.source} command="${invocation.command}" args="${invocation.args.join(" ")}"`,

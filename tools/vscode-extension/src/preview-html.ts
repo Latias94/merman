@@ -16,7 +16,10 @@ export interface RenderPreviewHtmlRequest {
   message?: { heading: string; detail: string };
   sources?: readonly PreviewInput[];
   pinned?: boolean;
+  diagramTheme?: PreviewDiagramTheme;
 }
+
+export type PreviewDiagramTheme = "source" | "default" | "dark" | "forest" | "neutral" | "base";
 
 export interface PreviewDiagnosticItem {
   severityLabel: string;
@@ -51,7 +54,7 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
   const subtitle = request.input ? escapeHtml(request.input.subtitle) : "No active Mermaid source";
   const diagnosticsSection = renderDiagnosticsSection(request.diagnostics);
   const body = request.svg
-    ? `<section class="viewport"><div class="canvas">${request.svg}</div></section>`
+    ? `<section class="viewport" aria-label="Mermaid preview canvas"><div class="stage"><div class="canvas">${request.svg}</div></div></section>`
     : `<section class="empty"><h2>${escapeHtml(request.message?.heading ?? "No preview")}</h2><p>${escapeHtml(request.message?.detail ?? "")}</p></section>`;
 
   return `<!DOCTYPE html>
@@ -67,14 +70,14 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
     <link rel="stylesheet" href="${escapeHtml(request.resources.stylesUri)}" />
   </head>
   <body>
-    <main class="frame" data-theme="light" data-background="transparent" data-fit="true">
+    <main class="frame" data-theme="light" data-background="transparent">
       <header class="meta">
         <div class="meta-top">
           <div>
             <h1>${title}</h1>
             <p>${subtitle}</p>
           </div>
-          ${renderToolbar(request.input, request.sources ?? [], request.pinned === true)}
+          ${renderToolbar(request.input, request.sources ?? [], request.pinned === true, request.diagramTheme ?? "source")}
         </div>
       </header>
       ${diagnosticsSection}
@@ -89,6 +92,7 @@ function renderToolbar(
   input: PreviewInput | undefined,
   sources: readonly PreviewInput[],
   pinned: boolean,
+  diagramTheme: PreviewDiagramTheme,
 ): string {
   const sourceSelect =
     sources.length > 1
@@ -104,13 +108,19 @@ function renderToolbar(
     ${sourceSelect}
     <span class="toolbar-group">
       <button type="button" data-action="zoom-out" title="Zoom out">-</button>
+      <span class="zoom-readout" data-zoom-value>100%</span>
       <button type="button" data-action="zoom-in" title="Zoom in">+</button>
-      <button type="button" data-action="reset" title="Reset zoom">1:1</button>
+      <button type="button" data-action="fit" title="Fit to view">Fit</button>
+      <button type="button" data-action="reset" title="Reset to actual size">1:1</button>
     </span>
     <span class="toolbar-group">
-      <select data-action="theme" title="Preview theme">
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
+      <select data-action="diagram-theme" title="Mermaid theme">
+        ${renderThemeOption("source", "Source", diagramTheme)}
+        ${renderThemeOption("default", "Default", diagramTheme)}
+        ${renderThemeOption("dark", "Dark", diagramTheme)}
+        ${renderThemeOption("forest", "Forest", diagramTheme)}
+        ${renderThemeOption("neutral", "Neutral", diagramTheme)}
+        ${renderThemeOption("base", "Base", diagramTheme)}
       </select>
       <select data-action="background" title="Preview background">
         <option value="transparent">Transparent</option>
@@ -123,6 +133,15 @@ function renderToolbar(
       <button type="button" data-action="pin" aria-pressed="${pinned ? "true" : "false"}" title="Pin preview source">${pinned ? "Pinned" : "Pin"}</button>
     </span>
   </nav>`;
+}
+
+function renderThemeOption(
+  value: PreviewDiagramTheme,
+  label: string,
+  selectedTheme: PreviewDiagramTheme,
+): string {
+  const selected = value === selectedTheme ? " selected" : "";
+  return `<option value="${value}"${selected}>${label}</option>`;
 }
 
 function renderDiagnosticsSection(diagnostics?: PreviewDiagnostics): string {

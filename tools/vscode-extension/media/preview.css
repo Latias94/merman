@@ -15,9 +15,10 @@ select {
 }
 
 .frame {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .meta {
@@ -60,7 +61,8 @@ select {
 }
 
 .toolbar button,
-.toolbar select {
+.toolbar select,
+.zoom-readout {
   min-height: 26px;
   border: 1px solid var(--vscode-button-border, transparent);
   color: var(--vscode-button-foreground);
@@ -75,6 +77,19 @@ select {
 
 .toolbar select {
   padding: 0 6px;
+}
+
+.zoom-readout {
+  min-width: 48px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editor-background);
 }
 
 .toolbar button:hover,
@@ -191,7 +206,12 @@ select {
 }
 
 .viewport {
-  overflow: auto;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
   background:
     linear-gradient(45deg, var(--preview-grid-a) 25%, transparent 25%),
     linear-gradient(-45deg, var(--preview-grid-a) 25%, transparent 25%),
@@ -206,20 +226,44 @@ select {
   background-size: 20px 20px;
 }
 
+.viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(var(--preview-pan-x, 0px), var(--preview-pan-y, 0px));
+  will-change: transform;
+}
+
 .canvas {
-  min-height: calc(100vh - 110px);
-  padding: 24px;
+  display: inline-flex;
+  padding: 18px;
   box-sizing: border-box;
-  transform-origin: 0 0;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  transform: translate(-50%, -50%) scale(var(--preview-zoom, 1));
+  transform-origin: center center;
+  will-change: transform;
 }
 
 .canvas svg {
-  max-width: none;
+  display: block;
+  max-width: none !important;
   height: auto;
+  user-select: none;
 }
 
-.frame[data-fit="true"] .canvas svg {
-  max-width: 100%;
+.canvas svg * {
+  user-select: none;
+}
+
+.canvas svg text {
+  pointer-events: none;
 }
 
 .frame[data-theme="dark"] {

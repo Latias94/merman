@@ -7,6 +7,7 @@ import {
 } from "./preview-source.js";
 import {
   renderPreviewHtml,
+  type PreviewDiagramTheme,
   type PreviewDiagnosticTarget,
   type PreviewDiagnostics,
 } from "./preview-html.js";
@@ -29,6 +30,7 @@ class MermanPreviewController implements vscode.Disposable {
   private renderVersion = 0;
   private lastPreviewEditorUri: string | undefined;
   private pinnedSource: PreviewSourcePin | undefined;
+  private diagramTheme: PreviewDiagramTheme = "source";
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -207,6 +209,7 @@ class MermanPreviewController implements vscode.Disposable {
       context: this.context,
       source,
       format: "svg",
+      theme: this.diagramTheme,
       outputChannel: this.outputChannel,
       signalLabel: "preview",
     });
@@ -233,6 +236,7 @@ class MermanPreviewController implements vscode.Disposable {
       message,
       sources,
       pinned: this.isPinnedInput(input),
+      diagramTheme: this.diagramTheme,
     });
   }
 
@@ -302,6 +306,9 @@ class MermanPreviewController implements vscode.Disposable {
       case "selectSource":
         this.selectSource(message.sourceId);
         return;
+      case "setDiagramTheme":
+        this.setDiagramTheme(message.theme);
+        return;
     }
   }
 
@@ -338,6 +345,14 @@ class MermanPreviewController implements vscode.Disposable {
     };
     this.scheduleRefresh("source-select", true);
   }
+
+  private setDiagramTheme(theme: PreviewDiagramTheme): void {
+    if (!isPreviewDiagramTheme(theme) || this.diagramTheme === theme) {
+      return;
+    }
+    this.diagramTheme = theme;
+    this.scheduleRefresh("diagram-theme", true);
+  }
 }
 
 interface PreviewSourcePin {
@@ -352,6 +367,17 @@ function webviewResourceUri(
 ): string {
   const resource = vscode.Uri.joinPath(extensionUri, "media", fileName);
   return webview ? webview.asWebviewUri(resource).toString() : resource.toString();
+}
+
+function isPreviewDiagramTheme(value: unknown): value is PreviewDiagramTheme {
+  return (
+    value === "source" ||
+    value === "default" ||
+    value === "dark" ||
+    value === "forest" ||
+    value === "neutral" ||
+    value === "base"
+  );
 }
 
 export function collectPreviewDiagnostics(
@@ -622,7 +648,8 @@ type PreviewWebviewMessage =
   | { type: "revealDiagnostic"; target: string }
   | { type: "showDiagnosticFixes"; target: string }
   | { type: "togglePin" }
-  | { type: "selectSource"; sourceId: string };
+  | { type: "selectSource"; sourceId: string }
+  | { type: "setDiagramTheme"; theme: PreviewDiagramTheme };
 
 function isPreviewMessage(value: unknown): value is PreviewWebviewMessage {
   if (!value || typeof value !== "object") {
@@ -637,6 +664,8 @@ function isPreviewMessage(value: unknown): value is PreviewWebviewMessage {
       return typeof record.target === "string";
     case "selectSource":
       return typeof record.sourceId === "string";
+    case "setDiagramTheme":
+      return isPreviewDiagramTheme(record.theme);
     case "togglePin":
       return true;
     default:
