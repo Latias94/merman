@@ -32,7 +32,7 @@ pub(super) fn render_sequence_boxes(
 ) -> Vec<SequenceLine> {
     let content_width = lines
         .iter()
-        .map(|line| line.len() + SEQUENCE_BOX_CONTENT_OFFSET)
+        .map(|line| line.len() + 2 * SEQUENCE_BOX_CONTENT_OFFSET)
         .max()
         .unwrap_or(0);
     let boxes = diagram
@@ -61,6 +61,7 @@ pub(super) fn render_sequence_boxes(
         let mut row = SequenceLine::blank(0);
         row.push_spaces(SEQUENCE_BOX_CONTENT_OFFSET);
         row.push_line(&line);
+        row.push_spaces(SEQUENCE_BOX_CONTENT_OFFSET);
         row.pad_to(width);
         canvas.push(row);
     }
@@ -136,7 +137,7 @@ fn sequence_box_actor_bounds(
         let box_width = layout.participant_widths[*actor_index] + BOX_BORDER_WIDTH;
         let participant_left = layout.participant_centers[*actor_index] - box_width / 2;
         let participant_right = participant_left + box_width - 1;
-        left = left.min((participant_left + SEQUENCE_BOX_CONTENT_OFFSET).saturating_sub(1));
+        left = left.min(participant_left);
         right = right.max(participant_right + SEQUENCE_BOX_CONTENT_OFFSET + 1);
     }
 

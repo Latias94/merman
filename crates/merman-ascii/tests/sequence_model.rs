@@ -253,30 +253,30 @@ fn sequence_color_html_wraps_boxes_notes_control_frames_and_messages_without_cha
     assert_eq!(
         strip_html_spans(&rendered),
         concat!(
-            "+- Group -------+\n",
-            "|+---+     +---+|\n",
-            "|| A |     | B ||\n",
-            "|+-+-+     +-+-+|\n",
-            "|+ loop Work ----+\n",
-            "|| |         |  ||\n",
-            "|| | Start   |  ||\n",
-            "|| +-------->|  ||\n",
-            "|| |         #  ||\n",
-            "||+-----------+ ||\n",
-            "|||   Wait    | ||\n",
-            "||+-----------+ ||\n",
-            "|| |         #  ||\n",
-            "|| | Done    #  ||\n",
-            "|| |<........+  ||\n",
-            "|+---------------+\n",
-            "|  |         |  |\n",
-            "+---------------+\n",
+            "+- Group --------+\n",
+            "| +---+     +---+|\n",
+            "| | A |     | B ||\n",
+            "| +-+-+     +-+-+|\n",
+            "| + loop Work ----+\n",
+            "| | |         |  ||\n",
+            "| | | Start   |  ||\n",
+            "| | +-------->|  ||\n",
+            "| | |         #  ||\n",
+            "| |+-----------+ ||\n",
+            "| ||   Wait    | ||\n",
+            "| |+-----------+ ||\n",
+            "| | |         #  ||\n",
+            "| | | Done    #  ||\n",
+            "| | |<........+  ||\n",
+            "| +---------------+\n",
+            "|   |         |  |\n",
+            "+----------------+\n",
         )
     );
     for expected_fragment in [
         "<span style=\"color:#202020\">+-</span><span style=\"color:#101010\"> Group </span>",
-        "<span style=\"color:#202020\">|+</span><span style=\"color:#101010\"> loop Work </span>",
-        "<span style=\"color:#202020\">||+-----------+</span>",
+        "<span style=\"color:#202020\">|</span> <span style=\"color:#202020\">+</span><span style=\"color:#101010\"> loop Work </span>",
+        "<span style=\"color:#202020\">|</span> <span style=\"color:#202020\">|+-----------+</span>",
         "<span style=\"color:#707070\">Start</span>",
         "<span style=\"color:#505050\">--------</span><span style=\"color:#606060\">&gt;</span>",
         "<span style=\"color:#404040\">#</span>",
@@ -1754,6 +1754,30 @@ fn sequence_control_blocks_render_inside_participant_boxes() {
     assert!(
         rendered.contains("loop Work"),
         "control frame should still render inside participant box output:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_box_keeps_inner_padding_around_participants_and_frames() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox Group\nparticipant A\nparticipant B\nend\nloop Work\nA->>B: Hi\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("boxed control block should render");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("| + loop Work ")),
+        "control frame should keep one column of padding inside sequence box:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("|+")),
+        "sequence box inner content should not touch the left border:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("||")),
+        "sequence box body rows should not merge with inner frame or participant borders:\n{rendered}"
     );
 }
 

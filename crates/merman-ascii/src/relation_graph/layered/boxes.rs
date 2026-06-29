@@ -354,15 +354,19 @@ fn ordered_layered_groups<'a>(
             .collect::<HashMap<_, _>>();
 
         level_groups[level].sort_by_key(|relation_box| {
-            let parent_order = edges
+            let parent_orders = edges
                 .iter()
                 .filter(|edge| {
                     edge.target_id() == relation_box.id()
                         && levels.get(edge.source_id()).copied() == Some(level - 1)
                 })
                 .filter_map(|edge| previous_order.get(edge.source_id()).copied())
-                .min()
-                .unwrap_or(usize::MAX);
+                .collect::<Vec<_>>();
+            let parent_order = if parent_orders.is_empty() {
+                usize::MAX
+            } else {
+                parent_orders.iter().sum::<usize>() * 2 / parent_orders.len()
+            };
             let original_order = original_order
                 .get(relation_box.id())
                 .copied()
