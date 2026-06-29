@@ -37,17 +37,6 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
         });
     }
 
-    if model
-        .boxes
-        .iter()
-        .any(|sequence_box| sequence_box.actor_keys.is_empty())
-    {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "empty boxes",
-        });
-    }
-
     let has_activation_events = model.messages.iter().any(|message| {
         matches!(
             message.message_type,

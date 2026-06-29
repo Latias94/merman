@@ -334,6 +334,7 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             "lifecycles",
             "actor boxes",
             "control blocks",
+            "diagram-wide empty boxes",
             "optional mirrored actors",
             "terminal color roles",
         ],

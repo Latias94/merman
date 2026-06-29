@@ -30,19 +30,19 @@ pub(super) fn render_sequence_boxes(
     layout: &SequenceLayout,
     chars: &SequenceChars,
 ) -> Vec<SequenceLine> {
+    let content_width = lines
+        .iter()
+        .map(|line| line.len() + SEQUENCE_BOX_CONTENT_OFFSET)
+        .max()
+        .unwrap_or(0);
     let boxes = diagram
         .boxes
         .iter()
-        .map(|sequence_box| prepare_sequence_box(sequence_box, layout))
+        .map(|sequence_box| prepare_sequence_box(sequence_box, layout, content_width))
         .collect::<Vec<_>>();
     let label_extra_rows = boxes
         .iter()
         .map(|sequence_box| sequence_box.label_lines.len().saturating_sub(1))
-        .max()
-        .unwrap_or(0);
-    let content_width = lines
-        .iter()
-        .map(|line| line.len() + SEQUENCE_BOX_CONTENT_OFFSET)
         .max()
         .unwrap_or(0);
     let box_width = boxes
@@ -76,8 +76,9 @@ pub(super) fn render_sequence_boxes(
 fn prepare_sequence_box(
     sequence_box: &SequenceGroupBox,
     layout: &SequenceLayout,
+    content_width: usize,
 ) -> PreparedSequenceGroupBox {
-    let mut bounds = sequence_box_actor_bounds(sequence_box, layout);
+    let mut bounds = sequence_box_bounds(sequence_box, layout, content_width);
     let label_width = bounds
         .right
         .saturating_sub(bounds.left + 2 * SEQUENCE_BOX_LABEL_MARGIN)
@@ -94,6 +95,34 @@ fn prepare_sequence_box(
         label_lines,
         background: sequence_box.background,
     }
+}
+
+fn sequence_box_bounds(
+    sequence_box: &SequenceGroupBox,
+    layout: &SequenceLayout,
+    content_width: usize,
+) -> SequenceGroupBoxBounds {
+    if sequence_box.actor_indices.is_empty() {
+        return sequence_box_full_width_bounds(content_width, sequence_box);
+    }
+
+    sequence_box_actor_bounds(sequence_box, layout)
+}
+
+fn sequence_box_full_width_bounds(
+    content_width: usize,
+    sequence_box: &SequenceGroupBox,
+) -> SequenceGroupBoxBounds {
+    let label_width = sequence_box
+        .label
+        .as_ref()
+        .map(|label| display_width(label) + 2 * SEQUENCE_BOX_LABEL_MARGIN)
+        .unwrap_or(0);
+    let right = content_width
+        .max(label_width)
+        .max(SEQUENCE_BOX_LABEL_MARGIN * 2 + 1);
+
+    SequenceGroupBoxBounds { left: 0, right }
 }
 
 fn sequence_box_actor_bounds(

@@ -23,7 +23,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Self messages | Supported | Loop-style self calls with labels. |
 | Message labels | Supported | Empty labels, single-word labels, multiword labels, and `wrap:` message labels. |
 | Notes | Supported subset | `Note left of`, `Note right of`, and `Note over` notes render as boxes; multiline note text and `wrap:` notes wrap by display width. |
-| Sequence boxes | Supported subset | Boxes render as enclosing text borders around typed actor groups; wrapped and multiline box labels render as additional label rows. |
+| Sequence boxes | Supported subset | Boxes render as enclosing text borders around typed actor groups; wrapped and multiline box labels render as additional label rows. Boxes with no actor anchors render as diagram-wide terminal regions instead of inventing hidden participants. |
 | Activations | Supported subset | `activate`, `deactivate`, `+`, and `-` activation state renders as active lifelines. |
 | Actor create/destroy | Supported subset | Created participants render at their creating message; destroyed participants terminate with `x`/`×` and stop their lifeline. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
@@ -40,7 +40,6 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | --- | --- |
 | Unknown actor types | `actor types` |
 | Actor properties | `actor properties` |
-| Empty boxes | `empty boxes` |
 | Boxes referencing unknown actors | `boxes with unknown actors` |
 | Hand-built lifecycle maps referencing unknown actors | `actor lifecycle actors` |
 | Hand-built lifecycle maps with out-of-range message indices | `actor lifecycle message indices` |
@@ -66,6 +65,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
   opt-in in `merman-ascii` instead of part of the default golden fixture contract.
 - Sequence messages and notes wrap with deterministic terminal display-width heuristics; this is a
   text rendering approximation rather than Mermaid's browser font measurement path.
+- Empty sequence boxes render as diagram-wide terminal regions because the typed model has no actor
+  anchors to constrain the box horizontally.
 - Sequence box fill colors render as terminal/HTML backgrounds only when Mermaid supplies a color
   the terminal can represent faithfully. Mermaid sequence syntax does not preserve `#hex` box/rect
   colors because `#` is handled as a comment marker upstream.
