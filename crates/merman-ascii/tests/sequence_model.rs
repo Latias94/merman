@@ -1200,8 +1200,7 @@ fn sequence_sectioned_control_blocks_frame_multiple_sections_and_notes() {
 
 #[test]
 fn sequence_nested_loop_inside_alt_keeps_frame_padding() {
-    let rendered = render_sequence(
-        "sequenceDiagram
+    let input = "sequenceDiagram
     participant Client
     participant API
     participant Worker
@@ -1214,10 +1213,10 @@ fn sequence_nested_loop_inside_alt_keeps_frame_padding() {
       end
     else Invalid request
       API-->>Client: 400 Bad Request
-    end",
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("nested loop inside alt should render");
+    end";
+
+    let rendered = render_sequence(input, &AsciiRenderOptions::ascii())
+        .expect("nested loop inside alt should render");
 
     let loop_top = rendered
         .lines()
@@ -1230,8 +1229,14 @@ fn sequence_nested_loop_inside_alt_keeps_frame_padding() {
     assert!(
         rendered
             .lines()
-            .any(|line| line.starts_with("| |") && line.contains("GET /jobs/123")),
-        "nested loop body should keep the inner frame border separated from the parent border:\n{rendered}"
+            .any(|line| line.starts_with("| |  |") && line.contains("GET /jobs/123")),
+        "nested loop body should keep participant lifelines aligned with the outer frame:\n{rendered}"
+    );
+    assert!(
+        !rendered
+            .lines()
+            .any(|line| line.starts_with("| |    |") && line.contains("GET /jobs/123")),
+        "nested frame padding must not shift participant lifelines to the right:\n{rendered}"
     );
     assert!(
         !rendered.lines().any(|line| line.starts_with("|+")),
@@ -1240,6 +1245,21 @@ fn sequence_nested_loop_inside_alt_keeps_frame_padding() {
     assert!(
         !rendered.lines().any(|line| line.starts_with("||")),
         "nested frame body border must not touch the parent border:\n{rendered}"
+    );
+
+    let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+        .expect("nested loop inside alt should render as Unicode");
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("│ │  │") && line.contains("GET /jobs/123")),
+        "nested Unicode loop body should keep participant lifelines aligned with the outer frame:\n{rendered}"
+    );
+    assert!(
+        !rendered
+            .lines()
+            .any(|line| line.starts_with("│ │    │") && line.contains("GET /jobs/123")),
+        "nested Unicode frame padding must not shift participant lifelines to the right:\n{rendered}"
     );
 }
 
