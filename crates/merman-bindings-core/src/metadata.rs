@@ -1,4 +1,4 @@
-use crate::common::{internal_json_error, BindingError};
+use crate::common::{BindingError, internal_json_error};
 use serde::Serialize;
 use std::sync::OnceLock;
 
@@ -346,26 +346,34 @@ mod tests {
         let family_capabilities: Value =
             serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
 
-        assert!(diagrams
-            .as_array()
-            .unwrap()
-            .contains(&Value::String("flowchart".to_string())));
-        assert!(ascii_diagrams.is_array());
-        assert!(themes
-            .as_array()
-            .unwrap()
-            .contains(&Value::String("default".to_string())));
-        assert!(host_presets.is_array());
-        if cfg!(feature = "render") {
-            assert!(host_presets
+        assert!(
+            diagrams
                 .as_array()
                 .unwrap()
-                .contains(&Value::String("one-dark".to_string())));
+                .contains(&Value::String("flowchart".to_string()))
+        );
+        assert!(ascii_diagrams.is_array());
+        assert!(
+            themes
+                .as_array()
+                .unwrap()
+                .contains(&Value::String("default".to_string()))
+        );
+        assert!(host_presets.is_array());
+        if cfg!(feature = "render") {
+            assert!(
+                host_presets
+                    .as_array()
+                    .unwrap()
+                    .contains(&Value::String("one-dark".to_string()))
+            );
         }
-        assert!(family_capabilities
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|capability| capability["diagram_type"] == "flowchart"));
+        assert!(
+            family_capabilities
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|capability| capability["diagram_type"] == "flowchart")
+        );
     }
 }

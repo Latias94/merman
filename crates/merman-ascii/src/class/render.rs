@@ -9,6 +9,7 @@ use crate::relation_graph::{
     RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
     RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
+use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
 };
@@ -264,7 +265,10 @@ fn render_interface_box(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> RenderedClassBox {
-    let sections = vec![vec!["<<interface>>".to_string(), interface.label.clone()]];
+    let sections = vec![vec![
+        "<<interface>>".to_string(),
+        decode_html_entities_to_unicode(&interface.label).into_owned(),
+    ]];
     render_box_sections(interface.id.clone(), sections, options, charset)
 }
 
@@ -313,7 +317,7 @@ fn class_sections(class: &ClassNode) -> Vec<Vec<String>> {
         .iter()
         .map(|annotation| format!("<<{annotation}>>"))
         .collect::<Vec<_>>();
-    header.push(class.label.clone());
+    header.push(class_title(class));
 
     let mut sections = vec![header];
 
@@ -338,6 +342,10 @@ fn class_sections(class: &ClassNode) -> Vec<Vec<String>> {
     }
 
     sections
+}
+
+fn class_title(class: &ClassNode) -> String {
+    decode_html_entities_to_unicode(&class.text).into_owned()
 }
 
 fn member_text(member: &ClassMember) -> String {

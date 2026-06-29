@@ -7,9 +7,9 @@
 
 #[cfg(feature = "render")]
 use merman_bindings_core::TextMeasurer;
-use merman_bindings_core::{error_payload_json_bytes, BindingEngine, BindingError, BindingStatus};
+use merman_bindings_core::{BindingEngine, BindingError, BindingStatus, error_payload_json_bytes};
 use std::ffi::c_char;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 #[cfg(feature = "render")]
 use std::sync::Arc;
@@ -946,10 +946,12 @@ mod tests {
             error["code_name"],
             BindingStatus::UnsupportedFormat.code_name()
         );
-        assert!(error["message"]
-            .as_str()
-            .unwrap()
-            .contains("render feature"));
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("render feature")
+        );
     }
 
     #[test]
@@ -1113,10 +1115,12 @@ mod tests {
         let host_theme_presets: Value =
             serde_json::from_str(&take_text(host_theme_presets.data)).unwrap();
 
-        assert!(diagrams
-            .as_array()
-            .unwrap()
-            .contains(&Value::String("flowchart".to_string())));
+        assert!(
+            diagrams
+                .as_array()
+                .unwrap()
+                .contains(&Value::String("flowchart".to_string()))
+        );
         let ascii_diagrams = ascii_diagrams.as_array().unwrap();
         if cfg!(feature = "ascii") {
             for diagram in ["sequence", "gantt", "treeView", "zenuml"] {
@@ -1128,24 +1132,26 @@ mod tests {
         } else {
             assert!(ascii_diagrams.is_empty());
         }
-        assert!(family_capabilities
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|capability| capability["diagram_type"] == "flowchart"
+        assert!(family_capabilities.as_array().unwrap().iter().any(
+            |capability| capability["diagram_type"] == "flowchart"
                 && capability["metadata_id"] == "flowchart"
                 && capability["has_semantic_parser"] == true
-                && capability["has_render_parser"] == true));
-        assert!(themes
-            .as_array()
-            .unwrap()
-            .contains(&Value::String("default".to_string())));
-        assert!(host_theme_presets.is_array());
-        if cfg!(feature = "render") {
-            assert!(host_theme_presets
+                && capability["has_render_parser"] == true
+        ));
+        assert!(
+            themes
                 .as_array()
                 .unwrap()
-                .contains(&Value::String("one-dark".to_string())));
+                .contains(&Value::String("default".to_string()))
+        );
+        assert!(host_theme_presets.is_array());
+        if cfg!(feature = "render") {
+            assert!(
+                host_theme_presets
+                    .as_array()
+                    .unwrap()
+                    .contains(&Value::String("one-dark".to_string()))
+            );
         }
     }
 
@@ -1230,10 +1236,12 @@ mod tests {
                 error["code_name"],
                 BindingStatus::ResourceLimitExceeded.code_name()
             );
-            assert!(error["message"]
-                .as_str()
-                .unwrap()
-                .contains("max_source_bytes"));
+            assert!(
+                error["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("max_source_bytes")
+            );
         } else {
             expect_render_feature_error(result);
         }

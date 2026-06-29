@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { categories, getExamplesByCategory } from "@/src/lib/examples";
+import { categories, getExamplesByCategory, type Example } from "@/src/lib/examples";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import { detectDiagramType } from "@/src/lib/diagram-detection";
 import { useAppStore } from "@/src/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Code, ChevronRight, Terminal } from "lucide-react";
+import { X, Code, ChevronRight } from "lucide-react";
 
 // 分类翻译映射
 const categoryKeys: Record<string, string> = {
@@ -46,16 +47,45 @@ export function ExampleGallery() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [asciiOnly, setAsciiOnly] = useState(false);
 
+  const isExampleAsciiSupported = useMemo(
+    () => (example: Example) =>
+      example.asciiSupported ??
+      asciiSupport.isSupported(detectDiagramType(example.code)),
+    [asciiSupport]
+  );
+
+  const visibleCategories = useMemo(
+    () =>
+      categories.filter(
+        (category) =>
+          category === "All" ||
+          !asciiOnly ||
+          getExamplesByCategory(category).some(isExampleAsciiSupported)
+      ),
+    [asciiOnly, isExampleAsciiSupported]
+  );
+
   const filteredExamples = useMemo(
     () =>
       getExamplesByCategory(selectedCategory).filter(
-        (example) =>
-          !asciiOnly || asciiSupport.isSupported(detectDiagramType(example.code))
+        (example) => !asciiOnly || isExampleAsciiSupported(example)
       ),
-    [asciiOnly, asciiSupport, selectedCategory]
+    [asciiOnly, isExampleAsciiSupported, selectedCategory]
+  );
+  const asciiReadyCount = useMemo(
+    () => getExamplesByCategory("All").filter(isExampleAsciiSupported).length,
+    [isExampleAsciiSupported]
   );
 
+  useEffect(() => {
+    if (!visibleCategories.includes(selectedCategory)) {
+      setSelectedCategory("All");
+    }
+  }, [selectedCategory, visibleCategories]);
+
   if (!showExamples) return null;
+
+  const toggleAsciiOnly = () => setAsciiOnly((value) => !value);
 
   const handleSelectExample = (code: string) => {
     setCode(code);
@@ -85,29 +115,34 @@ export function ExampleGallery() {
       <div className="flex-1 flex flex-col overflow-hidden md:flex-row">
         {/* 左侧分类 */}
         <div className="scrollbar-thin shrink-0 overflow-x-auto border-b p-2 md:w-48 md:overflow-y-auto md:border-b-0 md:border-r">
-          <Button
-            variant={asciiOnly ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setAsciiOnly((value) => !value)}
-            className="mb-2 hidden w-full justify-start gap-2 md:flex"
-          >
-            <Terminal className="size-4" />
-            <span>{t("examples.asciiOnly")}</span>
-          </Button>
-          <nav className="flex gap-1 md:block md:space-y-1">
+          <div className="mb-2 hidden w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground md:flex">
+            <Checkbox
+              checked={asciiOnly}
+              onCheckedChange={(checked) => setAsciiOnly(checked === true)}
+            />
             <button
-              onClick={() => setAsciiOnly((value) => !value)}
-              className={cn(
-                "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors md:hidden",
-                asciiOnly
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )}
+              type="button"
+              onClick={toggleAsciiOnly}
+              className="flex-1 text-left"
             >
-              <Terminal className="size-4 flex-shrink-0" />
-              <span>{t("examples.asciiOnly")}</span>
+              {t("examples.asciiOnly")}
             </button>
-            {categories.map((category) => (
+          </div>
+          <nav className="flex gap-1 md:block md:space-y-1">
+            <div className="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden">
+              <Checkbox
+                checked={asciiOnly}
+                onCheckedChange={(checked) => setAsciiOnly(checked === true)}
+              />
+              <button
+                type="button"
+                onClick={toggleAsciiOnly}
+                className="text-left"
+              >
+                {t("examples.asciiOnly")}
+              </button>
+            </div>
+            {visibleCategories.map((category) => (
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
@@ -130,6 +165,16 @@ export function ExampleGallery() {
 
         {/* 右侧示例列表 */}
         <ScrollArea className="flex-1">
+          <div className="border-b px-4 py-2 text-xs text-muted-foreground">
+            {asciiOnly
+              ? t("examples.asciiFilterActive", {
+                  count: filteredExamples.length,
+                  total: asciiReadyCount,
+                })
+              : t("examples.asciiFilterAvailable", {
+                  count: asciiReadyCount,
+                })}
+          </div>
           <div className="p-4 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             {filteredExamples.map((example) => (
               <button
