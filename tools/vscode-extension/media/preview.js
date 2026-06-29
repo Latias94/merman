@@ -250,7 +250,7 @@
     viewport.setPointerCapture(event.pointerId);
   });
 
-  viewport?.addEventListener("pointermove", (event) => {
+  document.addEventListener("pointermove", (event) => {
     if (!state.dragging || state.pointerId !== event.pointerId) {
       return;
     }
@@ -273,8 +273,8 @@
     }
   }
 
-  viewport?.addEventListener("pointerup", stopDragging);
-  viewport?.addEventListener("pointercancel", stopDragging);
+  document.addEventListener("pointerup", stopDragging);
+  document.addEventListener("pointercancel", stopDragging);
 
   if (viewport && canvas && stage && typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {

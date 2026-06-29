@@ -63,7 +63,7 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${request.resources.cspSource}; img-src ${request.resources.cspSource} data:;"
+      content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${request.resources.cspSource} 'unsafe-inline'; img-src ${request.resources.cspSource} data:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${title}</title>

@@ -15,6 +15,7 @@ describe("preview html", () => {
 
     assert.match(html, /Content-Security-Policy/);
     assert.match(html, /script-src 'nonce-[A-Za-z0-9]+'/);
+    assert.match(html, /style-src vscode-resource: 'unsafe-inline'/);
     assert.match(html, /src="vscode-resource:\/\/preview\.js"/);
     assert.doesNotMatch(html, /command:merman/);
     assert.doesNotMatch(html, /onclick=/);
@@ -94,11 +95,13 @@ describe("preview html", () => {
     assert.match(script, /fitToView/);
     assert.match(script, /setZoom\(state\.zoom \* factor/);
     assert.match(script, /post\("setDiagramTheme"/);
+    assert.match(script, /document\.addEventListener\("pointermove"/);
     assert.doesNotMatch(script, /dataset\.action\) {\n\s+case "theme":/);
     assert.match(styles, /touch-action:\s*none/);
     assert.match(styles, /cursor:\s*grab/);
     assert.match(styles, /\.stage/);
     assert.match(styles, /--preview-zoom/);
+    assert.match(styles, /\.canvas svg \{[^}]*pointer-events:\s*none/s);
   });
 });
 

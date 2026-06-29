@@ -255,6 +255,7 @@ select {
   display: block;
   max-width: none !important;
   height: auto;
+  pointer-events: none;
   user-select: none;
 }
 
