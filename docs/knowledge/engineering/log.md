@@ -6,6 +6,13 @@ status: active
 # Log
 
 ## 2026-06-30
+- Completed the VS Code preview lifecycle refactor from
+  `docs/plans/2026-06-30-001-refactor-vscode-preview-lifecycle-plan.md`. The preview now uses a
+  stable webview shell, typed postMessage updates, pure preview update policy, stale-safe render
+  queue, incremental diagnostics/source-list/toolbar patching, persisted source-scoped viewport
+  state, and vector-aware SVG zoom. Verified from `tools/vscode-extension` with `npm run check`,
+  `npm test -- --test-reporter=spec`, and `npm run package`; package output was
+  `tools/vscode-extension/merman-vscode-0.1.0.vsix`.
 - Prepared an implementation-ready refactor plan for the VS Code preview lifecycle:
   `docs/plans/2026-06-30-001-refactor-vscode-preview-lifecycle-plan.md`. The core finding is that
   cursor movement resets preview because selection, diagnostics, edits, and settings all flow
