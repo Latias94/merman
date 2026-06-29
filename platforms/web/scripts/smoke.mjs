@@ -35,6 +35,9 @@ const options = {
   svg: { pipeline: "readable" },
   layout: { text_measurer: "deterministic" },
 };
+const presetManifest = JSON.parse(
+  await readFile(path.join(packageRoot, "pkg", "merman_wasm_preset.json"), "utf8")
+);
 
 class FakeMeasureElement {
   style = {};
@@ -94,6 +97,8 @@ assert.equal(typeof capabilities.ascii, "boolean");
 assert.equal(typeof capabilities.core_full, "boolean");
 assert.equal(typeof capabilities.core_host, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
+assert.equal(typeof capabilities.editor_language, "boolean");
+assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
 
 const registryProfile = api.selectedRegistryProfile();
 assert.match(registryProfile, /^(full|tiny)$/);
@@ -126,6 +131,8 @@ assert.equal(
   ),
   true
 );
+
+assertEditorLanguageSurface(capabilities.editor_language);
 
 if (capabilities.render) {
   const rawGantt = `gantt
@@ -179,9 +186,13 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(invalid.valid, false);
   assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
 } else {
-  const unsupported = api.validate(source, deterministicTime);
-  assert.equal(unsupported.valid, false);
-  assert.equal(unsupported.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+  const valid = api.validate(source, deterministicTime);
+  assert.equal(valid.valid, true);
+  assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
+
+  assertUnsupportedFormat(() => api.renderSvg(source, options));
+  assertUnsupportedFormat(() => api.parseJson(source, deterministicTime));
+  assertUnsupportedFormat(() => api.layoutJson(source, options));
 }
 
 if (capabilities.ascii) {
@@ -321,5 +332,59 @@ console.log(
     `ascii=${capabilities.ascii}`,
     `core_full=${capabilities.core_full}`,
     `ratex_math=${capabilities.ratex_math}`,
+    `editor_language=${capabilities.editor_language}`,
   ].join(" ")
 );
+
+function assertEditorLanguageSurface(enabled) {
+  const editorSource = "flowchart TD\nA-->B\nB-->\n";
+  const editorUri = "file:///tmp/example.mmd";
+
+  if (!enabled) {
+    assert.throws(
+      () => api.editorCompletions(editorSource, { line: 2, character: 4 }, editorUri),
+      /editorCompletions\(\) is not available/
+    );
+    assert.throws(
+      () => api.editorDiagnostics(editorSource, deterministicTime, editorUri),
+      /editorDiagnostics\(\) is not available/
+    );
+    assert.equal(typeof exportedWasmModule.editorCompletions, "undefined");
+    assert.equal(typeof exportedWasmModule.editorDiagnostics, "undefined");
+    return;
+  }
+
+  const completions = api.editorCompletions(
+    "flowchart TD\nA-->B\nB-->C\n",
+    { line: 1, character: 1 },
+    editorUri
+  );
+  assert.ok(completions.items.some((item) => item.label === "B"));
+
+  const diagnostics = api.editorDiagnostics(editorSource, deterministicTime, editorUri);
+  assert.equal(Array.isArray(diagnostics.diagnostics), true);
+
+  const references = api.editorReferences(
+    "flowchart TD\nA-->B\nA-->C\n",
+    { line: 1, character: 0 },
+    true,
+    editorUri
+  );
+  assert.equal(references.length, 2);
+
+  const legend = api.editorSemanticTokenLegend();
+  assert.ok(legend.tokenTypes.length > 0);
+  assert.equal(typeof exportedWasmModule.editorCompletions, "function");
+  assert.equal(typeof exportedWasmModule.editorDiagnostics, "function");
+}
+
+function assertUnsupportedFormat(run) {
+  let error = null;
+  try {
+    run();
+  } catch (caught) {
+    error = caught;
+  }
+  assert.ok(error, "expected MERMAN_UNSUPPORTED_FORMAT error");
+  assert.equal(error.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+}

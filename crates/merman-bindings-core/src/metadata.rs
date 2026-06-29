@@ -22,6 +22,7 @@ pub struct BindingCapabilities {
     pub core_host: bool,
     pub elk_layout: bool,
     pub ratex_math: bool,
+    pub editor_language: bool,
     pub text_measurement: TextMeasurementCapabilities,
 }
 
@@ -49,6 +50,7 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         core_host: cfg!(feature = "core-host") || cfg!(feature = "ascii"),
         elk_layout: cfg!(feature = "elk-layout"),
         ratex_math: cfg!(feature = "ratex-math"),
+        editor_language: cfg!(feature = "editor-language"),
         text_measurement: TextMeasurementCapabilities {
             vendored: cfg!(feature = "render"),
             deterministic: cfg!(feature = "render"),
@@ -227,6 +229,10 @@ mod tests {
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
         assert_eq!(
+            capabilities.editor_language,
+            cfg!(feature = "editor-language")
+        );
+        assert_eq!(
             capabilities.text_measurement.vendored,
             cfg!(feature = "render")
         );
@@ -251,6 +257,10 @@ mod tests {
         assert_eq!(
             capabilities["text_measurement"]["deterministic"],
             cfg!(feature = "render")
+        );
+        assert_eq!(
+            capabilities["editor_language"],
+            cfg!(feature = "editor-language")
         );
         assert_eq!(capabilities["text_measurement"]["host_callback"], false);
         assert_eq!(capabilities["text_measurement"]["font_assets"], false);

@@ -5,10 +5,14 @@
 //! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
 //! classification are delegated to `merman-bindings-core`.
 
+#[cfg(feature = "editor-language")]
 use merman_analysis::{
     AnalysisOptions, AnalysisPayload, Analyzer, EditorSymbolKind, SourceDescriptor, Summary,
 };
-use merman_bindings_core::{BindingError, BindingStatus};
+use merman_bindings_core::BindingError;
+#[cfg(feature = "editor-language")]
+use merman_bindings_core::BindingStatus;
+#[cfg(feature = "editor-language")]
 use merman_editor_core::{
     DocumentKind, DocumentSnapshot, DocumentWorkspace, EditorDiagnostic, EditorDocumentSymbol,
     EditorHover, EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit,
@@ -18,6 +22,7 @@ use merman_editor_core::{
     workspace_symbols,
 };
 use serde::Serialize;
+#[cfg(feature = "editor-language")]
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -39,6 +44,7 @@ struct WasmErrorPayload<'a> {
     message: &'a str,
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmEditorDiagnostics {
@@ -49,6 +55,7 @@ struct WasmEditorDiagnostics {
     diagnostics: Vec<EditorDiagnostic>,
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmHover {
@@ -56,6 +63,7 @@ struct WasmHover {
     range: Option<Range>,
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmMarkupContent {
@@ -63,6 +71,7 @@ struct WasmMarkupContent {
     value: String,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<EditorHover> for WasmHover {
     fn from(value: EditorHover) -> Self {
         Self {
@@ -75,6 +84,7 @@ impl From<EditorHover> for WasmHover {
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmDocumentSymbol {
@@ -86,6 +96,7 @@ struct WasmDocumentSymbol {
     children: Vec<WasmDocumentSymbol>,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<EditorDocumentSymbol> for WasmDocumentSymbol {
     fn from(value: EditorDocumentSymbol) -> Self {
         Self {
@@ -99,6 +110,7 @@ impl From<EditorDocumentSymbol> for WasmDocumentSymbol {
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmSymbolInformation {
@@ -108,6 +120,7 @@ struct WasmSymbolInformation {
     container_name: Option<String>,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<merman_editor_core::EditorSymbolInformation> for WasmSymbolInformation {
     fn from(value: merman_editor_core::EditorSymbolInformation) -> Self {
         Self {
@@ -119,6 +132,7 @@ impl From<merman_editor_core::EditorSymbolInformation> for WasmSymbolInformation
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmLocation {
@@ -126,6 +140,7 @@ struct WasmLocation {
     range: Range,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<EditorLocation> for WasmLocation {
     fn from(value: EditorLocation) -> Self {
         Self {
@@ -135,6 +150,7 @@ impl From<EditorLocation> for WasmLocation {
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmPrepareRename {
@@ -142,6 +158,7 @@ struct WasmPrepareRename {
     placeholder: String,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<EditorPrepareRename> for WasmPrepareRename {
     fn from(value: EditorPrepareRename) -> Self {
         Self {
@@ -151,12 +168,14 @@ impl From<EditorPrepareRename> for WasmPrepareRename {
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmWorkspaceEdit {
     changes: HashMap<String, Vec<WasmTextEdit>>,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<EditorWorkspaceEdit> for WasmWorkspaceEdit {
     fn from(value: EditorWorkspaceEdit) -> Self {
         Self {
@@ -174,6 +193,7 @@ impl From<EditorWorkspaceEdit> for WasmWorkspaceEdit {
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmTextEdit {
@@ -181,6 +201,7 @@ struct WasmTextEdit {
     new_text: String,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<EditorTextEdit> for WasmTextEdit {
     fn from(value: EditorTextEdit) -> Self {
         Self {
@@ -190,6 +211,7 @@ impl From<EditorTextEdit> for WasmTextEdit {
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmCodeAction {
@@ -200,6 +222,7 @@ struct WasmCodeAction {
     is_preferred: bool,
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmSemanticTokenLegend {
@@ -207,6 +230,7 @@ struct WasmSemanticTokenLegend {
     token_modifiers: Vec<&'static str>,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<SemanticTokenLegend> for WasmSemanticTokenLegend {
     fn from(value: SemanticTokenLegend) -> Self {
         Self {
@@ -224,6 +248,7 @@ impl From<SemanticTokenLegend> for WasmSemanticTokenLegend {
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmSemanticToken {
@@ -234,6 +259,7 @@ struct WasmSemanticToken {
     token_modifier: &'static str,
 }
 
+#[cfg(feature = "editor-language")]
 impl From<SemanticToken> for WasmSemanticToken {
     fn from(value: SemanticToken) -> Self {
         Self {
@@ -393,6 +419,7 @@ pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorDiagnostics)]
 pub fn editor_diagnostics(
     source: &str,
@@ -412,6 +439,7 @@ pub fn editor_diagnostics(
     js_value(&response)
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorCodeActions)]
 pub fn editor_code_actions(
     source: &str,
@@ -424,6 +452,7 @@ pub fn editor_code_actions(
     js_value(&code_actions_for_diagnostics(&diagnostics, &uri))
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorCompletions)]
 pub fn editor_completions(
     source: &str,
@@ -438,6 +467,7 @@ pub fn editor_completions(
     ))
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorHover)]
 pub fn editor_hover(
     source: &str,
@@ -449,6 +479,7 @@ pub fn editor_hover(
     js_value(&hover(&snapshot, Position::new(line, character)).map(WasmHover::from))
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorDocumentSymbols)]
 pub fn editor_document_symbols(source: &str, uri: Option<String>) -> Result<JsValue, JsValue> {
     let snapshot = editor_snapshot(source, uri);
@@ -459,6 +490,7 @@ pub fn editor_document_symbols(source: &str, uri: Option<String>) -> Result<JsVa
     js_value(&symbols)
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorWorkspaceSymbols)]
 pub fn editor_workspace_symbols(
     source: &str,
@@ -473,6 +505,7 @@ pub fn editor_workspace_symbols(
     js_value(&symbols)
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorDefinition)]
 pub fn editor_definition(
     source: &str,
@@ -484,6 +517,7 @@ pub fn editor_definition(
     js_value(&goto_definition(&snapshot, Position::new(line, character)).map(WasmLocation::from))
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorReferences)]
 pub fn editor_references(
     source: &str,
@@ -505,6 +539,7 @@ pub fn editor_references(
     js_value(&locations)
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorPrepareRename)]
 pub fn editor_prepare_rename(
     source: &str,
@@ -518,6 +553,7 @@ pub fn editor_prepare_rename(
     )
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorRename)]
 pub fn editor_rename(
     source: &str,
@@ -533,11 +569,13 @@ pub fn editor_rename(
     }
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorSemanticTokenLegend)]
 pub fn editor_semantic_token_legend() -> Result<JsValue, JsValue> {
     js_value(&WasmSemanticTokenLegend::from(semantic_token_legend()))
 }
 
+#[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorSemanticTokens)]
 pub fn editor_semantic_tokens(source: &str, uri: Option<String>) -> Result<JsValue, JsValue> {
     let snapshot = editor_snapshot(source, uri);
@@ -552,15 +590,18 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
     options_json.unwrap_or_default().as_bytes()
 }
 
+#[cfg(feature = "editor-language")]
 fn js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(value).map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[cfg(feature = "editor-language")]
 fn editor_uri(uri: Option<String>) -> String {
     uri.filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "file:///merman/document.mmd".to_string())
 }
 
+#[cfg(feature = "editor-language")]
 fn editor_snapshot(source: &str, uri: Option<String>) -> DocumentSnapshot {
     let uri = editor_uri(uri);
     let kind = document_kind_for_uri(&uri);
@@ -568,10 +609,12 @@ fn editor_snapshot(source: &str, uri: Option<String>) -> DocumentSnapshot {
     workspace.upsert(uri, 1, source.to_string(), kind)
 }
 
+#[cfg(feature = "editor-language")]
 fn document_kind_for_uri(uri: &str) -> DocumentKind {
     DocumentKind::from_path(uri.split(['?', '#']).next().unwrap_or(uri))
 }
 
+#[cfg(feature = "editor-language")]
 fn editor_analysis_payload(
     source: &str,
     options_json: Option<&str>,
@@ -586,6 +629,7 @@ fn editor_analysis_payload(
     ))
 }
 
+#[cfg(feature = "editor-language")]
 fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions, BindingError> {
     let Some(options_json) = options_json else {
         return Ok(AnalysisOptions::default());
@@ -603,6 +647,7 @@ fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions,
         .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))
 }
 
+#[cfg(feature = "editor-language")]
 fn source_descriptor_for_kind(kind: DocumentKind, uri: &str) -> SourceDescriptor {
     match kind {
         DocumentKind::Diagram => SourceDescriptor::diagram().with_path(uri.to_string()),
@@ -612,6 +657,7 @@ fn source_descriptor_for_kind(kind: DocumentKind, uri: &str) -> SourceDescriptor
     }
 }
 
+#[cfg(feature = "editor-language")]
 fn code_actions_for_diagnostics(
     diagnostics: &[EditorDiagnostic],
     uri: &str,
@@ -661,6 +707,7 @@ fn code_actions_for_diagnostics(
         .collect()
 }
 
+#[cfg(feature = "editor-language")]
 fn symbol_kind_name(kind: EditorSymbolKind) -> &'static str {
     match kind {
         EditorSymbolKind::Class => "class",
@@ -677,6 +724,7 @@ fn symbol_kind_name(kind: EditorSymbolKind) -> &'static str {
     }
 }
 
+#[cfg(feature = "editor-language")]
 fn semantic_token_kind_name(kind: SemanticTokenKind) -> &'static str {
     match kind {
         SemanticTokenKind::Namespace => "namespace",
@@ -690,6 +738,7 @@ fn semantic_token_kind_name(kind: SemanticTokenKind) -> &'static str {
     }
 }
 
+#[cfg(feature = "editor-language")]
 fn semantic_token_modifier_name(modifier: SemanticTokenModifier) -> &'static str {
     match modifier {
         SemanticTokenModifier::Entity => "entity",
@@ -1034,6 +1083,37 @@ mod tests {
         );
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
+        assert_eq!(
+            capabilities.editor_language,
+            cfg!(feature = "editor-language")
+        );
+    }
+
+    #[cfg(feature = "editor-language")]
+    #[test]
+    fn editor_language_helpers_cover_browser_editor_surface() {
+        let snapshot = editor_snapshot(
+            "flowchart TD\nA-->B\nA-->C\n",
+            Some("file:///tmp/example.mmd".to_string()),
+        );
+        let completions = completion_for_snapshot(&snapshot, Position::new(1, 1));
+        assert!(completions.items.iter().any(|item| item.label == "B"));
+        assert_eq!(
+            references(&snapshot, Position::new(1, 0), true)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(!semantic_tokens_for_snapshot(&snapshot).is_empty());
+
+        let payload =
+            editor_analysis_payload("flowchart TD\nA-->\n", None, "file:///tmp/example.mmd")
+                .unwrap();
+        let diagnostics = analysis_payload_to_diagnostics(&payload);
+        assert!(!diagnostics.is_empty());
+
+        let actions = code_actions_for_diagnostics(&diagnostics, "file:///tmp/example.mmd");
+        assert!(actions.iter().all(|action| action.kind == "quickfix"));
     }
 
     #[test]

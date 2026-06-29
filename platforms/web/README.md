@@ -14,26 +14,34 @@ npm run smoke --prefix platforms/web
 ```
 
 `npm run build` produces the default `browser-full` artifact used for npm publication. The surface
-includes rendering, parsing, layout, ASCII, validation, and diagnostics analysis. Source and CI
-builds can choose a browser WASM preset when a smaller local artifact is useful:
+includes rendering, parsing, layout, ASCII, validation, diagnostics analysis, and the current
+editor-language APIs. Source and CI builds can choose a browser WASM preset when a smaller local
+artifact is useful:
 
 The WASM build uses the workspace `wasm-size` Cargo profile through `wasm-pack --profile
 wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
 
 | Preset | Command | Capability |
 | --- | --- | --- |
-| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII calls report `MERMAN_UNSUPPORTED_FORMAT`. |
-| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, diagnostics analysis, validation, themes, and metadata over the minimal core profile. |
-| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile. |
-| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
-| `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Not the npm default. |
-| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. |
+| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport plus metadata, analysis, and validation. Render, parse, layout, ASCII, and editor-language calls are unavailable. |
+| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, metadata, analysis, and validation over the minimal core profile. Editor-language calls are unavailable. |
+| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile, but editor-language calls remain unavailable. |
+| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, editor-language APIs, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
+| `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
+| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
 
 Run `npm run build:ts --prefix platforms/web` after a preset build when producing a complete local
 package.
 
 Each build writes `pkg/merman_wasm_preset.json`. `npm run prepack` expects `browser-full` unless
 `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package.
+
+Call `bindingCapabilities()` after `initMerman()` when you need to branch on optional surfaces.
+`bindingCapabilities().editor_language` is the supported contract for whether the artifact exposes
+`editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
+`editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
+`editorReferences()`, `editorPrepareRename()`, `editorRename()`,
+`editorSemanticTokenLegend()`, and `editorSemanticTokens()`.
 
 ## Usage
 

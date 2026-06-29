@@ -235,6 +235,7 @@ export interface BindingCapabilities {
   core_host: boolean;
   elk_layout: boolean;
   ratex_math: boolean;
+  editor_language: boolean;
 }
 
 export type RegistryProfile = "full" | "tiny";
@@ -287,6 +288,7 @@ export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
   core_host: true,
   elk_layout: true,
   ratex_math: false,
+  editor_language: true,
 };
 
 export function isThemeName(theme: string): theme is ThemeName {
@@ -906,10 +908,7 @@ export function editorDiagnostics(
   options?: SvgBindingOptions | string,
   uri?: string
 ): EditorDiagnosticsResult {
-  const diagnostics = getMerman().editorDiagnostics;
-  if (!diagnostics) {
-    throw new Error("Merman editorDiagnostics() is not available in this artifact.");
-  }
+  const diagnostics = requireEditorLanguage("editorDiagnostics", getMerman().editorDiagnostics);
   return diagnostics(source, encodeOptions(options), uri);
 }
 
@@ -918,10 +917,7 @@ export function editorCodeActions(
   options?: SvgBindingOptions | string,
   uri?: string
 ): EditorCodeAction[] {
-  const codeActions = getMerman().editorCodeActions;
-  if (!codeActions) {
-    throw new Error("Merman editorCodeActions() is not available in this artifact.");
-  }
+  const codeActions = requireEditorLanguage("editorCodeActions", getMerman().editorCodeActions);
   return codeActions(source, encodeOptions(options), uri);
 }
 
@@ -930,10 +926,7 @@ export function editorCompletions(
   position: EditorPosition,
   uri?: string
 ): EditorCompletionList {
-  const completions = getMerman().editorCompletions;
-  if (!completions) {
-    throw new Error("Merman editorCompletions() is not available in this artifact.");
-  }
+  const completions = requireEditorLanguage("editorCompletions", getMerman().editorCompletions);
   return completions(source, position.line, position.character, uri);
 }
 
@@ -942,10 +935,7 @@ export function editorHover(
   position: EditorPosition,
   uri?: string
 ): EditorHover | null {
-  const hover = getMerman().editorHover;
-  if (!hover) {
-    throw new Error("Merman editorHover() is not available in this artifact.");
-  }
+  const hover = requireEditorLanguage("editorHover", getMerman().editorHover);
   return hover(source, position.line, position.character, uri);
 }
 
@@ -953,10 +943,10 @@ export function editorDocumentSymbols(
   source: string,
   uri?: string
 ): EditorDocumentSymbol[] {
-  const documentSymbols = getMerman().editorDocumentSymbols;
-  if (!documentSymbols) {
-    throw new Error("Merman editorDocumentSymbols() is not available in this artifact.");
-  }
+  const documentSymbols = requireEditorLanguage(
+    "editorDocumentSymbols",
+    getMerman().editorDocumentSymbols
+  );
   return documentSymbols(source, uri);
 }
 
@@ -965,10 +955,10 @@ export function editorWorkspaceSymbols(
   query: string,
   uri?: string
 ): EditorSymbolInformation[] {
-  const workspaceSymbols = getMerman().editorWorkspaceSymbols;
-  if (!workspaceSymbols) {
-    throw new Error("Merman editorWorkspaceSymbols() is not available in this artifact.");
-  }
+  const workspaceSymbols = requireEditorLanguage(
+    "editorWorkspaceSymbols",
+    getMerman().editorWorkspaceSymbols
+  );
   return workspaceSymbols(source, query, uri);
 }
 
@@ -977,10 +967,7 @@ export function editorDefinition(
   position: EditorPosition,
   uri?: string
 ): EditorLocation | null {
-  const definition = getMerman().editorDefinition;
-  if (!definition) {
-    throw new Error("Merman editorDefinition() is not available in this artifact.");
-  }
+  const definition = requireEditorLanguage("editorDefinition", getMerman().editorDefinition);
   return definition(source, position.line, position.character, uri);
 }
 
@@ -990,10 +977,7 @@ export function editorReferences(
   includeDeclaration = true,
   uri?: string
 ): EditorLocation[] {
-  const refs = getMerman().editorReferences;
-  if (!refs) {
-    throw new Error("Merman editorReferences() is not available in this artifact.");
-  }
+  const refs = requireEditorLanguage("editorReferences", getMerman().editorReferences);
   return refs(source, position.line, position.character, includeDeclaration, uri);
 }
 
@@ -1002,10 +986,7 @@ export function editorPrepareRename(
   position: EditorPosition,
   uri?: string
 ): EditorPrepareRename | null {
-  const prepare = getMerman().editorPrepareRename;
-  if (!prepare) {
-    throw new Error("Merman editorPrepareRename() is not available in this artifact.");
-  }
+  const prepare = requireEditorLanguage("editorPrepareRename", getMerman().editorPrepareRename);
   return prepare(source, position.line, position.character, uri);
 }
 
@@ -1015,18 +996,15 @@ export function editorRename(
   newName: string,
   uri?: string
 ): EditorWorkspaceEdit | null {
-  const rename = getMerman().editorRename;
-  if (!rename) {
-    throw new Error("Merman editorRename() is not available in this artifact.");
-  }
+  const rename = requireEditorLanguage("editorRename", getMerman().editorRename);
   return rename(source, position.line, position.character, newName, uri);
 }
 
 export function editorSemanticTokenLegend(): EditorSemanticTokenLegend {
-  const legend = getMerman().editorSemanticTokenLegend;
-  if (!legend) {
-    throw new Error("Merman editorSemanticTokenLegend() is not available in this artifact.");
-  }
+  const legend = requireEditorLanguage(
+    "editorSemanticTokenLegend",
+    getMerman().editorSemanticTokenLegend
+  );
   return legend();
 }
 
@@ -1034,18 +1012,19 @@ export function editorSemanticTokens(
   source: string,
   uri?: string
 ): EditorSemanticToken[] {
-  const tokens = getMerman().editorSemanticTokens;
-  if (!tokens) {
-    throw new Error("Merman editorSemanticTokens() is not available in this artifact.");
-  }
+  const tokens = requireEditorLanguage("editorSemanticTokens", getMerman().editorSemanticTokens);
   return tokens(source, uri);
 }
 
 export function bindingCapabilities(): BindingCapabilities {
-  const capabilities = getMerman().bindingCapabilities?.();
+  const merman = getMerman();
+  const capabilities = merman.bindingCapabilities?.();
   return capabilities
-    ? normalizeBindingCapabilities(capabilities)
-    : { ...DEFAULT_BINDING_CAPABILITIES };
+    ? normalizeBindingCapabilities(capabilities, merman)
+    : {
+        ...DEFAULT_BINDING_CAPABILITIES,
+        editor_language: hasEditorLanguageBindings(merman),
+      };
 }
 
 export function selectedRegistryProfile(): RegistryProfile {
@@ -1227,7 +1206,8 @@ function assertHostThemePresetName(preset: string): HostThemePresetName {
 }
 
 function normalizeBindingCapabilities(
-  capabilities: Partial<BindingCapabilities>
+  capabilities: Partial<BindingCapabilities>,
+  merman: MermanWasmModule
 ): BindingCapabilities {
   return {
     render: Boolean(capabilities.render),
@@ -1236,5 +1216,36 @@ function normalizeBindingCapabilities(
     core_host: Boolean(capabilities.core_host),
     elk_layout: Boolean(capabilities.elk_layout),
     ratex_math: Boolean(capabilities.ratex_math),
+    editor_language:
+      capabilities.editor_language === undefined
+        ? hasEditorLanguageBindings(merman)
+        : Boolean(capabilities.editor_language),
   };
+}
+
+function requireEditorLanguage<T>(
+  apiName: string,
+  binding: T | undefined
+): T {
+  if (!bindingCapabilities().editor_language || binding === undefined) {
+    throw new Error(`Merman ${apiName}() is not available in this artifact.`);
+  }
+  return binding;
+}
+
+function hasEditorLanguageBindings(merman: MermanWasmModule): boolean {
+  return (
+    typeof merman.editorDiagnostics === "function" &&
+    typeof merman.editorCodeActions === "function" &&
+    typeof merman.editorCompletions === "function" &&
+    typeof merman.editorHover === "function" &&
+    typeof merman.editorDocumentSymbols === "function" &&
+    typeof merman.editorWorkspaceSymbols === "function" &&
+    typeof merman.editorDefinition === "function" &&
+    typeof merman.editorReferences === "function" &&
+    typeof merman.editorPrepareRename === "function" &&
+    typeof merman.editorRename === "function" &&
+    typeof merman.editorSemanticTokenLegend === "function" &&
+    typeof merman.editorSemanticTokens === "function"
+  );
 }

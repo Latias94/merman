@@ -17,21 +17,26 @@ categories = ["wasm", "visualization"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["core-full", "core-host", "render", "ascii", "elk-layout"]
+default = ["core-full", "core-host", "render", "ascii", "elk-layout", "editor-language"]
 core-full = ["merman-bindings-core/core-full"]
 core-host = ["merman-bindings-core/core-host"]
 ascii = ["merman-bindings-core/ascii"]
 render = ["merman-bindings-core/render"]
 cytoscape-layout = ["merman-bindings-core/cytoscape-layout"]
 elk-layout = ["merman-bindings-core/elk-layout"]
+editor-language = [
+  "dep:merman-analysis",
+  "dep:merman-editor-core",
+  "merman-bindings-core/editor-language",
+]
 ratex-math = ["render", "merman-bindings-core/ratex-math"]
 
 [dependencies]
 console_error_panic_hook.workspace = true
 js-sys.workspace = true
-merman-analysis.workspace = true
+merman-analysis = { workspace = true, optional = true }
 merman-bindings-core.workspace = true
-merman-editor-core.workspace = true
+merman-editor-core = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true

@@ -57,19 +57,19 @@ WFS-090 decision: keep `@mermanjs/web` as one npm package and one published arti
 now. The published package uses the `browser-full` preset. Source, CI, and local package builds can
 choose a different browser preset through `platforms/web/scripts/build-wasm.mjs`; the TypeScript
 wrapper exposes `bindingCapabilities()` so callers can discover the active artifact's compiled
-capabilities after initialization. It also exposes `selectedRegistryProfile()` and
+capabilities after initialization, including whether `editor_language` is compiled. It also exposes `selectedRegistryProfile()` and
 `diagramFamilyCapabilities()` so local slim builds can report the actual full/tiny diagram
 parser/render matrix they contain, plus `lintRuleCatalog()` so editor integrations can discover the
 governed analyzer rule table and its evidence references without hard-coding them.
 
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
-| `browser-core` | no | none | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII entry points report unsupported capability errors. |
-| `browser-render` | no | `render` | SVG/parse/layout/validation artifact over the minimal core profile. |
-| `browser-ascii` | no | `ascii` | ASCII/Unicode artifact. It still carries the full core registry because the browser ASCII crate depends on the full core/host profile. |
-| `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
-| `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii` | Evidence preset for the same browser surface without ELK. Not the npm default. |
-| `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Includes EPL-backed `merman-elk-layered`. |
+| `browser-core` | no | none | Browser wasm-bindgen transport plus metadata, analysis, and validation. Render, parse, layout, ASCII, and editor-language entry points are unavailable. |
+| `browser-render` | no | `render` | SVG/parse/layout artifact with metadata, analysis, and validation over the minimal core profile. Editor-language entry points are unavailable. |
+| `browser-ascii` | no | `ascii` | ASCII/Unicode artifact. It still carries the full core registry because the browser ASCII crate depends on the full core/host profile, but editor-language entry points are unavailable. |
+| `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
+| `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
+| `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
 
 `npm run prepack --prefix platforms/web` requires `browser-full` unless
 `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package. This protects
@@ -87,7 +87,8 @@ Current release semantics are intentionally explicit:
   that want ELK must enable `elk-layout` or publish a distinct full artifact.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full`. Slim browser
   presets are source-build presets only; they are not npm subpackages or package export paths.
-- `bindingCapabilities()` reports the active browser artifact's compiled capabilities.
+- `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
+  whether `editor_language` is available.
   `selectedRegistryProfile()` and `diagramFamilyCapabilities()` report the selected diagram registry
   profile and registered parser/render family facts. `lintRuleCatalog()` reports analyzer rule ids,
   evidence references, default profiles, origins, configurability, and fixability. Consumers that

@@ -19,6 +19,7 @@ const presets = {
       core_host: false,
       elk_layout: false,
       ratex_math: false,
+      editor_language: false,
     },
   },
   "browser-render": {
@@ -32,6 +33,7 @@ const presets = {
       core_host: false,
       elk_layout: false,
       ratex_math: false,
+      editor_language: false,
     },
   },
   "browser-ascii": {
@@ -45,6 +47,7 @@ const presets = {
       core_host: true,
       elk_layout: false,
       ratex_math: false,
+      editor_language: false,
     },
   },
   "browser-full": {
@@ -58,12 +61,13 @@ const presets = {
       core_host: true,
       elk_layout: true,
       ratex_math: false,
+      editor_language: true,
     },
   },
   "browser-full-no-elk": {
     surface: "browser",
     defaultFeatures: false,
-    features: ["core-full", "core-host", "render", "ascii"],
+    features: ["core-full", "core-host", "render", "ascii", "editor-language"],
     capabilities: {
       render: true,
       ascii: true,
@@ -71,6 +75,7 @@ const presets = {
       core_host: true,
       elk_layout: false,
       ratex_math: false,
+      editor_language: true,
     },
   },
   "browser-ratex-math": {
@@ -84,6 +89,7 @@ const presets = {
       core_host: true,
       elk_layout: true,
       ratex_math: true,
+      editor_language: true,
     },
   },
 };

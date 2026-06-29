@@ -56,7 +56,7 @@ pub fn package_version() -> Vec<u8> {
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn capabilities_json() -> Vec<u8> {
     merman_bindings_core::binding_capabilities_json().unwrap_or_else(|_| {
-        br#"{"render":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
+        br#"{"render":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"editor_language":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
     })
 }
 
