@@ -241,7 +241,7 @@ assert "no Mermaid diagram" in invalid.error
 
 assert "flowchart" in engine.supported_diagrams()
 ascii_supported_diagrams = engine.ascii_supported_diagrams()
-for diagram in ("sequence", "gantt", "treeView"):
+for diagram in ("sequence", "gantt", "treeView", "zenuml"):
     assert diagram in ascii_supported_diagrams
 assert "default" in engine.supported_themes()
 assert "one-dark" in engine.supported_host_theme_presets()

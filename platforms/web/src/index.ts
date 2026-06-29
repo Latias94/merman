@@ -219,6 +219,7 @@ export const SUPPORTED_ASCII_DIAGRAMS = [
   "timeline",
   "treeView",
   "xychart",
+  "zenuml",
 ] as const;
 
 export type AsciiDiagramType = (typeof SUPPORTED_ASCII_DIAGRAMS)[number];
