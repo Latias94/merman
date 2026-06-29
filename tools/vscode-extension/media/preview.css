@@ -108,6 +108,10 @@ select {
   background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
 }
 
+.diagnostics[hidden] {
+  display: none;
+}
+
 .diagnostics-summary {
   margin: 0 0 8px;
   font-size: 12px;
@@ -246,9 +250,8 @@ select {
   border-radius: 6px;
   background: #ffffff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-  transform: translate(-50%, -50%) scale(var(--preview-zoom, 1));
+  transform: translate(-50%, -50%);
   transform-origin: center center;
-  will-change: transform;
 }
 
 .canvas svg {
@@ -290,7 +293,21 @@ select {
 }
 
 .empty {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  right: 16px;
   padding: 18px;
+  z-index: 2;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 96%, transparent 4%);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.empty[hidden] {
+  display: none;
 }
 
 .empty h2 {
@@ -303,4 +320,31 @@ select {
   white-space: pre-wrap;
   color: var(--vscode-descriptionForeground);
   line-height: 1.5;
+}
+
+.preview-status {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  max-width: min(720px, calc(100% - 32px));
+  box-sizing: border-box;
+  z-index: 3;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  color: var(--vscode-editor-foreground);
+  background: color-mix(in srgb, var(--vscode-editor-background) 94%, transparent 6%);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.preview-status[hidden] {
+  display: none;
+}
+
+.preview-status[data-kind="error"] {
+  border-color: color-mix(in srgb, var(--vscode-errorForeground) 65%, var(--vscode-panel-border) 35%);
+  color: var(--vscode-errorForeground);
 }

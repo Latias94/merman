@@ -1,4 +1,9 @@
-import type { PreviewInput } from "./preview-source.js";
+export type {
+  PreviewDiagramTheme,
+  PreviewDiagnosticItem,
+  PreviewDiagnosticTarget,
+  PreviewDiagnostics,
+} from "./preview-model.js";
 
 const PREVIEW_TITLE = "Merman Preview";
 
@@ -10,52 +15,10 @@ export interface PreviewHtmlResources {
 
 export interface RenderPreviewHtmlRequest {
   resources: PreviewHtmlResources;
-  input?: PreviewInput;
-  svg?: string;
-  diagnostics?: PreviewDiagnostics;
-  message?: { heading: string; detail: string };
-  sources?: readonly PreviewInput[];
-  pinned?: boolean;
-  diagramTheme?: PreviewDiagramTheme;
-}
-
-export type PreviewDiagramTheme = "source" | "default" | "dark" | "forest" | "neutral" | "base";
-
-export interface PreviewDiagnosticItem {
-  severityLabel: string;
-  severityKey: "error" | "warning" | "info" | "hint";
-  line: number;
-  column: number;
-  target: PreviewDiagnosticTarget;
-  source?: string;
-  code?: string;
-  message: string;
-  hasQuickFixes: boolean;
-}
-
-export interface PreviewDiagnostics {
-  summary: string;
-  visibleCount: number;
-  totalCount: number;
-  items: PreviewDiagnosticItem[];
-}
-
-export interface PreviewDiagnosticTarget {
-  uri: string;
-  startLine: number;
-  startCharacter: number;
-  endLine: number;
-  endCharacter: number;
 }
 
 export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
   const nonce = createNonce();
-  const title = request.input ? escapeHtml(request.input.title) : PREVIEW_TITLE;
-  const subtitle = request.input ? escapeHtml(request.input.subtitle) : "No active Mermaid source";
-  const diagnosticsSection = renderDiagnosticsSection(request.diagnostics);
-  const body = request.svg
-    ? `<section class="viewport" aria-label="Mermaid preview canvas"><div class="stage"><div class="canvas">${request.svg}</div></div></section>`
-    : `<section class="empty"><h2>${escapeHtml(request.message?.heading ?? "No preview")}</h2><p>${escapeHtml(request.message?.detail ?? "")}</p></section>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -66,7 +29,7 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
       content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${request.resources.cspSource} 'unsafe-inline'; img-src ${request.resources.cspSource} data:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${title}</title>
+    <title>${PREVIEW_TITLE}</title>
     <link rel="stylesheet" href="${escapeHtml(request.resources.stylesUri)}" />
   </head>
   <body>
@@ -74,38 +37,30 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
       <header class="meta">
         <div class="meta-top">
           <div>
-            <h1>${title}</h1>
-            <p>${subtitle}</p>
+            <h1 data-preview-title>${PREVIEW_TITLE}</h1>
+            <p data-preview-subtitle>No active Mermaid source</p>
           </div>
-          ${renderToolbar(request.input, request.sources ?? [], request.pinned === true, request.diagramTheme ?? "source")}
+          ${renderToolbar()}
         </div>
       </header>
-      ${diagnosticsSection}
-      ${body}
+      <section class="diagnostics" data-preview-diagnostics hidden></section>
+      <section class="viewport" aria-label="Mermaid preview canvas">
+        <div class="stage"><div class="canvas" data-preview-canvas></div></div>
+        <section class="preview-status" data-preview-status hidden></section>
+        <section class="empty" data-preview-empty>
+          <h2>No preview</h2>
+          <p>Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.</p>
+        </section>
+      </section>
     </main>
     <script nonce="${nonce}" src="${escapeHtml(request.resources.scriptUri)}"></script>
   </body>
 </html>`;
 }
 
-function renderToolbar(
-  input: PreviewInput | undefined,
-  sources: readonly PreviewInput[],
-  pinned: boolean,
-  diagramTheme: PreviewDiagramTheme,
-): string {
-  const sourceSelect =
-    sources.length > 1
-      ? `<select data-action="source" title="Preview source">${sources
-          .map((source) => {
-            const selected = input?.sourceId === source.sourceId ? " selected" : "";
-            return `<option value="${escapeHtml(source.sourceId)}"${selected}>${escapeHtml(source.subtitle)}</option>`;
-          })
-          .join("")}</select>`
-      : "";
-
+function renderToolbar(): string {
   return `<nav class="toolbar" aria-label="Preview controls">
-    ${sourceSelect}
+    <select data-action="source" data-preview-source-list title="Preview source" hidden></select>
     <span class="toolbar-group">
       <button type="button" data-action="zoom-out" title="Zoom out">-</button>
       <span class="zoom-readout" data-zoom-value>100%</span>
@@ -115,12 +70,12 @@ function renderToolbar(
     </span>
     <span class="toolbar-group">
       <select data-action="diagram-theme" title="Mermaid theme">
-        ${renderThemeOption("source", "Source", diagramTheme)}
-        ${renderThemeOption("default", "Default", diagramTheme)}
-        ${renderThemeOption("dark", "Dark", diagramTheme)}
-        ${renderThemeOption("forest", "Forest", diagramTheme)}
-        ${renderThemeOption("neutral", "Neutral", diagramTheme)}
-        ${renderThemeOption("base", "Base", diagramTheme)}
+        <option value="source">Source</option>
+        <option value="default">Default</option>
+        <option value="dark">Dark</option>
+        <option value="forest">Forest</option>
+        <option value="neutral">Neutral</option>
+        <option value="base">Base</option>
       </select>
       <select data-action="background" title="Preview background">
         <option value="transparent">Transparent</option>
@@ -130,64 +85,9 @@ function renderToolbar(
     </span>
     <span class="toolbar-group">
       <button type="button" data-action="copy-svg" title="Copy SVG">Copy SVG</button>
-      <button type="button" data-action="pin" aria-pressed="${pinned ? "true" : "false"}" title="Pin preview source">${pinned ? "Pinned" : "Pin"}</button>
+      <button type="button" data-action="pin" aria-pressed="false" title="Pin preview source">Pin</button>
     </span>
   </nav>`;
-}
-
-function renderThemeOption(
-  value: PreviewDiagramTheme,
-  label: string,
-  selectedTheme: PreviewDiagramTheme,
-): string {
-  const selected = value === selectedTheme ? " selected" : "";
-  return `<option value="${value}"${selected}>${label}</option>`;
-}
-
-function renderDiagnosticsSection(diagnostics?: PreviewDiagnostics): string {
-  if (!diagnostics) {
-    return "";
-  }
-
-  const suffix =
-    diagnostics.totalCount > diagnostics.visibleCount
-      ? ` Showing first ${diagnostics.visibleCount} of ${diagnostics.totalCount}.`
-      : diagnostics.totalCount > 0
-        ? ` Showing ${diagnostics.totalCount}.`
-        : "";
-
-  if (diagnostics.items.length === 0) {
-    return `<section class="diagnostics"><p class="diagnostics-summary">${escapeHtml(`${diagnostics.summary}. No issues in the active preview range.`)}</p></section>`;
-  }
-
-  const items = diagnostics.items
-    .map((item) => {
-      const headerParts = [
-        `<span class="diagnostic-severity">${escapeHtml(item.severityLabel)}</span>`,
-        `<span class="diagnostic-location">Ln ${item.line}, Col ${item.column}</span>`,
-      ];
-      const sourceLabel = [item.source, item.code].filter(Boolean).join(": ");
-      if (sourceLabel) {
-        headerParts.push(`<span class="diagnostic-source">${escapeHtml(sourceLabel)}</span>`);
-      }
-      const target = escapeHtml(JSON.stringify(item.target));
-      const actions = item.hasQuickFixes
-        ? `<p class="diagnostic-actions"><button type="button" class="diagnostic-action" data-action="quick-fix" data-target="${target}" title="Request available quick fixes">Quick Fixes</button></p>`
-        : "";
-      return `<li class="diagnostic-item" data-severity="${item.severityKey}">
-        <button type="button" class="diagnostic-button" data-action="diagnostic" data-target="${target}" title="Open diagnostic location in editor">
-          <p class="diagnostic-header">${headerParts.join("")}</p>
-          <p class="diagnostic-message">${escapeHtml(item.message)}</p>
-        </button>
-        ${actions}
-      </li>`;
-    })
-    .join("");
-
-  return `<section class="diagnostics">
-    <p class="diagnostics-summary">${escapeHtml(`${diagnostics.summary}.${suffix}`)}</p>
-    <ol class="diagnostics-list">${items}</ol>
-  </section>`;
 }
 
 function createNonce(): string {

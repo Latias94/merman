@@ -3,13 +3,26 @@
   const frame = document.querySelector(".frame");
   const viewport = document.querySelector(".viewport");
   const stage = document.querySelector(".stage");
-  const canvas = document.querySelector(".canvas");
+  const canvas = document.querySelector("[data-preview-canvas]");
   const zoomValue = document.querySelector("[data-zoom-value]");
+  const titleElement = document.querySelector("[data-preview-title]");
+  const subtitleElement = document.querySelector("[data-preview-subtitle]");
+  const diagnosticsElement = document.querySelector("[data-preview-diagnostics]");
+  const statusElement = document.querySelector("[data-preview-status]");
+  const emptyElement = document.querySelector("[data-preview-empty]");
+  const sourceListElement = document.querySelector("[data-preview-source-list]");
+  const themeElement = document.querySelector('[data-action="diagram-theme"]');
+  const backgroundElement = document.querySelector('[data-action="background"]');
+  const pinElement = document.querySelector('[data-action="pin"]');
+  const persisted = vscode.getState?.() || {};
   const state = {
-    zoom: 1,
-    panX: 0,
-    panY: 0,
-    autoFit: true,
+    zoom: finiteNumber(persisted.zoom, 1),
+    panX: finiteNumber(persisted.panX, 0),
+    panY: finiteNumber(persisted.panY, 0),
+    autoFit: persisted.autoFit !== false,
+    background: typeof persisted.background === "string" ? persisted.background : "transparent",
+    sourceKeyId: typeof persisted.sourceKeyId === "string" ? persisted.sourceKeyId : undefined,
+    activeRequestId: undefined,
     dragging: false,
     pointerId: undefined,
     lastClientX: 0,
@@ -22,8 +35,31 @@
     vscode.postMessage({ type, ...payload });
   }
 
+  function persistState() {
+    vscode.setState?.({
+      zoom: state.zoom,
+      panX: state.panX,
+      panY: state.panY,
+      autoFit: state.autoFit,
+      background: state.background,
+      sourceKeyId: state.sourceKeyId,
+    });
+  }
+
+  function finiteNumber(value, fallback) {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function sourceKeyId(snapshot) {
+    if (!snapshot?.sourceKey) {
+      return undefined;
+    }
+    const key = snapshot.sourceKey;
+    return [key.documentUri, key.sourceId, key.sourceHash, key.diagramTheme].join("\u0000");
   }
 
   function updateCanvas() {
@@ -36,6 +72,7 @@
     if (zoomValue) {
       zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
     }
+    persistState();
   }
 
   function setZoom(nextZoom, anchor) {
@@ -54,6 +91,7 @@
       state.panY = anchorY - (anchorY - state.panY) * ratio;
     }
     state.zoom = zoom;
+    applyVectorZoom();
     updateCanvas();
   }
 
@@ -62,6 +100,7 @@
     state.zoom = 1;
     state.panX = 0;
     state.panY = 0;
+    applyVectorZoom();
     updateCanvas();
   }
 
@@ -80,6 +119,7 @@
       return;
     }
     normalizeSvgSize();
+    applyVectorZoom(1);
     const availableWidth = Math.max(viewport.clientWidth - 48, 1);
     const availableHeight = Math.max(viewport.clientHeight - 48, 1);
     const measured = measureCanvas();
@@ -94,6 +134,7 @@
     );
     state.panX = 0;
     state.panY = 0;
+    applyVectorZoom();
     updateCanvas();
   }
 
@@ -103,9 +144,13 @@
       return;
     }
     const viewBox = parseViewBox(svg.getAttribute("viewBox"));
-    if (viewBox && (!positiveLength(svg.getAttribute("width")) || !positiveLength(svg.getAttribute("height")))) {
-      svg.setAttribute("width", String(viewBox.width));
-      svg.setAttribute("height", String(viewBox.height));
+    if (viewBox) {
+      svg.dataset.baseWidth = String(viewBox.width);
+      svg.dataset.baseHeight = String(viewBox.height);
+      if (!positiveLength(svg.getAttribute("width")) || !positiveLength(svg.getAttribute("height"))) {
+        svg.setAttribute("width", String(viewBox.width));
+        svg.setAttribute("height", String(viewBox.height));
+      }
       return;
     }
     if (!svg.hasAttribute("viewBox")) {
@@ -114,7 +159,23 @@
         svg.setAttribute("viewBox", `${box.x} ${box.y} ${box.width} ${box.height}`);
         svg.setAttribute("width", String(box.width));
         svg.setAttribute("height", String(box.height));
+        svg.dataset.baseWidth = String(box.width);
+        svg.dataset.baseHeight = String(box.height);
       }
+    }
+  }
+
+  function applyVectorZoom(zoomOverride) {
+    const svg = canvas?.querySelector("svg");
+    if (!svg) {
+      return;
+    }
+    const baseWidth = Number.parseFloat(svg.dataset.baseWidth || svg.getAttribute("width") || "0");
+    const baseHeight = Number.parseFloat(svg.dataset.baseHeight || svg.getAttribute("height") || "0");
+    if (baseWidth > 0 && baseHeight > 0) {
+      const zoom = Number.isFinite(zoomOverride) ? zoomOverride : state.zoom;
+      svg.setAttribute("width", String(baseWidth * zoom));
+      svg.setAttribute("height", String(baseHeight * zoom));
     }
   }
 
@@ -168,6 +229,225 @@
     post("copySvg", { svg: svg.outerHTML });
   }
 
+  function setText(element, text) {
+    if (element) {
+      element.textContent = text || "";
+    }
+  }
+
+  function patchSnapshot(snapshot) {
+    if (!snapshot) {
+      return;
+    }
+    setText(titleElement, snapshot.title || "Merman Preview");
+    setText(subtitleElement, snapshot.subtitle || "");
+    patchSourceList(snapshot);
+    patchSettings(snapshot);
+    patchDiagnostics(snapshot.diagnostics);
+  }
+
+  function patchSourceList(snapshot) {
+    if (!(sourceListElement instanceof HTMLSelectElement)) {
+      return;
+    }
+    const sources = Array.isArray(snapshot.sources) ? snapshot.sources : [];
+    sourceListElement.replaceChildren(
+      ...sources.map((source) => {
+        const option = document.createElement("option");
+        option.value = source.sourceId;
+        option.textContent = source.subtitle || source.title || source.sourceId;
+        option.selected = source.sourceId === snapshot.sourceId;
+        return option;
+      }),
+    );
+    sourceListElement.hidden = sources.length <= 1;
+  }
+
+  function patchSettings(snapshot) {
+    if (themeElement instanceof HTMLSelectElement && snapshot.diagramTheme) {
+      themeElement.value = snapshot.diagramTheme;
+    }
+    if (pinElement instanceof HTMLButtonElement) {
+      pinElement.setAttribute("aria-pressed", snapshot.pinned ? "true" : "false");
+      pinElement.textContent = snapshot.pinned ? "Pinned" : "Pin";
+    }
+  }
+
+  function patchDiagnostics(diagnostics) {
+    if (!diagnosticsElement) {
+      return;
+    }
+    if (!diagnostics) {
+      diagnosticsElement.hidden = true;
+      diagnosticsElement.replaceChildren();
+      return;
+    }
+
+    diagnosticsElement.hidden = false;
+    diagnosticsElement.replaceChildren();
+    const summary = document.createElement("p");
+    summary.className = "diagnostics-summary";
+    summary.textContent = diagnosticsSummaryText(diagnostics);
+    diagnosticsElement.appendChild(summary);
+
+    if (!Array.isArray(diagnostics.items) || diagnostics.items.length === 0) {
+      return;
+    }
+
+    const list = document.createElement("ol");
+    list.className = "diagnostics-list";
+    for (const item of diagnostics.items) {
+      list.appendChild(renderDiagnosticItem(item));
+    }
+    diagnosticsElement.appendChild(list);
+  }
+
+  function diagnosticsSummaryText(diagnostics) {
+    if (diagnostics.totalCount > diagnostics.visibleCount) {
+      return `${diagnostics.summary}. Showing first ${diagnostics.visibleCount} of ${diagnostics.totalCount}.`;
+    }
+    if (diagnostics.totalCount > 0) {
+      return `${diagnostics.summary}. Showing ${diagnostics.totalCount}.`;
+    }
+    return `${diagnostics.summary}. No issues in the active preview range.`;
+  }
+
+  function renderDiagnosticItem(item) {
+    const listItem = document.createElement("li");
+    listItem.className = "diagnostic-item";
+    listItem.dataset.severity = item.severityKey;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "diagnostic-button";
+    button.dataset.action = "diagnostic";
+    button.dataset.target = JSON.stringify(item.target);
+    button.title = "Open diagnostic location in editor";
+
+    const header = document.createElement("p");
+    header.className = "diagnostic-header";
+    for (const part of [
+      ["diagnostic-severity", item.severityLabel],
+      ["diagnostic-location", `Ln ${item.line}, Col ${item.column}`],
+      ["diagnostic-source", [item.source, item.code].filter(Boolean).join(": ")],
+    ]) {
+      if (!part[1]) {
+        continue;
+      }
+      const span = document.createElement("span");
+      span.className = part[0];
+      span.textContent = part[1];
+      header.appendChild(span);
+    }
+    button.appendChild(header);
+
+    const message = document.createElement("p");
+    message.className = "diagnostic-message";
+    message.textContent = item.message || "";
+    button.appendChild(message);
+    listItem.appendChild(button);
+
+    if (item.hasQuickFixes) {
+      const actions = document.createElement("p");
+      actions.className = "diagnostic-actions";
+      const fix = document.createElement("button");
+      fix.type = "button";
+      fix.className = "diagnostic-action";
+      fix.dataset.action = "quick-fix";
+      fix.dataset.target = JSON.stringify(item.target);
+      fix.title = "Request available quick fixes";
+      fix.textContent = "Quick Fixes";
+      actions.appendChild(fix);
+      listItem.appendChild(actions);
+    }
+
+    return listItem;
+  }
+
+  function showStatus(text, kind) {
+    if (!statusElement) {
+      return;
+    }
+    statusElement.hidden = false;
+    statusElement.dataset.kind = kind || "info";
+    statusElement.textContent = text;
+  }
+
+  function hideStatus() {
+    if (statusElement) {
+      statusElement.hidden = true;
+      statusElement.textContent = "";
+      delete statusElement.dataset.kind;
+    }
+  }
+
+  function showEmpty(heading, detail) {
+    if (emptyElement) {
+      emptyElement.hidden = false;
+      const headingElement = emptyElement.querySelector("h2");
+      const detailElement = emptyElement.querySelector("p");
+      setText(headingElement, heading);
+      setText(detailElement, detail);
+    }
+    if (canvas) {
+      canvas.replaceChildren();
+    }
+    hideStatus();
+  }
+
+  function replaceSvg(svg, snapshot) {
+    if (!canvas) {
+      return;
+    }
+    canvas.innerHTML = svg;
+    state.sourceKeyId = sourceKeyId(snapshot);
+    normalizeSvgSize();
+    applyVectorZoom();
+    updateCanvas();
+    if (state.autoFit) {
+      requestAnimationFrame(fitToView);
+    }
+    if (emptyElement) {
+      emptyElement.hidden = true;
+    }
+  }
+
+  function handleMessage(message) {
+    switch (message.type) {
+      case "showEmpty":
+        showEmpty(message.heading, message.detail);
+        break;
+      case "sourceListUpdated":
+      case "selectionChanged":
+      case "diagnosticsUpdated":
+      case "settingsUpdated":
+        patchSnapshot(message.snapshot);
+        break;
+      case "renderStarted":
+        state.activeRequestId = message.requestId;
+        patchSnapshot(message.snapshot);
+        showStatus(`Rendering preview: ${message.snapshot?.subtitle || "Mermaid source"}`, "loading");
+        break;
+      case "renderSucceeded":
+        if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {
+          return;
+        }
+        patchSnapshot(message.snapshot);
+        replaceSvg(message.svg, message.snapshot);
+        state.activeRequestId = undefined;
+        hideStatus();
+        break;
+      case "renderFailed":
+        if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {
+          return;
+        }
+        patchSnapshot(message.snapshot);
+        state.activeRequestId = undefined;
+        showStatus(message.error || "Render failed", "error");
+        break;
+    }
+  }
+
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
@@ -218,9 +498,12 @@
         post("setDiagramTheme", { theme: target.value });
         break;
       case "background":
+        state.background = target.value;
         if (frame) {
           frame.dataset.background = target.value;
         }
+        post("setBackground", { background: target.value });
+        persistState();
         break;
       case "source":
         post("selectSource", { sourceId: target.value });
@@ -275,6 +558,16 @@
 
   document.addEventListener("pointerup", stopDragging);
   document.addEventListener("pointercancel", stopDragging);
+  window.addEventListener("message", (event) => {
+    handleMessage(event.data);
+  });
+
+  if (frame) {
+    frame.dataset.background = state.background;
+  }
+  if (backgroundElement instanceof HTMLSelectElement) {
+    backgroundElement.value = state.background;
+  }
 
   if (viewport && canvas && stage && typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {
@@ -286,7 +579,6 @@
     observer.observe(canvas);
   }
 
-  normalizeSvgSize();
   updateCanvas();
-  requestAnimationFrame(fitToView);
+  post("ready", {});
 })();

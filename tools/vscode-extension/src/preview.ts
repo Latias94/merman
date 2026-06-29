@@ -6,12 +6,30 @@ import {
   type PreviewInput,
 } from "./preview-source.js";
 import {
-  renderPreviewHtml,
+  createPreviewSnapshot,
   type PreviewDiagramTheme,
   type PreviewDiagnosticTarget,
   type PreviewDiagnostics,
+  type PreviewSnapshot,
+  previewSourceKeyId,
+} from "./preview-model.js";
+import {
+  isPreviewDiagramTheme,
+  isPreviewFromWebviewMessage,
+  snapshotMessagePayload,
+  type PreviewFromWebviewMessage,
+  type PreviewToWebviewMessage,
+} from "./preview-messages.js";
+import {
+  planPreviewUpdate,
+  type PreviewAction,
+  type PreviewUpdateReason,
+} from "./preview-policy.js";
+import {
+  renderPreviewHtml,
 } from "./preview-html.js";
 import { renderMermanSource } from "./renderer.js";
+import { PreviewRenderQueue } from "./preview-render.js";
 
 const PREVIEW_COMMAND = "merman.openPreview";
 const PREVIEW_TITLE = "Merman Preview";
@@ -27,7 +45,13 @@ class MermanPreviewController implements vscode.Disposable {
   private readonly outputChannel: vscode.LogOutputChannel;
   private panel: vscode.WebviewPanel | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
-  private renderVersion = 0;
+  private readonly renderQueue = new PreviewRenderQueue();
+  private currentSnapshot: PreviewSnapshot | undefined;
+  private panelHtmlInitialized = false;
+  private webviewReady = false;
+  private pendingMessages: PreviewToWebviewMessage[] = [];
+  private lastRenderedKeyId: string | undefined;
+  private lastRenderedSvg: string | undefined;
   private lastPreviewEditorUri: string | undefined;
   private pinnedSource: PreviewSourcePin | undefined;
   private diagramTheme: PreviewDiagramTheme = "source";
@@ -96,7 +120,7 @@ class MermanPreviewController implements vscode.Disposable {
         },
       );
       this.panel.webview.onDidReceiveMessage(
-        (message: PreviewWebviewMessage) => {
+        (message: PreviewFromWebviewMessage) => {
           void this.handleWebviewMessage(message);
         },
         null,
@@ -105,6 +129,12 @@ class MermanPreviewController implements vscode.Disposable {
       this.panel.onDidDispose(() => {
         this.clearPendingRender();
         this.panel = undefined;
+        this.currentSnapshot = undefined;
+        this.webviewReady = false;
+        this.pendingMessages = [];
+        this.lastRenderedKeyId = undefined;
+        this.lastRenderedSvg = undefined;
+        this.panelHtmlInitialized = false;
       }, null, this.disposables);
       this.panel.onDidChangeViewState(() => {
         if (this.panel?.visible) {
@@ -115,6 +145,7 @@ class MermanPreviewController implements vscode.Disposable {
       this.panel.reveal(vscode.ViewColumn.Beside, false);
     }
 
+    this.ensureWebviewHtml();
     this.scheduleRefresh("manual-open", true);
   }
 
@@ -134,7 +165,7 @@ class MermanPreviewController implements vscode.Disposable {
     });
   }
 
-  private scheduleRefresh(reason: string, immediate = false): void {
+  private scheduleRefresh(reason: PreviewUpdateReason, immediate = false): void {
     if (!this.panel) {
       return;
     }
@@ -152,56 +183,90 @@ class MermanPreviewController implements vscode.Disposable {
     this.renderTimer = setTimeout(refresh, RENDER_DEBOUNCE_MS);
   }
 
-  private async refresh(reason: string): Promise<void> {
+  private async refresh(reason: PreviewUpdateReason): Promise<void> {
     const panel = this.panel;
     if (!panel) {
       return;
     }
 
-    const editor = this.resolvePreviewEditor();
-    const input = editor ? this.resolvePreviewInput(editor) : null;
-    if (!input) {
+    this.ensureWebviewHtml();
+    const snapshot = this.createSnapshot();
+    const actions = planPreviewUpdate(this.currentSnapshot, snapshot, reason);
+    if (!snapshot) {
       this.pinnedSource = undefined;
       panel.title = PREVIEW_TITLE;
-      panel.webview.html = this.renderHtml(undefined, undefined, undefined, {
-        heading: "No Mermaid source available",
-        detail:
-          "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
-      });
+      this.currentSnapshot = undefined;
+      this.renderQueue.cancelPending();
+      await this.applyActions(actions);
       return;
     }
 
-    this.lastPreviewEditorUri = editor?.document.uri.toString();
-    const diagnostics = editor
-      ? collectPreviewDiagnostics(editor.document.uri, input.diagnosticRange)
-      : undefined;
-    const sources = editor ? listPreviewInputsFromDocument(editor.document, editor.selection.active.line) : [];
+    this.lastPreviewEditorUri = snapshot.documentUri;
+    panel.title = `${PREVIEW_TITLE}: ${snapshot.input.title}`;
+    this.currentSnapshot = snapshot;
+    await this.applyActions(actions);
+  }
 
-    panel.title = `${PREVIEW_TITLE}: ${input.title}`;
-    const currentRender = ++this.renderVersion;
-    panel.webview.html = this.renderHtml(input, undefined, diagnostics, {
-      heading: "Rendering preview",
-      detail: `Source: ${input.subtitle}`,
-    }, sources);
-
-    try {
-      this.outputChannel.info(`refresh=${reason} source="${input.title}" id="${input.sourceId}"`);
-      const svg = await this.renderSvg(input.source);
-      if (!this.panel || currentRender !== this.renderVersion) {
-        return;
+  private async applyActions(actions: readonly PreviewAction[]): Promise<void> {
+    for (const action of actions) {
+      switch (action.type) {
+        case "showEmpty":
+          await this.postMessage({
+            type: "showEmpty",
+            heading: "No Mermaid source available",
+            detail:
+              "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
+          });
+          break;
+        case "sourceListUpdated":
+        case "selectionChanged":
+        case "diagnosticsUpdated":
+        case "settingsUpdated":
+          await this.postMessage({
+            type: action.type,
+            snapshot: snapshotMessagePayload(action.snapshot),
+          });
+          break;
+        case "renderRequested":
+          await this.renderSnapshot(action.snapshot, action.reason);
+          break;
       }
-      panel.webview.html = this.renderHtml(input, svg, diagnostics, undefined, sources);
-    } catch (error) {
-      if (!this.panel || currentRender !== this.renderVersion) {
-        return;
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      this.outputChannel.error(message);
-      panel.webview.html = this.renderHtml(input, undefined, diagnostics, {
-        heading: "Render failed",
-        detail: message,
-      }, sources);
     }
+  }
+
+  private async renderSnapshot(snapshot: PreviewSnapshot, reason: PreviewUpdateReason): Promise<void> {
+    await this.renderQueue.render(snapshot, reason, {
+      renderSvg: (source) => this.renderSvg(source),
+      postMessage: (message) => this.postMessage(message),
+      info: (message) => this.outputChannel.info(message),
+      error: (message) => this.outputChannel.error(message),
+      isCurrentRequest: (requestId) => !!this.panel && this.renderQueue.isCurrentRequest(requestId),
+      markRendered: (_requestId, renderedSnapshot, svg) => {
+        this.lastRenderedKeyId = previewSourceKeyId(renderedSnapshot.sourceKey);
+        this.lastRenderedSvg = svg;
+      },
+    });
+  }
+
+  private createSnapshot(): PreviewSnapshot | undefined {
+    const editor = this.resolvePreviewEditor();
+    const input = editor ? this.resolvePreviewInput(editor) : null;
+    if (!editor || !input) {
+      return undefined;
+    }
+
+    const sources = listPreviewInputsFromDocument(editor.document, editor.selection.active.line);
+    const diagnostics = collectPreviewDiagnostics(editor.document.uri, input.diagnosticRange);
+    return createPreviewSnapshot({
+      documentUri: editor.document.uri.toString(),
+      documentVersion: editor.document.version,
+      input,
+      sources,
+      diagnostics,
+      selectionLine: editor.selection.active.line,
+      pinned: this.isPinnedInput(input),
+      diagramTheme: this.diagramTheme,
+    });
   }
 
   private async renderSvg(source: string): Promise<string> {
@@ -216,28 +281,32 @@ class MermanPreviewController implements vscode.Disposable {
     return result.stdout.toString("utf8");
   }
 
-  private renderHtml(
-    input?: PreviewInput,
-    svg?: string,
-    diagnostics?: PreviewDiagnostics,
-    message?: { heading: string; detail: string },
-    sources: readonly PreviewInput[] = [],
-  ): string {
+  private ensureWebviewHtml(): void {
+    if (!this.panel || this.panelHtmlInitialized) {
+      return;
+    }
     const webview = this.panel?.webview;
-    return renderPreviewHtml({
+    this.panel.webview.html = renderPreviewHtml({
       resources: {
         cspSource: webview?.cspSource ?? "'self'",
         stylesUri: webviewResourceUri(webview, this.context.extensionUri, "preview.css"),
         scriptUri: webviewResourceUri(webview, this.context.extensionUri, "preview.js"),
       },
-      input,
-      svg,
-      diagnostics,
-      message,
-      sources,
-      pinned: this.isPinnedInput(input),
-      diagramTheme: this.diagramTheme,
     });
+    this.panelHtmlInitialized = true;
+    this.webviewReady = false;
+    this.pendingMessages = [];
+  }
+
+  private async postMessage(message: PreviewToWebviewMessage): Promise<void> {
+    if (!this.panel) {
+      return;
+    }
+    if (!this.webviewReady) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    await this.panel.webview.postMessage(message);
   }
 
   private clearPendingRender(): void {
@@ -285,11 +354,40 @@ class MermanPreviewController implements vscode.Disposable {
     );
   }
 
-  private async handleWebviewMessage(message: PreviewWebviewMessage): Promise<void> {
-    if (!isPreviewMessage(message)) {
+  private async handleWebviewMessage(message: PreviewFromWebviewMessage): Promise<void> {
+    if (!isPreviewFromWebviewMessage(message)) {
       return;
     }
     switch (message.type) {
+      case "ready":
+        this.webviewReady = true;
+        if (this.pendingMessages.length > 0) {
+          const pending = this.pendingMessages;
+          this.pendingMessages = [];
+          for (const pendingMessage of pending) {
+            await this.postMessage(pendingMessage);
+          }
+          return;
+        }
+        if (this.currentSnapshot) {
+          const snapshot = this.currentSnapshot;
+          await this.applyActions([
+            { type: "sourceListUpdated", snapshot },
+            { type: "diagnosticsUpdated", snapshot },
+            { type: "settingsUpdated", snapshot },
+          ]);
+          if (this.lastRenderedSvg && this.lastRenderedKeyId === previewSourceKeyId(snapshot.sourceKey)) {
+            await this.postMessage({
+              type: "renderSucceeded",
+              requestId: 0,
+              snapshot: snapshotMessagePayload(snapshot),
+              svg: this.lastRenderedSvg,
+            });
+          } else {
+            await this.renderSnapshot(snapshot, "panel-visible");
+          }
+        }
+        return;
       case "copySvg":
         await vscode.env.clipboard.writeText(message.svg);
         void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
@@ -308,6 +406,8 @@ class MermanPreviewController implements vscode.Disposable {
         return;
       case "setDiagramTheme":
         this.setDiagramTheme(message.theme);
+        return;
+      case "setBackground":
         return;
     }
   }
@@ -367,17 +467,6 @@ function webviewResourceUri(
 ): string {
   const resource = vscode.Uri.joinPath(extensionUri, "media", fileName);
   return webview ? webview.asWebviewUri(resource).toString() : resource.toString();
-}
-
-function isPreviewDiagramTheme(value: unknown): value is PreviewDiagramTheme {
-  return (
-    value === "source" ||
-    value === "default" ||
-    value === "dark" ||
-    value === "forest" ||
-    value === "neutral" ||
-    value === "base"
-  );
 }
 
 export function collectPreviewDiagnostics(
@@ -640,35 +729,5 @@ async function applyCodeActionLike(action: vscode.Command | vscode.CodeAction): 
   const command = isCodeAction(action) ? action.command : action;
   if (command) {
     await vscode.commands.executeCommand(command.command, ...(command.arguments ?? []));
-  }
-}
-
-type PreviewWebviewMessage =
-  | { type: "copySvg"; svg: string }
-  | { type: "revealDiagnostic"; target: string }
-  | { type: "showDiagnosticFixes"; target: string }
-  | { type: "togglePin" }
-  | { type: "selectSource"; sourceId: string }
-  | { type: "setDiagramTheme"; theme: PreviewDiagramTheme };
-
-function isPreviewMessage(value: unknown): value is PreviewWebviewMessage {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  switch (record.type) {
-    case "copySvg":
-      return typeof record.svg === "string";
-    case "revealDiagnostic":
-    case "showDiagnosticFixes":
-      return typeof record.target === "string";
-    case "selectSource":
-      return typeof record.sourceId === "string";
-    case "setDiagramTheme":
-      return isPreviewDiagramTheme(record.theme);
-    case "togglePin":
-      return true;
-    default:
-      return false;
   }
 }
