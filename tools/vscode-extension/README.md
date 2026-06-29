@@ -8,7 +8,7 @@ current workspace build.
 
 - Mermaid source files: `.mmd`, `.mermaid`
 - Markdown-family documents: `markdown`, `.markdown`, `.mdx` Mermaid fences through the same LSP
-- Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped diagnostics summary for the visible Mermaid source
+- Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped diagnostics summary and clickable issue navigation for the visible Mermaid source
 - Local `merman-lsp` launch through:
   - `target/debug/merman-lsp` when already built
   - `cargo run -p merman-lsp --` as fallback
