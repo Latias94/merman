@@ -77,6 +77,13 @@ fn read_local_semantic_fixture(path: &str) -> String {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
 }
 
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
 fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
     let err = merman_ascii::render_er(model, &AsciiRenderOptions::ascii())
         .expect_err("ER model should be rejected as unsupported");
@@ -266,6 +273,37 @@ fn er_parser_attribute_keys_and_comments_render_in_entity_section() {
             "ER attribute details should keep {expected:?} visible:\n{rendered}"
         );
     }
+}
+
+#[test]
+fn er_local_semantic_fixture_covers_attributes_with_relationship() {
+    let input = read_local_semantic_fixture("er/attributes_with_relationship.mmd");
+    let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+        .expect("ER attribute and relationship fixture should render");
+
+    for expected in [
+        "CUSTOMER",
+        "ORDER",
+        "string name PK",
+        "string email UK",
+        "int age",
+        "int id PK",
+        "string status",
+        "places",
+        "||",
+        "o{",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "ER attribute fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert!(
+        first_line_index_containing(&rendered, "CUSTOMER")
+            < first_line_index_containing(&rendered, "ORDER"),
+        "identifying relationship should keep CUSTOMER before ORDER in the routed terminal layout:\n{rendered}"
+    );
 }
 
 #[test]

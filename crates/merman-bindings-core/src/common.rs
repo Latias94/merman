@@ -102,6 +102,8 @@ pub(crate) struct BindingOptions {
     pub(crate) host_theme: Option<HostThemeOptionsJson>,
     pub(crate) site_config: Option<serde_json::Value>,
     pub(crate) parse: Option<ParseOptionsJson>,
+    #[cfg(feature = "ascii")]
+    pub(crate) ascii: Option<AsciiOptionsJson>,
     #[cfg(feature = "render")]
     pub(crate) layout: Option<LayoutOptionsJson>,
     #[cfg(feature = "render")]
@@ -114,6 +116,41 @@ pub(crate) struct BindingOptions {
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct ParseOptionsJson {
     pub(crate) suppress_errors: Option<bool>,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct AsciiOptionsJson {
+    pub(crate) charset: Option<String>,
+    #[serde(default, alias = "defaultDirection")]
+    pub(crate) default_direction: Option<String>,
+    #[serde(default, alias = "colorMode")]
+    pub(crate) color_mode: Option<String>,
+    pub(crate) theme: Option<AsciiThemeOptionsJson>,
+    #[serde(default, alias = "sequenceMirrorActors")]
+    pub(crate) sequence_mirror_actors: Option<bool>,
+    #[serde(default, alias = "xychartVerticalPlotHeight")]
+    pub(crate) xychart_vertical_plot_height: Option<usize>,
+    #[serde(default, alias = "xychartCategoryBandWidth")]
+    pub(crate) xychart_category_band_width: Option<usize>,
+    #[serde(default, alias = "xychartHorizontalPlotWidth")]
+    pub(crate) xychart_horizontal_plot_width: Option<usize>,
+    #[serde(default, alias = "maxGridCells")]
+    pub(crate) max_grid_cells: Option<usize>,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct AsciiThemeOptionsJson {
+    #[serde(default, alias = "fg")]
+    pub(crate) foreground: Option<String>,
+    #[serde(default, alias = "bg")]
+    pub(crate) background: Option<String>,
+    pub(crate) line: Option<String>,
+    pub(crate) accent: Option<String>,
+    pub(crate) muted: Option<String>,
+    pub(crate) surface: Option<String>,
+    pub(crate) border: Option<String>,
 }
 
 #[cfg(feature = "render")]

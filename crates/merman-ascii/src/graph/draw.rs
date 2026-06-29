@@ -72,6 +72,13 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 
     let output_transform = OutputTransform::for_direction(graph.direction);
     if output_transform.is_identity() {
+        redraw_transformed_node_labels(
+            &mut canvas,
+            &graph_layout.nodes,
+            output_transform,
+            width,
+            height,
+        );
         route_scene.draw_labels(
             &mut canvas,
             output_transform.route_label_transform(width, height),
@@ -1038,8 +1045,18 @@ fn redraw_transformed_node_labels(
     height: usize,
 ) {
     for layout in layouts {
+        if !node_shape_draws_centered_label(layout.shape) {
+            continue;
+        }
         redraw_transformed_node_label(canvas, layout, transform, width, height);
     }
+}
+
+fn node_shape_draws_centered_label(shape: GraphNodeShape) -> bool {
+    !matches!(
+        shape,
+        GraphNodeShape::StateStart | GraphNodeShape::StateEnd | GraphNodeShape::Choice
+    )
 }
 
 fn redraw_transformed_node_label(

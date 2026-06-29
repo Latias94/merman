@@ -1,5 +1,6 @@
 use crate::cli::{
-    ExportArgs, ParseCliArgs, RasterCliArgs, RenderArgs, RenderCliArgs, RenderFormat,
+    ExportArgs, ParseCliArgs, RasterCliArgs, RenderArgs, RenderCliArgs, RenderFormat, TextCharset,
+    TextColorMode, TextDirection, TextOutputCliArgs,
 };
 use crate::config::{engine_for, layout_options, math_renderer, parse_options};
 use crate::error::CliError;
@@ -44,7 +45,7 @@ pub(crate) struct RenderPlan {
     jobs: usize,
     pdf_fit: bool,
     quiet: bool,
-    sequence_mirror_actors: bool,
+    text: TextOutputCliArgs,
     mode: RenderMode,
 }
 
@@ -117,7 +118,7 @@ pub(crate) fn render_plan_for_mmdc(
         jobs: export.jobs.unwrap_or_else(default_jobs),
         pdf_fit: export.pdf_fit,
         quiet: export.quiet,
-        sequence_mirror_actors: export.text.sequence_mirror_actors,
+        text: export.text.clone(),
         mode: RenderMode::MmdcCompat,
     })
 }
@@ -147,7 +148,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         jobs: 1,
         pdf_fit: true,
         quiet: args.export.quiet,
-        sequence_mirror_actors: args.export.text.sequence_mirror_actors,
+        text: args.export.text.clone(),
         mode: RenderMode::Subcommand,
     })
 }
@@ -379,8 +380,8 @@ impl<'a> RenderRequest<'a> {
                     "text output requested for a non-text format".to_string(),
                 ));
             }
-        }
-        .with_sequence_mirror_actors(self.plan.sequence_mirror_actors);
+        };
+        let options = self.plan.apply_text_options(options)?;
         let Some(rendered) =
             merman::ascii::render_ascii_sync(self.engine, text, self.parse_options, &options)?
         else {
@@ -395,7 +396,7 @@ impl<'a> RenderRequest<'a> {
 
     #[cfg(not(feature = "ascii"))]
     fn render_text(&self, _text: &str) -> Result<RenderedArtifact, CliError> {
-        let _ = self.plan.sequence_mirror_actors;
+        let _ = &self.plan.text;
         Err(CliError::InvalidOutput(
             "ASCII/Unicode output requires building merman-cli with --features ascii.".to_string(),
         ))
@@ -473,6 +474,55 @@ impl RenderPlan {
         }
 
         options
+    }
+
+    #[cfg(feature = "ascii")]
+    fn apply_text_options(
+        &self,
+        mut options: merman::ascii::AsciiRenderOptions,
+    ) -> Result<merman::ascii::AsciiRenderOptions, CliError> {
+        if let Some(charset) = self.text.ascii_charset {
+            options.charset = match charset {
+                TextCharset::Ascii => merman::ascii::AsciiCharset::Ascii,
+                TextCharset::Unicode => merman::ascii::AsciiCharset::Unicode,
+            };
+        }
+        if let Some(direction) = self.text.ascii_direction {
+            options.default_direction = match direction {
+                TextDirection::LeftRight => merman::ascii::AsciiDirection::LeftRight,
+                TextDirection::TopDown => merman::ascii::AsciiDirection::TopDown,
+            };
+        }
+        if let Some(color_mode) = self.text.ascii_color {
+            options.color_mode = match color_mode {
+                TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
+                TextColorMode::Auto => merman::ascii::AsciiColorMode::Auto,
+                TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
+                TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
+                TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
+                TextColorMode::Html => merman::ascii::AsciiColorMode::Html,
+            };
+        }
+        if self.text.sequence_mirror_actors {
+            options.sequence_mirror_actors = true;
+        }
+        if let Some(height) = self.text.xychart_vertical_plot_height {
+            options.xychart_vertical_plot_height = height;
+        }
+        if let Some(width) = self.text.xychart_category_band_width {
+            options.xychart_category_band_width = width;
+        }
+        if let Some(width) = self.text.xychart_horizontal_plot_width {
+            options.xychart_horizontal_plot_width = width;
+        }
+        if let Some(max_grid_cells) = self.text.ascii_max_grid_cells {
+            options.max_grid_cells = max_grid_cells;
+        }
+
+        options
+            .validate()
+            .map_err(|err| CliError::InvalidInput(format!("invalid ASCII options: {err}")))?;
+        Ok(options)
     }
 }
 
@@ -909,7 +959,7 @@ mod tests {
             jobs: 1,
             pdf_fit: true,
             quiet: true,
-            sequence_mirror_actors: false,
+            text: TextOutputCliArgs::default(),
             mode: RenderMode::Subcommand,
         }
     }

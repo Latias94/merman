@@ -380,7 +380,7 @@ bar [4, 8]
 }
 
 #[test]
-fn xychart_parser_horizontal_line_does_not_render_bar_data_labels() {
+fn xychart_parser_horizontal_line_uses_terminal_value_disclosure() {
     let rendered = render_xychart(
         r#"%%{init: {"xyChart": {"showDataLabel": true}}}%%
 xychart horizontal
@@ -390,15 +390,47 @@ line [4, 8]
 "#,
         &AsciiRenderOptions::ascii(),
     )
-    .expect("horizontal xychart line plot should render without bar data labels");
+    .expect("horizontal xychart line plot should render with terminal value disclosure");
 
     assert_eq!(
         rendered,
         concat!(
+            "values: * Line 1: A=4, B=8\n",
             "A +   *\n",
             "B +       *\n",
             "  ++--------+\n",
             "   0       10\n",
+        )
+    );
+}
+
+#[test]
+fn xychart_parser_multiseries_data_labels_use_terminal_value_disclosure() {
+    let rendered = render_xychart(
+        r#"%%{init: {"xyChart": {"showDataLabel": true}}}%%
+xychart
+x-axis [A, B]
+y-axis 0 --> 10
+bar "Revenue" [2, 8]
+line "Forecast" [8, 2]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("multi-series xychart should render with terminal value disclosure");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "# Revenue  * Forecast\n",
+            "values: # Revenue: A=2, B=8\n",
+            "values: * Forecast: A=8, B=2\n",
+            "10 +\n",
+            " 8 + ***###\n",
+            " 6 +   *###\n",
+            " 4 +   *###\n",
+            " 2 +###***#\n",
+            " 0 +-+---+-\n",
+            "     A   B\n",
         )
     );
 }

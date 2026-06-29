@@ -89,7 +89,7 @@ copied, normalized, and self-authored cases.
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, multiline relationship labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, dense crossing/grid-budget relation-summary fallback, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, multiline relationship labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, dense crossing/grid-budget relation-summary fallback, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
 | stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground/background `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML color roles. |
-| xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, axis visibility controls, inferred numeric labels, configurable compact plot areas, multi-series legend rows, opt-in data labels, outside-bar vertical data labels, and opt-in ANSI/HTML foreground color roles. |
+| xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, axis visibility controls, inferred numeric labels, configurable compact plot areas, multi-series legend rows, opt-in data labels, terminal `values:` disclosure rows for line and multi-series charts, outside-bar vertical data labels, and opt-in ANSI/HTML foreground color roles. |
 | mindmap | `render_mindmap`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact hierarchy outlines with preserved node order and readable wrapped labels. |
 | treeView | `render_tree_view`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact hierarchy outlines with parent-child depth, sibling order, and wrapped labels. |
 | timeline | `render_timeline`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Readable timeline summaries with section order, task order, events, and score annotations. |
@@ -101,6 +101,19 @@ copied, normalized, and self-authored cases.
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the
 typed `render_model` path.
+
+## Terminal Theme API
+
+`AsciiColorTheme::from_terminal_palette` derives terminal roles from a compact
+`AsciiTerminalPalette`: required `foreground` and `background`, plus optional `line`, `accent`,
+`muted`, `surface`, and `border` colors. The derived theme maps only terminal-meaningful roles such
+as text, borders, edge lines/arrows, sequence lifelines, and chart series colors. It does not import
+SVG CSS-variable semantics into text output. Explicit `AsciiColorTheme::with_role` calls still take
+precedence after derivation.
+
+Bindings expose the same shape as `ascii.theme` in options JSON. Color values use the existing CSS
+color parser for opaque terminal colors; transparent colors are rejected rather than silently
+falling back.
 
 ## XYChart ASCII Contract
 
@@ -126,6 +139,10 @@ The renderer consumes the typed XYChart display policy from `merman-core`. `xyCh
 `xyChart.showDataLabel`, `xyChart.showDataLabelOutsideBar`, and
 `xyChart.xAxis/yAxis.showLabel/showTitle/showTick/showAxisLine` affect terminal output. Tick marks
 can render independently from axis lines so hidden axis lines do not accidentally hide tick intent.
+For a single bar series, data labels stay close to the bars and respect
+`showDataLabelOutsideBar`. For line charts and multi-series charts, `showDataLabel` emits explicit
+`values:` rows keyed by series title and category so terminal output has a stable tooltip
+replacement without covering the plot.
 
 ## Intended Use
 
@@ -167,6 +184,9 @@ The ASCII renderer work is based on and informed by MIT-licensed reference imple
   - License copy: `LICENSES/beautiful-mermaid-MIT.txt`
   - Intended use: reference algorithms, output ideas, and tests for class, ER, xychart, color, and
     multiline ASCII work.
+  - Promoted ideas are re-expressed as local semantic probes, including ampersand flowchart
+    fan-in/fan-out, Class annotations and methods, ER attributes with identifying relationships,
+    Sequence multi-message ordering, and XYChart multi-series value disclosure.
 
 The local `repo-ref/` directory is gitignored and is only a research reference. Any derived source,
 fixtures, or notices required for builds and releases must live in tracked paths in this crate.

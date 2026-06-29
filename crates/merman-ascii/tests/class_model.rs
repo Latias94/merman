@@ -77,6 +77,13 @@ fn read_local_semantic_fixture(path: &str) -> String {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
 }
 
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
 fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
     let err = merman_ascii::render_class(model, &AsciiRenderOptions::ascii())
         .expect_err("class model should be rejected as unsupported");
@@ -894,6 +901,33 @@ fn class_local_semantic_fixture_covers_wide_members_and_summary_labels() {
     assert!(
         !rendered.contains("<br>"),
         "wide class relation summary should not leak Mermaid break syntax:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_local_semantic_fixture_covers_annotation_methods() {
+    let input = read_local_semantic_fixture("class/annotation_methods.mmd");
+    let rendered = render_class(&input, &AsciiRenderOptions::ascii())
+        .expect("class annotation and methods fixture should render");
+
+    for expected in [
+        "<<abstract>>",
+        "Shape",
+        "+draw() : void",
+        "Circle",
+        "+radius int",
+        "^",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "class annotation fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert!(
+        first_line_index_containing(&rendered, "Shape")
+            < first_line_index_containing(&rendered, "Circle"),
+        "inheritance should keep Shape before Circle in the routed terminal layout:\n{rendered}"
     );
 }
 

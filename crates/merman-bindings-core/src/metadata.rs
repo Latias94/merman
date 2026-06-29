@@ -4,29 +4,11 @@ use std::sync::OnceLock;
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+static ASCII_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static BINDING_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
-
-#[cfg(feature = "ascii")]
-pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &[
-    "class",
-    "er",
-    "flowchart",
-    "gantt",
-    "gitgraph",
-    "journey",
-    "kanban",
-    "mindmap",
-    "packet",
-    "sequence",
-    "state",
-    "timeline",
-    "treeView",
-    "xychart",
-    "zenuml",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BindingCapabilities {
@@ -53,6 +35,24 @@ pub struct BindingDiagramFamilyCapability {
     pub metadata_id: Option<&'static str>,
     pub has_semantic_parser: bool,
     pub has_render_parser: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BindingAsciiCapability {
+    pub diagram_type: &'static str,
+    pub display_name: &'static str,
+    pub support_level: &'static str,
+    pub summary_fallback: bool,
+    pub supported_semantics: &'static [&'static str],
+    pub limits: &'static [&'static str],
+    pub evidence: Vec<BindingAsciiCapabilityEvidence>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BindingAsciiCapabilityEvidence {
+    pub kind: &'static str,
+    pub source: &'static str,
+    pub note: &'static str,
 }
 
 pub const fn binding_capabilities() -> BindingCapabilities {
@@ -120,11 +120,41 @@ pub fn supported_diagrams() -> &'static [&'static str] {
 pub fn ascii_supported_diagrams() -> &'static [&'static str] {
     #[cfg(feature = "ascii")]
     {
-        ASCII_SUPPORTED_DIAGRAMS
+        merman::ascii::ascii_supported_diagram_types()
     }
     #[cfg(not(feature = "ascii"))]
     {
         &[]
+    }
+}
+
+pub fn ascii_capabilities() -> Vec<BindingAsciiCapability> {
+    #[cfg(feature = "ascii")]
+    {
+        merman::ascii::ascii_capabilities()
+            .iter()
+            .map(|capability| BindingAsciiCapability {
+                diagram_type: capability.diagram_type,
+                display_name: capability.display_name,
+                support_level: capability.support_level.as_str(),
+                summary_fallback: capability.summary_fallback,
+                supported_semantics: capability.supported_semantics,
+                limits: capability.limits,
+                evidence: capability
+                    .evidence
+                    .iter()
+                    .map(|evidence| BindingAsciiCapabilityEvidence {
+                        kind: evidence.kind.as_str(),
+                        source: evidence.source,
+                        note: evidence.note,
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+    #[cfg(not(feature = "ascii"))]
+    {
+        Vec::new()
     }
 }
 
@@ -134,6 +164,16 @@ pub fn supported_diagrams_json() -> Result<Vec<u8>, BindingError> {
 
 pub fn ascii_supported_diagrams_json() -> Result<Vec<u8>, BindingError> {
     cached_json(&ASCII_SUPPORTED_DIAGRAMS_JSON, ascii_supported_diagrams)
+}
+
+pub fn ascii_capabilities_json() -> Result<Vec<u8>, BindingError> {
+    if let Some(bytes) = ASCII_CAPABILITIES_JSON.get() {
+        return Ok(bytes.clone());
+    }
+
+    let bytes = serde_json::to_vec(&ascii_capabilities()).map_err(internal_json_error)?;
+    let _ = ASCII_CAPABILITIES_JSON.set(bytes.clone());
+    Ok(bytes)
 }
 
 pub fn supported_themes_json() -> Result<Vec<u8>, BindingError> {
@@ -336,10 +376,75 @@ mod tests {
     }
 
     #[test]
+    fn ascii_supported_diagrams_are_derived_from_capability_records() {
+        let capabilities = ascii_capabilities();
+
+        if cfg!(feature = "ascii") {
+            let supported: Vec<_> = capabilities
+                .iter()
+                .filter(|capability| capability.support_level != "unsupported")
+                .map(|capability| capability.diagram_type)
+                .collect();
+
+            assert_eq!(ascii_supported_diagrams(), supported.as_slice());
+            assert!(supported.contains(&"zenuml"));
+        } else {
+            assert!(capabilities.is_empty());
+            assert!(ascii_supported_diagrams().is_empty());
+        }
+    }
+
+    #[test]
+    fn ascii_capabilities_report_support_levels_limits_and_evidence() {
+        let capabilities = ascii_capabilities();
+
+        if !cfg!(feature = "ascii") {
+            assert!(capabilities.is_empty());
+            return;
+        }
+
+        let flowchart = ascii_capability(&capabilities, "flowchart");
+        assert_eq!(flowchart.support_level, "full");
+        assert!(!flowchart.summary_fallback);
+        assert!(flowchart.supported_semantics.contains(&"root directions"));
+        assert!(flowchart.evidence.iter().any(|evidence| {
+            evidence.kind == "local_advantage" && evidence.note.contains("true RL/BT")
+        }));
+
+        let class = ascii_capability(&capabilities, "class");
+        assert_eq!(class.support_level, "partial");
+        assert!(class.summary_fallback);
+        assert!(class.limits.iter().any(|limit| limit.contains("namespace")));
+        assert!(class.evidence.iter().any(|evidence| {
+            evidence.kind == "beautiful_mermaid_prior_art"
+                && evidence.source.contains("repo-ref/beautiful-mermaid")
+        }));
+
+        let er = ascii_capability(&capabilities, "er");
+        assert_eq!(er.support_level, "partial");
+        assert!(er.summary_fallback);
+
+        let gantt = ascii_capability(&capabilities, "gantt");
+        assert_eq!(gantt.support_level, "summary");
+
+        let xychart = ascii_capability(&capabilities, "xychart");
+        assert_eq!(xychart.support_level, "partial");
+        assert!(xychart.evidence.iter().any(|evidence| {
+            evidence.kind == "beautiful_mermaid_prior_art"
+                && evidence.source.contains("xychart-ascii.test.ts")
+        }));
+
+        let zenuml = ascii_capability(&capabilities, "zenuml");
+        assert_eq!(zenuml.support_level, "partial");
+    }
+
+    #[test]
     fn metadata_json_helpers_return_arrays() {
         let diagrams: Value = serde_json::from_slice(&supported_diagrams_json().unwrap()).unwrap();
         let ascii_diagrams: Value =
             serde_json::from_slice(&ascii_supported_diagrams_json().unwrap()).unwrap();
+        let ascii_capabilities: Value =
+            serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
         let themes: Value = serde_json::from_slice(&supported_themes_json().unwrap()).unwrap();
         let host_presets: Value =
             serde_json::from_slice(&supported_host_theme_presets_json().unwrap()).unwrap();
@@ -353,6 +458,23 @@ mod tests {
                 .contains(&Value::String("flowchart".to_string()))
         );
         assert!(ascii_diagrams.is_array());
+        assert!(ascii_capabilities.is_array());
+        if cfg!(feature = "ascii") {
+            let flowchart = ascii_capabilities
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|capability| capability["diagram_type"] == "flowchart")
+                .expect("flowchart ASCII capability should be present");
+            assert_eq!(flowchart["support_level"], "full");
+            assert!(
+                flowchart["evidence"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|evidence| evidence["kind"] == "local_advantage")
+            );
+        }
         assert!(
             themes
                 .as_array()
@@ -375,5 +497,15 @@ mod tests {
                 .iter()
                 .any(|capability| capability["diagram_type"] == "flowchart")
         );
+    }
+
+    fn ascii_capability<'a>(
+        capabilities: &'a [BindingAsciiCapability],
+        diagram_type: &str,
+    ) -> &'a BindingAsciiCapability {
+        capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == diagram_type)
+            .unwrap_or_else(|| panic!("missing ASCII capability for {diagram_type}"))
     }
 }

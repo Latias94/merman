@@ -6,6 +6,7 @@
 //! parsing.
 
 mod canvas;
+mod capability;
 mod class;
 mod color;
 mod er;
@@ -28,7 +29,11 @@ mod timeline;
 mod tree_view;
 mod xychart;
 
-pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
+pub use capability::{
+    AsciiCapability, AsciiCapabilityEvidence, AsciiEvidenceKind, AsciiSupportLevel,
+    ascii_capabilities, ascii_supported_diagram_types,
+};
+pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
 pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
 

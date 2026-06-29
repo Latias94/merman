@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { categories, getExamplesByCategory, type Example } from "@/src/lib/examples";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import type { AsciiCapability } from "@/src/lib/ascii-support";
 import { detectDiagramType } from "@/src/lib/diagram-detection";
 import { useAppStore } from "@/src/store";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,12 @@ export function ExampleGallery() {
   const asciiReadyCount = useMemo(
     () => getExamplesByCategory("All").filter(isExampleAsciiSupported).length,
     [isExampleAsciiSupported]
+  );
+
+  const asciiCapabilityForExample = useMemo(
+    () => (example: Example) =>
+      asciiSupport.capabilityFor(detectDiagramType(example.code)),
+    [asciiSupport]
   );
 
   useEffect(() => {
@@ -193,8 +200,16 @@ export function ExampleGallery() {
                       {getCategoryLabel(example.category)}
                     </span>
                   </div>
-                  <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                    {example.code.split("\n").length} {t("examples.lines")}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                      {example.code.split("\n").length} {t("examples.lines")}
+                    </div>
+                    {isExampleAsciiSupported(example) && (
+                      <AsciiCapabilityBadge
+                        capability={asciiCapabilityForExample(example)}
+                        t={t}
+                      />
+                    )}
                   </div>
                 </div>
                 <pre className="text-xs text-muted-foreground bg-muted/50 p-2 rounded overflow-hidden max-h-24 font-mono">
@@ -207,5 +222,20 @@ export function ExampleGallery() {
         </ScrollArea>
       </div>
     </div>
+  );
+}
+
+function AsciiCapabilityBadge({
+  capability,
+  t,
+}: {
+  capability: AsciiCapability | null;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const level = capability?.support_level ?? "partial";
+  return (
+    <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+      {t(`asciiSupport.levels.${level}`)}
+    </span>
   );
 }

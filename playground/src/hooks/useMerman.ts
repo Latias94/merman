@@ -1,11 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
-import { FALLBACK_ASCII_SUPPORTED_TYPES } from "@/src/lib/ascii-support";
+import {
+  FALLBACK_ASCII_CAPABILITIES,
+  FALLBACK_ASCII_SUPPORTED_TYPES,
+} from "@/src/lib/ascii-support";
 import {
   getWasm,
   isWasmLoaded,
   loadWasm,
   SUPPORTED_THEMES,
+  type AsciiCapability,
   type MermanWasm,
   type WasmRenderOptions,
   type ValidationResult,
@@ -184,6 +188,18 @@ export function useMerman() {
     return wasmRef.current.get_ascii_supported_diagrams();
   }, [ready]);
 
+  const getAsciiCapabilities = useCallback((): AsciiCapability[] => {
+    if (!ready || !wasmRef.current) {
+      return FALLBACK_ASCII_CAPABILITIES.map((capability) => ({
+        ...capability,
+        supported_semantics: [...capability.supported_semantics],
+        limits: [...capability.limits],
+        evidence: capability.evidence.map((evidence) => ({ ...evidence })),
+      }));
+    }
+    return wasmRef.current.get_ascii_capabilities();
+  }, [ready]);
+
   return {
     ready,
     loading,
@@ -196,5 +212,6 @@ export function useMerman() {
     parseJson,
     layoutJson,
     getAsciiSupportedDiagrams,
+    getAsciiCapabilities,
   };
 }

@@ -80,6 +80,7 @@ Current examples:
 - `class/dense_relations.mmd`
 - `class/dense_multiline_relations.mmd`
 - `class/disconnected_components.mmd`
+- `class/annotation_methods.mmd`
 - `class/namespace_qualified_relationships.mmd`
 - `class/note_for_service.mmd`
 - `class/routed_relationship_variants.mmd`
@@ -88,9 +89,11 @@ Current examples:
 - `er/dense_relations.mmd`
 - `er/dense_multiline_relations.mmd`
 - `er/disconnected_components.mmd`
+- `er/attributes_with_relationship.mmd`
 - `er/routed_schema_with_attributes.mmd`
 - `er/wide_attributes_and_summary_labels.mmd`
 - `flowchart/back_edge_labels.mmd`
+- `flowchart/ampersand_fanin_fanout.mmd`
 - `flowchart/boundary_label_lane.mmd`
 - `flowchart/cjk_boundary_routes.mmd`
 - `flowchart/disconnected_subgraphs.mmd`
@@ -99,6 +102,7 @@ Current examples:
 - `flowchart/nested_direction_boundary.mmd`
 - `flowchart/sibling_boundary_routes.mmd`
 - `sequence/dense_control_rows.mmd`
+- `sequence/multiple_messages.mmd`
 - `sequence/self_messages_with_notes.mmd`
 - `state/composite_boundary.mmd`
 - `state/cjk_connection_lifecycle.mmd`
