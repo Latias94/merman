@@ -760,6 +760,21 @@ export const examples: Example[] = [
 classDef hot fill:#fecaca,color:#7f1d1d,stroke:#f87171;`,
   },
   {
+    id: "treeview-package-tree",
+    name: "Package Tree",
+    category: "TreeView",
+    code: `treeView-beta
+    "packages"
+        "merman"
+            "src"
+        "merman-core"
+            "src"
+        "merman-ascii"
+            "src"
+        "web"
+            "src"`,
+  },
+  {
     id: "requirement-ffi-api",
     name: "FFI API Requirement",
     category: "Requirement",

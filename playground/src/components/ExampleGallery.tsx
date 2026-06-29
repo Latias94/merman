@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { categories, getExamplesByCategory } from "@/src/lib/examples";
+import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import { detectDiagramType } from "@/src/lib/diagram-detection";
 import { useAppStore } from "@/src/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Code, ChevronRight } from "lucide-react";
+import { X, Code, ChevronRight, Terminal } from "lucide-react";
 
 // 分类翻译映射
 const categoryKeys: Record<string, string> = {
@@ -33,17 +35,27 @@ const categoryKeys: Record<string, string> = {
   Sankey: "examples.categories.sankey",
   Radar: "examples.categories.radar",
   Treemap: "examples.categories.treemap",
+  TreeView: "examples.categories.treeview",
   Requirement: "examples.categories.requirement",
 };
 
 export function ExampleGallery() {
   const { t } = useTranslation();
   const { showExamples, toggleExamples, setCode } = useAppStore();
+  const asciiSupport = useAsciiSupport();
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [asciiOnly, setAsciiOnly] = useState(false);
+
+  const filteredExamples = useMemo(
+    () =>
+      getExamplesByCategory(selectedCategory).filter(
+        (example) =>
+          !asciiOnly || asciiSupport.isSupported(detectDiagramType(example.code))
+      ),
+    [asciiOnly, asciiSupport, selectedCategory]
+  );
 
   if (!showExamples) return null;
-
-  const filteredExamples = getExamplesByCategory(selectedCategory);
 
   const handleSelectExample = (code: string) => {
     setCode(code);
@@ -73,7 +85,28 @@ export function ExampleGallery() {
       <div className="flex-1 flex flex-col overflow-hidden md:flex-row">
         {/* 左侧分类 */}
         <div className="scrollbar-thin shrink-0 overflow-x-auto border-b p-2 md:w-48 md:overflow-y-auto md:border-b-0 md:border-r">
+          <Button
+            variant={asciiOnly ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setAsciiOnly((value) => !value)}
+            className="mb-2 hidden w-full justify-start gap-2 md:flex"
+          >
+            <Terminal className="size-4" />
+            <span>{t("examples.asciiOnly")}</span>
+          </Button>
           <nav className="flex gap-1 md:block md:space-y-1">
+            <button
+              onClick={() => setAsciiOnly((value) => !value)}
+              className={cn(
+                "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors md:hidden",
+                asciiOnly
+                  ? "bg-secondary text-secondary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <Terminal className="size-4 flex-shrink-0" />
+              <span>{t("examples.asciiOnly")}</span>
+            </button>
             {categories.map((category) => (
               <button
                 key={category}

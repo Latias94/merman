@@ -1,9 +1,9 @@
 use jni::{
-    Env, EnvUnowned, JavaVM,
     errors::{Result as JniResult, ThrowRuntimeExAndDefault},
     objects::{Global, JClass, JObject, JString, JValue},
     strings::JNIString,
     sys::{jint, jlong, jstring},
+    Env, EnvUnowned, JavaVM,
 };
 #[cfg(feature = "render")]
 use merman_bindings_core::TextMeasurer;

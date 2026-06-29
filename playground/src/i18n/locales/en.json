@@ -91,6 +91,7 @@
     "title": "Example Gallery",
     "description": "Select an example to load into the editor",
     "all": "All",
+    "asciiOnly": "ASCII supported",
     "lines": "lines",
     "categories": {
       "flowchart": "Flowchart",
@@ -116,6 +117,7 @@
       "sankey": "Sankey",
       "radar": "Radar",
       "treemap": "Treemap",
+      "treeview": "TreeView",
       "requirement": "Requirement"
     },
     "items": {
@@ -170,6 +172,7 @@
       "radar-named-values": "Named Values",
       "treemap-package-surface": "Package Surface",
       "treemap-styled-sections": "Styled Sections",
+      "treeview-package-tree": "Package Tree",
       "requirement-ffi-api": "FFI API Requirement",
       "requirement-styled-elements": "Styled Elements"
     }
@@ -320,6 +323,7 @@
     "sankey": "Sankey",
     "radar": "Radar",
     "treemap": "Treemap",
+    "treeView": "TreeView",
     "requirement": "Requirement",
     "unknown": "Unknown"
   }

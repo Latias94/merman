@@ -1,4 +1,4 @@
-use crate::common::{BindingError, internal_json_error};
+use crate::common::{internal_json_error, BindingError};
 use serde::Serialize;
 use std::sync::OnceLock;
 
@@ -10,7 +10,23 @@ static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static BINDING_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[cfg(feature = "ascii")]
-pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &["class", "er", "flowchart", "sequence", "xychart"];
+pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &[
+    "class",
+    "er",
+    "flowchart",
+    "gantt",
+    "gitgraph",
+    "journey",
+    "kanban",
+    "mindmap",
+    "packet",
+    "sequence",
+    "state",
+    "timeline",
+    "treeView",
+    "xychart",
+    "zenuml",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BindingCapabilities {
@@ -296,7 +312,23 @@ mod tests {
         if cfg!(feature = "ascii") {
             assert_eq!(
                 ascii_supported_diagrams(),
-                &["class", "er", "flowchart", "sequence", "xychart"]
+                &[
+                    "class",
+                    "er",
+                    "flowchart",
+                    "gantt",
+                    "gitgraph",
+                    "journey",
+                    "kanban",
+                    "mindmap",
+                    "packet",
+                    "sequence",
+                    "state",
+                    "timeline",
+                    "treeView",
+                    "xychart",
+                    "zenuml",
+                ]
             );
         } else {
             assert!(ascii_supported_diagrams().is_empty());
@@ -314,34 +346,26 @@ mod tests {
         let family_capabilities: Value =
             serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
 
-        assert!(
-            diagrams
-                .as_array()
-                .unwrap()
-                .contains(&Value::String("flowchart".to_string()))
-        );
+        assert!(diagrams
+            .as_array()
+            .unwrap()
+            .contains(&Value::String("flowchart".to_string())));
         assert!(ascii_diagrams.is_array());
-        assert!(
-            themes
-                .as_array()
-                .unwrap()
-                .contains(&Value::String("default".to_string()))
-        );
+        assert!(themes
+            .as_array()
+            .unwrap()
+            .contains(&Value::String("default".to_string())));
         assert!(host_presets.is_array());
         if cfg!(feature = "render") {
-            assert!(
-                host_presets
-                    .as_array()
-                    .unwrap()
-                    .contains(&Value::String("one-dark".to_string()))
-            );
-        }
-        assert!(
-            family_capabilities
+            assert!(host_presets
                 .as_array()
                 .unwrap()
-                .iter()
-                .any(|capability| capability["diagram_type"] == "flowchart")
-        );
+                .contains(&Value::String("one-dark".to_string())));
+        }
+        assert!(family_capabilities
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|capability| capability["diagram_type"] == "flowchart"));
     }
 }

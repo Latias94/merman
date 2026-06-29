@@ -714,30 +714,26 @@ mod tests {
     fn engine_exposes_metadata() {
         let engine = engine();
 
-        assert!(
-            engine
-                .supported_diagrams()
-                .contains(&"flowchart".to_string())
-        );
-        assert!(
-            engine
-                .ascii_supported_diagrams()
-                .contains(&"sequence".to_string())
-        );
+        assert!(engine
+            .supported_diagrams()
+            .contains(&"flowchart".to_string()));
+        let ascii_supported_diagrams = engine.ascii_supported_diagrams();
+        for diagram in ["sequence", "gantt", "treeView", "zenuml"] {
+            assert!(
+                ascii_supported_diagrams.contains(&diagram.to_string()),
+                "expected UniFFI ASCII metadata to include {diagram}"
+            );
+        }
         assert!(engine.supported_themes().contains(&"default".to_string()));
-        assert!(
-            engine
-                .supported_host_theme_presets()
-                .contains(&"one-dark".to_string())
-        );
+        assert!(engine
+            .supported_host_theme_presets()
+            .contains(&"one-dark".to_string()));
         let capabilities = engine.diagram_family_capabilities();
-        assert!(
-            capabilities
-                .iter()
-                .any(|capability| capability.diagram_type == "flowchart"
-                    && capability.has_semantic_parser
-                    && capability.has_render_parser)
-        );
+        assert!(capabilities
+            .iter()
+            .any(|capability| capability.diagram_type == "flowchart"
+                && capability.has_semantic_parser
+                && capability.has_render_parser));
     }
 
     #[test]
