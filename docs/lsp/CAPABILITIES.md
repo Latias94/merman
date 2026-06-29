@@ -60,7 +60,9 @@ does not expose many entity-bearing spans.
 
 ## Feature Gates
 
-- Diagnostics: shared `merman-analysis` payloads only.
+- Diagnostics: shared `merman-analysis` payloads only. Editor projections deduplicate identical
+  diagnostics and humanize recovered parser messages so editor clients do not show raw parser
+  internals such as recovery wrappers or token enum dumps.
 - Lint rule discovery: clients should use the shared rule catalog metadata for rule ids,
   evidence references, profiles, origins, configurability, and fixability instead of duplicating
   LSP-local rule tables. The server advertises `merman/ruleCatalog` under
@@ -69,7 +71,9 @@ does not expose many entity-bearing spans.
   validation hints, available lint profiles, diagnostic severities, configurable rule-id enums, and
   the accepted direct/`merman`/`analysis` settings roots. The schema describes the same analysis
   options accepted by initialization options and `workspace/didChangeConfiguration`.
-- Completion: semantic roles must exclude payload-only spans.
+- Completion: semantic roles must exclude payload-only spans. Static authoring templates and
+  context-sensitive helper inserts may use LSP snippet completion items, while semantic target
+  reuse such as node identifiers stays plain text.
 - Completion resolve: completion items carry Merman-owned `data`, and `completionItem/resolve`
   fills Markdown documentation without changing `insertText`, `textEdit`, filtering, or sorting
   fields.

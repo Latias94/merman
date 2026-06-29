@@ -34,3 +34,23 @@ fn diagnostics_projection_accepts_markdown_file_urls() {
 
     assert_eq!(diagnostics.len(), 1);
 }
+
+#[test]
+fn diagnostics_projection_humanizes_recovered_parser_messages() {
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![AnalysisDiagnostic::error(
+            "merman.parse.recovered_editor_facts",
+            DiagnosticCategory::Parse,
+            "flowchart parser recovered after parse error: unexpected statement separator",
+        )],
+    );
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].message,
+        "Mermaid syntax issue: unexpected statement separator"
+    );
+}

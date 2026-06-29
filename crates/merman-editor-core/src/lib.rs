@@ -15,9 +15,9 @@ pub mod types;
 pub mod workspace;
 
 pub use completion::{
-    CompletionDataKind, CompletionItem, CompletionItemKind, CompletionItemLabelDetails,
-    CompletionList, CompletionResolveData, CompletionTextEdit, completion_documentation,
-    completion_for_snapshot,
+    CompletionDataKind, CompletionInsertTextFormat, CompletionItem, CompletionItemKind,
+    CompletionItemLabelDetails, CompletionList, CompletionResolveData, CompletionTextEdit,
+    completion_documentation, completion_for_snapshot,
 };
 pub use context::CompletionContext;
 pub use diagnostics::{

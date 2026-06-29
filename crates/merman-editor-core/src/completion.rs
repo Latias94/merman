@@ -4,6 +4,8 @@ use crate::types::{Position, Range};
 use merman_core::{diagram_header_facts_for_profile, selected_baseline_registry_profile};
 use serde::{Deserialize, Serialize};
 
+const COMMON_TEMPLATE_DETAIL: &str = "diagram template";
+
 pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) -> CompletionList {
     let Some(context) = CompletionContext::from_snapshot(snapshot, position) else {
         return CompletionList {
@@ -16,6 +18,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
 
     if context.offer_diagram_headers() {
         items.extend(diagram_header_items(context.prefix_range()));
+        items.extend(template_items(context.prefix_range()));
     }
 
     if context.offer_operator_items() {
@@ -120,25 +123,25 @@ fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
         "comment"
     };
     vec![
-        keyword_completion(
+        snippet_completion(
             ":::className",
             directive_label,
             range,
-            None,
+            ":::${1:className}",
             CompletionDataKind::Directive,
         ),
-        keyword_completion(
+        snippet_completion(
             "::icon(name)",
             "node icon directive",
             range,
-            None,
+            "::icon(${1:logos:github-icon})",
             CompletionDataKind::Directive,
         ),
-        keyword_completion(
+        snippet_completion(
             "%% comment",
             "comment",
             range,
-            None,
+            "%% ${1:comment}",
             CompletionDataKind::Directive,
         ),
     ]
@@ -225,6 +228,7 @@ fn node_items(
                 label: id.clone(),
             }),
             insert_text: Some(id.clone()),
+            insert_text_format: CompletionInsertTextFormat::PlainText,
             text_edit: range.map(|range| CompletionTextEdit {
                 range,
                 new_text: id.clone(),
@@ -253,12 +257,71 @@ fn keyword_completion(
             label: label.to_string(),
         }),
         insert_text: Some(label.to_string()),
+        insert_text_format: CompletionInsertTextFormat::PlainText,
         text_edit: range.map(|range| CompletionTextEdit {
             range,
             new_text: replacement.unwrap_or(label).to_string(),
         }),
         label_details: None,
     }
+}
+
+fn snippet_completion(
+    label: &str,
+    detail: &str,
+    range: Option<Range>,
+    snippet: &str,
+    data_kind: CompletionDataKind,
+) -> CompletionItem {
+    CompletionItem {
+        label: label.to_string(),
+        kind: CompletionItemKind::Snippet,
+        detail: Some(detail.to_string()),
+        data: Some(CompletionResolveData {
+            kind: data_kind,
+            label: label.to_string(),
+        }),
+        insert_text: Some(snippet.to_string()),
+        insert_text_format: CompletionInsertTextFormat::Snippet,
+        text_edit: range.map(|range| CompletionTextEdit {
+            range,
+            new_text: snippet.to_string(),
+        }),
+        label_details: None,
+    }
+}
+
+fn template_items(range: Option<Range>) -> Vec<CompletionItem> {
+    vec![
+        snippet_completion(
+            "flowchart template",
+            COMMON_TEMPLATE_DETAIL,
+            range,
+            "flowchart ${1|TD,TB,BT,LR,RL|}\n  ${2:A}[${3:Start}] --> ${4:B}[${5:Next}]",
+            CompletionDataKind::Template,
+        ),
+        snippet_completion(
+            "sequence template",
+            COMMON_TEMPLATE_DETAIL,
+            range,
+            "sequenceDiagram\n  participant ${1:A} as ${2:Alice}\n  participant ${3:B} as ${4:Bob}\n  ${1:A}->>${3:B}: ${5:Message}",
+            CompletionDataKind::Template,
+        ),
+        snippet_completion(
+            "icon node template",
+            COMMON_TEMPLATE_DETAIL,
+            range,
+            "${1:A}@{ icon: \"${2:logos:github-icon}\", form: \"${3|square,rounded,circle|}\", label: \"${4:Label}\" }",
+            CompletionDataKind::Template,
+        ),
+        snippet_completion(
+            "accessibility template",
+            COMMON_TEMPLATE_DETAIL,
+            range,
+            "accTitle: ${1:Diagram title}\naccDescr: ${2:Diagram description}",
+            CompletionDataKind::Template,
+        ),
+    ]
 }
 
 fn shape_completion(value: &str, detail: &str, context: &CompletionContext<'_>) -> CompletionItem {
@@ -308,6 +371,10 @@ pub fn completion_documentation(data: &CompletionResolveData) -> String {
             "Reuses the `{}` identifier already present in the current Mermaid fence.",
             data.label
         ),
+        CompletionDataKind::Template => format!(
+            "Inserts the `{}` Mermaid authoring template with editable placeholders.",
+            data.label
+        ),
     }
 }
 
@@ -324,6 +391,7 @@ pub struct CompletionItem {
     pub detail: Option<String>,
     pub data: Option<CompletionResolveData>,
     pub insert_text: Option<String>,
+    pub insert_text_format: CompletionInsertTextFormat,
     pub text_edit: Option<CompletionTextEdit>,
     pub label_details: Option<CompletionItemLabelDetails>,
 }
@@ -333,6 +401,14 @@ pub struct CompletionItem {
 pub enum CompletionItemKind {
     Keyword,
     Variable,
+    Snippet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompletionInsertTextFormat {
+    PlainText,
+    Snippet,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -356,6 +432,7 @@ pub enum CompletionDataKind {
     Directive,
     Shape,
     NodeIdentifier,
+    Template,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,6 +1,8 @@
 use merman_lsp::completion::{completion_for_snapshot, resolve_completion_item};
 use merman_lsp::document_store::DocumentStore;
-use tower_lsp::lsp_types::{CompletionTextEdit, Documentation, MarkupKind, Position, Url};
+use tower_lsp::lsp_types::{
+    CompletionTextEdit, Documentation, InsertTextFormat, MarkupKind, Position, Url,
+};
 
 #[test]
 fn completion_offers_known_node_ids_for_plain_mermaid_documents() {
@@ -667,6 +669,34 @@ fn completion_offers_graph_header_from_core_facts() {
             assert_eq!(edit.new_text, "graph TD");
             assert_eq!(edit.range.start.character, 0);
             assert_eq!(edit.range.end.character, 2);
+        }
+        other => panic!("unexpected text edit: {other:?}"),
+    }
+}
+
+#[test]
+fn completion_projects_core_snippet_items_to_lsp_snippets() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let snapshot = store.upsert(uri, 1, "flow".to_string());
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "flowchart template")
+        .expect("flowchart template completion");
+
+    assert_eq!(item.insert_text_format, Some(InsertTextFormat::SNIPPET));
+    assert_eq!(
+        item.kind,
+        Some(tower_lsp::lsp_types::CompletionItemKind::SNIPPET)
+    );
+    match item.text_edit.as_ref().unwrap() {
+        CompletionTextEdit::Edit(edit) => {
+            assert!(edit.new_text.contains("${1|TD,TB,BT,LR,RL|}"));
+            assert_eq!(edit.range.start.character, 0);
+            assert_eq!(edit.range.end.character, 4);
         }
         other => panic!("unexpected text edit: {other:?}"),
     }

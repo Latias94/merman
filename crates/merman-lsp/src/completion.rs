@@ -1,8 +1,8 @@
 use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
-    CompletionDataKind, CompletionItemKind, CompletionList as CoreCompletionList,
-    CompletionResolveData, Range as CoreRange, completion_documentation,
-    completion_for_snapshot as core_completion_for_snapshot,
+    CompletionDataKind, CompletionInsertTextFormat, CompletionItemKind,
+    CompletionList as CoreCompletionList, CompletionResolveData, Range as CoreRange,
+    completion_documentation, completion_for_snapshot as core_completion_for_snapshot,
 };
 use serde_json::json;
 use tower_lsp::lsp_types::{
@@ -31,6 +31,7 @@ fn core_item_to_lsp(item: merman_editor_core::CompletionItem) -> CompletionItem 
         kind: Some(match item.kind {
             CompletionItemKind::Keyword => LspCompletionItemKind::KEYWORD,
             CompletionItemKind::Variable => LspCompletionItemKind::VARIABLE,
+            CompletionItemKind::Snippet => LspCompletionItemKind::SNIPPET,
         }),
         detail: item.detail,
         data: item.data.map(|data| {
@@ -40,7 +41,10 @@ fn core_item_to_lsp(item: merman_editor_core::CompletionItem) -> CompletionItem 
             })
         }),
         insert_text: item.insert_text,
-        insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
+        insert_text_format: Some(match item.insert_text_format {
+            CompletionInsertTextFormat::PlainText => InsertTextFormat::PLAIN_TEXT,
+            CompletionInsertTextFormat::Snippet => InsertTextFormat::SNIPPET,
+        }),
         text_edit: item.text_edit.map(|edit| {
             CompletionTextEdit::from(TextEdit::new(range_to_lsp(edit.range), edit.new_text))
         }),
@@ -107,6 +111,13 @@ mod tests {
         let labels: Vec<_> = completion_for_snapshot(&snapshot, Position::new(0, 4))
             .items
             .into_iter()
+            .filter(|item| {
+                item.data
+                    .as_ref()
+                    .and_then(|data| data.get("kind"))
+                    .and_then(|kind| kind.as_str())
+                    == Some("diagram_header")
+            })
             .map(|item| item.label)
             .collect();
         let expected: Vec<_> =

@@ -3,12 +3,17 @@ use merman_analysis::{
     AnalysisDiagnostic, AnalysisPayload, DiagnosticFix, DiagnosticSeverity, DiagnosticSpan,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+const RECOVERED_EDITOR_FACTS_RULE_ID: &str = "merman.parse.recovered_editor_facts";
 
 pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload) -> Vec<EditorDiagnostic> {
+    let mut seen = HashSet::new();
     payload
         .diagnostics
         .iter()
         .map(analysis_diagnostic_to_editor)
+        .filter(|diagnostic| seen.insert(diagnostic.dedup_key()))
         .collect()
 }
 
@@ -25,7 +30,7 @@ pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorD
             .map(EditorDiagnosticCode::Number)
             .unwrap_or_else(|| EditorDiagnosticCode::String(diagnostic.id.clone())),
         source: "merman".to_string(),
-        message: diagnostic.message.clone(),
+        message: diagnostic_message(diagnostic),
         related: diagnostic
             .related
             .iter()
@@ -37,6 +42,29 @@ pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorD
             })
             .collect(),
         data: diagnostic_code_action_data(diagnostic),
+    }
+}
+
+fn diagnostic_message(diagnostic: &AnalysisDiagnostic) -> String {
+    if diagnostic.id == RECOVERED_EDITOR_FACTS_RULE_ID {
+        return humanize_recovered_parser_message(&diagnostic.message);
+    }
+    diagnostic.message.clone()
+}
+
+fn humanize_recovered_parser_message(message: &str) -> String {
+    let detail = message
+        .split_once(" after parse error: ")
+        .map(|(_, detail)| detail)
+        .or_else(|| message.split_once(" from ").map(|(_, detail)| detail))
+        .or_else(|| message.split_once(" before ").map(|(_, detail)| detail))
+        .unwrap_or(message)
+        .trim();
+
+    if detail.is_empty() {
+        "Mermaid syntax could not be fully parsed.".to_string()
+    } else {
+        format!("Mermaid syntax issue: {detail}")
     }
 }
 
@@ -67,7 +95,28 @@ pub struct EditorDiagnostic {
     pub data: Option<DiagnosticCodeActionData>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl EditorDiagnostic {
+    fn dedup_key(&self) -> DiagnosticDedupKey {
+        DiagnosticDedupKey {
+            range: self.range,
+            severity: self.severity.as_str().to_string(),
+            code: self.code.clone(),
+            source: self.source.clone(),
+            message: self.message.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DiagnosticDedupKey {
+    range: Range,
+    severity: String,
+    code: EditorDiagnosticCode,
+    source: String,
+    message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum EditorDiagnosticCode {
     Number(i32),

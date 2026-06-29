@@ -44,3 +44,43 @@ fn payload_projection_is_protocol_neutral() {
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].message, "no Mermaid diagram detected");
 }
+
+#[test]
+fn recovered_parser_messages_are_humanized_for_editor_surfaces() {
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![AnalysisDiagnostic::error(
+            "merman.parse.recovered_editor_facts",
+            DiagnosticCategory::Parse,
+            "flowchart parser recovered after parse error: unexpected statement separator; expected edge label, node identifier",
+        )],
+    );
+
+    let diagnostics = analysis_payload_to_diagnostics(&payload);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].message,
+        "Mermaid syntax issue: unexpected statement separator; expected edge label, node identifier"
+    );
+}
+
+#[test]
+fn duplicate_projected_diagnostics_are_deduplicated() {
+    let map = SourceMap::new("flowchart TD\nA -->\n");
+    let span = map.whole_source_span().unwrap();
+    let diagnostic = AnalysisDiagnostic::error(
+        "merman.parse.recovered_editor_facts",
+        DiagnosticCategory::Parse,
+        "flowchart parser recovered after parse error: unexpected statement separator",
+    )
+    .with_span(span);
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![diagnostic.clone(), diagnostic],
+    );
+
+    let diagnostics = analysis_payload_to_diagnostics(&payload);
+
+    assert_eq!(diagnostics.len(), 1);
+}

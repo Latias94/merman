@@ -1,6 +1,6 @@
 use merman_editor_core::{
-    CompletionContext, CompletionDataKind, DocumentKind, DocumentWorkspace, Position,
-    completion_documentation, completion_for_snapshot,
+    CompletionContext, CompletionDataKind, CompletionInsertTextFormat, DocumentKind,
+    DocumentWorkspace, Position, completion_documentation, completion_for_snapshot,
 };
 
 #[test]
@@ -87,4 +87,55 @@ fn completion_resolve_documentation_is_protocol_neutral() {
 
     assert!(documentation.contains("Starts a Mermaid"));
     assert!(documentation.contains("flowchart TD"));
+}
+
+#[test]
+fn completion_offers_snippet_templates_at_diagram_start() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flow".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "flowchart template")
+        .expect("flowchart template completion");
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+    assert!(
+        item.insert_text
+            .as_ref()
+            .unwrap()
+            .contains("${1|TD,TB,BT,LR,RL|}")
+    );
+    assert_eq!(
+        item.data.as_ref().unwrap().kind,
+        CompletionDataKind::Template
+    );
+}
+
+#[test]
+fn directive_helpers_use_snippet_placeholders() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "classDef ".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(0, 9));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == ":::className")
+        .expect("class helper completion");
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+    assert_eq!(item.insert_text.as_deref(), Some(":::${1:className}"));
 }
