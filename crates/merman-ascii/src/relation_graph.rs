@@ -1,5 +1,5 @@
 use crate::canvas::Canvas;
-use crate::color::{AsciiColorMode, AsciiColorRole};
+use crate::color::AsciiColorRole;
 use crate::options::AsciiRenderOptions;
 use crate::text::{StyledLine, display_width, split_label_lines};
 use crate::{AsciiError, Result};
@@ -55,14 +55,14 @@ pub(crate) trait RelationComponentAdapter<R> {
         relation_box: &RelationGraphBox,
         relation: &R,
         options: &AsciiRenderOptions,
-    ) -> Result<String>;
+    ) -> Result<Vec<RelationGraphLine>>;
 
     fn render_self_relations(
         &self,
         relation_box: &RelationGraphBox,
         relations: &[R],
         options: &AsciiRenderOptions,
-    ) -> Result<String>;
+    ) -> Result<Vec<RelationGraphLine>>;
 
     fn layered_horizontal_gap(&self) -> usize;
 
@@ -79,14 +79,14 @@ pub(crate) trait RelationComponentAdapter<R> {
         boxes: &[RelationGraphBox],
         relation: &R,
         options: &AsciiRenderOptions,
-    ) -> Result<String>;
+    ) -> Result<Vec<RelationGraphLine>>;
 
     fn render_parallel(
         &self,
         boxes: &[RelationGraphBox],
         relations: &[R],
         options: &AsciiRenderOptions,
-    ) -> Result<String>;
+    ) -> Result<Vec<RelationGraphLine>>;
 
     fn build_summary_row(
         &self,
@@ -152,13 +152,12 @@ impl<'a> RelationStackPlan<'a> {
         }
     }
 
-    pub(crate) fn render_with_options(&self, options: &AsciiRenderOptions) -> String {
-        render_vertical_stack_with_options(
+    pub(crate) fn render_lines(&self) -> Vec<RelationGraphLine> {
+        vertical_stack_lines(
             self.top,
             self.bottom,
             self.center,
             self.relation_lines.clone(),
-            options,
         )
     }
 }
@@ -208,29 +207,7 @@ impl<'a> RelationParallelPlan<'a> {
         }
     }
 
-    pub(crate) fn render_with_options(&self, options: &AsciiRenderOptions) -> String {
-        if options.color_mode == AsciiColorMode::Plain {
-            let mut relation_lines = Vec::new();
-            let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
-            for row_index in 0..row_count {
-                let mut line = String::new();
-                line.extend(std::iter::repeat_n(' ', self.lane_left));
-                for (lane_index, lane) in self.lanes.iter().enumerate() {
-                    if lane_index > 0 {
-                        line.extend(std::iter::repeat_n(' ', self.lane_gap));
-                    }
-                    let text = lane.get(row_index).map(|line| line.text()).unwrap_or("");
-                    line.push_str(&centered_cell(text, self.lane_widths[lane_index]));
-                }
-                while line.ends_with(' ') {
-                    line.pop();
-                }
-                relation_lines.push(line);
-            }
-
-            return render_vertical_stack(self.top, self.bottom, self.center, relation_lines);
-        }
-
+    pub(crate) fn render_lines(&self) -> Vec<RelationGraphLine> {
         let mut relation_lines = Vec::new();
         let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
         for row_index in 0..row_count {
@@ -249,13 +226,7 @@ impl<'a> RelationParallelPlan<'a> {
             relation_lines.push(concat_relation_lines(parts));
         }
 
-        render_vertical_stack_with_options(
-            self.top,
-            self.bottom,
-            self.center,
-            relation_lines,
-            options,
-        )
+        vertical_stack_lines(self.top, self.bottom, self.center, relation_lines)
     }
 }
 
@@ -317,7 +288,7 @@ impl RelationGraphLine {
         self.line.write_to_at(canvas, x, y);
     }
 
-    fn from_styled(line: StyledLine) -> Self {
+    pub(crate) fn from_styled(line: StyledLine) -> Self {
         let text = line.text();
         Self { text, line }
     }
@@ -335,6 +306,11 @@ impl RelationGraphBox {
 
     pub(crate) fn new_with_lines(id: String, lines: Vec<RelationGraphLine>, width: usize) -> Self {
         Self { id, lines, width }
+    }
+
+    pub(crate) fn from_rendered_lines(id: String, lines: Vec<RelationGraphLine>) -> Self {
+        let width = lines.iter().map(line_char_width).max().unwrap_or(0);
+        Self::new_with_lines(id, lines, width)
     }
 
     pub(crate) fn from_sections(
@@ -419,6 +395,7 @@ fn sectioned_box_content_width(sections: &[Vec<String>], padding: usize) -> usiz
     max_line_width + padding.saturating_mul(2)
 }
 
+#[cfg(test)]
 pub(crate) fn render_stacked_boxes(boxes: &[RelationGraphBox]) -> String {
     boxes.iter().map(render_box).collect::<Vec<_>>().join("\n")
 }
@@ -427,19 +404,7 @@ pub(crate) fn render_stacked_boxes_with_options(
     boxes: &[RelationGraphBox],
     options: &AsciiRenderOptions,
 ) -> String {
-    if options.color_mode == AsciiColorMode::Plain {
-        return render_stacked_boxes(boxes);
-    }
-
-    let mut lines = Vec::new();
-    for (index, relation_box) in boxes.iter().enumerate() {
-        if index > 0 {
-            lines.push(RelationGraphLine::plain(String::new()));
-        }
-        lines.extend(relation_box.lines.iter().cloned());
-    }
-
-    render_lines_with_options(&lines, options)
+    render_lines_with_options(&stacked_box_lines(boxes), options)
 }
 
 pub(crate) fn render_stacked_boxes_with_section(
@@ -471,12 +436,51 @@ pub(crate) fn render_stacked_boxes_with_section(
     render_lines_with_options(&lines, options)
 }
 
+pub(crate) fn stacked_box_lines(boxes: &[RelationGraphBox]) -> Vec<RelationGraphLine> {
+    let mut lines = Vec::new();
+    for (index, relation_box) in boxes.iter().enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::plain(String::new()));
+        }
+        lines.extend(relation_box.lines.iter().cloned());
+    }
+    lines
+}
+
+fn join_component_line_groups(groups: Vec<Vec<RelationGraphLine>>) -> Vec<RelationGraphLine> {
+    let mut joined = Vec::new();
+    for group in groups {
+        if !joined.is_empty() {
+            joined.push(RelationGraphLine::plain(String::new()));
+        }
+        joined.extend(group);
+    }
+    joined
+}
+
 pub(crate) fn render_relation_components<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
     adapter: &A,
 ) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+    R: Clone,
+{
+    Ok(
+        render_relation_component_lines(boxes, relations, options, adapter)?
+            .map(|lines| render_lines_with_options(&lines, options))
+            .unwrap_or_default(),
+    )
+}
+
+pub(crate) fn render_relation_component_lines<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    adapter: &A,
+) -> Result<Option<Vec<RelationGraphLine>>>
 where
     A: RelationComponentAdapter<R>,
     R: Clone,
@@ -488,7 +492,7 @@ where
     let layered_error = |error| adapter.layered_error(error);
     let components = relation_components(boxes, &edges).map_err(layered_error)?;
     if components.len() == 1 {
-        return render_relation_component(boxes, relations, options, adapter);
+        return render_relation_component(boxes, relations, options, adapter).map(Some);
     }
     if let Some(rendered) = render_combined_relation_components(
         boxes,
@@ -498,7 +502,7 @@ where
         &components,
         &edges,
     )? {
-        return Ok(rendered);
+        return Ok(Some(rendered));
     }
 
     let mut rendered = Vec::new();
@@ -521,7 +525,7 @@ where
         )?);
     }
 
-    Ok(rendered.join("\n"))
+    Ok(Some(join_component_line_groups(rendered)))
 }
 
 fn render_combined_relation_components<R, A>(
@@ -531,7 +535,7 @@ fn render_combined_relation_components<R, A>(
     adapter: &A,
     components: &[RelationGraphComponent<'_>],
     edges: &[LayeredRelationEdge],
-) -> Result<Option<String>>
+) -> Result<Option<Vec<RelationGraphLine>>>
 where
     A: RelationComponentAdapter<R>,
     R: Clone,
@@ -583,13 +587,24 @@ where
             if split_summary_fallback_is_safe(components, edges) {
                 return Ok(None);
             }
-            render_relation_summary_rows(
-                &relation_boxes,
+            let mut lines = stacked_box_lines(&relation_boxes);
+            let summary_lines = relation_summary_rows_lines(
                 &component_relations,
                 options,
                 Some(reason),
                 |relation| adapter.build_summary_row(relation, reason),
-            )?
+            )?;
+            if !summary_lines.is_empty() {
+                if !lines.is_empty() {
+                    lines.push(RelationGraphLine::plain(String::new()));
+                }
+                lines.push(RelationGraphLine::with_role(
+                    "relations:".to_string(),
+                    AsciiColorRole::MutedText,
+                ));
+                lines.extend(summary_lines);
+            }
+            lines
         }
     };
 
@@ -611,7 +626,7 @@ where
         )?);
     }
 
-    Ok(Some(rendered.join("\n")))
+    Ok(Some(join_component_line_groups(rendered)))
 }
 
 fn split_summary_fallback_is_safe(
@@ -637,12 +652,12 @@ fn render_relation_component<R, A>(
     relations: &[R],
     options: &AsciiRenderOptions,
     adapter: &A,
-) -> Result<String>
+) -> Result<Vec<RelationGraphLine>>
 where
     A: RelationComponentAdapter<R>,
 {
     if relations.is_empty() {
-        return Ok(render_stacked_boxes_with_options(boxes, options));
+        return Ok(stacked_box_lines(boxes));
     }
     if relations.len() > 1
         && relations
@@ -672,7 +687,7 @@ where
     if relations.len() == 1 {
         return adapter.render_vertical(boxes, &relations[0], options);
     }
-    render_layered_relation_component(
+    render_layered_relation_component_lines(
         boxes,
         relations,
         options,
@@ -682,6 +697,7 @@ where
     )
 }
 
+#[cfg(test)]
 pub(crate) fn render_layered_relation_component<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -690,6 +706,30 @@ pub(crate) fn render_layered_relation_component<R, A>(
     max_grid_cells: usize,
     adapter: &A,
 ) -> Result<String>
+where
+    A: RelationComponentAdapter<R>,
+{
+    Ok(render_lines_with_options(
+        &render_layered_relation_component_lines(
+            boxes,
+            relations,
+            options,
+            horizontal_gap,
+            max_grid_cells,
+            adapter,
+        )?,
+        options,
+    ))
+}
+
+pub(crate) fn render_layered_relation_component_lines<R, A>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    horizontal_gap: usize,
+    max_grid_cells: usize,
+    adapter: &A,
+) -> Result<Vec<RelationGraphLine>>
 where
     A: RelationComponentAdapter<R>,
 {
@@ -703,9 +743,22 @@ where
     )? {
         Ok(rendered) => Ok(rendered),
         Err(reason) => {
-            render_relation_summary_rows(boxes, relations, options, Some(reason), |relation| {
-                adapter.build_summary_row(relation, reason)
-            })
+            let mut lines = stacked_box_lines(boxes);
+            let summary_lines =
+                relation_summary_rows_lines(relations, options, Some(reason), |relation| {
+                    adapter.build_summary_row(relation, reason)
+                })?;
+            if !summary_lines.is_empty() {
+                if !lines.is_empty() {
+                    lines.push(RelationGraphLine::plain(String::new()));
+                }
+                lines.push(RelationGraphLine::with_role(
+                    "relations:".to_string(),
+                    AsciiColorRole::MutedText,
+                ));
+                lines.extend(summary_lines);
+            }
+            Ok(lines)
         }
     }
 }
@@ -713,11 +766,11 @@ where
 fn render_layered_relation_component_result<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
-    options: &AsciiRenderOptions,
+    _options: &AsciiRenderOptions,
     horizontal_gap: usize,
     max_grid_cells: usize,
     adapter: &A,
-) -> Result<std::result::Result<String, LayeredRelationSummaryReason>>
+) -> Result<std::result::Result<Vec<RelationGraphLine>, LayeredRelationSummaryReason>>
 where
     A: RelationComponentAdapter<R>,
 {
@@ -765,16 +818,19 @@ where
         return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
     }
 
-    Ok(Ok(canvas.finish_trimmed_with_options(options)))
+    Ok(Ok(canvas
+        .into_styled_lines_trimmed()
+        .into_iter()
+        .map(RelationGraphLine::from_styled)
+        .collect()))
 }
 
-pub(crate) fn render_parallel_self_loops_with_options(
+pub(crate) fn render_parallel_self_loops(
     relation_box: &RelationGraphBox,
     loops: Vec<RelationSelfLoopRows>,
-    options: &AsciiRenderOptions,
-) -> String {
+) -> Vec<RelationGraphLine> {
     if loops.is_empty() {
-        return render_lines_with_options(&relation_box.lines, options);
+        return relation_box.lines.clone();
     }
 
     let geometry = SelfLoopGeometry::for_loops(relation_box, &loops);
@@ -787,7 +843,7 @@ pub(crate) fn render_parallel_self_loops_with_options(
         lines.extend(tail_self_loop_lines(relation_box, loop_rows, &geometry));
     }
 
-    render_lines_with_options(&lines, options)
+    lines
 }
 
 pub(crate) struct RelationSelfLoopRows {
@@ -1050,49 +1106,20 @@ pub(crate) fn vertical_center(
         .fold((top.width / 2).max(bottom.width / 2), usize::max)
 }
 
-pub(crate) fn render_vertical_stack(
-    top: &RelationGraphBox,
-    bottom: &RelationGraphBox,
-    center: usize,
-    relation_lines: Vec<String>,
-) -> String {
-    let mut lines = Vec::new();
-    lines.extend(align_box(top, center));
-    lines.extend(relation_lines);
-    lines.extend(align_box(bottom, center));
-
-    let mut rendered = lines.join("\n");
-    rendered.push('\n');
-    rendered
-}
-
-pub(crate) fn render_vertical_stack_with_options(
+pub(crate) fn vertical_stack_lines(
     top: &RelationGraphBox,
     bottom: &RelationGraphBox,
     center: usize,
     relation_lines: Vec<RelationGraphLine>,
-    options: &AsciiRenderOptions,
-) -> String {
-    if options.color_mode == AsciiColorMode::Plain {
-        return render_vertical_stack(
-            top,
-            bottom,
-            center,
-            relation_lines
-                .into_iter()
-                .map(|line| line.text().to_string())
-                .collect(),
-        );
-    }
-
+) -> Vec<RelationGraphLine> {
     let mut lines = Vec::new();
     lines.extend(align_box_lines(top, center));
     lines.extend(relation_lines);
     lines.extend(align_box_lines(bottom, center));
-
-    render_lines_with_options(&lines, options)
+    lines
 }
 
+#[cfg(test)]
 fn render_box(relation_box: &RelationGraphBox) -> String {
     let mut rendered = relation_box
         .lines
@@ -1126,32 +1153,11 @@ fn line_char_width(line: &RelationGraphLine) -> usize {
     display_width(line.text())
 }
 
-fn centered_cell(text: &str, width: usize) -> String {
-    let text_width = display_width(text);
-    let left_padding = width.saturating_sub(text_width) / 2;
-    let right_padding = width.saturating_sub(text_width + left_padding);
-    let mut cell = String::new();
-    cell.extend(std::iter::repeat_n(' ', left_padding));
-    cell.push_str(text);
-    cell.extend(std::iter::repeat_n(' ', right_padding));
-    cell
-}
-
 fn centered_cell_line(line: &RelationGraphLine, width: usize) -> RelationGraphLine {
     let text_width = display_width(line.text());
     let left_padding = width.saturating_sub(text_width) / 2;
     let right_padding = width.saturating_sub(text_width + left_padding);
     padded_line(line, left_padding, right_padding)
-}
-
-fn align_box(relation_box: &RelationGraphBox, center: usize) -> Vec<String> {
-    let left_padding = center.saturating_sub(relation_box.width / 2);
-    let padding = " ".repeat(left_padding);
-    relation_box
-        .lines
-        .iter()
-        .map(|line| format!("{padding}{}", line.text()))
-        .collect()
 }
 
 fn align_box_lines(relation_box: &RelationGraphBox, center: usize) -> Vec<RelationGraphLine> {
@@ -1215,8 +1221,8 @@ mod tests {
             _relation_box: &RelationGraphBox,
             _relation: &(&'static str, &'static str),
             _options: &AsciiRenderOptions,
-        ) -> Result<String> {
-            Ok(String::new())
+        ) -> Result<Vec<RelationGraphLine>> {
+            Ok(Vec::new())
         }
 
         fn render_self_relations(
@@ -1224,8 +1230,8 @@ mod tests {
             _relation_box: &RelationGraphBox,
             _relations: &[(&'static str, &'static str)],
             _options: &AsciiRenderOptions,
-        ) -> Result<String> {
-            Ok(String::new())
+        ) -> Result<Vec<RelationGraphLine>> {
+            Ok(Vec::new())
         }
 
         fn layered_horizontal_gap(&self) -> usize {
@@ -1275,8 +1281,8 @@ mod tests {
             _boxes: &[RelationGraphBox],
             _relation: &(&'static str, &'static str),
             _options: &AsciiRenderOptions,
-        ) -> Result<String> {
-            Ok(String::new())
+        ) -> Result<Vec<RelationGraphLine>> {
+            Ok(Vec::new())
         }
 
         fn render_parallel(
@@ -1284,8 +1290,8 @@ mod tests {
             _boxes: &[RelationGraphBox],
             _relations: &[(&'static str, &'static str)],
             _options: &AsciiRenderOptions,
-        ) -> Result<String> {
-            Ok(String::new())
+        ) -> Result<Vec<RelationGraphLine>> {
+            Ok(Vec::new())
         }
 
         fn build_summary_row(

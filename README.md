@@ -519,8 +519,9 @@ Class, ER, and XYChart text output intentionally ship bounded terminal-native su
 support boxes, labels, single relationships, layered chain/star multi-relationship layouts, and
 adjacent-layer crossing layouts resolved by layer reordering. Same-endpoint and simple
 mixed-parallel relationships render as distinct lanes, simple spanning-level relationships route
-through side lanes, and isolated unrelated classes/entities render as standalone components beside
-the relationship layout. Dense, cyclic, grid-budget-limited, or collision-prone Class/ER layouts
+through side lanes, same-namespace Class relationships route inside namespace containers, and
+isolated unrelated classes/entities render as standalone components beside the relationship layout.
+Dense, cyclic, cross-namespace/container, grid-budget-limited, or collision-prone Class/ER layouts
 fall back to a structured `relations:` summary instead of drawing unreadable overlapping lines.
 `AsciiRenderOptions::with_relation_summary_diagnostics(true)` adds an opt-in `reason:` row to
 those summaries so hosts can tell whether fallback came from crossings, route collisions, overlay

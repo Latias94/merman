@@ -121,6 +121,21 @@ impl Canvas {
         self.finish_with_options_internal(options, true)
     }
 
+    pub(crate) fn into_styled_lines_trimmed(self) -> Vec<crate::text::StyledLine> {
+        if self.width == 0 || self.height == 0 {
+            return Vec::new();
+        }
+
+        let mut lines = Vec::new();
+        for row_start in (0..self.cells.len()).step_by(self.width) {
+            let row_end = self.trimmed_row_end(row_start, row_start + self.width, true);
+            lines.push(crate::text::StyledLine::from_cells(
+                self.cells[row_start..row_end].to_vec(),
+            ));
+        }
+        lines
+    }
+
     fn finish_plain(self, trim: bool) -> String {
         if self.width == 0 || self.height == 0 {
             return String::new();

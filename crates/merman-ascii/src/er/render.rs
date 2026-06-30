@@ -220,9 +220,8 @@ fn render_vertical_relationship(
     top: &RenderedEntityBox,
     bottom: &RenderedEntityBox,
     relationship: &ErRelationshipRenderModel,
-    options: &AsciiRenderOptions,
     charset: ErCharset,
-) -> Result<String> {
+) -> Result<Vec<RelationGraphLine>> {
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
@@ -250,7 +249,7 @@ fn render_vertical_relationship(
         },
     );
 
-    Ok(plan.render_with_options(options))
+    Ok(plan.render_lines())
 }
 
 fn er_relationship_rows(
@@ -299,9 +298,8 @@ fn is_same_endpoint_parallel_relationship(relationships: &[ErRelationshipRenderM
 fn render_parallel_vertical_relationships(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
-    options: &AsciiRenderOptions,
     charset: ErCharset,
-) -> Result<String> {
+) -> Result<Vec<RelationGraphLine>> {
     let first = &relationships[0];
     let top = find_box(boxes, &first.entity_a)?;
     let bottom = find_box(boxes, &first.entity_b)?;
@@ -311,7 +309,7 @@ fn render_parallel_vertical_relationships(
         .collect::<Result<Vec<_>>>()?;
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
-    Ok(plan.render_with_options(options))
+    Ok(plan.render_lines())
 }
 
 fn parallel_er_lane_rows(
@@ -431,13 +429,13 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         relation_box: &RenderedEntityBox,
         relationship: &ErRelationshipRenderModel,
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
+    ) -> Result<Vec<RelationGraphLine>> {
         let rows = self_loop_rows_for_er_relationship(relationship, self.charset)?;
 
-        Ok(relation_graph::render_parallel_self_loops_with_options(
+        let _ = options;
+        Ok(relation_graph::render_parallel_self_loops(
             relation_box,
             vec![rows],
-            options,
         ))
     }
 
@@ -446,16 +444,16 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         relation_box: &RenderedEntityBox,
         relationships: &[ErRelationshipRenderModel],
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
+    ) -> Result<Vec<RelationGraphLine>> {
         let loops = relationships
             .iter()
             .map(|relationship| self_loop_rows_for_er_relationship(relationship, self.charset))
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(relation_graph::render_parallel_self_loops_with_options(
+        let _ = options;
+        Ok(relation_graph::render_parallel_self_loops(
             relation_box,
             loops,
-            options,
         ))
     }
 
@@ -517,11 +515,12 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         boxes: &[RenderedEntityBox],
         relationship: &ErRelationshipRenderModel,
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
+    ) -> Result<Vec<RelationGraphLine>> {
         let top = find_box(boxes, &relationship.entity_a)?;
         let bottom = find_box(boxes, &relationship.entity_b)?;
 
-        render_vertical_relationship(top, bottom, relationship, options, self.charset)
+        let _ = options;
+        render_vertical_relationship(top, bottom, relationship, self.charset)
     }
 
     fn render_parallel(
@@ -529,8 +528,9 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         boxes: &[RenderedEntityBox],
         relationships: &[ErRelationshipRenderModel],
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
-        render_parallel_vertical_relationships(boxes, relationships, options, self.charset)
+    ) -> Result<Vec<RelationGraphLine>> {
+        let _ = options;
+        render_parallel_vertical_relationships(boxes, relationships, self.charset)
     }
 
     fn build_summary_row(

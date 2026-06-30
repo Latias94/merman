@@ -190,17 +190,23 @@ fn render_namespaced_class_diagram(
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
 ) -> Result<String> {
-    let boxes = render_namespaced_class_boxes(model, options, charset, namespace_facade_aliases);
-    let layouts = model
+    let boxes = render_namespaced_class_boxes(model, options, charset, namespace_facade_aliases)?;
+    let external_layouts = model
         .relations
         .iter()
+        .filter(|relation| {
+            relation_explicit_namespace_id(model, relation, namespace_facade_aliases).is_none()
+        })
         .map(|relation| relation_layout(model, relation, namespace_facade_aliases))
         .collect::<Result<Vec<_>>>()?;
-    let mut summary_rows = layouts
+    let mut summary_rows = external_layouts
         .iter()
         .map(class_relation_summary_row)
         .collect::<Result<Vec<_>>>()?;
-    summary_rows.extend(namespace_note_summary_rows(model, namespace_facade_aliases));
+    summary_rows.extend(external_namespace_note_summary_rows(
+        model,
+        namespace_facade_aliases,
+    ));
 
     if summary_rows.is_empty() {
         return Ok(relation_graph::render_stacked_boxes_with_options(
@@ -251,7 +257,7 @@ fn render_namespaced_class_boxes(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
-) -> Vec<RenderedClassBox> {
+) -> Result<Vec<RenderedClassBox>> {
     let mut rendered_namespace_ids = HashSet::new();
     let mut boxes = Vec::new();
 
@@ -268,24 +274,22 @@ fn render_namespaced_class_boxes(
                 charset,
                 namespace_facade_aliases,
                 &mut rendered_namespace_ids,
-            ));
+            )?);
         }
     }
 
-    boxes.extend(model.namespaces.values().filter_map(|namespace| {
+    for namespace in model.namespaces.values() {
         if namespace.explicit && !rendered_namespace_ids.contains(namespace.id.as_str()) {
-            Some(render_namespace_box(
+            boxes.push(render_namespace_box(
                 model,
                 namespace,
                 options,
                 charset,
                 namespace_facade_aliases,
                 &mut rendered_namespace_ids,
-            ))
-        } else {
-            None
+            )?);
         }
-    }));
+    }
 
     boxes.extend(
         model
@@ -318,7 +322,7 @@ fn render_namespaced_class_boxes(
             .map(|note| render_note_box(note, options, charset)),
     );
 
-    boxes
+    Ok(boxes)
 }
 
 fn render_namespace_box(
@@ -328,44 +332,72 @@ fn render_namespace_box(
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
     rendered_namespace_ids: &mut HashSet<String>,
-) -> RenderedClassBox {
+) -> Result<RenderedClassBox> {
     rendered_namespace_ids.insert(namespace.id.clone());
     let mut children = Vec::new();
 
-    children.extend(
-        model
-            .namespaces
-            .values()
-            .filter(|child| {
-                child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit
-            })
-            .map(|child| {
-                render_namespace_box(
-                    model,
-                    child,
-                    options,
-                    charset,
-                    namespace_facade_aliases,
-                    rendered_namespace_ids,
-                )
-            }),
-    );
+    for child in model
+        .namespaces
+        .values()
+        .filter(|child| child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit)
+    {
+        children.push(render_namespace_box(
+            model,
+            child,
+            options,
+            charset,
+            namespace_facade_aliases,
+            rendered_namespace_ids,
+        )?);
+    }
 
+    let mut direct_boxes = Vec::new();
     for class_id in &namespace.class_ids {
         if let Some(class) = model.classes.get(class_id)
             && !namespace_facade_aliases.contains_key(class.id.as_str())
         {
-            children.push(render_class_box(class, options, charset));
+            direct_boxes.push(render_class_box(class, options, charset));
         }
     }
 
     for note_id in &namespace.note_ids {
         if let Some(note) = model.notes.iter().find(|note| note.id == *note_id) {
-            children.push(render_note_box(note, options, charset));
+            direct_boxes.push(render_note_box(note, options, charset));
         }
     }
 
-    render_namespace_container_box(namespace, children, options, charset)
+    let mut direct_layouts = model
+        .relations
+        .iter()
+        .filter(|relation| {
+            relation_explicit_namespace_id(model, relation, namespace_facade_aliases)
+                == Some(namespace.id.as_str())
+        })
+        .map(|relation| relation_layout(model, relation, namespace_facade_aliases))
+        .collect::<Result<Vec<_>>>()?;
+
+    direct_layouts.extend(note_relation_layouts_for_notes(
+        model.notes.iter().filter(|note| {
+            note.parent.as_deref() == Some(namespace.id.as_str()) && note.class_id.is_some()
+        }),
+        namespace_facade_aliases,
+        &direct_boxes,
+    ));
+
+    if direct_layouts.is_empty() {
+        children.extend(direct_boxes);
+    } else {
+        let component_lines =
+            render_class_component_lines(&direct_boxes, &direct_layouts, options, charset)?;
+        children.push(RelationGraphBox::from_rendered_lines(
+            format!("{}::relations", namespace.id),
+            component_lines,
+        ));
+    }
+
+    Ok(render_namespace_container_box(
+        namespace, children, options, charset,
+    ))
 }
 
 fn render_namespace_container_box(
@@ -545,6 +577,19 @@ fn render_class_components(
 ) -> Result<String> {
     let adapter = ClassRelationComponentAdapter { charset };
     relation_graph::render_relation_components(boxes, layouts, options, &adapter)
+}
+
+fn render_class_component_lines(
+    boxes: &[RenderedClassBox],
+    layouts: &[RelationLayout<'_>],
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+) -> Result<Vec<RelationGraphLine>> {
+    let adapter = ClassRelationComponentAdapter { charset };
+    Ok(
+        relation_graph::render_relation_component_lines(boxes, layouts, options, &adapter)?
+            .unwrap_or_default(),
+    )
 }
 
 fn render_class_box(
@@ -745,6 +790,47 @@ fn relation_endpoint_id<'a>(
         .unwrap_or(id)
 }
 
+fn relation_explicit_namespace_id<'a>(
+    model: &'a ClassDiagram,
+    relation: &'a ClassRelation,
+    namespace_facade_aliases: &'a HashMap<String, String>,
+) -> Option<&'a str> {
+    let left_parent =
+        class_explicit_namespace_id(model, relation.id1.as_str(), namespace_facade_aliases)?;
+    let right_parent =
+        class_explicit_namespace_id(model, relation.id2.as_str(), namespace_facade_aliases)?;
+    (left_parent == right_parent).then_some(left_parent)
+}
+
+fn class_explicit_namespace_id<'a>(
+    model: &'a ClassDiagram,
+    id: &'a str,
+    namespace_facade_aliases: &'a HashMap<String, String>,
+) -> Option<&'a str> {
+    let class_id = relation_endpoint_id(namespace_facade_aliases, id);
+    let parent = model.classes.get(class_id)?.parent.as_deref()?;
+    model
+        .namespaces
+        .get(parent)
+        .filter(|namespace| namespace.explicit)
+        .map(|namespace| namespace.id.as_str())
+}
+
+fn note_explicit_namespace_id<'a>(
+    model: &'a ClassDiagram,
+    note: &'a ClassNote,
+    namespace_facade_aliases: &'a HashMap<String, String>,
+) -> Option<&'a str> {
+    let note_parent = note.parent.as_deref()?;
+    let note_namespace = model
+        .namespaces
+        .get(note_parent)
+        .filter(|namespace| namespace.explicit)?;
+    let target_id = note.class_id.as_deref()?;
+    let target_parent = class_explicit_namespace_id(model, target_id, namespace_facade_aliases)?;
+    (note_namespace.id == target_parent).then_some(note_namespace.id.as_str())
+}
+
 fn marker_for_relation_type(
     model: &ClassDiagram,
     relation_type: i32,
@@ -780,9 +866,15 @@ fn note_relation_layouts<'a>(
     namespace_facade_aliases: &'a HashMap<String, String>,
     boxes: &[RenderedClassBox],
 ) -> Vec<RelationLayout<'a>> {
-    model
-        .notes
-        .iter()
+    note_relation_layouts_for_notes(model.notes.iter(), namespace_facade_aliases, boxes)
+}
+
+fn note_relation_layouts_for_notes<'a>(
+    notes: impl Iterator<Item = &'a ClassNote>,
+    namespace_facade_aliases: &'a HashMap<String, String>,
+    boxes: &[RenderedClassBox],
+) -> Vec<RelationLayout<'a>> {
+    notes
         .filter_map(|note| {
             let target_id = note.class_id.as_deref()?;
             let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
@@ -799,13 +891,14 @@ fn note_relation_layouts<'a>(
         .collect()
 }
 
-fn namespace_note_summary_rows(
+fn external_namespace_note_summary_rows(
     model: &ClassDiagram,
     namespace_facade_aliases: &HashMap<String, String>,
 ) -> Vec<RelationGraphSummaryRow> {
     model
         .notes
         .iter()
+        .filter(|note| note_explicit_namespace_id(model, note, namespace_facade_aliases).is_none())
         .filter_map(|note| {
             let target_id = note.class_id.as_deref()?;
             let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
@@ -837,9 +930,8 @@ fn render_vertical_relation(
     top: &RenderedClassBox,
     bottom: &RenderedClassBox,
     layout: &RelationLayout<'_>,
-    options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> String {
+) -> Vec<RelationGraphLine> {
     let label_half_widths = [
         layout
             .label
@@ -861,7 +953,7 @@ fn render_vertical_relation(
         class_relation_rows(layout, center, charset)
     });
 
-    plan.render_with_options(options)
+    plan.render_lines()
 }
 
 fn push_centered_endpoint_label(
@@ -971,9 +1063,8 @@ fn is_same_endpoint_parallel_layout(layouts: &[RelationLayout<'_>]) -> bool {
 fn render_parallel_vertical_relations(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
-    options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> Result<String> {
+) -> Result<Vec<RelationGraphLine>> {
     let first = &layouts[0];
     let top = find_box(boxes, first.top_id)?;
     let bottom = find_box(boxes, first.bottom_id)?;
@@ -996,7 +1087,7 @@ fn render_parallel_vertical_relations(
         .collect::<Vec<_>>();
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
-    Ok(plan.render_with_options(options))
+    Ok(plan.render_lines())
 }
 
 fn endpoint_label_lines_or_empty(
@@ -1199,13 +1290,13 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         relation_box: &RenderedClassBox,
         layout: &RelationLayout<'a>,
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
+    ) -> Result<Vec<RelationGraphLine>> {
         let rows = self_loop_rows_for_class_layout(layout, self.charset);
 
-        Ok(relation_graph::render_parallel_self_loops_with_options(
+        let _ = options;
+        Ok(relation_graph::render_parallel_self_loops(
             relation_box,
             vec![rows],
-            options,
         ))
     }
 
@@ -1214,16 +1305,16 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         relation_box: &RenderedClassBox,
         layouts: &[RelationLayout<'a>],
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
+    ) -> Result<Vec<RelationGraphLine>> {
         let loops = layouts
             .iter()
             .map(|layout| self_loop_rows_for_class_layout(layout, self.charset))
             .collect::<Vec<_>>();
 
-        Ok(relation_graph::render_parallel_self_loops_with_options(
+        let _ = options;
+        Ok(relation_graph::render_parallel_self_loops(
             relation_box,
             loops,
-            options,
         ))
     }
 
@@ -1305,17 +1396,12 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         boxes: &[RenderedClassBox],
         layout: &RelationLayout<'a>,
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
+    ) -> Result<Vec<RelationGraphLine>> {
         let top = find_box(boxes, layout.top_id)?;
         let bottom = find_box(boxes, layout.bottom_id)?;
 
-        Ok(render_vertical_relation(
-            top,
-            bottom,
-            layout,
-            options,
-            self.charset,
-        ))
+        let _ = options;
+        Ok(render_vertical_relation(top, bottom, layout, self.charset))
     }
 
     fn render_parallel(
@@ -1323,8 +1409,9 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         boxes: &[RenderedClassBox],
         layouts: &[RelationLayout<'a>],
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
-        render_parallel_vertical_relations(boxes, layouts, options, self.charset)
+    ) -> Result<Vec<RelationGraphLine>> {
+        let _ = options;
+        render_parallel_vertical_relations(boxes, layouts, self.charset)
     }
 
     fn build_summary_row(
