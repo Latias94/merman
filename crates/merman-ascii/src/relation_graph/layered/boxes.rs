@@ -292,14 +292,27 @@ fn choose_ordered_layered_groups<'a>(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
 ) -> std::result::Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationError> {
+    let base = initial_layered_groups(boxes, levels);
+    let max_sweeps = level_sweep_candidate_count(base.len());
+    let mut seen = HashSet::new();
     let mut best: Option<(usize, Vec<Vec<&RelationGraphBox>>)> = None;
-    for candidate in ordered_layered_group_candidates(boxes, edges, levels) {
-        let crossings = crossing_layered_relation_count(edges, levels, &candidate);
-        let should_replace = best
-            .as_ref()
-            .is_none_or(|(best_crossings, _)| crossings < *best_crossings);
-        if should_replace {
-            best = Some((crossings, candidate));
+
+    if let Some(level_groups) =
+        score_ordered_layered_group_candidate(&base, edges, levels, &mut seen, &mut best)
+    {
+        return Ok(level_groups);
+    }
+
+    for first_sweep in [LayeredRelationSweep::Downward, LayeredRelationSweep::Upward] {
+        let mut groups = base.clone();
+        for index in 0..max_sweeps {
+            groups =
+                apply_layered_relation_sweep(groups, first_sweep.alternating(index), edges, levels);
+            if let Some(level_groups) =
+                score_ordered_layered_group_candidate(&groups, edges, levels, &mut seen, &mut best)
+            {
+                return Ok(level_groups);
+            }
         }
     }
 
@@ -313,26 +326,39 @@ fn choose_ordered_layered_groups<'a>(
     }
 }
 
-fn ordered_layered_group_candidates<'a>(
-    boxes: &'a [RelationGraphBox],
+fn score_ordered_layered_group_candidate<'a>(
+    candidate: &[Vec<&'a RelationGraphBox>],
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
-) -> Vec<Vec<Vec<&'a RelationGraphBox>>> {
-    let base = initial_layered_groups(boxes, levels);
-    let max_sweeps = level_sweep_candidate_count(base.len());
-    let mut candidates = Vec::new();
-    candidates.push(base.clone());
-
-    for first_sweep in [LayeredRelationSweep::Downward, LayeredRelationSweep::Upward] {
-        let mut groups = base.clone();
-        for index in 0..max_sweeps {
-            groups =
-                apply_layered_relation_sweep(groups, first_sweep.alternating(index), edges, levels);
-            candidates.push(groups.clone());
-        }
+    seen: &mut HashSet<Vec<Vec<&'a str>>>,
+    best: &mut Option<(usize, Vec<Vec<&'a RelationGraphBox>>)>,
+) -> Option<Vec<Vec<&'a RelationGraphBox>>> {
+    if !seen.insert(layered_group_candidate_key(&candidate)) {
+        return None;
     }
 
-    candidates
+    let crossings = crossing_layered_relation_count(edges, levels, &candidate);
+    if crossings == 0 {
+        return Some(candidate.to_vec());
+    }
+
+    let should_replace = best
+        .as_ref()
+        .is_none_or(|(best_crossings, _)| crossings < *best_crossings);
+    if should_replace {
+        *best = Some((crossings, candidate.to_vec()));
+    }
+
+    None
+}
+
+fn layered_group_candidate_key<'a>(
+    level_groups: &[Vec<&'a RelationGraphBox>],
+) -> Vec<Vec<&'a str>> {
+    level_groups
+        .iter()
+        .map(|group| group.iter().map(|relation_box| relation_box.id()).collect())
+        .collect()
 }
 
 fn level_sweep_candidate_count(level_count: usize) -> usize {
@@ -640,4 +666,33 @@ fn relation_edge_crosses_level_gap(
     let max_level = from_level.max(to_level);
 
     min_level <= level && level < max_level
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn score_ordered_layered_group_candidate_skips_duplicate_orders() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+        ];
+        let candidate = vec![vec![&boxes[0]], vec![&boxes[1]]];
+        let edges = vec![LayeredRelationEdge::new("a", "b", 0, 0)];
+        let levels = HashMap::from([("a".to_string(), 0), ("b".to_string(), 1)]);
+        let mut seen = HashSet::new();
+        let mut best = None;
+
+        let first = score_ordered_layered_group_candidate(
+            &candidate, &edges, &levels, &mut seen, &mut best,
+        );
+        let duplicate = score_ordered_layered_group_candidate(
+            &candidate, &edges, &levels, &mut seen, &mut best,
+        );
+
+        assert!(first.is_some());
+        assert!(duplicate.is_none());
+        assert_eq!(seen.len(), 1);
+    }
 }
