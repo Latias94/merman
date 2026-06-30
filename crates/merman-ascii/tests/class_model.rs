@@ -545,13 +545,112 @@ fn class_local_semantic_fixture_covers_namespace_qualified_relationships() {
     assert!(!rendered.contains("Platform.FFI.DartBinding"));
     assert!(!rendered.contains("Platform.FFI.PythonBinding"));
     assert!(!rendered.contains("Platform.Core.Renderer"));
+    assert!(rendered.contains("Platform Layer"));
+    assert!(rendered.contains("FFI"));
+    assert!(rendered.contains("Core"));
     assert!(rendered.contains("DartBinding"));
     assert!(rendered.contains("PythonBinding"));
     assert!(rendered.contains("Renderer"));
-    assert!(rendered.contains("calls"));
+    assert!(rendered.contains("relations:"));
+    assert!(rendered.lines().any(|line| {
+        line.contains("DartBinding")
+            && line.contains("-->")
+            && line.contains("Renderer")
+            && line.contains("calls")
+    }));
+    assert!(rendered.lines().any(|line| {
+        line.contains("PythonBinding")
+            && line.contains("-->")
+            && line.contains("Renderer")
+            && line.contains("calls")
+    }));
     assert!(
-        rendered.lines().count() >= 4,
+        rendered.lines().count() >= 20,
         "namespace-qualified class fixture should produce a non-trivial multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_namespace_containers_render_without_relationships() {
+    let rendered = render_class(
+        "classDiagram
+namespace Domain[\"Domain Layer\"] {
+  class User
+  namespace Persistence {
+    class UserRepo
+  }
+}
+class Outside",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("namespace containers should render");
+
+    for expected in ["Domain Layer", "Persistence", "UserRepo", "User", "Outside"] {
+        assert!(
+            rendered.contains(expected),
+            "namespace class output should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "namespace containers without relationships should not add a relation summary:\n{rendered}"
+    );
+    assert!(
+        rendered.matches('┌').count() >= 4,
+        "nested namespace output should contain nested terminal boxes:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_namespace_note_for_keeps_summary_link() {
+    let rendered = render_class(
+        "classDiagram
+namespace Domain {
+  class Service
+  note for Service \"Handles<br>requests\"
+}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("namespace note should render");
+
+    for expected in ["Domain", "Service", "Handles", "requests", "relations:"] {
+        assert!(
+            rendered.contains(expected),
+            "namespace note output should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.contains("note") && line.contains("..") && line.contains("Service")),
+        "namespace note output should preserve note-to-class ownership in the relation summary:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("note0"),
+        "namespace note summary should not leak implementation note ids:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_empty_namespace_does_not_force_relation_summary() {
+    let rendered = render_class(
+        "classDiagram
+namespace Empty {
+}
+class A
+class B
+A --> B : ab",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("empty namespace should not affect top-level relationships");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "empty namespace should not force top-level relationships into summary:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("ab") && rendered.contains("+---+"),
+        "top-level class relationship should keep the routed layout:\n{rendered}"
     );
 }
 

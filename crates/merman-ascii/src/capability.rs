@@ -84,6 +84,8 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             "annotations and notes",
             "common relationship markers",
             "endpoint labels",
+            "namespace containers",
+            "namespace-qualified endpoint aliases",
             "self-relation loops",
             "bounded iterative relation-layer sweeps",
             "routed relation lanes",
@@ -92,7 +94,7 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             "dense relation summaries",
         ],
         limits: &[
-            "namespace containers are not drawn as nested boxes",
+            "relationships in namespace container scenes render as relation summaries",
             "multiple relation markers on one relation are unsupported",
             "dense or grid-budgeted relation scenes can summarize",
         ],

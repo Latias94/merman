@@ -393,6 +393,10 @@ impl RelationGraphBox {
         self.width
     }
 
+    pub(crate) fn lines(&self) -> &[RelationGraphLine] {
+        &self.lines
+    }
+
     pub(crate) fn height(&self) -> usize {
         self.lines.len()
     }
@@ -1166,7 +1170,7 @@ fn padded_line(line: &RelationGraphLine, left: usize, right: usize) -> RelationG
     RelationGraphLine::from_styled(padded)
 }
 
-fn concat_relation_lines(parts: Vec<RelationGraphLine>) -> RelationGraphLine {
+pub(crate) fn concat_relation_lines(parts: Vec<RelationGraphLine>) -> RelationGraphLine {
     let mut line = StyledLine::new();
     for part in parts {
         line.push_line(&part.line);

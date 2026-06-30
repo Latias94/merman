@@ -11,9 +11,9 @@ use crate::relation_graph::{
 };
 use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
-    ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
+    ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation, Namespace,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const CLASS_LEVEL_HORIZONTAL_GAP: usize = 4;
 
@@ -142,6 +142,10 @@ pub(crate) fn render_class_diagram(
 ) -> Result<String> {
     let charset = ClassCharset::for_options(options);
     let namespace_facade_aliases = namespace_facade_aliases(model);
+    if has_renderable_namespaces(model) {
+        return render_namespaced_class_diagram(model, options, charset, &namespace_facade_aliases);
+    }
+
     let boxes = render_class_boxes(model, options, charset, &namespace_facade_aliases);
     if boxes.is_empty() {
         return Ok(relation_graph::render_stacked_boxes_with_options(
@@ -167,6 +171,49 @@ pub(crate) fn render_class_diagram(
     }
 
     render_class_components(&boxes, &layouts, options, charset)
+}
+
+fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
+    model.namespaces.values().any(|namespace| {
+        namespace.explicit
+            && (!namespace.class_ids.is_empty()
+                || !namespace.note_ids.is_empty()
+                || model.namespaces.values().any(|child| {
+                    child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit
+                }))
+    })
+}
+
+fn render_namespaced_class_diagram(
+    model: &ClassDiagram,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+    namespace_facade_aliases: &HashMap<String, String>,
+) -> Result<String> {
+    let boxes = render_namespaced_class_boxes(model, options, charset, namespace_facade_aliases);
+    let layouts = model
+        .relations
+        .iter()
+        .map(|relation| relation_layout(model, relation, namespace_facade_aliases))
+        .collect::<Result<Vec<_>>>()?;
+    let mut summary_rows = layouts
+        .iter()
+        .map(class_relation_summary_row)
+        .collect::<Result<Vec<_>>>()?;
+    summary_rows.extend(namespace_note_summary_rows(model, namespace_facade_aliases));
+
+    if summary_rows.is_empty() {
+        return Ok(relation_graph::render_stacked_boxes_with_options(
+            &boxes, options,
+        ));
+    }
+
+    Ok(relation_graph::render_stacked_boxes_with_relation_summary(
+        &boxes,
+        &summary_rows,
+        None,
+        options,
+    ))
 }
 
 fn render_class_boxes(
@@ -197,6 +244,255 @@ fn render_class_boxes(
             .map(|note| render_note_box(note, options, charset)),
     );
     boxes
+}
+
+fn render_namespaced_class_boxes(
+    model: &ClassDiagram,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+    namespace_facade_aliases: &HashMap<String, String>,
+) -> Vec<RenderedClassBox> {
+    let mut rendered_namespace_ids = HashSet::new();
+    let mut boxes = Vec::new();
+
+    for namespace in model
+        .namespaces
+        .values()
+        .filter(|namespace| namespace.parent.is_none())
+    {
+        if namespace.explicit {
+            boxes.push(render_namespace_box(
+                model,
+                namespace,
+                options,
+                charset,
+                namespace_facade_aliases,
+                &mut rendered_namespace_ids,
+            ));
+        }
+    }
+
+    boxes.extend(model.namespaces.values().filter_map(|namespace| {
+        if namespace.explicit && !rendered_namespace_ids.contains(namespace.id.as_str()) {
+            Some(render_namespace_box(
+                model,
+                namespace,
+                options,
+                charset,
+                namespace_facade_aliases,
+                &mut rendered_namespace_ids,
+            ))
+        } else {
+            None
+        }
+    }));
+
+    boxes.extend(
+        model
+            .classes
+            .values()
+            .filter(|class| {
+                !namespace_facade_aliases.contains_key(class.id.as_str())
+                    && class
+                        .parent
+                        .as_ref()
+                        .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
+            })
+            .map(|class| render_class_box(class, options, charset)),
+    );
+    boxes.extend(
+        model
+            .interfaces
+            .iter()
+            .map(|interface| render_interface_box(interface, options, charset)),
+    );
+    boxes.extend(
+        model
+            .notes
+            .iter()
+            .filter(|note| {
+                note.parent
+                    .as_ref()
+                    .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
+            })
+            .map(|note| render_note_box(note, options, charset)),
+    );
+
+    boxes
+}
+
+fn render_namespace_box(
+    model: &ClassDiagram,
+    namespace: &Namespace,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+    namespace_facade_aliases: &HashMap<String, String>,
+    rendered_namespace_ids: &mut HashSet<String>,
+) -> RenderedClassBox {
+    rendered_namespace_ids.insert(namespace.id.clone());
+    let mut children = Vec::new();
+
+    children.extend(
+        model
+            .namespaces
+            .values()
+            .filter(|child| {
+                child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit
+            })
+            .map(|child| {
+                render_namespace_box(
+                    model,
+                    child,
+                    options,
+                    charset,
+                    namespace_facade_aliases,
+                    rendered_namespace_ids,
+                )
+            }),
+    );
+
+    for class_id in &namespace.class_ids {
+        if let Some(class) = model.classes.get(class_id)
+            && !namespace_facade_aliases.contains_key(class.id.as_str())
+        {
+            children.push(render_class_box(class, options, charset));
+        }
+    }
+
+    for note_id in &namespace.note_ids {
+        if let Some(note) = model.notes.iter().find(|note| note.id == *note_id) {
+            children.push(render_note_box(note, options, charset));
+        }
+    }
+
+    render_namespace_container_box(namespace, children, options, charset)
+}
+
+fn render_namespace_container_box(
+    namespace: &Namespace,
+    children: Vec<RenderedClassBox>,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+) -> RenderedClassBox {
+    let title = namespace_title(namespace);
+    let inner_gap = options.box_border_padding;
+    let content_width = children
+        .iter()
+        .map(RelationGraphBox::width)
+        .max()
+        .unwrap_or_else(|| crate::text::display_width(&title))
+        .max(crate::text::display_width(&title))
+        .saturating_add(options.box_border_padding.saturating_mul(2));
+    let style = RelationGraphBoxStyle {
+        top_left: charset.top_left,
+        top_right: charset.top_right,
+        bottom_left: charset.bottom_left,
+        bottom_right: charset.bottom_right,
+        horizontal: charset.horizontal,
+        vertical: charset.vertical,
+        separator_left: charset.separator_left,
+        separator_right: charset.separator_right,
+        border_role: AsciiColorRole::GroupBorder,
+        text_role: AsciiColorRole::Text,
+    };
+    let mut lines = Vec::new();
+    lines.push(RelationGraphLine::box_border(
+        style.top_left,
+        style.top_right,
+        style.horizontal,
+        content_width,
+        style.border_role,
+    ));
+    lines.push(RelationGraphLine::box_content(
+        &title,
+        content_width,
+        options.box_border_padding,
+        style.vertical,
+        style.border_role,
+        style.text_role,
+    ));
+    lines.push(RelationGraphLine::box_border(
+        style.separator_left,
+        style.separator_right,
+        style.horizontal,
+        content_width,
+        style.border_role,
+    ));
+
+    for (child_index, child) in children.iter().enumerate() {
+        if child_index > 0 {
+            lines.push(namespace_empty_content_line(
+                content_width,
+                style.vertical,
+                style.border_role,
+            ));
+        }
+        lines.extend(namespace_child_lines(
+            child,
+            content_width,
+            style.vertical,
+            style.border_role,
+            inner_gap,
+        ));
+    }
+
+    if children.is_empty() {
+        lines.push(namespace_empty_content_line(
+            content_width,
+            style.vertical,
+            style.border_role,
+        ));
+    }
+
+    lines.push(RelationGraphLine::box_border(
+        style.bottom_left,
+        style.bottom_right,
+        style.horizontal,
+        content_width,
+        style.border_role,
+    ));
+
+    RelationGraphBox::new_with_lines(namespace.id.clone(), lines, content_width + 2)
+}
+
+fn namespace_child_lines(
+    child: &RenderedClassBox,
+    content_width: usize,
+    vertical: char,
+    border_role: AsciiColorRole,
+    inner_gap: usize,
+) -> Vec<RelationGraphLine> {
+    let trailing = content_width.saturating_sub(inner_gap + child.width());
+    child
+        .lines()
+        .iter()
+        .map(|line| {
+            relation_graph::concat_relation_lines(vec![
+                RelationGraphLine::with_role(vertical.to_string(), border_role),
+                RelationGraphLine::plain(" ".repeat(inner_gap)),
+                line.clone(),
+                RelationGraphLine::plain(" ".repeat(trailing)),
+                RelationGraphLine::with_role(vertical.to_string(), border_role),
+            ])
+        })
+        .collect()
+}
+
+fn namespace_empty_content_line(
+    content_width: usize,
+    vertical: char,
+    border_role: AsciiColorRole,
+) -> RelationGraphLine {
+    RelationGraphLine::box_border(vertical, vertical, ' ', content_width, border_role)
+}
+
+fn namespace_title(namespace: &Namespace) -> String {
+    let raw = if namespace.label.trim().is_empty() {
+        namespace.id.as_str()
+    } else {
+        namespace.label.as_str()
+    };
+    decode_html_entities_to_unicode(raw).into_owned()
 }
 
 fn namespace_facade_aliases(model: &ClassDiagram) -> HashMap<String, String> {
@@ -499,6 +795,24 @@ fn note_relation_layouts<'a>(
                 top_endpoint_label: None,
                 bottom_endpoint_label: None,
             })
+        })
+        .collect()
+}
+
+fn namespace_note_summary_rows(
+    model: &ClassDiagram,
+    namespace_facade_aliases: &HashMap<String, String>,
+) -> Vec<RelationGraphSummaryRow> {
+    model
+        .notes
+        .iter()
+        .filter_map(|note| {
+            let target_id = note.class_id.as_deref()?;
+            let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
+            model
+                .classes
+                .contains_key(target_id)
+                .then(|| RelationGraphSummaryRow::new("note", "..", target_id))
         })
         .collect()
 }
