@@ -6,6 +6,12 @@ status: active
 # Log
 
 ## 2026-06-30
+- Finished the editor diagnostics architecture cleanup plan end-to-end. Final gates passed Rust
+  formatting, diff hygiene, engineering memory validation, Rust analysis/editor-core/LSP compile
+  and diagnostics tests, and VS Code extension typecheck plus 69-test Node suite. Dedicated
+  `ce-code-review` subagent flow was skipped because the active Codex developer instruction
+  forbids subagents unless explicitly requested in the current turn; local manual diff review found
+  no actionable issues.
 - Completed the U7 diagnostics documentation slice: `CAPABILITIES.md` now has a parser-family
   diagnostic span matrix and final diagnostic ownership model, ADR 0070 describes `merman-lsp` as
   the current projection layer rather than future work, and crate/VS Code READMEs document core,
