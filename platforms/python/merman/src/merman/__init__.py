@@ -2,6 +2,8 @@
 
 try:
     from .merman_uniffi import (
+        MermanAsciiCapability,
+        MermanAsciiCapabilityEvidence,
         MermanDiagramFamilyCapability,
         MermanEngine,
         MermanError,
@@ -25,6 +27,8 @@ except ModuleNotFoundError as exc:
     raise
 
 __all__ = [
+    "MermanAsciiCapability",
+    "MermanAsciiCapabilityEvidence",
     "MermanDiagramFamilyCapability",
     "MermanEngine",
     "MermanError",

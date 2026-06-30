@@ -77,6 +77,13 @@ fn read_local_semantic_fixture(path: &str) -> String {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
 }
 
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
 fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
     let err = merman_ascii::render_class(model, &AsciiRenderOptions::ascii())
         .expect_err("class model should be rejected as unsupported");
@@ -538,13 +545,143 @@ fn class_local_semantic_fixture_covers_namespace_qualified_relationships() {
     assert!(!rendered.contains("Platform.FFI.DartBinding"));
     assert!(!rendered.contains("Platform.FFI.PythonBinding"));
     assert!(!rendered.contains("Platform.Core.Renderer"));
+    assert!(rendered.contains("Platform Layer"));
+    assert!(rendered.contains("FFI"));
+    assert!(rendered.contains("Core"));
     assert!(rendered.contains("DartBinding"));
     assert!(rendered.contains("PythonBinding"));
     assert!(rendered.contains("Renderer"));
-    assert!(rendered.contains("calls"));
+    assert!(rendered.contains("relations:"));
+    assert!(rendered.lines().any(|line| {
+        line.contains("DartBinding")
+            && line.contains("-->")
+            && line.contains("Renderer")
+            && line.contains("calls")
+    }));
+    assert!(rendered.lines().any(|line| {
+        line.contains("PythonBinding")
+            && line.contains("-->")
+            && line.contains("Renderer")
+            && line.contains("calls")
+    }));
     assert!(
-        rendered.lines().count() >= 4,
+        rendered.lines().count() >= 20,
         "namespace-qualified class fixture should produce a non-trivial multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_namespace_containers_render_without_relationships() {
+    let rendered = render_class(
+        "classDiagram
+namespace Domain[\"Domain Layer\"] {
+  class User
+  namespace Persistence {
+    class UserRepo
+  }
+}
+class Outside",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("namespace containers should render");
+
+    for expected in ["Domain Layer", "Persistence", "UserRepo", "User", "Outside"] {
+        assert!(
+            rendered.contains(expected),
+            "namespace class output should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "namespace containers without relationships should not add a relation summary:\n{rendered}"
+    );
+    assert!(
+        rendered.matches('┌').count() >= 4,
+        "nested namespace output should contain nested terminal boxes:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_namespace_internal_relationship_routes_inside_container() {
+    let rendered = render_class(
+        "classDiagram
+namespace Domain {
+  class Service
+  class Repository
+}
+Service --> Repository : uses",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("namespace-internal class relationship should render");
+
+    for expected in ["Domain", "Service", "Repository", "uses"] {
+        assert!(
+            rendered.contains(expected),
+            "namespace internal relationship output should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "same-namespace class relationship should route inside the namespace container:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().any(|line| line.contains("uses")),
+        "routed namespace relationship should keep its label in the container:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_namespace_note_for_routes_inside_container() {
+    let rendered = render_class(
+        "classDiagram
+namespace Domain {
+  class Service
+  note for Service \"Handles<br>requests\"
+}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("namespace note should render");
+
+    for expected in ["Domain", "Service", "Handles", "requests"] {
+        assert!(
+            rendered.contains(expected),
+            "namespace note output should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "namespace note-for should route inside the namespace container instead of falling back to a top-level summary:\n{rendered}"
+    );
+    assert!(
+        rendered.contains(':') || rendered.contains('.'),
+        "namespace note-for should keep a dotted visual connector:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("note0"),
+        "namespace note output should not leak implementation note ids:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_empty_namespace_does_not_force_relation_summary() {
+    let rendered = render_class(
+        "classDiagram
+namespace Empty {
+}
+class A
+class B
+A --> B : ab",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("empty namespace should not affect top-level relationships");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "empty namespace should not force top-level relationships into summary:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("ab") && rendered.contains("+---+"),
+        "top-level class relationship should keep the routed layout:\n{rendered}"
     );
 }
 
@@ -624,6 +761,87 @@ fn class_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge(
             "+---+    +---+\n",
         )
     );
+}
+
+#[test]
+fn class_parser_multi_parent_relationship_layout_uses_barycenter_order() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nclass D\nclass E\nclass F\nA --> C : ac\nA --> D : ad\nB --> C : bc\nC --> E : ce\nC --> F : cf",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("multi-parent class relationship layout should render");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "multi-parent class topology should use routed layout, not summary:\n{rendered}"
+    );
+    for expected in ["ac", "ad", "bc", "ce", "cf"] {
+        assert!(
+            rendered.contains(expected),
+            "routed multi-parent class topology should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_parser_child_weighted_parent_order_keeps_readable_layout_routed() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nclass D\nclass E\nA --> E : ae\nB --> D : bd\nC --> E : ce",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("child-weighted class topology should render");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "child-weighted class topology should use routed layout, not summary:\n{rendered}"
+    );
+    for expected in ["A", "B", "C", "D", "E", "ae", "bd", "ce"] {
+        assert!(
+            rendered.contains(expected),
+            "routed child-weighted class topology should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_parser_four_layer_relation_layout_uses_iterative_sweep_order() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "class A0\nclass A1\nclass A2\n",
+            "class B0\nclass B1\nclass B2\n",
+            "class C0\nclass C1\nclass C2\n",
+            "class D0\nclass D1\nclass D2\n",
+            "C0 --> D0 : c0d0\n",
+            "A1 --> B1 : a1b1\n",
+            "A2 --> B0 : a2b0\n",
+            "A1 --> B0 : a1b0\n",
+            "B2 --> C2 : b2c2\n",
+            "B2 --> C0 : b2c0\n",
+            "C2 --> D1 : c2d1\n",
+            "C2 --> D0 : c2d0\n",
+            "A0 --> B1 : a0b1\n",
+            "A0 --> B2 : a0b2\n",
+            "C1 --> D2 : c1d2\n",
+            "B2 --> C1 : b2c1",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("four-layer class relation topology should render");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "four-layer class topology should use routed layout, not summary:\n{rendered}"
+    );
+    for expected in [
+        "a0b1", "a0b2", "a1b0", "a1b1", "a2b0", "b2c0", "b2c1", "b2c2", "c0d0", "c1d2", "c2d0",
+        "c2d1",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "routed four-layer class topology should keep {expected:?} visible:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -793,6 +1011,48 @@ fn class_parser_dotted_association_relation_renders_plain_dotted_line_without_ma
 }
 
 #[test]
+fn class_parser_self_relation_renders_single_box_with_loop() {
+    let rendered = render_class(
+        "classDiagram\nclass Node\nNode --> Node : next",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("self class relation should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| Node |---+\n",
+            "+------+   |\n",
+            "   next    |\n",
+            "    v------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_parallel_self_relations_share_single_box_loop() {
+    let rendered = render_class(
+        "classDiagram\nclass Node\nNode --> Node : next\nNode ..> Node : loads",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parallel self class relations should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| Node |---+\n",
+            "+------+   |\n",
+            "   next    |\n",
+            "    v------+\n",
+            "  loads    :\n",
+            "    v......+\n",
+        )
+    );
+}
+
+#[test]
 fn class_parser_endpoint_labels_render_near_relation_endpoints() {
     let rendered = render_class(
         "classDiagram\nclass Customer\nclass Order\nCustomer \"1\" --> \"*\" Order : places",
@@ -894,6 +1154,55 @@ fn class_local_semantic_fixture_covers_wide_members_and_summary_labels() {
     assert!(
         !rendered.contains("<br>"),
         "wide class relation summary should not leak Mermaid break syntax:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_independent_relation_pairs_do_not_share_grid_budget() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nclass D\nA --> B : ab\nC --> D : cd",
+        &options,
+    )
+    .expect("independent relation pairs should render separately");
+
+    for expected in ["A", "B", "C", "D", "ab", "cd"] {
+        assert!(
+            rendered.contains(expected),
+            "independent class relation pairs should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "independent class relation pairs should not share one tight grid budget:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_local_semantic_fixture_covers_annotation_methods() {
+    let input = read_local_semantic_fixture("class/annotation_methods.mmd");
+    let rendered = render_class(&input, &AsciiRenderOptions::ascii())
+        .expect("class annotation and methods fixture should render");
+
+    for expected in [
+        "<<abstract>>",
+        "Shape",
+        "+draw() : void",
+        "Circle",
+        "+radius int",
+        "^",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "class annotation fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert!(
+        first_line_index_containing(&rendered, "Shape")
+            < first_line_index_containing(&rendered, "Circle"),
+        "inheritance should keep Shape before Circle in the routed terminal layout:\n{rendered}"
     );
 }
 
@@ -1091,6 +1400,27 @@ fn class_parser_relation_layout_falls_back_to_summary_when_grid_budget_is_tight(
         !rendered.contains(" / "),
         "tight-budget class relation summary should keep multiline labels as continuation rows:\n{rendered}"
     );
+    assert!(
+        !rendered.contains("reason:"),
+        "class relation summary diagnostics should be opt-in:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_relation_summary_can_show_grid_budget_diagnostic() {
+    let options = AsciiRenderOptions::ascii()
+        .with_max_grid_cells(1)
+        .with_relation_summary_diagnostics(true);
+
+    let rendered = render_class(
+        "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
+        &options,
+    )
+    .expect("class relation summary diagnostic should render");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    assert!(rendered.contains("reason: grid_budget"), "{rendered}");
+    assert!(rendered.contains("limit=1"), "{rendered}");
 }
 
 #[test]

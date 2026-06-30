@@ -42,6 +42,32 @@ public struct MermanValidationResult: Decodable {
     }
 }
 
+public struct MermanAsciiCapabilityEvidence: Decodable {
+    public let kind: String
+    public let source: String
+    public let note: String
+}
+
+public struct MermanAsciiCapability: Decodable {
+    public let diagramType: String
+    public let displayName: String
+    public let supportLevel: String
+    public let summaryFallback: Bool
+    public let supportedSemantics: [String]
+    public let limits: [String]
+    public let evidence: [MermanAsciiCapabilityEvidence]
+
+    enum CodingKeys: String, CodingKey {
+        case diagramType = "diagram_type"
+        case displayName = "display_name"
+        case supportLevel = "support_level"
+        case summaryFallback = "summary_fallback"
+        case supportedSemantics = "supported_semantics"
+        case limits
+        case evidence
+    }
+}
+
 public struct MermanDiagramFamilyCapability: Decodable {
     public let diagramType: String
     public let metadataId: String?
@@ -62,7 +88,7 @@ public final class MermanEngine {
 
     public let packageVersion: String
     private var supportedDiagramsCache: [String]?
-    private var asciiSupportedDiagramsCache: [String]?
+    private var asciiCapabilitiesCache: [MermanAsciiCapability]?
     private var diagramFamilyCapabilitiesCache: [MermanDiagramFamilyCapability]?
     private var themesCache: [String]?
     private var hostThemePresetsCache: [String]?
@@ -106,12 +132,13 @@ public final class MermanEngine {
         return values
     }
 
-    public func asciiSupportedDiagrams() throws -> [String] {
-        if let asciiSupportedDiagramsCache {
-            return asciiSupportedDiagramsCache
+    public func asciiCapabilities() throws -> [MermanAsciiCapability] {
+        if let asciiCapabilitiesCache {
+            return asciiCapabilitiesCache
         }
-        let values = try metadata(merman_ascii_supported_diagrams_json)
-        asciiSupportedDiagramsCache = values
+        let text = try decode(merman_ascii_capabilities_json())
+        let values = try decodeJson([MermanAsciiCapability].self, from: Data(text.utf8))
+        asciiCapabilitiesCache = values
         return values
     }
 

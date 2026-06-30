@@ -77,6 +77,13 @@ fn read_local_semantic_fixture(path: &str) -> String {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
 }
 
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
 fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
     let err = merman_ascii::render_er(model, &AsciiRenderOptions::ascii())
         .expect_err("ER model should be rejected as unsupported");
@@ -269,6 +276,37 @@ fn er_parser_attribute_keys_and_comments_render_in_entity_section() {
 }
 
 #[test]
+fn er_local_semantic_fixture_covers_attributes_with_relationship() {
+    let input = read_local_semantic_fixture("er/attributes_with_relationship.mmd");
+    let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+        .expect("ER attribute and relationship fixture should render");
+
+    for expected in [
+        "CUSTOMER",
+        "ORDER",
+        "string name PK",
+        "string email UK",
+        "int age",
+        "int id PK",
+        "string status",
+        "places",
+        "||",
+        "o{",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "ER attribute fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert!(
+        first_line_index_containing(&rendered, "CUSTOMER")
+            < first_line_index_containing(&rendered, "ORDER"),
+        "identifying relationship should keep CUSTOMER before ORDER in the routed terminal layout:\n{rendered}"
+    );
+}
+
+#[test]
 fn er_parser_identifying_relationship_renders_cardinality_markers_and_label() {
     let rendered = render_er(
         "erDiagram\nCUSTOMER ||--o{ ORDER : places",
@@ -329,6 +367,48 @@ fn er_parser_non_identifying_relationship_renders_dotted_line() {
         concat!(
             "+---+\n", "| A |\n", "+---+\n", " ||\n", "refs\n", "  :\n", " |{\n", "+---+\n",
             "| B |\n", "+---+\n",
+        )
+    );
+}
+
+#[test]
+fn er_parser_self_relationship_renders_single_box_with_loop() {
+    let rendered = render_er(
+        "erDiagram\nNODE ||--o{ NODE : \"leads to\"",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("self ER relationship should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| NODE |---||\n",
+            "+------+   |\n",
+            " leads to  |\n",
+            "    o{-----+\n",
+        )
+    );
+}
+
+#[test]
+fn er_parser_parallel_self_relationships_share_single_box_loop() {
+    let rendered = render_er(
+        "erDiagram\nNODE ||--o{ NODE : \"leads to\"\nNODE o|--|| NODE : mirrors",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parallel self ER relationships should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+------+\n",
+            "| NODE |----||\n",
+            "+------+    |\n",
+            " leads to   |\n",
+            "    o{------+\n",
+            "o| mirrors  |\n",
+            "    ||------+\n",
         )
     );
 }
@@ -470,6 +550,83 @@ fn er_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge() {
             "+---+    +---+\n",
         )
     );
+}
+
+#[test]
+fn er_parser_multi_parent_relationship_layout_uses_barycenter_order() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| C : ac\nA ||--|| D : ad\nB ||--|| C : bc\nC ||--|| E : ce\nC ||--|| F : cf",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("multi-parent ER relationship layout should render");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "multi-parent ER topology should use routed layout, not summary:\n{rendered}"
+    );
+    for expected in ["ac", "ad", "bc", "ce", "cf"] {
+        assert!(
+            rendered.contains(expected),
+            "routed multi-parent ER topology should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_parser_child_weighted_parent_order_keeps_readable_layout_routed() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| E : ae\nB ||--|| D : bd\nC ||--|| E : ce",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("child-weighted ER topology should render");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "child-weighted ER topology should use routed layout, not summary:\n{rendered}"
+    );
+    for expected in ["A", "B", "C", "D", "E", "ae", "bd", "ce"] {
+        assert!(
+            rendered.contains(expected),
+            "routed child-weighted ER topology should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_parser_four_layer_relationship_layout_uses_iterative_sweep_order() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\n",
+            "C0 ||--|| D0 : c0d0\n",
+            "A1 ||--|| B1 : a1b1\n",
+            "A2 ||--|| B0 : a2b0\n",
+            "A1 ||--|| B0 : a1b0\n",
+            "B2 ||--|| C2 : b2c2\n",
+            "B2 ||--|| C0 : b2c0\n",
+            "C2 ||--|| D1 : c2d1\n",
+            "C2 ||--|| D0 : c2d0\n",
+            "A0 ||--|| B1 : a0b1\n",
+            "A0 ||--|| B2 : a0b2\n",
+            "C1 ||--|| D2 : c1d2\n",
+            "B2 ||--|| C1 : b2c1",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("four-layer ER relationship topology should render");
+
+    assert!(
+        !rendered.contains("relations:"),
+        "four-layer ER topology should use routed layout, not summary:\n{rendered}"
+    );
+    for expected in [
+        "a0b1", "a0b2", "a1b0", "a1b1", "a2b0", "b2c0", "b2c1", "b2c2", "c0d0", "c1d2", "c2d0",
+        "c2d1",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "routed four-layer ER topology should keep {expected:?} visible:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -731,6 +888,51 @@ fn er_parser_relationship_layout_falls_back_to_summary_when_grid_budget_is_tight
     assert!(
         !rendered.contains(" / "),
         "tight-budget ER relation summary should keep multiline labels as continuation rows:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("reason:"),
+        "ER relation summary diagnostics should be opt-in:\n{rendered}"
+    );
+}
+
+#[test]
+fn er_parser_relation_summary_can_show_grid_budget_diagnostic() {
+    let options = AsciiRenderOptions::ascii()
+        .with_max_grid_cells(1)
+        .with_relation_summary_diagnostics(true);
+
+    let rendered = render_er(
+        "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : places\nORDER ||--|| INVOICE : bills",
+        &options,
+    )
+    .expect("ER relation summary diagnostic should render");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    assert!(rendered.contains("reason: grid_budget"), "{rendered}");
+    assert!(rendered.contains("limit=1"), "{rendered}");
+}
+
+#[test]
+fn er_parser_independent_relationship_pairs_do_not_share_grid_budget() {
+    let options = AsciiRenderOptions::ascii().with_max_grid_cells(1);
+
+    let rendered = render_er(
+        "erDiagram\nCUSTOMER ||--o{ ORDER : places\nINVOICE ||--|| PAYMENT : captures",
+        &options,
+    )
+    .expect("independent ER relationship pairs should render separately");
+
+    for expected in [
+        "CUSTOMER", "ORDER", "INVOICE", "PAYMENT", "places", "captures",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "independent ER relationship pairs should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("relations:"),
+        "independent ER relationship pairs should not share one tight grid budget:\n{rendered}"
     );
 }
 

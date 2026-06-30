@@ -155,6 +155,12 @@ pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = asciiCapabilities)]
+pub fn ascii_capabilities() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&merman_bindings_core::ascii_capabilities())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
     options_json.unwrap_or_default().as_bytes()
 }

@@ -56,9 +56,11 @@ Hosts that need SVG for strict renderers can still request the export-safe SVG p
 `options_json`, for example `{ "svg": { "pipeline": "resvg-safe" } }`. `NULL/0` options keep the
 default Mermaid-parity SVG contract.
 
-Capability metadata includes supported diagrams and per-family parser/render availability through
-`merman_diagram_family_capabilities_json()`. Hosts can use that diagnostic surface to discover which
-full or tiny registry profile a build actually contains.
+Capability metadata includes per-family parser/render availability through
+`merman_diagram_family_capabilities_json()` and ASCII support grades through
+`merman_ascii_capabilities_json()`. Hosts can use those diagnostic surfaces to discover which full
+or tiny registry profile a build contains, and whether an ASCII diagram family is `full`, `partial`,
+or summary-only before rendering.
 
 ## Minimal C Usage
 
@@ -185,7 +187,8 @@ same command.
 - `merman_layout_json`
 - `merman_validate_json`
 - `merman_supported_diagrams_json`
-- `merman_ascii_supported_diagrams_json`
+- `merman_ascii_capabilities_json`
+- `merman_diagram_family_capabilities_json`
 - `merman_supported_themes_json`
 - `merman_supported_host_theme_presets_json`
 - `merman_buffer_free`

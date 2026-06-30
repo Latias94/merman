@@ -144,7 +144,7 @@ impl LayeredRelationRoutePlan {
         }
     }
 
-    pub(crate) fn draw_at(&self, canvas: &mut Canvas) {
+    pub(crate) fn draw_route_at(&self, canvas: &mut Canvas) {
         draw_relation_span_inclusive(
             canvas,
             self.geometry.from_x,
@@ -174,7 +174,9 @@ impl LayeredRelationRoutePlan {
             self.vertical_char,
             self.relation_chars,
         );
+    }
 
+    pub(crate) fn draw_overlays_at(&self, canvas: &mut Canvas) {
         for overlay in &self.overlays {
             overlay.draw_at(canvas);
         }
@@ -275,23 +277,20 @@ impl<'boxes, 'graph> LayeredRelationRouteRequest<'boxes, 'graph> {
     }
 }
 
-pub(crate) fn draw_layered_relation_route(
-    canvas: &mut Canvas,
+pub(crate) fn plan_layered_relation_route_draw(
     request: LayeredRelationRouteRequest<'_, '_>,
     style: LayeredRelationRouteStyle,
     build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Result<Vec<RelationOverlay>>,
-) -> Result<()> {
+) -> Result<LayeredRelationRoutePlan> {
     let geometry = plan_layered_relation_route(request);
     let overlays = build_overlays(&geometry)?;
-    LayeredRelationRoutePlan::new(
+    Ok(LayeredRelationRoutePlan::new(
         geometry,
         style.vertical_char,
         style.horizontal_char,
         style.relation_chars,
         overlays,
-    )
-    .draw_at(canvas);
-    Ok(())
+    ))
 }
 
 pub(crate) fn offset_center(center: usize, offset: isize) -> usize {

@@ -44,6 +44,7 @@ let semanticJson = try engine.parseJsonRaw("flowchart TD\nA[Hello] --> B[World]"
 let layoutJson = try engine.layoutJsonRaw("flowchart TD\nA[Hello] --> B[World]")
 let validation = try engine.validate("flowchart TD\nA[Hello] --> B[World]")
 let diagrams = try engine.supportedDiagrams()
+let asciiCapabilities = try engine.asciiCapabilities()
 let familyCapabilities = try engine.diagramFamilyCapabilities()
 ```
 

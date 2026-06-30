@@ -6,6 +6,7 @@
 //! parsing.
 
 mod canvas;
+mod capability;
 mod class;
 mod color;
 mod er;
@@ -28,7 +29,11 @@ mod timeline;
 mod tree_view;
 mod xychart;
 
-pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
+pub use capability::{
+    AsciiCapability, AsciiCapabilityEvidence, AsciiEvidenceKind, AsciiSupportLevel,
+    ascii_capabilities, ascii_supported_diagram_types,
+};
+pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
 pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
 
@@ -276,6 +281,7 @@ mod tests {
         assert_eq!(options.xychart_category_band_width, 3);
         assert_eq!(options.xychart_horizontal_plot_width, 10);
         assert_eq!(options.max_grid_cells, 250_000);
+        assert!(!options.relation_summary_diagnostics);
     }
 
     #[test]
@@ -325,6 +331,13 @@ mod tests {
         let options = AsciiRenderOptions::ascii().with_max_grid_cells(42);
 
         assert_eq!(options.max_grid_cells, 42);
+    }
+
+    #[test]
+    fn options_builder_sets_relation_summary_diagnostics() {
+        let options = AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true);
+
+        assert!(options.relation_summary_diagnostics);
     }
 
     #[test]

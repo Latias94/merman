@@ -179,6 +179,17 @@
       "requirement-styled-elements": "Styled Elements"
     }
   },
+  "asciiSupport": {
+    "unsupported": "Unsupported",
+    "summary": "Summary",
+    "summaryFallback": "May summarize dense terminal-hostile layouts.",
+    "levels": {
+      "full": "Full ASCII",
+      "partial": "Partial ASCII",
+      "summary": "Summary ASCII",
+      "unsupported": "Unsupported"
+    }
+  },
   "editor": {
     "codeMode": "Code",
     "configMode": "Config",

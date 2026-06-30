@@ -30,25 +30,26 @@ create/destroy lifecycle markers, visible autonumber, and sequence control block
 `render_sequence` or
 `render_model`; bottom participant boxes are available with
 `AsciiRenderOptions::with_sequence_mirror_actors(true)`. Sequence box fill and parseable `rect`
-colors map to ANSI/HTML background output when color mode is enabled. The classDiagram slice can render class boxes, members, methods, multiline
+colors map to ANSI/HTML background output when color mode is enabled, and sequence boxes keep
+inner padding around nested participant and control-frame content. The classDiagram slice can render class boxes, namespace containers, members, methods, multiline
 relationship labels, single relationship layouts, layered chain/star multi-relationship layouts, and
-adjacent-layer crossing layouts resolved by layer reordering for extension, dependency,
+adjacent-layer crossing layouts resolved by barycenter layer reordering for extension, dependency,
 aggregation, and composition through `render_class` or `render_model`; same-endpoint,
 bidirectional same-pair, and simple mixed-parallel relationships render as distinct lanes, and
-simple forward or reverse spanning-level relationships route through side lanes. Cyclic class and ER
+self-relations render as compact right-side loops. Simple forward or reverse spanning-level relationships route through side lanes. Cyclic class and ER
 relationship shapes now render through the layered planner with visible cycle-closing lanes instead
 of failing early, while truly dense crossings or routed scenes beyond the configured grid budget
-fall back to an explicit relation summary. Truly unrelated boxes remain separate components beside
-the relationship layout. The ER slice can
+fall back to an explicit relation summary. Independent relationship subgraphs split into separate
+planning components, and truly unrelated boxes remain separate beside the relationship layout. The ER slice can
 render entity boxes, attributes, multiline relationship labels, identifying and non-identifying lines, common
 cardinality markers, layered chain/star
-multi-relationship layouts, and adjacent-layer crossing layouts resolved by layer reordering through
+multi-relationship layouts, and adjacent-layer crossing layouts resolved by barycenter layer reordering through
 `render_er` or `render_model`; same-endpoint, bidirectional same-pair, and simple mixed-parallel
 relationships render as distinct lanes, and simple forward or reverse spanning-level relationships
-route through side lanes. Cyclic shapes keep visible cycle-closing lanes, and dense crossing or
+route through side lanes. Self-relationships render as compact right-side loops. Cyclic shapes keep visible cycle-closing lanes, and dense crossing or
 grid-budget-exhausted shapes that no longer have a readable deterministic layered layout fall back
-to an explicit relation summary instead of failing. Unrelated standalone entities render as separate
-components beside the relationship layout. The stateDiagram slice can render simple states,
+to an explicit relation summary instead of failing. Independent relationship subgraphs split into
+separate planning components, and unrelated standalone entities render separately beside the relationship layout. The stateDiagram slice can render simple states,
 descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, root
 directions, and composite-state boxes through `render_state` or `render_model`; inline and block
 state notes render as terminal note nodes with open note edges, and state click/href metadata is
@@ -85,11 +86,11 @@ copied, normalized, and self-authored cases.
 | Diagram family | Public entry points | Shipped text subset |
 | --- | --- | --- |
 | flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations including circle, double-circle, stadium, asymmetric/flag/paper-tape, hexagon, trapezoid, trapezoid-alt, lean-left/right, datastore, document, stacked-document, tagged-document, and lined-document shapes, labels including multiline edge labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML color roles, foreground `classDef`/`class`/`style`/`linkStyle` mapping, and node/subgraph `fill`/`background` output. |
-| sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes with parseable fill backgrounds, activations, lifecycle markers, autonumber, core control blocks, parseable rect backgrounds, and opt-in ANSI/HTML color roles. |
-| classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, multiline relationship labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, dense crossing/grid-budget relation-summary fallback, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
-| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, multiline relationship labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, dense crossing/grid-budget relation-summary fallback, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
+| sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes with parseable fill backgrounds and inner padding, activations, lifecycle markers, autonumber, core control blocks, parseable rect backgrounds, and opt-in ANSI/HTML color roles. |
+| classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, namespace containers, namespace-qualified endpoint aliases, namespace-internal class and note relationship routing, members, methods, multiline relationship labels, single relationships, self-relation loops, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by barycenter layer ordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, independent relation components, dense crossing/grid-budget relation-summary fallback, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
+| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, multiline relationship labels, identifying/non-identifying relationships, common cardinality markers, self-relationship loops, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by barycenter layer ordering, same-endpoint and bidirectional same-pair lanes, simple mixed-parallel lanes, simple forward/reverse spanning-level side lanes, cyclic reverse-span lanes, independent relation components, dense crossing/grid-budget relation-summary fallback, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
 | stateDiagram | `render_state`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Simple states, descriptions, start/end pseudo states, fork/join/choice pseudo states, labeled transitions, LR/TD/TB/BT/RL root directions, composite-state group boxes and boundary transitions for cleanly mapped groups, inline/block notes as terminal note nodes, accepted-but-omitted click/href metadata, foreground/background `classDef`/`class`/`style` mapping, and opt-in ANSI/HTML color roles. |
-| xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, axis visibility controls, inferred numeric labels, configurable compact plot areas, multi-series legend rows, opt-in data labels, outside-bar vertical data labels, and opt-in ANSI/HTML foreground color roles. |
+| xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, axis visibility controls, inferred numeric labels, configurable compact plot areas, multi-series legend rows, opt-in data labels, terminal `values:` disclosure rows for line and multi-series charts, outside-bar vertical data labels, and opt-in ANSI/HTML foreground color roles. |
 | mindmap | `render_mindmap`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact hierarchy outlines with preserved node order and readable wrapped labels. |
 | treeView | `render_tree_view`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact hierarchy outlines with parent-child depth, sibling order, and wrapped labels. |
 | timeline | `render_timeline`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Readable timeline summaries with section order, task order, events, and score annotations. |
@@ -101,6 +102,19 @@ copied, normalized, and self-authored cases.
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the
 typed `render_model` path.
+
+## Terminal Theme API
+
+`AsciiColorTheme::from_terminal_palette` derives terminal roles from a compact
+`AsciiTerminalPalette`: required `foreground` and `background`, plus optional `line`, `accent`,
+`muted`, `surface`, and `border` colors. The derived theme maps only terminal-meaningful roles such
+as text, borders, edge lines/arrows, sequence lifelines, and chart series colors. It does not import
+SVG CSS-variable semantics into text output. Explicit `AsciiColorTheme::with_role` calls still take
+precedence after derivation.
+
+Bindings expose the same shape as `ascii.theme` in options JSON. Color values use the existing CSS
+color parser for opaque terminal colors; transparent colors are rejected rather than silently
+falling back.
 
 ## XYChart ASCII Contract
 
@@ -126,6 +140,21 @@ The renderer consumes the typed XYChart display policy from `merman-core`. `xyCh
 `xyChart.showDataLabel`, `xyChart.showDataLabelOutsideBar`, and
 `xyChart.xAxis/yAxis.showLabel/showTitle/showTick/showAxisLine` affect terminal output. Tick marks
 can render independently from axis lines so hidden axis lines do not accidentally hide tick intent.
+For a single bar series, data labels stay close to the bars and respect
+`showDataLabelOutsideBar`. For line charts and multi-series charts, `showDataLabel` emits explicit
+`values:` rows keyed by series title and category so terminal output has a stable tooltip
+replacement without covering the plot.
+
+## Relation Summary Diagnostics
+
+Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be
+drawn as a deterministic terminal grid, when class relationships cross namespace/container
+boundaries, when route or overlay collision checks would damage a box, or when the selected
+routed scene exceeds `AsciiRenderOptions::max_grid_cells`. Default output hides
+that internal reason to keep terminal text stable and user-facing. Enable
+`AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as
+`reason: grid_budget actual=12 limit=1` directly under `relations:`. Possible reason keys are
+`crossing`, `route_collision`, `overlay_collision`, and `grid_budget`.
 
 ## Intended Use
 
@@ -167,6 +196,9 @@ The ASCII renderer work is based on and informed by MIT-licensed reference imple
   - License copy: `LICENSES/beautiful-mermaid-MIT.txt`
   - Intended use: reference algorithms, output ideas, and tests for class, ER, xychart, color, and
     multiline ASCII work.
+  - Promoted ideas are re-expressed as local semantic probes, including ampersand flowchart
+    fan-in/fan-out, Class annotations and methods, ER attributes with identifying relationships,
+    Sequence multi-message ordering, and XYChart multi-series value disclosure.
 
 The local `repo-ref/` directory is gitignored and is only a research reference. Any derived source,
 fixtures, or notices required for builds and releases must live in tracked paths in this crate.

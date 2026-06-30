@@ -77,6 +77,9 @@ fn render_vertical(
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
     push_legend_line(&mut out, model, chars);
+    if model.display.show_data_label && !uses_compact_bar_data_labels(model) {
+        push_value_disclosure_lines(&mut out, model, categories, chars);
+    }
 
     let show_y_labels = axis_labels_visible(model.display.y_axis);
     let tick_labels = if show_y_labels {
@@ -94,7 +97,7 @@ fn render_vertical(
     let y_axis_mark = vertical_axis_mark(model.display.y_axis, chars);
     let plot_prefix_width = plot_prefix_width(show_y_labels, y_axis_mark.is_some(), gutter);
 
-    if model.display.show_data_label {
+    if model.display.show_data_label && uses_compact_bar_data_labels(model) {
         if model.display.show_data_label_outside_bar {
             if let Some(line) = vertical_data_label_line(model, plot_prefix_width, plot_area) {
                 out.push(line);
@@ -179,6 +182,9 @@ fn render_horizontal(
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
     push_legend_line(&mut out, model, chars);
+    if model.display.show_data_label && !uses_compact_bar_data_labels(model) {
+        push_value_disclosure_lines(&mut out, model, categories, chars);
+    }
     let plot_rows = build_horizontal_plot_rows(model, categories.len(), y_range, chars, plot_area);
 
     let show_x_labels = axis_labels_visible(model.display.x_axis);
@@ -201,6 +207,7 @@ fn render_horizontal(
         push_axis_prefix(&mut line, category, gutter, show_x_labels, x_axis_mark);
         line.push_cells(&plot_row.cells);
         if model.display.show_data_label
+            && uses_compact_bar_data_labels(model)
             && let (Some(value), Some(label)) = (plot_row.bar_value, plot_row.bar_label.as_deref())
             && (model.display.show_data_label_outside_bar
                 || !write_horizontal_inside_data_label(
@@ -295,8 +302,7 @@ fn push_legend_line(
 
 fn legend_line(plots: &[XyChartPlotRenderModel], chars: ChartChars) -> ChartLine {
     let mut line = ChartLine::new();
-    let mut bar_index = 0;
-    let mut line_index = 0;
+    let mut label_state = SeriesLabelState::default();
 
     for (series_index, plot) in plots.iter().enumerate() {
         if series_index > 0 {
@@ -308,26 +314,35 @@ fn legend_line(plots: &[XyChartPlotRenderModel], chars: ChartChars) -> ChartLine
             AsciiColorRole::ChartSeries(series_index),
         );
         line.push_plain_char(' ');
-        let default_label = match plot.plot_type {
-            XyChartPlotType::Bar => {
-                bar_index += 1;
-                format!("Bar {bar_index}")
-            }
-            XyChartPlotType::Line => {
-                line_index += 1;
-                format!("Line {line_index}")
-            }
-        };
-
-        let label = plot
-            .title
-            .as_deref()
-            .and_then(non_empty)
-            .unwrap_or(&default_label);
-        line.push_role_text(label, AsciiColorRole::Text);
+        line.push_role_text(&series_label(plot, &mut label_state), AsciiColorRole::Text);
     }
 
     line
+}
+
+#[derive(Debug, Default)]
+struct SeriesLabelState {
+    bar_index: usize,
+    line_index: usize,
+}
+
+fn series_label(plot: &XyChartPlotRenderModel, state: &mut SeriesLabelState) -> String {
+    let default_label = match plot.plot_type {
+        XyChartPlotType::Bar => {
+            state.bar_index += 1;
+            format!("Bar {}", state.bar_index)
+        }
+        XyChartPlotType::Line => {
+            state.line_index += 1;
+            format!("Line {}", state.line_index)
+        }
+    };
+
+    plot.title
+        .as_deref()
+        .and_then(non_empty)
+        .unwrap_or(&default_label)
+        .to_string()
 }
 
 fn axis_labels_visible(axis: XyChartAxisDisplayPolicy) -> bool {
@@ -418,7 +433,7 @@ fn vertical_data_label_line(
     plot_prefix_width: usize,
     plot_area: XyChartPlotArea,
 ) -> Option<ChartLine> {
-    let labels = first_bar_plot_value_labels(model)?;
+    let labels = compact_bar_value_labels(model)?;
     if labels.is_empty() {
         return None;
     }
@@ -429,6 +444,59 @@ fn vertical_data_label_line(
         &plot_area.band_labels(&labels),
         AsciiColorRole::Text,
     );
+    Some(line)
+}
+
+fn push_value_disclosure_lines(
+    out: &mut Vec<ChartLine>,
+    model: &XyChartDiagramRenderModel,
+    categories: &[String],
+    chars: ChartChars,
+) {
+    let mut label_state = SeriesLabelState::default();
+
+    for (series_index, plot) in model.plots.iter().enumerate() {
+        let label = series_label(plot, &mut label_state);
+        let Some(line) = value_disclosure_line(series_index, plot, &label, categories, chars)
+        else {
+            continue;
+        };
+        out.push(line);
+    }
+}
+
+fn value_disclosure_line(
+    series_index: usize,
+    plot: &XyChartPlotRenderModel,
+    label: &str,
+    categories: &[String],
+    chars: ChartChars,
+) -> Option<ChartLine> {
+    if plot.values.is_empty() {
+        return None;
+    }
+
+    let mut line = ChartLine::new();
+    line.push_role_text("values: ", AsciiColorRole::Text);
+    line.push_role_char(
+        chars.legend_symbol(plot.plot_type),
+        AsciiColorRole::ChartSeries(series_index),
+    );
+    line.push_plain_char(' ');
+    line.push_role_text(label, AsciiColorRole::Text);
+    line.push_role_text(": ", AsciiColorRole::Text);
+
+    for (idx, value) in plot.values.iter().copied().enumerate() {
+        if idx > 0 {
+            line.push_role_text(", ", AsciiColorRole::Text);
+        }
+        if let Some(category) = categories.get(idx).map(String::as_str).and_then(non_empty) {
+            line.push_role_text(category, AsciiColorRole::Text);
+            line.push_plain_char('=');
+        }
+        line.push_role_text(&format_number(value), AsciiColorRole::Text);
+    }
+
     Some(line)
 }
 
@@ -460,12 +528,19 @@ fn push_horizontal_outside_data_label(line: &mut ChartLine, label: &str) {
     line.push_role_text(label, AsciiColorRole::Text);
 }
 
-fn first_bar_plot_value_labels(model: &XyChartDiagramRenderModel) -> Option<Vec<String>> {
-    model
-        .plots
-        .iter()
-        .find(|plot| plot.plot_type == XyChartPlotType::Bar)
-        .map(|plot| plot.values.iter().copied().map(format_number).collect())
+fn uses_compact_bar_data_labels(model: &XyChartDiagramRenderModel) -> bool {
+    model.plots.len() == 1 && model.plots[0].plot_type == XyChartPlotType::Bar
+}
+
+fn compact_bar_value_labels(model: &XyChartDiagramRenderModel) -> Option<Vec<String>> {
+    uses_compact_bar_data_labels(model).then(|| {
+        model.plots[0]
+            .values
+            .iter()
+            .copied()
+            .map(format_number)
+            .collect()
+    })
 }
 
 fn category_labels(model: &XyChartDiagramRenderModel) -> Vec<String> {

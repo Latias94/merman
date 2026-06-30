@@ -492,6 +492,17 @@ and `merman-cli render --format ascii|unicode`.
 See [`docs/rendering/ASCII_SUPPORT_MATRIX.md`](docs/rendering/ASCII_SUPPORT_MATRIX.md) for the
 current support levels. Some families render full terminal diagrams, while dense or
 terminal-hostile families intentionally use readable structured summaries.
+The same support story is exposed through `ascii_capabilities` / `ascii_capabilities_json` in the
+bindings, and the Playground uses that metadata to label full, partial, and summary ASCII support
+instead of treating support as a simple on/off family list.
+
+Terminal colors use `AsciiColorTheme`. `AsciiColorTheme::from_terminal_palette` derives roles from
+foreground/background plus optional `line`, `accent`, `muted`, `surface`, and `border` colors, and
+bindings expose the same shape as `ascii.theme` in options JSON. This keeps terminal text theming
+separate from SVG CSS-variable semantics.
+Bindings, Web, Playground, and the CLI can pass ASCII-specific options for charset, color mode,
+terminal palette, sequence mirrored actors, XYChart plot dimensions, grid limits, and
+relation-summary diagnostics.
 
 Flowchart text output covers LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape
 approximations, labels, open/dotted/thick edges, length spacing, and titled/nested subgraphs with
@@ -508,11 +519,17 @@ Class, ER, and XYChart text output intentionally ship bounded terminal-native su
 support boxes, labels, single relationships, layered chain/star multi-relationship layouts, and
 adjacent-layer crossing layouts resolved by layer reordering. Same-endpoint and simple
 mixed-parallel relationships render as distinct lanes, simple spanning-level relationships route
-through side lanes, and isolated unrelated classes/entities render as standalone components beside
-the relationship layout. Dense, cyclic, grid-budget-limited, or collision-prone Class/ER layouts
+through side lanes, same-namespace Class relationships route inside namespace containers, and
+isolated unrelated classes/entities render as standalone components beside the relationship layout.
+Dense, cyclic, cross-namespace/container, grid-budget-limited, or collision-prone Class/ER layouts
 fall back to a structured `relations:` summary instead of drawing unreadable overlapping lines.
+`AsciiRenderOptions::with_relation_summary_diagnostics(true)` adds an opt-in `reason:` row to
+those summaries so hosts can tell whether fallback came from crossings, route collisions, overlay
+collisions, or grid budget limits without changing default text output.
 XYChart renders deterministic compact bars, lines, mixed plots, titles, axes, legends, and
-configurable compact plot areas instead of SVG coordinates.
+configurable compact plot areas instead of SVG coordinates. When `showDataLabel` is enabled,
+single bar charts keep compact bar labels, while line and multi-series charts emit explicit
+`values:` rows as a terminal replacement for browser hover tooltips.
 
 ```rust
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};

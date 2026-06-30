@@ -179,6 +179,17 @@
       "requirement-styled-elements": "样式元素"
     }
   },
+  "asciiSupport": {
+    "unsupported": "不支持",
+    "summary": "摘要",
+    "summaryFallback": "复杂终端布局可能改用摘要输出。",
+    "levels": {
+      "full": "完整 ASCII",
+      "partial": "部分 ASCII",
+      "summary": "摘要 ASCII",
+      "unsupported": "不支持"
+    }
+  },
   "editor": {
     "codeMode": "代码",
     "configMode": "配置",

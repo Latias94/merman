@@ -18,6 +18,10 @@ impl StyledLine {
         Self { cells: Vec::new() }
     }
 
+    pub(crate) fn from_cells(cells: Vec<StyledCell>) -> Self {
+        Self { cells }
+    }
+
     pub(crate) fn blank(width: usize) -> Self {
         Self {
             cells: vec![StyledCell::blank(); width],

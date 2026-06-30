@@ -31,7 +31,7 @@ We use multiple parity levels depending on risk and cost:
 Before “fixing”, validate the gap exists and is in-scope:
 
 1. **Reproduce with the existing gates**
-+   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
+   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
    - For a single diagram: `cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-decimals 3`
 
 2. **Locate upstream coverage**

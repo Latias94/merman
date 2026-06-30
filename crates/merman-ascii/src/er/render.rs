@@ -220,9 +220,8 @@ fn render_vertical_relationship(
     top: &RenderedEntityBox,
     bottom: &RenderedEntityBox,
     relationship: &ErRelationshipRenderModel,
-    options: &AsciiRenderOptions,
     charset: ErCharset,
-) -> Result<String> {
+) -> Result<Vec<RelationGraphLine>> {
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
@@ -250,7 +249,7 @@ fn render_vertical_relationship(
         },
     );
 
-    Ok(plan.render_with_options(options))
+    Ok(plan.render_lines())
 }
 
 fn er_relationship_rows(
@@ -299,9 +298,8 @@ fn is_same_endpoint_parallel_relationship(relationships: &[ErRelationshipRenderM
 fn render_parallel_vertical_relationships(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
-    options: &AsciiRenderOptions,
     charset: ErCharset,
-) -> Result<String> {
+) -> Result<Vec<RelationGraphLine>> {
     let first = &relationships[0];
     let top = find_box(boxes, &first.entity_a)?;
     let bottom = find_box(boxes, &first.entity_b)?;
@@ -311,7 +309,7 @@ fn render_parallel_vertical_relationships(
         .collect::<Result<Vec<_>>>()?;
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
 
-    Ok(plan.render_with_options(options))
+    Ok(plan.render_lines())
 }
 
 fn parallel_er_lane_rows(
@@ -363,6 +361,22 @@ fn er_relationship_summary_row(
     .with_label(label.as_ref()))
 }
 
+fn er_relationship_summary_row_for_reason(
+    relationship: &ErRelationshipRenderModel,
+    entity_labels: &HashMap<String, String>,
+    charset: ErCharset,
+    reason: relation_graph::LayeredRelationSummaryReason,
+) -> Result<RelationGraphSummaryRow> {
+    match reason {
+        relation_graph::LayeredRelationSummaryReason::Crossing
+        | relation_graph::LayeredRelationSummaryReason::RouteCollision
+        | relation_graph::LayeredRelationSummaryReason::OverlayCollision
+        | relation_graph::LayeredRelationSummaryReason::GridBudget { .. } => {
+            er_relationship_summary_row(relationship, entity_labels, charset)
+        }
+    }
+}
+
 fn relationship_label<'a>(entity_labels: &'a HashMap<String, String>, id: &'a str) -> &'a str {
     entity_labels.get(id).map(String::as_str).unwrap_or(id)
 }
@@ -404,6 +418,43 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
 
     fn is_same_endpoint_parallel(&self, relationships: &[ErRelationshipRenderModel]) -> bool {
         is_same_endpoint_parallel_relationship(relationships)
+    }
+
+    fn is_self_relation(&self, relationship: &ErRelationshipRenderModel) -> bool {
+        relationship.entity_a == relationship.entity_b
+    }
+
+    fn render_self_relation(
+        &self,
+        relation_box: &RenderedEntityBox,
+        relationship: &ErRelationshipRenderModel,
+        options: &AsciiRenderOptions,
+    ) -> Result<Vec<RelationGraphLine>> {
+        let rows = self_loop_rows_for_er_relationship(relationship, self.charset)?;
+
+        let _ = options;
+        Ok(relation_graph::render_parallel_self_loops(
+            relation_box,
+            vec![rows],
+        ))
+    }
+
+    fn render_self_relations(
+        &self,
+        relation_box: &RenderedEntityBox,
+        relationships: &[ErRelationshipRenderModel],
+        options: &AsciiRenderOptions,
+    ) -> Result<Vec<RelationGraphLine>> {
+        let loops = relationships
+            .iter()
+            .map(|relationship| self_loop_rows_for_er_relationship(relationship, self.charset))
+            .collect::<Result<Vec<_>>>()?;
+
+        let _ = options;
+        Ok(relation_graph::render_parallel_self_loops(
+            relation_box,
+            loops,
+        ))
     }
 
     fn layered_horizontal_gap(&self) -> usize {
@@ -464,11 +515,12 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         boxes: &[RenderedEntityBox],
         relationship: &ErRelationshipRenderModel,
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
+    ) -> Result<Vec<RelationGraphLine>> {
         let top = find_box(boxes, &relationship.entity_a)?;
         let bottom = find_box(boxes, &relationship.entity_b)?;
 
-        render_vertical_relationship(top, bottom, relationship, options, self.charset)
+        let _ = options;
+        render_vertical_relationship(top, bottom, relationship, self.charset)
     }
 
     fn render_parallel(
@@ -476,21 +528,56 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
         boxes: &[RenderedEntityBox],
         relationships: &[ErRelationshipRenderModel],
         options: &AsciiRenderOptions,
-    ) -> Result<String> {
-        render_parallel_vertical_relationships(boxes, relationships, options, self.charset)
+    ) -> Result<Vec<RelationGraphLine>> {
+        let _ = options;
+        render_parallel_vertical_relationships(boxes, relationships, self.charset)
     }
 
     fn build_summary_row(
         &self,
         relationship: &ErRelationshipRenderModel,
-        _reason: relation_graph::LayeredRelationSummaryReason,
+        reason: relation_graph::LayeredRelationSummaryReason,
     ) -> Result<RelationGraphSummaryRow> {
-        er_relationship_summary_row(relationship, self.entity_labels, self.charset)
+        er_relationship_summary_row_for_reason(
+            relationship,
+            self.entity_labels,
+            self.charset,
+            reason,
+        )
     }
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
         er_layered_error(error)
     }
+}
+
+fn self_loop_rows_for_er_relationship(
+    relationship: &ErRelationshipRenderModel,
+    charset: ErCharset,
+) -> Result<relation_graph::RelationSelfLoopRows> {
+    let top_marker = RelationGraphLine::with_role(
+        cardinality_marker(&relationship.rel_spec.card_b)?.to_string(),
+        AsciiColorRole::EdgeArrow,
+    );
+    let bottom_marker = RelationGraphLine::with_role(
+        cardinality_marker(&relationship.rel_spec.card_a)?.to_string(),
+        AsciiColorRole::EdgeArrow,
+    );
+    let label_lines = RelationGraphLabel::new(&relationship.role_a)
+        .map(|label| relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel))
+        .unwrap_or_default();
+
+    Ok(relation_graph::RelationSelfLoopRows::new(
+        top_marker,
+        label_lines,
+        bottom_marker,
+        relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?,
+        relationship_line(&relationship.rel_spec.rel_type, charset)?,
+    )
+    .with_tail_prefix(RelationGraphLine::with_role(
+        cardinality_marker(&relationship.rel_spec.card_b)?.to_string(),
+        AsciiColorRole::EdgeArrow,
+    )))
 }
 
 fn cardinality_marker(cardinality: &str) -> Result<&'static str> {

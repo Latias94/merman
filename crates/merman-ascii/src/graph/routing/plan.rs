@@ -85,12 +85,9 @@ impl RoutePlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(super) enum PlannedRouteSegment {
     Direct,
-    Internal,
     Boundary,
-    External,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

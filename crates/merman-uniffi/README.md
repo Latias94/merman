@@ -10,6 +10,7 @@ Generated bindings use the built-in headless measurer by default. GUI and WebVie
 their platform font stack can use `MermanReusableEngine` with a `MermanTextMeasurer` callback.
 Call `MermanReusableEngine::set_text_measurer` to install a host measurer later, and
 `MermanReusableEngine::clear_text_measurer` to restore the built-in measurer.
+`ascii_capabilities()` exposes ASCII support grades and summary fallback metadata.
 `diagram_family_capabilities()` exposes the same parser/render discovery information as the C ABI
 metadata surface.
 

@@ -1,7 +1,9 @@
 pub use merman_ascii::{
-    AsciiCharset, AsciiError, AsciiRenderOptions, AsciiRenderer, render_class, render_er,
-    render_flowchart, render_gantt, render_git_graph, render_journey, render_kanban,
-    render_mindmap, render_model, render_packet, render_sequence, render_timeline,
+    AsciiCapability, AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorTheme,
+    AsciiDirection, AsciiError, AsciiEvidenceKind, AsciiRenderOptions, AsciiRenderer, AsciiRgb,
+    AsciiSupportLevel, AsciiTerminalPalette, ascii_capabilities, ascii_supported_diagram_types,
+    render_class, render_er, render_flowchart, render_gantt, render_git_graph, render_journey,
+    render_kanban, render_mindmap, render_model, render_packet, render_sequence, render_timeline,
     render_tree_view, render_xychart,
 };
 

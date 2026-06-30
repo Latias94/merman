@@ -253,30 +253,30 @@ fn sequence_color_html_wraps_boxes_notes_control_frames_and_messages_without_cha
     assert_eq!(
         strip_html_spans(&rendered),
         concat!(
-            "+- Group -------+\n",
-            "|+---+     +---+|\n",
-            "|| A |     | B ||\n",
-            "|+-+-+     +-+-+|\n",
-            "|+ loop Work ----+\n",
-            "|| |         |  ||\n",
-            "|| | Start   |  ||\n",
-            "|| +-------->|  ||\n",
-            "|| |         #  ||\n",
-            "||+-----------+ ||\n",
-            "|||   Wait    | ||\n",
-            "||+-----------+ ||\n",
-            "|| |         #  ||\n",
-            "|| | Done    #  ||\n",
-            "|| |<........+  ||\n",
-            "|+---------------+\n",
-            "|  |         |  |\n",
-            "+---------------+\n",
+            "+- Group ------------+\n",
+            "| +---+     +---+    |\n",
+            "| | A |     | B |    |\n",
+            "| +-+-+     +-+-+    |\n",
+            "| + loop Work ----+  |\n",
+            "| | |         |   |  |\n",
+            "| | | Start   |   |  |\n",
+            "| | +-------->|   |  |\n",
+            "| | |         #   |  |\n",
+            "| |+-----------+  |  |\n",
+            "| ||   Wait    |  |  |\n",
+            "| |+-----------+  |  |\n",
+            "| | |         #   |  |\n",
+            "| | | Done    #   |  |\n",
+            "| | |<........+   |  |\n",
+            "| +---------------+  |\n",
+            "|   |         |      |\n",
+            "+--------------------+\n",
         )
     );
     for expected_fragment in [
         "<span style=\"color:#202020\">+-</span><span style=\"color:#101010\"> Group </span>",
-        "<span style=\"color:#202020\">|+</span><span style=\"color:#101010\"> loop Work </span>",
-        "<span style=\"color:#202020\">||+-----------+</span>",
+        "<span style=\"color:#202020\">|</span> <span style=\"color:#202020\">+</span><span style=\"color:#101010\"> loop Work </span>",
+        "<span style=\"color:#202020\">|</span> <span style=\"color:#202020\">|+-----------+</span>",
         "<span style=\"color:#707070\">Start</span>",
         "<span style=\"color:#505050\">--------</span><span style=\"color:#606060\">&gt;</span>",
         "<span style=\"color:#404040\">#</span>",
@@ -812,6 +812,35 @@ fn sequence_boxes_with_unknown_actors_are_explicitly_unsupported() {
     });
 
     assert_unsupported_sequence_model(model, "boxes with unknown actors");
+}
+
+#[test]
+fn sequence_empty_boxes_render_as_diagram_wide_regions() {
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model.boxes.push(SequenceBox {
+        actor_keys: Vec::new(),
+        fill: "green".to_string(),
+        name: Some("System boundary".to_string()),
+        wrap: false,
+    });
+    model.messages.push(message(Some("A"), Some("B"), 0));
+
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("empty sequence boxes should render as diagram-wide regions");
+
+    assert!(
+        rendered.contains("System boundary"),
+        "empty box title should remain visible:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Hi"),
+        "empty box should preserve sequence contents:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("+"),
+        "empty box should render a terminal region border:\n{rendered}"
+    );
 }
 
 #[test]
@@ -1729,6 +1758,125 @@ fn sequence_control_blocks_render_inside_participant_boxes() {
 }
 
 #[test]
+fn sequence_box_keeps_inner_padding_around_participants_and_frames() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox Group\nparticipant A\nparticipant B\nend\nloop Work\nA->>B: Hi\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("boxed control block should render");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("| + loop Work ")),
+        "control frame should keep one column of padding inside sequence box:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("|+")),
+        "sequence box inner content should not touch the left border:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("||")),
+        "sequence box body rows should not merge with inner frame or participant borders:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_box_with_lifecycle_and_mirror_keeps_boundaries() {
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    add_sequence_participant(&mut model, "C");
+    model.boxes.push(SequenceBox {
+        actor_keys: vec!["A".to_string(), "B".to_string(), "C".to_string()],
+        fill: "green".to_string(),
+        name: Some("Group".to_string()),
+        wrap: false,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m0".to_string(),
+        from: None,
+        to: None,
+        message_type: LINETYPE_LOOP_START,
+        message: SequenceMessagePayload::Text("Setup".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m1".to_string(),
+        from: Some("B".to_string()),
+        to: Some("C".to_string()),
+        message_type: 0,
+        message: SequenceMessagePayload::Text("Hello C".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m2".to_string(),
+        from: Some("C".to_string()),
+        to: Some("B".to_string()),
+        message_type: 0,
+        message: SequenceMessagePayload::Text("Still here".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m3".to_string(),
+        from: Some("B".to_string()),
+        to: Some("C".to_string()),
+        message_type: 6,
+        message: SequenceMessagePayload::Text("Bye C".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(message(None, None, LINETYPE_LOOP_END));
+    model.created_actors.insert("C".to_string(), 1);
+    model.destroyed_actors.insert("C".to_string(), 3);
+
+    let rendered = render_sequence_model(
+        &model,
+        &AsciiRenderOptions::ascii().with_sequence_mirror_actors(true),
+    )
+    .expect("boxed lifecycle control block with mirrored actors should render");
+
+    for expected in ["Group", "loop Setup", "Hello C", "Still here", "Bye C"] {
+        assert!(
+            rendered.contains(expected),
+            "boxed lifecycle sequence should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.matches("| C |").count() == 1,
+        "created then destroyed actor should render at lifecycle point, not in the final mirror footer:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('x'),
+        "destroyed actor should render a termination marker:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("| + loop Setup ")),
+        "control frame should keep padding inside the outer sequence box:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("|+")),
+        "outer sequence box and inner frame borders should not merge:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("||")),
+        "outer sequence box and participant or frame borders should not merge:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_local_semantic_fixture_covers_dense_control_rows() {
     let input = read_local_semantic_fixture("sequence/dense_control_rows.mmd");
 
@@ -1796,6 +1944,33 @@ fn sequence_local_semantic_fixture_covers_self_messages_with_notes_and_alt_branc
     assert!(
         rendered.lines().count() >= 10,
         "self-message semantic sequence fixture should produce a multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_local_semantic_fixture_covers_multiple_reference_messages() {
+    let input = read_local_semantic_fixture("sequence/multiple_messages.mmd");
+    let rendered = render_sequence(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic multiple-message fixture should render");
+
+    for expected in [
+        "Alice", "Bob", "Charlie", "Hello", "Forward", "Reply", "Done",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "sequence multiple-message fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert!(
+        first_line_index_containing(&rendered, "Hello")
+            < first_line_index_containing(&rendered, "Forward"),
+        "sequence messages should preserve source order before the cross-participant reply:\n{rendered}"
+    );
+    assert!(
+        first_line_index_containing(&rendered, "Reply")
+            < first_line_index_containing(&rendered, "Done"),
+        "sequence replies should preserve source order:\n{rendered}"
     );
 }
 

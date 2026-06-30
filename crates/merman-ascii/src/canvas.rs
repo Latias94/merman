@@ -78,7 +78,7 @@ impl Canvas {
         self.index(x, y).and_then(|index| self.cells[index].style())
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
         let mut offset = 0;
         for ch in text.chars() {
@@ -103,12 +103,12 @@ impl Canvas {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn finish(self) -> String {
         self.finish_plain(false)
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn finish_trimmed(self) -> String {
         self.finish_plain(true)
     }
@@ -117,9 +117,23 @@ impl Canvas {
         self.finish_with_options_internal(options, false)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn finish_trimmed_with_options(self, options: &AsciiRenderOptions) -> String {
         self.finish_with_options_internal(options, true)
+    }
+
+    pub(crate) fn into_styled_lines_trimmed(self) -> Vec<crate::text::StyledLine> {
+        if self.width == 0 || self.height == 0 {
+            return Vec::new();
+        }
+
+        let mut lines = Vec::new();
+        for row_start in (0..self.cells.len()).step_by(self.width) {
+            let row_end = self.trimmed_row_end(row_start, row_start + self.width, true);
+            lines.push(crate::text::StyledLine::from_cells(
+                self.cells[row_start..row_end].to_vec(),
+            ));
+        }
+        lines
     }
 
     fn finish_plain(self, trim: bool) -> String {
