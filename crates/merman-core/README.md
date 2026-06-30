@@ -16,6 +16,8 @@ Most application code that wants rendered output should use the `merman` crate w
 
 - Mermaid diagram detection and preprocessing, including front matter and directives.
 - Strict and lenient parsing through `ParseOptions`.
+- Structured parse diagnostics through `Error::DiagramParse`, including parser-known exact spans,
+  insertion points, and explicit fallback locations for capability gaps.
 - Semantic JSON via `Engine::parse_diagram_sync`.
 - Typed render models via `Engine::parse_diagram_for_render_model_sync`.
 - Metadata-only parsing for integrations that only need the diagram type, title, and effective config.
@@ -84,3 +86,7 @@ fn main() -> Result<(), merman_core::Error> {
 ## Compatibility
 
 `merman-core` tracks the pinned Mermaid baseline documented in the project README and treats upstream Mermaid as the compatibility target. The semantic JSON API is the stable parser-facing shape; typed render models are optimized for the renderer and may expose a different internal structure.
+
+Core does not decide user-visible diagnostic merge policy. It reports parser facts and capability
+gaps; `merman-analysis` owns rule ids, Markdown remapping, recovered-parser deduplication, and
+editor-facing fallback policy.

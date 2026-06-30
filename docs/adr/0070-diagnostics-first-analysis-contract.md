@@ -5,13 +5,13 @@
 
 ## Context
 
-Merman currently exposes parsing, layout, rendering, and coarse validation through Rust, WASM,
-FFI, and UniFFI surfaces. The existing validation API answers whether a source can pass the shared
-render-backed parse path, but it does not expose a normalized diagnostic model with source spans,
-severity, rule identity, or editor-oriented metadata.
+Merman exposes parsing, layout, rendering, editor services, and validation through Rust, WASM, FFI,
+UniFFI, CLI, and LSP surfaces. The older validation API answered whether a source could pass the
+shared render-backed parse path, but it did not expose a normalized diagnostic model with source
+spans, severity, rule identity, or editor-oriented metadata.
 
 That is enough for smoke validation, but it is not enough for linting, Markdown integrations,
-continuous integration, or a future language server. Those products need a first-class analysis
+continuous integration, and the language server. Those products need a first-class analysis
 boundary:
 
 - deterministic diagnostics that do not require SVG rendering;
@@ -28,7 +28,7 @@ used as source and parity evidence, not as a production fallback inside the lint
 ## Decision
 
 Introduce a diagnostics-first analysis contract and make it the canonical validation surface for
-bindings, CLI linting, Markdown scanning, and future LSP work.
+bindings, CLI linting, Markdown scanning, and LSP diagnostics.
 
 ```mermaid
 flowchart TB
@@ -38,7 +38,7 @@ flowchart TB
     Core --> Diagnostics["diagnostic payload<br/>stable JSON contract"]
     Diagnostics --> Bindings["FFI / UniFFI / WASM"]
     Diagnostics --> CLI["merman-cli lint"]
-    Diagnostics --> LSP["future LSP adapter"]
+    Diagnostics --> LSP["merman-lsp projection"]
     Diagnostics --> Render["render/layout callers<br/>consume diagnostics, do not define them"]
 ```
 
@@ -73,7 +73,8 @@ The contract has these rules:
      ranges are derived views.
    - Parser failures should use structured parse diagnostics when the parser can prove an exact
      token span or insertion point. Analysis, not LSP or UI code, decides how to merge recovered
-     parser facts and when a fallback or whole-source span is honest.
+     parser facts and when a fallback or whole-source span is honest. LSP Problems use the string
+     diagnostic rule id as `Diagnostic.code`; numeric status codes remain payload metadata.
 
 5. Source mapping is part of analysis, not each wrapper.
    - Plain `.mmd` input uses the whole document as diagram source.
@@ -142,7 +143,7 @@ The canonical JSON shape starts as:
 | Binding convergence | FFI, UniFFI, WASM, and TypeScript expose `analyze_json` or equivalent wrapper | Binding smoke tests call analysis and assert the shared JSON shape |
 | Validation migration | Existing validation tests keep passing while validation is derived from diagnostics | Current validate fixtures plus new projection snapshots |
 | CLI lint readiness | `merman-cli lint` reports file, line, column, severity, id, and message for `.mmd`, Markdown, and MDX | CLI integration tests with fixture snapshots |
-| LSP readiness | Diagnostics can be converted to LSP `Diagnostic` without reparsing source in the adapter | Unit tests for byte/line/UTF-16 range mapping |
+| LSP projection | Diagnostics convert to LSP `Diagnostic` without reparsing or deduplicating in the adapter | Unit tests for byte/line/UTF-16 range mapping, string rule-id codes, and pull/push parity |
 | Mermaid parity discipline | Diagnostic behavior for parser errors and supported warnings is covered by upstream-derived fixtures | Snapshot tests tied to pinned Mermaid fixtures/source references |
 
 ## Alternatives Considered
@@ -198,18 +199,21 @@ Ship a standalone linter before changing the shared bindings.
 
 ## Consequences
 
-- Future lint and LSP work can reuse the same source-map and diagnostic model.
+- Lint and LSP work reuse the same source-map and diagnostic model.
 - Binding packages gain a richer payload without changing every host around a Rust enum.
 - Existing `validate` users have a migration bridge during alpha.
 - Parser families need incremental span and warning upgrades.
-- Documentation and tests must distinguish implemented APIs from reserved next-version protocol
-  extensions until `analyze_json` lands in code.
+- Documentation and tests must distinguish implemented APIs from reserved protocol extensions:
+  `textDocument/diagnostic` pull is implemented, but `workspace/diagnostic` remains unimplemented
+  until unopened workspace-file scanning exists.
 
-## Follow-Up Work
+## Ongoing Governance
 
-1. Add shared diagnostic and source-map types below the binding wrappers.
-2. Introduce the Rust analysis facade and `analyze_json` serialization.
-3. Migrate FFI, UniFFI, WASM, TypeScript, and native wrappers to expose analysis.
-4. Reimplement validation as a projection over analysis.
-5. Add `merman-cli lint` with Markdown and MDX fence source mapping.
-6. Add an LSP-facing adapter that converts analysis diagnostics to LSP ranges.
+1. Keep LSP, editor-core, and VS Code projection layers free of semantic diagnostic deduplication
+   or recovered-parser message policy.
+2. Expand parser-family span coverage with source-backed exact spans or insertion points; keep
+   named fallback diagnostics for families whose parser path cannot yet prove a narrower location.
+3. Do not implement `workspace/diagnostic` until unopened workspace-file scanning has a documented
+   owner, cache model, and test coverage.
+4. Add new quick fixes only through deterministic `DiagnosticFix` metadata emitted by analysis
+   rules, with LSP rejecting unsafe or overlapping edit sets before projection.

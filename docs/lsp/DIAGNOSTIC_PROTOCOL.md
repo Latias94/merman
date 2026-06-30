@@ -12,9 +12,13 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 ## Canonical rules
 
 - Source of truth: `merman-analysis::AnalysisPayload`
+- Ownership: core emits structured parse diagnostics; analysis owns canonical merge, fallback,
+  and recovery policy; editor-core and LSP only project that payload.
 - Transport: `tower-lsp`
 - Coordinate system: UTF-16 LSP positions
 - Markdown fences: remapped to the host document URI and range
+- Visible Problems code: string analysis rule id such as `merman.parse.diagram_parse`; numeric
+  analysis status code and `code_name` remain only in diagnostic `data`.
 
 ## Compatibility
 

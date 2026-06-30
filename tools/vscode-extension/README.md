@@ -16,7 +16,7 @@ remote AI.
 - Source-scoped CodeLens actions above Mermaid files and Markdown/MDX Mermaid fences for preview
   and a compact `Export / Copy` menu
 - Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped
-  diagnostic status, multi-fence selection, zoom, theme/background inspection controls, and local
+  diagnostic status, multi-fence selection, zoom, display mode/theme/background controls, and local
   SVG copy/export controls
 - Local SVG and PNG export for Mermaid files and the active Markdown/MDX Mermaid fence, including
   an export picker with open-after-export options
@@ -90,6 +90,10 @@ state.
 Detailed diagnostics and fixes belong to VS Code's native Problems, editor underline, hover, and
 quick-fix lightbulb surfaces. The preview status is a secondary navigation aid to the first
 diagnostic in the active source, not a duplicate Problems list.
+
+The preview does not provide its own pin controls, account/sync controls, AI repair controls, or a
+second quick-fix panel. Source selection is automatic for Mermaid files and current Markdown/MDX
+fences, with an explicit source picker only when a document has multiple Mermaid fences.
 
 When edits require a rerender, the previous SVG stays visible while the new render runs. If rendering
 fails, the old SVG remains inspectable and the error appears as an overlay. Zoom is applied by

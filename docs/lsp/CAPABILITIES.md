@@ -67,10 +67,18 @@ Core parser diagnostics use explicit span classes before they reach analysis:
 - Fallback spans are visible parser capability gaps. Analysis attaches fallback related information
   instead of silently projecting line-zero or unlabelled whole-source ranges.
 
-The migrated handwritten parser coverage includes XY Chart series values, Gantt weekday/weekend
-directive values, GitGraph command tokens, Timeline event separator insertion points, and C4
-relation/style missing-argument insertion points. LALRPOP-backed families continue to report token
-or EOF spans through the same structured contract.
+Current parser-family diagnostic span matrix:
+
+| Family / Parser Path | Span Support | Coverage Evidence | Remaining Gap |
+| --- | --- | --- | --- |
+| LALRPOP-backed parse wrappers | Exact token spans and EOF insertion points | `lalrpop_parse_diagnostic_preserves_token_span`, `lalrpop_parse_diagnostic_preserves_eof_insertion_point` | User errors are explicit fallbacks. |
+| XY Chart | Exact invalid plot values; insertion points for missing plot syntax | `xychart_invalid_plot_number_reports_exact_token_span`, `xychart_comment_after_plot_does_not_merge_next_statement` | Broader render-validation failures still use named fallback helpers. |
+| Gantt | Exact directive-value spans for `weekday` / `weekend` validation | `gantt_weekday_rejects_unknown_values` | Date parsing and cross-statement semantic failures still use visible fallbacks unless their parser helper preserves a narrower span. |
+| GitGraph | Exact unknown command-token spans | `gitgraph_unknown_command_reports_exact_command_span` | Deeper repository-state semantic failures remain fallback diagnostics. |
+| Timeline | Insertion points for missing event text separators | `timeline_event_missing_space_reports_insertion_point` | Generic section/title validation still uses fallback constructors where no token span is preserved. |
+| C4 | Insertion points for missing relation/style macro arguments | `c4_missing_relation_target_reports_local_insertion_point`, `c4_missing_relation_style_target_reports_local_insertion_point` | Other render parser validation remains fallback until spanned macro validation covers it. |
+| Architecture | Named fallback diagnostics | Capability docs plus render parser fallback constructors | Needs a shared spanned render parser; no message scraping is allowed. |
+| Kanban | Named fallback diagnostics | Capability docs plus render parser fallback constructors | Needs render validation to reuse parser-backed source offsets; no message scraping is allowed. |
 
 Remaining fallback ledger:
 
@@ -94,9 +102,11 @@ Remaining fallback ledger:
 - LSP diagnostic projection: `Diagnostic.source` is `merman`; the visible `Diagnostic.code` is the
   stable string rule id such as `merman.parse.diagram_parse`, not the numeric analysis status.
   Numeric `code` / `code_name`, category, diagram type, help text, and fix metadata remain in
-  diagnostic `data` for compatibility and code actions. Document pull diagnostics are enabled only
-  when the client advertises `textDocument.diagnostic`; `workspace_diagnostics` is not advertised
-  and `workspace/diagnostic` is not implemented because unopened workspace-file scanning is not
+  diagnostic `data` for compatibility and code actions. Editor-core and LSP do not keep a
+  number-or-string compatibility enum and do not deduplicate projected diagnostics; they preserve
+  analysis payload cardinality. Document pull diagnostics are enabled only when the client
+  advertises `textDocument.diagnostic`; `workspace_diagnostics` is not advertised and
+  `workspace/diagnostic` is not implemented because unopened workspace-file scanning is not
   implemented. Push diagnostics are cleared on `didClose`, and `workspace/diagnostic/refresh` is
   sent only to invalidate pull diagnostic caches when the client advertises
   `workspace.diagnostic.refreshSupport`.

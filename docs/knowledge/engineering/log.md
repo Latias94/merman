@@ -6,6 +6,10 @@ status: active
 # Log
 
 ## 2026-06-30
+- Completed the U7 diagnostics documentation slice: `CAPABILITIES.md` now has a parser-family
+  diagnostic span matrix and final diagnostic ownership model, ADR 0070 describes `merman-lsp` as
+  the current projection layer rather than future work, and crate/VS Code READMEs document core,
+  analysis, editor projection, and preview diagnostic responsibilities.
 - Completed the U6 redundant compatibility cleanup slice: editor-core no longer exposes a
   numeric/string diagnostic-code compatibility enum, LSP Problems codes are analysis rule id
   strings only, analysis recovery merge no longer detects fallback parse locations by inspecting
