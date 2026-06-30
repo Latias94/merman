@@ -6,6 +6,11 @@ status: active
 # Log
 
 ## 2026-06-30
+- Advanced U3 with `298433194 refactor(core): thread spans through handwritten parsers`: core now
+  has explicit exact/insertion/fallback-at parse constructors, XY Chart plot number errors preserve
+  exact token spans, Gantt weekday/weekend directive errors use parser-local spans, and GitGraph
+  unknown commands report the command token. Verified formatting, core test binary compilation,
+  GitGraph focused test, XY Chart focused tests, and diff hygiene.
 - Completed the first two slices of the editor diagnostics cleanup plan: U1 now uses a single
   structured core parse diagnostic path with explicit fallback construction, and U2 moved
   parse/recovery duplicate policy into `merman-analysis` while `merman-editor-core` now projects
