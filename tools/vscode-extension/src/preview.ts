@@ -1,17 +1,10 @@
 import * as vscode from "vscode";
 
 import {
-  extractPreviewInput,
-  listPreviewInputsFromDocument,
-  type PreviewInput,
-} from "./preview-source.js";
-import {
-  createPreviewSnapshot,
   type PreviewDiagramTheme,
   type PreviewDiagnosticTarget,
   type PreviewDiagnostics,
   type PreviewSnapshot,
-  previewSourceKeyId,
 } from "./preview-model.js";
 import {
   isPreviewDiagramTheme,
@@ -25,11 +18,10 @@ import {
   type PreviewAction,
   type PreviewUpdateReason,
 } from "./preview-policy.js";
-import {
-  renderPreviewHtml,
-} from "./preview-html.js";
 import { renderMermanSource } from "./renderer.js";
 import { PreviewRenderQueue } from "./preview-render.js";
+import { PreviewSession } from "./preview-session.js";
+import { PreviewWebviewClient } from "./preview-webview-client.js";
 
 const PREVIEW_COMMAND = "merman.openPreview";
 const PREVIEW_TITLE = "Merman Preview";
@@ -46,18 +38,12 @@ class MermanPreviewController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
   private readonly renderQueue = new PreviewRenderQueue();
-  private currentSnapshot: PreviewSnapshot | undefined;
-  private panelHtmlInitialized = false;
-  private webviewReady = false;
-  private pendingMessages: PreviewToWebviewMessage[] = [];
-  private lastRenderedKeyId: string | undefined;
-  private lastRenderedSvg: string | undefined;
-  private lastPreviewEditorUri: string | undefined;
-  private pinnedSource: PreviewSourcePin | undefined;
-  private diagramTheme: PreviewDiagramTheme = "source";
+  private readonly session = new PreviewSession();
+  private readonly webviewClient: PreviewWebviewClient;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
+    this.webviewClient = new PreviewWebviewClient(context.extensionUri);
     this.outputChannel = vscode.window.createOutputChannel("Merman Preview", { log: true });
     this.disposables.push(this.outputChannel);
     this.disposables.push(
@@ -129,12 +115,8 @@ class MermanPreviewController implements vscode.Disposable {
       this.panel.onDidDispose(() => {
         this.clearPendingRender();
         this.panel = undefined;
-        this.currentSnapshot = undefined;
-        this.webviewReady = false;
-        this.pendingMessages = [];
-        this.lastRenderedKeyId = undefined;
-        this.lastRenderedSvg = undefined;
-        this.panelHtmlInitialized = false;
+        this.session.reset();
+        this.webviewClient.reset();
       }, null, this.disposables);
       this.panel.onDidChangeViewState(() => {
         if (this.panel?.visible) {
@@ -145,7 +127,7 @@ class MermanPreviewController implements vscode.Disposable {
       this.panel.reveal(vscode.ViewColumn.Beside, false);
     }
 
-    this.ensureWebviewHtml();
+    this.ensureWebviewHtml(panelOrThrow(this.panel));
     this.scheduleRefresh("manual-open", true);
   }
 
@@ -157,7 +139,7 @@ class MermanPreviewController implements vscode.Disposable {
     if (activeEditor?.document.uri.toString() === resource.toString()) {
       return;
     }
-    this.lastPreviewEditorUri = resource.toString();
+    this.session.rememberResource(resource);
     const document = await vscode.workspace.openTextDocument(resource);
     await vscode.window.showTextDocument(document, {
       preview: true,
@@ -189,21 +171,19 @@ class MermanPreviewController implements vscode.Disposable {
       return;
     }
 
-    this.ensureWebviewHtml();
+    this.ensureWebviewHtml(panel);
     const snapshot = this.createSnapshot();
-    const actions = planPreviewUpdate(this.currentSnapshot, snapshot, reason);
+    const actions = planPreviewUpdate(this.session.snapshot, snapshot, reason);
     if (!snapshot) {
-      this.pinnedSource = undefined;
       panel.title = PREVIEW_TITLE;
-      this.currentSnapshot = undefined;
+      this.session.clearSource();
       this.renderQueue.cancelPending();
       await this.applyActions(actions);
       return;
     }
 
-    this.lastPreviewEditorUri = snapshot.documentUri;
     panel.title = `${PREVIEW_TITLE}: ${snapshot.input.title}`;
-    this.currentSnapshot = snapshot;
+    this.session.rememberSnapshot(snapshot);
     await this.applyActions(actions);
   }
 
@@ -241,32 +221,16 @@ class MermanPreviewController implements vscode.Disposable {
       info: (message) => this.outputChannel.info(message),
       error: (message) => this.outputChannel.error(message),
       isCurrentRequest: (requestId) => !!this.panel && this.renderQueue.isCurrentRequest(requestId),
-      markRendered: (_requestId, renderedSnapshot, svg) => {
-        this.lastRenderedKeyId = previewSourceKeyId(renderedSnapshot.sourceKey);
-        this.lastRenderedSvg = svg;
-      },
+      markRendered: (_requestId, renderedSnapshot, svg) => this.webviewClient.markRendered(renderedSnapshot, svg),
     });
   }
 
   private createSnapshot(): PreviewSnapshot | undefined {
-    const editor = this.resolvePreviewEditor();
-    const input = editor ? this.resolvePreviewInput(editor) : null;
-    if (!editor || !input) {
-      return undefined;
-    }
-
-    const sources = listPreviewInputsFromDocument(editor.document, editor.selection.active.line);
-    const diagnostics = collectPreviewDiagnostics(editor.document.uri, input.diagnosticRange);
-    return createPreviewSnapshot({
-      documentUri: editor.document.uri.toString(),
-      documentVersion: editor.document.version,
-      input,
-      sources,
-      diagnostics,
-      selectionLine: editor.selection.active.line,
-      pinned: this.isPinnedInput(input),
-      diagramTheme: this.diagramTheme,
-    });
+    return this.session.createSnapshot(
+      vscode.window.activeTextEditor,
+      vscode.window.visibleTextEditors,
+      collectPreviewDiagnostics,
+    );
   }
 
   private async renderSvg(source: string): Promise<string> {
@@ -274,39 +238,19 @@ class MermanPreviewController implements vscode.Disposable {
       context: this.context,
       source,
       format: "svg",
-      theme: this.diagramTheme,
+      theme: this.session.diagramTheme,
       outputChannel: this.outputChannel,
       signalLabel: "preview",
     });
     return result.stdout.toString("utf8");
   }
 
-  private ensureWebviewHtml(): void {
-    if (!this.panel || this.panelHtmlInitialized) {
-      return;
-    }
-    const webview = this.panel?.webview;
-    this.panel.webview.html = renderPreviewHtml({
-      resources: {
-        cspSource: webview?.cspSource ?? "'self'",
-        stylesUri: webviewResourceUri(webview, this.context.extensionUri, "preview.css"),
-        scriptUri: webviewResourceUri(webview, this.context.extensionUri, "preview.js"),
-      },
-    });
-    this.panelHtmlInitialized = true;
-    this.webviewReady = false;
-    this.pendingMessages = [];
+  private ensureWebviewHtml(panel: vscode.WebviewPanel): void {
+    this.webviewClient.ensureHtml(panel);
   }
 
   private async postMessage(message: PreviewToWebviewMessage): Promise<void> {
-    if (!this.panel) {
-      return;
-    }
-    if (!this.webviewReady) {
-      this.pendingMessages.push(message);
-      return;
-    }
-    await this.panel.webview.postMessage(message);
+    await this.webviewClient.post(this.panel, message);
   }
 
   private clearPendingRender(): void {
@@ -317,40 +261,9 @@ class MermanPreviewController implements vscode.Disposable {
   }
 
   private resolvePreviewEditor(): vscode.TextEditor | undefined {
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor && this.resolvePreviewInput(activeEditor)) {
-      return activeEditor;
-    }
-
-    if (!this.lastPreviewEditorUri) {
-      return undefined;
-    }
-
-    return vscode.window.visibleTextEditors.find(
-      (editor) =>
-        editor.document.uri.toString() === this.lastPreviewEditorUri &&
-        this.resolvePreviewInput(editor) !== null,
-    );
-  }
-
-  private resolvePreviewInput(editor: vscode.TextEditor): PreviewInput | null {
-    const editorUri = editor.document.uri.toString();
-    if (this.pinnedSource?.uri === editorUri) {
-      const pinned = extractPreviewInput(editor, this.pinnedSource.sourceId);
-      if (pinned) {
-        return pinned;
-      }
-      this.pinnedSource = undefined;
-    }
-    return extractPreviewInput(editor);
-  }
-
-  private isPinnedInput(input: PreviewInput | undefined): boolean {
-    return (
-      !!input &&
-      !!this.pinnedSource &&
-      this.lastPreviewEditorUri === this.pinnedSource.uri &&
-      input.sourceId === this.pinnedSource.sourceId
+    return this.session.resolvePreviewEditor(
+      vscode.window.activeTextEditor,
+      vscode.window.visibleTextEditors,
     );
   }
 
@@ -360,33 +273,17 @@ class MermanPreviewController implements vscode.Disposable {
     }
     switch (message.type) {
       case "ready":
-        this.webviewReady = true;
-        if (this.pendingMessages.length > 0) {
-          const pending = this.pendingMessages;
-          this.pendingMessages = [];
-          for (const pendingMessage of pending) {
-            await this.postMessage(pendingMessage);
-          }
-          return;
-        }
-        if (this.currentSnapshot) {
-          const snapshot = this.currentSnapshot;
-          await this.applyActions([
-            { type: "sourceListUpdated", snapshot },
-            { type: "diagnosticsUpdated", snapshot },
-            { type: "settingsUpdated", snapshot },
-          ]);
-          if (this.lastRenderedSvg && this.lastRenderedKeyId === previewSourceKeyId(snapshot.sourceKey)) {
-            await this.postMessage({
-              type: "renderSucceeded",
-              requestId: 0,
-              snapshot: snapshotMessagePayload(snapshot),
-              svg: this.lastRenderedSvg,
-            });
-          } else {
-            await this.renderSnapshot(snapshot, "panel-visible");
-          }
-        }
+        await this.webviewClient.acceptReady(
+          this.panel,
+          this.session.snapshot,
+          (snapshot) =>
+            this.applyActions([
+              { type: "sourceListUpdated", snapshot },
+              { type: "diagnosticsUpdated", snapshot },
+              { type: "settingsUpdated", snapshot },
+            ]),
+          (snapshot) => this.renderSnapshot(snapshot, "panel-visible"),
+        );
         return;
       case "copySvg":
         await vscode.env.clipboard.writeText(message.svg);
@@ -413,60 +310,40 @@ class MermanPreviewController implements vscode.Disposable {
   }
 
   private togglePin(): void {
-    const editor = this.resolvePreviewEditor();
-    const input = editor ? this.resolvePreviewInput(editor) : null;
-    if (!editor || !input) {
+    if (
+      !this.session.togglePin(vscode.window.activeTextEditor, vscode.window.visibleTextEditors)
+    ) {
       return;
-    }
-    const editorUri = editor.document.uri.toString();
-    if (this.pinnedSource?.uri === editorUri && this.pinnedSource.sourceId === input.sourceId) {
-      this.pinnedSource = undefined;
-    } else {
-      this.pinnedSource = {
-        uri: editorUri,
-        sourceId: input.sourceId,
-      };
     }
     this.scheduleRefresh("pin-toggle", true);
   }
 
   private selectSource(sourceId: string): void {
-    const editor = this.resolvePreviewEditor();
-    if (!editor || sourceId.length === 0) {
+    if (
+      !this.session.selectSource(
+        vscode.window.activeTextEditor,
+        vscode.window.visibleTextEditors,
+        sourceId,
+      )
+    ) {
       return;
     }
-    const input = extractPreviewInput(editor, sourceId);
-    if (!input) {
-      return;
-    }
-    this.pinnedSource = {
-      uri: editor.document.uri.toString(),
-      sourceId: input.sourceId,
-    };
     this.scheduleRefresh("source-select", true);
   }
 
   private setDiagramTheme(theme: PreviewDiagramTheme): void {
-    if (!isPreviewDiagramTheme(theme) || this.diagramTheme === theme) {
+    if (!isPreviewDiagramTheme(theme) || !this.session.setDiagramTheme(theme)) {
       return;
     }
-    this.diagramTheme = theme;
     this.scheduleRefresh("diagram-theme", true);
   }
 }
 
-interface PreviewSourcePin {
-  uri: string;
-  sourceId: string;
-}
-
-function webviewResourceUri(
-  webview: vscode.Webview | undefined,
-  extensionUri: vscode.Uri,
-  fileName: string,
-): string {
-  const resource = vscode.Uri.joinPath(extensionUri, "media", fileName);
-  return webview ? webview.asWebviewUri(resource).toString() : resource.toString();
+function panelOrThrow(panel: vscode.WebviewPanel | undefined): vscode.WebviewPanel {
+  if (!panel) {
+    throw new Error("Preview panel is not available");
+  }
+  return panel;
 }
 
 export function collectPreviewDiagnostics(
