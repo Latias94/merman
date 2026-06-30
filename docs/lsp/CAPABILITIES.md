@@ -129,11 +129,11 @@ Remaining fallback ledger:
   profile or explicit rule enablement is active. The frontmatter-config rule carries a
   migration quickfix that rewrites init/initialize directive config into YAML frontmatter.
 - VS Code source actions: Mermaid files and Markdown/MDX Mermaid fences expose low-noise
-  source-scoped CodeLens actions for `Preview` and `More...`. The action target carries the stable
-  source id for Markdown fences, so cursor movement after the CodeLens is created does not retarget
-  the operation. Export and copy commands remain available through `More...`, the editor/context
-  commands, and preview output controls. These actions are local-only and do not include AI,
-  account, sync, pin, or remote-rendering controls.
+  source-scoped CodeLens actions for `Preview` and `Export / Copy`. The action target carries the
+  stable source id for Markdown fences, so cursor movement after the CodeLens is created does not
+  retarget the operation. Export and copy commands remain available through `Export / Copy`, the
+  editor/context commands, and preview output controls. These actions are local-only and do not
+  include AI, account, sync, pin, or remote-rendering controls.
 - VS Code preview diagnostics: Problems, editor underlines, hover, and the VS Code quick-fix
   lightbulb own detailed diagnostics and fixes. The preview shows only a compact diagnostic status
   for the active source and can navigate to the first diagnostic; it does not render a second

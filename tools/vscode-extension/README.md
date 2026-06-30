@@ -14,7 +14,7 @@ remote AI.
 - Static Mermaid snippets for common diagram skeletons, plus LSP snippets for context-sensitive helper
   inserts and diagram templates
 - Source-scoped CodeLens actions above Mermaid files and Markdown/MDX Mermaid fences for preview
-  and a compact `More...` export/copy menu
+  and a compact `Export / Copy` menu
 - Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped
   diagnostic status, multi-fence selection, zoom, theme/background inspection controls, and local
   SVG copy/export controls
@@ -72,7 +72,7 @@ is required for normal use.
 - `Merman: Show Config Schema`
 
 Mermaid files and Markdown/MDX Mermaid fences also show low-noise CodeLens source actions for
-`Preview` and `More...`. `More...` opens export and copy commands for the same stable source id.
+`Preview` and `Export / Copy`. `Export / Copy` opens export and copy commands for the same stable source id.
 Markdown fence actions carry that stable fence id, so they do not retarget when the cursor moves
 before the command runs.
 

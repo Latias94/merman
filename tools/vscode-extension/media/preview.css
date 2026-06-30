@@ -159,10 +159,17 @@ summary {
   right: 10px;
   z-index: 4;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  align-items: flex-start;
-  opacity: 0.28;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: calc(100% - 20px);
+  opacity: 0.92;
   transition: opacity 0.16s ease;
+}
+
+.viewport.has-sourcebar .toolbar {
+  top: 52px;
 }
 
 .viewport:hover .toolbar,
@@ -187,7 +194,7 @@ summary {
 .toolbar select,
 .zoom-readout,
 .preview-menu summary {
-  min-height: 24px;
+  min-height: 28px;
   border: 0;
   border-radius: 4px;
   color: var(--vscode-icon-foreground, var(--vscode-editor-foreground));
@@ -199,8 +206,9 @@ summary {
   align-items: center;
   justify-content: center;
   min-width: 26px;
-  padding: 0 7px;
-  line-height: 1;
+  padding: 0 8px;
+  line-height: normal;
+  white-space: nowrap;
 }
 
 .toolbar button:hover,
@@ -227,6 +235,7 @@ summary {
 .preview-menu summary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-width: 30px;
   padding: 0 8px;
   cursor: pointer;
@@ -282,7 +291,7 @@ summary {
   display: flex;
   gap: 6px;
   align-items: center;
-  max-width: min(520px, calc(100% - 220px));
+  max-width: min(520px, calc(100% - 20px));
   border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
   border-radius: 6px;
   padding: 4px;
@@ -297,10 +306,32 @@ summary {
 .preview-sourcebar select {
   min-width: 180px;
   max-width: 380px;
+  width: min(380px, calc(100vw - 44px));
   min-height: 26px;
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
   color: var(--vscode-dropdown-foreground, var(--vscode-editor-foreground));
   background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+}
+
+@media (max-width: 720px) {
+  .toolbar {
+    top: 48px;
+    left: 10px;
+    right: 10px;
+    justify-content: flex-start;
+  }
+
+  .viewport:not(.has-sourcebar) .toolbar {
+    top: 10px;
+  }
+
+  .toolbar-group {
+    flex-wrap: wrap;
+  }
+
+  .preview-menu[open] {
+    width: min(220px, calc(100vw - 20px));
+  }
 }
 
 .diagnostics {

@@ -22,7 +22,7 @@ describe("Mermaid source actions", () => {
       specs.map((spec) => [spec.line, spec.sourceId, spec.title, spec.command]),
       [
         [0, "document", "Preview", SOURCE_ACTION_COMMANDS.preview],
-        [0, "document", "More...", SOURCE_ACTION_COMMANDS.more],
+        [0, "document", "Export / Copy", SOURCE_ACTION_COMMANDS.more],
       ],
     );
   });
@@ -52,7 +52,7 @@ describe("Mermaid source actions", () => {
     assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.more), true);
   });
 
-  it("keeps export and copy commands available from the More action", () => {
+  it("keeps export and copy commands available from the Export / Copy action", () => {
     assert.deepEqual(
       mermaidSourceMoreActions({ includeCopyPng: false }).map((action) => [
         action.title,

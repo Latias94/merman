@@ -323,6 +323,7 @@
       const hasMultipleMarkdownSources =
         sources.length > 1 && sources.some((source) => source.kind === "markdown-fence");
       sourceBarElement.hidden = !hasMultipleMarkdownSources;
+      viewport?.classList.toggle("has-sourcebar", hasMultipleMarkdownSources);
     }
   }
 

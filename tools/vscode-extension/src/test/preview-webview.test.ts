@@ -254,6 +254,73 @@ describe("preview webview app", () => {
     assert.doesNotMatch(message.svg ?? "", /data-base-width/);
   });
 
+  it("supports drag pan, wheel zoom, fit, and actual-size controls in SVG mode", () => {
+    const app = loadPreviewApp({
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      autoFit: true,
+      sourceIdentityKey: previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-a"),
+    });
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+
+    app.dispatchViewport("pointerdown", {
+      target: app.document.canvas,
+      button: 0,
+      pointerId: 7,
+      clientX: 100,
+      clientY: 100,
+    });
+    app.dispatchDocument("pointermove", {
+      pointerId: 7,
+      clientX: 128,
+      clientY: 116,
+    });
+    app.dispatchDocument("pointerup", {
+      pointerId: 7,
+    });
+
+    assert.equal(app.persistedState.autoFit, false);
+    assert.equal(app.persistedState.panX, 28);
+    assert.equal(app.persistedState.panY, 16);
+
+    let wheelPrevented = false;
+    app.dispatchViewport("wheel", {
+      target: app.document.canvas,
+      deltaY: -120,
+      clientX: 400,
+      clientY: 300,
+      preventDefault: () => {
+        wheelPrevented = true;
+      },
+    });
+
+    assert.equal(wheelPrevented, true);
+    assert.ok((app.persistedState.zoom as number) > 1);
+
+    app.click(app.document.fit);
+
+    assert.equal(app.persistedState.autoFit, true);
+    assert.equal(app.persistedState.zoom, 1);
+    assert.equal(app.persistedState.panX, 0);
+    assert.equal(app.persistedState.panY, 0);
+
+    app.click(app.document.zoomIn);
+    assert.ok((app.persistedState.zoom as number) > 1);
+
+    app.click(app.document.reset);
+    assert.equal(app.persistedState.autoFit, false);
+    assert.equal(app.persistedState.zoom, 1);
+    assert.equal(app.persistedState.panX, 0);
+    assert.equal(app.persistedState.panY, 0);
+  });
+
   it("hides the preview source bar unless a Markdown document has multiple Mermaid fences", () => {
     const app = loadPreviewApp();
 
@@ -266,6 +333,7 @@ describe("preview webview app", () => {
       }),
     });
     assert.equal(app.document.sourceBar.hidden, true);
+    assert.equal(app.document.viewport.classList.contains("has-sourcebar"), false);
 
     app.dispatch({
       type: "settingsUpdated",
@@ -277,6 +345,7 @@ describe("preview webview app", () => {
       }),
     });
     assert.equal(app.document.sourceBar.hidden, false);
+    assert.equal(app.document.viewport.classList.contains("has-sourcebar"), true);
   });
 });
 
@@ -284,6 +353,8 @@ interface PreviewAppHarness {
   document: FakeDocument;
   dispatch(message: unknown): void;
   click(target: FakeElement): void;
+  dispatchDocument(type: string, event: unknown): void;
+  dispatchViewport(type: string, event: unknown): void;
   readonly persistedState: Record<string, unknown>;
   readonly postedMessages: readonly unknown[];
 }
@@ -340,6 +411,12 @@ function loadPreviewApp(initialState: Record<string, unknown> = {}): PreviewAppH
       document.dispatch("click", {
         target,
       });
+    },
+    dispatchDocument(type: string, event: unknown): void {
+      document.dispatch(type, event);
+    },
+    dispatchViewport(type: string, event: unknown): void {
+      document.viewport.dispatch(type, event);
     },
     get persistedState(): Record<string, unknown> {
       return persistedState;
@@ -434,6 +511,9 @@ class FakeDocument {
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
   readonly copySvg = new FakeButtonElement({ dataset: { action: "copy-svg" } });
+  readonly fit = new FakeButtonElement({ dataset: { action: "fit" } });
+  readonly reset = new FakeButtonElement({ dataset: { action: "reset" } });
+  readonly zoomIn = new FakeButtonElement({ dataset: { action: "zoom-in" } });
   private readonly listeners = new Map<string, Array<(event: unknown) => void>>();
 
   constructor() {
@@ -473,6 +553,12 @@ class FakeDocument {
         return this.background;
       case '[data-action="copy-svg"]':
         return this.copySvg;
+      case '[data-action="fit"]':
+        return this.fit;
+      case '[data-action="reset"]':
+        return this.reset;
+      case '[data-action="zoom-in"]':
+        return this.zoomIn;
       default:
         return null;
     }
@@ -661,6 +747,12 @@ class FakeElement {
     this.listeners.set(type, listeners);
   }
 
+  dispatch(type: string, event: unknown): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
+
   setPointerCapture(): void {}
 
   hasPointerCapture(): boolean {
@@ -703,6 +795,20 @@ class FakeClassList {
 
   remove(name: string): void {
     this.names.delete(name);
+  }
+
+  toggle(name: string, force?: boolean): boolean {
+    const shouldHave = force ?? !this.names.has(name);
+    if (shouldHave) {
+      this.names.add(name);
+    } else {
+      this.names.delete(name);
+    }
+    return shouldHave;
+  }
+
+  contains(name: string): boolean {
+    return this.names.has(name);
   }
 }
 

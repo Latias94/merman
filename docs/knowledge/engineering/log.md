@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-30
+- Completed the U5 preview/source-action polish slice: source CodeLens now says `Export / Copy`,
+  preview controls avoid source-picker overlap at narrow widths, and webview tests cover drag pan,
+  wheel zoom, Fit, 1:1 reset, sourcebar layout state, and source-sized SVG copy.
 - Completed the U4 LSP diagnostic boundary slice: `workspace/diagnostic` is no longer implemented
   while `workspace_diagnostics` is false, closed-document `textDocument/diagnostic` pull returns a
   stable empty report, and LSP docs now state that workspace diagnostics wait for unopened-file

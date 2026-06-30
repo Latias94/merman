@@ -42,7 +42,7 @@ export interface SourceActionDescriptor {
 
 const SOURCE_ACTIONS: readonly SourceActionDescriptor[] = [
   { title: "Preview", command: SOURCE_ACTION_COMMANDS.preview },
-  { title: "More...", command: SOURCE_ACTION_COMMANDS.more },
+  { title: "Export / Copy", command: SOURCE_ACTION_COMMANDS.more },
 ];
 
 export const SOURCE_MORE_ACTIONS: readonly SourceActionDescriptor[] = [
