@@ -1,3 +1,11 @@
+---
+type: Work Progress
+status: completed
+related_plan: ../../../plans/2026-06-24-003-refactor-mature-mermaid-lsp-roadmap-plan.md
+git_branch: feat/diagnostics-analysis-contract
+verified_by: cargo test; cargo fmt; git diff --check
+---
+
 # Gantt Parser-Backed Entity Links
 
 - Date: 2026-06-27
