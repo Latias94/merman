@@ -77,15 +77,14 @@ Current parser-family diagnostic span matrix:
 | GitGraph | Exact unknown command-token spans | `gitgraph_unknown_command_reports_exact_command_span` | Deeper repository-state semantic failures remain fallback diagnostics. |
 | Timeline | Insertion points for missing event text separators | `timeline_event_missing_space_reports_insertion_point` | Generic section/title validation still uses fallback constructors where no token span is preserved. |
 | C4 | Insertion points for missing relation/style macro arguments | `c4_missing_relation_target_reports_local_insertion_point`, `c4_missing_relation_style_target_reports_local_insertion_point` | Other render parser validation remains fallback until spanned macro validation covers it. |
-| Architecture | Named fallback diagnostics | Capability docs plus render parser fallback constructors | Needs a shared spanned render parser; no message scraping is allowed. |
+| Architecture | Insertion points for missing ids/ports; exact spans for invalid directions and trailing statement tokens | `architecture_invalid_service_id_reports_insertion_point`, `architecture_invalid_edge_direction_reports_exact_token_span`, `architecture_trailing_group_input_reports_exact_token_span` | Semantic validation such as duplicate ids, unknown parents, and group-boundary validation remains named fallback until Architecture DB entries preserve source spans. |
 | Kanban | Named fallback diagnostics | Capability docs plus render parser fallback constructors | Needs render validation to reuse parser-backed source offsets; no message scraping is allowed. |
 
 Remaining fallback ledger:
 
-- Architecture render parse errors still use named fallback diagnostics for render-time semantic
-  validation and parser statements that do not yet share byte-offset-aware render data. Architecture
-  editor facts are parser-backed, but exact render error underlines need a shared spanned render
-  parser rather than message parsing.
+- Architecture render parse errors use exact or insertion-point spans for local line syntax that the
+  source-offset-aware render parser can prove. Render-time semantic validation still uses named
+  fallback diagnostics until Architecture DB entries preserve declaration/reference spans.
 - Kanban render parse errors still use named fallback diagnostics for hierarchy validation and
   inline/multiline shape-data failures where the render path consumes indentation and YAML-like
   payload state without preserving source offsets. Kanban editor facts remain parser-backed; exact

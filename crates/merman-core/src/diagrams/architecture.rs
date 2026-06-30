@@ -531,7 +531,54 @@ fn parse_acc_descr_stmt_single(line: &str) -> Option<String> {
     Some(rest.trim().to_string())
 }
 
-fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {
+#[derive(Debug, Clone, Copy)]
+struct ArchitectureSourceLine<'a> {
+    text: &'a str,
+    start: usize,
+}
+
+#[derive(Debug)]
+struct ArchitectureLineCursor<'a> {
+    source: &'a str,
+    offset: usize,
+}
+
+impl<'a> ArchitectureLineCursor<'a> {
+    fn new(source: &'a str) -> Self {
+        Self { source, offset: 0 }
+    }
+
+    fn next(&mut self) -> Option<ArchitectureSourceLine<'a>> {
+        if self.offset >= self.source.len() {
+            return None;
+        }
+
+        let start = self.offset;
+        let rest = &self.source[start..];
+        let end = if let Some(newline) = rest.find('\n') {
+            start + newline + 1
+        } else {
+            self.source.len()
+        };
+        self.offset = end;
+
+        Some(ArchitectureSourceLine {
+            text: strip_line_ending(&self.source[start..end]),
+            start,
+        })
+    }
+}
+
+fn trimmed_statement_with_offset(raw: &str, raw_start: usize) -> (&str, usize) {
+    let line = strip_inline_comment(raw);
+    let leading = line.len() - line.trim_start().len();
+    (line.trim(), raw_start + leading)
+}
+
+fn parse_acc_descr_block(
+    lines: &mut ArchitectureLineCursor<'_>,
+    first_line: &str,
+) -> Option<String> {
     let t = first_line.trim_start();
     if !t.starts_with("accDescr") {
         return None;
@@ -547,12 +594,12 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
     buf.push_str(rest);
     buf.push('\n');
 
-    for line in lines {
-        if let Some(end) = line.find('}') {
-            buf.push_str(&line[..end]);
+    while let Some(line) = lines.next() {
+        if let Some(end) = line.text.find('}') {
+            buf.push_str(&line.text[..end]);
             break;
         }
-        buf.push_str(line);
+        buf.push_str(line.text);
         buf.push('\n');
     }
     Some(buf.trim().to_string())
@@ -1122,16 +1169,63 @@ fn take_bracketed(input: &str, open: char, close: char) -> Option<(String, &str)
     None
 }
 
-fn parse_group_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn architecture_suffix_start(line: &str, line_start: usize, suffix: &str) -> usize {
+    debug_assert!(line.len() >= suffix.len());
+    line_start + line.len().saturating_sub(suffix.len())
+}
+
+fn architecture_insertion_at_suffix(
+    message: impl Into<String>,
+    line: &str,
+    line_start: usize,
+    suffix: &str,
+) -> Error {
+    let suffix = suffix.trim_start();
+    Error::diagram_parse_insertion_point(
+        "architecture",
+        message,
+        architecture_suffix_start(line, line_start, suffix),
+    )
+}
+
+fn architecture_exact_token(
+    message: impl Into<String>,
+    line: &str,
+    line_start: usize,
+    token_suffix: &str,
+    token_len: usize,
+) -> Error {
+    let start = architecture_suffix_start(line, line_start, token_suffix);
+    Error::diagram_parse_exact(
+        "architecture",
+        message,
+        SourceSpan::new(start, start + token_len),
+    )
+}
+
+fn architecture_trailing_input(line: &str, line_start: usize, rest: &str) -> Error {
+    let trailing = rest.trim_start();
+    let unexpected = trailing.trim_end();
+    let start = architecture_suffix_start(line, line_start, trailing);
+    Error::diagram_parse_exact(
+        "architecture",
+        "unexpected trailing input",
+        SourceSpan::new(start, start + unexpected.len()),
+    )
+}
+
+fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     if !starts_with_kw(line, "group") {
         return Ok(false);
     }
     let t = line.trim_start();
     let mut rest = t["group".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "invalid group id".to_string(),
+        return Err(architecture_insertion_at_suffix(
+            "invalid group id",
+            line,
+            line_start,
+            rest,
         ));
     };
     let id = id.to_string();
@@ -1153,20 +1247,19 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                "invalid group parent id".to_string(),
+            return Err(architecture_insertion_at_suffix(
+                "invalid group parent id",
+                line,
+                line_start,
+                rest,
             ));
         };
         in_group = Some(parent.to_string());
-        rest = tail.trim();
+        rest = tail.trim_start();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "unexpected trailing input".to_string(),
-        ));
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_group(id, icon, title, in_group)?;
@@ -1197,16 +1290,18 @@ fn take_quoted(input: &str) -> Option<(String, &str)> {
     None
 }
 
-fn parse_service_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn parse_service_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     if !starts_with_kw(line, "service") {
         return Ok(false);
     }
     let t = line.trim_start();
     let mut rest = t["service".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "invalid service id".to_string(),
+        return Err(architecture_insertion_at_suffix(
+            "invalid service id",
+            line,
+            line_start,
+            rest,
         ));
     };
     let id = id.to_string();
@@ -1232,36 +1327,37 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                "invalid service parent id".to_string(),
+            return Err(architecture_insertion_at_suffix(
+                "invalid service parent id",
+                line,
+                line_start,
+                rest,
             ));
         };
         in_group = Some(parent.to_string());
-        rest = tail.trim();
+        rest = tail.trim_start();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "unexpected trailing input".to_string(),
-        ));
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_service(id, icon, icon_text, title, in_group)?;
     Ok(true)
 }
 
-fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     if !starts_with_kw(line, "junction") {
         return Ok(false);
     }
     let t = line.trim_start();
     let mut rest = t["junction".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "invalid junction id".to_string(),
+        return Err(architecture_insertion_at_suffix(
+            "invalid junction id",
+            line,
+            line_start,
+            rest,
         ));
     };
     let id = id.to_string();
@@ -1271,31 +1367,37 @@ fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                "invalid junction parent id".to_string(),
+            return Err(architecture_insertion_at_suffix(
+                "invalid junction parent id",
+                line,
+                line_start,
+                rest,
             ));
         };
         in_group = Some(parent.to_string());
-        rest = tail.trim();
+        rest = tail.trim_start();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "unexpected trailing input".to_string(),
-        ));
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_junction(id, in_group);
     Ok(true)
 }
 
-fn parse_id_with_optional_group_modifier(input: &str) -> Result<(String, Option<bool>, &str)> {
+fn parse_id_with_optional_group_modifier<'a>(
+    line: &str,
+    line_start: usize,
+    input: &'a str,
+) -> Result<(String, Option<bool>, &'a str)> {
+    let input = input.trim_start();
     let Some((id, rest)) = take_id_prefix(input) else {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "invalid id".to_string(),
+        return Err(architecture_insertion_at_suffix(
+            "invalid id",
+            line,
+            line_start,
+            input,
         ));
     };
     let mut rest = rest;
@@ -1311,7 +1413,7 @@ fn is_arch_dir(ch: char) -> bool {
     matches!(ch, 'L' | 'R' | 'T' | 'B')
 }
 
-fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     let mut rest = line.trim_start();
     if rest.is_empty() {
         return Ok(false);
@@ -1326,7 +1428,7 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
         return Ok(false);
     }
 
-    let (lhs_id, lhs_group, tail) = parse_id_with_optional_group_modifier(rest)?;
+    let (lhs_id, lhs_group, tail) = parse_id_with_optional_group_modifier(line, line_start, rest)?;
     rest = tail.trim_start();
 
     let mut lhs_into = None;
@@ -1334,22 +1436,19 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let mut title = None;
 
     rest = rest.strip_prefix(':').ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "expected ':' for lhs port".to_string(),
-        )
+        architecture_insertion_at_suffix("expected ':' for lhs port", line, line_start, rest)
     })?;
     rest = rest.trim_start();
     let lhs_dir: char = rest.chars().next().ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "expected lhs direction".to_string(),
-        )
+        architecture_insertion_at_suffix("expected lhs direction", line, line_start, rest)
     })?;
     if !is_arch_dir(lhs_dir) {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "invalid lhs direction".to_string(),
+        return Err(architecture_exact_token(
+            "invalid lhs direction",
+            line,
+            line_start,
+            rest,
+            lhs_dir.len_utf8(),
         ));
     }
     rest = &rest[lhs_dir.len_utf8()..];
@@ -1369,17 +1468,16 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
         rest = &rest[1..];
         rest = rest.trim_start();
         let (t, tail) = take_bracketed(rest, '[', ']').ok_or_else(|| {
-            Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                "expected edge title".to_string(),
-            )
+            architecture_insertion_at_suffix("expected edge title", line, line_start, rest)
         })?;
         title = Some(t.trim().to_string());
         rest = tail.trim_start();
         rest = rest.strip_prefix('-').ok_or_else(|| {
-            Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                "expected '-' after edge title".to_string(),
+            architecture_insertion_at_suffix(
+                "expected '-' after edge title",
+                line,
+                line_start,
+                rest,
             )
         })?;
     } else {
@@ -1396,25 +1494,22 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
 
     rest = rest.trim_start();
     let rhs_dir: char = rest.chars().next().ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "expected rhs direction".to_string(),
-        )
+        architecture_insertion_at_suffix("expected rhs direction", line, line_start, rest)
     })?;
     if !is_arch_dir(rhs_dir) {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "invalid rhs direction".to_string(),
+        return Err(architecture_exact_token(
+            "invalid rhs direction",
+            line,
+            line_start,
+            rest,
+            rhs_dir.len_utf8(),
         ));
     }
     rest = &rest[rhs_dir.len_utf8()..];
 
     rest = rest.trim_start();
     rest = rest.strip_prefix(':').ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "expected ':' for rhs port".to_string(),
-        )
+        architecture_insertion_at_suffix("expected ':' for rhs port", line, line_start, rest)
     })?;
 
     rest = rest.trim_start();
@@ -1422,14 +1517,11 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
         rest = &rest[1..];
         rest = rest.trim_start();
     }
-    let (rhs_id, rhs_group, tail) = parse_id_with_optional_group_modifier(rest)?;
-    rest = tail.trim();
+    let (rhs_id, rhs_group, tail) = parse_id_with_optional_group_modifier(line, line_start, rest)?;
+    rest = tail.trim_start();
 
     if !rest.is_empty() {
-        return Err(Error::diagram_parse_fallback(
-            "architecture".to_string(),
-            "unexpected trailing input".to_string(),
-        ));
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_edge(ArchitectureEdge {
@@ -1451,19 +1543,22 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut db = ArchitectureDb::default();
     db.clear();
 
-    let mut lines = code.lines();
+    let mut lines = ArchitectureLineCursor::new(code);
     let mut found_header = false;
-    let mut header_tail: Option<String> = None;
-    for line in lines.by_ref() {
-        let t = strip_inline_comment(line);
-        let trimmed = t.trim();
+    let mut header_tail: Option<(String, usize)> = None;
+    while let Some(line) = lines.next() {
+        let (trimmed, trimmed_start) = trimmed_statement_with_offset(line.text, line.start);
         if trimmed.is_empty() {
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
-            let rest = rest.trim_start();
+        if let Some(rest_with_ws) = trimmed.strip_prefix("architecture-beta") {
+            let rest = rest_with_ws.trim_start();
             if !rest.is_empty() {
-                header_tail = Some(rest.to_string());
+                let leading = rest_with_ws.len() - rest_with_ws.trim_start().len();
+                header_tail = Some((
+                    rest.to_string(),
+                    trimmed_start + "architecture-beta".len() + leading,
+                ));
             }
             found_header = true;
             break;
@@ -1478,55 +1573,55 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
         ));
     }
 
-    let mut process_line = |raw: &str, lines: &mut std::str::Lines<'_>| -> Result<()> {
-        let line = strip_inline_comment(raw);
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            return Ok(());
-        }
+    let mut process_line =
+        |raw: &str, raw_start: usize, lines: &mut ArchitectureLineCursor<'_>| -> Result<()> {
+            let (trimmed, trimmed_start) = trimmed_statement_with_offset(raw, raw_start);
+            if trimmed.is_empty() {
+                return Ok(());
+            }
 
-        if let Some(v) = parse_title_stmt(trimmed) {
-            db.set_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_title_stmt(trimmed) {
-            db.set_acc_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_block(lines, trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
+            if let Some(v) = parse_title_stmt(trimmed) {
+                db.set_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_title_stmt(trimmed) {
+                db.set_acc_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_block(lines, trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
 
-        if parse_group_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_service_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_junction_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_edge_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
+            if parse_group_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_service_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_junction_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_edge_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
 
-        Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unrecognized statement: {trimmed}"),
-        ))
-    };
+            Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unrecognized statement: {trimmed}"),
+            ))
+        };
 
-    if let Some(tail) = &header_tail {
-        process_line(tail, &mut lines)?;
+    if let Some((tail, tail_start)) = &header_tail {
+        process_line(tail, *tail_start, &mut lines)?;
     }
 
     while let Some(line) = lines.next() {
-        process_line(line, &mut lines)?;
+        process_line(line.text, line.start, &mut lines)?;
     }
 
     let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
@@ -1669,19 +1764,22 @@ pub fn parse_architecture_model_for_render(
     let mut db = ArchitectureDb::default();
     db.clear();
 
-    let mut lines = code.lines();
+    let mut lines = ArchitectureLineCursor::new(code);
     let mut found_header = false;
-    let mut header_tail: Option<String> = None;
-    for line in lines.by_ref() {
-        let t = strip_inline_comment(line);
-        let trimmed = t.trim();
+    let mut header_tail: Option<(String, usize)> = None;
+    while let Some(line) = lines.next() {
+        let (trimmed, trimmed_start) = trimmed_statement_with_offset(line.text, line.start);
         if trimmed.is_empty() {
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
-            let rest = rest.trim_start();
+        if let Some(rest_with_ws) = trimmed.strip_prefix("architecture-beta") {
+            let rest = rest_with_ws.trim_start();
             if !rest.is_empty() {
-                header_tail = Some(rest.to_string());
+                let leading = rest_with_ws.len() - rest_with_ws.trim_start().len();
+                header_tail = Some((
+                    rest.to_string(),
+                    trimmed_start + "architecture-beta".len() + leading,
+                ));
             }
             found_header = true;
             break;
@@ -1696,55 +1794,55 @@ pub fn parse_architecture_model_for_render(
         ));
     }
 
-    let mut process_line = |raw: &str, lines: &mut std::str::Lines<'_>| -> Result<()> {
-        let line = strip_inline_comment(raw);
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            return Ok(());
-        }
+    let mut process_line =
+        |raw: &str, raw_start: usize, lines: &mut ArchitectureLineCursor<'_>| -> Result<()> {
+            let (trimmed, trimmed_start) = trimmed_statement_with_offset(raw, raw_start);
+            if trimmed.is_empty() {
+                return Ok(());
+            }
 
-        if let Some(v) = parse_title_stmt(trimmed) {
-            db.set_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_title_stmt(trimmed) {
-            db.set_acc_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_block(lines, trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
+            if let Some(v) = parse_title_stmt(trimmed) {
+                db.set_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_title_stmt(trimmed) {
+                db.set_acc_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_block(lines, trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
 
-        if parse_group_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_service_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_junction_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_edge_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
+            if parse_group_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_service_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_junction_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_edge_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
 
-        Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unrecognized statement: {trimmed}"),
-        ))
-    };
+            Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unrecognized statement: {trimmed}"),
+            ))
+        };
 
-    if let Some(tail) = &header_tail {
-        process_line(tail, &mut lines)?;
+    if let Some((tail, tail_start)) = &header_tail {
+        process_line(tail, *tail_start, &mut lines)?;
     }
 
     while let Some(line) = lines.next() {
-        process_line(line, &mut lines)?;
+        process_line(line.text, line.start, &mut lines)?;
     }
 
     Ok(db.render_model())
@@ -1753,7 +1851,7 @@ pub fn parse_architecture_model_for_render(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1762,6 +1860,14 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    fn parse_err(text: &str) -> crate::ParseDiagnostic {
+        let engine = Engine::new();
+        match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
+            Error::DiagramParse { diagnostic, .. } => diagnostic,
+            other => panic!("expected architecture parse error, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1847,5 +1953,44 @@ mod tests {
         .unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("expected ':' for lhs port") || msg.contains("unrecognized"));
+    }
+
+    #[test]
+    fn architecture_invalid_service_id_reports_insertion_point() {
+        let text = "architecture-beta\n  service -bad\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("-bad").unwrap();
+
+        assert_eq!(diagnostic.message(), "invalid service id");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+    }
+
+    #[test]
+    fn architecture_invalid_edge_direction_reports_exact_token_span() {
+        let text = "architecture-beta\n  service a\n  service b\n  a:X -- R:b\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find('X').unwrap();
+
+        assert_eq!(diagnostic.message(), "invalid lhs direction");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset + 1)));
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_trailing_group_input_reports_exact_token_span() {
+        let text = "architecture-beta\n  group core extra\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("extra").unwrap();
+
+        assert_eq!(diagnostic.message(), "unexpected trailing input");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "extra".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
     }
 }
