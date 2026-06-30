@@ -34,16 +34,22 @@ void main(List<String> args) {
   if (!merman.supportedDiagrams().contains('flowchart')) {
     throw StateError('supportedDiagrams smoke failed');
   }
-  if (!merman.asciiSupportedDiagrams().contains('sequence')) {
-    throw StateError('asciiSupportedDiagrams smoke failed');
+  final ganttAsciiCapability = merman.asciiCapabilities().any(
+    (capability) =>
+        capability.diagramType == 'gantt' &&
+        capability.supportLevel == 'summary' &&
+        !capability.summaryFallback,
+  );
+  if (!ganttAsciiCapability) {
+    throw StateError('asciiCapabilities smoke failed');
   }
   final flowchartCapability = merman.diagramFamilyCapabilities().any(
-        (capability) =>
-            capability.diagramType == 'flowchart' &&
-            capability.metadataId == 'flowchart' &&
-            capability.hasSemanticParser &&
-            capability.hasRenderParser,
-      );
+    (capability) =>
+        capability.diagramType == 'flowchart' &&
+        capability.metadataId == 'flowchart' &&
+        capability.hasSemanticParser &&
+        capability.hasRenderParser,
+  );
   if (!flowchartCapability) {
     throw StateError('diagramFamilyCapabilities smoke failed');
   }

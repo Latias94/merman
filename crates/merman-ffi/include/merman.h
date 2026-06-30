@@ -285,7 +285,7 @@ MermanResult merman_validate_json(
  * Success and error ownership rules are identical to merman_render_svg.
  */
 MermanResult merman_supported_diagrams_json(void);
-MermanResult merman_ascii_supported_diagrams_json(void);
+MermanResult merman_ascii_capabilities_json(void);
 MermanResult merman_diagram_family_capabilities_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);

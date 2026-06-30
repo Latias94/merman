@@ -405,15 +405,41 @@ If the native library is built without the `render` feature, this function still
 
 ```c
 MermanResult merman_supported_diagrams_json(void);
-MermanResult merman_ascii_supported_diagrams_json(void);
+MermanResult merman_ascii_capabilities_json(void);
 MermanResult merman_diagram_family_capabilities_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);
 ```
 
-Each function returns a UTF-8 JSON string array. `merman_supported_themes_json` reports Mermaid core
-theme names, while `merman_supported_host_theme_presets_json` reports host/editor presets accepted
-by `options_json.host_theme.preset`. The same buffer ownership rules apply.
+`merman_supported_diagrams_json`, `merman_supported_themes_json`, and
+`merman_supported_host_theme_presets_json` return UTF-8 JSON string arrays. Theme metadata reports
+Mermaid core theme names and host/editor presets accepted by `options_json.host_theme.preset`. The
+same buffer ownership rules apply.
+
+`merman_ascii_capabilities_json` returns a UTF-8 JSON array of objects:
+
+```json
+[
+  {
+    "diagram_type": "gantt",
+    "display_name": "Gantt",
+    "support_level": "summary",
+    "summary_fallback": false,
+    "supported_semantics": ["titles", "sections", "tasks", "dates"],
+    "limits": ["no terminal timeline geometry", "output is a readable task summary"],
+    "evidence": [
+      {
+        "kind": "local_coverage",
+        "source": "crates/merman-ascii",
+        "note": "summary renderer is covered by ASCII tests"
+      }
+    ]
+  }
+]
+```
+
+Hosts should use `support_level` and `summary_fallback` to label ASCII rendering before invoking
+`merman_render_ascii`. The support levels are `full`, `partial`, `summary`, and `unsupported`.
 
 `merman_diagram_family_capabilities_json` returns a UTF-8 JSON array of objects:
 

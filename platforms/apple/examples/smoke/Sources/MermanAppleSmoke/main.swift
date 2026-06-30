@@ -58,8 +58,13 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("supported diagrams smoke failed")
         }
 
-        guard try engine.asciiSupportedDiagrams().contains("sequence") else {
-            throw SmokeError.failed("ASCII supported diagrams smoke failed")
+        let ganttAsciiCapability = try engine.asciiCapabilities().contains { capability in
+            capability.diagramType == "gantt"
+                && capability.supportLevel == "summary"
+                && !capability.summaryFallback
+        }
+        guard ganttAsciiCapability else {
+            throw SmokeError.failed("ASCII capabilities smoke failed")
         }
 
         guard try engine.supportedThemes().contains("default") else {

@@ -29,7 +29,7 @@ for current Mermaid parity.
   - `Merman.layoutJson` / `layoutJsonRaw`
   - `Merman.validate` / `validateJsonRaw`
   - `Merman.supportedDiagrams`
-  - `Merman.asciiSupportedDiagrams`
+  - `Merman.asciiCapabilities`
   - `Merman.diagramFamilyCapabilities`
   - `Merman.supportedThemes`
   - `Merman.supportedHostThemePresets`
