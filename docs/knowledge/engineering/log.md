@@ -6,6 +6,12 @@ status: active
 # Log
 
 ## 2026-06-30
+- Hardened the VS Code preview refactor after the initial lifecycle work: added real
+  `media/preview.js` behavior tests under a Node `vm` fake DOM harness, split controller state into
+  `PreviewSession` and `PreviewWebviewClient`, aborts superseded preview render child processes via
+  `AbortSignal`, and rejects unsafe SVG before webview injection. Verified from
+  `tools/vscode-extension` with `npm run check`, `npm test -- --test-reporter=spec` (49 tests), and
+  `npm run package`.
 - Completed the VS Code preview lifecycle refactor from
   `docs/plans/2026-06-30-001-refactor-vscode-preview-lifecycle-plan.md`. The preview now uses a
   stable webview shell, typed postMessage updates, pure preview update policy, stale-safe render
