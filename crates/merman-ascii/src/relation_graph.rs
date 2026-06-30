@@ -729,6 +729,7 @@ where
 
     let mut canvas = scene.canvas_with_boxes();
     let box_snapshot = scene.capture_box_snapshot(&canvas);
+    let mut route_plans = Vec::new();
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
         let relation = &relations[edge_index];
         let style = adapter.layered_route_style(relation)?;
@@ -740,15 +741,21 @@ where
             continue;
         };
 
-        route_plan.draw_route_at(&mut canvas);
-        if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
-            return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
-        }
+        route_plans.push(route_plan);
+    }
 
+    for route_plan in &route_plans {
+        route_plan.draw_route_at(&mut canvas);
+    }
+    if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
+        return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
+    }
+
+    for route_plan in &route_plans {
         route_plan.draw_overlays_at(&mut canvas);
-        if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
-            return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
-        }
+    }
+    if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
+        return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
     }
 
     Ok(Ok(canvas.finish_trimmed_with_options(options)))

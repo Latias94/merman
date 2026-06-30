@@ -292,19 +292,8 @@ fn choose_ordered_layered_groups<'a>(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
 ) -> std::result::Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationError> {
-    let base = initial_layered_groups(boxes, levels);
-    let downward = order_layered_groups_downward(base.clone(), edges, levels);
-    let upward = order_layered_groups_upward(base.clone(), edges, levels);
-    let candidates = [
-        downward.clone(),
-        order_layered_groups_downward(upward.clone(), edges, levels),
-        order_layered_groups_upward(downward, edges, levels),
-        upward,
-        base,
-    ];
-
     let mut best: Option<(usize, Vec<Vec<&RelationGraphBox>>)> = None;
-    for candidate in candidates {
+    for candidate in ordered_layered_group_candidates(boxes, edges, levels) {
         let crossings = crossing_layered_relation_count(edges, levels, &candidate);
         let should_replace = best
             .as_ref()
@@ -321,6 +310,69 @@ fn choose_ordered_layered_groups<'a>(
         Ok(level_groups)
     } else {
         Err(LayeredRelationError::Crossing)
+    }
+}
+
+fn ordered_layered_group_candidates<'a>(
+    boxes: &'a [RelationGraphBox],
+    edges: &[LayeredRelationEdge],
+    levels: &HashMap<String, usize>,
+) -> Vec<Vec<Vec<&'a RelationGraphBox>>> {
+    let base = initial_layered_groups(boxes, levels);
+    let max_sweeps = level_sweep_candidate_count(base.len());
+    let mut candidates = Vec::new();
+    candidates.push(base.clone());
+
+    for first_sweep in [LayeredRelationSweep::Downward, LayeredRelationSweep::Upward] {
+        let mut groups = base.clone();
+        for index in 0..max_sweeps {
+            groups =
+                apply_layered_relation_sweep(groups, first_sweep.alternating(index), edges, levels);
+            candidates.push(groups.clone());
+        }
+    }
+
+    candidates
+}
+
+fn level_sweep_candidate_count(level_count: usize) -> usize {
+    level_count.saturating_mul(2).max(1)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LayeredRelationSweep {
+    Downward,
+    Upward,
+}
+
+impl LayeredRelationSweep {
+    fn alternating(self, index: usize) -> Self {
+        if index % 2 == 0 {
+            self
+        } else {
+            self.opposite()
+        }
+    }
+
+    fn opposite(self) -> Self {
+        match self {
+            Self::Downward => Self::Upward,
+            Self::Upward => Self::Downward,
+        }
+    }
+}
+
+fn apply_layered_relation_sweep<'a>(
+    level_groups: Vec<Vec<&'a RelationGraphBox>>,
+    sweep: LayeredRelationSweep,
+    edges: &[LayeredRelationEdge],
+    levels: &HashMap<String, usize>,
+) -> Vec<Vec<&'a RelationGraphBox>> {
+    match sweep {
+        LayeredRelationSweep::Downward => {
+            order_layered_groups_downward(level_groups, edges, levels)
+        }
+        LayeredRelationSweep::Upward => order_layered_groups_upward(level_groups, edges, levels),
     }
 }
 
