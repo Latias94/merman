@@ -1,8 +1,8 @@
-import * as cp from "node:child_process";
 import * as vscode from "vscode";
 
 import { resolveMermanBinary, type BinaryInvocation } from "./binaries.js";
 import { getCliSettings } from "./config.js";
+import { runRenderProcess } from "./render-process.js";
 import { renderMermanArgs, type RenderFormat } from "./render-options.js";
 import { workspaceRoots } from "./workspace.js";
 
@@ -16,6 +16,7 @@ export interface RenderRequest {
   theme?: string;
   outputChannel: vscode.LogOutputChannel;
   signalLabel?: string;
+  signal?: AbortSignal;
 }
 
 export interface RenderResult {
@@ -48,40 +49,9 @@ export async function renderMermanSource(request: RenderRequest): Promise<Render
     `${request.signalLabel ?? "render"}=${invocation.source} command="${invocation.command}" args="${invocation.args.join(" ")}"`,
   );
 
-  return new Promise<RenderResult>((resolve, reject) => {
-    const child = cp.spawn(invocation.command, invocation.args, {
-      cwd: invocation.cwd,
-      env: process.env,
-      stdio: "pipe",
-    });
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    child.stdout?.on("data", (chunk: Buffer | string) => {
-      stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    child.stderr?.on("data", (chunk: Buffer | string) => {
-      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    child.on("error", (error) => {
-      reject(error);
-    });
-    child.on("close", (code, signal) => {
-      const stdout = Buffer.concat(stdoutChunks);
-      const stderr = Buffer.concat(stderrChunks).toString("utf8");
-      if (signal === "SIGTERM") {
-        return reject(new Error("Render was superseded by a newer update."));
-      }
-      if (code !== 0) {
-        return reject(
-          new Error(stderr.trim() || `merman-cli exited with status ${code ?? "unknown"}`),
-        );
-      }
-      resolve({
-        stdout,
-        stderr,
-        invocation,
-      });
-    });
-    child.stdin?.end(request.source, "utf8");
+  return runRenderProcess({
+    invocation,
+    source: request.source,
+    signal: request.signal,
   });
 }

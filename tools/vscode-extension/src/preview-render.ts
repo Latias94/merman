@@ -6,7 +6,7 @@ import {
 import type { PreviewUpdateReason } from "./preview-policy.js";
 
 export interface PreviewRenderHost {
-  renderSvg(source: string): Promise<string>;
+  renderSvg(source: string, signal: AbortSignal): Promise<string>;
   postMessage(message: PreviewToWebviewMessage): Promise<void>;
   info(message: string): void;
   error(message: string): void;
@@ -16,9 +16,12 @@ export interface PreviewRenderHost {
 
 export class PreviewRenderQueue {
   private requestId = 0;
+  private abortController: AbortController | undefined;
 
   cancelPending(): void {
     this.requestId += 1;
+    this.abortController?.abort();
+    this.abortController = undefined;
   }
 
   async render(
@@ -27,6 +30,9 @@ export class PreviewRenderQueue {
     host: PreviewRenderHost,
   ): Promise<void> {
     const requestId = ++this.requestId;
+    this.abortController?.abort();
+    const abortController = new AbortController();
+    this.abortController = abortController;
     const snapshotPayload = snapshotMessagePayload(snapshot);
     await host.postMessage({
       type: "renderStarted",
@@ -39,7 +45,7 @@ export class PreviewRenderQueue {
       host.info(
         `refresh=${reason} source="${snapshot.input.title}" id="${snapshot.input.sourceId}"`,
       );
-      const svg = await host.renderSvg(snapshot.input.source);
+      const svg = await host.renderSvg(snapshot.input.source, abortController.signal);
       if (!host.isCurrentRequest(requestId)) {
         return;
       }
@@ -62,6 +68,10 @@ export class PreviewRenderQueue {
         snapshot: snapshotPayload,
         error: message,
       });
+    } finally {
+      if (this.abortController === abortController) {
+        this.abortController = undefined;
+      }
     }
   }
 

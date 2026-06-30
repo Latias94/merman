@@ -216,7 +216,7 @@ class MermanPreviewController implements vscode.Disposable {
 
   private async renderSnapshot(snapshot: PreviewSnapshot, reason: PreviewUpdateReason): Promise<void> {
     await this.renderQueue.render(snapshot, reason, {
-      renderSvg: (source) => this.renderSvg(source),
+      renderSvg: (source, signal) => this.renderSvg(source, signal),
       postMessage: (message) => this.postMessage(message),
       info: (message) => this.outputChannel.info(message),
       error: (message) => this.outputChannel.error(message),
@@ -233,7 +233,7 @@ class MermanPreviewController implements vscode.Disposable {
     );
   }
 
-  private async renderSvg(source: string): Promise<string> {
+  private async renderSvg(source: string, signal: AbortSignal): Promise<string> {
     const result = await renderMermanSource({
       context: this.context,
       source,
@@ -241,6 +241,7 @@ class MermanPreviewController implements vscode.Disposable {
       theme: this.session.diagramTheme,
       outputChannel: this.outputChannel,
       signalLabel: "preview",
+      signal,
     });
     return result.stdout.toString("utf8");
   }
