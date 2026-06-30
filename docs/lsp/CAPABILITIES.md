@@ -58,6 +58,31 @@ intentionally sparse on rename/reference targets. They still belong in the first
 because completion, hover, diagnostics, and semantic indexing are wired, but the family itself
 does not expose many entity-bearing spans.
 
+## Parser Diagnostic Span Coverage
+
+Core parser diagnostics use explicit span classes before they reach analysis:
+
+- Exact spans underline parser-known invalid tokens, directive values, or arguments.
+- Insertion points mark missing syntax at a parser-known byte offset.
+- Fallback spans are visible parser capability gaps. Analysis attaches fallback related information
+  instead of silently projecting line-zero or unlabelled whole-source ranges.
+
+The migrated handwritten parser coverage includes XY Chart series values, Gantt weekday/weekend
+directive values, GitGraph command tokens, Timeline event separator insertion points, and C4
+relation/style missing-argument insertion points. LALRPOP-backed families continue to report token
+or EOF spans through the same structured contract.
+
+Remaining fallback ledger:
+
+- Architecture render parse errors still use named fallback diagnostics for render-time semantic
+  validation and parser statements that do not yet share byte-offset-aware render data. Architecture
+  editor facts are parser-backed, but exact render error underlines need a shared spanned render
+  parser rather than message parsing.
+- Kanban render parse errors still use named fallback diagnostics for hierarchy validation and
+  inline/multiline shape-data failures where the render path consumes indentation and YAML-like
+  payload state without preserving source offsets. Kanban editor facts remain parser-backed; exact
+  render error underlines need the render parser to reuse those spanned facts.
+
 ## Feature Gates
 
 - Diagnostics: shared `merman-analysis` payloads only. Core parser errors carry structured

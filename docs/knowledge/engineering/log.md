@@ -6,6 +6,9 @@ status: active
 # Log
 
 ## 2026-06-30
+- Documented the U3 parser diagnostic fallback ledger: migrated handwritten spans cover XY Chart,
+  Gantt, GitGraph, Timeline, and C4; Architecture and Kanban render parse errors remain named
+  fallback cases until their render parsers preserve byte offsets.
 - Advanced U3 with `298433194 refactor(core): thread spans through handwritten parsers`: core now
   has explicit exact/insertion/fallback-at parse constructors, XY Chart plot number errors preserve
   exact token spans, Gantt weekday/weekend directive errors use parser-local spans, and GitGraph

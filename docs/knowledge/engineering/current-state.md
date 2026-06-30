@@ -7,11 +7,11 @@ status: active
 
 - Goal: Implement `docs/plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md` to collapse temporary editor diagnostic ownership layers and finish the preview UX cleanup.
 - Branch: `feat/editor-core-language-intelligence`.
-- Last verified: U3 first parser-span slice committed as `298433194 refactor(core): thread spans through handwritten parsers`; `cargo fmt --all --check`, `cargo test -p merman-core --no-run`, `cargo test -p merman-core --lib gitgraph_unknown_command_reports_exact_command_span -- --nocapture`, `cargo test -p merman-core --lib xychart_invalid_plot_number_reports_exact_token_span -- --nocapture`, `cargo test -p merman-core --lib xychart_comment_after_plot_does_not_merge_next_statement -- --nocapture`, and `git diff --check` passed.
-- Done: U1 core parse diagnostic API cleanup, U2 analysis-owned recovery/duplicate policy, and U3 first wave for XY Chart plot number spans, Gantt weekday/weekend spans, and GitGraph unknown-command spans.
-- In progress: U3 remaining handwritten parser coverage and explicit fallback ledger, especially Timeline/C4/Architecture/Kanban capability boundaries.
+- Last verified: U3 second parser-span slice committed as `3345e9cd3 refactor(core): span timeline and c4 parser errors`; focused Timeline/C4 tests, `cargo check -p merman-core --tests`, `cargo fmt --all --check`, and `git diff --check` passed before the commit. The fallback ledger documentation is being verified next.
+- Done: U1 core parse diagnostic API cleanup, U2 analysis-owned recovery/duplicate policy, U3 parser spans for XY Chart plot numbers, Gantt weekday/weekend values, GitGraph unknown commands, Timeline event separator insertion points, and C4 relation/style argument insertion points.
+- In progress: finish U3 capability documentation for Architecture/Kanban named fallback boundaries, then move to U4 LSP pull/push/workspace/code-action behavior.
 - Blocked: none.
-- Next action: inspect Timeline, C4, Architecture, and Kanban parser error sites; migrate only parser-local deterministic spans and document remaining named fallback cases without message scraping.
+- Next action: verify the U3 fallback-ledger documentation and start U4 LSP diagnostic boundary tests/code.
 
 # Citations
 
