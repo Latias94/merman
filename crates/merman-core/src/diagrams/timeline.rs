@@ -192,7 +192,31 @@ fn parse_key_colon_value_hash_or_semi(line: &str, key: &str) -> Option<String> {
     Some(split_statement_suffix_hash_or_semi(rest).trim().to_string())
 }
 
-fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {
+struct TimelineLineCursor<'a> {
+    segments: std::str::SplitInclusive<'a, char>,
+    offset: usize,
+}
+
+impl<'a> TimelineLineCursor<'a> {
+    fn new(code: &'a str) -> Self {
+        Self {
+            segments: code.split_inclusive('\n'),
+            offset: 0,
+        }
+    }
+
+    fn next_line(&mut self) -> Option<(&'a str, usize)> {
+        let segment = self.segments.next()?;
+        let line_start = self.offset;
+        self.offset += segment.len();
+        Some((strip_line_ending(segment), line_start))
+    }
+}
+
+fn parse_acc_descr_block_spanned(
+    cursor: &mut TimelineLineCursor<'_>,
+    first_line: &str,
+) -> Option<String> {
     let t = first_line.trim_start();
     if !starts_with_case_insensitive(t, "accDescr") {
         return None;
@@ -208,7 +232,7 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
     buf.push_str(rest);
     buf.push('\n');
 
-    for line in lines {
+    while let Some((line, _line_start)) = cursor.next_line() {
         if let Some(end) = line.find('}') {
             buf.push_str(&line[..end]);
             break;
@@ -219,37 +243,46 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
     Some(buf.trim().to_string())
 }
 
-fn split_events_from_colon_whitespace(input: &str) -> Result<Vec<String>> {
+fn split_events_from_colon_whitespace_spanned(
+    input: &str,
+    input_start: usize,
+) -> Result<Vec<String>> {
     let mut s = input;
+    let mut s_start = input_start;
     let mut out = Vec::new();
 
     while !s.is_empty() {
         let Some(colon) = s.find(':') else {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_exact(
                 "timeline".to_string(),
                 format!("invalid event token: {input}"),
+                SourceSpan::new(s_start, s_start + s.len()),
             ));
         };
         if colon != 0 {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_exact(
                 "timeline".to_string(),
                 format!("invalid event token: {input}"),
+                SourceSpan::new(s_start, s_start + s.len()),
             ));
         }
         let after_colon = &s[1..];
         let Some(ws) = after_colon.chars().next() else {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_insertion_point(
                 "timeline".to_string(),
                 "invalid event token: missing whitespace after ':'".to_string(),
+                s_start + 1,
             ));
         };
         if !ws.is_whitespace() {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_insertion_point(
                 "timeline".to_string(),
                 "invalid event token: missing whitespace after ':'".to_string(),
+                s_start + 1,
             ));
         }
         s = &after_colon[ws.len_utf8()..];
+        s_start += 1 + ws.len_utf8();
 
         let mut next_boundary: Option<usize> = None;
         for (i, ch) in s.char_indices() {
@@ -271,6 +304,7 @@ fn split_events_from_colon_whitespace(input: &str) -> Result<Vec<String>> {
         };
         out.push(event.to_string());
         s = rest;
+        s_start += event.len();
     }
 
     Ok(out)
@@ -425,10 +459,10 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
     let mut db = TimelineDb::default();
     db.clear();
 
-    let mut lines = code.lines();
+    let mut lines = TimelineLineCursor::new(code);
     let mut header_seen = false;
 
-    while let Some(line) = lines.next() {
+    while let Some((line, line_start)) = lines.next_line() {
         let t = line.trim();
         if t.is_empty() {
             continue;
@@ -469,7 +503,7 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
             db.acc_descr = v;
             continue;
         }
-        if let Some(v) = parse_acc_descr_block(&mut lines, line) {
+        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, line) {
             db.acc_descr = v;
             continue;
         }
@@ -479,8 +513,9 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
         }
 
         let trimmed = stripped;
+        let trimmed_start = line_start + line.len().saturating_sub(trimmed.len());
         if trimmed.starts_with(':') {
-            let events = split_events_from_colon_whitespace(trimmed)?;
+            let events = split_events_from_colon_whitespace_spanned(trimmed, trimmed_start)?;
             for e in events {
                 db.add_event(&e)?;
             }
@@ -508,7 +543,8 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
             continue;
         }
         if rest.starts_with(':') {
-            let events = split_events_from_colon_whitespace(rest)?;
+            let rest_start = trimmed_start + end;
+            let events = split_events_from_colon_whitespace_spanned(rest, rest_start)?;
             for e in events {
                 db.add_event(&e)?;
             }
@@ -549,8 +585,8 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
 mod tests {
     use super::*;
     use crate::{
-        EditorExpectedSyntaxKind, EditorSemanticKind, EditorSemanticRole, Engine, ParseOptions,
-        SourceSpan,
+        EditorExpectedSyntaxKind, EditorSemanticKind, EditorSemanticRole, Engine,
+        ParseDiagnosticSpanKind, ParseOptions, SourceSpan,
     };
     use futures::executor::block_on;
 
@@ -803,6 +839,30 @@ task1: #ev#ent1# : #ev#ent2# : #ev#ent3#
                 "#ev#ent2# ".to_string(),
                 "#ev#ent3#".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn timeline_event_missing_space_reports_insertion_point() {
+        let engine = Engine::new();
+        let text = "timeline\ntask1:event1\n";
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = err else {
+            panic!("expected timeline parse error");
+        };
+
+        let colon = text.find(':').unwrap();
+        assert_eq!(
+            diagnostic.message(),
+            "invalid event token: missing whitespace after ':'"
+        );
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(colon + 1, colon + 1))
+        );
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
         );
     }
 
