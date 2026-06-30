@@ -19,7 +19,7 @@ describe("preview webview app", () => {
       type: "renderSucceeded",
       requestId: 1,
       snapshot: snapshot({ sourceHash: "hash-a", diagramTheme: "forest" }),
-      svg: '<svg viewBox="0 0 100 50"></svg>',
+      content: '<svg viewBox="0 0 100 50"></svg>',
     });
 
     assert.equal(app.persistedState.zoom, 2);
@@ -32,7 +32,7 @@ describe("preview webview app", () => {
       type: "renderSucceeded",
       requestId: 2,
       snapshot: snapshot({ sourceHash: "hash-b" }),
-      svg: '<svg viewBox="0 0 100 50"></svg>',
+      content: '<svg viewBox="0 0 100 50"></svg>',
     });
 
     assert.equal(app.persistedState.zoom, 1);
@@ -52,7 +52,7 @@ describe("preview webview app", () => {
       type: "renderSucceeded",
       requestId: 1,
       snapshot: snapshot({ sourceHash: "hash-a" }),
-      svg: '<svg viewBox="0 0 100 50"></svg>',
+      content: '<svg viewBox="0 0 100 50"></svg>',
     });
     const initialSvg = app.document.canvas.querySelector("svg");
 
@@ -86,9 +86,8 @@ describe("preview webview app", () => {
     });
 
     assert.equal(app.document.empty.hidden, true);
-    assert.equal(app.document.title.textContent, "notes.md");
     assert.equal(app.document.status.hidden, false);
-    assert.equal(app.document.status.textContent, "Rendering preview: Mermaid fence 1");
+    assert.equal(app.document.status.textContent, "Rendering SVG preview: Mermaid fence 1");
   });
 
   it("keeps the empty placeholder hidden when the first render fails for an identified source", () => {
@@ -120,7 +119,7 @@ describe("preview webview app", () => {
       type: "renderSucceeded",
       requestId: 1,
       snapshot: snapshot({ sourceHash: "hash-a" }),
-      svg: '<svg viewBox="0 0 100 50"></svg>',
+      content: '<svg viewBox="0 0 100 50"></svg>',
     });
     const initialSvg = app.document.canvas.querySelector("svg");
 
@@ -134,7 +133,7 @@ describe("preview webview app", () => {
       type: "renderSucceeded",
       requestId: 2,
       snapshot: snapshot({ sourceHash: "hash-b" }),
-      svg: '<svg viewBox="0 0 300 150"></svg>',
+      content: '<svg viewBox="0 0 300 150"></svg>',
     });
 
     assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
@@ -148,7 +147,7 @@ describe("preview webview app", () => {
       type: "renderSucceeded",
       requestId: 1,
       snapshot: snapshot({ sourceHash: "hash-a" }),
-      svg: '<svg viewBox="0 0 100 50"></svg>',
+      content: '<svg viewBox="0 0 100 50"></svg>',
     });
     const initialSvg = app.document.canvas.querySelector("svg");
 
@@ -185,6 +184,66 @@ describe("preview webview app", () => {
     assert.equal(app.document.diagnostics.hidden, false);
     assert.match(app.document.diagnostics.textContentTree(), /1 errors/);
     assert.match(app.document.diagnostics.textContentTree(), /syntax issue/);
+  });
+
+  it("hides diagnostics when there are no issues", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "diagnosticsUpdated",
+      snapshot: snapshot({
+        diagnostics: {
+          summary: "0 errors, 0 warnings, 0 infos, 0 hints",
+          visibleCount: 0,
+          totalCount: 0,
+          items: [],
+        },
+      }),
+    });
+
+    assert.equal(app.document.diagnostics.hidden, true);
+  });
+
+  it("renders ASCII and Unicode modes as text content", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ displayMode: "ascii" }),
+      content: "A --> B",
+    });
+
+    const textPreview = app.document.canvas.querySelector(".text-preview");
+    assert.ok(textPreview);
+    assert.equal(textPreview.textContent, "A --> B");
+    assert.equal(app.document.canvas.querySelector("svg"), null);
+    assert.equal(app.persistedState.displayMode, "ascii");
+  });
+
+  it("hides the preview source bar unless a Markdown document has multiple Mermaid fences", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "settingsUpdated",
+      snapshot: snapshot({
+        sources: [
+          sourceOption("document", "example.mmd", "Mermaid source file", "mermaid-file"),
+        ],
+      }),
+    });
+    assert.equal(app.document.sourceBar.hidden, true);
+
+    app.dispatch({
+      type: "settingsUpdated",
+      snapshot: snapshot({
+        sources: [
+          sourceOption("fence-1", "notes.md", "Mermaid fence 1", "markdown-fence"),
+          sourceOption("fence-2", "notes.md", "Mermaid fence 2", "markdown-fence"),
+        ],
+      }),
+    });
+    assert.equal(app.document.sourceBar.hidden, false);
   });
 });
 
@@ -253,11 +312,21 @@ function snapshot(options: {
   sourceHash?: string;
   diagramTheme?: string;
   diagnostics?: unknown;
+  displayMode?: string;
+  background?: string;
+  sources?: Array<{
+    sourceId: string;
+    title: string;
+    subtitle: string;
+    kind: string;
+  }>;
 }): Record<string, unknown> {
   const documentUri = options.documentUri ?? "file:///workspace/notes.md";
   const sourceId = options.sourceId ?? "fence-1";
   const sourceHash = options.sourceHash ?? "hash-a";
   const diagramTheme = options.diagramTheme ?? "source";
+  const displayMode = options.displayMode ?? "svg";
+  const background = options.background ?? "transparent";
   return {
     documentUri,
     sourceId,
@@ -266,21 +335,34 @@ function snapshot(options: {
     selectionLine: 1,
     pinned: false,
     diagramTheme,
+    displayMode,
+    background,
     sourceKey: {
       documentUri,
       sourceId,
       sourceHash,
       diagramTheme,
+      displayMode,
+      background,
     },
-    sources: [
-      {
-        sourceId: "fence-1",
-        title: "notes.md",
-        subtitle: "Mermaid fence 1",
-        kind: "markdown-fence",
-      },
+    sources: options.sources ?? [
+      sourceOption("fence-1", "notes.md", "Mermaid fence 1", "markdown-fence"),
     ],
     diagnostics: options.diagnostics,
+  };
+}
+
+function sourceOption(sourceId: string, title: string, subtitle: string, kind: string): {
+  sourceId: string;
+  title: string;
+  subtitle: string;
+  kind: string;
+} {
+  return {
+    sourceId,
+    title,
+    subtitle,
+    kind,
   };
 }
 
@@ -298,14 +380,15 @@ class FakeDocument {
   readonly stage = new FakeElement("div", { className: "stage" });
   readonly canvas = new FakeElement("div", { dataset: { previewCanvas: "" } });
   readonly zoomValue = new FakeElement("span", { dataset: { zoomValue: "" } });
-  readonly title = new FakeElement("span", { dataset: { previewTitle: "" } });
-  readonly subtitle = new FakeElement("span", { dataset: { previewSubtitle: "" } });
   readonly diagnostics = new FakeElement("section", { dataset: { previewDiagnostics: "" } });
   readonly status = new FakeElement("p", { dataset: { previewStatus: "" } });
   readonly empty = new FakeElement("div", { dataset: { previewEmpty: "" } });
+  readonly sourceBar = new FakeElement("div", { dataset: { previewSourcebar: "" } });
   readonly sourceList = new FakeSelectElement({ dataset: { previewSourceList: "", action: "source" } });
+  readonly displayMode = new FakeSelectElement({ dataset: { action: "display-mode" } });
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
+  readonly copySvg = new FakeButtonElement({ dataset: { action: "copy-svg" } });
   readonly pin = new FakeButtonElement({ dataset: { action: "pin" } });
   private readonly listeners = new Map<string, Array<(event: unknown) => void>>();
 
@@ -326,22 +409,24 @@ class FakeDocument {
         return this.canvas;
       case "[data-zoom-value]":
         return this.zoomValue;
-      case "[data-preview-title]":
-        return this.title;
-      case "[data-preview-subtitle]":
-        return this.subtitle;
       case "[data-preview-diagnostics]":
         return this.diagnostics;
       case "[data-preview-status]":
         return this.status;
       case "[data-preview-empty]":
         return this.empty;
+      case "[data-preview-sourcebar]":
+        return this.sourceBar;
       case "[data-preview-source-list]":
         return this.sourceList;
+      case '[data-action="display-mode"]':
+        return this.displayMode;
       case '[data-action="diagram-theme"]':
         return this.theme;
       case '[data-action="background"]':
         return this.background;
+      case '[data-action="copy-svg"]':
+        return this.copySvg;
       case '[data-action="pin"]':
         return this.pin;
       default:
@@ -412,7 +497,7 @@ class FakeElement {
   }
 
   querySelector(selector: string): FakeElement | null {
-    if (selector === this.tagName) {
+    if (selector === this.tagName || this.matchesClassSelector(selector)) {
       return this;
     }
     for (const child of this.children) {
@@ -428,7 +513,16 @@ class FakeElement {
     if (selector === "[data-action]" && this.dataset.action !== undefined) {
       return this;
     }
+    for (const part of selector.split(",").map((item) => item.trim())) {
+      if (this.matchesClassSelector(part)) {
+        return this;
+      }
+    }
     return null;
+  }
+
+  private matchesClassSelector(selector: string): boolean {
+    return selector.startsWith(".") && this.className.split(/\s+/).includes(selector.slice(1));
   }
 
   setAttribute(name: string, value: string): void {

@@ -29,4 +29,29 @@ describe("renderer arguments", () => {
       "svg",
     ]);
   });
+
+  it("passes text preview formats and explicit backgrounds through to merman-cli", () => {
+    assert.deepEqual(renderMermanArgs({ format: "ascii", background: "transparent" }), [
+      "-q",
+      "-i",
+      "-",
+      "-o",
+      "-",
+      "-e",
+      "ascii",
+      "--background-color",
+      "transparent",
+    ]);
+    assert.deepEqual(renderMermanArgs({ format: "unicode", background: "white" }), [
+      "-q",
+      "-i",
+      "-",
+      "-o",
+      "-",
+      "-e",
+      "unicode",
+      "--background-color",
+      "white",
+    ]);
+  });
 });

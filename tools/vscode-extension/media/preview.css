@@ -14,98 +14,308 @@ select {
   font: inherit;
 }
 
+button,
+select,
+summary {
+  outline-color: var(--vscode-focusBorder);
+}
+
 .frame {
+  --preview-background: transparent;
+  --preview-grid-a: rgba(127, 127, 127, 0.08);
   height: 100vh;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
-.meta {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--vscode-panel-border);
-  background: var(--vscode-sideBar-background);
+.viewport {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background:
+    linear-gradient(45deg, var(--preview-grid-a) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--preview-grid-a) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--preview-grid-a) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--preview-grid-a) 75%);
+  background-color: var(--preview-background);
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  background-size: 20px 20px;
 }
 
-.meta-top {
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  align-items: flex-start;
+.frame[data-display-mode="ascii"] .viewport,
+.frame[data-display-mode="unicode"] .viewport {
+  cursor: default;
+  touch-action: auto;
+  user-select: text;
 }
 
-.meta h1 {
-  margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 600;
+.viewport.is-dragging {
+  cursor: grabbing;
 }
 
-.meta p {
+.frame[data-background="transparent"] {
+  --preview-background: transparent;
+  --preview-grid-a: rgba(127, 127, 127, 0.08);
+}
+
+.frame[data-background="paper"] {
+  --preview-background: #ffffff;
+  --preview-grid-a: rgba(15, 23, 42, 0.04);
+}
+
+.frame[data-background="dark"] {
+  --preview-background: #111827;
+  --preview-grid-a: rgba(255, 255, 255, 0.05);
+}
+
+.stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(var(--preview-pan-x, 0px), var(--preview-pan-y, 0px));
+  will-change: transform;
+}
+
+.canvas {
+  display: inline-flex;
+  padding: 14px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+}
+
+.frame[data-background="paper"] .canvas {
+  border-color: color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.frame[data-background="dark"] .canvas {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.canvas svg {
+  display: block;
+  max-width: none !important;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.canvas svg * {
+  user-select: none;
+}
+
+.canvas svg text {
+  pointer-events: none;
+}
+
+.frame[data-display-mode="ascii"] [data-preview-zoom-controls],
+.frame[data-display-mode="unicode"] [data-preview-zoom-controls] {
+  display: none;
+}
+
+.text-preview {
+  display: block;
+  max-width: min(80vw, 1200px);
+  max-height: min(80vh, 900px);
   margin: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
+  overflow: auto;
+  white-space: pre;
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 75%, transparent 25%);
+  border-radius: 4px;
+  padding: 16px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: 1.35;
+  user-select: text;
+  pointer-events: auto;
+}
+
+.toolbar,
+.preview-sourcebar,
+.preview-status,
+.empty,
+.diagnostics {
+  box-sizing: border-box;
 }
 
 .toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
+  align-items: flex-start;
+  opacity: 0.28;
+  transition: opacity 0.16s ease;
 }
 
-.toolbar-group {
+.viewport:hover .toolbar,
+.toolbar:focus-within,
+.toolbar:hover {
+  opacity: 1;
+}
+
+.toolbar-group,
+.preview-menu {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  border-radius: 6px;
+  padding: 2px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
 }
 
 .toolbar button,
 .toolbar select,
-.zoom-readout {
-  min-height: 26px;
-  border: 1px solid var(--vscode-button-border, transparent);
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
-  border-radius: 3px;
+.zoom-readout,
+.preview-menu summary {
+  min-height: 24px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--vscode-icon-foreground, var(--vscode-editor-foreground));
+  background: transparent;
 }
 
 .toolbar button {
-  min-width: 28px;
-  padding: 0 8px;
-}
-
-.toolbar select {
-  padding: 0 6px;
-}
-
-.zoom-readout {
-  min-width: 48px;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 6px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--vscode-descriptionForeground);
-  background: var(--vscode-editor-background);
+  min-width: 26px;
+  padding: 0 7px;
 }
 
 .toolbar button:hover,
-.toolbar select:hover {
-  background: var(--vscode-button-hoverBackground);
+.preview-menu summary:hover {
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-button-hoverBackground));
 }
 
-.toolbar button[aria-pressed="true"] {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
+.zoom-readout {
+  min-width: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground);
+}
+
+.preview-menu {
+  position: relative;
+  display: block;
+}
+
+.preview-menu summary {
+  display: inline-flex;
+  align-items: center;
+  min-width: 30px;
+  padding: 0 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.preview-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.preview-menu[open] summary {
+  background: var(--vscode-toolbar-activeBackground, var(--vscode-list-activeSelectionBackground));
+}
+
+.preview-menu label,
+.preview-menu > button {
+  display: none;
+}
+
+.preview-menu[open] {
+  min-width: 180px;
+  padding: 8px;
+}
+
+.preview-menu[open] label,
+.preview-menu[open] > button {
+  display: grid;
+}
+
+.preview-menu label {
+  gap: 4px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.preview-menu select,
+.preview-menu > button {
+  width: 100%;
+  min-height: 26px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+  color: var(--vscode-dropdown-foreground, var(--vscode-editor-foreground));
+  background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+}
+
+.preview-sourcebar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  max-width: min(520px, calc(100% - 220px));
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+}
+
+.preview-sourcebar[hidden] {
+  display: none;
+}
+
+.preview-sourcebar select {
+  min-width: 180px;
+  max-width: 380px;
+  min-height: 26px;
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+  color: var(--vscode-dropdown-foreground, var(--vscode-editor-foreground));
+  background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+}
+
+.preview-sourcebar button[aria-pressed="true"] {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
 }
 
 .diagnostics {
-  padding: 10px 16px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border);
-  background: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-sideBar-background) 12%);
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  max-height: min(40vh, 280px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-errorForeground) 45%, var(--vscode-panel-border) 55%);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
 }
 
 .diagnostics[hidden] {
@@ -129,7 +339,7 @@ select {
 .diagnostic-item {
   margin: 0;
   border-left: 3px solid transparent;
-  background: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 88%, var(--vscode-sideBar-background) 12%);
 }
 
 .diagnostic-button {
@@ -204,105 +414,18 @@ select {
   white-space: pre-wrap;
 }
 
-.viewport,
 .empty {
-  box-sizing: border-box;
-}
-
-.viewport {
-  position: relative;
-  min-height: 0;
-  overflow: hidden;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-  background:
-    linear-gradient(45deg, var(--preview-grid-a) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--preview-grid-a) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--preview-grid-a) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--preview-grid-a) 75%);
-  background-color: var(--preview-background);
-  background-position:
-    0 0,
-    0 10px,
-    10px -10px,
-    -10px 0;
-  background-size: 20px 20px;
-}
-
-.viewport.is-dragging {
-  cursor: grabbing;
-}
-
-.stage {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(var(--preview-pan-x, 0px), var(--preview-pan-y, 0px));
-  will-change: transform;
-}
-
-.canvas {
-  display: inline-flex;
-  padding: 18px;
-  box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
-  border-radius: 6px;
-  background: #ffffff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  width: min(420px, calc(100% - 40px));
   transform: translate(-50%, -50%);
-  transform-origin: center center;
-}
-
-.canvas svg {
-  display: block;
-  max-width: none !important;
-  height: auto;
-  pointer-events: none;
-  user-select: none;
-}
-
-.canvas svg * {
-  user-select: none;
-}
-
-.canvas svg text {
-  pointer-events: none;
-}
-
-.frame[data-theme="dark"] {
-  --preview-background: #111827;
-  --preview-grid-a: rgba(255, 255, 255, 0.04);
-}
-
-.frame[data-theme="light"] {
-  --preview-background: #ffffff;
-  --preview-grid-a: rgba(15, 23, 42, 0.04);
-}
-
-.frame[data-background="transparent"] {
-  --preview-background: transparent;
-}
-
-.frame[data-background="paper"] {
-  --preview-background: #ffffff;
-}
-
-.frame[data-background="dark"] {
-  --preview-background: #111827;
-}
-
-.empty {
-  position: absolute;
-  left: 16px;
-  top: 16px;
-  right: 16px;
   padding: 18px;
   z-index: 2;
   pointer-events: none;
   border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent 30%);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 96%, transparent 4%);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
 }
 
@@ -324,16 +447,15 @@ select {
 
 .preview-status {
   position: absolute;
-  left: 16px;
-  bottom: 16px;
-  max-width: min(720px, calc(100% - 32px));
-  box-sizing: border-box;
-  z-index: 3;
+  left: 10px;
+  bottom: 10px;
+  max-width: min(720px, calc(100% - 20px));
+  z-index: 4;
   padding: 8px 10px;
   border: 1px solid var(--vscode-panel-border);
   border-radius: 4px;
   color: var(--vscode-editor-foreground);
-  background: color-mix(in srgb, var(--vscode-editor-background) 94%, transparent 6%);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   font-size: 12px;
   line-height: 1.4;

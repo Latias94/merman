@@ -2,7 +2,9 @@ import type * as vscode from "vscode";
 
 import {
   createPreviewSnapshot,
+  type PreviewBackground,
   type PreviewDiagramTheme,
+  type PreviewDisplayMode,
   type PreviewDiagnostics,
   type PreviewSnapshot,
 } from "./preview-model.js";
@@ -22,6 +24,8 @@ export class PreviewSession {
   private lastPreviewEditorUri: string | undefined;
   private pinnedSource: PreviewSourcePin | undefined;
   private theme: PreviewDiagramTheme = "source";
+  private displayMode: PreviewDisplayMode = "svg";
+  private background: PreviewBackground = "transparent";
 
   get snapshot(): PreviewSnapshot | undefined {
     return this.currentSnapshot;
@@ -31,11 +35,21 @@ export class PreviewSession {
     return this.theme;
   }
 
+  get previewDisplayMode(): PreviewDisplayMode {
+    return this.displayMode;
+  }
+
+  get previewBackground(): PreviewBackground {
+    return this.background;
+  }
+
   reset(): void {
     this.currentSnapshot = undefined;
     this.lastPreviewEditorUri = undefined;
     this.pinnedSource = undefined;
     this.theme = "source";
+    this.displayMode = "svg";
+    this.background = "transparent";
   }
 
   clearSource(): void {
@@ -74,6 +88,8 @@ export class PreviewSession {
       selectionLine: editor.selection.active.line,
       pinned: this.isPinnedInput(input),
       diagramTheme: this.theme,
+      displayMode: this.displayMode,
+      background: this.background,
     });
   }
 
@@ -142,6 +158,22 @@ export class PreviewSession {
       return false;
     }
     this.theme = theme;
+    return true;
+  }
+
+  setDisplayMode(displayMode: PreviewDisplayMode): boolean {
+    if (this.displayMode === displayMode) {
+      return false;
+    }
+    this.displayMode = displayMode;
+    return true;
+  }
+
+  setBackground(background: PreviewBackground): boolean {
+    if (this.background === background) {
+      return false;
+    }
+    this.background = background;
     return true;
   }
 

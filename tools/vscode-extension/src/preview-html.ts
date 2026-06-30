@@ -33,18 +33,14 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
     <link rel="stylesheet" href="${escapeHtml(request.resources.stylesUri)}" />
   </head>
   <body>
-    <main class="frame" data-theme="light" data-background="transparent">
-      <header class="meta">
-        <div class="meta-top">
-          <div>
-            <h1 data-preview-title>${PREVIEW_TITLE}</h1>
-            <p data-preview-subtitle>No active Mermaid source</p>
-          </div>
-          ${renderToolbar()}
-        </div>
-      </header>
+    <main class="frame" data-theme="light" data-background="transparent" data-display-mode="svg">
       <section class="diagnostics" data-preview-diagnostics hidden></section>
       <section class="viewport" aria-label="Mermaid preview canvas">
+        <div class="preview-sourcebar" data-preview-sourcebar hidden>
+          <select data-action="source" data-preview-source-list title="Preview source"></select>
+          <button type="button" data-action="pin" aria-pressed="false" title="Lock preview source">Lock</button>
+        </div>
+        ${renderToolbar()}
         <div class="stage"><div class="canvas" data-preview-canvas></div></div>
         <section class="preview-status" data-preview-status hidden></section>
         <section class="empty" data-preview-empty>
@@ -60,33 +56,44 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
 
 function renderToolbar(): string {
   return `<nav class="toolbar" aria-label="Preview controls">
-    <select data-action="source" data-preview-source-list title="Preview source" hidden></select>
-    <span class="toolbar-group">
+    <span class="toolbar-group" data-preview-zoom-controls>
       <button type="button" data-action="zoom-out" title="Zoom out">-</button>
       <span class="zoom-readout" data-zoom-value>100%</span>
       <button type="button" data-action="zoom-in" title="Zoom in">+</button>
       <button type="button" data-action="fit" title="Fit to view">Fit</button>
       <button type="button" data-action="reset" title="Reset to actual size">1:1</button>
     </span>
-    <span class="toolbar-group">
-      <select data-action="diagram-theme" title="Mermaid theme">
-        <option value="source">Source</option>
-        <option value="default">Default</option>
-        <option value="dark">Dark</option>
-        <option value="forest">Forest</option>
-        <option value="neutral">Neutral</option>
-        <option value="base">Base</option>
-      </select>
-      <select data-action="background" title="Preview background">
-        <option value="transparent">Transparent</option>
-        <option value="paper">Paper</option>
-        <option value="dark">Dark</option>
-      </select>
-    </span>
-    <span class="toolbar-group">
-      <button type="button" data-action="copy-svg" title="Copy SVG">Copy SVG</button>
-      <button type="button" data-action="pin" aria-pressed="false" title="Pin preview source">Pin</button>
-    </span>
+    <details class="preview-menu" data-preview-menu>
+      <summary title="Preview settings">...</summary>
+      <label>
+        <span>Mode</span>
+        <select data-action="display-mode" title="Preview display mode">
+          <option value="svg">SVG</option>
+          <option value="ascii">ASCII</option>
+          <option value="unicode">Unicode</option>
+        </select>
+      </label>
+      <label>
+        <span>Theme</span>
+        <select data-action="diagram-theme" title="Mermaid theme">
+          <option value="source">Source</option>
+          <option value="default">Default</option>
+          <option value="dark">Dark</option>
+          <option value="forest">Forest</option>
+          <option value="neutral">Neutral</option>
+          <option value="base">Base</option>
+        </select>
+      </label>
+      <label>
+        <span>Background</span>
+        <select data-action="background" title="Preview background">
+          <option value="transparent">Transparent</option>
+          <option value="paper">Paper</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <button type="button" data-action="copy-svg" title="Copy rendered SVG">Copy SVG</button>
+    </details>
   </nav>`;
 }
 

@@ -1,5 +1,7 @@
 import {
+  type PreviewBackground,
   type PreviewDiagramTheme,
+  type PreviewDisplayMode,
   type PreviewDiagnostics,
   type PreviewSnapshot,
   type PreviewSourceKey,
@@ -21,6 +23,8 @@ export interface PreviewSnapshotMessagePayload {
   selectionLine: number;
   pinned: boolean;
   diagramTheme: PreviewDiagramTheme;
+  displayMode: PreviewDisplayMode;
+  background: PreviewBackground;
   sourceKey: PreviewSourceKey;
   sources: PreviewSourceOption[];
   diagnostics?: PreviewDiagnostics;
@@ -58,7 +62,7 @@ export type PreviewToWebviewMessage =
       type: "renderSucceeded";
       requestId: number;
       snapshot: PreviewSnapshotMessagePayload;
-      svg: string;
+      content: string;
     }
   | {
       type: "renderFailed";
@@ -75,7 +79,8 @@ export type PreviewFromWebviewMessage =
   | { type: "togglePin" }
   | { type: "selectSource"; sourceId: string }
   | { type: "setDiagramTheme"; theme: PreviewDiagramTheme }
-  | { type: "setBackground"; background: "transparent" | "paper" | "dark" };
+  | { type: "setDisplayMode"; mode: PreviewDisplayMode }
+  | { type: "setBackground"; background: PreviewBackground };
 
 export function snapshotMessagePayload(snapshot: PreviewSnapshot): PreviewSnapshotMessagePayload {
   return {
@@ -86,6 +91,8 @@ export function snapshotMessagePayload(snapshot: PreviewSnapshot): PreviewSnapsh
     selectionLine: snapshot.selectionLine,
     pinned: snapshot.pinned,
     diagramTheme: snapshot.diagramTheme,
+    displayMode: snapshot.displayMode,
+    background: snapshot.background,
     sourceKey: snapshot.sourceKey,
     diagnostics: snapshot.diagnostics,
     sources: snapshot.sources.map((source) => ({
@@ -115,11 +122,17 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
       return typeof record.sourceId === "string";
     case "setDiagramTheme":
       return isPreviewDiagramTheme(record.theme);
+    case "setDisplayMode":
+      return isPreviewDisplayMode(record.mode);
     case "setBackground":
       return record.background === "transparent" || record.background === "paper" || record.background === "dark";
     default:
       return false;
   }
+}
+
+export function isPreviewDisplayMode(value: unknown): value is PreviewDisplayMode {
+  return value === "svg" || value === "ascii" || value === "unicode";
 }
 
 export function isPreviewDiagramTheme(value: unknown): value is PreviewDiagramTheme {

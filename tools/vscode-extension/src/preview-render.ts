@@ -6,12 +6,12 @@ import {
 import type { PreviewUpdateReason } from "./preview-policy.js";
 
 export interface PreviewRenderHost {
-  renderSvg(source: string, signal: AbortSignal): Promise<string>;
+  renderContent(snapshot: PreviewSnapshot, signal: AbortSignal): Promise<string>;
   postMessage(message: PreviewToWebviewMessage): Promise<void>;
   info(message: string): void;
   error(message: string): void;
   isCurrentRequest(requestId: number): boolean;
-  markRendered(requestId: number, snapshot: PreviewSnapshot, svg: string): void;
+  markRendered(requestId: number, snapshot: PreviewSnapshot, content: string): void;
 }
 
 export class PreviewRenderQueue {
@@ -43,18 +43,18 @@ export class PreviewRenderQueue {
 
     try {
       host.info(
-        `refresh=${reason} source="${snapshot.input.title}" id="${snapshot.input.sourceId}"`,
+        `refresh=${reason} source="${snapshot.input.title}" id="${snapshot.input.sourceId}" mode=${snapshot.displayMode}`,
       );
-      const svg = await host.renderSvg(snapshot.input.source, abortController.signal);
+      const content = await host.renderContent(snapshot, abortController.signal);
       if (!host.isCurrentRequest(requestId)) {
         return;
       }
-      host.markRendered(requestId, snapshot, svg);
+      host.markRendered(requestId, snapshot, content);
       await host.postMessage({
         type: "renderSucceeded",
         requestId,
         snapshot: snapshotPayload,
-        svg,
+        content,
       });
     } catch (error) {
       if (!host.isCurrentRequest(requestId)) {

@@ -19,6 +19,8 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: "<svg></svg>" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource", sourceId: "fence-2" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "dark" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "ascii" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "unicode" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setBackground", background: "paper" }), true);
   });
 
@@ -27,6 +29,7 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: 1 }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "solarized" }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "png" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setBackground", background: "blue" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "deleteEverything" }), false);
   });

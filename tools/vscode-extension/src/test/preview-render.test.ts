@@ -40,7 +40,7 @@ describe("preview render queue", () => {
     const queue = new PreviewRenderQueue();
     const messages: unknown[] = [];
     const signals: AbortSignal[] = [];
-    let resolveFirst: ((svg: string) => void) | undefined;
+    let resolveFirst: ((content: string) => void) | undefined;
 
     const first = queue.render(
       snapshot(),
@@ -70,7 +70,7 @@ describe("preview render queue", () => {
     const queue = new PreviewRenderQueue();
     const messages: unknown[] = [];
     const signals: AbortSignal[] = [];
-    let resolveRender: ((svg: string) => void) | undefined;
+    let resolveRender: ((content: string) => void) | undefined;
 
     const render = queue.render(
       snapshot(),
@@ -120,11 +120,11 @@ describe("preview render queue", () => {
 function host(
   queue: PreviewRenderQueue,
   messages: unknown[],
-  renderSvg: (source: string, signal: AbortSignal) => Promise<string>,
+  renderContent: (source: PreviewSnapshot, signal: AbortSignal) => Promise<string>,
   errors: string[] = [],
 ): PreviewRenderHost {
   return {
-    renderSvg,
+    renderContent,
     postMessage: async (message) => {
       messages.push(message);
     },
@@ -172,5 +172,7 @@ function snapshot(): PreviewSnapshot {
     selectionLine: 0,
     pinned: false,
     diagramTheme: "source",
+    displayMode: "svg",
+    background: "transparent",
   });
 }

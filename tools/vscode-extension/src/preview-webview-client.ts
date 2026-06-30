@@ -12,7 +12,7 @@ export class PreviewWebviewClient {
   private ready = false;
   private pendingMessages: PreviewToWebviewMessage[] = [];
   private lastRenderedKeyId: string | undefined;
-  private lastRenderedSvg: string | undefined;
+  private lastRenderedContent: string | undefined;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -21,7 +21,7 @@ export class PreviewWebviewClient {
     this.ready = false;
     this.pendingMessages = [];
     this.lastRenderedKeyId = undefined;
-    this.lastRenderedSvg = undefined;
+    this.lastRenderedContent = undefined;
   }
 
   ensureHtml(panel: vscode.WebviewPanel): void {
@@ -52,9 +52,9 @@ export class PreviewWebviewClient {
     await panel.webview.postMessage(message);
   }
 
-  markRendered(snapshot: PreviewSnapshot, svg: string): void {
+  markRendered(snapshot: PreviewSnapshot, content: string): void {
     this.lastRenderedKeyId = previewSourceKeyId(snapshot.sourceKey);
-    this.lastRenderedSvg = svg;
+    this.lastRenderedContent = content;
   }
 
   async acceptReady(
@@ -83,12 +83,12 @@ export class PreviewWebviewClient {
     }
 
     await replaySnapshotUi(currentSnapshot);
-    if (this.lastRenderedSvg && this.lastRenderedKeyId === previewSourceKeyId(currentSnapshot.sourceKey)) {
+    if (this.lastRenderedContent && this.lastRenderedKeyId === previewSourceKeyId(currentSnapshot.sourceKey)) {
       await this.post(panel, {
         type: "renderSucceeded",
         requestId: 0,
         snapshot: snapshotMessagePayload(currentSnapshot),
-        svg: this.lastRenderedSvg,
+        content: this.lastRenderedContent,
       });
       return;
     }

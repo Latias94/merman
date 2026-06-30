@@ -71,7 +71,7 @@ describe("preview html", () => {
     assert.match(script, /case "renderSucceeded"/);
     assert.match(script, /case "renderFailed"/);
     assert.match(script, /case "diagnosticsUpdated"/);
-    assert.match(script, /replaceSvg\(message\.svg, message\.snapshot\)/);
+    assert.match(script, /replacePreviewContent\(message\.content, message\.snapshot\)/);
     assert.doesNotMatch(script, /case "renderFailed":[\s\S]*canvas\.replaceChildren\(\)/);
     assert.match(script, /addEventListener\("wheel"/);
     assert.match(script, /setPointerCapture/);
@@ -81,6 +81,7 @@ describe("preview html", () => {
     assert.match(script, /--preview-zoom/);
     assert.match(script, /applyVectorZoom/);
     assert.match(script, /post\("setDiagramTheme"/);
+    assert.match(script, /post\("setDisplayMode"/);
     assert.match(script, /document\.addEventListener\("pointermove"/);
     assert.doesNotMatch(script, /dataset\.action\) {\n\s+case "theme":/);
     assert.match(styles, /touch-action:\s*none/);

@@ -2,13 +2,16 @@ import * as vscode from "vscode";
 
 import { extractPreviewInput } from "./preview-source.js";
 import {
+  type PreviewBackground,
   type PreviewDiagramTheme,
   type PreviewDiagnosticTarget,
   type PreviewDiagnostics,
+  type PreviewDisplayMode,
   type PreviewSnapshot,
 } from "./preview-model.js";
 import {
   isPreviewDiagramTheme,
+  isPreviewDisplayMode,
   isPreviewFromWebviewMessage,
   snapshotMessagePayload,
   type PreviewFromWebviewMessage,
@@ -222,12 +225,12 @@ class MermanPreviewController implements vscode.Disposable {
 
   private async renderSnapshot(snapshot: PreviewSnapshot, reason: PreviewUpdateReason): Promise<void> {
     await this.renderQueue.render(snapshot, reason, {
-      renderSvg: (source, signal) => this.renderSvg(source, signal),
+      renderContent: (renderedSnapshot, signal) => this.renderContent(renderedSnapshot, signal),
       postMessage: (message) => this.postMessage(message),
       info: (message) => this.outputChannel.info(message),
       error: (message) => this.outputChannel.error(message),
       isCurrentRequest: (requestId) => !!this.panel && this.renderQueue.isCurrentRequest(requestId),
-      markRendered: (_requestId, renderedSnapshot, svg) => this.webviewClient.markRendered(renderedSnapshot, svg),
+      markRendered: (_requestId, renderedSnapshot, content) => this.webviewClient.markRendered(renderedSnapshot, content),
     });
   }
 
@@ -239,19 +242,22 @@ class MermanPreviewController implements vscode.Disposable {
     );
   }
 
-  private async renderSvg(source: string, signal: AbortSignal): Promise<string> {
+  private async renderContent(snapshot: PreviewSnapshot, signal: AbortSignal): Promise<string> {
     const result = await renderMermanSource({
       context: this.context,
-      source,
-      format: "svg",
+      source: snapshot.input.source,
+      format: snapshot.displayMode,
       theme: this.session.diagramTheme,
+      background: previewCliBackground(snapshot.background),
       outputChannel: this.outputChannel,
       signalLabel: "preview",
       signal,
     });
-    const svg = result.stdout.toString("utf8");
-    assertSafePreviewSvg(svg);
-    return svg;
+    const content = result.stdout.toString("utf8");
+    if (snapshot.displayMode === "svg") {
+      assertSafePreviewSvg(content);
+    }
+    return content;
   }
 
   private ensureWebviewHtml(panel: vscode.WebviewPanel): void {
@@ -313,7 +319,11 @@ class MermanPreviewController implements vscode.Disposable {
       case "setDiagramTheme":
         this.setDiagramTheme(message.theme);
         return;
+      case "setDisplayMode":
+        this.setDisplayMode(message.mode);
+        return;
       case "setBackground":
+        this.setBackground(message.background);
         return;
     }
   }
@@ -346,6 +356,20 @@ class MermanPreviewController implements vscode.Disposable {
     }
     this.scheduleRefresh("diagram-theme", true);
   }
+
+  private setDisplayMode(displayMode: PreviewDisplayMode): void {
+    if (!isPreviewDisplayMode(displayMode) || !this.session.setDisplayMode(displayMode)) {
+      return;
+    }
+    this.scheduleRefresh("display-mode", true);
+  }
+
+  private setBackground(background: PreviewBackground): void {
+    if (!this.session.setBackground(background)) {
+      return;
+    }
+    this.scheduleRefresh("background", true);
+  }
 }
 
 function panelOrThrow(panel: vscode.WebviewPanel | undefined): vscode.WebviewPanel {
@@ -353,6 +377,10 @@ function panelOrThrow(panel: vscode.WebviewPanel | undefined): vscode.WebviewPan
     throw new Error("Preview panel is not available");
   }
   return panel;
+}
+
+function previewCliBackground(background: PreviewBackground): string {
+  return background === "paper" ? "white" : "transparent";
 }
 
 export function collectPreviewDiagnostics(

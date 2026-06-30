@@ -11,9 +11,10 @@ import {
   exportPresetForFormat,
   pngClipboardArgs,
   pngClipboardCommand,
+  type ExportFormat,
   type ExportPreset,
 } from "./export-options.js";
-import { renderMermanSource, type RenderFormat } from "./renderer.js";
+import { renderMermanSource } from "./renderer.js";
 import {
   extractPreviewInput,
   extractPreviewInputFromDocument,
@@ -231,7 +232,7 @@ async function resolveExportSource(
 function defaultExportUri(
   sourceUri: vscode.Uri,
   input: PreviewInput,
-  format: RenderFormat,
+  format: ExportFormat,
 ): vscode.Uri | undefined {
   if (sourceUri.scheme !== "file") {
     return undefined;

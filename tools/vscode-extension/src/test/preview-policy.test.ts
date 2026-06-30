@@ -72,6 +72,26 @@ describe("preview update policy", () => {
     assert.ok(actions.some((action) => action.type === "renderRequested"));
   });
 
+  it("requests a render when the display mode changes", () => {
+    const previous = snapshot({ displayMode: "svg" });
+    const next = snapshot({ displayMode: "ascii" });
+
+    const actions = planPreviewUpdate(previous, next, "display-mode");
+
+    assert.ok(actions.some((action) => action.type === "settingsUpdated"));
+    assert.ok(actions.some((action) => action.type === "renderRequested"));
+  });
+
+  it("requests a render when the preview background changes", () => {
+    const previous = snapshot({ background: "transparent" });
+    const next = snapshot({ background: "paper" });
+
+    const actions = planPreviewUpdate(previous, next, "background");
+
+    assert.ok(actions.some((action) => action.type === "settingsUpdated"));
+    assert.ok(actions.some((action) => action.type === "renderRequested"));
+  });
+
   it("shows an empty preview when no source is available", () => {
     const previous = snapshot({});
 
@@ -89,6 +109,8 @@ function snapshot(
     source?: string;
     selectionLine?: number;
     diagramTheme?: PreviewSnapshot["diagramTheme"];
+    displayMode?: PreviewSnapshot["displayMode"];
+    background?: PreviewSnapshot["background"];
     diagnostics?: PreviewDiagnostics;
   },
 ): PreviewSnapshot {
@@ -102,6 +124,8 @@ function snapshot(
     selectionLine: options.selectionLine ?? 1,
     pinned: false,
     diagramTheme: options.diagramTheme ?? "source",
+    displayMode: options.displayMode ?? "svg",
+    background: options.background ?? "transparent",
   });
 }
 

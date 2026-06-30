@@ -6,6 +6,18 @@ status: active
 # Log
 
 ## 2026-06-30
+- Completed the product-oriented VS Code preview UI pass: the webview is now content-first with a
+  low-noise floating toolbar, settings menu for display mode/theme/background, conditional source
+  lock controls only for multi-fence Markdown previews, hidden no-issue diagnostics, and
+  `SVG`/`ASCII`/`Unicode` display modes backed by CLI render formats. Verified from
+  `tools/vscode-extension` with `npm run check`, `npm test -- --test-reporter=spec` (59 tests),
+  `npm run package`, and installed `tools/vscode-extension/merman-vscode-0.1.0.vsix` into VS Code.
+- Started a product-oriented VS Code preview UI refactor after comparing the current webview with
+  VS Code Markdown Preview, `vscode-markdown-mermaid`, Markdown Preview Enhanced, and Vega Viewer
+  references under `repo-ref/`. Direction: make the preview content-first, move noisy controls out
+  of the always-visible header, show source pinning only when Markdown/MDX has multiple Mermaid
+  fences, collapse theme/background/display-mode controls into a lightweight menu, and support
+  `SVG` plus text preview modes (`ASCII`/`Unicode`) through the existing CLI formats.
 - Hardened the VS Code preview refactor after the initial lifecycle work: added real
   `media/preview.js` behavior tests under a Node `vm` fake DOM harness, split controller state into
   `PreviewSession` and `PreviewWebviewClient`, aborts superseded preview render child processes via

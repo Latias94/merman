@@ -5,14 +5,15 @@
   const stage = document.querySelector(".stage");
   const canvas = document.querySelector("[data-preview-canvas]");
   const zoomValue = document.querySelector("[data-zoom-value]");
-  const titleElement = document.querySelector("[data-preview-title]");
-  const subtitleElement = document.querySelector("[data-preview-subtitle]");
   const diagnosticsElement = document.querySelector("[data-preview-diagnostics]");
   const statusElement = document.querySelector("[data-preview-status]");
   const emptyElement = document.querySelector("[data-preview-empty]");
+  const sourceBarElement = document.querySelector("[data-preview-sourcebar]");
   const sourceListElement = document.querySelector("[data-preview-source-list]");
+  const displayModeElement = document.querySelector('[data-action="display-mode"]');
   const themeElement = document.querySelector('[data-action="diagram-theme"]');
   const backgroundElement = document.querySelector('[data-action="background"]');
+  const copySvgElement = document.querySelector('[data-action="copy-svg"]');
   const pinElement = document.querySelector('[data-action="pin"]');
   const persisted = vscode.getState?.() || {};
   const state = {
@@ -21,6 +22,7 @@
     panY: finiteNumber(persisted.panY, 0),
     autoFit: persisted.autoFit !== false,
     background: typeof persisted.background === "string" ? persisted.background : "transparent",
+    displayMode: typeof persisted.displayMode === "string" ? persisted.displayMode : "svg",
     sourceKeyId: typeof persisted.sourceKeyId === "string" ? persisted.sourceKeyId : undefined,
     sourceIdentityKey:
       typeof persisted.sourceIdentityKey === "string" ? persisted.sourceIdentityKey : undefined,
@@ -44,6 +46,7 @@
       panY: state.panY,
       autoFit: state.autoFit,
       background: state.background,
+      displayMode: state.displayMode,
       sourceKeyId: state.sourceKeyId,
       sourceIdentityKey: state.sourceIdentityKey,
     });
@@ -62,7 +65,14 @@
       return undefined;
     }
     const key = snapshot.sourceKey;
-    return [key.documentUri, key.sourceId, key.sourceHash, key.diagramTheme].join("\u0000");
+    return [
+      key.documentUri,
+      key.sourceId,
+      key.sourceHash,
+      key.diagramTheme,
+      key.displayMode,
+      key.background,
+    ].join("\u0000");
   }
 
   function sourceIdentityKey(snapshot) {
@@ -87,6 +97,9 @@
   }
 
   function setZoom(nextZoom, anchor) {
+    if (state.displayMode !== "svg") {
+      return;
+    }
     const previousZoom = state.zoom;
     const zoom = clamp(nextZoom, minZoom, maxZoom);
     if (!Number.isFinite(zoom) || zoom === previousZoom) {
@@ -107,12 +120,22 @@
   }
 
   function resetToActualSize() {
+    if (state.displayMode !== "svg") {
+      return;
+    }
     state.autoFit = false;
     state.zoom = 1;
     state.panX = 0;
     state.panY = 0;
     applyVectorZoom();
     updateCanvas();
+  }
+
+  function resetViewportForNewContent() {
+    state.autoFit = true;
+    state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
   }
 
   function measureCanvas() {
@@ -126,7 +149,7 @@
   }
 
   function fitToView() {
-    if (!viewport || !canvas) {
+    if (state.displayMode !== "svg" || !viewport || !canvas) {
       return;
     }
     normalizeSvgSize();
@@ -220,6 +243,18 @@
     }
   }
 
+  function previewModeLabel(mode) {
+    switch (mode) {
+      case "ascii":
+        return "ASCII";
+      case "unicode":
+        return "Unicode";
+      case "svg":
+      default:
+        return "SVG";
+    }
+  }
+
   function zoomFromButton(delta) {
     if (!viewport) {
       setZoom(state.zoom + delta);
@@ -250,8 +285,6 @@
     if (!snapshot) {
       return;
     }
-    setText(titleElement, snapshot.title || "Merman Preview");
-    setText(subtitleElement, snapshot.subtitle || "");
     patchSourceList(snapshot);
     patchSettings(snapshot);
     patchDiagnostics(snapshot.diagnostics);
@@ -271,24 +304,44 @@
         return option;
       }),
     );
-    sourceListElement.hidden = sources.length <= 1;
+    if (sourceBarElement) {
+      const hasMultipleMarkdownSources =
+        sources.length > 1 && sources.some((source) => source.kind === "markdown-fence");
+      sourceBarElement.hidden = !hasMultipleMarkdownSources;
+    }
   }
 
   function patchSettings(snapshot) {
+    state.displayMode = snapshot.displayMode || "svg";
+    state.background = snapshot.background || state.background;
+    if (frame) {
+      frame.dataset.displayMode = state.displayMode;
+      frame.dataset.background = state.background;
+    }
+    if (displayModeElement instanceof HTMLSelectElement) {
+      displayModeElement.value = state.displayMode;
+    }
     if (themeElement instanceof HTMLSelectElement && snapshot.diagramTheme) {
       themeElement.value = snapshot.diagramTheme;
     }
+    if (backgroundElement instanceof HTMLSelectElement) {
+      backgroundElement.value = state.background;
+    }
+    if (copySvgElement instanceof HTMLElement) {
+      copySvgElement.hidden = state.displayMode !== "svg";
+    }
     if (pinElement instanceof HTMLButtonElement) {
       pinElement.setAttribute("aria-pressed", snapshot.pinned ? "true" : "false");
-      pinElement.textContent = snapshot.pinned ? "Pinned" : "Pin";
+      pinElement.textContent = snapshot.pinned ? "Locked" : "Lock";
     }
+    persistState();
   }
 
   function patchDiagnostics(diagnostics) {
     if (!diagnosticsElement) {
       return;
     }
-    if (!diagnostics) {
+    if (!diagnostics || Number(diagnostics.totalCount) <= 0) {
       diagnosticsElement.hidden = true;
       diagnosticsElement.replaceChildren();
       return;
@@ -412,29 +465,43 @@
     hideStatus();
   }
 
-  function replaceSvg(svg, snapshot) {
+  function replacePreviewContent(content, snapshot) {
     if (!canvas) {
       return;
     }
     const nextSourceKeyId = sourceKeyId(snapshot);
     const nextSourceIdentityKey = sourceIdentityKey(snapshot);
-    const shouldResetViewport =
+    const sourceIdentityChanged =
       state.sourceIdentityKey !== undefined &&
       nextSourceIdentityKey !== undefined &&
       state.sourceIdentityKey !== nextSourceIdentityKey;
+    const renderKeyChanged =
+      state.sourceKeyId !== undefined &&
+      nextSourceKeyId !== undefined &&
+      state.sourceKeyId !== nextSourceKeyId;
+    const shouldResetViewport = sourceIdentityChanged || renderKeyChanged;
     if (shouldResetViewport) {
-      state.autoFit = true;
+      resetViewportForNewContent();
+    }
+    canvas.replaceChildren();
+    if (snapshot?.displayMode === "svg") {
+      canvas.innerHTML = content;
+      normalizeSvgSize();
+      applyVectorZoom();
+    } else {
+      const textPreview = document.createElement("pre");
+      textPreview.className = "text-preview";
+      textPreview.textContent = content || "";
+      canvas.appendChild(textPreview);
+      state.autoFit = false;
       state.zoom = 1;
       state.panX = 0;
       state.panY = 0;
     }
-    canvas.innerHTML = svg;
     state.sourceKeyId = nextSourceKeyId;
     state.sourceIdentityKey = nextSourceIdentityKey;
-    normalizeSvgSize();
-    applyVectorZoom();
     updateCanvas();
-    if (state.autoFit) {
+    if (state.autoFit && snapshot?.displayMode === "svg") {
       requestAnimationFrame(fitToView);
     }
     hideEmpty();
@@ -455,14 +522,17 @@
         state.activeRequestId = message.requestId;
         patchSnapshot(message.snapshot);
         hideEmpty();
-        showStatus(`Rendering preview: ${message.snapshot?.subtitle || "Mermaid source"}`, "loading");
+        showStatus(
+          `Rendering ${previewModeLabel(message.snapshot?.displayMode)} preview: ${message.snapshot?.subtitle || "Mermaid source"}`,
+          "loading",
+        );
         break;
       case "renderSucceeded":
         if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {
           return;
         }
         patchSnapshot(message.snapshot);
-        replaceSvg(message.svg, message.snapshot);
+        replacePreviewContent(message.content, message.snapshot);
         state.activeRequestId = undefined;
         hideStatus();
         break;
@@ -523,6 +593,14 @@
     }
 
     switch (target.dataset.action) {
+      case "display-mode":
+        state.displayMode = target.value;
+        if (frame) {
+          frame.dataset.displayMode = target.value;
+        }
+        post("setDisplayMode", { mode: target.value });
+        persistState();
+        break;
       case "diagram-theme":
         post("setDiagramTheme", { theme: target.value });
         break;
@@ -541,6 +619,13 @@
   });
 
   viewport?.addEventListener("wheel", (event) => {
+    const target = event.target;
+    if (
+      state.displayMode !== "svg" ||
+      (target instanceof HTMLElement && target.closest(".text-preview"))
+    ) {
+      return;
+    }
     event.preventDefault();
     const factor = Math.exp(-event.deltaY * 0.001);
     setZoom(state.zoom * factor, {
@@ -550,7 +635,14 @@
   }, { passive: false });
 
   viewport?.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target instanceof HTMLButtonElement || event.target instanceof HTMLSelectElement) {
+    const target = event.target;
+    if (
+      state.displayMode !== "svg" ||
+      event.button !== 0 ||
+      target instanceof HTMLButtonElement ||
+      target instanceof HTMLSelectElement ||
+      (target instanceof HTMLElement && target.closest(".preview-menu, .preview-sourcebar, .text-preview"))
+    ) {
       return;
     }
     state.autoFit = false;
@@ -593,6 +685,10 @@
 
   if (frame) {
     frame.dataset.background = state.background;
+    frame.dataset.displayMode = state.displayMode;
+  }
+  if (displayModeElement instanceof HTMLSelectElement) {
+    displayModeElement.value = state.displayMode;
   }
   if (backgroundElement instanceof HTMLSelectElement) {
     backgroundElement.value = state.background;

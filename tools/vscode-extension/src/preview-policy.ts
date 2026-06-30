@@ -13,7 +13,9 @@ export type PreviewUpdateReason =
   | "panel-visible"
   | "pin-toggle"
   | "source-select"
-  | "diagram-theme";
+  | "diagram-theme"
+  | "display-mode"
+  | "background";
 
 export type PreviewAction =
   | { type: "showEmpty" }
@@ -49,7 +51,12 @@ export function planPreviewUpdate(
     actions.push({ type: "sourceListUpdated", snapshot: next });
   }
 
-  if (previous.pinned !== next.pinned || previous.diagramTheme !== next.diagramTheme) {
+  if (
+    previous.pinned !== next.pinned ||
+    previous.diagramTheme !== next.diagramTheme ||
+    previous.displayMode !== next.displayMode ||
+    previous.background !== next.background
+  ) {
     actions.push({ type: "settingsUpdated", snapshot: next });
   }
 

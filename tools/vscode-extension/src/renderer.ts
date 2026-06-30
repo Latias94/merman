@@ -14,6 +14,7 @@ export interface RenderRequest {
   format: RenderFormat;
   outputPath?: string;
   theme?: string;
+  background?: string;
   outputChannel: vscode.LogOutputChannel;
   signalLabel?: string;
   signal?: AbortSignal;

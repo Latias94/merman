@@ -2,10 +2,12 @@ import * as path from "node:path";
 
 import type { RenderFormat } from "./renderer.js";
 
+export type ExportFormat = Extract<RenderFormat, "svg" | "png">;
+
 export interface ExportPreset {
   label: string;
   description: string;
-  format: RenderFormat;
+  format: ExportFormat;
   openAfterExport: boolean;
 }
 
@@ -39,24 +41,22 @@ export const EXPORT_PRESETS: readonly ExportPreset[] = [
 export function defaultExportPath(
   sourceFilePath: string,
   exportBaseName: string,
-  format: RenderFormat,
+  format: ExportFormat,
 ): string {
   return path.join(path.dirname(sourceFilePath), `${exportBaseName}.${format}`);
 }
 
-export function exportFilters(format: RenderFormat): Record<string, string[]> {
+export function exportFilters(format: ExportFormat): Record<string, string[]> {
   switch (format) {
     case "png":
       return { "PNG image": ["png"] };
-    case "pdf":
-      return { "PDF document": ["pdf"] };
     case "svg":
     default:
       return { "SVG image": ["svg"] };
   }
 }
 
-export function exportPresetForFormat(format: RenderFormat): ExportPreset {
+export function exportPresetForFormat(format: ExportFormat): ExportPreset {
   return EXPORT_PRESETS.find((preset) => preset.format === format && !preset.openAfterExport) ?? {
     label: format.toUpperCase(),
     description: "Export diagram",
