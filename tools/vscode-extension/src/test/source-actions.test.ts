@@ -5,7 +5,7 @@ import {
   SOURCE_ACTION_COMMANDS,
   buildMermaidSourceCodeLensSpecs,
   isMermaidSourceCommandTarget,
-  mermaidSourceMoreActions,
+  mermaidSourceExportCopyActions,
   mermaidSourceCommandSourceId,
   mermaidSourceCommandTarget,
   mermaidSourceCommandUri,
@@ -22,7 +22,7 @@ describe("Mermaid source actions", () => {
       specs.map((spec) => [spec.line, spec.sourceId, spec.title, spec.command]),
       [
         [0, "document", "Preview", SOURCE_ACTION_COMMANDS.preview],
-        [0, "document", "Export / Copy", SOURCE_ACTION_COMMANDS.more],
+        [0, "document", "Export / Copy", SOURCE_ACTION_COMMANDS.exportCopy],
       ],
     );
   });
@@ -49,12 +49,12 @@ describe("Mermaid source actions", () => {
 
     assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.copyPng), false);
     assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.copySvg), false);
-    assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.more), true);
+    assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.exportCopy), true);
   });
 
   it("keeps export and copy commands available from the Export / Copy action", () => {
     assert.deepEqual(
-      mermaidSourceMoreActions({ includeCopyPng: false }).map((action) => [
+      mermaidSourceExportCopyActions({ includeCopyPng: false }).map((action) => [
         action.title,
         action.command,
       ]),

@@ -21,7 +21,7 @@ pub use completion::{
 };
 pub use context::CompletionContext;
 pub use diagnostics::{
-    DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticCode, EditorDiagnosticRelated,
+    DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticRelated,
     analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,
 };
 pub use semantic_tokens::{

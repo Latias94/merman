@@ -159,16 +159,20 @@ impl Analyzer {
                 }
                 Ok(None) => self.payload(source_lints),
                 Err(error) => {
-                    let (core_diagnostic, diagram_type) =
+                    let core_diagnostic =
                         core_error_diagnostic(error, &source_map, &self.options.rule_config);
                     let mut diagnostics = source_lints;
-                    if let Some(diagnostic) = core_diagnostic {
+                    if let Some(diagnostic) = core_diagnostic.diagnostic {
                         diagnostics.push(diagnostic);
                     }
-                    if let Some(diagram_type) = diagram_type {
+                    if let Some(diagram_type) = core_diagnostic.diagram_type {
                         let recovery_diagnostics =
                             self.editor_recovery_diagnostics(source, &diagram_type, &source_map);
-                        merge_recovery_diagnostics(&mut diagnostics, recovery_diagnostics);
+                        merge_recovery_diagnostics(
+                            &mut diagnostics,
+                            recovery_diagnostics,
+                            core_diagnostic.parse_location,
+                        );
                     }
                     self.payload(diagnostics)
                 }
@@ -247,9 +251,11 @@ impl AnalysisRecoveryDiagnostic {
 fn merge_recovery_diagnostics(
     diagnostics: &mut Vec<AnalysisDiagnostic>,
     recovery_diagnostics: Vec<AnalysisRecoveryDiagnostic>,
+    primary_parse_location: Option<ParseDiagnosticLocation>,
 ) {
     for recovery in recovery_diagnostics {
-        if merge_duplicate_parse_recovery_diagnostic(diagnostics, &recovery) {
+        if merge_duplicate_parse_recovery_diagnostic(diagnostics, &recovery, primary_parse_location)
+        {
             continue;
         }
         diagnostics.push(recovery.diagnostic);
@@ -259,15 +265,15 @@ fn merge_recovery_diagnostics(
 fn merge_duplicate_parse_recovery_diagnostic(
     diagnostics: &mut [AnalysisDiagnostic],
     recovery: &AnalysisRecoveryDiagnostic,
+    primary_parse_location: Option<ParseDiagnosticLocation>,
 ) -> bool {
     if recovery.kind != Some(EditorSemanticDiagnosticKind::ParserRecovery) {
         return false;
     }
 
-    let Some(primary) = diagnostics
-        .iter_mut()
-        .find(|diagnostic| is_same_parse_recovery_problem(diagnostic, &recovery.diagnostic))
-    else {
+    let Some(primary) = diagnostics.iter_mut().find(|diagnostic| {
+        is_same_parse_recovery_problem(diagnostic, &recovery.diagnostic, primary_parse_location)
+    }) else {
         return false;
     };
 
@@ -292,6 +298,7 @@ fn merge_duplicate_parse_recovery_diagnostic(
 fn is_same_parse_recovery_problem(
     primary: &AnalysisDiagnostic,
     recovery: &AnalysisDiagnostic,
+    primary_parse_location: Option<ParseDiagnosticLocation>,
 ) -> bool {
     if primary.id != DIAGRAM_PARSE_RULE_ID || recovery.id != RECOVERED_EDITOR_FACTS_RULE_ID {
         return false;
@@ -300,7 +307,7 @@ fn is_same_parse_recovery_problem(
         return false;
     }
     spans_describe_same_problem(primary.span.as_ref(), recovery.span.as_ref())
-        || primary_has_fallback_parse_location(primary)
+        || primary_parse_location == Some(ParseDiagnosticLocation::Fallback)
 }
 
 fn is_better_primary_parse_span(
@@ -360,15 +367,6 @@ fn point_touches_span(point: &crate::DiagnosticSpan, span: &crate::DiagnosticSpa
         && point.byte_start <= span.byte_end
 }
 
-fn primary_has_fallback_parse_location(primary: &AnalysisDiagnostic) -> bool {
-    primary.related.iter().any(|related| {
-        related.message.contains("fallback location")
-            || related
-                .message
-                .contains("did not report a precise source location")
-    })
-}
-
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
     let mut engine = Engine::new()
         .with_fixed_today(options.fixed_today)
@@ -409,15 +407,37 @@ fn source_limit_diagnostic(
     )
 }
 
+#[derive(Debug)]
+struct CoreErrorDiagnostic {
+    diagnostic: Option<AnalysisDiagnostic>,
+    diagram_type: Option<String>,
+    parse_location: Option<ParseDiagnosticLocation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParseDiagnosticLocation {
+    Precise,
+    Fallback,
+}
+
+struct ParseDiagnosticProjection {
+    diagnostic: AnalysisDiagnostic,
+    location: ParseDiagnosticLocation,
+}
+
 fn core_error_diagnostic(
     error: CoreError,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-) -> (Option<AnalysisDiagnostic>, Option<String>) {
+) -> CoreErrorDiagnostic {
     match error {
-        CoreError::DetectType(_) => (no_diagram_diagnostic(source_map, rule_config), None),
-        CoreError::UnsupportedDiagram { diagram_type } => (
-            rule_diagnostic(
+        CoreError::DetectType(_) => CoreErrorDiagnostic {
+            diagnostic: no_diagram_diagnostic(source_map, rule_config),
+            diagram_type: None,
+            parse_location: None,
+        },
+        CoreError::UnsupportedDiagram { diagram_type } => CoreErrorDiagnostic {
+            diagnostic: rule_diagnostic(
                 UNSUPPORTED_DIAGRAM_RULE_ID,
                 AnalysisStatus::UnsupportedFormat,
                 format!("unsupported diagram type: {diagram_type}"),
@@ -425,45 +445,57 @@ fn core_error_diagnostic(
                 rule_config,
             )
             .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
-            Some(diagram_type),
-        ),
+            diagram_type: Some(diagram_type),
+            parse_location: None,
+        },
         CoreError::DiagramParse {
             diagram_type,
             diagnostic,
-        } => (
-            parse_diagnostic(diagnostic, &diagram_type, source_map, rule_config),
-            Some(diagram_type),
-        ),
-        CoreError::MalformedFrontMatter => (
-            rule_diagnostic(
+        } => {
+            let (diagnostic, parse_location) =
+                match parse_diagnostic(diagnostic, &diagram_type, source_map, rule_config) {
+                    Some(projection) => (Some(projection.diagnostic), Some(projection.location)),
+                    None => (None, None),
+                };
+            CoreErrorDiagnostic {
+                diagnostic,
+                diagram_type: Some(diagram_type),
+                parse_location,
+            }
+        }
+        CoreError::MalformedFrontMatter => CoreErrorDiagnostic {
+            diagnostic: rule_diagnostic(
                 MALFORMED_FRONT_MATTER_RULE_ID,
                 AnalysisStatus::ParseError,
                 CoreError::MalformedFrontMatter.to_string(),
                 source_map,
                 rule_config,
             ),
-            None,
-        ),
-        CoreError::InvalidDirectiveJson { message } => (
-            rule_diagnostic(
+            diagram_type: None,
+            parse_location: None,
+        },
+        CoreError::InvalidDirectiveJson { message } => CoreErrorDiagnostic {
+            diagnostic: rule_diagnostic(
                 INVALID_DIRECTIVE_JSON_RULE_ID,
                 AnalysisStatus::ParseError,
                 format!("invalid directive JSON: {message}"),
                 source_map,
                 rule_config,
             ),
-            None,
-        ),
-        CoreError::InvalidFrontMatterYaml { message } => (
-            rule_diagnostic(
+            diagram_type: None,
+            parse_location: None,
+        },
+        CoreError::InvalidFrontMatterYaml { message } => CoreErrorDiagnostic {
+            diagnostic: rule_diagnostic(
                 INVALID_FRONT_MATTER_YAML_RULE_ID,
                 AnalysisStatus::ParseError,
                 format!("invalid YAML front-matter: {message}"),
                 source_map,
                 rule_config,
             ),
-            None,
-        ),
+            diagram_type: None,
+            parse_location: None,
+        },
     }
 }
 
@@ -472,7 +504,7 @@ fn parse_diagnostic(
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
+) -> Option<ParseDiagnosticProjection> {
     let rule_id = diagnostic
         .code()
         .and_then(rule_descriptor)
@@ -485,6 +517,7 @@ fn parse_diagnostic(
         rule_config,
     )?
     .with_diagram_type(diagram_type);
+    let location;
 
     if let Some(span) = diagnostic
         .span()
@@ -493,6 +526,7 @@ fn parse_diagnostic(
         match diagnostic.span_kind() {
             ParseDiagnosticSpanKind::Exact | ParseDiagnosticSpanKind::InsertionPoint => {
                 out = out.with_span(span);
+                location = ParseDiagnosticLocation::Precise;
             }
             ParseDiagnosticSpanKind::Fallback => {
                 out.related.push(crate::DiagnosticRelated {
@@ -501,6 +535,7 @@ fn parse_diagnostic(
                     span: Some(span.clone()),
                 });
                 out = out.with_span(span);
+                location = ParseDiagnosticLocation::Fallback;
             }
         }
     } else if let Ok(span) = source_map.whole_source_span() {
@@ -510,9 +545,15 @@ fn parse_diagnostic(
             span: Some(span.clone()),
         });
         out = out.with_span(span);
+        location = ParseDiagnosticLocation::Fallback;
+    } else {
+        location = ParseDiagnosticLocation::Fallback;
     }
 
-    Some(out)
+    Some(ParseDiagnosticProjection {
+        diagnostic: out,
+        location,
+    })
 }
 
 fn panic_diagnostic(
@@ -667,6 +708,48 @@ mod tests {
         assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
         assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
         assert_eq!(diagnostic.message, "Unterminated node label (missing `]`)");
+    }
+
+    #[test]
+    fn fallback_recovery_merge_uses_structured_location_metadata() {
+        let source_map = SourceMap::new("flowchart TD\nA[unterminated");
+        let span = source_map.whole_source_span().unwrap();
+        let primary = super::rule_diagnostic_without_default_span(
+            crate::rules::DIAGRAM_PARSE_RULE_ID,
+            AnalysisStatus::ParseError,
+            "primary parser message",
+            &AnalysisRuleConfig::default(),
+        )
+        .unwrap()
+        .with_diagram_type("flowchart-v2")
+        .with_span(span.clone());
+        let recovery = super::rule_diagnostic_without_default_span(
+            crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID,
+            AnalysisStatus::ParseError,
+            "recovered parser message",
+            &AnalysisRuleConfig::default(),
+        )
+        .unwrap()
+        .with_diagram_type("flowchart-v2")
+        .with_span(span);
+        let mut diagnostics = vec![primary];
+
+        super::merge_recovery_diagnostics(
+            &mut diagnostics,
+            vec![super::AnalysisRecoveryDiagnostic::parser_backed(
+                recovery,
+                merman_core::EditorSemanticDiagnosticKind::ParserRecovery,
+            )],
+            Some(super::ParseDiagnosticLocation::Fallback),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].message, "primary parser message");
+        assert!(diagnostics[0].related.iter().any(|related| {
+            related
+                .message
+                .contains("Parser recovery produced the same syntax problem")
+        }));
     }
 
     #[test]

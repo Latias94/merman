@@ -7,7 +7,7 @@ import {
   mermaidSourceCommandSourceId,
   mermaidSourceCommandUri,
   mermaidSourceCommandTarget,
-  mermaidSourceMoreActions,
+  mermaidSourceExportCopyActions,
   type MermaidSourceCommandArgument,
 } from "./source-actions.js";
 
@@ -59,7 +59,7 @@ async function showSourceActionPicker(
     return;
   }
   const picked = await vscode.window.showQuickPick(
-    mermaidSourceMoreActions({ includeCopyPng }).map((action) => ({
+    mermaidSourceExportCopyActions({ includeCopyPng }).map((action) => ({
       label: action.title,
       command: action.command,
     })),

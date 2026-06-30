@@ -1,7 +1,6 @@
 use merman_analysis::{AnalysisDiagnostic, AnalysisPayload, DiagnosticSeverity};
 use merman_editor_core::{
-    EditorDiagnostic, EditorDiagnosticCode, EditorDiagnosticRelated, Range as CoreRange,
-    analysis_diagnostic_to_editor,
+    EditorDiagnostic, EditorDiagnosticRelated, Range as CoreRange, analysis_diagnostic_to_editor,
     analysis_payload_to_diagnostics as analysis_payload_to_editor_diagnostics,
 };
 use tower_lsp::lsp_types::{
@@ -21,10 +20,7 @@ pub fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) ->
 }
 
 pub fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diagnostic {
-    let code = match diagnostic.code.clone() {
-        EditorDiagnosticCode::Number(code) => NumberOrString::Number(code),
-        EditorDiagnosticCode::String(code) => NumberOrString::String(code),
-    };
+    let code = NumberOrString::String(diagnostic.code.clone());
     let code_description = code_description(&diagnostic.code);
     let tags = diagnostic_tags(diagnostic.data.as_ref());
     Diagnostic {
@@ -42,10 +38,7 @@ pub fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diag
     }
 }
 
-fn code_description(code: &EditorDiagnosticCode) -> Option<CodeDescription> {
-    let EditorDiagnosticCode::String(code) = code else {
-        return None;
-    };
+fn code_description(code: &str) -> Option<CodeDescription> {
     if !code.starts_with("merman.") {
         return None;
     }

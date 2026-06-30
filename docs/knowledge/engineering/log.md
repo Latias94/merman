@@ -6,6 +6,16 @@ status: active
 # Log
 
 ## 2026-06-30
+- Completed the U6 redundant compatibility cleanup slice: editor-core no longer exposes a
+  numeric/string diagnostic-code compatibility enum, LSP Problems codes are analysis rule id
+  strings only, analysis recovery merge no longer detects fallback parse locations by inspecting
+  related-message text, and VS Code source-action internals no longer use the old `More` naming or
+  `togglePin` fixture.
+- Verified U6 with `cargo check -p merman-analysis --tests`, focused analysis recovery tests,
+  `cargo test -p merman-editor-core --test diagnostics`, one full
+  `cargo test -p merman-lsp --test diagnostics` run before formatting, `cargo check -p merman-lsp
+  --tests` after formatting, `npm run check`, `npm test -- --test-reporter=spec`,
+  `cargo fmt --all --check`, and `git diff --check`.
 - Completed the U5 preview/source-action polish slice: source CodeLens now says `Export / Copy`,
   preview controls avoid source-picker overlap at narrow widths, and webview tests cover drag pan,
   wheel zoom, Fit, 1:1 reset, sourcebar layout state, and source-sized SVG copy.

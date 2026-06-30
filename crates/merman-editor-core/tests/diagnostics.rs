@@ -2,9 +2,7 @@ use merman_analysis::{
     AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
     SourceDescriptor, SourceMap,
 };
-use merman_editor_core::{
-    EditorDiagnosticCode, analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,
-};
+use merman_editor_core::{analysis_diagnostic_to_editor, analysis_payload_to_diagnostics};
 
 #[test]
 fn diagnostics_projection_preserves_message_and_fix_metadata() {
@@ -46,10 +44,7 @@ fn payload_projection_is_protocol_neutral() {
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].message, "no Mermaid diagram detected");
-    assert_eq!(
-        diagnostics[0].code,
-        EditorDiagnosticCode::String("merman.parse.no_diagram".to_string())
-    );
+    assert_eq!(diagnostics[0].code, "merman.parse.no_diagram");
 }
 
 #[test]

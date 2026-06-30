@@ -4,7 +4,7 @@ import type { PreviewInput } from "./preview-source.js";
 
 export const SOURCE_ACTION_COMMANDS = {
   preview: "merman.openPreview",
-  more: "merman.sourceActions",
+  exportCopy: "merman.sourceActions",
   exportSvg: "merman.exportSvg",
   exportPng: "merman.exportPng",
   copySvg: "merman.copySvg",
@@ -30,7 +30,7 @@ export interface MermaidSourceCodeLensSpec {
   command: MermaidSourceActionCommand;
 }
 
-export interface MermaidSourceMoreActionOptions {
+export interface MermaidSourceExportCopyActionOptions {
   includeCopyPng?: boolean;
 }
 
@@ -42,10 +42,10 @@ export interface SourceActionDescriptor {
 
 const SOURCE_ACTIONS: readonly SourceActionDescriptor[] = [
   { title: "Preview", command: SOURCE_ACTION_COMMANDS.preview },
-  { title: "Export / Copy", command: SOURCE_ACTION_COMMANDS.more },
+  { title: "Export / Copy", command: SOURCE_ACTION_COMMANDS.exportCopy },
 ];
 
-export const SOURCE_MORE_ACTIONS: readonly SourceActionDescriptor[] = [
+export const SOURCE_EXPORT_COPY_ACTIONS: readonly SourceActionDescriptor[] = [
   { title: "Export SVG", command: SOURCE_ACTION_COMMANDS.exportSvg },
   { title: "Export PNG", command: SOURCE_ACTION_COMMANDS.exportPng },
   { title: "Copy SVG", command: SOURCE_ACTION_COMMANDS.copySvg },
@@ -69,11 +69,11 @@ export function buildMermaidSourceCodeLensSpecs(
   );
 }
 
-export function mermaidSourceMoreActions(
-  options: MermaidSourceMoreActionOptions = {},
+export function mermaidSourceExportCopyActions(
+  options: MermaidSourceExportCopyActionOptions = {},
 ): readonly SourceActionDescriptor[] {
   const includeCopyPng = options.includeCopyPng ?? true;
-  return SOURCE_MORE_ACTIONS.filter((action) => includeCopyPng || !action.requiresCopyPng);
+  return SOURCE_EXPORT_COPY_ACTIONS.filter((action) => includeCopyPng || !action.requiresCopyPng);
 }
 
 export function mermaidSourceCommandTarget(

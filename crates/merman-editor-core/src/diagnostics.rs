@@ -21,7 +21,7 @@ pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorD
             .map(range_from_span)
             .unwrap_or_default(),
         severity: diagnostic.severity,
-        code: EditorDiagnosticCode::String(diagnostic.id.clone()),
+        code: diagnostic.id.clone(),
         source: "merman".to_string(),
         message: diagnostic.message.clone(),
         related: diagnostic
@@ -61,18 +61,11 @@ fn range_from_span(span: &DiagnosticSpan) -> Range {
 pub struct EditorDiagnostic {
     pub range: Range,
     pub severity: DiagnosticSeverity,
-    pub code: EditorDiagnosticCode,
+    pub code: String,
     pub source: String,
     pub message: String,
     pub related: Vec<EditorDiagnosticRelated>,
     pub data: Option<DiagnosticCodeActionData>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum EditorDiagnosticCode {
-    Number(i32),
-    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
