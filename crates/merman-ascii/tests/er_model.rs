@@ -889,6 +889,27 @@ fn er_parser_relationship_layout_falls_back_to_summary_when_grid_budget_is_tight
         !rendered.contains(" / "),
         "tight-budget ER relation summary should keep multiline labels as continuation rows:\n{rendered}"
     );
+    assert!(
+        !rendered.contains("reason:"),
+        "ER relation summary diagnostics should be opt-in:\n{rendered}"
+    );
+}
+
+#[test]
+fn er_parser_relation_summary_can_show_grid_budget_diagnostic() {
+    let options = AsciiRenderOptions::ascii()
+        .with_max_grid_cells(1)
+        .with_relation_summary_diagnostics(true);
+
+    let rendered = render_er(
+        "erDiagram\nCUSTOMER\nORDER\nINVOICE\nCUSTOMER ||--o{ ORDER : places\nORDER ||--|| INVOICE : bills",
+        &options,
+    )
+    .expect("ER relation summary diagnostic should render");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    assert!(rendered.contains("reason: grid_budget"), "{rendered}");
+    assert!(rendered.contains("limit=1"), "{rendered}");
 }
 
 #[test]

@@ -1270,6 +1270,27 @@ fn class_parser_relation_layout_falls_back_to_summary_when_grid_budget_is_tight(
         !rendered.contains(" / "),
         "tight-budget class relation summary should keep multiline labels as continuation rows:\n{rendered}"
     );
+    assert!(
+        !rendered.contains("reason:"),
+        "class relation summary diagnostics should be opt-in:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_relation_summary_can_show_grid_budget_diagnostic() {
+    let options = AsciiRenderOptions::ascii()
+        .with_max_grid_cells(1)
+        .with_relation_summary_diagnostics(true);
+
+    let rendered = render_class(
+        "classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
+        &options,
+    )
+    .expect("class relation summary diagnostic should render");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    assert!(rendered.contains("reason: grid_budget"), "{rendered}");
+    assert!(rendered.contains("limit=1"), "{rendered}");
 }
 
 #[test]

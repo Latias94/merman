@@ -583,6 +583,7 @@ where
                 &relation_boxes,
                 &component_relations,
                 options,
+                Some(reason),
                 |relation| adapter.build_summary_row(relation, reason),
             )?
         }
@@ -697,9 +698,11 @@ where
         adapter,
     )? {
         Ok(rendered) => Ok(rendered),
-        Err(reason) => render_relation_summary_rows(boxes, relations, options, |relation| {
-            adapter.build_summary_row(relation, reason)
-        }),
+        Err(reason) => {
+            render_relation_summary_rows(boxes, relations, options, Some(reason), |relation| {
+                adapter.build_summary_row(relation, reason)
+            })
+        }
     }
 }
 

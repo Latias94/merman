@@ -90,6 +90,9 @@ fn ascii_options_from_json(
     if let Some(max_grid_cells) = ascii.max_grid_cells {
         render_options.max_grid_cells = max_grid_cells;
     }
+    if let Some(relation_summary_diagnostics) = ascii.relation_summary_diagnostics {
+        render_options.relation_summary_diagnostics = relation_summary_diagnostics;
+    }
     render_options.validate().map_err(|err| {
         BindingError::new(
             BindingStatus::InvalidArgument,
@@ -289,6 +292,23 @@ mod tests {
             text.contains("┌─┴─┐     ┌─┴─┐"),
             "expected mirrored bottom participant boxes:\n{text}"
         );
+    }
+
+    #[test]
+    fn render_ascii_accepts_relation_summary_diagnostics_option() {
+        let text = String::from_utf8(
+            render_ascii(
+                b"classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
+                br#"{ "ascii": { "charset": "ascii", "maxGridCells": 1, "relationSummaryDiagnostics": true } }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(text.contains("relations:"), "{text}");
+        assert!(text.contains("reason: grid_budget"), "{text}");
+        assert!(text.contains("actual="), "{text}");
+        assert!(text.contains("limit=1"), "{text}");
     }
 
     #[test]

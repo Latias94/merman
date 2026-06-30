@@ -1,3 +1,4 @@
+use super::LayeredRelationSummaryReason;
 use super::{
     RelationGraphBox, RelationGraphLabel, RelationGraphLine, render_stacked_boxes_with_section,
 };
@@ -37,9 +38,10 @@ impl RelationGraphSummaryRow {
 pub(crate) fn render_stacked_boxes_with_relation_summary(
     boxes: &[RelationGraphBox],
     rows: &[RelationGraphSummaryRow],
+    reason: Option<LayeredRelationSummaryReason>,
     options: &AsciiRenderOptions,
 ) -> String {
-    let lines = relation_summary_lines(rows);
+    let lines = relation_summary_lines(rows, reason, options);
     render_stacked_boxes_with_section(
         boxes,
         RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
@@ -52,6 +54,7 @@ pub(crate) fn render_relation_summary_rows<R>(
     boxes: &[RelationGraphBox],
     relations: &[R],
     options: &AsciiRenderOptions,
+    reason: Option<LayeredRelationSummaryReason>,
     build_row: impl FnMut(&R) -> Result<RelationGraphSummaryRow>,
 ) -> Result<String> {
     let rows = relations
@@ -60,11 +63,15 @@ pub(crate) fn render_relation_summary_rows<R>(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(render_stacked_boxes_with_relation_summary(
-        boxes, &rows, options,
+        boxes, &rows, reason, options,
     ))
 }
 
-fn relation_summary_lines(rows: &[RelationGraphSummaryRow]) -> Vec<RelationGraphLine> {
+fn relation_summary_lines(
+    rows: &[RelationGraphSummaryRow],
+    reason: Option<LayeredRelationSummaryReason>,
+    options: &AsciiRenderOptions,
+) -> Vec<RelationGraphLine> {
     if rows.is_empty() {
         return Vec::new();
     }
@@ -87,6 +94,15 @@ fn relation_summary_lines(rows: &[RelationGraphSummaryRow]) -> Vec<RelationGraph
     let label_prefix_width = source_width + connector_width + target_width + 5;
 
     let mut lines = Vec::new();
+    if options.relation_summary_diagnostics
+        && let Some(reason) = reason
+    {
+        lines.push(RelationGraphLine::with_role(
+            format!("reason: {}", relation_summary_reason_text(reason)),
+            AsciiColorRole::MutedText,
+        ));
+    }
+
     for row in rows {
         let mut line = String::new();
         line.push_str(&pad_right(&row.source, source_width));
@@ -121,6 +137,17 @@ fn relation_summary_lines(rows: &[RelationGraphSummaryRow]) -> Vec<RelationGraph
     lines
 }
 
+fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> String {
+    match reason {
+        LayeredRelationSummaryReason::Crossing => "crossing".to_string(),
+        LayeredRelationSummaryReason::RouteCollision => "route_collision".to_string(),
+        LayeredRelationSummaryReason::OverlayCollision => "overlay_collision".to_string(),
+        LayeredRelationSummaryReason::GridBudget { actual, limit } => {
+            format!("grid_budget actual={actual} limit={limit}")
+        }
+    }
+}
+
 fn pad_right(text: &str, width: usize) -> String {
     let text_width = display_width(text);
     let mut padded = String::from(text);
@@ -143,8 +170,12 @@ mod tests {
             RelationGraphSummaryRow::new("Svc", "-->", "Repo"),
         ];
 
-        let rendered =
-            render_stacked_boxes_with_relation_summary(&[], &rows, &AsciiRenderOptions::ascii());
+        let rendered = render_stacked_boxes_with_relation_summary(
+            &[],
+            &rows,
+            None,
+            &AsciiRenderOptions::ascii(),
+        );
 
         assert_eq!(
             rendered,
@@ -168,8 +199,12 @@ mod tests {
             RelationGraphSummaryRow::new("API", "-->", "数据"),
         ];
 
-        let rendered =
-            render_stacked_boxes_with_relation_summary(&[], &rows, &AsciiRenderOptions::ascii());
+        let rendered = render_stacked_boxes_with_relation_summary(
+            &[],
+            &rows,
+            None,
+            &AsciiRenderOptions::ascii(),
+        );
 
         assert_eq!(
             rendered,
@@ -198,6 +233,7 @@ mod tests {
         let rendered = render_stacked_boxes_with_relation_summary(
             &[],
             &rows,
+            None,
             &AsciiRenderOptions::ascii()
                 .with_color_mode(AsciiColorMode::Html)
                 .with_color_theme(theme),
@@ -217,6 +253,7 @@ mod tests {
             &[],
             &relations,
             &AsciiRenderOptions::ascii(),
+            None,
             |relation| {
                 calls.set(calls.get() + 1);
                 Ok(RelationGraphSummaryRow::new(*relation, "-->", *relation))
@@ -227,5 +264,42 @@ mod tests {
         assert_eq!(calls.get(), relations.len());
         assert!(rendered.contains("One --> One"));
         assert!(rendered.contains("Two --> Two"));
+    }
+
+    #[test]
+    fn render_stacked_boxes_with_relation_summary_hides_diagnostics_by_default() {
+        let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
+
+        let rendered = render_stacked_boxes_with_relation_summary(
+            &[],
+            &rows,
+            Some(LayeredRelationSummaryReason::GridBudget {
+                actual: 12,
+                limit: 1,
+            }),
+            &AsciiRenderOptions::ascii(),
+        );
+
+        assert!(!rendered.contains("reason:"), "{rendered}");
+    }
+
+    #[test]
+    fn render_stacked_boxes_with_relation_summary_can_show_diagnostics() {
+        let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
+
+        let rendered = render_stacked_boxes_with_relation_summary(
+            &[],
+            &rows,
+            Some(LayeredRelationSummaryReason::GridBudget {
+                actual: 12,
+                limit: 1,
+            }),
+            &AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true),
+        );
+
+        assert_eq!(
+            rendered,
+            "relations:\nreason: grid_budget actual=12 limit=1\nA --> B\n"
+        );
     }
 }

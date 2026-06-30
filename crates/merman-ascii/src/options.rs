@@ -35,6 +35,7 @@ pub struct AsciiRenderOptions {
     pub xychart_category_band_width: usize,
     pub xychart_horizontal_plot_width: usize,
     pub max_grid_cells: usize,
+    pub relation_summary_diagnostics: bool,
 }
 
 impl Default for AsciiRenderOptions {
@@ -55,6 +56,7 @@ impl Default for AsciiRenderOptions {
             xychart_category_band_width: 3,
             xychart_horizontal_plot_width: 10,
             max_grid_cells: 250_000,
+            relation_summary_diagnostics: false,
         }
     }
 }
@@ -103,6 +105,11 @@ impl AsciiRenderOptions {
 
     pub fn with_max_grid_cells(mut self, max_grid_cells: usize) -> Self {
         self.max_grid_cells = max_grid_cells;
+        self
+    }
+
+    pub fn with_relation_summary_diagnostics(mut self, enabled: bool) -> Self {
+        self.relation_summary_diagnostics = enabled;
         self
     }
 

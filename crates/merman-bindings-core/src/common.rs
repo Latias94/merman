@@ -137,6 +137,8 @@ pub(crate) struct AsciiOptionsJson {
     pub(crate) xychart_horizontal_plot_width: Option<usize>,
     #[serde(default, alias = "maxGridCells")]
     pub(crate) max_grid_cells: Option<usize>,
+    #[serde(default, alias = "relationSummaryDiagnostics")]
+    pub(crate) relation_summary_diagnostics: Option<bool>,
 }
 
 #[cfg(feature = "ascii")]
