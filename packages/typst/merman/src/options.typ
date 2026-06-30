@@ -254,7 +254,7 @@
   )
 }
 
-#let build-binding-options(
+#let render-config(
   options: none,
   profile: none,
   typography: none,
@@ -279,67 +279,68 @@
   fixed-today: none,
   fixed-local-offset-minutes: none,
 ) = {
-  if options != none {
+  let profile-options = profile-field(profile, "options")
+  let profile-site-config = profile-field(profile, "site-config", alt: "site_config")
+  let profile-host-theme = profile-field(profile, "host-theme", alt: "host_theme")
+  let profile-typography = profile-field(profile, "typography")
+  let profile-layout = profile-field(profile, "layout")
+
+  let site-config = choose-value(profile-site-config, site-config)
+  let theme = choose-value(profile-field(profile, "theme"), theme)
+  let theme-name = choose-value(profile-field(profile, "theme-name", alt: "theme_name"), theme-name)
+  let base-theme = choose-value(profile-field(profile, "base-theme", alt: "base_theme"), base-theme)
+  let pipeline = choose-value(profile-field(profile, "pipeline"), pipeline, default: "resvg-safe")
+  let id = choose-value(profile-field(profile, "id"), id)
+  let diagram-id = choose-value(profile-field(profile, "diagram-id", alt: "diagram_id"), diagram-id)
+  let background = choose-value(profile-field(profile, "background"), background)
+  let scoped-css = choose-value(profile-field(profile, "scoped-css", alt: "scoped_css"), scoped-css)
+  let css-override-policy = choose-value(
+    profile-field(profile, "css-override-policy", alt: "css_override_policy"),
+    css-override-policy,
+  )
+  let drop-native-duplicate-fallbacks = choose-value(
+    profile-field(
+      profile,
+      "drop-native-duplicate-fallbacks",
+      alt: "drop_native_duplicate_fallbacks",
+    ),
+    drop-native-duplicate-fallbacks,
+  )
+  let text-measurer = choose-value(
+    profile-field(profile, "text-measurer", alt: "text_measurer"),
+    text-measurer,
+  )
+  let math-renderer = choose-value(
+    profile-field(profile, "math-renderer", alt: "math_renderer"),
+    math-renderer,
+  )
+  let viewport-width = choose-value(
+    profile-field(profile, "viewport-width", alt: "viewport_width"),
+    viewport-width,
+  )
+  let viewport-height = choose-value(
+    profile-field(profile, "viewport-height", alt: "viewport_height"),
+    viewport-height,
+  )
+  let fixed-today = choose-value(profile-field(profile, "fixed-today", alt: "fixed_today"), fixed-today)
+  let fixed-local-offset-minutes = choose-value(
+    profile-field(profile, "fixed-local-offset-minutes", alt: "fixed_local_offset_minutes"),
+    fixed-local-offset-minutes,
+  )
+
+  let host-theme = merged-host-theme(
+    context-host-theme,
+    profile-typography,
+    profile-host-theme,
+    typography,
+    host-theme,
+  )
+
+  let binding-options = if options != none {
     options
-  } else if profile-field(profile, "options") != none {
-    profile-field(profile, "options")
+  } else if profile-options != none {
+    profile-options
   } else {
-    let profile-site-config = profile-field(profile, "site-config", alt: "site_config")
-    let profile-host-theme = profile-field(profile, "host-theme", alt: "host_theme")
-    let profile-typography = profile-field(profile, "typography")
-    let profile-layout = profile-field(profile, "layout")
-
-    let site-config = choose-value(profile-site-config, site-config)
-    let theme = choose-value(profile-field(profile, "theme"), theme)
-    let theme-name = choose-value(profile-field(profile, "theme-name", alt: "theme_name"), theme-name)
-    let base-theme = choose-value(profile-field(profile, "base-theme", alt: "base_theme"), base-theme)
-    let pipeline = choose-value(profile-field(profile, "pipeline"), pipeline, default: "resvg-safe")
-    let id = choose-value(profile-field(profile, "id"), id)
-    let diagram-id = choose-value(profile-field(profile, "diagram-id", alt: "diagram_id"), diagram-id)
-    let background = choose-value(profile-field(profile, "background"), background)
-    let scoped-css = choose-value(profile-field(profile, "scoped-css", alt: "scoped_css"), scoped-css)
-    let css-override-policy = choose-value(
-      profile-field(profile, "css-override-policy", alt: "css_override_policy"),
-      css-override-policy,
-    )
-    let drop-native-duplicate-fallbacks = choose-value(
-      profile-field(
-        profile,
-        "drop-native-duplicate-fallbacks",
-        alt: "drop_native_duplicate_fallbacks",
-      ),
-      drop-native-duplicate-fallbacks,
-    )
-    let text-measurer = choose-value(
-      profile-field(profile, "text-measurer", alt: "text_measurer"),
-      text-measurer,
-    )
-    let math-renderer = choose-value(
-      profile-field(profile, "math-renderer", alt: "math_renderer"),
-      math-renderer,
-    )
-    let viewport-width = choose-value(
-      profile-field(profile, "viewport-width", alt: "viewport_width"),
-      viewport-width,
-    )
-    let viewport-height = choose-value(
-      profile-field(profile, "viewport-height", alt: "viewport_height"),
-      viewport-height,
-    )
-    let fixed-today = choose-value(profile-field(profile, "fixed-today", alt: "fixed_today"), fixed-today)
-    let fixed-local-offset-minutes = choose-value(
-      profile-field(profile, "fixed-local-offset-minutes", alt: "fixed_local_offset_minutes"),
-      fixed-local-offset-minutes,
-    )
-
-    let host-theme = merged-host-theme(
-      context-host-theme,
-      profile-typography,
-      profile-host-theme,
-      typography,
-      host-theme,
-    )
-
     (
       fixed_today: fixed-today,
       fixed_local_offset_minutes: fixed-local-offset-minutes,
@@ -363,6 +364,36 @@
       ),
     )
   }
+
+  (
+    binding_options: binding-options,
+    direct_layout: layout,
+    direct_options: options,
+    direct_viewport_width: viewport-width,
+    profile_layout: profile-layout,
+    profile_options: profile-options,
+  )
+}
+
+#let config-with-context-width(config, width) = {
+  if config.direct_layout != none or config.direct_viewport_width != none or config.direct_options != none or config.profile_options != none {
+    config
+  } else {
+    let binding-options = config.binding_options
+    let layout = build-layout-options(
+      none,
+      none,
+      none,
+      width,
+      none,
+      base-layout: config.profile_layout,
+    )
+    (: ..config, binding_options: (: ..binding-options, layout: layout))
+  }
+}
+
+#let build-binding-options(..args) = {
+  render-config(..args).binding_options
 }
 
 #let options-bytes(options) = {
