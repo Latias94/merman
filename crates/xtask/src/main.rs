@@ -155,6 +155,7 @@ fn print_help(topic: Option<&str>) {
     println!(
         "  - `cargo run -p xtask -- compare-all-svgs --report-root --report-root-all --dom-mode parity-root`"
     );
+    println!("  - `cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst <path>`");
     println!("  - `cargo run -p xtask -- gen-upstream-svgs --diagram <name>`");
     println!();
     println!("Topics:");

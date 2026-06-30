@@ -42,6 +42,13 @@ struct SmokeOptions {
     compile_examples: bool,
     compile_tests: bool,
     keep_artifacts: bool,
+    typst: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+struct TypstFixture {
+    input: PathBuf,
+    output: PathBuf,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -77,7 +84,7 @@ pub(crate) fn typst_package_smoke(args: Vec<String>) -> Result<(), XtaskError> {
     let package_dir = build_typst_package_with_options(&options.build)?;
     println_package_build_summary(options.build.profile, &package_dir);
 
-    let typst = find_typst_command()?;
+    let typst = find_typst_command(options.typst.as_deref())?;
     let root = paths::workspace_root();
     let manifest_path = root
         .join("packages")
@@ -105,31 +112,42 @@ pub(crate) fn typst_package_smoke(args: Vec<String>) -> Result<(), XtaskError> {
         source,
     })?;
 
-    let mut inputs = Vec::new();
+    let mut fixtures = Vec::new();
     if options.compile_examples {
-        collect_typst_files(&package_dir.join("examples"), &mut inputs)?;
+        collect_typst_fixtures(
+            &package_dir.join("examples"),
+            &output_dir.join("examples"),
+            &mut fixtures,
+        )?;
     }
     if options.compile_tests {
-        collect_typst_files(
+        collect_typst_fixtures(
             &root
                 .join("packages")
                 .join("typst")
                 .join("merman")
                 .join("tests"),
-            &mut inputs,
+            &output_dir.join("tests"),
+            &mut fixtures,
         )?;
     }
-    inputs.sort();
+    fixtures.sort_by(|left, right| left.input.cmp(&right.input));
 
-    if inputs.is_empty() {
+    if fixtures.is_empty() {
         return Err(XtaskError::TypstPackageSmokeFailed(
             "no Typst examples or tests were found to compile".to_string(),
         ));
     }
 
     let mut compiled = 0usize;
-    for input in inputs {
-        compile_typst_fixture(&typst, &package_path, &output_dir, &input)?;
+    for fixture in fixtures {
+        if let Err(error) = compile_typst_fixture(&typst, &package_path, &fixture) {
+            println!(
+                "typst-package-smoke artifacts kept at {} after failure",
+                smoke_root.display()
+            );
+            return Err(error);
+        }
         compiled += 1;
     }
 
@@ -329,6 +347,7 @@ fn parse_smoke_options(args: Vec<String>) -> Result<SmokeOptions, XtaskError> {
         compile_examples: true,
         compile_tests: true,
         keep_artifacts: false,
+        typst: None,
     };
 
     let mut iter = args.into_iter();
@@ -355,6 +374,9 @@ fn parse_smoke_options(args: Vec<String>) -> Result<SmokeOptions, XtaskError> {
             "--keep-artifacts" => {
                 options.keep_artifacts = true;
             }
+            "--typst" => {
+                options.typst = Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
+            }
             _ => {
                 print_smoke_usage();
                 return Err(XtaskError::Usage);
@@ -367,24 +389,27 @@ fn parse_smoke_options(args: Vec<String>) -> Result<SmokeOptions, XtaskError> {
 
 fn print_smoke_usage() {
     println!(
-        "usage: xtask typst-package-smoke [--profile minimal|full] [--out <dir>] [--skip-wasm-build] [--examples-only|--tests-only] [--keep-artifacts]"
+        "usage: xtask typst-package-smoke [--profile minimal|full|full-elk] [--out <dir>] [--skip-wasm-build] [--examples-only|--tests-only] [--keep-artifacts] [--typst <path>]"
     );
 }
 
-fn find_typst_command() -> Result<String, XtaskError> {
-    let status = Command::new("typst")
+fn find_typst_command(explicit: Option<&Path>) -> Result<PathBuf, XtaskError> {
+    let typst = explicit.map_or_else(|| PathBuf::from("typst"), PathBuf::from);
+    let status = Command::new(&typst)
         .arg("--version")
         .status()
         .map_err(|source| {
             XtaskError::TypstPackageSmokeFailed(format!(
-                "failed to execute `typst --version`: {source}"
+                "failed to execute `{}` --version: {source}",
+                typst.display()
             ))
         })?;
     if status.success() {
-        Ok("typst".to_string())
+        Ok(typst)
     } else {
         Err(XtaskError::TypstPackageSmokeFailed(format!(
-            "`typst --version` failed with status {status}"
+            "`{}` --version failed with status {status}",
+            typst.display()
         )))
     }
 }
@@ -413,38 +438,71 @@ fn collect_typst_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), XtaskEr
     Ok(())
 }
 
-fn compile_typst_fixture(
-    typst: &str,
-    package_path: &Path,
-    output_dir: &Path,
-    input: &Path,
+fn collect_typst_fixtures(
+    input_root: &Path,
+    output_root: &Path,
+    out: &mut Vec<TypstFixture>,
 ) -> Result<(), XtaskError> {
-    let stem = input
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("typst-fixture");
-    let output = output_dir.join(format!("{stem}.pdf"));
+    let mut inputs = Vec::new();
+    collect_typst_files(input_root, &mut inputs)?;
+    for input in inputs {
+        let output = typst_fixture_output_path(input_root, output_root, &input)?;
+        out.push(TypstFixture { input, output });
+    }
+    Ok(())
+}
+
+fn typst_fixture_output_path(
+    input_root: &Path,
+    output_root: &Path,
+    input: &Path,
+) -> Result<PathBuf, XtaskError> {
+    let relative = input.strip_prefix(input_root).map_err(|_| {
+        XtaskError::TypstPackageSmokeFailed(format!(
+            "fixture {} is outside input root {}",
+            input.display(),
+            input_root.display()
+        ))
+    })?;
+    Ok(output_root.join(relative).with_extension("pdf"))
+}
+
+fn compile_typst_fixture(
+    typst: &Path,
+    package_path: &Path,
+    fixture: &TypstFixture,
+) -> Result<(), XtaskError> {
+    if let Some(parent) = fixture.output.parent() {
+        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
     let status = Command::new(typst)
         .args(["compile", "--package-path"])
         .arg(package_path)
-        .arg(input)
-        .arg(&output)
+        .arg(&fixture.input)
+        .arg(&fixture.output)
         .status()
         .map_err(|source| {
             XtaskError::TypstPackageSmokeFailed(format!(
                 "failed to compile {}: {source}",
-                input.display()
+                fixture.input.display()
             ))
         })?;
 
     if status.success() {
-        println!("compiled Typst fixture {}", input.display());
+        println!(
+            "compiled Typst fixture {} -> {}",
+            fixture.input.display(),
+            fixture.output.display()
+        );
         return Ok(());
     }
 
     Err(XtaskError::TypstPackageSmokeFailed(format!(
         "typst compile failed for {} with status {status}",
-        input.display()
+        fixture.input.display()
     )))
 }
 
@@ -554,8 +612,12 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XtaskErro
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_typst_files, is_typst_package_version};
-    use std::path::Path;
+    use super::{
+        collect_typst_files, collect_typst_fixtures, copy_dir_recursive, is_typst_package_version,
+        parse_smoke_options, typst_fixture_output_path,
+    };
+    use std::fs;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn typst_package_version_accepts_numeric_triplets() {
@@ -576,5 +638,95 @@ mod tests {
         let mut out = Vec::new();
         collect_typst_files(Path::new("target/definitely-missing-typst-dir"), &mut out).unwrap();
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn smoke_options_accept_explicit_typst_binary() {
+        let options = parse_smoke_options(vec![
+            "--skip-wasm-build".to_string(),
+            "--typst".to_string(),
+            "target/typst-local/typst.exe".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            options.typst.as_deref(),
+            Some(Path::new("target/typst-local/typst.exe"))
+        );
+        assert!(options.build.skip_wasm_build);
+    }
+
+    #[test]
+    fn typst_fixture_output_path_preserves_relative_directories() {
+        let root = Path::new("tests");
+        let out = Path::new("out");
+
+        let api = typst_fixture_output_path(root, out, Path::new("tests/api/test.typ")).unwrap();
+        let context =
+            typst_fixture_output_path(root, out, Path::new("tests/context/test.typ")).unwrap();
+
+        assert_eq!(api, PathBuf::from("out/api/test.pdf"));
+        assert_eq!(context, PathBuf::from("out/context/test.pdf"));
+        assert_ne!(api, context);
+    }
+
+    #[test]
+    fn collect_typst_fixtures_keeps_nested_outputs_distinct() {
+        let root = unique_test_dir("typst-fixtures");
+        let input_root = root.join("tests");
+        let output_root = root.join("out");
+        fs::create_dir_all(input_root.join("api")).unwrap();
+        fs::create_dir_all(input_root.join("context")).unwrap();
+        fs::write(input_root.join("api").join("test.typ"), "").unwrap();
+        fs::write(input_root.join("context").join("test.typ"), "").unwrap();
+
+        let mut fixtures = Vec::new();
+        collect_typst_fixtures(&input_root, &output_root, &mut fixtures).unwrap();
+        fixtures.sort_by(|left, right| left.output.cmp(&right.output));
+
+        assert_eq!(fixtures.len(), 2);
+        assert_eq!(fixtures[0].output, output_root.join("api").join("test.pdf"));
+        assert_eq!(
+            fixtures[1].output,
+            output_root.join("context").join("test.pdf")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn copy_dir_recursive_copies_source_modules() {
+        let root = unique_test_dir("typst-copy-src");
+        let source = root.join("source");
+        let destination = root.join("destination");
+        fs::create_dir_all(source.join("src").join("nested")).unwrap();
+        fs::write(source.join("src").join("exports.typ"), "#let ok = true").unwrap();
+        fs::write(
+            source.join("src").join("nested").join("module.typ"),
+            "#let nested = true",
+        )
+        .unwrap();
+
+        copy_dir_recursive(&source.join("src"), &destination.join("src")).unwrap();
+
+        assert!(destination.join("src").join("exports.typ").exists());
+        assert!(
+            destination
+                .join("src")
+                .join("nested")
+                .join("module.typ")
+                .exists()
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("merman-{name}-{pid}-{nanos}"))
     }
 }
