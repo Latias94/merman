@@ -188,6 +188,11 @@ fn build_typst_package_with_options(options: &Options) -> Result<PathBuf, XtaskE
     )?;
     copy_file(&wasm_path, &package_dir.join("merman_typst_plugin.wasm"))?;
 
+    let src_source = package_source.join("src");
+    if src_source.exists() {
+        copy_dir_recursive(&src_source, &package_dir.join("src"))?;
+    }
+
     for license in ["LICENSE", "LICENSE-MIT", "LICENSE-APACHE"] {
         let source = root.join(license);
         if source.exists() {
