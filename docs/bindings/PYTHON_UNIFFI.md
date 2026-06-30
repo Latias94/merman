@@ -57,9 +57,10 @@ semantic_json = engine.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
 validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = engine.supported_diagrams()
+ascii_capabilities = engine.ascii_capabilities()
 themes = engine.supported_themes()
 host_presets = engine.supported_host_theme_presets()
-capabilities = engine.diagram_family_capabilities()
+family_capabilities = engine.diagram_family_capabilities()
 
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):
@@ -108,7 +109,8 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
 it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
 `MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
-`MermanEngine.validate`, metadata methods, `MermanEngine.diagram_family_capabilities`,
+`MermanEngine.validate`, metadata methods, `MermanEngine.ascii_capabilities`,
+`MermanEngine.diagram_family_capabilities`,
 `MermanEngine.reusable_engine_with_text_measurer`, `MermanReusableEngine.set_text_measurer`,
 `MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`,
 `MermanEngine.package_version`, and checks `MermanError.Binding` fields for invalid options JSON.
