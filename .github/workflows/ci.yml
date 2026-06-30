@@ -123,60 +123,23 @@ jobs:
       - name: Test Typst plugin crate
         run: cargo test -p merman-typst-plugin
 
-      - name: Build Typst package
-        run: cargo run -p xtask -- build-typst-package
-
       - name: Check Typst wasm ABI and size
         run: cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
 
-      - name: Compile Typst package examples
+      - name: Smoke Typst package
         shell: bash
         run: |
           set -euo pipefail
-          typst_package_version="$(grep '^version = ' packages/typst/merman/typst.toml | sed 's/version = "\(.*\)"/\1/')"
-          typst_package_root="dist/typst/merman/${typst_package_version}"
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
-          mkdir -p "target/typst-preview/preview/merman/${typst_package_version}"
-          cp -R "${typst_package_root}"/. "target/typst-preview/preview/merman/${typst_package_version}/"
-          mkdir -p target/typst-smoke
-          for example in "${typst_package_root}"/examples/*.typ; do
-            name="$(basename "$example" .typ)"
-            "${typst_bin}" compile --package-path target/typst-preview "$example" "target/typst-smoke/${name}.pdf"
-          done
+          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst "${typst_bin}"
 
-      - name: Smoke preview Typst package import
-        shell: bash
-        run: |
-          set -euo pipefail
-          typst_package_version="$(grep '^version = ' packages/typst/merman/typst.toml | sed 's/version = "\(.*\)"/\1/')"
-          typst_package_root="dist/typst/merman/${typst_package_version}"
-          typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
-          mkdir -p "target/typst-preview/preview/merman/${typst_package_version}"
-          cp -R "${typst_package_root}"/. "target/typst-preview/preview/merman/${typst_package_version}/"
-          sed "s/@VERSION@/${typst_package_version}/g" > target/typst-smoke/preview-package.typ <<'EOF'
-          #import "@preview/merman:@VERSION@": mermaid, mermaid-result, show-mermaid-blocks
-
-          #show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 80%)
-
-          = Preview package smoke
-
-          #let result = mermaid-result("flowchart LR\n  A[Typst] --> B[merman]\n")
-          Render result: `#result.code_name`
-
-          #mermaid("flowchart LR\n  A[Typst] --> B[merman]\n", width: 80%)
-
-          #let elk = mermaid-result("flowchart-elk TD\n  A[Typst] --> B[ELK]\n")
-          ELK result: `#elk.code_name`
-          #mermaid("flowchart-elk TD\n  A[Typst] --> B[ELK]\n", width: 80%)
-
-          ```mermaid
-          sequenceDiagram
-            participant A
-            participant B
-            A->>B: preview import works
-          ```
-          EOF
-          "${typst_bin}" compile --package-path target/typst-preview target/typst-smoke/preview-package.typ target/typst-smoke/preview-package.pdf
+      - name: Upload Typst package smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: typst-package-smoke
+          path: target/typst-package-smoke
+          if-no-files-found: ignore
 
   typst-package-compat:
     name: typst-package-compat
@@ -220,15 +183,20 @@ jobs:
           install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
           "${typst_root}/typst" --version
 
-      - name: Build Typst package
-        run: cargo run -p xtask -- build-typst-package
-
       - name: Smoke Typst compatibility version
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}:${PATH}"
-          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --tests-only
+          typst_bin="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}/typst"
+          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --tests-only --typst "${typst_bin}"
+
+      - name: Upload Typst package compatibility artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: typst-package-compat-smoke
+          path: target/typst-package-smoke
+          if-no-files-found: ignore
 
   platform-script-syntax:
     name: platform-script-syntax
