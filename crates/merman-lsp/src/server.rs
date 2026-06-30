@@ -42,9 +42,7 @@ use tower_lsp::lsp_types::{
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
     TextDocumentSyncCapability, TextDocumentSyncKind, UnchangedDocumentDiagnosticReport,
-    WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult,
-    WorkspaceDocumentDiagnosticReport, WorkspaceEdit, WorkspaceFullDocumentDiagnosticReport,
-    WorkspaceSymbolParams, WorkspaceUnchangedDocumentDiagnosticReport,
+    WorkspaceEdit, WorkspaceSymbolParams,
 };
 use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
@@ -410,53 +408,6 @@ impl LanguageServer for MermanLanguageServer {
             diagnostics,
             result_id,
             params.previous_result_id.as_deref(),
-        ))
-    }
-
-    async fn workspace_diagnostic(
-        &self,
-        params: WorkspaceDiagnosticParams,
-    ) -> Result<WorkspaceDiagnosticReportResult> {
-        let snapshots = {
-            let store = self.store.lock().await;
-            store.snapshots()
-        };
-
-        let mut items = Vec::with_capacity(snapshots.len());
-        for snapshot in snapshots {
-            let diagnostics = self.diagnostics_for_snapshot(&snapshot).await;
-            let result_id = Self::diagnostic_result_id(&diagnostics);
-            let previous_result_id = params
-                .previous_result_ids
-                .iter()
-                .find(|previous| previous.uri == snapshot.uri)
-                .map(|previous| previous.value.as_str());
-
-            let report = if previous_result_id == Some(result_id.as_str()) {
-                WorkspaceDocumentDiagnosticReport::Unchanged(
-                    WorkspaceUnchangedDocumentDiagnosticReport {
-                        uri: snapshot.uri.clone(),
-                        version: Some(snapshot.version as i64),
-                        unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
-                            result_id,
-                        },
-                    },
-                )
-            } else {
-                WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
-                    uri: snapshot.uri.clone(),
-                    version: Some(snapshot.version as i64),
-                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                        result_id: Some(result_id),
-                        items: diagnostics,
-                    },
-                })
-            };
-            items.push(report);
-        }
-
-        Ok(WorkspaceDiagnosticReportResult::Report(
-            WorkspaceDiagnosticReport { items },
         ))
     }
 

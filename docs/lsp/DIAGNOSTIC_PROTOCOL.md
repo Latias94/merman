@@ -30,8 +30,9 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
   range/delta semantic tokens, and fix-backed code actions are wired.
 - That claim applies to the first-class matrix in `CAPABILITIES.md`; `error` remains an internal
   fallback diagram rather than a product-family contract.
-- `textDocument/diagnostic` and `workspace/diagnostic` are wired for pull clients; both report the
-  same shared analysis payloads as the push path.
+- `textDocument/diagnostic` is wired for pull clients and reports the same shared analysis payloads
+  as the push path. `workspace/diagnostic` is not advertised or implemented until unopened-file
+  workspace scanning exists.
 - Workspace symbols are wired from tracked document snapshots.
 - Core config diagnostics include source-backed Mermaid compatibility warnings such as deprecated
   directive usage of `flowchart.htmlLabels` (now with a preferred migration quickfix) and

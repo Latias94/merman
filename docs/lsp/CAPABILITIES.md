@@ -96,8 +96,9 @@ Remaining fallback ledger:
   Numeric `code` / `code_name`, category, diagram type, help text, and fix metadata remain in
   diagnostic `data` for compatibility and code actions. Document pull diagnostics are enabled only
   when the client advertises `textDocument.diagnostic`; `workspace_diagnostics` is not advertised
-  because unopened workspace-file scanning is not implemented. Push diagnostics are cleared on
-  `didClose`, and workspace diagnostic refresh is sent only when the client advertises
+  and `workspace/diagnostic` is not implemented because unopened workspace-file scanning is not
+  implemented. Push diagnostics are cleared on `didClose`, and `workspace/diagnostic/refresh` is
+  sent only to invalidate pull diagnostic caches when the client advertises
   `workspace.diagnostic.refreshSupport`.
 - Lint rule discovery: clients should use the shared rule catalog metadata for rule ids,
   evidence references, profiles, origins, configurability, and fixability instead of duplicating

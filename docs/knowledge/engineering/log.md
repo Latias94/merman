@@ -6,6 +6,10 @@ status: active
 # Log
 
 ## 2026-06-30
+- Completed the U4 LSP diagnostic boundary slice: `workspace/diagnostic` is no longer implemented
+  while `workspace_diagnostics` is false, closed-document `textDocument/diagnostic` pull returns a
+  stable empty report, and LSP docs now state that workspace diagnostics wait for unopened-file
+  scanning.
 - Documented the U3 parser diagnostic fallback ledger: migrated handwritten spans cover XY Chart,
   Gantt, GitGraph, Timeline, and C4; Architecture and Kanban render parse errors remain named
   fallback cases until their render parsers preserve byte offsets.

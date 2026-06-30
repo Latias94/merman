@@ -5,7 +5,7 @@ use merman_lsp::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD};
 use serde_json::from_value;
 use tokio::time::{Duration, timeout};
 use tower::{Service, ServiceExt};
-use tower_lsp::jsonrpc::Request;
+use tower_lsp::jsonrpc::{ErrorCode, Request};
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionParams, DiagnosticServerCapabilities,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -16,8 +16,7 @@ use tower_lsp::lsp_types::{
     RenameParams, SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport, WorkspaceSymbolParams,
+    TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -86,7 +85,7 @@ async fn lsp_service_does_not_advertise_workspace_diagnostics_without_workspace_
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_pulls_workspace_diagnostics() {
+async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
     let (mut service, _socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -136,15 +135,7 @@ async fn lsp_service_smoke_pulls_workspace_diagnostics() {
     );
 
     let request = Request::build("workspace/diagnostic")
-        .params(
-            serde_json::to_value(WorkspaceDiagnosticParams {
-                identifier: None,
-                previous_result_ids: Vec::new(),
-                work_done_progress_params: Default::default(),
-                partial_result_params: Default::default(),
-            })
-            .unwrap(),
-        )
+        .params(serde_json::json!({ "previousResultIds": [] }))
         .id(2)
         .finish();
     let response = service
@@ -155,27 +146,10 @@ async fn lsp_service_smoke_pulls_workspace_diagnostics() {
         .await
         .unwrap()
         .expect("workspace diagnostic response");
-    let result: WorkspaceDiagnosticReportResult = from_value(
-        response
-            .result()
-            .cloned()
-            .expect("workspace diagnostic result"),
-    )
-    .unwrap();
-    let report = match result {
-        WorkspaceDiagnosticReportResult::Report(report) => report,
-        other => panic!("unexpected workspace diagnostic result: {other:?}"),
-    };
-    assert_eq!(report.items.len(), 1);
-    let item = match &report.items[0] {
-        WorkspaceDocumentDiagnosticReport::Full(report) => report,
-        other => panic!("unexpected workspace diagnostic item: {other:?}"),
-    };
-    assert_eq!(item.uri, uri);
-    assert_eq!(item.full_document_diagnostic_report.items.len(), 1);
+    assert!(response.is_error());
     assert_eq!(
-        item.full_document_diagnostic_report.items[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::WARNING)
+        response.error().expect("workspace diagnostic error").code,
+        ErrorCode::MethodNotFound
     );
 }
 
@@ -512,6 +486,176 @@ async fn lsp_service_smoke_pulls_document_diagnostics() {
         }
         other => panic!("unexpected diagnostic report: {other:?}"),
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_pull_after_close_returns_stable_empty_report() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: String::new(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let first = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(first)
+        .await
+        .unwrap()
+        .expect("document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("document diagnostic result"),
+    )
+    .unwrap();
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(first_full)) = result
+    else {
+        panic!("expected full diagnostic report");
+    };
+    assert!(!first_full.full_document_diagnostic_report.items.is_empty());
+
+    let close = Request::build("textDocument/didClose")
+        .params(
+            serde_json::to_value(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(close).await.unwrap(),
+        None
+    );
+
+    let empty = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(3)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(empty)
+        .await
+        .unwrap()
+        .expect("empty document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("empty document diagnostic result"),
+    )
+    .unwrap();
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(empty_full)) = result
+    else {
+        panic!("expected empty full diagnostic report");
+    };
+    assert!(empty_full.full_document_diagnostic_report.items.is_empty());
+    let empty_result_id = empty_full
+        .full_document_diagnostic_report
+        .result_id
+        .expect("empty result id");
+
+    let unchanged = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri },
+                identifier: None,
+                previous_result_id: Some(empty_result_id.clone()),
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(4)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(unchanged)
+        .await
+        .unwrap()
+        .expect("unchanged document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("unchanged document diagnostic result"),
+    )
+    .unwrap();
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(unchanged)) =
+        result
+    else {
+        panic!("expected unchanged empty diagnostic report");
+    };
+    assert_eq!(
+        unchanged.unchanged_document_diagnostic_report.result_id,
+        empty_result_id
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
