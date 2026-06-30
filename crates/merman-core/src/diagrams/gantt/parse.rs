@@ -98,7 +98,7 @@ fn parse_key_colon_value_spanned<'a>(
     })
 }
 
-fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {
+fn parse_acc_descr_block(cursor: &mut GanttLineCursor<'_>, first_line: &str) -> Option<String> {
     let t = first_line.trim_start();
     if !starts_with_case_insensitive(t, "accDescr") {
         return None;
@@ -114,7 +114,7 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
     buf.push_str(rest);
     buf.push('\n');
 
-    for line in lines {
+    while let Some((line, _line_start)) = cursor.next_line() {
         if let Some(end) = line.find('}') {
             buf.push_str(&line[..end]);
             break;
@@ -123,6 +123,27 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
         buf.push('\n');
     }
     Some(buf.trim().to_string())
+}
+
+struct GanttLineCursor<'a> {
+    segments: std::str::SplitInclusive<'a, char>,
+    offset: usize,
+}
+
+impl<'a> GanttLineCursor<'a> {
+    fn new(code: &'a str) -> Self {
+        Self {
+            segments: code.split_inclusive('\n'),
+            offset: 0,
+        }
+    }
+
+    fn next_line(&mut self) -> Option<(&'a str, usize)> {
+        let segment = self.segments.next()?;
+        let line_start = self.offset;
+        self.offset += segment.len();
+        Some((strip_line_ending(segment), line_start))
+    }
 }
 
 fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatementParts<'_>> {
@@ -599,8 +620,9 @@ fn parse_gantt_keyword_arg_spanned<'a>(
     if !ws.is_whitespace() {
         return None;
     }
-    let rest_start = keyword.len() + ws.len_utf8();
-    let rest = &after[ws.len_utf8()..];
+    let ws_len = leading_whitespace_len(after);
+    let rest_start = keyword.len() + ws_len;
+    let rest = &after[ws_len..];
     let text = if terminates_at_statement_suffix {
         split_statement_suffix(rest)
     } else {
@@ -1058,10 +1080,10 @@ fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
         db.set_display_mode(dm);
     }
 
-    let mut lines = code.lines();
+    let mut cursor = GanttLineCursor::new(code);
     let mut header_seen = false;
 
-    while let Some(line) = lines.next() {
+    while let Some((line, line_start)) = cursor.next_line() {
         let stripped = strip_inline_comment(line);
         let trimmed = stripped.trim();
         if trimmed.is_empty() {
@@ -1073,7 +1095,14 @@ fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
                 header_seen = true;
                 let rest = trimmed["gantt".len()..].trim_start();
                 if !rest.is_empty() {
-                    parse_gantt_statement(rest, &mut db, &mut lines)?;
+                    let rest_offset = trimmed["gantt".len()..].len() - rest.len();
+                    let trimmed_start = stripped.find(trimmed).unwrap_or(0);
+                    parse_gantt_statement(
+                        rest,
+                        line_start + trimmed_start + "gantt".len() + rest_offset,
+                        &mut db,
+                        &mut cursor,
+                    )?;
                 }
                 continue;
             }
@@ -1083,7 +1112,7 @@ fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
             ));
         }
 
-        parse_gantt_statement(stripped, &mut db, &mut lines)?;
+        parse_gantt_statement(stripped, line_start, &mut db, &mut cursor)?;
     }
 
     if !header_seen {
@@ -1219,8 +1248,9 @@ fn task_time_ms(task: &RawTask, field: &str, value: Option<DateTimeFixed>) -> Re
 
 fn parse_gantt_statement(
     line: &str,
+    line_start: usize,
     db: &mut GanttDb,
-    lines: &mut std::str::Lines<'_>,
+    cursor: &mut GanttLineCursor<'_>,
 ) -> Result<()> {
     let stripped = strip_inline_comment(line);
     let t = stripped.trim();
@@ -1260,26 +1290,40 @@ fn parse_gantt_statement(
         db.set_today_marker(v.trim());
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg_full_line(stripped, "weekday") {
-        let day = v.trim().to_lowercase();
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
+        let trimmed_day = v.trim();
+        let day = trimmed_day
+            .map(|value| value.text.to_lowercase())
+            .unwrap_or_default();
         if !matches!(
             day.as_str(),
             "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
         ) {
-            return Err(Error::diagram_parse_fallback(
+            let span = trimmed_day
+                .map(SpannedText::span)
+                .unwrap_or_else(|| SourceSpan::new(v.start, v.start));
+            return Err(Error::diagram_parse_exact(
                 "gantt".to_string(),
                 format!("invalid weekday: {day}"),
+                span,
             ));
         }
         db.set_weekday(&day);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg_full_line(stripped, "weekend") {
-        let day = v.trim().to_lowercase();
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
+        let trimmed_day = v.trim();
+        let day = trimmed_day
+            .map(|value| value.text.to_lowercase())
+            .unwrap_or_default();
         if !matches!(day.as_str(), "friday" | "saturday") {
-            return Err(Error::diagram_parse_fallback(
+            let span = trimmed_day
+                .map(SpannedText::span)
+                .unwrap_or_else(|| SourceSpan::new(v.start, v.start));
+            return Err(Error::diagram_parse_exact(
                 "gantt".to_string(),
                 format!("invalid weekend: {day}"),
+                span,
             ));
         }
         db.set_weekend(&day);
@@ -1301,7 +1345,7 @@ fn parse_gantt_statement(
         db.set_acc_descr(&v);
         return Ok(());
     }
-    if let Some(v) = parse_acc_descr_block(lines, stripped) {
+    if let Some(v) = parse_acc_descr_block(cursor, stripped) {
         db.set_acc_descr(&v);
         return Ok(());
     }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine,
-    MermaidConfig, ParseOptions, RenderSemanticModel, SourceSpan,
+    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, Error,
+    MermaidConfig, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel, SourceSpan,
 };
 use chrono::NaiveDate;
 use futures::executor::block_on;
@@ -1490,15 +1490,19 @@ test: id1,2013-01-01,1d
 #[test]
 fn gantt_weekday_rejects_unknown_values() {
     let engine = Engine::new();
-    let err = block_on(engine.parse_diagram(
-        r#"
-gantt
-weekday foo
-"#,
-        ParseOptions::default(),
-    ))
-    .unwrap_err();
+    let text = "gantt\nweekday foo\n";
+    let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
     assert!(err.to_string().contains("invalid weekday"));
+
+    let Error::DiagramParse { diagnostic, .. } = err else {
+        panic!("expected gantt parse error");
+    };
+    let token_start = text.find("foo").unwrap();
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(token_start, token_start + "foo".len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
 
 #[test]

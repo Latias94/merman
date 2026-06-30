@@ -151,6 +151,42 @@ impl Error {
         Self::diagram_parse_diagnostic(diagram_type, ParseDiagnostic::new(message))
     }
 
+    pub fn diagram_parse_exact(
+        diagram_type: impl Into<String>,
+        message: impl Into<String>,
+        span: SourceSpan,
+    ) -> Self {
+        Self::diagram_parse_diagnostic(
+            diagram_type,
+            ParseDiagnostic::new(message).with_span(span, ParseDiagnosticSpanKind::Exact),
+        )
+    }
+
+    pub fn diagram_parse_insertion_point(
+        diagram_type: impl Into<String>,
+        message: impl Into<String>,
+        offset: usize,
+    ) -> Self {
+        Self::diagram_parse_diagnostic(
+            diagram_type,
+            ParseDiagnostic::new(message).with_span(
+                SourceSpan::new(offset, offset),
+                ParseDiagnosticSpanKind::InsertionPoint,
+            ),
+        )
+    }
+
+    pub fn diagram_parse_fallback_at(
+        diagram_type: impl Into<String>,
+        message: impl Into<String>,
+        span: SourceSpan,
+    ) -> Self {
+        Self::diagram_parse_diagnostic(
+            diagram_type,
+            ParseDiagnostic::new(message).with_span(span, ParseDiagnosticSpanKind::Fallback),
+        )
+    }
+
     pub fn diagram_parse_diagnostic(
         diagram_type: impl Into<String>,
         diagnostic: ParseDiagnostic,

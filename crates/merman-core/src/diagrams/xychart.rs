@@ -511,23 +511,25 @@ fn parse_xychart_model(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<Option<XyChartDiagramRenderModel>> {
-    let cleaned = strip_comments(code);
-    let statements = split_statements(&cleaned);
+    let statements = split_statements_spanned(code);
 
-    let mut it = statements.into_iter().filter(|s| !s.trim().is_empty());
+    let mut it = statements
+        .into_iter()
+        .filter(|statement| !statement.text.trim().is_empty());
     let Some(header_stmt) = it.next() else {
         return Ok(None);
     };
 
     let mut state = XyChartState::new(meta);
-    parse_header(&header_stmt, &mut state)?;
+    parse_header(&header_stmt.text, &mut state)?;
 
     let mut title: Option<String> = None;
     let mut acc_title: Option<String> = None;
     let mut acc_descr: Option<String> = None;
 
     for stmt in it {
-        let stmt = stmt.trim();
+        let stmt_start = stmt.trimmed_start();
+        let stmt = stmt.text.trim();
         if stmt.is_empty() {
             continue;
         }
@@ -586,12 +588,14 @@ fn parse_xychart_model(
             continue;
         }
         if let Some(rest) = strip_keyword(stmt, "line") {
-            let (_plot_title, data) = parse_plot_stmt(rest)?;
+            let rest_start = stmt_start + stmt.len().saturating_sub(rest.len());
+            let (_plot_title, data) = parse_plot_stmt_spanned(rest, rest_start)?;
             state.add_line_data(data);
             continue;
         }
         if let Some(rest) = strip_keyword(stmt, "bar") {
-            let (_plot_title, data) = parse_plot_stmt(rest)?;
+            let rest_start = stmt_start + stmt.len().saturating_sub(rest.len());
+            let (_plot_title, data) = parse_plot_stmt_spanned(rest, rest_start)?;
             state.add_bar_data(data);
             continue;
         }
@@ -869,6 +873,30 @@ impl SpannedText {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SpannedSlice<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
+}
+
+impl<'a> SpannedSlice<'a> {
+    fn new(text: &'a str, start: usize, end: usize) -> Self {
+        Self { text, start, end }
+    }
+
+    fn trim(self) -> Self {
+        let leading = self.text.len().saturating_sub(self.text.trim_start().len());
+        let text = &self.text[leading..];
+        let trimmed_len = text.trim_end().len();
+        Self {
+            text: &text[..trimmed_len],
+            start: self.start + leading,
+            end: self.start + leading + trimmed_len,
+        }
+    }
+}
+
 fn strip_inline_comment(line: &str) -> &str {
     match line.find("%%") {
         Some(idx) => &line[..idx],
@@ -1033,8 +1061,10 @@ fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> R
     ))
 }
 
-fn parse_plot_stmt(rest: &str) -> Result<(String, Vec<f64>)> {
-    let t = rest.trim();
+fn parse_plot_stmt_spanned(rest: &str, rest_start: usize) -> Result<(String, Vec<f64>)> {
+    let leading = rest.len().saturating_sub(rest.trim_start().len());
+    let t = rest.trim_start();
+    let t_start = rest_start + leading;
     if t.is_empty() {
         return Err(Error::diagram_parse_fallback(
             "xychart".to_string(),
@@ -1043,7 +1073,7 @@ fn parse_plot_stmt(rest: &str) -> Result<(String, Vec<f64>)> {
     }
 
     if t.starts_with('[') {
-        let data = parse_number_list_in_brackets(t)?;
+        let data = parse_number_list_in_brackets_spanned(t, t_start)?;
         if data.is_empty() {
             return Err(Error::diagram_parse_fallback(
                 "xychart".to_string(),
@@ -1054,14 +1084,17 @@ fn parse_plot_stmt(rest: &str) -> Result<(String, Vec<f64>)> {
     }
 
     let (title, tail) = parse_text_prefix(t)?;
+    let tail_start = t_start + t.len().saturating_sub(tail.len());
+    let tail_leading = tail.len().saturating_sub(tail.trim_start().len());
     let tail = tail.trim_start();
+    let tail_start = tail_start + tail_leading;
     if !tail.starts_with('[') {
         return Err(Error::diagram_parse_fallback(
             "xychart".to_string(),
             "plot data missing".to_string(),
         ));
     }
-    let data = parse_number_list_in_brackets(tail)?;
+    let data = parse_number_list_in_brackets_spanned(tail, tail_start)?;
     if data.is_empty() {
         return Err(Error::diagram_parse_fallback(
             "xychart".to_string(),
@@ -1180,21 +1213,28 @@ fn parse_text_list_in_brackets(input: &str) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn parse_number_list_in_brackets(input: &str) -> Result<Vec<f64>> {
+fn parse_number_list_in_brackets_spanned(input: &str, input_start: usize) -> Result<Vec<f64>> {
+    let leading = input.len().saturating_sub(input.trim_start().len());
     let t = input.trim_start();
-    let inner = extract_bracket_inner(t)?;
-    let parts = split_top_level_commas(inner);
+    let t_start = input_start + leading;
+    let (inner, inner_start) = extract_bracket_inner_spanned(t, t_start)?;
+    let parts = split_top_level_commas_spanned(inner, inner_start);
     let mut out = Vec::new();
-    for p in parts {
-        let p = p.trim();
-        if p.is_empty() {
-            return Err(Error::diagram_parse_fallback(
+    for part in parts {
+        let trimmed = part.trim();
+        if trimmed.text.is_empty() {
+            return Err(Error::diagram_parse_insertion_point(
                 "xychart".to_string(),
                 "empty number".to_string(),
+                trimmed.start,
             ));
         }
-        let n = parse_number(p).ok_or_else(|| {
-            Error::diagram_parse_fallback("xychart".to_string(), format!("invalid number: {p}"))
+        let n = parse_number(trimmed.text).ok_or_else(|| {
+            Error::diagram_parse_exact(
+                "xychart".to_string(),
+                format!("invalid number: {}", trimmed.text),
+                SourceSpan::new(trimmed.start, trimmed.end),
+            )
         })?;
         out.push(n);
     }
@@ -1267,6 +1307,80 @@ fn extract_bracket_inner(input: &str) -> Result<&str> {
     ))
 }
 
+fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&str, usize)> {
+    let t = input.trim_start();
+    let t_start = input_start + input.len().saturating_sub(t.len());
+    if !t.starts_with('[') {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "expected '['".to_string(),
+            t_start,
+        ));
+    }
+    let mut in_quote = false;
+    let mut in_md = false;
+    let mut idx = 1usize;
+    while idx < t.len() {
+        let rest = &t[idx..];
+        let ch = rest.chars().next().unwrap();
+        if in_md {
+            if rest.starts_with("`\"") {
+                in_md = false;
+                idx += 2;
+                continue;
+            }
+            idx += ch.len_utf8();
+            continue;
+        }
+        if in_quote {
+            if ch == '"' {
+                in_quote = false;
+            }
+            idx += ch.len_utf8();
+            continue;
+        }
+        if rest.starts_with("\"`") {
+            in_md = true;
+            idx += 2;
+            continue;
+        }
+        if ch == '"' {
+            in_quote = true;
+            idx += ch.len_utf8();
+            continue;
+        }
+        if ch == '[' {
+            return Err(Error::diagram_parse_exact(
+                "xychart".to_string(),
+                "unbalanced '['".to_string(),
+                SourceSpan::new(t_start + idx, t_start + idx + ch.len_utf8()),
+            ));
+        }
+        if ch == ']' {
+            let inner = &t[1..idx];
+            let rest = &t[idx + 1..];
+            if !rest.trim().is_empty() {
+                let trailing_start = rest.len().saturating_sub(rest.trim_start().len());
+                let trailing = rest.trim();
+                let start = t_start + idx + 1 + trailing_start;
+                return Err(Error::diagram_parse_exact(
+                    "xychart".to_string(),
+                    "unexpected trailing tokens after ']'".to_string(),
+                    SourceSpan::new(start, start + trailing.len()),
+                ));
+            }
+            return Ok((inner, t_start + 1));
+        }
+        idx += ch.len_utf8();
+    }
+
+    Err(Error::diagram_parse_insertion_point(
+        "xychart".to_string(),
+        "unbalanced ']'".to_string(),
+        t_start + t.len(),
+    ))
+}
+
 fn split_top_level_commas(input: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut in_quote = false;
@@ -1314,56 +1428,95 @@ fn split_top_level_commas(input: &str) -> Vec<&str> {
     out
 }
 
-fn strip_comments(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for line in input.split_inclusive('\n') {
-        let mut in_quote = false;
-        let mut chars = line.char_indices().peekable();
-        let mut cut = line.len();
-        while let Some((idx, ch)) = chars.next() {
-            if in_quote {
-                if ch == '"' {
-                    in_quote = false;
-                }
+fn split_top_level_commas_spanned(input: &str, input_start: usize) -> Vec<SpannedSlice<'_>> {
+    let mut out = Vec::new();
+    let mut in_quote = false;
+    let mut in_md = false;
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < input.len() {
+        let rest = &input[i..];
+        let ch = rest.chars().next().unwrap();
+        if in_md {
+            if rest.starts_with("`\"") {
+                in_md = false;
+                i += 2;
                 continue;
             }
+            i += ch.len_utf8();
+            continue;
+        }
+        if in_quote {
             if ch == '"' {
-                in_quote = true;
-                continue;
+                in_quote = false;
             }
-            if ch == '%' && chars.peek().is_some_and(|(_, n)| *n == '%') {
-                cut = idx;
-                break;
-            }
-        }
-        let kept = &line[..cut];
-        if kept.trim_start().starts_with("%%{") {
+            i += ch.len_utf8();
             continue;
         }
-        if kept.trim_start().starts_with("%%") {
+        if rest.starts_with("\"`") {
+            in_md = true;
+            i += 2;
             continue;
         }
-        out.push_str(kept);
+        if ch == '"' {
+            in_quote = true;
+            i += ch.len_utf8();
+            continue;
+        }
+        if ch == ',' {
+            out.push(SpannedSlice::new(
+                &input[start..i],
+                input_start + start,
+                input_start + i,
+            ));
+            i += ch.len_utf8();
+            start = i;
+            continue;
+        }
+        i += ch.len_utf8();
     }
+    out.push(SpannedSlice::new(
+        &input[start..],
+        input_start + start,
+        input_start + input.len(),
+    ));
     out
 }
 
-fn split_statements(input: &str) -> Vec<String> {
+#[derive(Debug, Clone)]
+struct SpannedStatement {
+    text: String,
+    start: usize,
+}
+
+impl SpannedStatement {
+    fn trimmed_start(&self) -> usize {
+        self.start + self.text.len().saturating_sub(self.text.trim_start().len())
+    }
+}
+
+fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
     let mut out = Vec::new();
     let mut cur = String::new();
+    let mut cur_start = 0usize;
     let mut in_quote = false;
     let mut in_md = false;
     let mut bracket_depth = 0i64;
     let mut brace_depth = 0i64;
+    let mut iter = input.char_indices().peekable();
 
-    let mut chars = input.chars().peekable();
-    while let Some(ch) = chars.next() {
+    while let Some((idx, ch)) = iter.next() {
+        if cur.is_empty() {
+            cur_start = idx;
+        }
+
         if in_md {
             cur.push(ch);
-            if ch == '`' && chars.peek() == Some(&'"') {
-                cur.push('"');
-                chars.next();
-                in_md = false;
+            if ch == '`' && iter.peek().is_some_and(|(_, next)| *next == '"') {
+                if let Some((_quote_idx, quote)) = iter.next() {
+                    cur.push(quote);
+                    in_md = false;
+                }
             }
             continue;
         }
@@ -1375,17 +1528,38 @@ fn split_statements(input: &str) -> Vec<String> {
             continue;
         }
 
-        if ch == '"' && chars.peek() == Some(&'`') {
-            cur.push('"');
-            cur.push('`');
-            chars.next();
-            in_md = true;
+        if ch == '"' && iter.peek().is_some_and(|(_, next)| *next == '`') {
+            cur.push(ch);
+            if let Some((_tick_idx, tick)) = iter.next() {
+                cur.push(tick);
+                in_md = true;
+            }
             continue;
         }
 
         if ch == '"' {
             cur.push(ch);
             in_quote = true;
+            continue;
+        }
+
+        if ch == '%' && iter.peek().is_some_and(|(_, next)| *next == '%') {
+            let mut next_statement_start = input.len();
+            for (comment_idx, comment_ch) in iter.by_ref() {
+                if comment_ch == '\n' {
+                    next_statement_start = comment_idx + comment_ch.len_utf8();
+                    break;
+                }
+            }
+            if !cur.trim().is_empty() {
+                out.push(SpannedStatement {
+                    text: std::mem::take(&mut cur),
+                    start: cur_start,
+                });
+            } else {
+                cur.clear();
+            }
+            cur_start = next_statement_start;
             continue;
         }
 
@@ -1398,14 +1572,22 @@ fn split_statements(input: &str) -> Vec<String> {
         }
 
         if (ch == '\n' || ch == ';') && bracket_depth == 0 && brace_depth == 0 {
-            out.push(std::mem::take(&mut cur));
+            out.push(SpannedStatement {
+                text: std::mem::take(&mut cur),
+                start: cur_start,
+            });
+            cur_start = idx + ch.len_utf8();
             continue;
         }
 
         cur.push(ch);
     }
+
     if !cur.is_empty() {
-        out.push(cur);
+        out.push(SpannedStatement {
+            text: cur,
+            start: cur_start,
+        });
     }
     out
 }
@@ -1413,7 +1595,7 @@ fn split_statements(input: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -1516,6 +1698,12 @@ bar [1, 2]
     }
 
     #[test]
+    fn xychart_comment_after_plot_does_not_merge_next_statement() {
+        let model = parse("xychart\nbar [1] %% keep next line separate\nline [2]\n");
+        assert_eq!(model["plots"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
     fn xychart_acc_title_requires_colon() {
         let err = parse_err("xychart\naccTitle hello");
         assert!(err.contains("accTitle"));
@@ -1561,5 +1749,23 @@ bar [1, 2]
         assert!(err.contains("empty") || err.contains("invalid"));
         let err = parse_err("xychart\nbar \"t\" [  +23 , -4aa5  , 56.6 ]\n");
         assert!(err.contains("invalid number"));
+    }
+
+    #[test]
+    fn xychart_invalid_plot_number_reports_exact_token_span() {
+        let text = "xychart\nbar \"t\" [  +23 , -4aa5  , 56.6 ]\n";
+        let engine = Engine::new();
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = err else {
+            panic!("expected xychart parse error");
+        };
+
+        let token_start = text.find("-4aa5").unwrap();
+        assert_eq!(diagnostic.message(), "invalid number: -4aa5");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(token_start, token_start + "-4aa5".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
     }
 }

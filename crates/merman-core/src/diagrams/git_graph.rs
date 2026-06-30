@@ -1283,8 +1283,8 @@ pub fn parse_git_graph_editor_facts(code: &str, _meta: &ParseMetadata) -> Editor
 }
 
 fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRenderModel> {
-    let mut lines = code.lines();
-    let Some(header) = lines.next() else {
+    let mut lines = gitgraph_lines_with_offsets(code).into_iter();
+    let Some((header, _header_start)) = lines.next() else {
         return Err(Error::diagram_parse_fallback(
             "gitGraph".to_string(),
             "empty input".to_string(),
@@ -1292,6 +1292,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
     };
 
     let direction = parse_header_line(header)?;
+    let body_lines = lines.collect::<Vec<_>>();
 
     let effective_config = &meta.effective_config;
     let prng_override = if seeded_gitgraph_prng(effective_config).is_some() {
@@ -1304,7 +1305,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         if let Some(d) = direction.as_deref() {
             warmup.set_direction(d);
         }
-        parse_git_graph_body(lines.clone(), &mut warmup, effective_config)?;
+        parse_git_graph_body(body_lines.iter().copied(), &mut warmup, effective_config)?;
         warmup.prng
     } else {
         None
@@ -1315,7 +1316,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
     if let Some(d) = direction {
         db.set_direction(&d);
     }
-    parse_git_graph_body(lines, &mut db, effective_config)?;
+    parse_git_graph_body(body_lines.iter().copied(), &mut db, effective_config)?;
 
     let commits = db
         .commits_in_seq_order()
@@ -1343,6 +1344,16 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
     })
 }
 
+fn gitgraph_lines_with_offsets(code: &str) -> Vec<(&str, usize)> {
+    let mut lines = Vec::new();
+    let mut offset = 0usize;
+    for segment in code.split_inclusive('\n') {
+        lines.push((strip_line_ending(segment), offset));
+        offset += segment.len();
+    }
+    lines
+}
+
 fn new_gitgraph_db() -> GitGraphDb {
     GitGraphDb {
         commits: HashMap::new(),
@@ -1367,12 +1378,12 @@ fn parse_git_graph_body<'a, I>(
     effective_config: &MermaidConfig,
 ) -> Result<()>
 where
-    I: IntoIterator<Item = &'a str>,
+    I: IntoIterator<Item = (&'a str, usize)>,
 {
     let mut pending_acc_descr_block = false;
     let mut acc_descr_lines: Vec<String> = Vec::new();
 
-    for raw in lines {
+    for (raw, line_start) in lines {
         let line = raw.trim_end_matches('\r');
         let trimmed = line.trim();
         if pending_acc_descr_block {
@@ -1409,12 +1420,13 @@ where
             continue;
         }
 
-        let mut lp = LineParser::new(trimmed);
-        let Some(cmd) = lp.parse_word_until_ws_or_colon() else {
+        let trimmed_start = line.len().saturating_sub(line.trim_start().len());
+        let mut lp = LineParser::new(trimmed).with_base(line_start + trimmed_start);
+        let Some(cmd) = lp.parse_word_until_ws_or_colon_spanned() else {
             continue;
         };
 
-        match cmd.as_str() {
+        match cmd.text.as_str() {
             "commit" => {
                 lp.skip_ws();
                 let mut commit_db = CommitDb {
@@ -1504,9 +1516,10 @@ where
                 )?;
             }
             _ => {
-                return Err(Error::diagram_parse_fallback(
+                return Err(Error::diagram_parse_exact(
                     "gitGraph".to_string(),
-                    format!("Unknown statement: {cmd}"),
+                    format!("Unknown statement: {}", cmd.text),
+                    cmd.span,
                 ));
             }
         }
@@ -1518,7 +1531,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions, RenderSemanticModel};
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1650,6 +1663,27 @@ merge feature id:"M1"
                 .iter()
                 .any(|symbol| symbol.name == "commit message")
         );
+    }
+
+    #[test]
+    fn gitgraph_unknown_command_reports_exact_command_span() {
+        let engine = Engine::new();
+        let text = "gitGraph\n  frobnicate branch\n";
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = err else {
+            panic!("expected gitGraph parse error");
+        };
+
+        let command_start = text.find("frobnicate").unwrap();
+        assert_eq!(diagnostic.message(), "Unknown statement: frobnicate");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(
+                command_start,
+                command_start + "frobnicate".len()
+            ))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
     }
 
     #[test]
