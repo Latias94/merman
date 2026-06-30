@@ -21,6 +21,7 @@ import {
 import { renderMermanSource } from "./renderer.js";
 import { PreviewRenderQueue } from "./preview-render.js";
 import { PreviewSession } from "./preview-session.js";
+import { assertSafePreviewSvg } from "./preview-svg-safety.js";
 import { PreviewWebviewClient } from "./preview-webview-client.js";
 
 const PREVIEW_COMMAND = "merman.openPreview";
@@ -243,7 +244,9 @@ class MermanPreviewController implements vscode.Disposable {
       signalLabel: "preview",
       signal,
     });
-    return result.stdout.toString("utf8");
+    const svg = result.stdout.toString("utf8");
+    assertSafePreviewSvg(svg);
+    return svg;
   }
 
   private ensureWebviewHtml(panel: vscode.WebviewPanel): void {
