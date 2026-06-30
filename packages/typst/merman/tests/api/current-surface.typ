@@ -36,6 +36,14 @@
 
 #mermaid(source, profile: profile, width: 80%, alt: "Current API diagram")
 
+#mermaid(
+  source,
+  document-context: true,
+  profile: profile,
+  width: 80%,
+  alt: "Current API document-context diagram",
+)
+
 #mermaid-figure(
   source,
   profile: profile,
@@ -44,6 +52,7 @@
 )
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
+  document-context: true,
   profile: profile,
   width: 80%,
   error-mode: "panic",

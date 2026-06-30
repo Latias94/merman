@@ -270,11 +270,12 @@
   fixed-local-offset-minutes: fixed-local-offset-minutes,
 )
 
-#let mermaid(
+#let render-image(
   source,
   options: none,
   profile: none,
   typography: none,
+  context-host-theme: none,
   site-config: none,
   host-theme: none,
   theme: none,
@@ -306,6 +307,7 @@
     options: options,
     profile: profile,
     typography: typography,
+    context-host-theme: context-host-theme,
     site-config: site-config,
     host-theme: host-theme,
     theme: theme,
@@ -329,7 +331,7 @@
   result-image(result, width, height, fit, alt, scale, error-mode)
 }
 
-#let mermaid-context(
+#let render-image-with-document-context(
   source,
   options: none,
   profile: none,
@@ -419,5 +421,104 @@
       )
       result-image(result, width, height, fit, alt, scale, error-mode)
     })
+  }
+}
+
+#let mermaid(
+  source,
+  options: none,
+  profile: none,
+  typography: none,
+  site-config: none,
+  host-theme: none,
+  theme: none,
+  theme-name: none,
+  base-theme: none,
+  pipeline: none,
+  id: none,
+  diagram-id: none,
+  background: none,
+  layout: none,
+  scoped-css: none,
+  css-override-policy: none,
+  drop-native-duplicate-fallbacks: none,
+  text-measurer: none,
+  math-renderer: none,
+  viewport-width: none,
+  viewport-height: none,
+  fixed-today: none,
+  fixed-local-offset-minutes: none,
+  document-context: false,
+  width: auto,
+  height: auto,
+  fit: "contain",
+  scale: none,
+  alt: none,
+  error-mode: "panic",
+) = {
+  if document-context {
+    render-image-with-document-context(
+      source,
+      options: options,
+      profile: profile,
+      typography: typography,
+      site-config: site-config,
+      host-theme: host-theme,
+      theme: theme,
+      theme-name: theme-name,
+      base-theme: base-theme,
+      pipeline: pipeline,
+      id: id,
+      diagram-id: diagram-id,
+      background: background,
+      layout: layout,
+      scoped-css: scoped-css,
+      css-override-policy: css-override-policy,
+      drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+      text-measurer: text-measurer,
+      math-renderer: math-renderer,
+      viewport-width: viewport-width,
+      viewport-height: viewport-height,
+      fixed-today: fixed-today,
+      fixed-local-offset-minutes: fixed-local-offset-minutes,
+      width: width,
+      height: height,
+      fit: fit,
+      scale: scale,
+      alt: alt,
+      error-mode: error-mode,
+    )
+  } else {
+    render-image(
+      source,
+      options: options,
+      profile: profile,
+      typography: typography,
+      site-config: site-config,
+      host-theme: host-theme,
+      theme: theme,
+      theme-name: theme-name,
+      base-theme: base-theme,
+      pipeline: pipeline,
+      id: id,
+      diagram-id: diagram-id,
+      background: background,
+      layout: layout,
+      scoped-css: scoped-css,
+      css-override-policy: css-override-policy,
+      drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+      text-measurer: text-measurer,
+      math-renderer: math-renderer,
+      viewport-width: viewport-width,
+      viewport-height: viewport-height,
+      fixed-today: fixed-today,
+      fixed-local-offset-minutes: fixed-local-offset-minutes,
+      width: width,
+      height: height,
+      fit: fit,
+      scale: scale,
+      alt: alt,
+      error-mode: error-mode,
+    )
   }
 }

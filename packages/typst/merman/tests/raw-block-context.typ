@@ -1,9 +1,10 @@
-#import "@preview/merman:0.1.0": show-mermaid-blocks-context
+#import "@preview/merman:0.1.0": show-mermaid-blocks
 
 #set page(width: 12cm, margin: 10mm)
 #set text(font: "Arial", size: 13pt)
 
-#show raw.where(lang: "mermaid"): show-mermaid-blocks-context(
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(
+  document-context: true,
   width: 100%,
   pipeline: "readable",
   error-mode: "panic",

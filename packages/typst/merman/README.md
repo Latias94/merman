@@ -38,9 +38,18 @@ flowchart TD
 
 ## Document Fonts
 
-`mermaid(...)` is explicit-only. It does not automatically inherit the surrounding Typst font, text size, or container width.
+`mermaid(...)` is explicit-only by default. It does not automatically inherit the surrounding Typst font, text size, or container width.
 
-Use `mermaid-context(...)` or `show-mermaid-blocks-context(...)` when you want opt-in document context bridging. These wrappers forward the current Typst text font, text size, and available width as renderer options unless you override them directly.
+Pass `document-context: true` to content-rendering APIs when you want opt-in document context bridging. This forwards the current Typst text font, text size, and available width as renderer options unless you override them directly.
+
+```typst
+#mermaid(source, document-context: true, width: 100%)
+
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(
+  document-context: true,
+  width: 100%,
+)
+```
 
 You can also pass typography intent explicitly:
 
@@ -88,7 +97,7 @@ Use `mermaid-profile(...)` for reusable diagram settings:
 #mermaid-figure(source, profile: diagrams, caption: [System flow], width: 100%)
 ```
 
-Profiles work with `mermaid(...)`, `mermaid-context(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `validate-mermaid(...)`, and raw-block show rules. The optional `figure` section is consumed only by `mermaid-figure(...)`; it does not change raw SVG rendering or non-figure image calls.
+Profiles work with `mermaid(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `validate-mermaid(...)`, and raw-block show rules. The optional `figure` section is consumed only by `mermaid-figure(...)`; it does not change raw SVG rendering or non-figure image calls.
 
 Precedence is:
 
@@ -101,7 +110,7 @@ Precedence is:
 
 ## Raw Blocks
 
-Use `show-mermaid-blocks` with Typst's `raw.where` selector for the explicit-only baseline:
+Use `show-mermaid-blocks` with Typst's `raw.where` selector:
 
 ~~~typst
 #import "@preview/merman:0.1.0": show-mermaid-blocks
@@ -117,13 +126,35 @@ flowchart LR
 
 Avoid setting a fixed `id` in a document-wide raw-block show rule unless the document has only one Mermaid block; otherwise multiple diagrams will share the same SVG id.
 
-For document-context-aware rendering, use `show-mermaid-blocks-context` instead. It reads the current Typst text font, text size, and container width inside `context`, then forwards them to the existing renderer entry points.
+For document-context-aware rendering, pass `document-context: true`. This reads the current Typst text font, text size, and container width inside `context`, then forwards them to the renderer.
 
 ~~~typst
-#import "@preview/merman:0.1.0": show-mermaid-blocks-context
+#import "@preview/merman:0.1.0": show-mermaid-blocks
 
-#show raw.where(lang: "mermaid"): show-mermaid-blocks-context(width: 100%)
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(
+  document-context: true,
+  width: 100%,
+)
 ~~~
+
+## API Migration
+
+This refactor intentionally removes compatibility-only context wrappers:
+
+```typst
+// Old:
+#mermaid-context(source, width: 100%)
+#show raw.where(lang: "mermaid"): show-mermaid-blocks-context(width: 100%)
+
+// New:
+#mermaid(source, document-context: true, width: 100%)
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(
+  document-context: true,
+  width: 100%,
+)
+```
+
+`context` is a Typst keyword, so the public parameter is named `document-context`.
 
 ## API
 
@@ -135,6 +166,7 @@ Common parameters:
 
 - `width`, `height`, `fit`, `alt`: forwarded to Typst's `image`.
 - `scale`: wraps the rendered image with Typst `scale`; accepts ratios such as `120%` or numbers such as `1.2`.
+- `document-context`: `false` by default. Set to `true` to inherit Typst text font, text size, and available width for image rendering.
 - `profile`: reusable options produced by `mermaid-profile(...)`.
 - `typography`: high-level font and size intent, mapped to the current `host-theme` fields.
 - `pipeline`: `"resvg-safe"` by default for Typst rendering. Use `"parity"` when you need Mermaid-like SVG DOM output, or `"readable"` for inline SVG inspection.
@@ -152,7 +184,7 @@ Common parameters:
 - `error-mode`: `"panic"` by default. Use `"placeholder"` or `"text"` to show diagram errors in the document instead of failing the Typst compile. These modes handle structured errors returned by `merman`; missing wasm files, Typst plugin loading failures, invalid `error-mode` values, and SVG image decoding failures still fail the Typst compile.
 - `options`: escape hatch; when present, it is passed through directly to the Rust binding options and overrides shorthand parameters.
 
-This entry point is explicit-only. It does not automatically inherit the surrounding Typst font or container width. Use `mermaid-context(...)` when you want opt-in document typography and width bridging.
+This entry point is explicit-only unless `document-context: true` is set.
 
 ### `mermaid-profile(..)`
 
@@ -162,17 +194,15 @@ Returns a reusable profile dictionary. Profiles normalize into the same binding 
 
 Renders a Mermaid diagram and wraps it in a Typst `figure`.
 
-Use `context-aware: true` when the figure should opt into the same document-context bridge as `mermaid-context(...)`.
+Use `document-context: true` when the figure should opt into the same document-context bridge as `mermaid(...)`.
 
 Figure layout parameters are forwarded to Typst's native `figure`: `placement`, `scope`, `supplement`, `numbering`, `gap`, and `outlined`. Use `caption-position` and `caption-separator` when you need a top caption or document-specific caption separator. Direct figure parameters override `profile.figure` defaults.
-
-### `mermaid-context(source, ..)`
-
-Like `mermaid(source, ..)`, but it resolves the current Typst text font, text size, and container width inside `context` before calling the renderer. Explicit `host-theme`, `layout`, `viewport-width`, and other direct parameters still win.
 
 ### `mermaid-svg(source, ..)`
 
 Returns the rendered SVG as a string instead of embedding it as an image.
+
+This value-returning API does not enter Typst `context`; pass `typography`, `host-theme`, `layout`, or `viewport-width` explicitly when exporting SVG text.
 
 ### `mermaid-result(source, ..)`
 
@@ -204,14 +234,6 @@ Returns the compiled plugin capability payload, including the current text measu
 #let capabilities = merman-capabilities()
 #capabilities.text_measurement.vendored
 ```
-
-### `mermaid-raw(block, ..)`
-
-Convenience wrapper for raw blocks. This is intended for `#show raw.where(...)` rules.
-
-### `show-mermaid-blocks-context(..)`
-
-Returns a raw block show handler that bridges the current Typst document font, text size, and container width. Use this when you want document-wide Mermaid fences to follow surrounding typography on demand.
 
 ### `show-mermaid-blocks(..)`
 

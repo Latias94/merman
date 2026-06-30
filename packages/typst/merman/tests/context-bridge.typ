@@ -1,4 +1,4 @@
-#import "@preview/merman:0.1.0": mermaid-context, mermaid-svg
+#import "@preview/merman:0.1.0": mermaid, mermaid-svg
 
 #set page(width: 12cm, margin: 10mm)
 #set text(font: "Arial", size: 13pt)
@@ -13,8 +13,9 @@
   message: "plain mermaid-svg must stay explicit-only and not inherit document font",
 )
 
-#let context-image = mermaid-context(
+#let context-image = mermaid(
   source,
+  document-context: true,
   id: "typst-context-font",
   width: 100%,
 )

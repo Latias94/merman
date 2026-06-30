@@ -39,10 +39,10 @@
     Typst->>merman: Render with document context
     merman-->>Typst: Embed as a figure
   ",
-  caption: [A context-aware Mermaid figure.],
-  context-aware: true,
+  caption: [A document-context Mermaid figure.],
+  document-context: true,
   profile: diagram-profile,
   caption-position: bottom,
   width: 100%,
-  alt: "A context-aware Mermaid sequence diagram",
+  alt: "A document-context Mermaid sequence diagram",
 )
