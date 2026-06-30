@@ -156,12 +156,12 @@ fn parse_info_model(code: &str, meta: &ParseMetadata) -> Result<InfoParseOutput>
     let skipped = bad.chars().count();
     let offset = code.find(&bad).unwrap_or(5);
 
-    Err(Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: format!(
+    Err(Error::diagram_parse_fallback(
+        meta.diagram_type.clone(),
+        format!(
             "Parsing failed: unexpected character: ->{ch}<- at offset: {offset}, skipped {skipped} characters."
         ),
-    })
+    ))
 }
 
 fn strip_inline_comment(line: &str) -> &str {

@@ -70,10 +70,8 @@ fn parse_sequence_db(code: &str, meta: &ParseMetadata) -> Result<SequenceDb> {
 
     let mut db = SequenceDb::new(wrap_enabled);
     for a in actions {
-        db.apply(a).map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: e,
-        })?;
+        db.apply(a)
+            .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e))?;
     }
 
     Ok(db)

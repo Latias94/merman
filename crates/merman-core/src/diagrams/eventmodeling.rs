@@ -559,10 +559,7 @@ fn trim_trailing_syntax(value: &str) -> &str {
 }
 
 fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
-    Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: message.into(),
-    }
+    Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
 }
 
 #[cfg(test)]

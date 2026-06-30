@@ -380,10 +380,10 @@ fn parse_treemap_input(code: &str, meta: &ParseMetadata) -> Result<Option<Treema
     };
 
     if !is_treemap_header(&header) {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected treemap".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected treemap".to_string(),
+        ));
     }
 
     let mut title: Option<String> = None;
@@ -438,19 +438,17 @@ fn parse_treemap_input(code: &str, meta: &ParseMetadata) -> Result<Option<Treema
             continue;
         }
 
-        let item = parse_item_row(indent, rest).map_err(|message| Error::DiagramParse {
-            diagram_type: "treemap".to_string(),
-            message,
-        })?;
+        let item = parse_item_row(indent, rest)
+            .map_err(|message| Error::diagram_parse_fallback("treemap".to_string(), message))?;
         rows.push(TreemapRow::Item(item));
     }
 
     // Mermaid CLI treats trailing whitespace-only lines as a syntax error for treemap.
     if pending_trailing_ws_only_line {
-        return Err(Error::DiagramParse {
-            diagram_type: "treemap".to_string(),
-            message: "unexpected trailing whitespace-only line".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "treemap".to_string(),
+            "unexpected trailing whitespace-only line".to_string(),
+        ));
     }
 
     Ok(Some(TreemapParsedInput {
@@ -496,10 +494,8 @@ fn class_defs_from_rows(
             continue;
         };
         if let Some(style) = c.style_text.as_deref() {
-            validate_class_def_style(style).map_err(|message| Error::DiagramParse {
-                diagram_type: "treemap".to_string(),
-                message,
-            })?;
+            validate_class_def_style(style)
+                .map_err(|message| Error::diagram_parse_fallback("treemap".to_string(), message))?;
         }
         add_class(
             &mut class_defs,

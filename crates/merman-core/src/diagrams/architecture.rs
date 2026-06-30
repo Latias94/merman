@@ -161,32 +161,32 @@ impl ArchitectureDb {
         in_group: Option<String>,
     ) -> Result<()> {
         if let Some(existing) = self.registered_ids.get(&id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!("The service id [{id}] is already in use by another {existing}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!("The service id [{id}] is already in use by another {existing}"),
+            ));
         }
 
         if let Some(parent) = &in_group {
             if id == *parent {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The service [{id}] cannot be placed within itself"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "architecture".to_string(),
+                    format!("The service [{id}] cannot be placed within itself"),
+                ));
             }
             let Some(parent_type) = self.registered_ids.get(parent).copied() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!(
+                return Err(Error::diagram_parse_fallback(
+                    "architecture".to_string(),
+                    format!(
                         "The service [{id}]'s parent does not exist. Please make sure the parent is created before this service"
                     ),
-                });
+                ));
             };
             if parent_type == RegisteredIdType::Node {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The service [{id}]'s parent is not a group"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "architecture".to_string(),
+                    format!("The service [{id}]'s parent is not a group"),
+                ));
             }
         }
 
@@ -238,32 +238,32 @@ impl ArchitectureDb {
         in_group: Option<String>,
     ) -> Result<()> {
         if let Some(existing) = self.registered_ids.get(&id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!("The group id [{id}] is already in use by another {existing}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!("The group id [{id}] is already in use by another {existing}"),
+            ));
         }
 
         if let Some(parent) = &in_group {
             if id == *parent {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The group [{id}] cannot be placed within itself"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "architecture".to_string(),
+                    format!("The group [{id}] cannot be placed within itself"),
+                ));
             }
             let Some(parent_type) = self.registered_ids.get(parent).copied() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!(
+                return Err(Error::diagram_parse_fallback(
+                    "architecture".to_string(),
+                    format!(
                         "The group [{id}]'s parent does not exist. Please make sure the parent is created before this group"
                     ),
-                });
+                ));
             };
             if parent_type == RegisteredIdType::Node {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The group [{id}]'s parent is not a group"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "architecture".to_string(),
+                    format!("The group [{id}]'s parent is not a group"),
+                ));
             }
         }
 
@@ -286,41 +286,41 @@ impl ArchitectureDb {
 
     fn add_edge(&mut self, edge: ArchitectureEdge) -> Result<()> {
         if !is_dir(edge.lhs_dir) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "Invalid direction given for left hand side of edge {}--{}. Expected (L,R,T,B) got {}",
                     edge.lhs_id, edge.rhs_id, edge.lhs_dir
                 ),
-            });
+            ));
         }
         if !is_dir(edge.rhs_dir) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "Invalid direction given for right hand side of edge {}--{}. Expected (L,R,T,B) got {}",
                     edge.lhs_id, edge.rhs_id, edge.rhs_dir
                 ),
-            });
+            ));
         }
 
         if !self.nodes.contains_key(&edge.lhs_id) && !self.groups.contains_key(&edge.lhs_id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "The left-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
                     edge.lhs_id
                 ),
-            });
+            ));
         }
         if !self.nodes.contains_key(&edge.rhs_id) && !self.groups.contains_key(&edge.rhs_id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "The right-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
                     edge.rhs_id
                 ),
-            });
+            ));
         }
 
         if edge.lhs_group == Some(true)
@@ -329,13 +329,13 @@ impl ArchitectureDb {
             && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
             && lhs_parent == rhs_parent
         {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "The left-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
                     edge.lhs_id
                 ),
-            });
+            ));
         }
         if edge.rhs_group == Some(true)
             && let (Some(lhs), Some(rhs)) =
@@ -343,13 +343,13 @@ impl ArchitectureDb {
             && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
             && lhs_parent == rhs_parent
         {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "The right-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
                     edge.rhs_id
                 ),
-            });
+            ));
         }
 
         let edge_idx = self.edges.len();
@@ -1129,10 +1129,10 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let t = line.trim_start();
     let mut rest = t["group".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid group id".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "invalid group id".to_string(),
+        ));
     };
     let id = id.to_string();
     rest = tail.trim_start();
@@ -1153,20 +1153,20 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "invalid group parent id".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                "invalid group parent id".to_string(),
+            ));
         };
         in_group = Some(parent.to_string());
         rest = tail.trim();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "unexpected trailing input".to_string(),
+        ));
     }
 
     db.add_group(id, icon, title, in_group)?;
@@ -1204,10 +1204,10 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let t = line.trim_start();
     let mut rest = t["service".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid service id".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "invalid service id".to_string(),
+        ));
     };
     let id = id.to_string();
     rest = tail.trim_start();
@@ -1232,20 +1232,20 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "invalid service parent id".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                "invalid service parent id".to_string(),
+            ));
         };
         in_group = Some(parent.to_string());
         rest = tail.trim();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "unexpected trailing input".to_string(),
+        ));
     }
 
     db.add_service(id, icon, icon_text, title, in_group)?;
@@ -1259,10 +1259,10 @@ fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let t = line.trim_start();
     let mut rest = t["junction".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid junction id".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "invalid junction id".to_string(),
+        ));
     };
     let id = id.to_string();
     rest = tail.trim_start();
@@ -1271,20 +1271,20 @@ fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "invalid junction parent id".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                "invalid junction parent id".to_string(),
+            ));
         };
         in_group = Some(parent.to_string());
         rest = tail.trim();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "unexpected trailing input".to_string(),
+        ));
     }
 
     db.add_junction(id, in_group);
@@ -1293,10 +1293,10 @@ fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
 
 fn parse_id_with_optional_group_modifier(input: &str) -> Result<(String, Option<bool>, &str)> {
     let Some((id, rest)) = take_id_prefix(input) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid id".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "invalid id".to_string(),
+        ));
     };
     let mut rest = rest;
     let mut group = None;
@@ -1333,20 +1333,24 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let mut rhs_into = None;
     let mut title = None;
 
-    rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected ':' for lhs port".to_string(),
+    rest = rest.strip_prefix(':').ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "expected ':' for lhs port".to_string(),
+        )
     })?;
     rest = rest.trim_start();
-    let lhs_dir: char = rest.chars().next().ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected lhs direction".to_string(),
+    let lhs_dir: char = rest.chars().next().ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "expected lhs direction".to_string(),
+        )
     })?;
     if !is_arch_dir(lhs_dir) {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid lhs direction".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "invalid lhs direction".to_string(),
+        ));
     }
     rest = &rest[lhs_dir.len_utf8()..];
 
@@ -1364,15 +1368,19 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     } else if rest.starts_with('-') {
         rest = &rest[1..];
         rest = rest.trim_start();
-        let (t, tail) = take_bracketed(rest, '[', ']').ok_or_else(|| Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "expected edge title".to_string(),
+        let (t, tail) = take_bracketed(rest, '[', ']').ok_or_else(|| {
+            Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                "expected edge title".to_string(),
+            )
         })?;
         title = Some(t.trim().to_string());
         rest = tail.trim_start();
-        rest = rest.strip_prefix('-').ok_or_else(|| Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "expected '-' after edge title".to_string(),
+        rest = rest.strip_prefix('-').ok_or_else(|| {
+            Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                "expected '-' after edge title".to_string(),
+            )
         })?;
     } else {
         return Ok(false);
@@ -1387,22 +1395,26 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     }
 
     rest = rest.trim_start();
-    let rhs_dir: char = rest.chars().next().ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected rhs direction".to_string(),
+    let rhs_dir: char = rest.chars().next().ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "expected rhs direction".to_string(),
+        )
     })?;
     if !is_arch_dir(rhs_dir) {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid rhs direction".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "invalid rhs direction".to_string(),
+        ));
     }
     rest = &rest[rhs_dir.len_utf8()..];
 
     rest = rest.trim_start();
-    rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected ':' for rhs port".to_string(),
+    rest = rest.strip_prefix(':').ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "expected ':' for rhs port".to_string(),
+        )
     })?;
 
     rest = rest.trim_start();
@@ -1414,10 +1426,10 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     rest = tail.trim();
 
     if !rest.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "architecture".to_string(),
+            "unexpected trailing input".to_string(),
+        ));
     }
 
     db.add_edge(ArchitectureEdge {
@@ -1460,10 +1472,10 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     if !found_header {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected architecture-beta header".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected architecture-beta header".to_string(),
+        ));
     }
 
     let mut process_line = |raw: &str, lines: &mut std::str::Lines<'_>| -> Result<()> {
@@ -1503,10 +1515,10 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
             return Ok(());
         }
 
-        Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unrecognized statement: {trimmed}"),
-        })
+        Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unrecognized statement: {trimmed}"),
+        ))
     };
 
     if let Some(tail) = &header_tail {
@@ -1678,10 +1690,10 @@ pub fn parse_architecture_model_for_render(
     }
 
     if !found_header {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected architecture-beta header".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected architecture-beta header".to_string(),
+        ));
     }
 
     let mut process_line = |raw: &str, lines: &mut std::str::Lines<'_>| -> Result<()> {
@@ -1721,10 +1733,10 @@ pub fn parse_architecture_model_for_render(
             return Ok(());
         }
 
-        Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unrecognized statement: {trimmed}"),
-        })
+        Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unrecognized statement: {trimmed}"),
+        ))
     };
 
     if let Some(tail) = &header_tail {

@@ -59,10 +59,10 @@ fn validate_excludes_leave_a_working_weekday(db: &GanttDb) -> Result<()> {
     if db.includes.is_empty()
         && excluded_weekdays_mask(&db.excludes, &db.weekend) == ALL_WEEKDAYS_MASK
     {
-        return Err(Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: "invalid excludes: excludes every weekday".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "gantt".to_string(),
+            "invalid excludes: excludes every weekday".to_string(),
+        ));
     }
     Ok(())
 }
@@ -121,22 +121,25 @@ fn fix_task_dates(
         if invalid {
             consecutive_invalid_days += 1;
             if consecutive_invalid_days > MAX_CONSECUTIVE_EXCLUDED_DAYS {
-                return Err(Error::DiagramParse {
-                    diagram_type: "gantt".to_string(),
-                    message: "invalid excludes: no includable date found within one year"
-                        .to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "gantt".to_string(),
+                    "invalid excludes: no includable date found within one year".to_string(),
+                ));
             }
-            end_time = add_days_local(end_time, 1).ok_or_else(|| Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: "invalid excludes: adjusted task end date is out of range".to_string(),
+            end_time = add_days_local(end_time, 1).ok_or_else(|| {
+                Error::diagram_parse_fallback(
+                    "gantt".to_string(),
+                    "invalid excludes: adjusted task end date is out of range".to_string(),
+                )
             })?;
         } else {
             consecutive_invalid_days = 0;
         }
-        start_time = add_days_local(start_time, 1).ok_or_else(|| Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: "invalid excludes: adjusted task start date is out of range".to_string(),
+        start_time = add_days_local(start_time, 1).ok_or_else(|| {
+            Error::diagram_parse_fallback(
+                "gantt".to_string(),
+                "invalid excludes: adjusted task start date is out of range".to_string(),
+            )
         })?;
     }
     Ok((end_time, render_end_time))

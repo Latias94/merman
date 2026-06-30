@@ -222,13 +222,13 @@ impl<'a> ParsePipeline<'a> {
         let registry_profile = self.engine.render_diagram_registry.profile();
         debug_assert_eq!(self.engine.diagram_registry.profile(), registry_profile);
         if !family::permits_json_render_fallback(registry_profile, &meta.diagram_type) {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!(
                     "built-in diagram type `{}` is missing a typed render parser; JSON render fallback is reserved for error and custom diagram adapters",
                     meta.diagram_type
                 ),
-            });
+            ));
         }
 
         diagram::parse_or_unsupported(

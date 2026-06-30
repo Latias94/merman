@@ -180,10 +180,10 @@ fn parse_packet_model(code: &str, meta: &ParseMetadata) -> Result<PacketParseOut
     };
 
     if !is_packet_header(&header) {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected packet".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected packet".to_string(),
+        ));
     }
 
     let mut title: Option<String> = None;
@@ -215,10 +215,10 @@ fn parse_packet_model(code: &str, meta: &ParseMetadata) -> Result<PacketParseOut
             continue;
         }
 
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unexpected packet statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unexpected packet statement: {t}"),
+        ));
     }
 
     let bits_per_row = config_i64(&meta.effective_config, "packet.bitsPerRow").unwrap_or(32);
@@ -242,31 +242,29 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
         if let (Some(start), Some(end)) = (block.start, block.end)
             && end < start
         {
-            return Err(Error::DiagramParse {
-                diagram_type: "packet".to_string(),
-                message: format!(
-                    "Packet block {start} - {end} is invalid. End must be greater than start."
-                ),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "packet".to_string(),
+                format!("Packet block {start} - {end} is invalid. End must be greater than start."),
+            ));
         }
 
         let start = block.start.unwrap_or(last_bit + 1);
         let end_for_msg = block.end.unwrap_or(start);
         if start != last_bit + 1 {
-            return Err(Error::DiagramParse {
-                diagram_type: "packet".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "packet".to_string(),
+                format!(
                     "Packet block {start} - {end_for_msg} is not contiguous. It should start from {}.",
                     last_bit + 1
                 ),
-            });
+            ));
         }
 
         if block.bits == Some(0) {
-            return Err(Error::DiagramParse {
-                diagram_type: "packet".to_string(),
-                message: format!("Packet block {start} is invalid. Cannot have a zero bit field."),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "packet".to_string(),
+                format!("Packet block {start} is invalid. Cannot have a zero bit field."),
+            ));
         }
 
         let end = block.end.unwrap_or(start + block.bits.unwrap_or(1) - 1);
@@ -310,13 +308,13 @@ fn get_next_fitting_block(
     bits_per_row: i64,
 ) -> Result<(PacketRenderBlock, Option<PacketRenderBlock>)> {
     if block.start > block.end {
-        return Err(Error::DiagramParse {
-            diagram_type: "packet".to_string(),
-            message: format!(
+        return Err(Error::diagram_parse_fallback(
+            "packet".to_string(),
+            format!(
                 "Block start {} is greater than block end {}.",
                 block.start, block.end
             ),
-        });
+        ));
     }
 
     if block.end < row * bits_per_row {
@@ -761,7 +759,7 @@ mod tests {
     fn parse_err(text: &str) -> String {
         let engine = Engine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
-            Error::DiagramParse { message, .. } => message,
+            Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
         }
     }

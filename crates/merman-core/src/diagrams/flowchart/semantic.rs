@@ -95,13 +95,13 @@ impl<'a> FlowchartSemanticContext<'a> {
                                 }
                                 LinkStylePos::Index(i) => {
                                     if *i >= self.edges.len() {
-                                        return Err(Error::DiagramParse {
-                                            diagram_type: self.diagram_type.to_string(),
-                                            message: format!(
+                                        return Err(Error::diagram_parse_fallback(
+                                            self.diagram_type.to_string(),
+                                            format!(
                                                 "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
                                                 self.edges.len().saturating_sub(1)
                                             ),
-                                        });
+                                        ));
                                     }
                                     self.edges[*i].interpolate = Some(algo.clone());
                                 }
@@ -117,13 +117,13 @@ impl<'a> FlowchartSemanticContext<'a> {
                                 }
                                 LinkStylePos::Index(i) => {
                                     if *i >= self.edges.len() {
-                                        return Err(Error::DiagramParse {
-                                            diagram_type: self.diagram_type.to_string(),
-                                            message: format!(
+                                        return Err(Error::diagram_parse_fallback(
+                                            self.diagram_type.to_string(),
+                                            format!(
                                                 "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
                                                 self.edges.len().saturating_sub(1)
                                             ),
-                                        });
+                                        ));
                                     }
                                     self.edges[*i].style = ls.styles.clone();
                                     if !self.edges[*i].style.is_empty()
@@ -143,9 +143,11 @@ impl<'a> FlowchartSemanticContext<'a> {
                     // Mermaid syntax uses the same `@{...}` form for both nodes and edges:
                     // - if an edge with the given ID exists, it updates the edge metadata
                     // - otherwise it updates (and may create) a node
-                    let v = parse_shape_data(yaml).map_err(|e| Error::DiagramParse {
-                        diagram_type: self.diagram_type.to_string(),
-                        message: format!("Invalid shapeData: {e}"),
+                    let v = parse_shape_data(yaml).map_err(|e| {
+                        Error::diagram_parse_fallback(
+                            self.diagram_type.to_string(),
+                            format!("Invalid shapeData: {e}"),
+                        )
                     })?;
 
                     let map = v.as_object();
@@ -186,10 +188,7 @@ impl<'a> FlowchartSemanticContext<'a> {
 
                     let idx = self.ensure_node(target);
                     apply_shape_data_to_node(&mut self.nodes[idx], yaml).map_err(|e| {
-                        Error::DiagramParse {
-                            diagram_type: self.diagram_type.to_string(),
-                            message: e,
-                        }
+                        Error::diagram_parse_fallback(self.diagram_type.to_string(), e)
                     })?;
                 }
                 Stmt::Chain { .. } | Stmt::Node(_) | Stmt::Direction(_) => {}

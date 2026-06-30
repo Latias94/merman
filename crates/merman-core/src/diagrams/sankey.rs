@@ -194,31 +194,29 @@ pub fn parse_sankey_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSem
 fn parse_sankey_db(code: &str, meta: &ParseMetadata) -> Result<SankeyDb> {
     let prepared = prepare_text_for_parsing(code);
 
-    let (header, rest) = prepared
-        .split_once('\n')
-        .ok_or_else(|| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected sankey header followed by csv".to_string(),
-        })?;
+    let (header, rest) = prepared.split_once('\n').ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected sankey header followed by csv".to_string(),
+        )
+    })?;
 
     let header = header.trim();
     if !is_sankey_header(header) {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected sankey".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected sankey".to_string(),
+        ));
     }
 
     let mut db = SankeyDb::default();
-    let records = parse_csv_records(rest).map_err(|message| Error::DiagramParse {
-        diagram_type: "sankey".to_string(),
-        message,
-    })?;
+    let records = parse_csv_records(rest)
+        .map_err(|message| Error::diagram_parse_fallback("sankey".to_string(), message))?;
     if records.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "sankey".to_string(),
-            message: "expected at least one csv record".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "sankey".to_string(),
+            "expected at least one csv record".to_string(),
+        ));
     }
 
     for (source_raw, target_raw, value_raw) in records {

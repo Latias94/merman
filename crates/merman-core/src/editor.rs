@@ -337,11 +337,11 @@ mod tests {
 
         let diagnostic = lalrpop_parse_diagnostic(&error, 10);
 
-        let span = diagnostic.span.expect("diagnostic span");
+        let span = diagnostic.span().expect("diagnostic span");
         assert_eq!(span.start, 3);
         assert_eq!(span.end, 6);
-        assert_eq!(diagnostic.span_kind, ParseDiagnosticSpanKind::Exact);
-        assert!(diagnostic.message.contains("\"bad\""));
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+        assert!(diagnostic.message().contains("\"bad\""));
     }
 
     #[test]
@@ -353,14 +353,14 @@ mod tests {
 
         let diagnostic = lalrpop_parse_diagnostic(&error, 99);
 
-        let span = diagnostic.span.expect("diagnostic span");
+        let span = diagnostic.span().expect("diagnostic span");
         assert_eq!(span.start, 12);
         assert_eq!(span.end, 12);
         assert_eq!(
-            diagnostic.span_kind,
+            diagnostic.span_kind(),
             ParseDiagnosticSpanKind::InsertionPoint
         );
-        assert!(diagnostic.message.contains("unexpected end of input"));
+        assert!(diagnostic.message().contains("unexpected end of input"));
     }
 
     #[test]
@@ -371,11 +371,11 @@ mod tests {
 
         let diagnostic = lalrpop_parse_diagnostic(&error, 8);
 
-        let span = diagnostic.span.expect("diagnostic span");
+        let span = diagnostic.span().expect("diagnostic span");
         assert_eq!(span.start, 8);
         assert_eq!(span.end, 8);
-        assert_eq!(diagnostic.span_kind, ParseDiagnosticSpanKind::Fallback);
-        assert_eq!(diagnostic.message, "custom parse failure");
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
+        assert_eq!(diagnostic.message(), "custom parse failure");
     }
 }
 

@@ -1077,10 +1077,10 @@ fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
                 }
                 continue;
             }
-            return Err(Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: "expected gantt header".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gantt".to_string(),
+                "expected gantt header".to_string(),
+            ));
         }
 
         parse_gantt_statement(stripped, &mut db, &mut lines)?;
@@ -1209,12 +1209,12 @@ fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
 }
 
 fn task_time_ms(task: &RawTask, field: &str, value: Option<DateTimeFixed>) -> Result<i64> {
-    value
-        .map(|d| d.timestamp_millis())
-        .ok_or_else(|| Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("task `{}` has unresolved {field}", task.id),
-        })
+    value.map(|d| d.timestamp_millis()).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "gantt".to_string(),
+            format!("task `{}` has unresolved {field}", task.id),
+        )
+    })
 }
 
 fn parse_gantt_statement(
@@ -1266,10 +1266,10 @@ fn parse_gantt_statement(
             day.as_str(),
             "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
         ) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("invalid weekday: {day}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gantt".to_string(),
+                format!("invalid weekday: {day}"),
+            ));
         }
         db.set_weekday(&day);
         return Ok(());
@@ -1277,10 +1277,10 @@ fn parse_gantt_statement(
     if let Some(v) = parse_keyword_arg_full_line(stripped, "weekend") {
         let day = v.trim().to_lowercase();
         if !matches!(day.as_str(), "friday" | "saturday") {
-            return Err(Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("invalid weekend: {day}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gantt".to_string(),
+                format!("invalid weekend: {day}"),
+            ));
         }
         db.set_weekend(&day);
         return Ok(());
@@ -1322,10 +1322,10 @@ fn parse_gantt_statement(
     let task_stmt = stripped.trim_start();
 
     let Some(colon) = task_stmt.find(':') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("unrecognized statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "gantt".to_string(),
+            format!("unrecognized statement: {t}"),
+        ));
     };
 
     // Mermaid passes `taskTxt` through to the DB without trimming. This preserves any trailing

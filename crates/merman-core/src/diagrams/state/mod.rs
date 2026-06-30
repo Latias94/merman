@@ -69,7 +69,7 @@ pub(crate) struct LexError {
     pub message: String,
 }
 
-impl crate::ParseErrorSourceSpan for LexError {
+impl crate::error::ParseErrorSourceSpan for LexError {
     fn source_span(&self) -> Option<crate::SourceSpan> {
         None
     }

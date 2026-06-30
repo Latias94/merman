@@ -423,10 +423,7 @@ fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
 }
 
 fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
-    Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: message.into(),
-    }
+    Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
 }
 
 #[cfg(test)]

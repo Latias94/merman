@@ -540,10 +540,10 @@ fn parse_xychart_model(
         if let Some(rest) = strip_keyword(stmt, "accTitle") {
             let rest = rest.trim_start();
             let Some(v) = rest.strip_prefix(':') else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "xychart".to_string(),
-                    message: "expected ':' after accTitle".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "xychart".to_string(),
+                    "expected ':' after accTitle".to_string(),
+                ));
             };
             acc_title = Some(v.trim().to_string());
             continue;
@@ -556,25 +556,25 @@ fn parse_xychart_model(
             }
             if let Some(after) = rest.strip_prefix('{') {
                 let Some(end) = after.find('}') else {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "xychart".to_string(),
-                        message: "unterminated accDescr block".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "xychart".to_string(),
+                        "unterminated accDescr block".to_string(),
+                    ));
                 };
                 let trailing = &after[end + 1..];
                 if !trailing.trim().is_empty() {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "xychart".to_string(),
-                        message: "unexpected trailing tokens after accDescr block".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "xychart".to_string(),
+                        "unexpected trailing tokens after accDescr block".to_string(),
+                    ));
                 }
                 acc_descr = Some(after[..end].trim().to_string());
                 continue;
             }
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "expected ':' or '{' after accDescr".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "expected ':' or '{' after accDescr".to_string(),
+            ));
         }
 
         if let Some(rest) = strip_keyword(stmt, "x-axis") {
@@ -596,10 +596,10 @@ fn parse_xychart_model(
             continue;
         }
 
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: format!("unexpected xychart statement: {stmt}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            format!("unexpected xychart statement: {stmt}"),
+        ));
     }
 
     Ok(Some(state.into_render_model(title, acc_title, acc_descr)))
@@ -643,10 +643,10 @@ fn parse_header(stmt: &str, state: &mut XyChartState) -> Result<()> {
     } else if lower.starts_with("xychart") {
         ("xychart", &t["xychart".len()..])
     } else {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "expected xychart".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "expected xychart".to_string(),
+        ));
     };
 
     let rem = rest.trim();
@@ -654,10 +654,10 @@ fn parse_header(stmt: &str, state: &mut XyChartState) -> Result<()> {
         return Ok(());
     }
     if !rest.starts_with(char::is_whitespace) {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: format!("unexpected token after {prefix}: {rem}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            format!("unexpected token after {prefix}: {rem}"),
+        ));
     }
 
     if rem.eq_ignore_ascii_case("vertical") || rem.eq_ignore_ascii_case("horizontal") {
@@ -665,10 +665,10 @@ fn parse_header(stmt: &str, state: &mut XyChartState) -> Result<()> {
         return Ok(());
     }
 
-    Err(Error::DiagramParse {
-        diagram_type: "xychart".to_string(),
-        message: format!("invalid chart orientation: {rem}"),
-    })
+    Err(Error::diagram_parse_fallback(
+        "xychart".to_string(),
+        format!("invalid chart orientation: {rem}"),
+    ))
 }
 
 fn header_token_len_and_rest(stmt: &str) -> Option<(usize, &str)> {
@@ -880,36 +880,36 @@ fn parse_text(input: &str) -> Result<String> {
     let t = input.trim_start();
     if let Some(body) = t.strip_prefix("\"`") {
         let Some(end) = body.find("`\"") else {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "unterminated markdown string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "unterminated markdown string".to_string(),
+            ));
         };
         let s = &body[..end];
         let rest = &body[end + 2..];
         if !rest.trim().is_empty() {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "unexpected trailing tokens after text".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "unexpected trailing tokens after text".to_string(),
+            ));
         }
         return Ok(s.to_string());
     }
 
     if let Some(body) = t.strip_prefix('"') {
         let Some(end) = body.find('"') else {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "unterminated string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "unterminated string".to_string(),
+            ));
         };
         let s = &body[..end];
         let rest = &body[end + 1..];
         if !rest.trim().is_empty() {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "unexpected trailing tokens after text".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "unexpected trailing tokens after text".to_string(),
+            ));
         }
         return Ok(s.to_string());
     }
@@ -919,10 +919,10 @@ fn parse_text(input: &str) -> Result<String> {
         out.push_str(part);
     }
     if out.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "expected text".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "expected text".to_string(),
+        ));
     }
     Ok(out)
 }
@@ -945,10 +945,10 @@ fn parse_number(s: &str) -> Option<f64> {
 fn parse_x_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> Result<()> {
     let t = rest.trim();
     if t.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "x-axis requires data".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "x-axis requires data".to_string(),
+        ));
     }
 
     if t.starts_with('[') {
@@ -980,19 +980,19 @@ fn parse_x_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> R
         return Ok(());
     }
 
-    Err(Error::DiagramParse {
-        diagram_type: "xychart".to_string(),
-        message: "invalid x-axis data".to_string(),
-    })
+    Err(Error::diagram_parse_fallback(
+        "xychart".to_string(),
+        "invalid x-axis data".to_string(),
+    ))
 }
 
 fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> Result<()> {
     let t = rest.trim();
     if t.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "y-axis requires data".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "y-axis requires data".to_string(),
+        ));
     }
 
     if let Some((min, max)) = try_parse_range(t)? {
@@ -1002,10 +1002,10 @@ fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> R
     }
 
     if t.starts_with('[') {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "y-axis does not support band data".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "y-axis does not support band data".to_string(),
+        ));
     }
 
     let (title, tail) = parse_text_prefix(t)?;
@@ -1016,10 +1016,10 @@ fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> R
     }
 
     if tail.starts_with('[') {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "y-axis does not support band data".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "y-axis does not support band data".to_string(),
+        ));
     }
 
     if let Some((min, max)) = try_parse_range(tail)? {
@@ -1027,28 +1027,28 @@ fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> R
         return Ok(());
     }
 
-    Err(Error::DiagramParse {
-        diagram_type: "xychart".to_string(),
-        message: "invalid y-axis data".to_string(),
-    })
+    Err(Error::diagram_parse_fallback(
+        "xychart".to_string(),
+        "invalid y-axis data".to_string(),
+    ))
 }
 
 fn parse_plot_stmt(rest: &str) -> Result<(String, Vec<f64>)> {
     let t = rest.trim();
     if t.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "plot requires data".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "plot requires data".to_string(),
+        ));
     }
 
     if t.starts_with('[') {
         let data = parse_number_list_in_brackets(t)?;
         if data.is_empty() {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "plot data cannot be empty".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "plot data cannot be empty".to_string(),
+            ));
         }
         return Ok((String::new(), data));
     }
@@ -1056,17 +1056,17 @@ fn parse_plot_stmt(rest: &str) -> Result<(String, Vec<f64>)> {
     let (title, tail) = parse_text_prefix(t)?;
     let tail = tail.trim_start();
     if !tail.starts_with('[') {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "plot data missing".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "plot data missing".to_string(),
+        ));
     }
     let data = parse_number_list_in_brackets(tail)?;
     if data.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "plot data cannot be empty".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "plot data cannot be empty".to_string(),
+        ));
     }
     Ok((title, data))
 }
@@ -1082,24 +1082,22 @@ fn try_parse_range(input: &str) -> Result<Option<(f64, f64)>> {
     }
     s = &s[3..];
     let Some((b_str, tail)) = take_number_token(s.trim_start()) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "expected number".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "expected number".to_string(),
+        ));
     };
     if !tail.trim().is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "unexpected trailing tokens after range".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "unexpected trailing tokens after range".to_string(),
+        ));
     }
-    let a = parse_number(&a_str).ok_or_else(|| Error::DiagramParse {
-        diagram_type: "xychart".to_string(),
-        message: "invalid number".to_string(),
+    let a = parse_number(&a_str).ok_or_else(|| {
+        Error::diagram_parse_fallback("xychart".to_string(), "invalid number".to_string())
     })?;
-    let b = parse_number(&b_str).ok_or_else(|| Error::DiagramParse {
-        diagram_type: "xychart".to_string(),
-        message: "invalid number".to_string(),
+    let b = parse_number(&b_str).ok_or_else(|| {
+        Error::diagram_parse_fallback("xychart".to_string(), "invalid number".to_string())
     })?;
     Ok(Some((a, b)))
 }
@@ -1127,10 +1125,10 @@ fn parse_text_prefix(input: &str) -> Result<(String, &str)> {
     let t = input.trim_start();
     if let Some(body) = t.strip_prefix("\"`") {
         let Some(end) = body.find("`\"") else {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "unterminated markdown string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "unterminated markdown string".to_string(),
+            ));
         };
         let s = &body[..end];
         let rest = &body[end + 2..];
@@ -1138,10 +1136,10 @@ fn parse_text_prefix(input: &str) -> Result<(String, &str)> {
     }
     if let Some(body) = t.strip_prefix('"') {
         let Some(end) = body.find('"') else {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "unterminated string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "unterminated string".to_string(),
+            ));
         };
         let s = &body[..end];
         let rest = &body[end + 1..];
@@ -1156,10 +1154,10 @@ fn parse_text_prefix(input: &str) -> Result<(String, &str)> {
     }
     let head = &t[..end];
     if head.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "expected text".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "expected text".to_string(),
+        ));
     }
     Ok((head.to_string(), &t[end..]))
 }
@@ -1172,10 +1170,10 @@ fn parse_text_list_in_brackets(input: &str) -> Result<Vec<String>> {
     for p in parts {
         let p = p.trim();
         if p.is_empty() {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "empty category".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "empty category".to_string(),
+            ));
         }
         out.push(parse_text(p)?);
     }
@@ -1190,14 +1188,13 @@ fn parse_number_list_in_brackets(input: &str) -> Result<Vec<f64>> {
     for p in parts {
         let p = p.trim();
         if p.is_empty() {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "empty number".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "empty number".to_string(),
+            ));
         }
-        let n = parse_number(p).ok_or_else(|| Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: format!("invalid number: {p}"),
+        let n = parse_number(p).ok_or_else(|| {
+            Error::diagram_parse_fallback("xychart".to_string(), format!("invalid number: {p}"))
         })?;
         out.push(n);
     }
@@ -1207,10 +1204,10 @@ fn parse_number_list_in_brackets(input: &str) -> Result<Vec<f64>> {
 fn extract_bracket_inner(input: &str) -> Result<&str> {
     let t = input.trim_start();
     if !t.starts_with('[') {
-        return Err(Error::DiagramParse {
-            diagram_type: "xychart".to_string(),
-            message: "expected '['".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "xychart".to_string(),
+            "expected '['".to_string(),
+        ));
     }
     let mut in_quote = false;
     let mut in_md = false;
@@ -1245,29 +1242,29 @@ fn extract_bracket_inner(input: &str) -> Result<&str> {
             continue;
         }
         if ch == '[' {
-            return Err(Error::DiagramParse {
-                diagram_type: "xychart".to_string(),
-                message: "unbalanced '['".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "xychart".to_string(),
+                "unbalanced '['".to_string(),
+            ));
         }
         if ch == ']' {
             let inner = &t[1..idx];
             let rest = &t[idx + 1..];
             if !rest.trim().is_empty() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "xychart".to_string(),
-                    message: "unexpected trailing tokens after ']'".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "xychart".to_string(),
+                    "unexpected trailing tokens after ']'".to_string(),
+                ));
             }
             return Ok(inner);
         }
         idx += ch.len_utf8();
     }
 
-    Err(Error::DiagramParse {
-        diagram_type: "xychart".to_string(),
-        message: "unbalanced ']'".to_string(),
-    })
+    Err(Error::diagram_parse_fallback(
+        "xychart".to_string(),
+        "unbalanced ']'".to_string(),
+    ))
 }
 
 fn split_top_level_commas(input: &str) -> Vec<&str> {
@@ -1431,7 +1428,7 @@ mod tests {
     fn parse_err(text: &str) -> String {
         let engine = Engine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
-            Error::DiagramParse { message, .. } => message,
+            Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
         }
     }

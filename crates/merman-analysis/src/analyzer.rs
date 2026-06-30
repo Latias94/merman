@@ -325,20 +325,6 @@ fn core_error_diagnostic(
         ),
         CoreError::DiagramParse {
             diagram_type,
-            message,
-        } => (
-            rule_diagnostic(
-                DIAGRAM_PARSE_RULE_ID,
-                AnalysisStatus::ParseError,
-                message,
-                source_map,
-                rule_config,
-            )
-            .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
-            Some(diagram_type),
-        ),
-        CoreError::DiagramParseDiagnostic {
-            diagram_type,
             diagnostic,
         } => (
             parse_diagnostic(diagnostic, &diagram_type, source_map, rule_config),
@@ -384,24 +370,23 @@ fn parse_diagnostic(
     rule_config: &AnalysisRuleConfig,
 ) -> Option<AnalysisDiagnostic> {
     let rule_id = diagnostic
-        .code
-        .as_deref()
+        .code()
         .and_then(rule_descriptor)
         .map(|descriptor| descriptor.id)
         .unwrap_or(DIAGRAM_PARSE_RULE_ID);
     let mut out = rule_diagnostic_without_default_span(
         rule_id,
         AnalysisStatus::ParseError,
-        diagnostic.message,
+        diagnostic.message().to_string(),
         rule_config,
     )?
     .with_diagram_type(diagram_type);
 
     if let Some(span) = diagnostic
-        .span
+        .span()
         .and_then(|span| source_map.span(span.start, span.end).ok())
     {
-        match diagnostic.span_kind {
+        match diagnostic.span_kind() {
             ParseDiagnosticSpanKind::Exact | ParseDiagnosticSpanKind::InsertionPoint => {
                 out = out.with_span(span);
             }

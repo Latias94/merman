@@ -36,10 +36,8 @@ pub(super) fn parse_class_via_lalrpop_db<'a>(
 
     let mut db = ClassDb::new(&meta.effective_config);
     for a in actions {
-        db.apply(a).map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: e,
-        })?;
+        db.apply(a)
+            .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e))?;
     }
     Ok(db)
 }

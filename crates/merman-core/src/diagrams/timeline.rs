@@ -77,10 +77,10 @@ impl TimelineDb {
 
     fn add_event(&mut self, event: &str) -> Result<()> {
         let Some(last) = self.tasks.last_mut() else {
-            return Err(Error::DiagramParse {
-                diagram_type: "timeline".to_string(),
-                message: "event without a preceding task".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "timeline".to_string(),
+                "event without a preceding task".to_string(),
+            ));
         };
         last.events.push(event.to_string());
         Ok(())
@@ -225,29 +225,29 @@ fn split_events_from_colon_whitespace(input: &str) -> Result<Vec<String>> {
 
     while !s.is_empty() {
         let Some(colon) = s.find(':') else {
-            return Err(Error::DiagramParse {
-                diagram_type: "timeline".to_string(),
-                message: format!("invalid event token: {input}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "timeline".to_string(),
+                format!("invalid event token: {input}"),
+            ));
         };
         if colon != 0 {
-            return Err(Error::DiagramParse {
-                diagram_type: "timeline".to_string(),
-                message: format!("invalid event token: {input}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "timeline".to_string(),
+                format!("invalid event token: {input}"),
+            ));
         }
         let after_colon = &s[1..];
         let Some(ws) = after_colon.chars().next() else {
-            return Err(Error::DiagramParse {
-                diagram_type: "timeline".to_string(),
-                message: "invalid event token: missing whitespace after ':'".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "timeline".to_string(),
+                "invalid event token: missing whitespace after ':'".to_string(),
+            ));
         };
         if !ws.is_whitespace() {
-            return Err(Error::DiagramParse {
-                diagram_type: "timeline".to_string(),
-                message: "invalid event token: missing whitespace after ':'".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "timeline".to_string(),
+                "invalid event token: missing whitespace after ':'".to_string(),
+            ));
         }
         s = &after_colon[ws.len_utf8()..];
 
@@ -439,17 +439,17 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
                 header_seen = true;
                 let rest = t["timeline".len()..].trim_start();
                 if !rest.is_empty() {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: "unexpected content after timeline header".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        "unexpected content after timeline header".to_string(),
+                    ));
                 }
                 continue;
             }
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: "expected timeline header".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                "expected timeline header".to_string(),
+            ));
         }
 
         let stripped = line.trim_start();
@@ -514,10 +514,10 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
             }
             continue;
         }
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unrecognized statement: {trimmed}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unrecognized statement: {trimmed}"),
+        ));
     }
 
     if !header_seen {

@@ -316,11 +316,8 @@ impl ErDb {
     }
 
     fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
-        let mut value =
-            serde_json::to_value(self.into_render_model()).map_err(|e| Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: e.to_string(),
-            })?;
+        let mut value = serde_json::to_value(self.into_render_model())
+            .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
         let Value::Object(obj) = &mut value else {
             return Ok(value);
         };
@@ -721,7 +718,7 @@ impl std::fmt::Display for LexError {
 
 impl std::error::Error for LexError {}
 
-impl crate::ParseErrorSourceSpan for LexError {
+impl crate::error::ParseErrorSourceSpan for LexError {
     fn source_span(&self) -> Option<crate::SourceSpan> {
         None
     }

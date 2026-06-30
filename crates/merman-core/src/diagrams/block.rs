@@ -1620,10 +1620,10 @@ impl DocumentFrame {
 }
 
 fn block_document_frame_error() -> Error {
-    Error::DiagramParse {
-        diagram_type: "block".to_string(),
-        message: "internal block document frame stack is empty".to_string(),
-    }
+    Error::diagram_parse_fallback(
+        "block".to_string(),
+        "internal block document frame stack is empty".to_string(),
+    )
 }
 
 fn current_document_frame_mut(frames: &mut [DocumentFrame]) -> Result<&mut DocumentFrame> {
@@ -1762,10 +1762,10 @@ impl<'a> Parser<'a> {
         if self.consume_keyword("block") {
             return Ok(());
         }
-        Err(Error::DiagramParse {
-            diagram_type: "block".to_string(),
-            message: "expected block header".to_string(),
-        })
+        Err(Error::diagram_parse_fallback(
+            "block".to_string(),
+            "expected block header".to_string(),
+        ))
     }
 
     fn parse_document(&mut self, stop_on_end: bool) -> Result<Vec<Block>> {
@@ -1800,10 +1800,10 @@ impl<'a> Parser<'a> {
 
             if self.peek_keyword("block-beta") || self.peek_keyword("block") {
                 if !(self.consume_keyword("block-beta") || self.consume_keyword("block")) {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "block".to_string(),
-                        message: "expected block".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "block".to_string(),
+                        "expected block".to_string(),
+                    ));
                 }
                 frames.push(DocumentFrame::anonymous_block());
                 continue;
@@ -1863,10 +1863,10 @@ impl<'a> Parser<'a> {
     fn parse_columns_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("columns") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected columns".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected columns".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let value = if self.consume_keyword("auto") {
@@ -1887,10 +1887,10 @@ impl<'a> Parser<'a> {
     fn parse_space_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("space") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected space".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected space".to_string(),
+            ));
         }
         let mut width = 1;
         self.skip_ws_and_comments();
@@ -1907,10 +1907,10 @@ impl<'a> Parser<'a> {
     fn parse_classdef_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("classDef") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected classDef".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected classDef".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let id = self.parse_identifier_like()?;
@@ -1924,10 +1924,10 @@ impl<'a> Parser<'a> {
     fn parse_apply_class_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("class") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected class".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected class".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let ids = self.parse_identifier_like()?;
@@ -1941,10 +1941,10 @@ impl<'a> Parser<'a> {
     fn parse_style_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("style") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected style".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected style".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let ids = self.parse_identifier_like()?;
@@ -1983,10 +1983,10 @@ impl<'a> Parser<'a> {
                     self.bump();
                 }
                 if self.pos == start {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "block".to_string(),
-                        message: "expected integer width after space:".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "block".to_string(),
+                        "expected integer width after space:".to_string(),
+                    ));
                 }
                 width = self.input[start..self.pos].parse::<i64>().unwrap_or(1);
             }
@@ -2132,24 +2132,24 @@ impl<'a> Parser<'a> {
             let label = self.parse_string_literal()?;
             self.skip_ws_and_comments();
             if !self.consume_exact("]>") {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "expected ]> in block arrow".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "expected ]> in block arrow".to_string(),
+                ));
             }
             self.skip_ws_and_comments();
             if !self.consume_exact("(") {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "expected '(' in block arrow".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "expected '(' in block arrow".to_string(),
+                ));
             }
             let dirs = self.parse_direction_list()?;
             if !self.consume_exact(")") {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "expected ')' in block arrow".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "expected ')' in block arrow".to_string(),
+                ));
             }
 
             b.label = Some(label);
@@ -2175,17 +2175,17 @@ impl<'a> Parser<'a> {
             let end_delim = match matched_end {
                 Some(e) => e,
                 None => {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "block".to_string(),
-                        message: "unterminated node delimiter".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "block".to_string(),
+                        "unterminated node delimiter".to_string(),
+                    ));
                 }
             };
             if end_delim.is_empty() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "unterminated node delimiter".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "unterminated node delimiter".to_string(),
+                ));
             }
 
             let type_str = format!("{start_delim}{end_delim}");
@@ -2223,18 +2223,18 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected direction".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected direction".to_string(),
+            ));
         }
         let dir = self.input[start..self.pos].trim().to_string();
         match dir.as_str() {
             "right" | "left" | "x" | "y" | "up" | "down" => Ok(dir),
-            _ => Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: format!("invalid direction: {dir}"),
-            }),
+            _ => Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                format!("invalid direction: {dir}"),
+            )),
         }
     }
 
@@ -2253,10 +2253,10 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected node id".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected node id".to_string(),
+            ));
         }
         Ok(self.input[start..self.pos].to_string())
     }
@@ -2271,10 +2271,10 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected identifier".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected identifier".to_string(),
+            ));
         }
         Ok(self.input[start..self.pos].trim().to_string())
     }
@@ -2286,17 +2286,14 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected integer".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected integer".to_string(),
+            ));
         }
         self.input[start..self.pos]
             .parse::<i64>()
-            .map_err(|e| Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: e.to_string(),
-            })
+            .map_err(|e| Error::diagram_parse_fallback("block".to_string(), e.to_string()))
     }
 
     fn parse_string_literal_or_md(&mut self) -> Result<String> {
@@ -2308,10 +2305,10 @@ impl<'a> Parser<'a> {
                 self.bump();
             }
             if self.pos >= self.input.len() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "unterminated markdown string".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "unterminated markdown string".to_string(),
+                ));
             }
             let inner = self.input[start..self.pos].to_string();
             self.pos += 2;
@@ -2323,10 +2320,10 @@ impl<'a> Parser<'a> {
     fn parse_string_literal(&mut self) -> Result<String> {
         self.skip_ws_and_comments();
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected string literal".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected string literal".to_string(),
+            ));
         }
         self.bump();
         let start = self.pos;
@@ -2337,10 +2334,10 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "unterminated string literal".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "unterminated string literal".to_string(),
+            ));
         }
         let inner = self.input[start..self.pos].to_string();
         self.bump();

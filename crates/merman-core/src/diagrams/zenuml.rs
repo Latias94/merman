@@ -782,16 +782,16 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
             let p = prefix.trim();
             if starts_with_word_ci(p, "else if") {
                 let Some((_, cond)) = p.split_once('(') else {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: format!("unsupported zenuml statement: {line}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unsupported zenuml statement: {line}"),
+                    ));
                 };
                 let Some((cond, _)) = cond.rsplit_once(')') else {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: format!("unsupported zenuml statement: {line}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unsupported zenuml statement: {line}"),
+                    ));
                 };
                 let label = format!("if({})", cond.trim());
                 out.push(format!("else {label}"));
@@ -866,16 +866,16 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
             if starts_with_word_ci(p, "if") {
                 par_maybe_and(&mut stack, &mut out);
                 let Some((_, cond)) = p.split_once('(') else {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: format!("unsupported zenuml statement: {line}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unsupported zenuml statement: {line}"),
+                    ));
                 };
                 let Some((cond, _)) = cond.rsplit_once(')') else {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: format!("unsupported zenuml statement: {line}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unsupported zenuml statement: {line}"),
+                    ));
                 };
                 out.push(format!("alt if({})", cond.trim()));
                 stack.push(BlockKind::IfAlt);
@@ -916,10 +916,10 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
         if let Some(rest) = line.strip_prefix("new ") {
             let rest = rest.trim();
             if rest.is_empty() {
-                return Err(Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message: format!("unsupported zenuml statement: {line}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    meta.diagram_type.clone(),
+                    format!("unsupported zenuml statement: {line}"),
+                ));
             }
 
             // Extract a stable id for Mermaid sequence: the leading identifier token.
@@ -933,10 +933,10 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
                 }
             }
             if id.is_empty() {
-                return Err(Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message: format!("unsupported zenuml statement: {line}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    meta.diagram_type.clone(),
+                    format!("unsupported zenuml statement: {line}"),
+                ));
             }
 
             par_maybe_and(&mut stack, &mut out);
@@ -990,10 +990,10 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
                 BlockKind::SyncCall { actor } => Some(actor.clone()),
                 _ => None,
             }) else {
-                return Err(Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message: format!("unsupported zenuml statement: {line}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    meta.diagram_type.clone(),
+                    format!("unsupported zenuml statement: {line}"),
+                ));
             };
             par_maybe_and(&mut stack, &mut out);
             flush_pending_comments_as_notes(&mut pending_comments, &mut out, &actor, &actor);
@@ -1026,10 +1026,10 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
             continue;
         }
 
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unsupported zenuml statement: {line}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unsupported zenuml statement: {line}"),
+        ));
     }
 
     Ok(out.join("\n"))

@@ -147,9 +147,11 @@ fn parse_styles(styles: &[String]) -> Result<QuadrantChartStyles> {
         if style.is_empty() {
             continue;
         }
-        let (key, value) = style.split_once(':').ok_or_else(|| Error::DiagramParse {
-            diagram_type: "quadrantChart".to_string(),
-            message: format!("style named {style} is not supported."),
+        let (key, value) = style.split_once(':').ok_or_else(|| {
+            Error::diagram_parse_fallback(
+                "quadrantChart".to_string(),
+                format!("style named {style} is not supported."),
+            )
         })?;
         let key = key.trim();
         let value = value.trim();
@@ -157,56 +159,49 @@ fn parse_styles(styles: &[String]) -> Result<QuadrantChartStyles> {
         match key {
             "radius" => {
                 if !value.chars().all(|c| c.is_ascii_digit()) {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "quadrantChart".to_string(),
-                        message: format!(
-                            "value for {key} {value} is invalid, please use a valid number"
-                        ),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "quadrantChart".to_string(),
+                        format!("value for {key} {value} is invalid, please use a valid number"),
+                    ));
                 }
-                out.radius = Some(value.parse::<i64>().map_err(|e| Error::DiagramParse {
-                    diagram_type: "quadrantChart".to_string(),
-                    message: e.to_string(),
+                out.radius = Some(value.parse::<i64>().map_err(|e| {
+                    Error::diagram_parse_fallback("quadrantChart".to_string(), e.to_string())
                 })?);
             }
             "color" => {
                 if !is_valid_hex_code(value) {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "quadrantChart".to_string(),
-                        message: format!(
-                            "value for {key} {value} is invalid, please use a valid hex code"
-                        ),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "quadrantChart".to_string(),
+                        format!("value for {key} {value} is invalid, please use a valid hex code"),
+                    ));
                 }
                 out.color = Some(value.to_string());
             }
             "stroke-color" => {
                 if !is_valid_hex_code(value) {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "quadrantChart".to_string(),
-                        message: format!(
-                            "value for {key} {value} is invalid, please use a valid hex code"
-                        ),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "quadrantChart".to_string(),
+                        format!("value for {key} {value} is invalid, please use a valid hex code"),
+                    ));
                 }
                 out.stroke_color = Some(value.to_string());
             }
             "stroke-width" => {
                 if !is_valid_px(value) {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "quadrantChart".to_string(),
-                        message: format!(
+                    return Err(Error::diagram_parse_fallback(
+                        "quadrantChart".to_string(),
+                        format!(
                             "value for {key} {value} is invalid, please use a valid number of pixels (eg. 10px)"
                         ),
-                    });
+                    ));
                 }
                 out.stroke_width = Some(value.to_string());
             }
             _ => {
-                return Err(Error::DiagramParse {
-                    diagram_type: "quadrantChart".to_string(),
-                    message: format!("style named {key} is not supported."),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "quadrantChart".to_string(),
+                    format!("style named {key} is not supported."),
+                ));
             }
         }
     }
@@ -301,9 +296,11 @@ fn parse_text_value(raw: &str) -> Result<String> {
         let inner = t
             .strip_prefix("\"`")
             .and_then(|v| v.strip_suffix("`\""))
-            .ok_or_else(|| Error::DiagramParse {
-                diagram_type: "quadrantChart".to_string(),
-                message: "unterminated markdown string".to_string(),
+            .ok_or_else(|| {
+                Error::diagram_parse_fallback(
+                    "quadrantChart".to_string(),
+                    "unterminated markdown string".to_string(),
+                )
             })?;
         return Ok(inner.to_string());
     }
@@ -311,9 +308,11 @@ fn parse_text_value(raw: &str) -> Result<String> {
         let inner = t
             .strip_prefix('"')
             .and_then(|v| v.strip_suffix('"'))
-            .ok_or_else(|| Error::DiagramParse {
-                diagram_type: "quadrantChart".to_string(),
-                message: "unterminated string".to_string(),
+            .ok_or_else(|| {
+                Error::diagram_parse_fallback(
+                    "quadrantChart".to_string(),
+                    "unterminated string".to_string(),
+                )
             })?;
         return Ok(inner.to_string());
     }
@@ -332,15 +331,14 @@ fn parse_unit_interval_token(raw: &str) -> Result<f64> {
         && !rest.is_empty()
         && rest.chars().all(|c| c.is_ascii_digit())
     {
-        return s.parse::<f64>().map_err(|e| Error::DiagramParse {
-            diagram_type: "quadrantChart".to_string(),
-            message: e.to_string(),
+        return s.parse::<f64>().map_err(|e| {
+            Error::diagram_parse_fallback("quadrantChart".to_string(), e.to_string())
         });
     }
-    Err(Error::DiagramParse {
-        diagram_type: "quadrantChart".to_string(),
-        message: "invalid point coordinate".to_string(),
-    })
+    Err(Error::diagram_parse_fallback(
+        "quadrantChart".to_string(),
+        "invalid point coordinate".to_string(),
+    ))
 }
 
 fn parse_style_list(rest: &str) -> Vec<String> {
@@ -406,17 +404,17 @@ fn parse_point_statement(line: &str) -> Result<Option<PointStatement>> {
 
     let t = tail.trim_start();
     let Some(after_bracket) = t.strip_prefix('[') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "quadrantChart".to_string(),
-            message: "expected '[' after ':'".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "quadrantChart".to_string(),
+            "expected '[' after ':'".to_string(),
+        ));
     };
-    let (inside, after) = after_bracket
-        .split_once(']')
-        .ok_or_else(|| Error::DiagramParse {
-            diagram_type: "quadrantChart".to_string(),
-            message: "unterminated point coordinate; missing ']'".to_string(),
-        })?;
+    let (inside, after) = after_bracket.split_once(']').ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "quadrantChart".to_string(),
+            "unterminated point coordinate; missing ']'".to_string(),
+        )
+    })?;
 
     let mut xy = inside.split(',');
     let x_raw = xy.next().unwrap_or("").trim();
@@ -941,10 +939,10 @@ fn parse_quadrant_chart_model(
                     saw_header = true;
                     continue;
                 }
-                return Err(Error::DiagramParse {
-                    diagram_type: "quadrantChart".to_string(),
-                    message: "expected quadrantChart".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "quadrantChart".to_string(),
+                    "expected quadrantChart".to_string(),
+                ));
             }
 
             if let Some(v) = parse_colon_value_ci(stmt, "accTitle") {
@@ -1034,10 +1032,10 @@ fn parse_quadrant_chart_model(
                 let name = parts.next().unwrap_or("").trim();
                 let style_str = parts.next().unwrap_or("").trim();
                 if name.is_empty() {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "quadrantChart".to_string(),
-                        message: "expected classDef name".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "quadrantChart".to_string(),
+                        "expected classDef name".to_string(),
+                    ));
                 }
                 let styles = parse_style_list(style_str);
                 db.add_class(name, &styles)?;
@@ -1049,18 +1047,18 @@ fn parse_quadrant_chart_model(
                 continue;
             }
 
-            return Err(Error::DiagramParse {
-                diagram_type: "quadrantChart".to_string(),
-                message: format!("Unrecognized statement: {stmt}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "quadrantChart".to_string(),
+                format!("Unrecognized statement: {stmt}"),
+            ));
         }
     }
 
     if !saw_header {
-        return Err(Error::DiagramParse {
-            diagram_type: "quadrantChart".to_string(),
-            message: "expected quadrantChart".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "quadrantChart".to_string(),
+            "expected quadrantChart".to_string(),
+        ));
     }
 
     Ok(QuadrantChartRenderModel {
@@ -1102,7 +1100,7 @@ mod tests {
     fn parse_err(text: &str) -> String {
         let engine = Engine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
-            Error::DiagramParse { message, .. } => message,
+            Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
         }
     }

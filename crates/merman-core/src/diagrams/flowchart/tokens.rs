@@ -2,7 +2,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickStmt, LabeledText, LinkStyleStmt, LinkToken, StyleStmt,
     SubgraphHeader,
 };
-use crate::{ParseErrorSourceSpan, SourceSpan};
+use crate::{SourceSpan, error::ParseErrorSourceSpan};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {

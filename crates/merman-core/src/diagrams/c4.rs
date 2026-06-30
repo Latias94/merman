@@ -666,17 +666,17 @@ fn parse_macro_stmt_facts_c4(
         "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
         | "Rel_R" | "Rel_Right" | "Rel_Back" => {
             let Some(from) = stmt.args.first() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing relation source".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation source".to_string(),
+                ));
             };
             push_c4_entity_arg(facts, from, "c4 relation source");
             let Some(to) = stmt.args.get(1) else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing relation target".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation target".to_string(),
+                ));
             };
             push_c4_entity_arg(facts, to, "c4 relation target");
             if let Some(label) = stmt.args.get(2) {
@@ -697,24 +697,24 @@ fn parse_macro_stmt_facts_c4(
         }
         "RelIndex" => {
             let Some(index) = stmt.args.first() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing relation index".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation index".to_string(),
+                ));
             };
             push_c4_payload_arg(facts, index, "c4 relation index");
             let Some(from) = stmt.args.get(1) else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing relation source".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation source".to_string(),
+                ));
             };
             push_c4_entity_arg(facts, from, "c4 relation source");
             let Some(to) = stmt.args.get(2) else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing relation target".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation target".to_string(),
+                ));
             };
             push_c4_entity_arg(facts, to, "c4 relation target");
             if let Some(label) = stmt.args.get(3) {
@@ -735,10 +735,10 @@ fn parse_macro_stmt_facts_c4(
         }
         "UpdateElementStyle" => {
             let Some(target) = stmt.args.first() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing style target".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing style target".to_string(),
+                ));
             };
             push_c4_entity_arg(facts, target, "c4 style target");
             for arg in stmt.args.iter().skip(1) {
@@ -748,17 +748,17 @@ fn parse_macro_stmt_facts_c4(
         }
         "UpdateRelStyle" => {
             let Some(from) = stmt.args.first() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing relation style source".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation style source".to_string(),
+                ));
             };
             push_c4_entity_arg(facts, from, "c4 relation style source");
             let Some(to) = stmt.args.get(1) else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "c4".to_string(),
-                    message: "missing relation style target".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation style target".to_string(),
+                ));
             };
             push_c4_entity_arg(facts, to, "c4 relation style target");
             for arg in stmt.args.iter().skip(2) {
@@ -772,10 +772,10 @@ fn parse_macro_stmt_facts_c4(
             }
             Ok(())
         }
-        other => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unsupported C4 macro: {other}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unsupported C4 macro: {other}"),
+        )),
     }
 }
 
@@ -804,10 +804,10 @@ fn parse_macro_stmt_spanned(t: &str, stmt_start: usize) -> Result<Option<Spanned
 
     let after = &t[paren + 1..];
     let Some(end_paren) = after.rfind(')') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unterminated macro call: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unterminated macro call: {t}"),
+        ));
     };
 
     let args_raw = &after[..end_paren];
@@ -817,16 +817,16 @@ fn parse_macro_stmt_spanned(t: &str, stmt_start: usize) -> Result<Option<Spanned
         if after.trim().is_empty() {
             has_lbrace = true;
         } else {
-            return Err(Error::DiagramParse {
-                diagram_type: "c4".to_string(),
-                message: format!("unexpected tokens after '{{' in macro: {t}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "c4".to_string(),
+                format!("unexpected tokens after '{{' in macro: {t}"),
+            ));
         }
     } else if !rest.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unexpected trailing tokens in macro: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unexpected trailing tokens in macro: {t}"),
+        ));
     }
 
     let args = parse_args_csv_spanned(args_raw, stmt_start + paren + 1)?;
@@ -905,17 +905,17 @@ fn try_parse_kv_spanned(seg: &str, seg_base: usize) -> Result<Option<SpannedArg>
     }
     let rest = &seg[1..];
     let Some(eq) = rest.find('=') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid attribute kv: {seg}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid attribute kv: {seg}"),
+        ));
     };
     let key = rest[..eq].trim();
     if key.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid attribute kv key: {seg}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid attribute kv key: {seg}"),
+        ));
     }
 
     let val_raw = rest[eq + 1..].trim_start();
@@ -936,24 +936,24 @@ fn try_parse_kv_spanned(seg: &str, seg_base: usize) -> Result<Option<SpannedArg>
 fn parse_quoted_spanned(input: &str, input_base: usize) -> Result<SpannedText> {
     let input = input.trim();
     let Some(rest) = input.strip_prefix('"') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected quoted string, got: {input}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected quoted string, got: {input}"),
+        ));
     };
     let Some(end) = rest.find('"') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: "unterminated string".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            "unterminated string".to_string(),
+        ));
     };
     let value = &rest[..end];
     let trailing = rest[end + 1..].trim();
     if !trailing.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unexpected trailing tokens after string: {trailing}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unexpected trailing tokens after string: {trailing}"),
+        ));
     }
     Ok(SpannedText {
         text: value.to_string(),
@@ -1368,14 +1368,14 @@ fn wrap_text(v: Value) -> Value {
 fn c4_required_string(obj: &Map<String, Value>, key: &str) -> Result<String> {
     match obj.get(key) {
         Some(Value::String(s)) => Ok(s.clone()),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected string field `{key}`, got {other:?}"),
-        }),
-        None => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("missing required field `{key}`"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected string field `{key}`, got {other:?}"),
+        )),
+        None => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("missing required field `{key}`"),
+        )),
     }
 }
 
@@ -1383,10 +1383,10 @@ fn c4_optional_string(obj: &Map<String, Value>, key: &str) -> Result<Option<Stri
     match obj.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected optional string field `{key}`, got {other:?}"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected optional string field `{key}`, got {other:?}"),
+        )),
     }
 }
 
@@ -1394,10 +1394,10 @@ fn c4_optional_bool(obj: &Map<String, Value>, key: &str) -> Result<Option<bool>>
     match obj.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Bool(v)) => Ok(Some(*v)),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected optional bool field `{key}`, got {other:?}"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected optional bool field `{key}`, got {other:?}"),
+        )),
     }
 }
 
@@ -1502,10 +1502,10 @@ fn arg_to_string(v: Option<&Value>) -> Result<String> {
     match v {
         None => Ok(String::new()),
         Some(Value::String(s)) => Ok(s.clone()),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected string argument, got {other:?}"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected string argument, got {other:?}"),
+        )),
     }
 }
 
@@ -1520,10 +1520,10 @@ fn apply_text_field_or_kv(obj: &mut Map<String, Value>, default_key: &str, v: Va
             let s = match vv {
                 Value::String(s) => s,
                 other => {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "c4".to_string(),
-                        message: format!("expected string in attribute kv, got {other:?}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "c4".to_string(),
+                        format!("expected string in attribute kv, got {other:?}"),
+                    ));
                 }
             };
             obj.insert(k, wrap_text(json!(s)));
@@ -1533,10 +1533,10 @@ fn apply_text_field_or_kv(obj: &mut Map<String, Value>, default_key: &str, v: Va
             obj.insert(default_key.to_string(), wrap_text(json!(s)));
             Ok(())
         }
-        other => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid text field value: {other:?}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid text field value: {other:?}"),
+        )),
     }
 }
 
@@ -1562,10 +1562,10 @@ fn apply_kv_value(
             obj.insert(default_key.to_string(), json!(s));
             Ok(())
         }
-        other => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid kv value: {other:?}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid kv value: {other:?}"),
+        )),
     }
 }
 
@@ -1590,19 +1590,18 @@ fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
     let mut db = C4Db::new(&meta.effective_config);
 
     let mut lines = code.lines().peekable();
-    let header = next_non_empty_line(&mut lines).ok_or_else(|| Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: "expected C4 header".to_string(),
+    let header = next_non_empty_line(&mut lines).ok_or_else(|| {
+        Error::diagram_parse_fallback(meta.diagram_type.clone(), "expected C4 header".to_string())
     })?;
     let header = header.trim();
 
     match header {
         "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment" => {}
         _ => {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!("unexpected C4 header: {header}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unexpected C4 header: {header}"),
+            ));
         }
     }
     db.set_c4_type(header, &meta.effective_config);
@@ -1643,10 +1642,10 @@ fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
         }
 
         let Some((name, args, has_lbrace)) = parse_macro_stmt(t)? else {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!("unsupported C4 statement: {t}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unsupported C4 statement: {t}"),
+            ));
         };
 
         if is_boundary_macro(&name) {
@@ -1675,10 +1674,10 @@ fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
                     db.add_deployment_node("nodeR", args)?;
                 }
                 other => {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: format!("unsupported boundary macro: {other}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unsupported boundary macro: {other}"),
+                    ));
                 }
             }
 
@@ -1729,10 +1728,10 @@ fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
             "UpdateLayoutConfig" => db.update_layout_config(args)?,
 
             other => {
-                return Err(Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message: format!("unsupported C4 macro: {other}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    meta.diagram_type.clone(),
+                    format!("unsupported C4 macro: {other}"),
+                ));
             }
         }
     }
@@ -1885,15 +1884,15 @@ fn consume_required_lbrace(lines: &mut std::iter::Peekable<std::str::Lines<'_>>)
             lines.next();
             return Ok(());
         }
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: "expected '{' after boundary".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            "expected '{' after boundary".to_string(),
+        ));
     }
-    Err(Error::DiagramParse {
-        diagram_type: "c4".to_string(),
-        message: "expected '{' after boundary".to_string(),
-    })
+    Err(Error::diagram_parse_fallback(
+        "c4".to_string(),
+        "expected '{' after boundary".to_string(),
+    ))
 }
 
 fn parse_macro_stmt(t: &str) -> Result<Option<(String, Vec<Value>, bool)>> {
@@ -1908,10 +1907,10 @@ fn parse_macro_stmt(t: &str) -> Result<Option<(String, Vec<Value>, bool)>> {
 
     let after = &t[paren + 1..];
     let Some(end_paren) = after.rfind(')') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unterminated macro call: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unterminated macro call: {t}"),
+        ));
     };
 
     let args_raw = &after[..end_paren];
@@ -1921,16 +1920,16 @@ fn parse_macro_stmt(t: &str) -> Result<Option<(String, Vec<Value>, bool)>> {
         if after.trim().is_empty() {
             has_lbrace = true;
         } else {
-            return Err(Error::DiagramParse {
-                diagram_type: "c4".to_string(),
-                message: format!("unexpected tokens after '{{' in macro: {t}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "c4".to_string(),
+                format!("unexpected tokens after '{{' in macro: {t}"),
+            ));
         }
     } else if !rest.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unexpected trailing tokens in macro: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unexpected trailing tokens in macro: {t}"),
+        ));
     }
 
     let args = parse_args_csv(args_raw)?;
@@ -1992,18 +1991,18 @@ fn try_parse_kv(seg: &str) -> Result<Option<Value>> {
     }
     let rest = &seg[1..];
     let Some(eq) = rest.find('=') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid attribute kv: {seg}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid attribute kv: {seg}"),
+        ));
     };
     let key = rest[..eq].trim();
     let val_raw = rest[eq + 1..].trim_start();
     if key.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid attribute kv key: {seg}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid attribute kv key: {seg}"),
+        ));
     }
     let val = parse_quoted(val_raw)?;
     let mut map = Map::new();
@@ -2014,24 +2013,24 @@ fn try_parse_kv(seg: &str) -> Result<Option<Value>> {
 fn parse_quoted(input: &str) -> Result<String> {
     let input = input.trim();
     let Some(rest) = input.strip_prefix('"') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected quoted string, got: {input}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected quoted string, got: {input}"),
+        ));
     };
     let Some(end) = rest.find('"') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: "unterminated string".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            "unterminated string".to_string(),
+        ));
     };
     let val = &rest[..end];
     let trailing = rest[end + 1..].trim();
     if !trailing.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unexpected trailing tokens after string: {trailing}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unexpected trailing tokens after string: {trailing}"),
+        ));
     }
     Ok(val.to_string())
 }

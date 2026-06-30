@@ -42,7 +42,7 @@ pub use editor::{
     EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
     EditorSemanticSymbol, SourceSpan,
 };
-pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan, Result};
+pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{DiagramFamilyCapability, DiagramHeaderFact};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 

@@ -149,10 +149,7 @@ fn parse_flowchart_semantic_source(
     let mut build = FlowchartBuildState::new(subgraph_ids);
     build
         .add_statements(&ast.statements)
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: e,
-        })?;
+        .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e))?;
     let FlowchartBuildState {
         nodes,
         edges,
@@ -1229,9 +1226,11 @@ fn flow_edge_to_json(e: Edge, config: &MermaidConfig) -> Value {
 
 fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<FlowEdge> {
     let label = sanitized_optional_label(e.label.as_deref(), &meta.effective_config);
-    let id = e.id.ok_or_else(|| Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: "flowchart edge id missing".to_string(),
+    let id = e.id.ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "flowchart edge id missing".to_string(),
+        )
     })?;
 
     Ok(FlowEdge {

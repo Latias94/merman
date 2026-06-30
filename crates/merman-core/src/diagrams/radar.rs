@@ -482,10 +482,10 @@ fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Resu
     }
 
     if axes.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "radar".to_string(),
-            message: "Axes must be populated before curves for reference entries".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "radar".to_string(),
+            "Axes must be populated before curves for reference entries".to_string(),
+        ));
     }
 
     axes.iter()
@@ -494,10 +494,10 @@ fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Resu
                 .iter()
                 .find(|e| e.axis.as_deref() == Some(&axis.name));
             let Some(found) = found else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "radar".to_string(),
-                    message: format!("Missing entry for axis {}", axis.label),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "radar".to_string(),
+                    format!("Missing entry for axis {}", axis.label),
+                ));
             };
             Ok(found.value.clone())
         })
@@ -534,10 +534,10 @@ fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
     };
 
     if !is_radar_header(&header) {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected radar-beta".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected radar-beta".to_string(),
+        ));
     }
 
     let mut title: Option<String> = None;
@@ -570,15 +570,14 @@ fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
         if let Some(rest) = t.strip_prefix("axis") {
             let rest = rest.trim_start();
             if rest.is_empty() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "radar".to_string(),
-                    message: "axis statement must include at least one axis".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "radar".to_string(),
+                    "axis statement must include at least one axis".to_string(),
+                ));
             }
             axes.extend(
-                parse_axes_list(rest).map_err(|message| Error::DiagramParse {
-                    diagram_type: "radar".to_string(),
-                    message,
+                parse_axes_list(rest).map_err(|message| {
+                    Error::diagram_parse_fallback("radar".to_string(), message)
                 })?,
             );
             continue;
@@ -598,34 +597,31 @@ fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
                 }
             }
             curves.extend(
-                parse_curves_stmt(&stmt).map_err(|message| Error::DiagramParse {
-                    diagram_type: "radar".to_string(),
-                    message,
+                parse_curves_stmt(&stmt).map_err(|message| {
+                    Error::diagram_parse_fallback("radar".to_string(), message)
                 })?,
             );
             continue;
         }
 
-        if let Some(opt) = parse_option_stmt(&t).map_err(|message| Error::DiagramParse {
-            diagram_type: "radar".to_string(),
-            message,
-        })? {
+        if let Some(opt) = parse_option_stmt(&t)
+            .map_err(|message| Error::diagram_parse_fallback("radar".to_string(), message))?
+        {
             options.push(opt);
             continue;
         }
 
-        if let Some(many) = parse_option_list_stmt(&t).map_err(|message| Error::DiagramParse {
-            diagram_type: "radar".to_string(),
-            message,
-        })? {
+        if let Some(many) = parse_option_list_stmt(&t)
+            .map_err(|message| Error::diagram_parse_fallback("radar".to_string(), message))?
+        {
             options.extend(many);
             continue;
         }
 
-        return Err(Error::DiagramParse {
-            diagram_type: "radar".to_string(),
-            message: format!("unexpected radar statement: {}", t.trim()),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "radar".to_string(),
+            format!("unexpected radar statement: {}", t.trim()),
+        ));
     }
 
     let mut db = RadarDb::new();
@@ -1210,7 +1206,7 @@ mod tests {
     fn parse_err(text: &str) -> String {
         let engine = Engine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
-            Error::DiagramParse { message, .. } => message,
+            Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
         }
     }

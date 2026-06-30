@@ -59,10 +59,10 @@ pub fn parse_pie_model_for_render(
 ) -> Result<PieDiagramRenderModel> {
     match parse_pie_model(code, meta)? {
         PieParseOutput::Empty => Ok(PieDiagramRenderModel::default()),
-        PieParseOutput::ExpectedPie => Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected pie".to_string(),
-        }),
+        PieParseOutput::ExpectedPie => Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected pie".to_string(),
+        )),
         PieParseOutput::Model(model) => Ok(model),
     }
 }
@@ -429,10 +429,10 @@ fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
     }
 
     if let Some(tok) = unsupported {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unexpected pie header token: {tok}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unexpected pie header token: {tok}"),
+        ));
     }
 
     let mut sections: Vec<PieRenderSection> = Vec::new();
@@ -483,12 +483,12 @@ fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
 
         if let Some((label, value)) = parse_section(t) {
             if value < 0.0 {
-                return Err(Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message: format!(
+                return Err(Error::diagram_parse_fallback(
+                    meta.diagram_type.clone(),
+                    format!(
                         "\"{label}\" has invalid value: {value}. Negative values are not allowed in pie charts. All slice values must be >= 0."
                     ),
-                });
+                ));
             }
             if seen.insert(label.clone()) {
                 sections.push(PieRenderSection { label, value });
@@ -496,10 +496,10 @@ fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
             continue;
         }
 
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unexpected pie statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unexpected pie statement: {t}"),
+        ));
     }
 
     Ok(PieParseOutput::Model(PieDiagramRenderModel {

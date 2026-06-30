@@ -300,13 +300,13 @@ impl GitGraphDb {
     fn branch(&mut self, mut branch_db: BranchDb, config: &MermaidConfig) -> Result<()> {
         branch_db.name = sanitize_text(&branch_db.name, config);
         if self.branches.contains_key(&branch_db.name) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using \"checkout {}\")",
                     branch_db.name
                 ),
-            });
+            ));
         }
 
         let head_id = self.head.clone();
@@ -325,13 +325,13 @@ impl GitGraphDb {
     fn checkout(&mut self, branch: &str, config: &MermaidConfig) -> Result<()> {
         let branch = sanitize_text(branch, config);
         if !self.branches.contains_key(&branch) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Trying to checkout branch which is not yet created. (Help try using \"branch {}\")",
                     branch
                 ),
-            });
+            ));
         }
         self.curr_branch = branch.clone();
         let id = self.branches.get(&branch).cloned().unwrap_or_default();
@@ -352,11 +352,10 @@ impl GitGraphDb {
         let other_branch = merge_db.branch.clone();
 
         if current_branch == other_branch {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "Incorrect usage of \"merge\". Cannot merge a branch to itself"
-                    .to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "Incorrect usage of \"merge\". Cannot merge a branch to itself".to_string(),
+            ));
         }
 
         let Some(current_head_id) = self
@@ -364,78 +363,78 @@ impl GitGraphDb {
             .get(&current_branch)
             .and_then(|id| id.as_ref())
         else {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Incorrect usage of \"merge\". Current branch ({})has no commits",
                     current_branch
                 ),
-            });
+            ));
         };
         let Some(current_commit) = self.commits.get(current_head_id).cloned() else {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Incorrect usage of \"merge\". Current branch ({})has no commits",
                     current_branch
                 ),
-            });
+            ));
         };
 
         if !self.branches.contains_key(&other_branch) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Incorrect usage of \"merge\". Branch to be merged ({}) does not exist",
                     other_branch
                 ),
-            });
+            ));
         }
 
         let Some(other_head_id) = self.branches.get(&other_branch).and_then(|id| id.as_ref())
         else {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Incorrect usage of \"merge\". Branch to be merged ({}) has no commits",
                     other_branch
                 ),
-            });
+            ));
         };
         let Some(other_commit) = self.commits.get(other_head_id).cloned() else {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Incorrect usage of \"merge\". Branch to be merged ({}) has no commits",
                     other_branch
                 ),
-            });
+            ));
         };
 
         if current_commit.branch == other_branch {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!("Cannot merge branch '{}' into itself.", other_branch),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!("Cannot merge branch '{}' into itself.", other_branch),
+            ));
         }
 
         if current_commit.id == other_commit.id {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "Incorrect usage of \"merge\". Both branches have same head".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "Incorrect usage of \"merge\". Both branches have same head".to_string(),
+            ));
         }
 
         if let Some(custom_id) = merge_db.id.as_ref()
             && self.commits.contains_key(custom_id)
         {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
                     "Incorrect usage of \"merge\". Commit with id:{} already exists, use different custom id",
                     custom_id
                 ),
-            });
+            ));
         }
 
         let verified_branch = other_head_id.clone();
@@ -481,44 +480,35 @@ impl GitGraphDb {
         cp.parent = sanitize_text(&cp.parent, config);
 
         if cp.id.is_empty() {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message:
-                    "Incorrect usage of \"cherryPick\". Source commit id should exist and provided"
-                        .to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "Incorrect usage of \"cherryPick\". Source commit id should exist and provided"
+                    .to_string(),
+            ));
         }
 
         let Some(source_commit) = self.commits.get(&cp.id).cloned() else {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message:
-                    "Incorrect usage of \"cherryPick\". Source commit id should exist and provided"
-                        .to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "Incorrect usage of \"cherryPick\". Source commit id should exist and provided"
+                    .to_string(),
+            ));
         };
         if !cp.parent.is_empty() && !(source_commit.parents.iter().any(|p| p == &cp.parent)) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "Invalid operation: The specified parent commit is not an immediate parent of the cherry-picked commit.".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback("gitGraph".to_string(), "Invalid operation: The specified parent commit is not an immediate parent of the cherry-picked commit.".to_string()));
         }
 
         if source_commit.commit_type == COMMIT_TYPE_MERGE && cp.parent.is_empty() {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "Incorrect usage of cherry-pick: If the source commit is a merge commit, an immediate parent commit must be specified.".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback("gitGraph".to_string(), "Incorrect usage of cherry-pick: If the source commit is a merge commit, an immediate parent commit must be specified.".to_string()));
         }
 
         if cp.target_id.is_empty() || !self.commits.contains_key(&cp.target_id) {
             if source_commit.branch == self.curr_branch {
-                return Err(Error::DiagramParse {
-                    diagram_type: "gitGraph".to_string(),
-                    message:
-                        "Incorrect usage of \"cherryPick\". Source commit is already on current branch"
-                            .to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "gitGraph".to_string(),
+                    "Incorrect usage of \"cherryPick\". Source commit is already on current branch"
+                        .to_string(),
+                ));
             }
 
             let current_commit_id = self
@@ -527,13 +517,13 @@ impl GitGraphDb {
                 .cloned()
                 .unwrap_or(None);
             if current_commit_id.is_none() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "gitGraph".to_string(),
-                    message: format!(
+                return Err(Error::diagram_parse_fallback(
+                    "gitGraph".to_string(),
+                    format!(
                         "Incorrect usage of \"cherry-pick\". Current branch ({})has no commits",
                         self.curr_branch
                     ),
-                });
+                ));
             }
 
             let tags = match cp.tags {
@@ -644,10 +634,10 @@ fn parse_commit_type(raw: &str) -> Result<i64> {
         "NORMAL" => Ok(COMMIT_TYPE_NORMAL),
         "REVERSE" => Ok(COMMIT_TYPE_REVERSE),
         "HIGHLIGHT" => Ok(COMMIT_TYPE_HIGHLIGHT),
-        other => Err(Error::DiagramParse {
-            diagram_type: "gitGraph".to_string(),
-            message: format!("Unknown commit type: {other}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "gitGraph".to_string(),
+            format!("Unknown commit type: {other}"),
+        )),
     }
 }
 
@@ -736,10 +726,10 @@ impl<'a> LineParser<'a> {
     fn parse_quoted(&mut self) -> Result<String> {
         self.skip_ws();
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "expected quoted string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "expected quoted string".to_string(),
+            ));
         }
         self.bump();
         let start = self.pos;
@@ -750,10 +740,10 @@ impl<'a> LineParser<'a> {
             self.bump();
         }
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "unterminated quoted string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "unterminated quoted string".to_string(),
+            ));
         }
         let s = self.input[start..self.pos].to_string();
         self.bump();
@@ -763,10 +753,10 @@ impl<'a> LineParser<'a> {
     fn parse_quoted_spanned(&mut self) -> Result<SpannedValue> {
         self.skip_ws();
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "expected quoted string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "expected quoted string".to_string(),
+            ));
         }
         self.bump();
         let start = self.pos;
@@ -777,10 +767,10 @@ impl<'a> LineParser<'a> {
             self.bump();
         }
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "unterminated quoted string".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "unterminated quoted string".to_string(),
+            ));
         }
         let s = self.input[start..self.pos].to_string();
         let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
@@ -801,10 +791,10 @@ impl<'a> LineParser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "expected name".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "expected name".to_string(),
+            ));
         }
         Ok(self.input[start..self.pos].to_string())
     }
@@ -822,10 +812,10 @@ impl<'a> LineParser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "gitGraph".to_string(),
-                message: "expected name".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "expected name".to_string(),
+            ));
         }
         Ok(SpannedValue {
             text: self.input[start..self.pos].to_string(),
@@ -845,10 +835,10 @@ impl<'a> LineParser<'a> {
             };
             self.skip_ws();
             if !self.consume_char(':') {
-                return Err(Error::DiagramParse {
-                    diagram_type: "gitGraph".to_string(),
-                    message: format!("expected ':' after {key}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "gitGraph".to_string(),
+                    format!("expected ':' after {key}"),
+                ));
             }
             self.skip_ws();
             let value = if self.peek_char() == Some('"') {
@@ -873,10 +863,10 @@ impl<'a> LineParser<'a> {
             };
             self.skip_ws();
             if !self.consume_char(':') {
-                return Err(Error::DiagramParse {
-                    diagram_type: "gitGraph".to_string(),
-                    message: format!("expected ':' after {}", key.text),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "gitGraph".to_string(),
+                    format!("expected ':' after {}", key.text),
+                ));
             }
             self.skip_ws();
             let value = if self.peek_char() == Some('"') {
@@ -904,10 +894,10 @@ impl<'a> LineParser<'a> {
 fn parse_header_line(line: &str) -> Result<Option<String>> {
     let t = line.trim_start();
     if !t.starts_with("gitGraph") {
-        return Err(Error::DiagramParse {
-            diagram_type: "gitGraph".to_string(),
-            message: "expected gitGraph header".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "gitGraph".to_string(),
+            "expected gitGraph header".to_string(),
+        ));
     }
     let rest = t["gitGraph".len()..].trim();
     if rest.is_empty() || rest == ":" {
@@ -1295,10 +1285,10 @@ pub fn parse_git_graph_editor_facts(code: &str, _meta: &ParseMetadata) -> Editor
 fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRenderModel> {
     let mut lines = code.lines();
     let Some(header) = lines.next() else {
-        return Err(Error::DiagramParse {
-            diagram_type: "gitGraph".to_string(),
-            message: "empty input".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "gitGraph".to_string(),
+            "empty input".to_string(),
+        ));
     };
 
     let direction = parse_header_line(header)?;
@@ -1444,10 +1434,10 @@ where
                             "tag" => commit_db.tags.push(v),
                             "type" => commit_db.commit_type = parse_commit_type(&v)?,
                             other => {
-                                return Err(Error::DiagramParse {
-                                    diagram_type: "gitGraph".to_string(),
-                                    message: format!("unexpected commit field: {other}"),
-                                });
+                                return Err(Error::diagram_parse_fallback(
+                                    "gitGraph".to_string(),
+                                    format!("unexpected commit field: {other}"),
+                                ));
                             }
                         }
                     }
@@ -1460,9 +1450,8 @@ where
                 let mut order = 0i64;
                 for (k, v) in kv {
                     if k == "order" {
-                        order = v.trim().parse::<i64>().map_err(|e| Error::DiagramParse {
-                            diagram_type: "gitGraph".to_string(),
-                            message: e.to_string(),
+                        order = v.trim().parse::<i64>().map_err(|e| {
+                            Error::diagram_parse_fallback("gitGraph".to_string(), e.to_string())
                         })?;
                     }
                 }
@@ -1515,10 +1504,10 @@ where
                 )?;
             }
             _ => {
-                return Err(Error::DiagramParse {
-                    diagram_type: "gitGraph".to_string(),
-                    message: format!("Unknown statement: {cmd}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "gitGraph".to_string(),
+                    format!("Unknown statement: {cmd}"),
+                ));
             }
         }
     }
@@ -1543,7 +1532,7 @@ mod tests {
     fn parse_err(text: &str) -> String {
         let engine = Engine::new();
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
-            Error::DiagramParse { message, .. } => message,
+            Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
         }
     }

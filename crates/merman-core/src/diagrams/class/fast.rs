@@ -273,10 +273,7 @@ pub(super) fn parse_class_fast_db<'a>(
             };
             // Mirror the grammar path (Action::AddRelation + optional Label) via `apply`.
             db.apply(Action::AddRelation { data })
-                .map_err(|e| Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message: e,
-                })?;
+                .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e))?;
             continue;
         }
 

@@ -6,6 +6,10 @@ status: active
 # Log
 
 ## 2026-06-30
+- Started implementation of `docs/plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md`
+  on `feat/editor-core-language-intelligence`; U1 is tightening the core parse diagnostic API by
+  collapsing the dual parse-error surface and converting remaining imprecise parser errors through
+  named fallback construction.
 - Refined the VS Code preview toolbar after visual review: default preview background is now
   paper/white, `Copy SVG`, `Export SVG`, and `Export PNG` are always visible in SVG mode, display
   settings stay in the menu, output buttons are vertically centered, and preview export uses the

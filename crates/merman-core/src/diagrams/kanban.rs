@@ -89,13 +89,13 @@ impl KanbanDb {
                 last_section_idx = Some(idx);
             }
             if node.level < section_level {
-                return Err(Error::DiagramParse {
-                    diagram_type: "kanban".to_string(),
-                    message: format!(
+                return Err(Error::diagram_parse_fallback(
+                    "kanban".to_string(),
+                    format!(
                         "Items without section detected, found section (\"{}\")",
                         node.label
                     ),
-                });
+                ));
             }
         }
 
@@ -296,22 +296,18 @@ impl KanbanDb {
 }
 
 fn apply_shape_data(node: &mut KanbanNode, shape_data: &str) -> Result<()> {
-    let doc = crate::inline_config::parse_mermaid_inline_object(shape_data).map_err(|e| {
-        Error::DiagramParse {
-            diagram_type: "kanban".to_string(),
-            message: e,
-        }
-    })?;
+    let doc = crate::inline_config::parse_mermaid_inline_object(shape_data)
+        .map_err(|e| Error::diagram_parse_fallback("kanban".to_string(), e))?;
     let Some(obj) = doc.as_object() else {
         return Ok(());
     };
 
     if let Some(Value::String(shape)) = obj.get("shape") {
         if shape != &shape.to_lowercase() || shape.contains('_') {
-            return Err(Error::DiagramParse {
-                diagram_type: "kanban".to_string(),
-                message: format!("No such shape: {shape}. Shape names should be lowercase."),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "kanban".to_string(),
+                format!("No such shape: {shape}. Shape names should be lowercase."),
+            ));
         }
         if shape == "kanbanItem" {
             node.shape = Some(shape.clone());
@@ -579,10 +575,10 @@ fn consume_shape_data(lines: &mut std::str::Lines<'_>, first: &str) -> Result<St
         }
 
         let Some(next_line) = lines.next() else {
-            return Err(Error::DiagramParse {
-                diagram_type: "kanban".to_string(),
-                message: "unterminated @{ ... } metadata block".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "kanban".to_string(),
+                "unterminated @{ ... } metadata block".to_string(),
+            ));
         };
         if in_quote {
             quoted.push('\n');
@@ -692,10 +688,10 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
     }
 
     if !found_header {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected kanban header".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected kanban header".to_string(),
+        ));
     }
 
     if let Some(tail) = &header_tail {
@@ -714,9 +710,8 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
                 let (node_part, shape_data) = split_node_and_shape_data(&mut lines, rest)?;
                 if !node_part.trim().is_empty() {
                     let (id_raw, descr_raw, ty) =
-                        parse_node_spec(&node_part).map_err(|message| Error::DiagramParse {
-                            diagram_type: meta.diagram_type.clone(),
-                            message,
+                        parse_node_spec(&node_part).map_err(|message| {
+                            Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
                         })?;
                     db.add_node(
                         indent,
@@ -761,11 +756,8 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
             continue;
         }
 
-        let (id_raw, descr_raw, ty) =
-            parse_node_spec(&node_part).map_err(|message| Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message,
-            })?;
+        let (id_raw, descr_raw, ty) = parse_node_spec(&node_part)
+            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
 
         db.add_node(
             indent,

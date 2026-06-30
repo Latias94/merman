@@ -884,10 +884,10 @@ fn parse_requirement_model(
                 saw_header = true;
                 continue;
             }
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: "expected requirementDiagram".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                "expected requirementDiagram".to_string(),
+            ));
         }
 
         if let Some(dir) = parse_direction(t) {
@@ -938,17 +938,17 @@ fn parse_requirement_model(
             continue;
         }
 
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unexpected requirement statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            format!("unexpected requirement statement: {t}"),
+        ));
     }
 
     if !saw_header {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected requirementDiagram".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected requirementDiagram".to_string(),
+        ));
     }
 
     Ok(db.to_render_model(acc_title, acc_descr))
@@ -1080,9 +1080,11 @@ fn parse_requirement_def_open(t: &str) -> Result<Option<RequirementDefOpen>> {
     }
 
     let without_brace = t[..t.len() - 1].trim_end();
-    let (ty_raw, rest) = split_first_word(without_brace).ok_or_else(|| Error::DiagramParse {
-        diagram_type: "requirement".to_string(),
-        message: "invalid requirement definition".to_string(),
+    let (ty_raw, rest) = split_first_word(without_brace).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            "invalid requirement definition".to_string(),
+        )
     })?;
 
     let requirement_type = match ty_raw.to_ascii_lowercase().as_str() {
@@ -1098,10 +1100,10 @@ fn parse_requirement_def_open(t: &str) -> Result<Option<RequirementDefOpen>> {
 
     let (name, classes) = split_name_and_classes(rest.trim())?;
     if name.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: "requirement name is empty".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            "requirement name is empty".to_string(),
+        ));
     }
     Ok(Some((name, requirement_type, classes)))
 }
@@ -1115,9 +1117,11 @@ fn parse_element_def_open(t: &str) -> Result<Option<(String, Option<Vec<String>>
     }
 
     let without_brace = t[..t.len() - 1].trim_end();
-    let (kw, rest) = split_first_word(without_brace).ok_or_else(|| Error::DiagramParse {
-        diagram_type: "requirement".to_string(),
-        message: "invalid element definition".to_string(),
+    let (kw, rest) = split_first_word(without_brace).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            "invalid element definition".to_string(),
+        )
     })?;
     if !kw.eq_ignore_ascii_case("element") {
         return Ok(None);
@@ -1125,10 +1129,10 @@ fn parse_element_def_open(t: &str) -> Result<Option<(String, Option<Vec<String>>
 
     let (name, classes) = split_name_and_classes(rest.trim())?;
     if name.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: "element name is empty".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            "element name is empty".to_string(),
+        ));
     }
     Ok(Some((name, classes)))
 }
@@ -1168,10 +1172,10 @@ fn parse_id_or_name(input: &str) -> Result<(String, &str)> {
         if let Some((val, rest)) = parse_quoted_prefix(input) {
             return Ok((val, rest));
         }
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: "unterminated string".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            "unterminated string".to_string(),
+        ));
     }
     Ok((input.trim().to_string(), ""))
 }
@@ -1206,10 +1210,10 @@ fn parse_requirement_body(lines: &mut Peekable<Lines<'_>>) -> Result<Requirement
         }
 
         let Some((k, v)) = split_key_value(t) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "requirement".to_string(),
-                message: format!("invalid requirement body line: {t}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "requirement".to_string(),
+                format!("invalid requirement body line: {t}"),
+            ));
         };
         let key = k.to_ascii_lowercase();
         let value = parse_simple_value(v)?;
@@ -1219,18 +1223,18 @@ fn parse_requirement_body(lines: &mut Peekable<Lines<'_>>) -> Result<Requirement
             "risk" => b.risk = normalize_risk(&value)?,
             "verifymethod" => b.verify_method = normalize_verify_method(&value)?,
             _ => {
-                return Err(Error::DiagramParse {
-                    diagram_type: "requirement".to_string(),
-                    message: format!("unexpected requirement body key: {k}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "requirement".to_string(),
+                    format!("unexpected requirement body key: {k}"),
+                ));
             }
         }
     }
 
-    Err(Error::DiagramParse {
-        diagram_type: "requirement".to_string(),
-        message: "unterminated requirement block".to_string(),
-    })
+    Err(Error::diagram_parse_fallback(
+        "requirement".to_string(),
+        "unterminated requirement block".to_string(),
+    ))
 }
 
 fn parse_element_body(lines: &mut Peekable<Lines<'_>>) -> Result<ElementBuilder> {
@@ -1246,10 +1250,10 @@ fn parse_element_body(lines: &mut Peekable<Lines<'_>>) -> Result<ElementBuilder>
         }
 
         let Some((k, v)) = split_key_value(t) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "requirement".to_string(),
-                message: format!("invalid element body line: {t}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "requirement".to_string(),
+                format!("invalid element body line: {t}"),
+            ));
         };
         let key = k.to_ascii_lowercase();
         let value = parse_simple_value(v)?;
@@ -1257,18 +1261,18 @@ fn parse_element_body(lines: &mut Peekable<Lines<'_>>) -> Result<ElementBuilder>
             "type" => b.element_type = value,
             "docref" => b.doc_ref = value,
             _ => {
-                return Err(Error::DiagramParse {
-                    diagram_type: "requirement".to_string(),
-                    message: format!("unexpected element body key: {k}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "requirement".to_string(),
+                    format!("unexpected element body key: {k}"),
+                ));
             }
         }
     }
 
-    Err(Error::DiagramParse {
-        diagram_type: "requirement".to_string(),
-        message: "unterminated element block".to_string(),
-    })
+    Err(Error::diagram_parse_fallback(
+        "requirement".to_string(),
+        "unterminated element block".to_string(),
+    ))
 }
 
 fn split_key_value(input: &str) -> Option<(&str, &str)> {
@@ -1286,17 +1290,17 @@ fn parse_simple_value(input: &str) -> Result<String> {
     if input.starts_with('"') {
         if let Some((val, rest)) = parse_quoted_prefix(input) {
             if !rest.trim().is_empty() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "requirement".to_string(),
-                    message: format!("unexpected trailing tokens after string: {}", rest.trim()),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "requirement".to_string(),
+                    format!("unexpected trailing tokens after string: {}", rest.trim()),
+                ));
             }
             return Ok(val.trim().to_string());
         }
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: "unterminated string".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            "unterminated string".to_string(),
+        ));
     }
     Ok(input.trim().to_string())
 }
@@ -1306,10 +1310,10 @@ fn normalize_risk(input: &str) -> Result<String> {
         "low" => Ok("Low".to_string()),
         "medium" => Ok("Medium".to_string()),
         "high" => Ok("High".to_string()),
-        other => Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: format!("invalid risk level: {other}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            format!("invalid risk level: {other}"),
+        )),
     }
 }
 
@@ -1319,10 +1323,10 @@ fn normalize_verify_method(input: &str) -> Result<String> {
         "demonstration" => Ok("Demonstration".to_string()),
         "inspection" => Ok("Inspection".to_string()),
         "test" => Ok("Test".to_string()),
-        other => Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: format!("invalid verify method: {other}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            format!("invalid verify method: {other}"),
+        )),
     }
 }
 
@@ -1337,10 +1341,10 @@ fn parse_shorthand_class_stmt(t: &str) -> Result<Option<(String, Vec<String>)>> 
     let left = t[..pos].trim_end();
     let right = t[pos + 3..].trim_start();
     if left.is_empty() || right.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: format!("invalid class shorthand statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            format!("invalid class shorthand statement: {t}"),
+        ));
     }
     let (target, _) = parse_id_or_name(left)?;
     let classes = parse_id_list_all(right)?;
@@ -1357,10 +1361,10 @@ fn parse_style_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
     let (ids, styles_str) = split_list_and_rest(rest)?;
     let styles = split_csv(styles_str);
     if ids.is_empty() || styles.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: format!("invalid style statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            format!("invalid style statement: {t}"),
+        ));
     }
     Ok(Some((ids, styles)))
 }
@@ -1375,10 +1379,10 @@ fn parse_classdef_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
     let (ids, styles_str) = split_list_and_rest(rest)?;
     let styles = split_csv(styles_str);
     if ids.is_empty() || styles.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: format!("invalid classDef statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            format!("invalid classDef statement: {t}"),
+        ));
     }
     Ok(Some((ids, styles)))
 }
@@ -1396,10 +1400,10 @@ fn parse_class_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
     let (ids, classes_str) = split_list_and_rest(rest)?;
     let classes = parse_id_list_all(classes_str)?;
     if ids.is_empty() || classes.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: format!("invalid class statement: {t}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            format!("invalid class statement: {t}"),
+        ));
     }
     Ok(Some((ids, classes)))
 }
@@ -1441,10 +1445,10 @@ fn parse_relationship_stmt(t: &str) -> Result<Option<(String, String, String)>> 
 
 fn split_once_dash(input: &str) -> Result<(&str, &str)> {
     let Some(idx) = input.find('-') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "requirement".to_string(),
-            message: format!("invalid relationship statement: {input}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "requirement".to_string(),
+            format!("invalid relationship statement: {input}"),
+        ));
     };
     Ok((input[..idx].trim(), input[idx + 1..].trim()))
 }
@@ -1470,9 +1474,11 @@ fn split_list_and_rest(input: &str) -> Result<(Vec<String>, &str)> {
         }
 
         let (item, rest) = if cur.starts_with('"') {
-            parse_quoted_prefix(cur).ok_or_else(|| Error::DiagramParse {
-                diagram_type: "requirement".to_string(),
-                message: "unterminated string".to_string(),
+            parse_quoted_prefix(cur).ok_or_else(|| {
+                Error::diagram_parse_fallback(
+                    "requirement".to_string(),
+                    "unterminated string".to_string(),
+                )
             })?
         } else {
             let mut end = 0usize;
@@ -1483,10 +1489,10 @@ fn split_list_and_rest(input: &str) -> Result<(Vec<String>, &str)> {
                 end = i + c.len_utf8();
             }
             if end == 0 {
-                return Err(Error::DiagramParse {
-                    diagram_type: "requirement".to_string(),
-                    message: "expected identifier".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "requirement".to_string(),
+                    "expected identifier".to_string(),
+                ));
             }
             (cur[..end].to_string(), &cur[end..])
         };
@@ -1509,9 +1515,11 @@ fn parse_id_list_all(input: &str) -> Result<Vec<String>> {
     let mut cur = input.trim_start();
     while !cur.is_empty() {
         let (item, rest) = if cur.starts_with('"') {
-            parse_quoted_prefix(cur).ok_or_else(|| Error::DiagramParse {
-                diagram_type: "requirement".to_string(),
-                message: "unterminated string".to_string(),
+            parse_quoted_prefix(cur).ok_or_else(|| {
+                Error::diagram_parse_fallback(
+                    "requirement".to_string(),
+                    "unterminated string".to_string(),
+                )
             })?
         } else {
             let mut end = cur.len();

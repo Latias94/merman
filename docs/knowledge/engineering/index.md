@@ -8,6 +8,7 @@
 ## Concepts
 
 * [Progress](progress/) - Work progress tied to plans, branches, or commits.
+* [Editor Diagnostics Architecture Cleanup](progress/2026-06-30-editor-diagnostics-architecture-cleanup.md)
 * [VS Code Preview Lifecycle Refactor Plan](progress/2026-06-30-vscode-preview-lifecycle-refactor-plan.md)
 * [Decisions](decisions/) - Durable engineering choices and rationale.
 * [Sessions](sessions/) - Compaction, interruption, and handoff summaries.

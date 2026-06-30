@@ -229,10 +229,10 @@ fn parse_mindmap_lines(
     }
 
     if !found_header {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected mindmap header".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected mindmap header".to_string(),
+        ));
     }
 
     let mut out = MindmapParsedLines::default();
@@ -332,10 +332,10 @@ fn parse_mindmap_lines(
                         ));
                         return Ok(HandleOutcome::Done);
                     }
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
                         message,
-                    });
+                    ));
                 }
             };
             let span = SourceSpan::new(
@@ -421,10 +421,10 @@ fn parse_mindmap_lines(
                 ));
                 return Ok(out);
             }
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: "unterminated node delimiter".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                "unterminated node delimiter".to_string(),
+            ));
         }
     }
 

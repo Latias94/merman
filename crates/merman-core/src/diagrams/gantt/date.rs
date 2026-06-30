@@ -604,33 +604,30 @@ pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
     if let Some(dt) = parse_js_like_ymd_datetime(s).or_else(|| parse_js_like_mdy_hm_datetime(s)) {
         let year = dt.year();
         if !(-10000..=10000).contains(&year) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("Invalid date:{s}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gantt".to_string(),
+                format!("Invalid date:{s}"),
+            ));
         }
         return Ok(dt);
     }
 
     if is_ascii_digits(s) {
-        let n: i32 = s.parse().map_err(|_| Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("Invalid date:{s}"),
+        let n: i32 = s.parse().map_err(|_| {
+            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
         })?;
         let year = if s.len() <= 2 { 2000 + n } else { n };
         if !(-10000..=10000).contains(&year) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("Invalid date:{s}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gantt".to_string(),
+                format!("Invalid date:{s}"),
+            ));
         }
-        let d = NaiveDate::from_ymd_opt(year, 1, 1).ok_or_else(|| Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("Invalid date:{s}"),
+        let d = NaiveDate::from_ymd_opt(year, 1, 1).ok_or_else(|| {
+            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
         })?;
-        let midnight = d.and_hms_opt(0, 0, 0).ok_or_else(|| Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("Invalid date:{s}"),
+        let midnight = d.and_hms_opt(0, 0, 0).ok_or_else(|| {
+            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
         })?;
         return Ok(local_from_naive(midnight));
     }
@@ -638,18 +635,18 @@ pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
         let year = dt.year();
         if !(-10000..=10000).contains(&year) {
-            return Err(Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("Invalid date:{s}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "gantt".to_string(),
+                format!("Invalid date:{s}"),
+            ));
         }
         return Ok(dt);
     }
 
-    Err(Error::DiagramParse {
-        diagram_type: "gantt".to_string(),
-        message: format!("Invalid date:{s}"),
-    })
+    Err(Error::diagram_parse_fallback(
+        "gantt".to_string(),
+        format!("Invalid date:{s}"),
+    ))
 }
 
 fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
@@ -1011,10 +1008,10 @@ pub(super) fn get_start_date(
     let dt = parse_js_date_fallback(s)?;
     let year = dt.year();
     if !(-10000..=10000).contains(&year) {
-        return Err(Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("Invalid date:{s}"),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "gantt".to_string(),
+            format!("Invalid date:{s}"),
+        ));
     }
     Ok(Some(dt))
 }

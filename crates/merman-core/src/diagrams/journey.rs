@@ -233,17 +233,17 @@ fn parse_journey_model(code: &str, meta: &ParseMetadata) -> Result<JourneyParseO
                 header_seen = true;
                 let rest = t["journey".len()..].trim_start();
                 if !rest.is_empty() {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: "unexpected content after journey header".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        "unexpected content after journey header".to_string(),
+                    ));
                 }
                 continue;
             }
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: "expected journey header".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                "expected journey header".to_string(),
+            ));
         }
 
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
@@ -269,10 +269,10 @@ fn parse_journey_model(code: &str, meta: &ParseMetadata) -> Result<JourneyParseO
         }
 
         let Some(colon) = stripped.find(':') else {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!("unrecognized statement: {t}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unrecognized statement: {t}"),
+            ));
         };
         let task_name = stripped[..colon].to_string();
         let task_data = stripped[colon..].to_string();
