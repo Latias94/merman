@@ -392,6 +392,12 @@
     }
   }
 
+  function hideEmpty() {
+    if (emptyElement) {
+      emptyElement.hidden = true;
+    }
+  }
+
   function showEmpty(heading, detail) {
     if (emptyElement) {
       emptyElement.hidden = false;
@@ -431,9 +437,7 @@
     if (state.autoFit) {
       requestAnimationFrame(fitToView);
     }
-    if (emptyElement) {
-      emptyElement.hidden = true;
-    }
+    hideEmpty();
   }
 
   function handleMessage(message) {
@@ -450,6 +454,7 @@
       case "renderStarted":
         state.activeRequestId = message.requestId;
         patchSnapshot(message.snapshot);
+        hideEmpty();
         showStatus(`Rendering preview: ${message.snapshot?.subtitle || "Mermaid source"}`, "loading");
         break;
       case "renderSucceeded":

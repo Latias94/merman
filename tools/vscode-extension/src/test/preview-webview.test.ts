@@ -75,6 +75,44 @@ describe("preview webview app", () => {
     assert.equal(app.document.status.dataset.kind, "error");
   });
 
+  it("hides the empty placeholder as soon as rendering starts", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 1,
+      reason: "manual-open",
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+    });
+
+    assert.equal(app.document.empty.hidden, true);
+    assert.equal(app.document.title.textContent, "notes.md");
+    assert.equal(app.document.status.hidden, false);
+    assert.equal(app.document.status.textContent, "Rendering preview: Mermaid fence 1");
+  });
+
+  it("keeps the empty placeholder hidden when the first render fails for an identified source", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 1,
+      reason: "manual-open",
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+    });
+    app.dispatch({
+      type: "renderFailed",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      error: "syntax issue",
+    });
+
+    assert.equal(app.document.empty.hidden, true);
+    assert.equal(app.document.status.hidden, false);
+    assert.equal(app.document.status.textContent, "syntax issue");
+    assert.equal(app.document.status.dataset.kind, "error");
+  });
+
   it("ignores stale render success messages after a newer render starts", () => {
     const app = loadPreviewApp();
 

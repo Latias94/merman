@@ -12,17 +12,29 @@ describe("preview SVG safety", () => {
     );
   });
 
+  it("accepts inert Mermaid HTML labels inside foreignObject", () => {
+    assert.doesNotThrow(() =>
+      assertSafePreviewSvg(
+        '<svg viewBox="0 0 100 50"><foreignObject width="10" height="24" overflow="visible"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>A</p></span></div></foreignObject></svg>',
+      ),
+    );
+  });
+
   it("rejects non-SVG renderer output", () => {
     assert.throws(() => assertSafePreviewSvg("<html></html>"), /non-SVG/);
   });
 
   it("rejects active embedded SVG content", () => {
     assert.throws(() => assertSafePreviewSvg("<svg><script>alert(1)</script></svg>"), /active/);
-    assert.throws(() => assertSafePreviewSvg("<svg><foreignObject></foreignObject></svg>"), /active/);
+    assert.throws(() => assertSafePreviewSvg("<svg><iframe></iframe></svg>"), /active/);
   });
 
   it("rejects event handlers and unsafe URL attributes", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><text onclick="alert(1)">x</text></svg>'), /event/);
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
+      /event/,
+    );
     assert.throws(() => assertSafePreviewSvg('<svg><a href="javascript:alert(1)">x</a></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><image href="data:text/html,hello"/></svg>'), /unsafe URL/);
   });
