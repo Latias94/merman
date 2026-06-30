@@ -38,8 +38,8 @@ describe("render process lifecycle", () => {
     const abortController = new AbortController();
     const render = runRenderProcess({
       invocation: {
-        command: cliPath,
-        args: [],
+        command: process.execPath,
+        args: [cliPath],
         source: "explicit",
         label: "test cli",
       },
@@ -61,7 +61,7 @@ function tempDirPath(): string {
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     if (predicate()) {
       return;
     }

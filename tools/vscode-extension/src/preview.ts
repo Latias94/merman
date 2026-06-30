@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { extractPreviewInput } from "./preview-source.js";
 import {
   type PreviewDiagramTheme,
   type PreviewDiagnosticTarget,
@@ -134,13 +135,17 @@ class MermanPreviewController implements vscode.Disposable {
 
   private async openResource(resource?: vscode.Uri): Promise<void> {
     if (!resource) {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (activeEditor && extractPreviewInput(activeEditor)) {
+        this.session.rememberResource(activeEditor.document.uri);
+      }
       return;
     }
+    this.session.rememberResource(resource);
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor?.document.uri.toString() === resource.toString()) {
       return;
     }
-    this.session.rememberResource(resource);
     const document = await vscode.workspace.openTextDocument(resource);
     await vscode.window.showTextDocument(document, {
       preview: true,
