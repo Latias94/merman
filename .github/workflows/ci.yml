@@ -123,6 +123,9 @@ jobs:
       - name: Test Typst plugin crate
         run: cargo test -p merman-typst-plugin
 
+      - name: Build Typst package
+        run: cargo run -p xtask -- build-typst-package
+
       - name: Check Typst wasm ABI and size
         run: cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
 
@@ -167,6 +170,9 @@ jobs:
 
       - name: Check WASM size budgets
         run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+
+      - name: Build Typst package
+        run: cargo run -p xtask -- build-typst-package
 
       - name: Download Typst compatibility version
         shell: bash
