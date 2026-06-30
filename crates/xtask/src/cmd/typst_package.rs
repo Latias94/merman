@@ -305,6 +305,30 @@ fn read_workspace_version(manifest_path: &Path) -> Result<String, XtaskError> {
     Ok(manifest.workspace.package.version)
 }
 
+fn read_typst_plugin_abi_version(source_path: &Path) -> Result<String, XtaskError> {
+    let source = fs::read_to_string(source_path).map_err(|source| XtaskError::ReadFile {
+        path: source_path.display().to_string(),
+        source,
+    })?;
+    let marker = "pub const TYPST_PLUGIN_ABI_VERSION: &str = \"";
+    for line in source.lines() {
+        let Some(rest) = line.trim().strip_prefix(marker) else {
+            continue;
+        };
+        let Some(version) = rest.strip_suffix("\";") else {
+            continue;
+        };
+        if !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Ok(version.to_string());
+        }
+    }
+
+    Err(XtaskError::TypstPackageFailed(format!(
+        "{} must define numeric pub const TYPST_PLUGIN_ABI_VERSION",
+        source_path.display()
+    )))
+}
+
 fn verify_typst_readme_version_mapping(
     readme_path: &Path,
     package_version: &str,
@@ -314,13 +338,20 @@ fn verify_typst_readme_version_mapping(
         source,
     })?;
     let workspace_version = read_workspace_version(&paths::workspace_root().join("Cargo.toml"))?;
-    let expected_row = format!("| `{package_version}` | `{workspace_version}` |");
+    let plugin_abi = read_typst_plugin_abi_version(
+        &paths::workspace_root()
+            .join("crates")
+            .join("merman-typst-plugin")
+            .join("src")
+            .join("lib.rs"),
+    )?;
+    let expected_row = format!("| `{package_version}` | `{workspace_version}` | `{plugin_abi}` |");
     if readme.contains(&expected_row) {
         return Ok(());
     }
 
     Err(XtaskError::TypstPackageFailed(format!(
-        "{} version mapping must include `{expected_row}`",
+        "{} version mapping must include Typst package, merman source version, and plugin ABI row `{expected_row}`",
         readme_path.display()
     )))
 }
@@ -665,7 +696,8 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XtaskErro
 mod tests {
     use super::{
         collect_typst_files, collect_typst_fixtures, copy_dir_recursive, is_typst_package_version,
-        parse_smoke_options, typst_fixture_output_path, verify_typst_readme_version_mapping,
+        parse_smoke_options, read_typst_plugin_abi_version, read_workspace_version,
+        typst_fixture_output_path, verify_typst_readme_version_mapping,
     };
     use crate::cmd::paths;
     use std::fs;
@@ -784,6 +816,22 @@ mod tests {
     }
 
     #[test]
+    fn typst_plugin_abi_version_reads_public_const() {
+        let root = unique_test_dir("typst-plugin-abi");
+        let source = root.join("lib.rs");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            &source,
+            "pub const TYPST_PLUGIN_ABI_VERSION: &str = \"7\";\n",
+        )
+        .unwrap();
+
+        assert_eq!(read_typst_plugin_abi_version(&source).unwrap(), "7");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn typst_readme_version_mapping_rejects_missing_package_version() {
         let root = unique_test_dir("typst-readme-version");
         let readme = root.join("README.md");
@@ -797,6 +845,30 @@ mod tests {
         let error = verify_typst_readme_version_mapping(&readme, "0.1.0").unwrap_err();
         assert!(
             error.to_string().contains("version mapping must include"),
+            "unexpected error: {error}"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn typst_readme_version_mapping_rejects_missing_plugin_abi() {
+        let root = unique_test_dir("typst-readme-plugin-abi");
+        let readme = root.join("README.md");
+        let workspace_version =
+            read_workspace_version(&paths::workspace_root().join("Cargo.toml")).unwrap();
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            &readme,
+            format!(
+                "| Typst package | merman source version | Notes |\n| --- | --- | --- |\n| `0.1.0` | `{workspace_version}` | stale |\n"
+            ),
+        )
+        .unwrap();
+
+        let error = verify_typst_readme_version_mapping(&readme, "0.1.0").unwrap_err();
+        assert!(
+            error.to_string().contains("plugin ABI"),
             "unexpected error: {error}"
         );
 

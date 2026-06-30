@@ -20,9 +20,11 @@ flowchart TD
 
 ## Version Mapping
 
-| Typst package | merman source version | Notes |
-| --- | --- | --- |
-| `0.1.0` | `0.8.0-alpha.2` | Initial Typst package built from the 0.8 alpha line; Typst package versions advance independently. |
+| Typst package | merman source version | Typst plugin ABI | Notes |
+| --- | --- | --- | --- |
+| `0.1.0` | `0.8.0-alpha.2` | `1` | Initial Typst package built from the 0.8 alpha line; Typst package versions advance independently. |
+
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable.
 
 ## Examples
 
@@ -247,7 +249,7 @@ Returns a raw block show handler. This is the shortest way to enable Mermaid fen
 
 ## Development
 
-The Typst package uses its own version track and is not locked to the Rust crate version.
+The Typst package uses its own version track and is not locked to the Rust crate version. The embedded WebAssembly plugin also has a separate ABI version, documented in the Version Mapping table, for exported function and payload compatibility.
 
 Build the default Typst package locally:
 
