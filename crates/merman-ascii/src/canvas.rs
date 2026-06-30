@@ -78,7 +78,7 @@ impl Canvas {
         self.index(x, y).and_then(|index| self.cells[index].style())
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
         let mut offset = 0;
         for ch in text.chars() {
@@ -103,12 +103,12 @@ impl Canvas {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn finish(self) -> String {
         self.finish_plain(false)
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn finish_trimmed(self) -> String {
         self.finish_plain(true)
     }
@@ -117,7 +117,6 @@ impl Canvas {
         self.finish_with_options_internal(options, false)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn finish_trimmed_with_options(self, options: &AsciiRenderOptions) -> String {
         self.finish_with_options_internal(options, true)
     }

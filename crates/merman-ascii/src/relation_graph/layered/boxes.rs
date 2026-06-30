@@ -222,8 +222,7 @@ pub(crate) fn plan_layered_relation_boxes<'a>(
     horizontal_gap: usize,
 ) -> std::result::Result<LayeredRelationPlan<'a>, LayeredRelationError> {
     let levels = layered_relation_levels(boxes, edges)?;
-    let level_groups = ordered_layered_groups(boxes, edges, &levels);
-    reject_crossing_layered_relations(edges, &levels, &level_groups)?;
+    let level_groups = choose_ordered_layered_groups(boxes, edges, &levels)?;
     let (placed, width) = place_layered_boxes(&level_groups, edges, &levels, horizontal_gap);
 
     Ok(LayeredRelationPlan { placed, width })
@@ -288,11 +287,48 @@ fn layered_relation_levels(
     Ok(levels)
 }
 
-fn reject_crossing_layered_relations(
+fn choose_ordered_layered_groups<'a>(
+    boxes: &'a [RelationGraphBox],
+    edges: &[LayeredRelationEdge],
+    levels: &HashMap<String, usize>,
+) -> std::result::Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationError> {
+    let base = initial_layered_groups(boxes, levels);
+    let downward = order_layered_groups_downward(base.clone(), edges, levels);
+    let upward = order_layered_groups_upward(base.clone(), edges, levels);
+    let candidates = [
+        downward.clone(),
+        order_layered_groups_downward(upward.clone(), edges, levels),
+        order_layered_groups_upward(downward, edges, levels),
+        upward,
+        base,
+    ];
+
+    let mut best: Option<(usize, Vec<Vec<&RelationGraphBox>>)> = None;
+    for candidate in candidates {
+        let crossings = crossing_layered_relation_count(edges, levels, &candidate);
+        let should_replace = best
+            .as_ref()
+            .is_none_or(|(best_crossings, _)| crossings < *best_crossings);
+        if should_replace {
+            best = Some((crossings, candidate));
+        }
+    }
+
+    let Some((crossings, level_groups)) = best else {
+        return Ok(Vec::new());
+    };
+    if crossings == 0 {
+        Ok(level_groups)
+    } else {
+        Err(LayeredRelationError::Crossing)
+    }
+}
+
+fn crossing_layered_relation_count(
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
     level_groups: &[Vec<&RelationGraphBox>],
-) -> std::result::Result<(), LayeredRelationError> {
+) -> usize {
     let mut order_by_id = HashMap::new();
     for group in level_groups {
         for (index, relation_box) in group.iter().enumerate() {
@@ -300,6 +336,7 @@ fn reject_crossing_layered_relations(
         }
     }
 
+    let mut crossings = 0;
     for (left_index, left) in edges.iter().enumerate() {
         let left_from_level = levels.get(left.source_id()).copied().unwrap_or(0);
         let left_to_level = levels.get(left.target_id()).copied().unwrap_or(0);
@@ -320,17 +357,16 @@ fn reject_crossing_layered_relations(
             let crosses_right_to_left =
                 left_from_order > right_from_order && left_to_order < right_to_order;
             if crosses_left_to_right || crosses_right_to_left {
-                return Err(LayeredRelationError::Crossing);
+                crossings += 1;
             }
         }
     }
 
-    Ok(())
+    crossings
 }
 
-fn ordered_layered_groups<'a>(
+fn initial_layered_groups<'a>(
     boxes: &'a [RelationGraphBox],
-    edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
 ) -> Vec<Vec<&'a RelationGraphBox>> {
     let max_level = levels.values().copied().max().unwrap_or(0);
@@ -341,6 +377,15 @@ fn ordered_layered_groups<'a>(
         }
     }
 
+    level_groups
+}
+
+fn order_layered_groups_downward<'a>(
+    mut level_groups: Vec<Vec<&'a RelationGraphBox>>,
+    edges: &[LayeredRelationEdge],
+    levels: &HashMap<String, usize>,
+) -> Vec<Vec<&'a RelationGraphBox>> {
+    let max_level = level_groups.len().saturating_sub(1);
     for level in 1..=max_level {
         let previous_order = level_groups[level - 1]
             .iter()
@@ -354,7 +399,7 @@ fn ordered_layered_groups<'a>(
             .collect::<HashMap<_, _>>();
 
         level_groups[level].sort_by_key(|relation_box| {
-            let parent_orders = edges
+            let neighbor_orders = edges
                 .iter()
                 .filter(|edge| {
                     edge.target_id() == relation_box.id()
@@ -362,20 +407,63 @@ fn ordered_layered_groups<'a>(
                 })
                 .filter_map(|edge| previous_order.get(edge.source_id()).copied())
                 .collect::<Vec<_>>();
-            let parent_order = if parent_orders.is_empty() {
-                usize::MAX
-            } else {
-                parent_orders.iter().sum::<usize>() * 2 / parent_orders.len()
-            };
+            let neighbor_order = barycenter_order(&neighbor_orders);
             let original_order = original_order
                 .get(relation_box.id())
                 .copied()
                 .unwrap_or(usize::MAX);
-            (parent_order, original_order)
+            (neighbor_order, original_order)
         });
     }
 
     level_groups
+}
+
+fn order_layered_groups_upward<'a>(
+    mut level_groups: Vec<Vec<&'a RelationGraphBox>>,
+    edges: &[LayeredRelationEdge],
+    levels: &HashMap<String, usize>,
+) -> Vec<Vec<&'a RelationGraphBox>> {
+    let max_level = level_groups.len().saturating_sub(1);
+    for level in (0..max_level).rev() {
+        let next_order = level_groups[level + 1]
+            .iter()
+            .enumerate()
+            .map(|(index, relation_box)| (relation_box.id(), index))
+            .collect::<HashMap<_, _>>();
+        let original_order = level_groups[level]
+            .iter()
+            .enumerate()
+            .map(|(index, relation_box)| (relation_box.id(), index))
+            .collect::<HashMap<_, _>>();
+
+        level_groups[level].sort_by_key(|relation_box| {
+            let neighbor_orders = edges
+                .iter()
+                .filter(|edge| {
+                    edge.source_id() == relation_box.id()
+                        && levels.get(edge.target_id()).copied() == Some(level + 1)
+                })
+                .filter_map(|edge| next_order.get(edge.target_id()).copied())
+                .collect::<Vec<_>>();
+            let neighbor_order = barycenter_order(&neighbor_orders);
+            let original_order = original_order
+                .get(relation_box.id())
+                .copied()
+                .unwrap_or(usize::MAX);
+            (neighbor_order, original_order)
+        });
+    }
+
+    level_groups
+}
+
+fn barycenter_order(neighbor_orders: &[usize]) -> usize {
+    if neighbor_orders.is_empty() {
+        usize::MAX
+    } else {
+        neighbor_orders.iter().sum::<usize>() * 2 / neighbor_orders.len()
+    }
 }
 
 fn place_layered_boxes<'a>(

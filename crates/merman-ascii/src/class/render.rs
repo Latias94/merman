@@ -772,6 +772,20 @@ fn class_relation_summary_row(layout: &RelationLayout<'_>) -> Result<RelationGra
     .with_label(layout.label.as_ref()))
 }
 
+fn class_relation_summary_row_for_reason(
+    layout: &RelationLayout<'_>,
+    reason: relation_graph::LayeredRelationSummaryReason,
+) -> Result<RelationGraphSummaryRow> {
+    match reason {
+        relation_graph::LayeredRelationSummaryReason::Crossing
+        | relation_graph::LayeredRelationSummaryReason::RouteCollision
+        | relation_graph::LayeredRelationSummaryReason::OverlayCollision
+        | relation_graph::LayeredRelationSummaryReason::GridBudget { .. } => {
+            class_relation_summary_row(layout)
+        }
+    }
+}
+
 fn class_relation_summary_connector(layout: &RelationLayout<'_>) -> String {
     let symbol = class_relation_summary_symbol(layout);
     let top_label = layout
@@ -1002,9 +1016,9 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
     fn build_summary_row(
         &self,
         layout: &RelationLayout<'a>,
-        _reason: relation_graph::LayeredRelationSummaryReason,
+        reason: relation_graph::LayeredRelationSummaryReason,
     ) -> Result<RelationGraphSummaryRow> {
-        class_relation_summary_row(layout)
+        class_relation_summary_row_for_reason(layout, reason)
     }
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {

@@ -5,8 +5,8 @@ use super::boxes::{
 };
 use super::lanes::parallel_relation_lane_offsets;
 use super::route::{
-    LayeredRelationRouteGeometry, LayeredRelationRouteRequest, LayeredRelationRouteStyle,
-    RelationOverlay, draw_layered_relation_route,
+    LayeredRelationRouteGeometry, LayeredRelationRoutePlan, LayeredRelationRouteRequest,
+    LayeredRelationRouteStyle, RelationOverlay, plan_layered_relation_route_draw,
 };
 use crate::Result;
 use crate::canvas::Canvas;
@@ -28,7 +28,8 @@ pub(crate) enum LayeredRelationScenePlan<'boxes> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LayeredRelationSummaryReason {
     Crossing,
-    BoxOverlap,
+    RouteCollision,
+    OverlayCollision,
     GridBudget { actual: usize, limit: usize },
 }
 
@@ -125,19 +126,17 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         &self.draw_order
     }
 
-    pub(crate) fn draw_edge(
+    pub(crate) fn plan_edge_draw(
         &self,
-        canvas: &mut Canvas,
         edge_index: usize,
         lane_offset: isize,
         style: LayeredRelationRouteStyle,
         build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Result<Vec<RelationOverlay>>,
-    ) -> Result<()> {
+    ) -> Result<Option<LayeredRelationRoutePlan>> {
         let Some((top, bottom)) = self.edge_endpoints(edge_index) else {
-            return Ok(());
+            return Ok(None);
         };
-        draw_layered_relation_route(
-            canvas,
+        plan_layered_relation_route_draw(
             LayeredRelationRouteRequest::new(
                 self.plan.placed_boxes(),
                 top,
@@ -147,8 +146,8 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             ),
             style,
             build_overlays,
-        )?;
-        Ok(())
+        )
+        .map(Some)
     }
 
     fn edge_endpoints(

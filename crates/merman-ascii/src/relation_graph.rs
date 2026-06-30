@@ -257,29 +257,6 @@ impl<'a> RelationParallelPlan<'a> {
             options,
         )
     }
-
-    #[allow(dead_code)]
-    fn render_plain(&self) -> String {
-        let mut relation_lines = Vec::new();
-        let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
-        for row_index in 0..row_count {
-            let mut line = String::new();
-            line.extend(std::iter::repeat_n(' ', self.lane_left));
-            for (lane_index, lane) in self.lanes.iter().enumerate() {
-                if lane_index > 0 {
-                    line.extend(std::iter::repeat_n(' ', self.lane_gap));
-                }
-                let text = lane.get(row_index).map(|line| line.text()).unwrap_or("");
-                line.push_str(&centered_cell(text, self.lane_widths[lane_index]));
-            }
-            while line.ends_with(' ') {
-                line.pop();
-            }
-            relation_lines.push(line);
-        }
-
-        render_vertical_stack(self.top, self.bottom, self.center, relation_lines)
-    }
 }
 
 impl RelationGraphLine {
@@ -347,7 +324,7 @@ impl RelationGraphLine {
 }
 
 impl RelationGraphBox {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn new(id: String, lines: Vec<String>, width: usize) -> Self {
         Self {
             id,
@@ -755,13 +732,23 @@ where
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
         let relation = &relations[edge_index];
         let style = adapter.layered_route_style(relation)?;
-        scene.draw_edge(&mut canvas, edge_index, lane_offset, style, |geometry| {
-            adapter.layered_relation_overlays(relation, geometry)
-        })?;
-    }
+        let Some(route_plan) =
+            scene.plan_edge_draw(edge_index, lane_offset, style, |geometry| {
+                adapter.layered_relation_overlays(relation, geometry)
+            })?
+        else {
+            continue;
+        };
 
-    if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
-        return Ok(Err(LayeredRelationSummaryReason::BoxOverlap));
+        route_plan.draw_route_at(&mut canvas);
+        if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
+            return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
+        }
+
+        route_plan.draw_overlays_at(&mut canvas);
+        if !scene.box_snapshot_matches(&canvas, &box_snapshot) {
+            return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
+        }
     }
 
     Ok(Ok(canvas.finish_trimmed_with_options(options)))
@@ -1186,7 +1173,14 @@ mod tests {
 
     struct TestRelationAdapter {
         summary_reason: Cell<Option<LayeredRelationSummaryReason>>,
-        overlap_box: bool,
+        overlap: TestRelationOverlap,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum TestRelationOverlap {
+        None,
+        Route,
+        Overlay,
     }
 
     impl RelationComponentAdapter<(&'static str, &'static str)> for TestRelationAdapter {
@@ -1228,6 +1222,15 @@ mod tests {
             &self,
             _relation: &(&'static str, &'static str),
         ) -> Result<LayeredRelationRouteStyle> {
+            if self.overlap == TestRelationOverlap::Route {
+                return Ok(LayeredRelationRouteStyle::new(
+                    'X',
+                    'X',
+                    RelationLineChars::new(['X', 'X', 'X', 'X'], 'X'),
+                    LayeredRelationRouteProfile::new(1, 0, 1, 0, 0),
+                ));
+            }
+
             Ok(LayeredRelationRouteStyle::new(
                 '-',
                 '-',
@@ -1241,7 +1244,7 @@ mod tests {
             _relation: &(&'static str, &'static str),
             _geometry: &LayeredRelationRouteGeometry,
         ) -> Result<Vec<RelationOverlay>> {
-            if self.overlap_box {
+            if self.overlap == TestRelationOverlap::Overlay {
                 return Ok(vec![RelationOverlay::glyph(
                     _geometry.source_x(),
                     0,
@@ -1441,7 +1444,7 @@ mod tests {
         let relations = vec![("a", "b")];
         let adapter = TestRelationAdapter {
             summary_reason: Cell::new(None),
-            overlap_box: false,
+            overlap: TestRelationOverlap::None,
         };
 
         let rendered = render_layered_relation_component(
@@ -1465,16 +1468,15 @@ mod tests {
     }
 
     #[test]
-    fn render_layered_relation_component_uses_summary_when_route_overlaps_box() {
+    fn render_layered_relation_component_uses_summary_when_route_path_overlaps_box() {
         let boxes = vec![
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
-            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
         ];
-        let relations = vec![("a", "b"), ("a", "c")];
+        let relations = vec![("a", "b")];
         let adapter = TestRelationAdapter {
             summary_reason: Cell::new(None),
-            overlap_box: true,
+            overlap: TestRelationOverlap::Route,
         };
 
         let rendered = render_layered_relation_component(
@@ -1485,11 +1487,41 @@ mod tests {
             10_000,
             &adapter,
         )
-        .expect("overlapping layered relation should render as a summary");
+        .expect("route-overlapping layered relation should render as a summary");
 
         assert_eq!(
             adapter.summary_reason.get(),
-            Some(LayeredRelationSummaryReason::BoxOverlap)
+            Some(LayeredRelationSummaryReason::RouteCollision)
+        );
+        assert!(rendered.contains("relations:\nA --> B\n"));
+    }
+
+    #[test]
+    fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+        ];
+        let relations = vec![("a", "b"), ("a", "c")];
+        let adapter = TestRelationAdapter {
+            summary_reason: Cell::new(None),
+            overlap: TestRelationOverlap::Overlay,
+        };
+
+        let rendered = render_layered_relation_component(
+            &boxes,
+            &relations,
+            &AsciiRenderOptions::ascii(),
+            1,
+            10_000,
+            &adapter,
+        )
+        .expect("overlay-overlapping layered relation should render as a summary");
+
+        assert_eq!(
+            adapter.summary_reason.get(),
+            Some(LayeredRelationSummaryReason::OverlayCollision)
         );
         assert!(rendered.contains("relations:\nA --> B\nA --> B\n"));
     }
@@ -1705,7 +1737,8 @@ mod tests {
         );
         let mut canvas = Canvas::new(3, 5);
 
-        route.draw_at(&mut canvas);
+        route.draw_route_at(&mut canvas);
+        route.draw_overlays_at(&mut canvas);
 
         assert_eq!(canvas.get(1, 1), Some('T'));
         assert_eq!(canvas.get(1, 2), Some('L'));

@@ -25,10 +25,10 @@ product boundary.
   Flowchart, Sequence, Class, ER, and XYChart tests prove visibility/alignment without copying
   reference spacing.
 - Class and ER relation output now deliberately shares the `relation_graph` seam. Adapters preserve
-  Mermaid-family semantics, while shared relation planning owns barycenter layer ordering, lane placement, routed grids, and
-  structured dense/grid-budget summary fallback. Independent relation subgraphs split before
-  planning, so unrelated pairs do not share one grid budget. Summary reasons are preserved at that
-  seam for direct topology-policy tests.
+  Mermaid-family semantics, while shared relation planning owns bidirectional layer-order scoring,
+  lane placement, routed grids, and structured dense/grid-budget/collision summary fallback.
+  Independent relation subgraphs split before planning, so unrelated pairs do not share one grid
+  budget. Summary reasons are preserved at that seam for direct topology-policy tests.
 - The SVG compare CLI keeps per-diagram entrypoints, but common fixture discovery, upstream/local
   SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
   compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
@@ -117,5 +117,6 @@ they do not authorize byte-for-byte expected output.
   grid-path and dense multi-edge labels still need explicit route-plan policy before complex local
   fixtures should be admitted.
 - Class and ER dense relation topologies beyond the current fallback; new policy decisions should
-  add explicit `LayeredRelationSummaryReason` variants.
+  keep explicit `LayeredRelationSummaryReason` variants for route, overlay, crossing, and grid
+  budget boundaries.
 - XYChart dense-layout policy beyond the shipped compact plot and `values:` disclosure rows.

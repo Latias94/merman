@@ -107,7 +107,7 @@ fn sequence_box_bounds(
         return sequence_box_full_width_bounds(content_width, sequence_box);
     }
 
-    sequence_box_actor_bounds(sequence_box, layout)
+    sequence_box_actor_bounds(sequence_box, layout, content_width)
 }
 
 fn sequence_box_full_width_bounds(
@@ -129,6 +129,7 @@ fn sequence_box_full_width_bounds(
 fn sequence_box_actor_bounds(
     sequence_box: &SequenceGroupBox,
     layout: &SequenceLayout,
+    content_width: usize,
 ) -> SequenceGroupBoxBounds {
     let mut left = usize::MAX;
     let mut right = 0;
@@ -139,6 +140,10 @@ fn sequence_box_actor_bounds(
         let participant_right = participant_left + box_width - 1;
         left = left.min(participant_left);
         right = right.max(participant_right + SEQUENCE_BOX_CONTENT_OFFSET + 1);
+    }
+
+    if sequence_box.actor_indices.len() == layout.participant_widths.len() {
+        right = right.max(content_width);
     }
 
     SequenceGroupBoxBounds { left, right }

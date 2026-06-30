@@ -363,6 +363,22 @@ fn er_relationship_summary_row(
     .with_label(label.as_ref()))
 }
 
+fn er_relationship_summary_row_for_reason(
+    relationship: &ErRelationshipRenderModel,
+    entity_labels: &HashMap<String, String>,
+    charset: ErCharset,
+    reason: relation_graph::LayeredRelationSummaryReason,
+) -> Result<RelationGraphSummaryRow> {
+    match reason {
+        relation_graph::LayeredRelationSummaryReason::Crossing
+        | relation_graph::LayeredRelationSummaryReason::RouteCollision
+        | relation_graph::LayeredRelationSummaryReason::OverlayCollision
+        | relation_graph::LayeredRelationSummaryReason::GridBudget { .. } => {
+            er_relationship_summary_row(relationship, entity_labels, charset)
+        }
+    }
+}
+
 fn relationship_label<'a>(entity_labels: &'a HashMap<String, String>, id: &'a str) -> &'a str {
     entity_labels.get(id).map(String::as_str).unwrap_or(id)
 }
@@ -520,9 +536,14 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationshipRenderModel>
     fn build_summary_row(
         &self,
         relationship: &ErRelationshipRenderModel,
-        _reason: relation_graph::LayeredRelationSummaryReason,
+        reason: relation_graph::LayeredRelationSummaryReason,
     ) -> Result<RelationGraphSummaryRow> {
-        er_relationship_summary_row(relationship, self.entity_labels, self.charset)
+        er_relationship_summary_row_for_reason(
+            relationship,
+            self.entity_labels,
+            self.charset,
+            reason,
+        )
     }
 
     fn layered_error(&self, error: LayeredRelationError) -> AsciiError {
