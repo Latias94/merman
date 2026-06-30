@@ -8,6 +8,12 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
+struct ArchitectureIdentifier {
+    text: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
 struct ArchitectureGroup {
     id: String,
     icon: Option<String>,
@@ -18,10 +24,12 @@ struct ArchitectureGroup {
 #[derive(Debug, Clone)]
 struct ArchitectureEdge {
     lhs_id: String,
+    lhs_span: SourceSpan,
     lhs_dir: char,
     lhs_into: Option<bool>,
     lhs_group: Option<bool>,
     rhs_id: String,
+    rhs_span: SourceSpan,
     rhs_dir: char,
     rhs_into: Option<bool>,
     rhs_group: Option<bool>,
@@ -154,51 +162,58 @@ impl ArchitectureDb {
 
     fn add_service(
         &mut self,
-        id: String,
+        id: ArchitectureIdentifier,
         icon: Option<String>,
         icon_text: Option<String>,
         title: Option<String>,
-        in_group: Option<String>,
+        in_group: Option<ArchitectureIdentifier>,
     ) -> Result<()> {
-        if let Some(existing) = self.registered_ids.get(&id) {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                format!("The service id [{id}] is already in use by another {existing}"),
+        let id_text = id.text;
+        let id_span = id.span;
+        if let Some(existing) = self.registered_ids.get(&id_text) {
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!("The service id [{id_text}] is already in use by another {existing}"),
+                id_span,
             ));
         }
 
         if let Some(parent) = &in_group {
-            if id == *parent {
-                return Err(Error::diagram_parse_fallback(
-                    "architecture".to_string(),
-                    format!("The service [{id}] cannot be placed within itself"),
+            if id_text == parent.text {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The service [{id_text}] cannot be placed within itself"),
+                    parent.span,
                 ));
             }
-            let Some(parent_type) = self.registered_ids.get(parent).copied() else {
-                return Err(Error::diagram_parse_fallback(
-                    "architecture".to_string(),
+            let Some(parent_type) = self.registered_ids.get(&parent.text).copied() else {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
                     format!(
-                        "The service [{id}]'s parent does not exist. Please make sure the parent is created before this service"
+                        "The service [{id_text}]'s parent does not exist. Please make sure the parent is created before this service"
                     ),
+                    parent.span,
                 ));
             };
             if parent_type == RegisteredIdType::Node {
-                return Err(Error::diagram_parse_fallback(
-                    "architecture".to_string(),
-                    format!("The service [{id}]'s parent is not a group"),
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The service [{id_text}]'s parent is not a group"),
+                    parent.span,
                 ));
             }
         }
 
+        let in_group = in_group.map(|parent| parent.text);
         self.registered_ids
-            .insert(id.clone(), RegisteredIdType::Node);
-        if !self.nodes.contains_key(&id) {
-            self.node_order.push(id.clone());
+            .insert(id_text.clone(), RegisteredIdType::Node);
+        if !self.nodes.contains_key(&id_text) {
+            self.node_order.push(id_text.clone());
         }
         self.nodes.insert(
-            id.clone(),
+            id_text.clone(),
             ArchitectureNode {
-                id,
+                id: id_text,
                 ty: ArchitectureNodeType::Service,
                 edges: Vec::new(),
                 icon,
@@ -210,7 +225,8 @@ impl ArchitectureDb {
         Ok(())
     }
 
-    fn add_junction(&mut self, id: String, in_group: Option<String>) {
+    fn add_junction(&mut self, id: ArchitectureIdentifier, in_group: Option<String>) {
+        let id = id.text;
         self.registered_ids
             .insert(id.clone(), RegisteredIdType::Node);
         if !self.nodes.contains_key(&id) {
@@ -232,50 +248,57 @@ impl ArchitectureDb {
 
     fn add_group(
         &mut self,
-        id: String,
+        id: ArchitectureIdentifier,
         icon: Option<String>,
         title: Option<String>,
-        in_group: Option<String>,
+        in_group: Option<ArchitectureIdentifier>,
     ) -> Result<()> {
-        if let Some(existing) = self.registered_ids.get(&id) {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
-                format!("The group id [{id}] is already in use by another {existing}"),
+        let id_text = id.text;
+        let id_span = id.span;
+        if let Some(existing) = self.registered_ids.get(&id_text) {
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!("The group id [{id_text}] is already in use by another {existing}"),
+                id_span,
             ));
         }
 
         if let Some(parent) = &in_group {
-            if id == *parent {
-                return Err(Error::diagram_parse_fallback(
-                    "architecture".to_string(),
-                    format!("The group [{id}] cannot be placed within itself"),
+            if id_text == parent.text {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The group [{id_text}] cannot be placed within itself"),
+                    parent.span,
                 ));
             }
-            let Some(parent_type) = self.registered_ids.get(parent).copied() else {
-                return Err(Error::diagram_parse_fallback(
-                    "architecture".to_string(),
+            let Some(parent_type) = self.registered_ids.get(&parent.text).copied() else {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
                     format!(
-                        "The group [{id}]'s parent does not exist. Please make sure the parent is created before this group"
+                        "The group [{id_text}]'s parent does not exist. Please make sure the parent is created before this group"
                     ),
+                    parent.span,
                 ));
             };
             if parent_type == RegisteredIdType::Node {
-                return Err(Error::diagram_parse_fallback(
-                    "architecture".to_string(),
-                    format!("The group [{id}]'s parent is not a group"),
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The group [{id_text}]'s parent is not a group"),
+                    parent.span,
                 ));
             }
         }
 
+        let in_group = in_group.map(|parent| parent.text);
         self.registered_ids
-            .insert(id.clone(), RegisteredIdType::Group);
-        if !self.groups.contains_key(&id) {
-            self.group_order.push(id.clone());
+            .insert(id_text.clone(), RegisteredIdType::Group);
+        if !self.groups.contains_key(&id_text) {
+            self.group_order.push(id_text.clone());
         }
         self.groups.insert(
-            id.clone(),
+            id_text.clone(),
             ArchitectureGroup {
-                id,
+                id: id_text,
                 icon,
                 title,
                 in_group,
@@ -305,21 +328,23 @@ impl ArchitectureDb {
         }
 
         if !self.nodes.contains_key(&edge.lhs_id) && !self.groups.contains_key(&edge.lhs_id) {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
+            return Err(Error::diagram_parse_exact(
+                "architecture",
                 format!(
                     "The left-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
                     edge.lhs_id
                 ),
+                edge.lhs_span,
             ));
         }
         if !self.nodes.contains_key(&edge.rhs_id) && !self.groups.contains_key(&edge.rhs_id) {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
+            return Err(Error::diagram_parse_exact(
+                "architecture",
                 format!(
                     "The right-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
                     edge.rhs_id
                 ),
+                edge.rhs_span,
             ));
         }
 
@@ -329,12 +354,13 @@ impl ArchitectureDb {
             && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
             && lhs_parent == rhs_parent
         {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
+            return Err(Error::diagram_parse_exact(
+                "architecture",
                 format!(
                     "The left-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
                     edge.lhs_id
                 ),
+                edge.lhs_span,
             ));
         }
         if edge.rhs_group == Some(true)
@@ -343,12 +369,13 @@ impl ArchitectureDb {
             && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
             && lhs_parent == rhs_parent
         {
-            return Err(Error::diagram_parse_fallback(
-                "architecture".to_string(),
+            return Err(Error::diagram_parse_exact(
+                "architecture",
                 format!(
                     "The right-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
                     edge.rhs_id
                 ),
+                edge.rhs_span,
             ));
         }
 
@@ -1214,6 +1241,19 @@ fn architecture_trailing_input(line: &str, line_start: usize, rest: &str) -> Err
     )
 }
 
+fn architecture_id_from_suffix(
+    line: &str,
+    line_start: usize,
+    id: &str,
+    suffix: &str,
+) -> ArchitectureIdentifier {
+    let suffix_start = architecture_suffix_start(line, line_start, suffix);
+    ArchitectureIdentifier {
+        text: id.to_string(),
+        span: SourceSpan::new(suffix_start, suffix_start + id.len()),
+    }
+}
+
 fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     if !starts_with_kw(line, "group") {
         return Ok(false);
@@ -1228,7 +1268,7 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> R
             rest,
         ));
     };
-    let id = id.to_string();
+    let id = architecture_id_from_suffix(line, line_start, id, rest);
     rest = tail.trim_start();
 
     let mut icon = None;
@@ -1254,7 +1294,7 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> R
                 rest,
             ));
         };
-        in_group = Some(parent.to_string());
+        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest));
         rest = tail.trim_start();
     }
 
@@ -1304,7 +1344,7 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) ->
             rest,
         ));
     };
-    let id = id.to_string();
+    let id = architecture_id_from_suffix(line, line_start, id, rest);
     rest = tail.trim_start();
 
     let mut icon = None;
@@ -1334,7 +1374,7 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) ->
                 rest,
             ));
         };
-        in_group = Some(parent.to_string());
+        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest));
         rest = tail.trim_start();
     }
 
@@ -1360,7 +1400,7 @@ fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -
             rest,
         ));
     };
-    let id = id.to_string();
+    let id = architecture_id_from_suffix(line, line_start, id, rest);
     rest = tail.trim_start();
 
     let mut in_group = None;
@@ -1390,7 +1430,7 @@ fn parse_id_with_optional_group_modifier<'a>(
     line: &str,
     line_start: usize,
     input: &'a str,
-) -> Result<(String, Option<bool>, &'a str)> {
+) -> Result<(ArchitectureIdentifier, Option<bool>, &'a str)> {
     let input = input.trim_start();
     let Some((id, rest)) = take_id_prefix(input) else {
         return Err(architecture_insertion_at_suffix(
@@ -1406,7 +1446,11 @@ fn parse_id_with_optional_group_modifier<'a>(
         group = Some(true);
         rest = &rest["{group}".len()..];
     }
-    Ok((id.to_string(), group, rest))
+    Ok((
+        architecture_id_from_suffix(line, line_start, id, input),
+        group,
+        rest,
+    ))
 }
 
 fn is_arch_dir(ch: char) -> bool {
@@ -1525,11 +1569,13 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Re
     }
 
     db.add_edge(ArchitectureEdge {
-        lhs_id,
+        lhs_id: lhs_id.text,
+        lhs_span: lhs_id.span,
         lhs_dir,
         lhs_into,
         lhs_group,
-        rhs_id,
+        rhs_id: rhs_id.text,
+        rhs_span: rhs_id.span,
         rhs_dir,
         rhs_into,
         rhs_group,
@@ -1990,6 +2036,48 @@ mod tests {
         assert_eq!(
             diagnostic.span(),
             Some(SourceSpan::new(offset, offset + "extra".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_duplicate_service_reports_exact_id_span() {
+        let text = "architecture-beta\n  service api\n  service api\n";
+        let diagnostic = parse_err(text);
+        let offset = text.rfind("api").unwrap();
+
+        assert!(diagnostic.message().contains("already in use"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "api".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_unknown_parent_reports_exact_reference_span() {
+        let text = "architecture-beta\n  service api in missing\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("missing").unwrap();
+
+        assert!(diagnostic.message().contains("parent does not exist"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "missing".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_unknown_edge_endpoint_reports_exact_reference_span() {
+        let text = "architecture-beta\n  service api\n  api:L -- R:missing\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("missing").unwrap();
+
+        assert!(diagnostic.message().contains("right-hand id"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "missing".len()))
         );
         assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
     }

@@ -18,6 +18,7 @@ const NODE_TYPE_HEXAGON: i32 = 6;
 #[derive(Debug, Clone)]
 struct KanbanNode {
     id: String,
+    span: SourceSpan,
     level: usize,
     label: String,
     width: i64,
@@ -72,6 +73,61 @@ struct SpannedText {
     kind: EditorSemanticKind,
 }
 
+#[derive(Debug, Clone)]
+struct KanbanNodeSpec {
+    id_raw: String,
+    descr_raw: String,
+    ty: i32,
+}
+
+#[derive(Debug, Clone)]
+struct KanbanShapeData {
+    text: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KanbanSourceLine<'a> {
+    text: &'a str,
+    start: usize,
+}
+
+#[derive(Debug)]
+struct KanbanLineCursor<'a> {
+    source: &'a str,
+    offset: usize,
+}
+
+impl<'a> KanbanLineCursor<'a> {
+    fn new(source: &'a str) -> Self {
+        Self { source, offset: 0 }
+    }
+
+    fn next(&mut self) -> Option<KanbanSourceLine<'a>> {
+        if self.offset >= self.source.len() {
+            return None;
+        }
+
+        let start = self.offset;
+        let rest = &self.source[start..];
+        let end = if let Some(newline) = rest.find('\n') {
+            start + newline + 1
+        } else {
+            self.source.len()
+        };
+        self.offset = end;
+
+        Some(KanbanSourceLine {
+            text: strip_line_ending(&self.source[start..end]),
+            start,
+        })
+    }
+
+    fn offset(&self) -> usize {
+        self.offset
+    }
+}
+
 impl KanbanDb {
     fn clear(&mut self) {
         *self = Self::default();
@@ -89,12 +145,13 @@ impl KanbanDb {
                 last_section_idx = Some(idx);
             }
             if node.level < section_level {
-                return Err(Error::diagram_parse_fallback(
-                    "kanban".to_string(),
+                return Err(Error::diagram_parse_exact(
+                    "kanban",
                     format!(
                         "Items without section detected, found section (\"{}\")",
                         node.label
                     ),
+                    node.span,
                 ));
             }
         }
@@ -129,22 +186,21 @@ impl KanbanDb {
     fn add_node(
         &mut self,
         level: usize,
-        id_raw: &str,
-        descr_raw: &str,
-        ty: i32,
-        shape_data: Option<String>,
+        spec: KanbanNodeSpec,
+        span: SourceSpan,
+        shape_data: Option<KanbanShapeData>,
         config: &MermaidConfig,
     ) -> Result<()> {
         let mut padding = get_i64(config, "mindmap.padding").unwrap_or(10);
         let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
-        match ty {
+        match spec.ty {
             NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON => {
                 padding *= 2;
             }
             _ => {}
         }
 
-        let mut id = sanitize_text(id_raw, config);
+        let mut id = sanitize_text(&spec.id_raw, config);
         if id.is_empty() {
             id = format!("kbn{}", self.next_auto_id);
             self.next_auto_id += 1;
@@ -152,8 +208,9 @@ impl KanbanDb {
 
         let mut node = KanbanNode {
             id,
+            span,
             level,
-            label: sanitize_text(descr_raw, config),
+            label: sanitize_text(&spec.descr_raw, config),
             width,
             padding,
             parent_id: None,
@@ -295,18 +352,19 @@ impl KanbanDb {
     }
 }
 
-fn apply_shape_data(node: &mut KanbanNode, shape_data: &str) -> Result<()> {
-    let doc = crate::inline_config::parse_mermaid_inline_object(shape_data)
-        .map_err(|e| Error::diagram_parse_fallback("kanban".to_string(), e))?;
+fn apply_shape_data(node: &mut KanbanNode, shape_data: &KanbanShapeData) -> Result<()> {
+    let doc = crate::inline_config::parse_mermaid_inline_object(&shape_data.text)
+        .map_err(|e| Error::diagram_parse_exact("kanban", e, shape_data.span))?;
     let Some(obj) = doc.as_object() else {
         return Ok(());
     };
 
     if let Some(Value::String(shape)) = obj.get("shape") {
         if shape != &shape.to_lowercase() || shape.contains('_') {
-            return Err(Error::diagram_parse_fallback(
-                "kanban".to_string(),
+            return Err(Error::diagram_parse_exact(
+                "kanban",
                 format!("No such shape: {shape}. Shape names should be lowercase."),
+                shape_data.span,
             ));
         }
         if shape == "kanbanItem" {
@@ -382,41 +440,132 @@ fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
-fn parse_node_spec(input: &str) -> std::result::Result<(String, String, i32), String> {
+fn kanban_suffix_start(line: &str, line_start: usize, suffix: &str) -> usize {
+    debug_assert!(line.len() >= suffix.len());
+    line_start + line.len().saturating_sub(suffix.len())
+}
+
+fn kanban_insertion_at_suffix(
+    message: impl Into<String>,
+    line: &str,
+    line_start: usize,
+    suffix: &str,
+) -> Error {
+    let suffix = suffix.trim_start();
+    Error::diagram_parse_insertion_point(
+        "kanban",
+        message,
+        kanban_suffix_start(line, line_start, suffix),
+    )
+}
+
+fn kanban_exact_suffix(
+    message: impl Into<String>,
+    line: &str,
+    line_start: usize,
+    suffix: &str,
+) -> Error {
+    let suffix = suffix.trim_start();
+    let start = kanban_suffix_start(line, line_start, suffix);
+    let end = start + suffix.trim_end().len();
+    Error::diagram_parse_exact("kanban", message, SourceSpan::new(start, end))
+}
+
+fn parse_node_spec_for_render(
+    input: &str,
+    line: &str,
+    line_start: usize,
+) -> Result<(KanbanNodeSpec, SourceSpan)> {
     let input = input.trim_end();
     if input.is_empty() {
-        return Err("expected node".to_string());
+        return Err(kanban_insertion_at_suffix(
+            "expected node",
+            line,
+            line_start,
+            input,
+        ));
     }
 
     if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let (inner, tail) = extract_delimited(input, start, end)?;
+        let (inner, tail) = extract_delimited(input, start, end).map_err(|message| {
+            Error::diagram_parse_insertion_point(
+                "kanban",
+                message,
+                kanban_suffix_start(line, line_start, input),
+            )
+        })?;
         if !tail.trim().is_empty() {
-            return Err("unexpected trailing input".to_string());
+            return Err(kanban_exact_suffix(
+                "unexpected trailing input",
+                line,
+                line_start,
+                tail,
+            ));
         }
         let descr = unquote_node_descr(inner);
         let ty = node_type_for(start, end);
-        return Ok((descr.clone(), descr, ty));
+        let rel = kanban_suffix_start(line, line_start, input) + start.len();
+        return Ok((
+            KanbanNodeSpec {
+                id_raw: descr.clone(),
+                descr_raw: descr,
+                ty,
+            },
+            SourceSpan::new(rel, rel + inner.len()),
+        ));
     }
 
     let (id_raw, rest) = split_node_id(input);
-    let id_raw = id_raw.to_string();
+    let id_start = kanban_suffix_start(line, line_start, input);
     let rest = rest.trim_end();
     if rest.is_empty() {
-        return Ok((id_raw.clone(), id_raw, NODE_TYPE_DEFAULT));
+        return Ok((
+            KanbanNodeSpec {
+                id_raw: id_raw.to_string(),
+                descr_raw: id_raw.to_string(),
+                ty: NODE_TYPE_DEFAULT,
+            },
+            SourceSpan::new(id_start, id_start + id_raw.len()),
+        ));
     }
 
     let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
-        return Err("expected node delimiter".to_string());
+        return Err(kanban_insertion_at_suffix(
+            "expected node delimiter",
+            line,
+            line_start,
+            rest,
+        ));
     };
 
-    let (inner, tail) = extract_delimited(rest, start, end)?;
+    let (inner, tail) = extract_delimited(rest, start, end).map_err(|message| {
+        Error::diagram_parse_insertion_point(
+            "kanban",
+            message,
+            kanban_suffix_start(line, line_start, rest),
+        )
+    })?;
     if !tail.trim().is_empty() {
-        return Err("unexpected trailing input".to_string());
+        return Err(kanban_exact_suffix(
+            "unexpected trailing input",
+            line,
+            line_start,
+            tail,
+        ));
     }
 
     let descr = unquote_node_descr(inner);
     let ty = node_type_for(start, end);
-    Ok((id_raw, descr, ty))
+    let rest_start = kanban_suffix_start(line, line_start, rest);
+    let inner_start = rest_start + start.len();
+    Ok((
+        KanbanNodeSpec {
+            id_raw: id_raw.to_string(),
+            descr_raw: descr,
+            ty,
+        },
+        SourceSpan::new(inner_start, inner_start + inner.len()),
+    ))
 }
 
 fn split_node_id(input: &str) -> (&str, &str) {
@@ -537,18 +686,27 @@ fn get_i64(cfg: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     cur.as_i64().or_else(|| cur.as_f64().map(|f| f as i64))
 }
 
-fn consume_shape_data(lines: &mut std::str::Lines<'_>, first: &str) -> Result<String> {
+fn consume_shape_data(
+    lines: &mut KanbanLineCursor<'_>,
+    first: &str,
+    first_start: usize,
+) -> Result<KanbanShapeData> {
     let Some(mut rest) = first.strip_prefix("@{") else {
-        return Ok(String::new());
+        return Ok(KanbanShapeData {
+            text: String::new(),
+            span: SourceSpan::new(first_start, first_start),
+        });
     };
 
     let mut out = String::new();
     let mut in_quote = false;
     let mut quoted = String::new();
+    let block_start = first_start;
+    let mut current_scan_start = first_start + "@{".len();
 
     loop {
         let it = rest.char_indices().peekable();
-        for (_idx, ch) in it {
+        for (idx, ch) in it {
             if in_quote {
                 if ch == '"' {
                     out.push_str(&replace_newline_whitespace_with_br(&quoted));
@@ -568,16 +726,20 @@ fn consume_shape_data(lines: &mut std::str::Lines<'_>, first: &str) -> Result<St
             }
 
             if ch == '}' {
-                return Ok(out);
+                return Ok(KanbanShapeData {
+                    text: out,
+                    span: SourceSpan::new(block_start, current_scan_start + idx + ch.len_utf8()),
+                });
             }
 
             out.push(ch);
         }
 
         let Some(next_line) = lines.next() else {
-            return Err(Error::diagram_parse_fallback(
-                "kanban".to_string(),
-                "unterminated @{ ... } metadata block".to_string(),
+            return Err(Error::diagram_parse_insertion_point(
+                "kanban",
+                "unterminated @{ ... } metadata block",
+                lines.offset(),
             ));
         };
         if in_quote {
@@ -585,7 +747,8 @@ fn consume_shape_data(lines: &mut std::str::Lines<'_>, first: &str) -> Result<St
         } else {
             out.push('\n');
         }
-        rest = next_line;
+        rest = next_line.text;
+        current_scan_start = next_line.start;
     }
 }
 
@@ -606,9 +769,10 @@ fn replace_newline_whitespace_with_br(s: &str) -> String {
 }
 
 fn split_node_and_shape_data(
-    lines: &mut std::str::Lines<'_>,
+    lines: &mut KanbanLineCursor<'_>,
     rest: &str,
-) -> Result<(String, Option<String>)> {
+    rest_start: usize,
+) -> Result<(String, Option<KanbanShapeData>)> {
     let mut in_quote = false;
     let mut in_backtick_quote = false;
     let mut it = rest.char_indices().peekable();
@@ -640,7 +804,7 @@ fn split_node_and_shape_data(
 
         if rest[idx..].starts_with("@{") {
             let node_part = rest[..idx].trim_end().to_string();
-            let shape_data = consume_shape_data(lines, &rest[idx..])?;
+            let shape_data = consume_shape_data(lines, &rest[idx..], rest_start + idx)?;
             return Ok((node_part, Some(shape_data)));
         }
     }
@@ -652,11 +816,11 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
     let mut db = KanbanDb::default();
     db.clear();
 
-    let mut lines = code.lines();
+    let mut lines = KanbanLineCursor::new(code);
     let mut found_header = false;
-    let mut header_tail: Option<String> = None;
-    for line in lines.by_ref() {
-        let t = strip_inline_comment(line);
+    let mut header_tail: Option<(String, usize)> = None;
+    while let Some(line) = lines.next() {
+        let t = strip_inline_comment(line.text);
         let trimmed = t.trim();
         if trimmed.is_empty() {
             continue;
@@ -674,13 +838,10 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
         {
             found_header = true;
             let after_keyword = &trimmed["kanban".len()..];
-            let indent = after_keyword
-                .chars()
-                .take_while(|c| c.is_whitespace())
-                .count();
             let rest = after_keyword.trim_start();
             if !rest.is_empty() {
-                header_tail = Some(format!("{}{}", " ".repeat(indent), rest));
+                let after_keyword_start = line.start + t.find(after_keyword).unwrap_or(0);
+                header_tail = Some((after_keyword.to_string(), after_keyword_start));
             }
             break;
         }
@@ -694,11 +855,13 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
         ));
     }
 
-    if let Some(tail) = &header_tail {
+    if let Some((tail, tail_start)) = &header_tail {
         let tail = strip_inline_comment(tail);
+        let tail = tail.trim_end();
         if !tail.trim().is_empty() {
             let (indent, rest) = split_indent(tail);
             let rest = rest.trim_end();
+            let rest_start = tail_start + tail.find(rest).unwrap_or(0);
             if starts_with_case_insensitive(rest, "::icon(") {
                 let after = &rest["::icon(".len()..];
                 if let Some(end) = after.find(')') {
@@ -707,33 +870,26 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
             } else if let Some(after) = rest.strip_prefix(":::") {
                 db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
             } else {
-                let (node_part, shape_data) = split_node_and_shape_data(&mut lines, rest)?;
+                let (node_part, shape_data) =
+                    split_node_and_shape_data(&mut lines, rest, rest_start)?;
                 if !node_part.trim().is_empty() {
-                    let (id_raw, descr_raw, ty) =
-                        parse_node_spec(&node_part).map_err(|message| {
-                            Error::diagram_parse_fallback(meta.diagram_type.clone(), message)
-                        })?;
-                    db.add_node(
-                        indent,
-                        &id_raw,
-                        &descr_raw,
-                        ty,
-                        shape_data,
-                        &meta.effective_config,
-                    )?;
+                    let (spec, span) = parse_node_spec_for_render(&node_part, tail, *tail_start)?;
+                    db.add_node(indent, spec, span, shape_data, &meta.effective_config)?;
                 }
             }
         }
     }
 
-    while let Some(line) = lines.next() {
-        let line = strip_inline_comment(line);
+    while let Some(source_line) = lines.next() {
+        let line = strip_inline_comment(source_line.text);
+        let line = line.trim_end();
         if line.trim().is_empty() {
             continue;
         }
 
         let (indent, rest) = split_indent(line);
         let rest = rest.trim_end();
+        let rest_start = source_line.start + line.find(rest).unwrap_or(0);
         if rest.is_empty() {
             continue;
         }
@@ -751,22 +907,14 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
             continue;
         }
 
-        let (node_part, shape_data) = split_node_and_shape_data(&mut lines, rest)?;
+        let (node_part, shape_data) = split_node_and_shape_data(&mut lines, rest, rest_start)?;
         if node_part.trim().is_empty() {
             continue;
         }
 
-        let (id_raw, descr_raw, ty) = parse_node_spec(&node_part)
-            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
+        let (spec, span) = parse_node_spec_for_render(&node_part, line, source_line.start)?;
 
-        db.add_node(
-            indent,
-            &id_raw,
-            &descr_raw,
-            ty,
-            shape_data,
-            &meta.effective_config,
-        )?;
+        db.add_node(indent, spec, span, shape_data, &meta.effective_config)?;
     }
 
     Ok(db)
@@ -1078,7 +1226,7 @@ pub fn parse_kanban_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSem
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1087,6 +1235,14 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    fn parse_err(text: &str) -> crate::ParseDiagnostic {
+        let engine = Engine::new();
+        match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
+            Error::DiagramParse { diagnostic, .. } => diagnostic,
+            other => panic!("expected kanban parse error, got {other:?}"),
+        }
     }
 
     fn sections(model: &Value) -> Vec<Value> {
@@ -1114,6 +1270,67 @@ mod tests {
                 .iter()
                 .any(|symbol| symbol.name == "highlight")
         );
+    }
+
+    #[test]
+    fn kanban_unterminated_node_delimiter_reports_insertion_point() {
+        let text = "kanban\n  root[Open\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find('[').unwrap();
+
+        assert_eq!(diagnostic.message(), "unterminated node delimiter");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+    }
+
+    #[test]
+    fn kanban_trailing_node_input_reports_exact_span() {
+        let text = "kanban\n  root[Root] extra\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("extra").unwrap();
+
+        assert_eq!(diagnostic.message(), "unexpected trailing input");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "extra".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn kanban_unterminated_metadata_reports_eof_insertion_point() {
+        let text = "kanban\n  root@{ icon: star\n";
+        let diagnostic = parse_err(text);
+
+        assert_eq!(diagnostic.message(), "unterminated @{ ... } metadata block");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(text.len(), text.len()))
+        );
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+    }
+
+    #[test]
+    fn kanban_invalid_shape_metadata_reports_exact_metadata_span() {
+        let text = "kanban\n  root@{ shape: bad_shape }\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("@{").unwrap();
+
+        assert!(diagnostic.message().contains("No such shape"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(
+                offset,
+                offset + "@{ shape: bad_shape }".len()
+            ))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
     }
 
     #[test]

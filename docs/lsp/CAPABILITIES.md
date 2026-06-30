@@ -77,18 +77,18 @@ Current parser-family diagnostic span matrix:
 | GitGraph | Exact unknown command-token spans | `gitgraph_unknown_command_reports_exact_command_span` | Deeper repository-state semantic failures remain fallback diagnostics. |
 | Timeline | Insertion points for missing event text separators | `timeline_event_missing_space_reports_insertion_point` | Generic section/title validation still uses fallback constructors where no token span is preserved. |
 | C4 | Insertion points for missing relation/style macro arguments | `c4_missing_relation_target_reports_local_insertion_point`, `c4_missing_relation_style_target_reports_local_insertion_point` | Other render parser validation remains fallback until spanned macro validation covers it. |
-| Architecture | Insertion points for missing ids/ports; exact spans for invalid directions and trailing statement tokens | `architecture_invalid_service_id_reports_insertion_point`, `architecture_invalid_edge_direction_reports_exact_token_span`, `architecture_trailing_group_input_reports_exact_token_span` | Semantic validation such as duplicate ids, unknown parents, and group-boundary validation remains named fallback until Architecture DB entries preserve source spans. |
-| Kanban | Named fallback diagnostics | Capability docs plus render parser fallback constructors | Needs render validation to reuse parser-backed source offsets; no message scraping is allowed. |
+| Architecture | Insertion points for missing ids/ports; exact spans for invalid directions, trailing statement tokens, duplicate ids, unknown parents, and unknown edge endpoints | `architecture_invalid_service_id_reports_insertion_point`, `architecture_invalid_edge_direction_reports_exact_token_span`, `architecture_duplicate_service_reports_exact_id_span`, `architecture_unknown_parent_reports_exact_reference_span`, `architecture_unknown_edge_endpoint_reports_exact_reference_span` | Some deeper group-boundary semantic validation is only exact where the offending edge endpoint is preserved. |
+| Kanban | Insertion points for unterminated node/metadata syntax; exact spans for trailing node input and invalid metadata blocks | `kanban_unterminated_node_delimiter_reports_insertion_point`, `kanban_trailing_node_input_reports_exact_span`, `kanban_unterminated_metadata_reports_eof_insertion_point`, `kanban_invalid_shape_metadata_reports_exact_metadata_span` | Inline metadata fields are reported at the metadata block span until the inline-object parser exposes field-level spans. |
 
 Remaining fallback ledger:
 
-- Architecture render parse errors use exact or insertion-point spans for local line syntax that the
-  source-offset-aware render parser can prove. Render-time semantic validation still uses named
-  fallback diagnostics until Architecture DB entries preserve declaration/reference spans.
-- Kanban render parse errors still use named fallback diagnostics for hierarchy validation and
-  inline/multiline shape-data failures where the render path consumes indentation and YAML-like
-  payload state without preserving source offsets. Kanban editor facts remain parser-backed; exact
-  render error underlines need the render parser to reuse those spanned facts.
+- Architecture render parse errors use exact or insertion-point spans for local line syntax and for
+  semantic checks that carry declaration/reference spans into the DB. Remaining fallback use should
+  be treated as a parser capability gap, not a message-scraping opportunity.
+- Kanban render parse errors use exact or insertion-point spans for local node syntax, metadata
+  blocks, invalid metadata shapes, and hierarchy validation when the offending node span is known.
+  Field-level metadata spans need inline-object parser support before they can graduate beyond the
+  block span.
 
 ## Feature Gates
 
