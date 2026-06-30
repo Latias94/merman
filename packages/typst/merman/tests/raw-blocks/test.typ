@@ -9,7 +9,7 @@
   error-mode: "panic",
 )
 
-#show raw.where(lang: "mermaid-context"): show-mermaid-blocks(
+#show raw.where(lang: "mermaid-docctx"): show-mermaid-blocks(
   document-context: true,
   width: 100%,
   pipeline: "readable",
@@ -21,7 +21,7 @@ flowchart TD
   Explicit[Explicit raw block] --> Rendered[Rendered image]
 ```
 
-```mermaid-context
+```mermaid-docctx
 sequenceDiagram
   participant Typst
   participant merman

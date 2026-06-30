@@ -36,6 +36,8 @@ flowchart TD
 - [presentation.typ](examples/presentation.typ): dark slide-sized output.
 - [svg-export.typ](examples/svg-export.typ): raw SVG and structured render payloads.
 
+Package fixtures are grouped by behavior family under [tests](tests): API, context, errors, figures, raw blocks, readme examples, historical issues, and visual smoke coverage. The visual fixture covers representative Flowchart, Sequence, Class, ER, State, and Git Graph diagrams for artifact inspection.
+
 ## Document Fonts
 
 `mermaid(...)` is explicit-only by default. It does not automatically inherit the surrounding Typst font, text size, or container width.
@@ -264,6 +266,14 @@ For local `@preview` smoke tests, copy the built package under a preview namespa
 ```sh
 cargo run -p xtask -- typst-package-smoke --skip-wasm-build
 ```
+
+Use an explicit Typst binary when the CLI is downloaded outside `PATH`:
+
+```sh
+cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst /path/to/typst
+```
+
+Smoke outputs are written under `target/typst-package-smoke/out` with nested paths preserved, for example `tests/api/test.pdf` and `tests/visual/test.pdf`.
 
 The default package build is the publish profile and enables `render`, `core-full`, and `elk-layout`.
 Build the no-ELK full-config artifact with:

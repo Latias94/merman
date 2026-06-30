@@ -61,6 +61,21 @@ struct TypstManifestPackage {
     version: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct CargoManifest {
+    workspace: CargoWorkspace,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CargoWorkspace {
+    package: CargoWorkspacePackage,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CargoWorkspacePackage {
+    version: String,
+}
+
 impl Default for Options {
     fn default() -> Self {
         Self {
@@ -172,6 +187,7 @@ fn build_typst_package_with_options(options: &Options) -> Result<PathBuf, XtaskE
     let package_source = root.join("packages").join("typst").join("merman");
     let manifest_path = package_source.join("typst.toml");
     let package_version = read_typst_package_version(&manifest_path)?;
+    verify_typst_readme_version_mapping(&package_source.join("README.md"), &package_version)?;
     let wasm_path = root
         .join("target")
         .join("wasm32-unknown-unknown")
@@ -272,6 +288,41 @@ fn read_typst_package_version(manifest_path: &Path) -> Result<String, XtaskError
         )));
     }
     Ok(version.to_string())
+}
+
+fn read_workspace_version(manifest_path: &Path) -> Result<String, XtaskError> {
+    let manifest_text =
+        fs::read_to_string(manifest_path).map_err(|source| XtaskError::ReadFile {
+            path: manifest_path.display().to_string(),
+            source,
+        })?;
+    let manifest: CargoManifest = toml::from_str(&manifest_text).map_err(|source| {
+        XtaskError::TypstPackageFailed(format!(
+            "failed to parse {}: {source}",
+            manifest_path.display()
+        ))
+    })?;
+    Ok(manifest.workspace.package.version)
+}
+
+fn verify_typst_readme_version_mapping(
+    readme_path: &Path,
+    package_version: &str,
+) -> Result<(), XtaskError> {
+    let readme = fs::read_to_string(readme_path).map_err(|source| XtaskError::ReadFile {
+        path: readme_path.display().to_string(),
+        source,
+    })?;
+    let workspace_version = read_workspace_version(&paths::workspace_root().join("Cargo.toml"))?;
+    let expected_row = format!("| `{package_version}` | `{workspace_version}` |");
+    if readme.contains(&expected_row) {
+        return Ok(());
+    }
+
+    Err(XtaskError::TypstPackageFailed(format!(
+        "{} version mapping must include `{expected_row}`",
+        readme_path.display()
+    )))
 }
 
 fn is_typst_package_version(version: &str) -> bool {
@@ -614,8 +665,9 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XtaskErro
 mod tests {
     use super::{
         collect_typst_files, collect_typst_fixtures, copy_dir_recursive, is_typst_package_version,
-        parse_smoke_options, typst_fixture_output_path,
+        parse_smoke_options, typst_fixture_output_path, verify_typst_readme_version_mapping,
     };
+    use crate::cmd::paths;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -716,6 +768,36 @@ mod tests {
                 .join("nested")
                 .join("module.typ")
                 .exists()
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn typst_readme_version_mapping_matches_package_and_workspace_versions() {
+        let readme = paths::workspace_root()
+            .join("packages")
+            .join("typst")
+            .join("merman")
+            .join("README.md");
+        verify_typst_readme_version_mapping(&readme, "0.1.0").unwrap();
+    }
+
+    #[test]
+    fn typst_readme_version_mapping_rejects_missing_package_version() {
+        let root = unique_test_dir("typst-readme-version");
+        let readme = root.join("README.md");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            &readme,
+            "| Typst package | merman source version | Notes |\n| --- | --- | --- |\n| `9.9.9` | `0.8.0-alpha.2` | stale |\n",
+        )
+        .unwrap();
+
+        let error = verify_typst_readme_version_mapping(&readme, "0.1.0").unwrap_err();
+        assert!(
+            error.to_string().contains("version mapping must include"),
+            "unexpected error: {error}"
         );
 
         let _ = fs::remove_dir_all(root);
