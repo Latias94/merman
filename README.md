@@ -501,7 +501,8 @@ foreground/background plus optional `line`, `accent`, `muted`, `surface`, and `b
 bindings expose the same shape as `ascii.theme` in options JSON. This keeps terminal text theming
 separate from SVG CSS-variable semantics.
 Bindings, Web, Playground, and the CLI can pass ASCII-specific options for charset, color mode,
-terminal palette, sequence mirrored actors, XYChart plot dimensions, and grid limits.
+terminal palette, sequence mirrored actors, XYChart plot dimensions, grid limits, and
+relation-summary diagnostics.
 
 Flowchart text output covers LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape
 approximations, labels, open/dotted/thick edges, length spacing, and titled/nested subgraphs with
@@ -521,6 +522,9 @@ mixed-parallel relationships render as distinct lanes, simple spanning-level rel
 through side lanes, and isolated unrelated classes/entities render as standalone components beside
 the relationship layout. Dense, cyclic, grid-budget-limited, or collision-prone Class/ER layouts
 fall back to a structured `relations:` summary instead of drawing unreadable overlapping lines.
+`AsciiRenderOptions::with_relation_summary_diagnostics(true)` adds an opt-in `reason:` row to
+those summaries so hosts can tell whether fallback came from crossings, route collisions, overlay
+collisions, or grid budget limits without changing default text output.
 XYChart renders deterministic compact bars, lines, mixed plots, titles, axes, legends, and
 configurable compact plot areas instead of SVG coordinates. When `showDataLabel` is enabled,
 single bar charts keep compact bar labels, while line and multi-series charts emit explicit

@@ -145,6 +145,16 @@ For a single bar series, data labels stay close to the bars and respect
 `values:` rows keyed by series title and category so terminal output has a stable tooltip
 replacement without covering the plot.
 
+## Relation Summary Diagnostics
+
+Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be
+drawn as a deterministic terminal grid, when route or overlay collision checks would damage a box,
+or when the selected routed scene exceeds `AsciiRenderOptions::max_grid_cells`. Default output hides
+that internal reason to keep terminal text stable and user-facing. Enable
+`AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as
+`reason: grid_budget actual=12 limit=1` directly under `relations:`. Possible reason keys are
+`crossing`, `route_collision`, `overlay_collision`, and `grid_budget`.
+
 ## Intended Use
 
 ```rust,no_run

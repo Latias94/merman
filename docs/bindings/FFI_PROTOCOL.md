@@ -322,6 +322,24 @@ MermanResult merman_render_ascii(
 On success, `data` contains UTF-8 terminal text. If the native library is built without the `ascii`
 feature, this function returns `MERMAN_UNSUPPORTED_FORMAT`.
 
+ASCII-specific behavior is configured through the shared `options_json.ascii` object. For example,
+Class/ER relation-summary fallback diagnostics are disabled by default, but hosts can opt in when
+they need support logs to explain why a dense relation graph used `relations:` output:
+
+```json
+{
+  "ascii": {
+    "charset": "ascii",
+    "maxGridCells": 1,
+    "relationSummaryDiagnostics": true
+  }
+}
+```
+
+When enabled, Class/ER summaries include a row such as
+`reason: grid_budget actual=12 limit=1` under `relations:`. See
+[`OPTIONS_JSON.md`](OPTIONS_JSON.md) for the full ASCII options shape.
+
 ## Options JSON
 
 Pass `NULL/0` for defaults. Non-empty options use the shared tolerant JSON object documented in
