@@ -20,6 +20,11 @@ import {
   extractPreviewInputFromDocument,
   type PreviewInput,
 } from "./preview-source.js";
+import {
+  mermaidSourceCommandSourceId,
+  mermaidSourceCommandUri,
+  type MermaidSourceCommandArgument,
+} from "./source-actions.js";
 
 const EXPORT_SVG_COMMAND = "merman.exportSvg";
 const EXPORT_PNG_COMMAND = "merman.exportPng";
@@ -31,25 +36,37 @@ export function registerExport(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("Merman Export", { log: true });
   context.subscriptions.push(outputChannel);
   context.subscriptions.push(
-    vscode.commands.registerCommand(EXPORT_SVG_COMMAND, async (resource?: vscode.Uri) => {
-      await exportDiagram(context, outputChannel, exportPresetForFormat("svg"), resource);
-    }),
-    vscode.commands.registerCommand(EXPORT_PNG_COMMAND, async (resource?: vscode.Uri) => {
-      await exportDiagram(context, outputChannel, exportPresetForFormat("png"), resource);
-    }),
-    vscode.commands.registerCommand(EXPORT_COMMAND, async (resource?: vscode.Uri) => {
+    vscode.commands.registerCommand(
+      EXPORT_SVG_COMMAND,
+      async (target?: MermaidSourceCommandArgument) => {
+        await exportDiagram(context, outputChannel, exportPresetForFormat("svg"), target);
+      },
+    ),
+    vscode.commands.registerCommand(
+      EXPORT_PNG_COMMAND,
+      async (target?: MermaidSourceCommandArgument) => {
+        await exportDiagram(context, outputChannel, exportPresetForFormat("png"), target);
+      },
+    ),
+    vscode.commands.registerCommand(EXPORT_COMMAND, async (target?: MermaidSourceCommandArgument) => {
       const preset = await pickExportPreset();
       if (!preset) {
         return;
       }
-      await exportDiagram(context, outputChannel, preset, resource);
+      await exportDiagram(context, outputChannel, preset, target);
     }),
-    vscode.commands.registerCommand(COPY_SVG_COMMAND, async (resource?: vscode.Uri) => {
-      await copySvg(context, outputChannel, resource);
-    }),
-    vscode.commands.registerCommand(COPY_PNG_COMMAND, async (resource?: vscode.Uri) => {
-      await copyPng(context, outputChannel, resource);
-    }),
+    vscode.commands.registerCommand(
+      COPY_SVG_COMMAND,
+      async (target?: MermaidSourceCommandArgument) => {
+        await copySvg(context, outputChannel, target);
+      },
+    ),
+    vscode.commands.registerCommand(
+      COPY_PNG_COMMAND,
+      async (target?: MermaidSourceCommandArgument) => {
+        await copyPng(context, outputChannel, target);
+      },
+    ),
   );
 }
 
@@ -57,9 +74,9 @@ async function exportDiagram(
   context: vscode.ExtensionContext,
   outputChannel: vscode.LogOutputChannel,
   preset: ExportPreset,
-  resource?: vscode.Uri,
+  target?: MermaidSourceCommandArgument,
 ): Promise<void> {
-  const source = await resolveExportSource(resource);
+  const source = await resolveExportSource(target);
   if (!source) {
     void vscode.window.showWarningMessage(
       "Focus a Mermaid file or a Markdown Mermaid fence before exporting.",
@@ -67,12 +84,12 @@ async function exportDiagram(
     return;
   }
 
-  const target = await vscode.window.showSaveDialog({
+  const outputUri = await vscode.window.showSaveDialog({
     defaultUri: defaultExportUri(source.document.uri, source.input, preset.format),
     filters: exportFilters(preset.format),
     saveLabel: `Export ${preset.format.toUpperCase()}`,
   });
-  if (!target) {
+  if (!outputUri) {
     return;
   }
 
@@ -88,14 +105,14 @@ async function exportDiagram(
           context,
           source: source.input.source,
           format: preset.format,
-          outputPath: target.fsPath,
+          outputPath: outputUri.fsPath,
           outputChannel,
           signalLabel: `export-${preset.format}`,
         });
         if (preset.openAfterExport) {
-          await vscode.commands.executeCommand("vscode.open", target);
+          await vscode.commands.executeCommand("vscode.open", outputUri);
         }
-        void vscode.window.showInformationMessage(`Exported ${path.basename(target.fsPath)}.`);
+        void vscode.window.showInformationMessage(`Exported ${path.basename(outputUri.fsPath)}.`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         outputChannel.error(message);
@@ -108,9 +125,9 @@ async function exportDiagram(
 async function copySvg(
   context: vscode.ExtensionContext,
   outputChannel: vscode.LogOutputChannel,
-  resource?: vscode.Uri,
+  target?: MermaidSourceCommandArgument,
 ): Promise<void> {
-  const source = await resolveExportSource(resource);
+  const source = await resolveExportSource(target);
   if (!source) {
     void vscode.window.showWarningMessage(
       "Focus a Mermaid file or a Markdown Mermaid fence before copying SVG.",
@@ -138,9 +155,9 @@ async function copySvg(
 async function copyPng(
   context: vscode.ExtensionContext,
   outputChannel: vscode.LogOutputChannel,
-  resource?: vscode.Uri,
+  target?: MermaidSourceCommandArgument,
 ): Promise<void> {
-  const source = await resolveExportSource(resource);
+  const source = await resolveExportSource(target);
   if (!source) {
     void vscode.window.showWarningMessage(
       "Focus a Mermaid file or a Markdown Mermaid fence before copying PNG.",
@@ -153,7 +170,7 @@ async function copyPng(
     void vscode.window.showInformationMessage(
       "PNG clipboard copy is not available on this platform. Choose a file to save the PNG instead.",
     );
-    await exportDiagram(context, outputChannel, exportPresetForFormat("png"), resource);
+    await exportDiagram(context, outputChannel, exportPresetForFormat("png"), target);
     return;
   }
 
@@ -178,7 +195,7 @@ async function copyPng(
     void vscode.window.showWarningMessage(
       `Merman PNG clipboard copy failed: ${message}. Choose a file to save the PNG instead.`,
     );
-    await exportDiagram(context, outputChannel, exportPresetForFormat("png"), resource);
+    await exportDiagram(context, outputChannel, exportPresetForFormat("png"), target);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -209,16 +226,18 @@ function runClipboardCommand(
 }
 
 async function resolveExportSource(
-  resource?: vscode.Uri,
+  target?: MermaidSourceCommandArgument,
 ): Promise<{ document: vscode.TextDocument; input: PreviewInput } | undefined> {
   const activeEditor = vscode.window.activeTextEditor;
+  const resource = mermaidSourceCommandUri(target);
+  const sourceId = mermaidSourceCommandSourceId(target);
   if (resource) {
     if (activeEditor?.document.uri.toString() === resource.toString()) {
-      const input = extractPreviewInput(activeEditor);
+      const input = extractPreviewInput(activeEditor, sourceId);
       return input ? { document: activeEditor.document, input } : undefined;
     }
     const document = await vscode.workspace.openTextDocument(resource);
-    const input = extractPreviewInputFromDocument(document);
+    const input = extractPreviewInputFromDocument(document, undefined, sourceId);
     return input ? { document, input } : undefined;
   }
 

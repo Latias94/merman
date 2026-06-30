@@ -112,27 +112,6 @@ export class PreviewSession {
     );
   }
 
-  togglePin(
-    activeEditor: vscode.TextEditor | undefined,
-    visibleEditors: readonly vscode.TextEditor[],
-  ): boolean {
-    const editor = this.resolvePreviewEditor(activeEditor, visibleEditors);
-    const input = editor ? this.resolvePreviewInput(editor) : null;
-    if (!editor || !input) {
-      return false;
-    }
-    const editorUri = editor.document.uri.toString();
-    if (this.pinnedSource?.uri === editorUri && this.pinnedSource.sourceId === input.sourceId) {
-      this.pinnedSource = undefined;
-    } else {
-      this.pinnedSource = {
-        uri: editorUri,
-        sourceId: input.sourceId,
-      };
-    }
-    return true;
-  }
-
   selectSource(
     activeEditor: vscode.TextEditor | undefined,
     visibleEditors: readonly vscode.TextEditor[],

@@ -34,6 +34,7 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "solarized" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "png" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setBackground", background: "blue" }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "togglePin" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "deleteEverything" }), false);
   });
 });

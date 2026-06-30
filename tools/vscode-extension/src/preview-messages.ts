@@ -21,7 +21,6 @@ export interface PreviewSnapshotMessagePayload {
   title: string;
   subtitle: string;
   selectionLine: number;
-  pinned: boolean;
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
@@ -77,7 +76,6 @@ export type PreviewFromWebviewMessage =
   | { type: "exportRendered"; format: "svg" | "png" }
   | { type: "revealDiagnostic"; target: string }
   | { type: "showDiagnosticFixes"; target: string }
-  | { type: "togglePin" }
   | { type: "selectSource"; sourceId: string }
   | { type: "setDiagramTheme"; theme: PreviewDiagramTheme }
   | { type: "setDisplayMode"; mode: PreviewDisplayMode }
@@ -90,7 +88,6 @@ export function snapshotMessagePayload(snapshot: PreviewSnapshot): PreviewSnapsh
     title: snapshot.input.title,
     subtitle: snapshot.input.subtitle,
     selectionLine: snapshot.selectionLine,
-    pinned: snapshot.pinned,
     diagramTheme: snapshot.diagramTheme,
     displayMode: snapshot.displayMode,
     background: snapshot.background,
@@ -112,7 +109,6 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
   const record = value as Record<string, unknown>;
   switch (record.type) {
     case "ready":
-    case "togglePin":
       return true;
     case "copySvg":
       return typeof record.svg === "string";

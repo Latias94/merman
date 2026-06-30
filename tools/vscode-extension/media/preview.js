@@ -14,7 +14,6 @@
   const themeElement = document.querySelector('[data-action="diagram-theme"]');
   const backgroundElement = document.querySelector('[data-action="background"]');
   const outputControlsElement = document.querySelector("[data-preview-output-controls]");
-  const pinElement = document.querySelector('[data-action="pin"]');
   const persisted = vscode.getState?.() || {};
   const state = {
     zoom: finiteNumber(persisted.zoom, 1),
@@ -330,10 +329,6 @@
     if (outputControlsElement instanceof HTMLElement) {
       outputControlsElement.hidden = state.displayMode !== "svg";
     }
-    if (pinElement instanceof HTMLButtonElement) {
-      pinElement.setAttribute("aria-pressed", snapshot.pinned ? "true" : "false");
-      pinElement.textContent = snapshot.pinned ? "Locked" : "Lock";
-    }
     persistState();
   }
 
@@ -579,9 +574,6 @@
         break;
       case "export-png":
         post("exportRendered", { format: "png" });
-        break;
-      case "pin":
-        post("togglePin", {});
         break;
       case "diagnostic":
         post("revealDiagnostic", { target: actionElement.dataset.target });

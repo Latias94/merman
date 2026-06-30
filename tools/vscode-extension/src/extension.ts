@@ -9,6 +9,7 @@ import {
   pushConfiguration,
   serverStateLabel,
 } from "./server.js";
+import { registerSourceCodeLens } from "./codelens.js";
 import { registerExport } from "./export.js";
 import { registerPreview } from "./preview.js";
 
@@ -19,6 +20,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   ensureStatusItem(context);
   registerPreview(context);
   registerExport(context);
+  registerSourceCodeLens(context);
 
   client = await createLanguageClient(context);
   wireClientStatus(client);

@@ -829,6 +829,9 @@ sanitization.
   metadata, and semantic-token selection. `merman-lsp` and the browser WASM package project those
   shared results into LSP and Monaco-facing shapes instead of carrying separate semantic
   implementations.
+- The VS Code extension keeps source actions local and source-scoped: Mermaid files and
+  Markdown/MDX Mermaid fences expose preview, export, and copy CodeLens actions that target stable
+  source ids rather than the current cursor position.
 
 ## Workspace crates
 

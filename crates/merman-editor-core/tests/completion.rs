@@ -9,17 +9,17 @@ fn completion_offers_known_node_ids_with_text_edits() {
     let snapshot = workspace.upsert(
         "file:///tmp/example.mmd",
         1,
-        "flowchart TD\nA-->B\nB-->C\n".to_string(),
+        "flowchart TD\nA-->B\nB-->C\nC-->".to_string(),
         DocumentKind::Diagram,
     );
-    let list = completion_for_snapshot(&snapshot, Position::new(1, 1));
+    let list = completion_for_snapshot(&snapshot, Position::new(3, 4));
 
     let item = list.items.iter().find(|item| item.label == "B").unwrap();
     let edit = item.text_edit.as_ref().unwrap();
 
     assert_eq!(edit.new_text, "B");
-    assert_eq!(edit.range.start.line, 1);
-    assert_eq!(edit.range.start.character, 0);
+    assert_eq!(edit.range.start.line, 3);
+    assert_eq!(edit.range.start.character, 4);
 }
 
 #[test]
@@ -280,10 +280,10 @@ fn directive_helpers_use_snippet_placeholders() {
     let snapshot = workspace.upsert(
         "file:///tmp/example.mmd",
         1,
-        "classDef ".to_string(),
+        "flowchart TD\nclassDef ".to_string(),
         DocumentKind::Diagram,
     );
-    let list = completion_for_snapshot(&snapshot, Position::new(0, 9));
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 9));
 
     let item = list
         .items

@@ -1,6 +1,6 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
-use merman_analysis::{FenceCursorCompletionKind, FenceExpectedSyntaxKind};
+use merman_analysis::{FenceCursorCompletionKind, FenceExpectedSyntaxKind, FenceTextIndexSource};
 
 #[derive(Debug)]
 pub struct CompletionContext<'a> {
@@ -9,6 +9,8 @@ pub struct CompletionContext<'a> {
     prefix: String,
     prefix_start_offset: usize,
     cursor_offset: usize,
+    source: FenceTextIndexSource,
+    source_start: bool,
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
     expected_syntax: Option<FenceExpectedSyntaxKind>,
@@ -35,6 +37,8 @@ impl<'a> CompletionContext<'a> {
             prefix: cursor_context.prefix().to_string(),
             prefix_start_offset,
             cursor_offset,
+            source: cursor_context.source(),
+            source_start: cursor_context.is_source_start(),
             directive_prefix: cursor_context.directive_prefix(),
             comment_or_directive_line: cursor_context.is_comment_or_directive_line(),
             expected_syntax: cursor_context.expected_syntax(),
@@ -55,6 +59,17 @@ impl<'a> CompletionContext<'a> {
 
     pub fn document_uri(&self) -> &str {
         self.snapshot.uri.as_str()
+    }
+
+    pub fn has_parser_backed_facts(&self) -> bool {
+        matches!(
+            self.source,
+            FenceTextIndexSource::ParserComplete | FenceTextIndexSource::ParserRecovered
+        )
+    }
+
+    pub fn is_source_start(&self) -> bool {
+        self.source_start
     }
 
     pub fn prefix_range(&self) -> Option<Range> {
@@ -158,15 +173,15 @@ impl<'a> CompletionContext<'a> {
             );
         }
 
-        if self.offer_directive_target_node_items() {
+        if self.has_parser_backed_facts() && self.offer_directive_target_node_items() {
             return true;
         }
 
-        self.offers(FenceCursorCompletionKind::NodeIdentifier)
+        false
     }
 
     pub fn offer_template_items(&self) -> bool {
-        if self.directive_prefix.is_some() {
+        if !self.source_start || self.directive_prefix.is_some() {
             return false;
         }
         let prefix = self.prefix.trim_end();
@@ -186,16 +201,25 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_class_name_items(&self) -> bool {
+        if !self.has_parser_backed_facts() {
+            return false;
+        }
         directive_slot_for_prefix(&self.prefix, self.directive_prefix)
             == DirectiveCompletionSlot::ClassName
     }
 
     pub fn offer_style_snippet_items(&self) -> bool {
+        if !self.has_parser_backed_facts() {
+            return false;
+        }
         directive_slot_for_prefix(&self.prefix, self.directive_prefix)
             == DirectiveCompletionSlot::Style
     }
 
     pub fn offer_interaction_snippet_items(&self) -> bool {
+        if !self.has_parser_backed_facts() {
+            return false;
+        }
         directive_slot_for_prefix(&self.prefix, self.directive_prefix)
             == DirectiveCompletionSlot::Interaction
     }

@@ -10,7 +10,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     let Some(context) = CompletionContext::from_snapshot(snapshot, position) else {
         return CompletionList {
             is_incomplete: false,
-            items: diagram_header_items(None),
+            items: Vec::new(),
         };
     };
 
@@ -67,17 +67,6 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
             context.document_uri(),
             context.node_text_edit_range(),
         ));
-    }
-
-    if items.is_empty() {
-        if context.is_comment_or_directive_line() || context.is_parser_controlled_payload() {
-            return CompletionList {
-                is_incomplete: false,
-                items,
-            };
-        }
-
-        items.extend(diagram_header_items(context.prefix_range()));
     }
 
     CompletionList {
@@ -633,4 +622,151 @@ pub enum CompletionDataKind {
 pub struct CompletionResolveData {
     pub kind: CompletionDataKind,
     pub label: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CompletionDataKind, completion_for_snapshot};
+    use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
+    use crate::types::{DocumentKind, DocumentUri, Position};
+    use crate::workspace::DocumentWorkspace;
+    use merman_analysis::{FenceTextIndex, SourceMap};
+    use merman_core::{
+        EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+        EditorSemanticSymbol, SourceSpan,
+    };
+
+    #[test]
+    fn markdown_outside_mermaid_fence_returns_no_completion() {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace.upsert(
+            "file:///tmp/readme.md",
+            1,
+            "# Notes\n\nplain prose\n".to_string(),
+            DocumentKind::Markdown,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(2, 3));
+
+        assert!(completion.items.is_empty());
+    }
+
+    #[test]
+    fn source_start_offers_headers_and_templates() {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace.upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flow".to_string(),
+            DocumentKind::Diagram,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(0, 4));
+
+        assert!(
+            completion
+                .items
+                .iter()
+                .any(|item| item.data.as_ref().is_some_and(|data| {
+                    data.kind == CompletionDataKind::DiagramHeader
+                        && data.label.starts_with("flowchart")
+                }))
+        );
+        assert!(
+            completion
+                .items
+                .iter()
+                .any(|item| item.data.as_ref().is_some_and(|data| {
+                    data.kind == CompletionDataKind::Template && data.label == "flowchart template"
+                }))
+        );
+    }
+
+    #[test]
+    fn unsupported_diagram_body_context_returns_no_completion() {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace.upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nunsupported".to_string(),
+            DocumentKind::Diagram,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, "unsupported".len()));
+
+        assert!(completion.items.is_empty());
+    }
+
+    #[test]
+    fn parser_payload_context_returns_no_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            SourceSpan::new(28, 33),
+        ));
+        let snapshot = snapshot_with_facts(
+            "sequenceDiagram\nAlice->Bob: Hello",
+            Some("sequence"),
+            facts,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, 18));
+
+        assert!(completion.items.is_empty());
+    }
+
+    #[test]
+    fn parser_expected_node_slot_reuses_known_entity_ids() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            SourceSpan::new(18, 18),
+        ));
+        let snapshot = snapshot_with_facts("flowchart TD\nA--> ", Some("flowchart-v2"), facts);
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, 5));
+
+        assert_eq!(
+            completion
+                .items
+                .iter()
+                .filter(|item| item
+                    .data
+                    .as_ref()
+                    .is_some_and(|data| { data.kind == CompletionDataKind::NodeIdentifier }))
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A"]
+        );
+    }
+
+    fn snapshot_with_facts(
+        text: &str,
+        diagram_type: Option<&str>,
+        facts: EditorSemanticFacts,
+    ) -> DocumentSnapshot {
+        DocumentSnapshot {
+            uri: DocumentUri::from("file:///tmp/example.mmd"),
+            version: 1,
+            kind: DocumentKind::Diagram,
+            text: text.to_string(),
+            source_map: SourceMap::new(text.to_string()),
+            fences: vec![FenceSnapshot {
+                index: 0,
+                start: 0,
+                body_start: 0,
+                end: text.len(),
+                text: text.to_string(),
+                diagram_type: diagram_type.map(str::to_string),
+                text_index: FenceTextIndex::from_core_facts(facts),
+            }],
+        }
+    }
 }

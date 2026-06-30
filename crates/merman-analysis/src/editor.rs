@@ -124,6 +124,8 @@ pub struct FenceCursorContext {
     prefix: String,
     prefix_start: usize,
     cursor: usize,
+    source: FenceTextIndexSource,
+    source_start: bool,
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
     expected_syntax: Option<FenceExpectedSyntaxKind>,
@@ -142,6 +144,21 @@ impl FenceCursorContext {
 
     pub fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    pub fn source(&self) -> FenceTextIndexSource {
+        self.source
+    }
+
+    pub fn has_parser_backed_facts(&self) -> bool {
+        matches!(
+            self.source,
+            FenceTextIndexSource::ParserComplete | FenceTextIndexSource::ParserRecovered
+        )
+    }
+
+    pub fn is_source_start(&self) -> bool {
+        self.source_start
     }
 
     pub fn directive_prefix(&self) -> Option<&'static str> {
@@ -445,36 +462,43 @@ impl FenceTextIndex {
         let comment_or_directive_line =
             prefix.trim_start().starts_with("%%") || directive_prefix.is_some();
         let mut completion_kinds = Vec::new();
-
-        if offer_diagram_headers(&prefix) {
-            completion_kinds.push(FenceCursorCompletionKind::DiagramHeader);
-        }
-        if offer_operator_items(&prefix) {
-            completion_kinds.push(FenceCursorCompletionKind::Operator);
-        }
-        if offer_direction_items(&prefix) {
-            completion_kinds.push(FenceCursorCompletionKind::Direction);
-        }
-        if offer_directive_items(&prefix, directive_prefix) {
-            completion_kinds.push(FenceCursorCompletionKind::Directive);
-        }
-        if offer_shape_items(&prefix) {
-            completion_kinds.push(FenceCursorCompletionKind::Shape);
-        }
-        if offer_node_items(&prefix, comment_or_directive_line) {
-            completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
-        }
+        let source_start = is_source_start_context(text, prefix_start);
         let expected_syntax = self.expected_syntax_at_offset(cursor).copied();
         let expected_syntax_kind = expected_syntax.map(|expected| expected.kind);
         let expected_syntax_span = expected_syntax.map(|expected| expected.span);
+
         if let Some(expected_syntax) = expected_syntax_kind {
             apply_expected_syntax_to_completion(expected_syntax, &mut completion_kinds);
+        } else {
+            if offer_diagram_headers(source_start, &prefix) {
+                completion_kinds.push(FenceCursorCompletionKind::DiagramHeader);
+            }
+
+            if matches!(
+                self.source,
+                FenceTextIndexSource::ParserComplete | FenceTextIndexSource::ParserRecovered
+            ) {
+                if offer_operator_items(&prefix) {
+                    completion_kinds.push(FenceCursorCompletionKind::Operator);
+                }
+                if offer_direction_items(&prefix) {
+                    completion_kinds.push(FenceCursorCompletionKind::Direction);
+                }
+                if offer_directive_items(&prefix, directive_prefix) {
+                    completion_kinds.push(FenceCursorCompletionKind::Directive);
+                }
+                if offer_shape_items(&prefix) {
+                    completion_kinds.push(FenceCursorCompletionKind::Shape);
+                }
+            }
         }
 
         FenceCursorContext {
             prefix,
             prefix_start,
             cursor,
+            source: self.source,
+            source_start,
             directive_prefix,
             comment_or_directive_line,
             expected_syntax: expected_syntax_kind,
@@ -547,6 +571,10 @@ fn current_line_prefix(text: &str, cursor: usize) -> (usize, String) {
     let prefix_start = line_start + raw_prefix.len().saturating_sub(trimmed.len());
 
     (prefix_start, trimmed.to_string())
+}
+
+fn is_source_start_context(text: &str, prefix_start: usize) -> bool {
+    text[..prefix_start].trim().is_empty()
 }
 
 const DIRECTIVE_PREFIXES: &[&str] = &[
@@ -626,7 +654,10 @@ const PAYLOAD_ONLY_TEXT_SCAN_PREFIXES: &[&str] = &[
     ":::",
 ];
 
-fn offer_diagram_headers(prefix: &str) -> bool {
+fn offer_diagram_headers(source_start: bool, prefix: &str) -> bool {
+    if !source_start {
+        return false;
+    }
     let prefix = prefix.trim_end();
 
     prefix.is_empty() || diagram_header_prefix_matches(prefix)
@@ -659,15 +690,6 @@ fn offer_shape_items(prefix: &str) -> bool {
         || prefix.ends_with("[/")
         || prefix.ends_with("[\\")
         || prefix.ends_with('>')
-}
-
-fn offer_node_items(prefix: &str, comment_or_directive_line: bool) -> bool {
-    let prefix = prefix.trim_end();
-
-    !diagram_header_prefix_matches(prefix)
-        && !offer_direction_items(prefix)
-        && !comment_or_directive_line
-        && !offer_shape_items(prefix)
 }
 
 fn diagram_header_prefix_matches(prefix: &str) -> bool {
@@ -1375,12 +1397,15 @@ mod tests {
     }
 
     #[test]
-    fn cursor_context_classifies_header_operator_directive_and_nodes() {
+    fn text_scan_cursor_context_only_offers_source_start_headers() {
         let index = FenceTextIndex::from_text("flowchart TD\nA-->B\n", Some("flowchart-v2"));
 
         let header = index.cursor_context("flow", 4);
         assert_eq!(header.prefix(), "flow");
         assert_eq!(header.prefix_start(), 0);
+        assert_eq!(header.source(), FenceTextIndexSource::TextScan);
+        assert!(header.is_source_start());
+        assert!(!header.has_parser_backed_facts());
         assert!(header.offers(FenceCursorCompletionKind::DiagramHeader));
         assert!(!header.offers(FenceCursorCompletionKind::NodeIdentifier));
 
@@ -1390,16 +1415,16 @@ mod tests {
 
         let ambiguous = index.cursor_context("flowchart TD\nA-", "flowchart TD\nA-".len());
         assert!(!ambiguous.offers(FenceCursorCompletionKind::Operator));
-        assert!(ambiguous.offers(FenceCursorCompletionKind::NodeIdentifier));
+        assert!(!ambiguous.offers(FenceCursorCompletionKind::NodeIdentifier));
 
         let operator = index.cursor_context("flowchart TD\nA-->B", "flowchart TD\nA--".len());
-        assert!(operator.offers(FenceCursorCompletionKind::Operator));
-        assert!(operator.offers(FenceCursorCompletionKind::NodeIdentifier));
+        assert!(!operator.offers(FenceCursorCompletionKind::Operator));
+        assert!(!operator.offers(FenceCursorCompletionKind::NodeIdentifier));
 
         let directive = index.cursor_context("classDef foo fill:#f00", "classDef foo".len());
         assert_eq!(directive.directive_prefix(), Some("classDef"));
         assert!(directive.is_comment_or_directive_line());
-        assert!(directive.offers(FenceCursorCompletionKind::Directive));
+        assert!(!directive.offers(FenceCursorCompletionKind::Directive));
         assert!(!directive.offers(FenceCursorCompletionKind::NodeIdentifier));
 
         for (source, prefix, expected_prefix) in [
@@ -1418,7 +1443,7 @@ mod tests {
             let context = index.cursor_context(source, prefix);
             assert_eq!(context.directive_prefix(), expected_prefix);
             assert!(context.is_comment_or_directive_line());
-            assert!(context.offers(FenceCursorCompletionKind::Directive));
+            assert!(!context.offers(FenceCursorCompletionKind::Directive));
             assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
         }
 
@@ -1438,12 +1463,28 @@ mod tests {
         assert!(!gantt_directive.offers(FenceCursorCompletionKind::NodeIdentifier));
 
         let node = index.cursor_context("node_1", "node_1".len());
-        assert!(node.offers(FenceCursorCompletionKind::NodeIdentifier));
+        assert!(!node.offers(FenceCursorCompletionKind::NodeIdentifier));
     }
 
     #[test]
-    fn cursor_context_uses_fence_local_offsets_and_shape_context() {
-        let index = FenceTextIndex::from_text("A@{ shape: ", Some("flowchart-v2"));
+    fn parser_backed_cursor_context_allows_prefix_limited_helpers() {
+        let index = FenceTextIndex::from_core_facts(EditorSemanticFacts::new());
+
+        let operator = index.cursor_context("flowchart TD\nA-->B", "flowchart TD\nA--".len());
+        assert_eq!(operator.source(), FenceTextIndexSource::ParserComplete);
+        assert!(operator.has_parser_backed_facts());
+        assert!(operator.offers(FenceCursorCompletionKind::Operator));
+        assert!(!operator.offers(FenceCursorCompletionKind::NodeIdentifier));
+
+        let directive = index.cursor_context("classDef foo fill:#f00", "classDef foo".len());
+        assert_eq!(directive.directive_prefix(), Some("classDef"));
+        assert!(directive.offers(FenceCursorCompletionKind::Directive));
+        assert!(!directive.offers(FenceCursorCompletionKind::NodeIdentifier));
+    }
+
+    #[test]
+    fn cursor_context_uses_fence_local_offsets_and_parser_backed_shape_context() {
+        let index = FenceTextIndex::from_core_facts(EditorSemanticFacts::new());
         let context = index.cursor_context("  A@{ shape: ", "  A@{ shape: ".len());
 
         assert_eq!(context.prefix(), "A@{ shape: ");

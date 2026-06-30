@@ -303,11 +303,6 @@ summary {
   background: var(--vscode-dropdown-background, var(--vscode-editor-background));
 }
 
-.preview-sourcebar button[aria-pressed="true"] {
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
-}
-
 .diagnostics {
   position: absolute;
   left: 10px;

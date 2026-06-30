@@ -2,6 +2,11 @@ import * as vscode from "vscode";
 
 import { extractPreviewInput } from "./preview-source.js";
 import {
+  mermaidSourceCommandSourceId,
+  mermaidSourceCommandUri,
+  type MermaidSourceCommandArgument,
+} from "./source-actions.js";
+import {
   type PreviewBackground,
   type PreviewDiagramTheme,
   type PreviewDiagnosticTarget,
@@ -57,9 +62,12 @@ class MermanPreviewController implements vscode.Disposable {
     this.outputChannel = vscode.window.createOutputChannel("Merman Preview", { log: true });
     this.disposables.push(this.outputChannel);
     this.disposables.push(
-      vscode.commands.registerCommand(PREVIEW_COMMAND, async (resource?: vscode.Uri) => {
-        await this.open(resource);
-      }),
+      vscode.commands.registerCommand(
+        PREVIEW_COMMAND,
+        async (target?: MermaidSourceCommandArgument) => {
+          await this.open(target);
+        },
+      ),
     );
     this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor(() => {
@@ -101,8 +109,8 @@ class MermanPreviewController implements vscode.Disposable {
     }
   }
 
-  private async open(resource?: vscode.Uri): Promise<void> {
-    await this.openResource(resource);
+  private async open(target?: MermaidSourceCommandArgument): Promise<void> {
+    await this.openResource(target);
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "mermanPreview",
@@ -141,7 +149,9 @@ class MermanPreviewController implements vscode.Disposable {
     this.scheduleRefresh("manual-open", true);
   }
 
-  private async openResource(resource?: vscode.Uri): Promise<void> {
+  private async openResource(target?: MermaidSourceCommandArgument): Promise<void> {
+    const resource = mermaidSourceCommandUri(target);
+    const sourceId = mermaidSourceCommandSourceId(target);
     if (!resource) {
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor && extractPreviewInput(activeEditor)) {
@@ -150,15 +160,17 @@ class MermanPreviewController implements vscode.Disposable {
       return;
     }
     this.session.rememberResource(resource);
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor?.document.uri.toString() === resource.toString()) {
-      return;
+    let editor = vscode.window.activeTextEditor;
+    if (editor?.document.uri.toString() !== resource.toString()) {
+      const document = await vscode.workspace.openTextDocument(resource);
+      editor = await vscode.window.showTextDocument(document, {
+        preview: true,
+        preserveFocus: false,
+      });
     }
-    const document = await vscode.workspace.openTextDocument(resource);
-    await vscode.window.showTextDocument(document, {
-      preview: true,
-      preserveFocus: false,
-    });
+    if (sourceId && editor) {
+      this.session.selectSource(editor, vscode.window.visibleTextEditors, sourceId);
+    }
   }
 
   private scheduleRefresh(reason: PreviewUpdateReason, immediate = false): void {
@@ -318,9 +330,6 @@ class MermanPreviewController implements vscode.Disposable {
       case "showDiagnosticFixes":
         await showDiagnosticFixes(parseDiagnosticTarget(message.target));
         return;
-      case "togglePin":
-        this.togglePin();
-        return;
       case "selectSource":
         this.selectSource(message.sourceId);
         return;
@@ -334,15 +343,6 @@ class MermanPreviewController implements vscode.Disposable {
         this.setBackground(message.background);
         return;
     }
-  }
-
-  private togglePin(): void {
-    if (
-      !this.session.togglePin(vscode.window.activeTextEditor, vscode.window.visibleTextEditors)
-    ) {
-      return;
-    }
-    this.scheduleRefresh("pin-toggle", true);
   }
 
   private selectSource(sourceId: string): void {

@@ -13,9 +13,11 @@ remote AI.
   and safe quick fixes where Merman analysis provides fix metadata
 - Static Mermaid snippets for common diagram skeletons, plus LSP snippets for context-sensitive helper
   inserts and diagram templates
+- Source-scoped CodeLens actions above Mermaid files and Markdown/MDX Mermaid fences for preview,
+  SVG/PNG export, and SVG/PNG copy
 - Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped
-  diagnostics, quick-fix entry points, source pinning, multi-fence selection, zoom, theme/background
-  inspection controls, and local SVG copy
+  diagnostics, quick-fix entry points, multi-fence selection, zoom, theme/background inspection
+  controls, and local SVG copy
 - Local SVG and PNG export for Mermaid files and the active Markdown/MDX Mermaid fence, including
   an export picker with open-after-export options
 - Local runtime launch through one shared resolver:
@@ -68,6 +70,11 @@ is required for normal use.
 - `Merman: Copy PNG` (uses the local platform clipboard when available, otherwise falls back to PNG export)
 - `Merman: Show Rule Catalog`
 - `Merman: Show Config Schema`
+
+Mermaid files and Markdown/MDX Mermaid fences also show CodeLens source actions for `Preview`,
+`Export SVG`, `Export PNG`, `Copy SVG`, and, when the local platform supports clipboard PNG,
+`Copy PNG`. Markdown fence actions carry a stable fence id, so they do not retarget when the cursor
+moves before the command runs.
 
 The extension intentionally coexists with VS Code's built-in Mermaid support in Markdown preview.
 Use Merman for semantic editing, `.mmd` files, fence-aware diagnostics, local preview inspection,

@@ -1,0 +1,73 @@
+import * as assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import {
+  SOURCE_ACTION_COMMANDS,
+  buildMermaidSourceCodeLensSpecs,
+  isMermaidSourceCommandTarget,
+  mermaidSourceCommandSourceId,
+  mermaidSourceCommandTarget,
+  mermaidSourceCommandUri,
+  type MermaidSourceCommandArgument,
+} from "../source-actions.js";
+
+describe("Mermaid source actions", () => {
+  it("builds one low-noise action group for a Mermaid file", () => {
+    const specs = buildMermaidSourceCodeLensSpecs([
+      { sourceId: "document", sourceRange: { startLine: 0, endLine: 4 } },
+    ]);
+
+    assert.deepEqual(
+      specs.map((spec) => [spec.line, spec.sourceId, spec.title, spec.command]),
+      [
+        [0, "document", "Preview", SOURCE_ACTION_COMMANDS.preview],
+        [0, "document", "Export SVG", SOURCE_ACTION_COMMANDS.exportSvg],
+        [0, "document", "Export PNG", SOURCE_ACTION_COMMANDS.exportPng],
+        [0, "document", "Copy SVG", SOURCE_ACTION_COMMANDS.copySvg],
+        [0, "document", "Copy PNG", SOURCE_ACTION_COMMANDS.copyPng],
+      ],
+    );
+  });
+
+  it("builds source-scoped actions for each Markdown Mermaid fence", () => {
+    const specs = buildMermaidSourceCodeLensSpecs([
+      { sourceId: "fence-1", sourceRange: { startLine: 2, endLine: 5 } },
+      { sourceId: "fence-2", sourceRange: { startLine: 8, endLine: 11 } },
+    ]);
+
+    assert.deepEqual(
+      specs.filter((spec) => spec.title === "Preview").map((spec) => [spec.line, spec.sourceId]),
+      [
+        [2, "fence-1"],
+        [8, "fence-2"],
+      ],
+    );
+  });
+
+  it("omits Copy PNG when the local platform cannot provide a reliable clipboard path", () => {
+    const specs = buildMermaidSourceCodeLensSpecs(
+      [{ sourceId: "document", sourceRange: { startLine: 0, endLine: 0 } }],
+      { includeCopyPng: false },
+    );
+
+    assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.copyPng), false);
+    assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.copySvg), true);
+  });
+
+  it("carries the source id through command targets without depending on cursor state", () => {
+    const uri = { toString: () => "file:///workspace/notes.md" };
+    const target = mermaidSourceCommandTarget(uri as never, "fence-2");
+
+    assert.equal(isMermaidSourceCommandTarget(target), true);
+    assert.equal(mermaidSourceCommandUri(target), uri);
+    assert.equal(mermaidSourceCommandSourceId(target), "fence-2");
+    assert.equal(
+      mermaidSourceCommandUri(uri as MermaidSourceCommandArgument),
+      uri,
+    );
+    assert.equal(
+      mermaidSourceCommandSourceId(uri as MermaidSourceCommandArgument),
+      undefined,
+    );
+  });
+});

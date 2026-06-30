@@ -38,7 +38,6 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
       <section class="viewport" aria-label="Mermaid preview canvas">
         <div class="preview-sourcebar" data-preview-sourcebar hidden>
           <select data-action="source" data-preview-source-list title="Preview source"></select>
-          <button type="button" data-action="pin" aria-pressed="false" title="Lock preview source">Lock</button>
         </div>
         ${renderToolbar()}
         <div class="stage"><div class="canvas" data-preview-canvas></div></div>

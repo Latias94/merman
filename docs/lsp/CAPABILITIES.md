@@ -71,12 +71,13 @@ does not expose many entity-bearing spans.
   validation hints, available lint profiles, diagnostic severities, configurable rule-id enums, and
   the accepted direct/`merman`/`analysis` settings roots. The schema describes the same analysis
   options accepted by initialization options and `workspace/didChangeConfiguration`.
-- Completion: semantic roles must exclude payload-only spans. Static authoring templates and
-  context-sensitive helper inserts may use LSP snippet completion items, while semantic target
-  reuse such as node identifiers and class names stays plain text. Directive-aware completion
-  offers node targets for `style`, `class`, `cssClass`, `click`, `link`, and `callback` target
-  slots; class names for class-reference slots; and snippets for style properties, interaction
-  actions, icon nodes, frontmatter config, and `themeCSS`.
+- Completion: availability is decided before item projection. Diagram headers and static diagram
+  templates are offered only at legal document or fence starts. Semantic roles must exclude
+  payload-only spans. Parser expected-syntax spans and parser-backed directive slots may expose
+  direction, shape, operator, node identifier, class name, style, interaction, frontmatter config,
+  and `themeCSS` completions. Semantic target reuse such as node identifiers and class names stays
+  plain text. Unsupported body positions and parser-controlled payload spans intentionally return
+  no items instead of generic diagram headers or broad node-id guesses.
 - Completion resolve: completion items carry Merman-owned `data`, and `completionItem/resolve`
   fills Markdown documentation without changing `insertText`, `textEdit`, filtering, or sorting
   fields.
@@ -90,6 +91,11 @@ does not expose many entity-bearing spans.
   `merman.authoring.flowchart.explicit_direction` insertion fix when the `recommended` lint
   profile or explicit rule enablement is active. The frontmatter-config rule carries a
   migration quickfix that rewrites init/initialize directive config into YAML frontmatter.
+- VS Code source actions: Mermaid files and Markdown/MDX Mermaid fences expose source-scoped
+  CodeLens actions for preview, SVG/PNG export, and SVG/PNG copy. The action target carries the
+  stable source id for Markdown fences, so cursor movement after the CodeLens is created does not
+  retarget the operation. These actions are local-only and do not include pin, AI, account, sync,
+  or remote-rendering controls.
 - Config lint: Mermaid-backed compatibility warnings can be enabled in the core profile when
   upstream emits or documents the same warning.
   `merman.compatibility.config.deprecated_flowchart_html_labels` reports deprecated
@@ -104,10 +110,11 @@ does not expose many entity-bearing spans.
   modifiers preserve role categories. Configuration changes ask the client to refresh semantic
   tokens when refresh support is advertised, and delta requests reuse cached previous token state
   when the result id matches.
-- Text-scan fallback: may record directive prefixes for unmigrated paths, but must not project
+- Text-scan fallback: may support source-start headers/templates and record directive prefixes for
+  unmigrated paths, but must not assert body completion availability. It must not project
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`
-  into node IDs or outline entries. Parser-backed payload facts must likewise remain outside
-  completion IDs and outline entries unless their role explicitly permits it.
+  into node IDs, completion IDs, or outline entries. Parser-backed payload facts must likewise
+  remain outside completion IDs and outline entries unless their role explicitly permits it.
 - Flowchart lint: parser-backed warning facts flow through the shared analysis contract, starting
   with a recommended-profile authoring hint and preferred quickfix for flowchart headers that omit
   an explicit direction, plus a core compatibility warning for `style` targets that would

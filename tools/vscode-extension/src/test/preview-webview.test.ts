@@ -408,7 +408,6 @@ class FakeDocument {
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
   readonly copySvg = new FakeButtonElement({ dataset: { action: "copy-svg" } });
-  readonly pin = new FakeButtonElement({ dataset: { action: "pin" } });
   private readonly listeners = new Map<string, Array<(event: unknown) => void>>();
 
   constructor() {
@@ -448,8 +447,6 @@ class FakeDocument {
         return this.background;
       case '[data-action="copy-svg"]':
         return this.copySvg;
-      case '[data-action="pin"]':
-        return this.pin;
       default:
         return null;
     }
