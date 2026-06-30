@@ -41,6 +41,10 @@ describe("preview html", () => {
     assert.match(html, /data-action="fit"/);
     assert.match(html, /data-action="reset"/);
     assert.match(html, /data-zoom-value/);
+    assert.match(html, /data-background="paper"/);
+    assert.match(html, /data-preview-output-controls/);
+    assert.match(html, /data-action="export-svg"/);
+    assert.match(html, /data-action="export-png"/);
     assert.match(html, /data-action="diagram-theme"/);
     assert.match(html, /value="forest"/);
     assert.doesNotMatch(html, /<svg viewBox/);
@@ -82,11 +86,14 @@ describe("preview html", () => {
     assert.match(script, /applyVectorZoom/);
     assert.match(script, /post\("setDiagramTheme"/);
     assert.match(script, /post\("setDisplayMode"/);
+    assert.match(script, /post\("exportRendered"/);
     assert.match(script, /document\.addEventListener\("pointermove"/);
     assert.doesNotMatch(script, /dataset\.action\) {\n\s+case "theme":/);
     assert.match(styles, /touch-action:\s*none/);
     assert.match(styles, /cursor:\s*grab/);
     assert.match(styles, /\.stage/);
+    assert.match(styles, /align-items:\s*center/);
+    assert.match(styles, /\[data-preview-output-controls\]\[hidden\]/);
     assert.doesNotMatch(styles, /scale\(var\(--preview-zoom/);
     assert.match(styles, /\.canvas svg \{[^}]*pointer-events:\s*none/s);
   });

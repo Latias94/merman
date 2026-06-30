@@ -219,6 +219,24 @@ describe("preview webview app", () => {
     assert.equal(textPreview.textContent, "A --> B");
     assert.equal(app.document.canvas.querySelector("svg"), null);
     assert.equal(app.persistedState.displayMode, "ascii");
+    assert.equal(app.document.outputControls.hidden, true);
+  });
+
+  it("defaults the preview to paper background and keeps output controls visible for SVG", () => {
+    const app = loadPreviewApp();
+
+    assert.equal(app.persistedState.background, "paper");
+    assert.equal(app.document.frame.dataset.background, "paper");
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ background: "paper" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+
+    assert.equal(app.document.outputControls.hidden, false);
+    assert.equal(app.document.background.value, "paper");
   });
 
   it("hides the preview source bar unless a Markdown document has multiple Mermaid fences", () => {
@@ -326,7 +344,7 @@ function snapshot(options: {
   const sourceHash = options.sourceHash ?? "hash-a";
   const diagramTheme = options.diagramTheme ?? "source";
   const displayMode = options.displayMode ?? "svg";
-  const background = options.background ?? "transparent";
+  const background = options.background ?? "paper";
   return {
     documentUri,
     sourceId,
@@ -385,6 +403,7 @@ class FakeDocument {
   readonly empty = new FakeElement("div", { dataset: { previewEmpty: "" } });
   readonly sourceBar = new FakeElement("div", { dataset: { previewSourcebar: "" } });
   readonly sourceList = new FakeSelectElement({ dataset: { previewSourceList: "", action: "source" } });
+  readonly outputControls = new FakeElement("span", { dataset: { previewOutputControls: "" } });
   readonly displayMode = new FakeSelectElement({ dataset: { action: "display-mode" } });
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
@@ -419,6 +438,8 @@ class FakeDocument {
         return this.sourceBar;
       case "[data-preview-source-list]":
         return this.sourceList;
+      case "[data-preview-output-controls]":
+        return this.outputControls;
       case '[data-action="display-mode"]':
         return this.displayMode;
       case '[data-action="diagram-theme"]':

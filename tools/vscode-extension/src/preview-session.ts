@@ -25,7 +25,7 @@ export class PreviewSession {
   private pinnedSource: PreviewSourcePin | undefined;
   private theme: PreviewDiagramTheme = "source";
   private displayMode: PreviewDisplayMode = "svg";
-  private background: PreviewBackground = "transparent";
+  private background: PreviewBackground = "paper";
 
   get snapshot(): PreviewSnapshot | undefined {
     return this.currentSnapshot;
@@ -49,7 +49,7 @@ export class PreviewSession {
     this.pinnedSource = undefined;
     this.theme = "source";
     this.displayMode = "svg";
-    this.background = "transparent";
+    this.background = "paper";
   }
 
   clearSource(): void {

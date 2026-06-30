@@ -33,7 +33,7 @@ export function renderPreviewHtml(request: RenderPreviewHtmlRequest): string {
     <link rel="stylesheet" href="${escapeHtml(request.resources.stylesUri)}" />
   </head>
   <body>
-    <main class="frame" data-theme="light" data-background="transparent" data-display-mode="svg">
+    <main class="frame" data-theme="light" data-background="paper" data-display-mode="svg">
       <section class="diagnostics" data-preview-diagnostics hidden></section>
       <section class="viewport" aria-label="Mermaid preview canvas">
         <div class="preview-sourcebar" data-preview-sourcebar hidden>
@@ -63,6 +63,11 @@ function renderToolbar(): string {
       <button type="button" data-action="fit" title="Fit to view">Fit</button>
       <button type="button" data-action="reset" title="Reset to actual size">1:1</button>
     </span>
+    <span class="toolbar-group" data-preview-output-controls>
+      <button type="button" data-action="copy-svg" title="Copy rendered SVG">Copy SVG</button>
+      <button type="button" data-action="export-svg" title="Export SVG">Export SVG</button>
+      <button type="button" data-action="export-png" title="Export PNG">Export PNG</button>
+    </span>
     <details class="preview-menu" data-preview-menu>
       <summary title="Preview settings">...</summary>
       <label>
@@ -87,12 +92,11 @@ function renderToolbar(): string {
       <label>
         <span>Background</span>
         <select data-action="background" title="Preview background">
-          <option value="transparent">Transparent</option>
           <option value="paper">Paper</option>
+          <option value="transparent">Transparent</option>
           <option value="dark">Dark</option>
         </select>
       </label>
-      <button type="button" data-action="copy-svg" title="Copy rendered SVG">Copy SVG</button>
     </details>
   </nav>`;
 }

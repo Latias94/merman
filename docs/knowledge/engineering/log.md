@@ -6,6 +6,12 @@ status: active
 # Log
 
 ## 2026-06-30
+- Refined the VS Code preview toolbar after visual review: default preview background is now
+  paper/white, `Copy SVG`, `Export SVG`, and `Export PNG` are always visible in SVG mode, display
+  settings stay in the menu, output buttons are vertically centered, and preview export uses the
+  current `PreviewSession` snapshot so it works even when the webview has focus. Re-verified
+  `tools/vscode-extension` with `npm run check`, `npm test -- --test-reporter=spec` (60 tests),
+  `npm run package`, and reinstalled the VSIX into VS Code.
 - Completed the product-oriented VS Code preview UI pass: the webview is now content-first with a
   low-noise floating toolbar, settings menu for display mode/theme/background, conditional source
   lock controls only for multi-fence Markdown previews, hidden no-issue diagnostics, and

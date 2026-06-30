@@ -13,7 +13,7 @@
   const displayModeElement = document.querySelector('[data-action="display-mode"]');
   const themeElement = document.querySelector('[data-action="diagram-theme"]');
   const backgroundElement = document.querySelector('[data-action="background"]');
-  const copySvgElement = document.querySelector('[data-action="copy-svg"]');
+  const outputControlsElement = document.querySelector("[data-preview-output-controls]");
   const pinElement = document.querySelector('[data-action="pin"]');
   const persisted = vscode.getState?.() || {};
   const state = {
@@ -21,7 +21,7 @@
     panX: finiteNumber(persisted.panX, 0),
     panY: finiteNumber(persisted.panY, 0),
     autoFit: persisted.autoFit !== false,
-    background: typeof persisted.background === "string" ? persisted.background : "transparent",
+    background: typeof persisted.background === "string" ? persisted.background : "paper",
     displayMode: typeof persisted.displayMode === "string" ? persisted.displayMode : "svg",
     sourceKeyId: typeof persisted.sourceKeyId === "string" ? persisted.sourceKeyId : undefined,
     sourceIdentityKey:
@@ -327,8 +327,8 @@
     if (backgroundElement instanceof HTMLSelectElement) {
       backgroundElement.value = state.background;
     }
-    if (copySvgElement instanceof HTMLElement) {
-      copySvgElement.hidden = state.displayMode !== "svg";
+    if (outputControlsElement instanceof HTMLElement) {
+      outputControlsElement.hidden = state.displayMode !== "svg";
     }
     if (pinElement instanceof HTMLButtonElement) {
       pinElement.setAttribute("aria-pressed", snapshot.pinned ? "true" : "false");
@@ -573,6 +573,12 @@
         break;
       case "copy-svg":
         copySvg();
+        break;
+      case "export-svg":
+        post("exportRendered", { format: "svg" });
+        break;
+      case "export-png":
+        post("exportRendered", { format: "png" });
         break;
       case "pin":
         post("togglePin", {});

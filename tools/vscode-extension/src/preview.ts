@@ -23,6 +23,11 @@ import {
   type PreviewUpdateReason,
 } from "./preview-policy.js";
 import { renderMermanSource } from "./renderer.js";
+import {
+  defaultExportPath,
+  exportFilters,
+  type ExportFormat,
+} from "./export-options.js";
 import { PreviewRenderQueue } from "./preview-render.js";
 import { PreviewSession } from "./preview-session.js";
 import { assertSafePreviewSvg } from "./preview-svg-safety.js";
@@ -247,7 +252,7 @@ class MermanPreviewController implements vscode.Disposable {
       context: this.context,
       source: snapshot.input.source,
       format: snapshot.displayMode,
-      theme: this.session.diagramTheme,
+      theme: snapshot.diagramTheme,
       background: previewCliBackground(snapshot.background),
       outputChannel: this.outputChannel,
       signalLabel: "preview",
@@ -303,6 +308,9 @@ class MermanPreviewController implements vscode.Disposable {
       case "copySvg":
         await vscode.env.clipboard.writeText(message.svg);
         void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
+        return;
+      case "exportRendered":
+        await this.exportRendered(message.format);
         return;
       case "revealDiagnostic":
         await revealDiagnosticTarget(parseDiagnosticTarget(message.target));
@@ -369,6 +377,48 @@ class MermanPreviewController implements vscode.Disposable {
       return;
     }
     this.scheduleRefresh("background", true);
+  }
+
+  private async exportRendered(format: ExportFormat): Promise<void> {
+    const snapshot = this.session.snapshot;
+    if (!snapshot) {
+      void vscode.window.showWarningMessage(
+        "Open a Mermaid preview before exporting the rendered diagram.",
+      );
+      return;
+    }
+
+    const documentUri = vscode.Uri.parse(snapshot.documentUri);
+    const defaultUri =
+      documentUri.scheme === "file"
+        ? vscode.Uri.file(defaultExportPath(documentUri.fsPath, snapshot.input.exportBaseName, format))
+        : undefined;
+    const target = await vscode.window.showSaveDialog({
+      defaultUri,
+      filters: exportFilters(format),
+      saveLabel: `Export ${format.toUpperCase()}`,
+    });
+    if (!target) {
+      return;
+    }
+
+    try {
+      await renderMermanSource({
+        context: this.context,
+        source: snapshot.input.source,
+        format,
+        theme: snapshot.diagramTheme,
+        background: previewCliBackground(snapshot.background),
+        outputPath: target.fsPath,
+        outputChannel: this.outputChannel,
+        signalLabel: `preview-export-${format}`,
+      });
+      void vscode.window.showInformationMessage(`Exported ${vscode.workspace.asRelativePath(target, false)}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.outputChannel.error(message);
+      void vscode.window.showErrorMessage(`Merman preview export failed: ${message}`);
+    }
   }
 }
 

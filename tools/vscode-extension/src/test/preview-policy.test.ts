@@ -125,7 +125,7 @@ function snapshot(
     pinned: false,
     diagramTheme: options.diagramTheme ?? "source",
     displayMode: options.displayMode ?? "svg",
-    background: options.background ?? "transparent",
+    background: options.background ?? "paper",
   });
 }
 

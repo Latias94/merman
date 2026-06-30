@@ -173,6 +173,6 @@ function snapshot(): PreviewSnapshot {
     pinned: false,
     diagramTheme: "source",
     displayMode: "svg",
-    background: "transparent",
+    background: "paper",
   });
 }

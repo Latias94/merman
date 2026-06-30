@@ -74,6 +74,7 @@ export type PreviewToWebviewMessage =
 export type PreviewFromWebviewMessage =
   | { type: "ready" }
   | { type: "copySvg"; svg: string }
+  | { type: "exportRendered"; format: "svg" | "png" }
   | { type: "revealDiagnostic"; target: string }
   | { type: "showDiagnosticFixes"; target: string }
   | { type: "togglePin" }
@@ -115,6 +116,8 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
       return true;
     case "copySvg":
       return typeof record.svg === "string";
+    case "exportRendered":
+      return record.format === "svg" || record.format === "png";
     case "revealDiagnostic":
     case "showDiagnosticFixes":
       return typeof record.target === "string";

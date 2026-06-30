@@ -21,8 +21,8 @@ summary {
 }
 
 .frame {
-  --preview-background: transparent;
-  --preview-grid-a: rgba(127, 127, 127, 0.08);
+  --preview-background: #ffffff;
+  --preview-grid-a: rgba(15, 23, 42, 0.04);
   height: 100vh;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -195,8 +195,12 @@ summary {
 }
 
 .toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 26px;
   padding: 0 7px;
+  line-height: 1;
 }
 
 .toolbar button:hover,
@@ -237,8 +241,7 @@ summary {
   background: var(--vscode-toolbar-activeBackground, var(--vscode-list-activeSelectionBackground));
 }
 
-.preview-menu label,
-.preview-menu > button {
+.preview-menu label {
   display: none;
 }
 
@@ -247,8 +250,7 @@ summary {
   padding: 8px;
 }
 
-.preview-menu[open] label,
-.preview-menu[open] > button {
+.preview-menu[open] label {
   display: grid;
 }
 
@@ -259,14 +261,17 @@ summary {
   color: var(--vscode-descriptionForeground);
 }
 
-.preview-menu select,
-.preview-menu > button {
+.preview-menu select {
   width: 100%;
   min-height: 26px;
   box-sizing: border-box;
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
   color: var(--vscode-dropdown-foreground, var(--vscode-editor-foreground));
   background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+}
+
+[data-preview-output-controls][hidden] {
+  display: none;
 }
 
 .preview-sourcebar {

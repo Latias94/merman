@@ -17,6 +17,8 @@ describe("preview message validation", () => {
   it("accepts valid webview command payloads", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "ready" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: "<svg></svg>" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "svg" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "png" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource", sourceId: "fence-2" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "dark" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "ascii" }), true);
@@ -27,6 +29,7 @@ describe("preview message validation", () => {
   it("rejects malformed or unknown webview command payloads", () => {
     assert.equal(isPreviewFromWebviewMessage(null), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: 1 }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "pdf" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "solarized" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "png" }), false);

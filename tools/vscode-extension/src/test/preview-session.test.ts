@@ -21,6 +21,7 @@ describe("preview session", () => {
     assert.equal(snapshot?.input.kind, "mermaid-file");
     assert.equal(snapshot?.input.sourceId, "document");
     assert.equal(snapshot?.documentUri, "file:///workspace/example.mmd");
+    assert.equal(snapshot?.background, "paper");
   });
 });
 
