@@ -111,7 +111,7 @@ pub fn parse_flowchart_editor_facts(
         Err(error) => {
             let span = lalrpop_recovery_span(&error, code.len());
             let mut facts = recover_flowchart_editor_facts_from_tokens(&code);
-            facts.mark_recovered_with_diagnostic(
+            facts.mark_recovered_from_parse_error(
                 format!(
                     "flowchart parser recovered after parse error: {}",
                     format_lalrpop_parse_error(&error)

@@ -145,6 +145,13 @@ impl EditorSemanticSymbol {
 pub struct EditorSemanticDiagnostic {
     pub message: String,
     pub span: Option<SourceSpan>,
+    pub kind: EditorSemanticDiagnosticKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorSemanticDiagnosticKind {
+    ParserRecovery,
+    ParserWarning,
 }
 
 impl EditorSemanticDiagnostic {
@@ -152,6 +159,15 @@ impl EditorSemanticDiagnostic {
         Self {
             message: message.into(),
             span,
+            kind: EditorSemanticDiagnosticKind::ParserWarning,
+        }
+    }
+
+    pub fn parser_recovery(message: impl Into<String>, span: Option<SourceSpan>) -> Self {
+        Self {
+            message: message.into(),
+            span,
+            kind: EditorSemanticDiagnosticKind::ParserRecovery,
         }
     }
 }
@@ -218,6 +234,16 @@ impl EditorSemanticFacts {
     ) {
         self.mark_recovered();
         self.push_diagnostic(message, span);
+    }
+
+    pub fn mark_recovered_from_parse_error(
+        &mut self,
+        message: impl Into<String>,
+        span: Option<SourceSpan>,
+    ) {
+        self.mark_recovered();
+        self.diagnostics
+            .push(EditorSemanticDiagnostic::parser_recovery(message, span));
     }
 
     pub fn push_diagnostic(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {

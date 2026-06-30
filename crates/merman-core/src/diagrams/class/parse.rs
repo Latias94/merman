@@ -73,7 +73,7 @@ pub fn parse_class_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSema
     let mut facts = collect_class_editor_facts_from_tokens(code);
     if let Err(error) = parse_result {
         let span = lalrpop_recovery_span(&error, code.len());
-        facts.mark_recovered_with_diagnostic(
+        facts.mark_recovered_from_parse_error(
             format!(
                 "class parser recovered after parse error: {}",
                 format_lalrpop_parse_error(&error)

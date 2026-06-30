@@ -39,8 +39,8 @@ pub use diagram::{
 };
 pub use editor::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
-    EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, SourceSpan,
+    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{DiagramFamilyCapability, DiagramHeaderFact};

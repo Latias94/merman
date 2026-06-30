@@ -29,7 +29,7 @@ pub fn parse_sequence_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorS
     let mut facts = collect_sequence_editor_facts_from_tokens(code);
     if let Err(error) = parse_result {
         let span = lalrpop_recovery_span(&error, code.len());
-        facts.mark_recovered_with_diagnostic(
+        facts.mark_recovered_from_parse_error(
             format!(
                 "sequence parser recovered after parse error: {}",
                 format_lalrpop_parse_error(&error)

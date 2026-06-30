@@ -7,8 +7,8 @@ use crate::rules::{
 };
 use crate::{AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, SourceDescriptor, SourceMap};
 use merman_core::{
-    EditorSemanticDiagnostic, Engine, Error as CoreError, MermaidConfig, ParseDiagnostic,
-    ParseDiagnosticSpanKind, ParseOptions,
+    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, Engine, Error as CoreError,
+    MermaidConfig, ParseDiagnostic, ParseDiagnosticSpanKind, ParseOptions,
 };
 use std::panic::{self, AssertUnwindSafe};
 
@@ -146,11 +146,15 @@ impl Analyzer {
                         &source_map,
                         &self.options.rule_config,
                     ));
-                    diagnostics.extend(self.editor_recovery_diagnostics(
-                        source,
-                        &parsed.meta.diagram_type,
-                        &source_map,
-                    ));
+                    diagnostics.extend(
+                        self.editor_recovery_diagnostics(
+                            source,
+                            &parsed.meta.diagram_type,
+                            &source_map,
+                        )
+                        .into_iter()
+                        .map(|recovery| recovery.diagnostic),
+                    );
                     self.payload(diagnostics)
                 }
                 Ok(None) => self.payload(source_lints),
@@ -185,7 +189,7 @@ impl Analyzer {
         source: &str,
         diagram_type: &str,
         source_map: &SourceMap,
-    ) -> Vec<AnalysisDiagnostic> {
+    ) -> Vec<AnalysisRecoveryDiagnostic> {
         let facts_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine.parse_editor_semantic_facts_with_type_sync(
                 diagram_type,
@@ -197,6 +201,7 @@ impl Analyzer {
         match facts_result {
             Err(panic_payload) => {
                 panic_diagnostic(panic_payload, source_map, &self.options.rule_config)
+                    .map(AnalysisRecoveryDiagnostic::plain)
                     .into_iter()
                     .collect()
             }
@@ -217,52 +222,151 @@ impl Analyzer {
     }
 }
 
+#[derive(Debug, Clone)]
+struct AnalysisRecoveryDiagnostic {
+    diagnostic: AnalysisDiagnostic,
+    kind: Option<EditorSemanticDiagnosticKind>,
+}
+
+impl AnalysisRecoveryDiagnostic {
+    fn parser_backed(diagnostic: AnalysisDiagnostic, kind: EditorSemanticDiagnosticKind) -> Self {
+        Self {
+            diagnostic,
+            kind: Some(kind),
+        }
+    }
+
+    fn plain(diagnostic: AnalysisDiagnostic) -> Self {
+        Self {
+            diagnostic,
+            kind: None,
+        }
+    }
+}
+
 fn merge_recovery_diagnostics(
     diagnostics: &mut Vec<AnalysisDiagnostic>,
-    recovery_diagnostics: Vec<AnalysisDiagnostic>,
+    recovery_diagnostics: Vec<AnalysisRecoveryDiagnostic>,
 ) {
     for recovery in recovery_diagnostics {
         if merge_duplicate_parse_recovery_diagnostic(diagnostics, &recovery) {
             continue;
         }
-        diagnostics.push(recovery);
+        diagnostics.push(recovery.diagnostic);
     }
 }
 
 fn merge_duplicate_parse_recovery_diagnostic(
     diagnostics: &mut [AnalysisDiagnostic],
-    recovery: &AnalysisDiagnostic,
+    recovery: &AnalysisRecoveryDiagnostic,
 ) -> bool {
-    if recovery.id != RECOVERED_EDITOR_FACTS_RULE_ID {
+    if recovery.kind != Some(EditorSemanticDiagnosticKind::ParserRecovery) {
         return false;
     }
 
-    let Some(detail) = recovered_parse_error_detail(&recovery.message) else {
-        return false;
-    };
-
     let Some(primary) = diagnostics
         .iter_mut()
-        .find(|diagnostic| diagnostic.id == DIAGRAM_PARSE_RULE_ID && diagnostic.message == detail)
+        .find(|diagnostic| is_same_parse_recovery_problem(diagnostic, &recovery.diagnostic))
     else {
         return false;
     };
 
-    if recovery
-        .span
-        .as_ref()
-        .is_some_and(|span| span.byte_start < span.byte_end)
-    {
-        primary.span = recovery.span.clone();
+    if is_better_primary_parse_span(primary, &recovery.diagnostic) {
+        if let Some(previous_span) = primary.span.clone() {
+            primary.related.push(crate::DiagnosticRelated {
+                message: "Parser reported this original parse location before recovery refinement."
+                    .to_string(),
+                span: Some(previous_span),
+            });
+        }
+        primary.span = recovery.diagnostic.span.clone();
     }
+    primary.related.push(crate::DiagnosticRelated {
+        message: "Parser recovery produced the same syntax problem while preserving editor facts."
+            .to_string(),
+        span: recovery.diagnostic.span.clone(),
+    });
     true
 }
 
-fn recovered_parse_error_detail(message: &str) -> Option<&str> {
-    message
-        .split_once(" after parse error: ")
-        .map(|(_, detail)| detail.trim())
-        .filter(|detail| !detail.is_empty())
+fn is_same_parse_recovery_problem(
+    primary: &AnalysisDiagnostic,
+    recovery: &AnalysisDiagnostic,
+) -> bool {
+    if primary.id != DIAGRAM_PARSE_RULE_ID || recovery.id != RECOVERED_EDITOR_FACTS_RULE_ID {
+        return false;
+    }
+    if primary.diagram_type != recovery.diagram_type {
+        return false;
+    }
+    spans_describe_same_problem(primary.span.as_ref(), recovery.span.as_ref())
+        || primary_has_fallback_parse_location(primary)
+}
+
+fn is_better_primary_parse_span(
+    primary: &AnalysisDiagnostic,
+    recovery: &AnalysisDiagnostic,
+) -> bool {
+    let Some(recovery_span) = recovery.span.as_ref() else {
+        return false;
+    };
+    if recovery_span.byte_start == recovery_span.byte_end {
+        return false;
+    }
+    match primary.span.as_ref() {
+        None => true,
+        Some(primary_span) if primary_span.byte_start == primary_span.byte_end => true,
+        Some(primary_span)
+            if primary_span.byte_start == recovery_span.byte_start
+                && primary_span.byte_end == recovery_span.byte_end =>
+        {
+            false
+        }
+        Some(primary_span) => {
+            let primary_len = primary_span
+                .byte_end
+                .saturating_sub(primary_span.byte_start);
+            let recovery_len = recovery_span
+                .byte_end
+                .saturating_sub(recovery_span.byte_start);
+            recovery_len > 0 && recovery_len < primary_len
+        }
+    }
+}
+
+fn spans_describe_same_problem(
+    primary: Option<&crate::DiagnosticSpan>,
+    recovery: Option<&crate::DiagnosticSpan>,
+) -> bool {
+    match (primary, recovery) {
+        (None, _) | (_, None) => true,
+        (Some(primary), Some(recovery)) => {
+            primary.byte_start == recovery.byte_start
+                || primary.byte_end == recovery.byte_end
+                || spans_overlap(primary, recovery)
+                || point_touches_span(primary, recovery)
+                || point_touches_span(recovery, primary)
+        }
+    }
+}
+
+fn spans_overlap(left: &crate::DiagnosticSpan, right: &crate::DiagnosticSpan) -> bool {
+    left.byte_start < right.byte_end && right.byte_start < left.byte_end
+}
+
+fn point_touches_span(point: &crate::DiagnosticSpan, span: &crate::DiagnosticSpan) -> bool {
+    point.byte_start == point.byte_end
+        && span.byte_start <= point.byte_start
+        && point.byte_start <= span.byte_end
+}
+
+fn primary_has_fallback_parse_location(primary: &AnalysisDiagnostic) -> bool {
+    primary.related.iter().any(|related| {
+        related.message.contains("fallback location")
+            || related
+                .message
+                .contains("did not report a precise source location")
+    })
 }
 
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
@@ -436,7 +540,8 @@ fn recovered_editor_diagnostic(
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
+) -> Option<AnalysisRecoveryDiagnostic> {
+    let kind = diagnostic.kind;
     let mut out = rule_diagnostic(
         RECOVERED_EDITOR_FACTS_RULE_ID,
         AnalysisStatus::ParseError,
@@ -453,7 +558,7 @@ fn recovered_editor_diagnostic(
         out = out.with_span(span);
     }
 
-    Some(out)
+    Some(AnalysisRecoveryDiagnostic::parser_backed(out, kind))
 }
 
 fn rule_diagnostic(
@@ -532,6 +637,11 @@ mod tests {
         assert_eq!(parse_error.severity, DiagnosticSeverity::Error);
         assert_eq!(parse_error.category, DiagnosticCategory::Parse);
         assert_eq!(parse_error.diagram_type.as_deref(), Some("stateDiagram"));
+        assert!(parse_error.related.iter().any(|related| {
+            related
+                .message
+                .contains("Parser recovery produced the same syntax problem")
+        }));
         assert!(
             payload
                 .diagnostics

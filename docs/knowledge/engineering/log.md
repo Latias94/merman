@@ -6,6 +6,11 @@ status: active
 # Log
 
 ## 2026-06-30
+- Completed the first two slices of the editor diagnostics cleanup plan: U1 now uses a single
+  structured core parse diagnostic path with explicit fallback construction, and U2 moved
+  parse/recovery duplicate policy into `merman-analysis` while `merman-editor-core` now projects
+  diagnostics one-for-one without semantic deduplication or recovered-message rewriting. Verified
+  focused core, analysis, editor-core, and LSP diagnostics tests.
 - Started implementation of `docs/plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md`
   on `feat/editor-core-language-intelligence`; U1 is tightening the core parse diagnostic API by
   collapsing the dual parse-error surface and converting remaining imprecise parser errors through

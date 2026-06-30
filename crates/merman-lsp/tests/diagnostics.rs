@@ -46,7 +46,7 @@ fn diagnostics_projection_accepts_markdown_file_urls() {
 }
 
 #[test]
-fn diagnostics_projection_humanizes_recovered_parser_messages() {
+fn diagnostics_projection_preserves_analysis_messages_verbatim() {
     let payload = AnalysisPayload::new(
         SourceDescriptor::diagram(),
         vec![AnalysisDiagnostic::error(
@@ -61,7 +61,7 @@ fn diagnostics_projection_humanizes_recovered_parser_messages() {
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
         diagnostics[0].message,
-        "Mermaid syntax issue: unexpected statement separator"
+        "flowchart parser recovered after parse error: unexpected statement separator"
     );
 }
 

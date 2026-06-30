@@ -386,7 +386,7 @@ pub fn parse_er_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanti
     let mut facts = collect_er_editor_facts_from_tokens(code);
     if let Err(error) = parse_result {
         let span = lalrpop_recovery_span(&error, code.len());
-        facts.mark_recovered_with_diagnostic(
+        facts.mark_recovered_from_parse_error(
             format!(
                 "er parser recovered after parse error: {}",
                 format_lalrpop_parse_error(&error)
