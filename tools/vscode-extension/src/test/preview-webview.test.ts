@@ -157,25 +157,14 @@ describe("preview webview app", () => {
         sourceHash: "hash-a",
         diagnostics: {
           summary: "1 errors, 0 warnings, 0 infos, 0 hints",
-          visibleCount: 1,
           totalCount: 1,
-          items: [
-            {
-              severityLabel: "Error",
-              severityKey: "error",
-              line: 2,
-              column: 1,
-              target: {
-                uri: "file:///workspace/notes.md",
-                startLine: 1,
-                startCharacter: 0,
-                endLine: 1,
-                endCharacter: 1,
-              },
-              message: "syntax issue",
-              hasQuickFixes: true,
-            },
-          ],
+          firstTarget: {
+            uri: "file:///workspace/notes.md",
+            startLine: 1,
+            startCharacter: 0,
+            endLine: 1,
+            endCharacter: 1,
+          },
         },
       }),
     });
@@ -183,7 +172,8 @@ describe("preview webview app", () => {
     assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
     assert.equal(app.document.diagnostics.hidden, false);
     assert.match(app.document.diagnostics.textContentTree(), /1 errors/);
-    assert.match(app.document.diagnostics.textContentTree(), /syntax issue/);
+    assert.doesNotMatch(app.document.diagnostics.textContentTree(), /syntax issue/);
+    assert.equal(app.document.diagnostics.querySelector('[data-action="quick-fix"]'), null);
   });
 
   it("hides diagnostics when there are no issues", () => {
@@ -194,9 +184,7 @@ describe("preview webview app", () => {
       snapshot: snapshot({
         diagnostics: {
           summary: "0 errors, 0 warnings, 0 infos, 0 hints",
-          visibleCount: 0,
           totalCount: 0,
-          items: [],
         },
       }),
     });
@@ -239,6 +227,33 @@ describe("preview webview app", () => {
     assert.equal(app.document.background.value, "paper");
   });
 
+  it("copies source-sized SVG even after preview zoom changes DOM dimensions", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      content: '<svg viewBox="0 0 100 50"><path d="M0 0h100"/></svg>',
+    });
+    const svg = app.document.canvas.querySelector("svg");
+    assert.ok(svg);
+    assert.equal(svg.getAttribute("width"), "100");
+    assert.equal(svg.getAttribute("height"), "50");
+
+    svg.setAttribute("width", "250");
+    svg.setAttribute("height", "125");
+    app.click(app.document.copySvg);
+
+    const message = app.postedMessages.at(-1) as { type?: string; svg?: string };
+    assert.equal(message.type, "copySvg");
+    assert.match(message.svg ?? "", /<svg\b/);
+    assert.match(message.svg ?? "", /width="100"/);
+    assert.match(message.svg ?? "", /height="50"/);
+    assert.doesNotMatch(message.svg ?? "", /width="250"/);
+    assert.doesNotMatch(message.svg ?? "", /data-base-width/);
+  });
+
   it("hides the preview source bar unless a Markdown document has multiple Mermaid fences", () => {
     const app = loadPreviewApp();
 
@@ -268,7 +283,9 @@ describe("preview webview app", () => {
 interface PreviewAppHarness {
   document: FakeDocument;
   dispatch(message: unknown): void;
+  click(target: FakeElement): void;
   readonly persistedState: Record<string, unknown>;
+  readonly postedMessages: readonly unknown[];
 }
 
 function loadPreviewApp(initialState: Record<string, unknown> = {}): PreviewAppHarness {
@@ -296,6 +313,7 @@ function loadPreviewApp(initialState: Record<string, unknown> = {}): PreviewAppH
       },
     }),
     HTMLElement: FakeElement,
+    SVGElement: FakeElement,
     HTMLSelectElement: FakeSelectElement,
     HTMLButtonElement: FakeButtonElement,
     ResizeObserver: class {
@@ -318,8 +336,16 @@ function loadPreviewApp(initialState: Record<string, unknown> = {}): PreviewAppH
         listener({ data: message });
       }
     },
+    click(target: FakeElement): void {
+      document.dispatch("click", {
+        target,
+      });
+    },
     get persistedState(): Record<string, unknown> {
       return persistedState;
+    },
+    get postedMessages(): readonly unknown[] {
+      return postedMessages;
     },
   };
 }
@@ -351,7 +377,7 @@ function snapshot(options: {
     title: "notes.md",
     subtitle: "Mermaid fence 1",
     selectionLine: 1,
-    pinned: false,
+    selected: false,
     diagramTheme,
     displayMode,
     background,
@@ -467,6 +493,12 @@ class FakeDocument {
     listeners.push(listener);
     this.listeners.set(type, listeners);
   }
+
+  dispatch(type: string, event: unknown): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
 }
 
 class FakeElement {
@@ -507,6 +539,28 @@ class FakeElement {
   appendChild<T extends FakeElement>(child: T): T {
     this.children.push(child);
     return child;
+  }
+
+  cloneNode(deep = false): FakeElement {
+    const clone = new FakeElement(this.tagName, {
+      className: this.className,
+      dataset: { ...this.dataset },
+      clientWidth: this.clientWidth,
+      clientHeight: this.clientHeight,
+    });
+    clone.textContent = this.textContent;
+    clone.title = this.title;
+    clone.type = this.type;
+    clone.value = this.value;
+    clone.selected = this.selected;
+    clone.html = this.html;
+    for (const [name, value] of this.attributes.entries()) {
+      clone.attributes.set(name, value);
+    }
+    if (deep) {
+      clone.children.push(...this.children.map((child) => child.cloneNode(true)));
+    }
+    return clone;
   }
 
   replaceChildren(...children: FakeElement[]): void {
@@ -572,7 +626,8 @@ class FakeElement {
     const attrs = [...this.attributes.entries()]
       .map(([name, value]) => ` ${name}="${value}"`)
       .join("");
-    return `<${this.tagName}${attrs}>${this.html}</${this.tagName}>`;
+    const body = this.html || this.children.map((child) => child.outerHTML).join("");
+    return `<${this.tagName}${attrs}>${body}</${this.tagName}>`;
   }
 
   get offsetWidth(): number {

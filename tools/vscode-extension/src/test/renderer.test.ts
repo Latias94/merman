@@ -2,6 +2,10 @@ import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { renderMermanArgs } from "../render-options.js";
+import {
+  PREVIEW_DARK_BACKGROUND_COLOR,
+  previewCliBackground,
+} from "../preview-background.js";
 
 describe("renderer arguments", () => {
   it("passes preview Mermaid themes through to merman-cli", () => {
@@ -53,5 +57,11 @@ describe("renderer arguments", () => {
       "--background-color",
       "white",
     ]);
+  });
+
+  it("maps preview background choices to exported render backgrounds", () => {
+    assert.equal(previewCliBackground("paper"), "white");
+    assert.equal(previewCliBackground("transparent"), "transparent");
+    assert.equal(previewCliBackground("dark"), PREVIEW_DARK_BACKGROUND_COLOR);
   });
 });

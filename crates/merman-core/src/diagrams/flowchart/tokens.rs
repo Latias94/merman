@@ -2,7 +2,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickStmt, LabeledText, LinkStyleStmt, LinkToken, StyleStmt,
     SubgraphHeader,
 };
-use crate::SourceSpan;
+use crate::{ParseErrorSourceSpan, SourceSpan};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
@@ -45,4 +45,27 @@ pub(crate) struct NodeLabelToken {
 #[error("{message}")]
 pub(crate) struct LexError {
     pub message: String,
+    pub span: Option<SourceSpan>,
+}
+
+impl LexError {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            span: None,
+        }
+    }
+
+    pub(crate) fn with_span(message: impl Into<String>, span: SourceSpan) -> Self {
+        Self {
+            message: message.into(),
+            span: Some(span),
+        }
+    }
+}
+
+impl ParseErrorSourceSpan for LexError {
+    fn source_span(&self) -> Option<SourceSpan> {
+        self.span
+    }
 }

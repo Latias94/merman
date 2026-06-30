@@ -22,7 +22,7 @@ describe("preview update policy", () => {
     );
   });
 
-  it("requests a render when selection resolves to another unpinned source", () => {
+  it("requests a render when selection resolves to another unselected source", () => {
     const previous = snapshot({ sourceId: "fence-1", selectionLine: 2 });
     const next = snapshot({ sourceId: "fence-2", source: "sequenceDiagram\nA->>B: hi", selectionLine: 8 });
 
@@ -122,7 +122,7 @@ function snapshot(
     sources: [previewInput("fence-1", "flowchart TD\nA --> B\n"), previewInput("fence-2", "sequenceDiagram\nA->>B: hi")],
     diagnostics: options.diagnostics ?? diagnostics("0 errors, 0 warnings, 0 infos, 0 hints"),
     selectionLine: options.selectionLine ?? 1,
-    pinned: false,
+    selected: false,
     diagramTheme: options.diagramTheme ?? "source",
     displayMode: options.displayMode ?? "svg",
     background: options.background ?? "paper",
@@ -150,28 +150,18 @@ function previewInput(sourceId: string, source: string): PreviewInput {
 }
 
 function diagnostics(summary: string): PreviewDiagnostics {
+  const hasDiagnostics = !summary.startsWith("0 ");
   return {
     summary,
-    visibleCount: summary.startsWith("0 ") ? 0 : 1,
-    totalCount: summary.startsWith("0 ") ? 0 : 1,
-    items: summary.startsWith("0 ")
-      ? []
-      : [
-          {
-            severityLabel: "Error",
-            severityKey: "error",
-            line: 2,
-            column: 1,
-            target: {
-              uri: "file:///workspace/notes.md",
-              startLine: 1,
-              startCharacter: 0,
-              endLine: 1,
-              endCharacter: 1,
-            },
-            message: "syntax issue",
-            hasQuickFixes: false,
-          },
-        ],
+    totalCount: hasDiagnostics ? 1 : 0,
+    firstTarget: hasDiagnostics
+      ? {
+          uri: "file:///workspace/notes.md",
+          startLine: 1,
+          startCharacter: 0,
+          endLine: 1,
+          endCharacter: 1,
+        }
+      : undefined,
   };
 }

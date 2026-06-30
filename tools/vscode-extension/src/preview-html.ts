@@ -1,6 +1,5 @@
 export type {
   PreviewDiagramTheme,
-  PreviewDiagnosticItem,
   PreviewDiagnosticTarget,
   PreviewDiagnostics,
 } from "./preview-model.js";

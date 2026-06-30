@@ -2,7 +2,7 @@ use crate::models::class_diagram as class_typed;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
+    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use serde_json::Value;
 
@@ -27,9 +27,11 @@ pub(super) fn parse_class_via_lalrpop_db<'a>(
 ) -> Result<ClassDb<'a>> {
     let actions = class_grammar::ActionsParser::new()
         .parse(Lexer::new(code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format_lalrpop_parse_error(&e),
+        .map_err(|e| {
+            Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(&e, code.len()),
+            )
         })?;
 
     let mut db = ClassDb::new(&meta.effective_config);

@@ -13,9 +13,7 @@ describe("preview session", () => {
 
     const snapshot = session.createSnapshot(undefined, [editor], () => ({
       summary: "0 errors, 0 warnings, 0 infos, 0 hints",
-      visibleCount: 0,
       totalCount: 0,
-      items: [],
     }));
 
     assert.equal(snapshot?.input.kind, "mermaid-file");
@@ -23,9 +21,58 @@ describe("preview session", () => {
     assert.equal(snapshot?.documentUri, "file:///workspace/example.mmd");
     assert.equal(snapshot?.background, "paper");
   });
+
+  it("clears an explicit source selection so preview can follow the cursor again", () => {
+    const session = new PreviewSession();
+    const editor = textEditor(
+      "file:///workspace/notes.md",
+      "notes.md",
+      [
+        "# Notes",
+        "",
+        "```mermaid",
+        "flowchart TD",
+        "A --> B",
+        "```",
+        "",
+        "```mermaid",
+        "sequenceDiagram",
+        "Alice->>Bob: hi",
+        "```",
+      ].join("\n"),
+      "markdown",
+      3,
+    );
+
+    session.rememberResource(editor.document.uri);
+    assert.equal(session.selectSource(editor, [editor], "fence-2"), true);
+
+    let snapshot = session.createSnapshot(editor, [editor], emptyDiagnostics);
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.selected, true);
+
+    session.clearSelectedSource();
+    snapshot = session.createSnapshot(editor, [editor], emptyDiagnostics);
+
+    assert.equal(snapshot?.input.sourceId, "fence-1");
+    assert.equal(snapshot?.selected, false);
+  });
 });
 
-function textEditor(uri: string, fileName: string, text: string): vscode.TextEditor {
+function emptyDiagnostics() {
+  return {
+    summary: "0 errors, 0 warnings, 0 infos, 0 hints",
+    totalCount: 0,
+  };
+}
+
+function textEditor(
+  uri: string,
+  fileName: string,
+  text: string,
+  languageId = "mermaid",
+  activeLine = 0,
+): vscode.TextEditor {
   const lines = text.split(/\r?\n/);
   return {
     document: {
@@ -33,7 +80,7 @@ function textEditor(uri: string, fileName: string, text: string): vscode.TextEdi
         fsPath: fileName,
         toString: () => uri,
       },
-      languageId: "mermaid",
+      languageId,
       fileName,
       version: 1,
       lineCount: lines.length,
@@ -44,7 +91,7 @@ function textEditor(uri: string, fileName: string, text: string): vscode.TextEdi
     },
     selection: {
       active: {
-        line: 0,
+        line: activeLine,
       },
     },
   } as unknown as vscode.TextEditor;

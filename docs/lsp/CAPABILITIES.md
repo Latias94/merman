@@ -60,9 +60,20 @@ does not expose many entity-bearing spans.
 
 ## Feature Gates
 
-- Diagnostics: shared `merman-analysis` payloads only. Editor projections deduplicate identical
-  diagnostics and humanize recovered parser messages so editor clients do not show raw parser
-  internals such as recovery wrappers or token enum dumps.
+- Diagnostics: shared `merman-analysis` payloads only. Core parser errors carry structured
+  metadata when the family can prove an exact token span or insertion point. Analysis owns merge
+  and fallback policy: recovered parser facts may improve the primary span, but matching recovery
+  errors must not create a duplicate user-visible diagnostic. Whole-source spans are reserved for
+  source-wide conditions such as no diagram, unsupported family, resource limits, or genuinely
+  unlocatable parser failures.
+- LSP diagnostic projection: `Diagnostic.source` is `merman`; the visible `Diagnostic.code` is the
+  stable string rule id such as `merman.parse.diagram_parse`, not the numeric analysis status.
+  Numeric `code` / `code_name`, category, diagram type, help text, and fix metadata remain in
+  diagnostic `data` for compatibility and code actions. Document pull diagnostics are enabled only
+  when the client advertises `textDocument.diagnostic`; `workspace_diagnostics` is not advertised
+  because unopened workspace-file scanning is not implemented. Push diagnostics are cleared on
+  `didClose`, and workspace diagnostic refresh is sent only when the client advertises
+  `workspace.diagnostic.refreshSupport`.
 - Lint rule discovery: clients should use the shared rule catalog metadata for rule ids,
   evidence references, profiles, origins, configurability, and fixability instead of duplicating
   LSP-local rule tables. The server advertises `merman/ruleCatalog` under
@@ -91,11 +102,16 @@ does not expose many entity-bearing spans.
   `merman.authoring.flowchart.explicit_direction` insertion fix when the `recommended` lint
   profile or explicit rule enablement is active. The frontmatter-config rule carries a
   migration quickfix that rewrites init/initialize directive config into YAML frontmatter.
-- VS Code source actions: Mermaid files and Markdown/MDX Mermaid fences expose source-scoped
-  CodeLens actions for preview, SVG/PNG export, and SVG/PNG copy. The action target carries the
-  stable source id for Markdown fences, so cursor movement after the CodeLens is created does not
-  retarget the operation. These actions are local-only and do not include pin, AI, account, sync,
-  or remote-rendering controls.
+- VS Code source actions: Mermaid files and Markdown/MDX Mermaid fences expose low-noise
+  source-scoped CodeLens actions for `Preview` and `More...`. The action target carries the stable
+  source id for Markdown fences, so cursor movement after the CodeLens is created does not retarget
+  the operation. Export and copy commands remain available through `More...`, the editor/context
+  commands, and preview output controls. These actions are local-only and do not include AI,
+  account, sync, pin, or remote-rendering controls.
+- VS Code preview diagnostics: Problems, editor underlines, hover, and the VS Code quick-fix
+  lightbulb own detailed diagnostics and fixes. The preview shows only a compact diagnostic status
+  for the active source and can navigate to the first diagnostic; it does not render a second
+  Problems list or per-diagnostic quick-fix buttons.
 - Config lint: Mermaid-backed compatibility warnings can be enabled in the core profile when
   upstream emits or documents the same warning.
   `merman.compatibility.config.deprecated_flowchart_html_labels` reports deprecated

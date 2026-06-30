@@ -306,12 +306,9 @@ summary {
 .diagnostics {
   position: absolute;
   left: 10px;
-  right: 10px;
   bottom: 10px;
   z-index: 3;
-  max-height: min(40vh, 280px);
-  overflow: auto;
-  padding: 10px 12px;
+  padding: 0;
   border: 1px solid color-mix(in srgb, var(--vscode-errorForeground) 45%, var(--vscode-panel-border) 55%);
   border-radius: 6px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
@@ -323,95 +320,19 @@ summary {
 }
 
 .diagnostics-summary {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.diagnostics-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 6px;
-}
-
-.diagnostic-item {
-  margin: 0;
-  border-left: 3px solid transparent;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 88%, var(--vscode-sideBar-background) 12%);
-}
-
-.diagnostic-button {
   display: block;
-  width: 100%;
-  padding: 8px 10px;
+  min-height: 28px;
+  padding: 4px 10px;
   border: 0;
-  text-align: left;
-  color: inherit;
+  margin: 0;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--vscode-editor-foreground);
   background: transparent;
 }
 
-.diagnostic-button:hover {
+.diagnostics-summary:not(:disabled):hover {
   background: color-mix(in srgb, var(--vscode-list-hoverBackground) 70%, transparent 30%);
-}
-
-.diagnostic-actions {
-  margin: 0;
-  padding: 0 10px 10px;
-  font-size: 12px;
-}
-
-.diagnostic-action {
-  border: 0;
-  padding: 0;
-  color: var(--vscode-textLink-foreground);
-  background: transparent;
-}
-
-.diagnostic-action:hover {
-  text-decoration: underline;
-}
-
-.diagnostic-item[data-severity="error"] {
-  border-left-color: var(--vscode-errorForeground);
-}
-
-.diagnostic-item[data-severity="warning"] {
-  border-left-color: var(--vscode-editorWarning-foreground);
-}
-
-.diagnostic-item[data-severity="info"] {
-  border-left-color: var(--vscode-editorInfo-foreground);
-}
-
-.diagnostic-item[data-severity="hint"] {
-  border-left-color: var(--vscode-terminal-ansiBrightBlack);
-}
-
-.diagnostic-header {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  flex-wrap: wrap;
-  margin: 0 0 4px;
-  font-size: 12px;
-}
-
-.diagnostic-severity {
-  font-weight: 600;
-}
-
-.diagnostic-location,
-.diagnostic-source {
-  color: var(--vscode-descriptionForeground);
-}
-
-.diagnostic-message {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  white-space: pre-wrap;
 }
 
 .empty {

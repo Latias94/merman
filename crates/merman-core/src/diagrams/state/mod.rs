@@ -69,6 +69,12 @@ pub(crate) struct LexError {
     pub message: String,
 }
 
+impl crate::ParseErrorSourceSpan for LexError {
+    fn source_span(&self) -> Option<crate::SourceSpan> {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Default,

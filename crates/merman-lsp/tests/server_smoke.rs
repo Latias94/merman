@@ -7,14 +7,14 @@ use tokio::time::{Duration, timeout};
 use tower::{Service, ServiceExt};
 use tower_lsp::jsonrpc::Request;
 use tower_lsp::lsp_types::{
-    CodeActionContext, CodeActionKind, CodeActionParams, DidChangeConfigurationParams,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentSymbolParams, GotoDefinitionParams, HoverContents, HoverParams, InitializeParams,
-    NumberOrString, Position, PrepareRenameResponse, PublishDiagnosticsParams, Range,
-    ReferenceContext, ReferenceParams, RenameParams, SemanticTokensDeltaParams,
-    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
-    SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
+    CodeActionContext, CodeActionKind, CodeActionParams, DiagnosticServerCapabilities,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentSymbolParams,
+    GotoDefinitionParams, HoverContents, HoverParams, InitializeParams, NumberOrString, Position,
+    PrepareRenameResponse, PublishDiagnosticsParams, Range, ReferenceContext, ReferenceParams,
+    RenameParams, SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport, WorkspaceSymbolParams,
@@ -63,6 +63,26 @@ async fn lsp_service_smoke_handles_initialize() {
             tower_lsp::lsp_types::TextDocumentSyncKind::FULL
         ))
     ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_does_not_advertise_workspace_diagnostics_without_workspace_scan() {
+    let (service, _socket) = MermanLanguageServer::service();
+
+    let response =
+        tower_lsp::LanguageServer::initialize(service.inner(), InitializeParams::default())
+            .await
+            .unwrap();
+
+    let provider = response
+        .capabilities
+        .diagnostic_provider
+        .expect("diagnostic provider");
+    let options = match provider {
+        DiagnosticServerCapabilities::Options(options) => options,
+        other => panic!("unexpected diagnostic capability: {other:?}"),
+    };
+    assert!(!options.workspace_diagnostics);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -213,6 +233,61 @@ async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
         pushed.is_err(),
         "diagnostic pull clients should not receive push diagnostics"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_workspace_diagnostic_capability_does_not_disable_push_diagnostics() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "workspace": {
+                    "diagnostic": {}
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: String::new(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let pushed = socket.next().await.expect("expected push diagnostics");
+    assert_eq!(pushed.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams =
+        from_value(pushed.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.version, Some(1));
+    assert!(!params.diagnostics.is_empty());
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -802,6 +877,126 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
         }
     };
     assert_eq!(refresh.method(), "workspace/semanticTokens/refresh");
+
+    socket
+        .send(tower_lsp::jsonrpc::Response::from_ok(
+            refresh.id().cloned().expect("refresh request id"),
+            serde_json::Value::Null,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(change_fut.await.unwrap(), None);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_diagnostic_pull_without_refresh_support_finishes_configuration_change() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                },
+                "workspace": {
+                    "diagnostic": {}
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::json!({
+                    "lint": {
+                        "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+                    }
+                }),
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(change).await.unwrap(),
+        None
+    );
+    assert!(
+        timeout(Duration::from_millis(50), socket.next())
+            .await
+            .is_err(),
+        "unexpected workspace diagnostic refresh request"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_supported() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                },
+                "workspace": {
+                    "diagnostic": {
+                        "refreshSupport": true
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::json!({
+                    "lint": {
+                        "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+                    }
+                }),
+            })
+            .unwrap(),
+        )
+        .finish();
+    let mut change_fut = Box::pin(service.ready().await.unwrap().call(change));
+    let refresh = tokio::select! {
+        result = &mut change_fut => {
+            panic!("configuration change finished before refresh request: {result:?}");
+        }
+        message = socket.next() => {
+            message.expect("expected workspace diagnostic refresh request")
+        }
+    };
+    assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
 
     socket
         .send(tower_lsp::jsonrpc::Response::from_ok(
@@ -1531,6 +1726,74 @@ async fn lsp_service_smoke_publishes_current_diagnostics_version() {
             .is_err(),
         "unexpected extra publishDiagnostics message"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_clears_push_diagnostics_on_close() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({"capabilities":{}}))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: String::new(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let first = socket.next().await.expect("expected diagnostics publish");
+    let first_params: PublishDiagnosticsParams =
+        from_value(first.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(first_params.uri, uri);
+    assert!(!first_params.diagnostics.is_empty());
+
+    let close = Request::build("textDocument/didClose")
+        .params(
+            serde_json::to_value(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(close).await.unwrap(),
+        None
+    );
+
+    let cleared = socket.next().await.expect("expected cleared diagnostics");
+    assert_eq!(cleared.method(), "textDocument/publishDiagnostics");
+    let cleared_params: PublishDiagnosticsParams =
+        from_value(cleared.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(cleared_params.uri, uri);
+    assert_eq!(cleared_params.version, None);
+    assert!(cleared_params.diagnostics.is_empty());
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -71,13 +71,16 @@ The contract has these rules:
      `render`.
    - Spans are optional but, when present, byte offsets are canonical. Line/column and LSP UTF-16
      ranges are derived views.
+   - Parser failures should use structured parse diagnostics when the parser can prove an exact
+     token span or insertion point. Analysis, not LSP or UI code, decides how to merge recovered
+     parser facts and when a fallback or whole-source span is honest.
 
 5. Source mapping is part of analysis, not each wrapper.
    - Plain `.mmd` input uses the whole document as diagram source.
    - Markdown/MDX scanning records fence offsets and maps diagnostic ranges back to host-document
      ranges.
-   - Early diagnostics may use whole-diagram or whole-fence spans when family-local parsers do not
-     yet expose token spans.
+   - Whole-diagram or whole-fence spans are reserved for source-wide conditions or parser failures
+     that genuinely do not expose a narrower deterministic location.
 
 6. Mermaid JS remains parity evidence.
    - The pinned `repo-ref/mermaid` source and generated fixtures guide semantics, error behavior,

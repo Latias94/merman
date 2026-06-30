@@ -113,8 +113,9 @@ impl<'input> Iterator for Lexer<'input> {
 
         // Skip unknown single byte to avoid infinite loops.
         let _ = self.bump();
-        Some(Err(LexError {
-            message: format!("Unexpected character at {start}"),
-        }))
+        Some(Err(LexError::with_span(
+            format!("Unexpected character at {start}"),
+            crate::SourceSpan::new(start, start + 1),
+        )))
     }
 }

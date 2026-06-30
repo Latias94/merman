@@ -24,11 +24,9 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
                 || text.contains('{')
                 || text.contains('}')
             {
-                return Err(LexError {
-                    message:
-                        "Invalid text label: contains structural characters; quote it to use them"
-                            .to_string(),
-                });
+                return Err(LexError::new(
+                    "Invalid text label: contains structural characters; quote it to use them",
+                ));
             }
         }
         TitleKind::String => {
@@ -56,9 +54,9 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
                     }
                 }
                 if has_unescaped {
-                    return Err(LexError {
-                        message: "Invalid string label: contains nested quotes".to_string(),
-                    });
+                    return Err(LexError::new(
+                        "Invalid string label: contains nested quotes".to_string(),
+                    ));
                 }
             }
         }
@@ -168,9 +166,7 @@ fn parse_linkstyle_styles_list(s: &str) -> Vec<String> {
 
 pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, LexError> {
     let Some((target, styles_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid style statement".to_string(),
-        });
+        return Err(LexError::new("Invalid style statement".to_string()));
     };
     let styles = parse_styles_list(styles_raw);
     Ok(StyleStmt {
@@ -184,9 +180,7 @@ pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, Lex
 
 pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStmt, LexError> {
     let Some((ids_raw, styles_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid classDef statement".to_string(),
-        });
+        return Err(LexError::new("Invalid classDef statement".to_string()));
     };
     let ids = ids_raw
         .split(',')
@@ -207,9 +201,7 @@ pub(super) fn parse_class_assign_stmt(
     rest: &str,
 ) -> std::result::Result<ClassAssignStmt, LexError> {
     let Some((targets_raw, class_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid class statement".to_string(),
-        });
+        return Err(LexError::new("Invalid class statement".to_string()));
     };
     let targets = targets_raw
         .split(',')
@@ -218,9 +210,7 @@ pub(super) fn parse_class_assign_stmt(
         .collect::<Vec<_>>();
     let class_name = class_raw.trim().to_string();
     if class_name.is_empty() {
-        return Err(LexError {
-            message: "Invalid class statement".to_string(),
-        });
+        return Err(LexError::new("Invalid class statement".to_string()));
     }
     Ok(ClassAssignStmt {
         targets,
@@ -397,9 +387,7 @@ impl<'a> ClickParse<'a> {
 pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, LexError> {
     let mut p = ClickParse::new(rest);
     let Some(id) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid click statement".to_string(),
-        });
+        return Err(LexError::new("Invalid click statement".to_string()));
     };
     let ids = vec![id];
 
@@ -415,9 +403,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
     {
         let _ = p.take_word();
         let Some(link) = p.take_quoted() else {
-            return Err(LexError {
-                message: "Invalid click statement".to_string(),
-            });
+            return Err(LexError::new("Invalid click statement".to_string()));
         };
         let maybe_tt = p.take_quoted();
         let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
@@ -450,9 +436,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
             p.i += 1;
         }
         if p.i == start {
-            return Err(LexError {
-                message: "Invalid click statement".to_string(),
-            });
+            return Err(LexError::new("Invalid click statement".to_string()));
         }
         p.skip_ws();
         if p.peek() == Some(b'(') {
@@ -490,9 +474,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
     }
 
     let Some(_function_name) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid click statement".to_string(),
-        });
+        return Err(LexError::new("Invalid click statement".to_string()));
     };
     tooltip = p.take_quoted();
     action = ClickAction::Callback;
@@ -506,9 +488,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
 pub(super) fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexError> {
     let mut p = ClickParse::new(rest);
     let Some(pos_raw) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid linkStyle statement".to_string(),
-        });
+        return Err(LexError::new("Invalid linkStyle statement".to_string()));
     };
 
     let positions = if pos_raw == "default" {
@@ -517,9 +497,10 @@ pub(super) fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyle
         pos_raw
             .split(',')
             .map(|s| {
-                let idx = s.trim().parse::<usize>().map_err(|_| LexError {
-                    message: "Invalid linkStyle statement".to_string(),
-                })?;
+                let idx = s
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| LexError::new("Invalid linkStyle statement".to_string()))?;
                 Ok(LinkStylePos::Index(idx))
             })
             .collect::<std::result::Result<Vec<_>, LexError>>()?

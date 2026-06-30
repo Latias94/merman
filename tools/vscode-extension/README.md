@@ -13,11 +13,11 @@ remote AI.
   and safe quick fixes where Merman analysis provides fix metadata
 - Static Mermaid snippets for common diagram skeletons, plus LSP snippets for context-sensitive helper
   inserts and diagram templates
-- Source-scoped CodeLens actions above Mermaid files and Markdown/MDX Mermaid fences for preview,
-  SVG/PNG export, and SVG/PNG copy
+- Source-scoped CodeLens actions above Mermaid files and Markdown/MDX Mermaid fences for preview
+  and a compact `More...` export/copy menu
 - Preview panel for the active `.mmd`, `.mermaid`, or current Markdown/MDX Mermaid fence, with scoped
-  diagnostics, quick-fix entry points, multi-fence selection, zoom, theme/background inspection
-  controls, and local SVG copy
+  diagnostic status, multi-fence selection, zoom, theme/background inspection controls, and local
+  SVG copy/export controls
 - Local SVG and PNG export for Mermaid files and the active Markdown/MDX Mermaid fence, including
   an export picker with open-after-export options
 - Local runtime launch through one shared resolver:
@@ -71,10 +71,10 @@ is required for normal use.
 - `Merman: Show Rule Catalog`
 - `Merman: Show Config Schema`
 
-Mermaid files and Markdown/MDX Mermaid fences also show CodeLens source actions for `Preview`,
-`Export SVG`, `Export PNG`, `Copy SVG`, and, when the local platform supports clipboard PNG,
-`Copy PNG`. Markdown fence actions carry a stable fence id, so they do not retarget when the cursor
-moves before the command runs.
+Mermaid files and Markdown/MDX Mermaid fences also show low-noise CodeLens source actions for
+`Preview` and `More...`. `More...` opens export and copy commands for the same stable source id.
+Markdown fence actions carry that stable fence id, so they do not retarget when the cursor moves
+before the command runs.
 
 The extension intentionally coexists with VS Code's built-in Mermaid support in Markdown preview.
 Use Merman for semantic editing, `.mmd` files, fence-aware diagnostics, local preview inspection,
@@ -82,9 +82,14 @@ and export; it does not replace VS Code's Markdown preview renderer.
 
 ## Preview behavior
 
-The preview panel keeps a stable webview shell while diagram content, diagnostics, source choices,
-and editor selection updates are delivered through VS Code webview messages. Moving the cursor
-inside the currently rendered source does not rerender the diagram or reset pan/zoom state.
+The preview panel keeps a stable webview shell while diagram content, compact diagnostic status,
+source choices, and editor selection updates are delivered through VS Code webview messages. Moving
+the cursor inside the currently rendered source does not rerender the diagram or reset pan/zoom
+state.
+
+Detailed diagnostics and fixes belong to VS Code's native Problems, editor underline, hover, and
+quick-fix lightbulb surfaces. The preview status is a secondary navigation aid to the first
+diagnostic in the active source, not a duplicate Problems list.
 
 When edits require a rerender, the previous SVG stays visible while the new render runs. If rendering
 fails, the old SVG remains inspectable and the error appears as an overlay. Zoom is applied by

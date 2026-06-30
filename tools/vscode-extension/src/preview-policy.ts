@@ -1,6 +1,7 @@
 import {
   samePreviewRenderKey,
   samePreviewSource,
+  type PreviewDiagnosticTarget,
   type PreviewSnapshot,
 } from "./preview-model.js";
 
@@ -11,7 +12,6 @@ export type PreviewUpdateReason =
   | "document-change"
   | "diagnostics"
   | "panel-visible"
-  | "pin-toggle"
   | "source-select"
   | "diagram-theme"
   | "display-mode"
@@ -52,7 +52,7 @@ export function planPreviewUpdate(
   }
 
   if (
-    previous.pinned !== next.pinned ||
+    previous.selected !== next.selected ||
     previous.diagramTheme !== next.diagramTheme ||
     previous.displayMode !== next.displayMode ||
     previous.background !== next.background
@@ -101,30 +101,26 @@ function diagnosticsEqual(previous: PreviewSnapshot, next: PreviewSnapshot): boo
   }
   if (
     previousDiagnostics.summary !== nextDiagnostics.summary ||
-    previousDiagnostics.visibleCount !== nextDiagnostics.visibleCount ||
-    previousDiagnostics.totalCount !== nextDiagnostics.totalCount ||
-    previousDiagnostics.items.length !== nextDiagnostics.items.length
+    previousDiagnostics.totalCount !== nextDiagnostics.totalCount
   ) {
     return false;
   }
 
-  return previousDiagnostics.items.every((item, index) => {
-    const other = nextDiagnostics.items[index];
-    return (
-      !!other &&
-      item.severityLabel === other.severityLabel &&
-      item.severityKey === other.severityKey &&
-      item.line === other.line &&
-      item.column === other.column &&
-      item.source === other.source &&
-      item.code === other.code &&
-      item.message === other.message &&
-      item.hasQuickFixes === other.hasQuickFixes &&
-      item.target.uri === other.target.uri &&
-      item.target.startLine === other.target.startLine &&
-      item.target.startCharacter === other.target.startCharacter &&
-      item.target.endLine === other.target.endLine &&
-      item.target.endCharacter === other.target.endCharacter
-    );
-  });
+  return diagnosticTargetsEqual(previousDiagnostics.firstTarget, nextDiagnostics.firstTarget);
+}
+
+function diagnosticTargetsEqual(
+  previous: PreviewDiagnosticTarget | undefined,
+  next: PreviewDiagnosticTarget | undefined,
+): boolean {
+  if (!previous || !next) {
+    return previous === next;
+  }
+  return (
+    previous.uri === next.uri &&
+    previous.startLine === next.startLine &&
+    previous.startCharacter === next.startCharacter &&
+    previous.endLine === next.endLine &&
+    previous.endCharacter === next.endCharacter
+  );
 }

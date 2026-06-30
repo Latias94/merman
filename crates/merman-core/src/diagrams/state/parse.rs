@@ -1,7 +1,7 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
+    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use serde_json::Value;
 
@@ -11,9 +11,11 @@ use super::{Lexer, StateDiagramRenderModel, Stmt, Tok};
 pub fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut doc = super::state_grammar::RootParser::new()
         .parse(Lexer::new(code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format_lalrpop_parse_error(&e),
+        .map_err(|e| {
+            Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(&e, code.len()),
+            )
         })?;
 
     let mut divider_cnt = 0usize;
@@ -30,9 +32,11 @@ pub fn parse_state_model_for_render(
 ) -> Result<StateDiagramRenderModel> {
     let mut doc = super::state_grammar::RootParser::new()
         .parse(Lexer::new(code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format_lalrpop_parse_error(&e),
+        .map_err(|e| {
+            Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(&e, code.len()),
+            )
         })?;
 
     let mut divider_cnt = 0usize;

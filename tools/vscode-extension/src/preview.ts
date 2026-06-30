@@ -22,6 +22,7 @@ import {
   type PreviewFromWebviewMessage,
   type PreviewToWebviewMessage,
 } from "./preview-messages.js";
+import { previewCliBackground } from "./preview-background.js";
 import {
   planPreviewUpdate,
   type PreviewAction,
@@ -41,7 +42,6 @@ import { PreviewWebviewClient } from "./preview-webview-client.js";
 const PREVIEW_COMMAND = "merman.openPreview";
 const PREVIEW_TITLE = "Merman Preview";
 const RENDER_DEBOUNCE_MS = 180;
-const DIAGNOSTICS_PREVIEW_LIMIT = 8;
 
 export function registerPreview(context: vscode.ExtensionContext): void {
   const controller = new MermanPreviewController(context);
@@ -155,6 +155,7 @@ class MermanPreviewController implements vscode.Disposable {
     if (!resource) {
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor && extractPreviewInput(activeEditor)) {
+        this.session.clearSelectedSource();
         this.session.rememberResource(activeEditor.document.uri);
       }
       return;
@@ -170,6 +171,8 @@ class MermanPreviewController implements vscode.Disposable {
     }
     if (sourceId && editor) {
       this.session.selectSource(editor, vscode.window.visibleTextEditors, sourceId);
+    } else {
+      this.session.clearSelectedSource();
     }
   }
 
@@ -327,9 +330,6 @@ class MermanPreviewController implements vscode.Disposable {
       case "revealDiagnostic":
         await revealDiagnosticTarget(parseDiagnosticTarget(message.target));
         return;
-      case "showDiagnosticFixes":
-        await showDiagnosticFixes(parseDiagnosticTarget(message.target));
-        return;
       case "selectSource":
         this.selectSource(message.sourceId);
         return;
@@ -429,10 +429,6 @@ function panelOrThrow(panel: vscode.WebviewPanel | undefined): vscode.WebviewPan
   return panel;
 }
 
-function previewCliBackground(background: PreviewBackground): string {
-  return background === "paper" ? "white" : "transparent";
-}
-
 export function collectPreviewDiagnostics(
   uri: vscode.Uri,
   diagnosticRange: { startLine: number; endLine: number },
@@ -443,24 +439,6 @@ export function collectPreviewDiagnostics(
       .filter((diagnostic) => isDiagnosticInRange(diagnostic, diagnosticRange))
       .sort(compareDiagnostics),
   );
-
-  const items = diagnostics.slice(0, DIAGNOSTICS_PREVIEW_LIMIT).map((diagnostic) => ({
-    severityLabel: diagnosticSeverityLabel(diagnostic.severity),
-    severityKey: diagnosticSeverityKey(diagnostic.severity),
-    line: diagnostic.range.start.line + 1,
-    column: diagnostic.range.start.character + 1,
-    target: {
-      uri: uri.toString(),
-      startLine: diagnostic.range.start.line,
-      startCharacter: diagnostic.range.start.character,
-      endLine: diagnostic.range.end.line,
-      endCharacter: diagnostic.range.end.character,
-    },
-    hasQuickFixes: diagnostic.source === "merman",
-    source: diagnostic.source,
-    code: diagnosticCodeLabel(diagnostic.code),
-    message: diagnostic.message,
-  }));
 
   const counts = {
     error: diagnostics.filter((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error)
@@ -476,9 +454,16 @@ export function collectPreviewDiagnostics(
 
   return {
     summary: `${counts.error} errors, ${counts.warning} warnings, ${counts.info} infos, ${counts.hint} hints`,
-    visibleCount: items.length,
     totalCount: diagnostics.length,
-    items,
+    firstTarget: diagnostics[0]
+      ? {
+          uri: uri.toString(),
+          startLine: diagnostics[0].range.start.line,
+          startCharacter: diagnostics[0].range.start.character,
+          endLine: diagnostics[0].range.end.line,
+          endCharacter: diagnostics[0].range.end.character,
+        }
+      : undefined,
   };
 }
 
@@ -534,36 +519,6 @@ function diagnosticSeverityRank(severity: vscode.DiagnosticSeverity): number {
   }
 }
 
-function diagnosticSeverityLabel(severity: vscode.DiagnosticSeverity): string {
-  switch (severity) {
-    case vscode.DiagnosticSeverity.Error:
-      return "Error";
-    case vscode.DiagnosticSeverity.Warning:
-      return "Warning";
-    case vscode.DiagnosticSeverity.Information:
-      return "Info";
-    case vscode.DiagnosticSeverity.Hint:
-    default:
-      return "Hint";
-  }
-}
-
-function diagnosticSeverityKey(
-  severity: vscode.DiagnosticSeverity,
-): "error" | "warning" | "info" | "hint" {
-  switch (severity) {
-    case vscode.DiagnosticSeverity.Error:
-      return "error";
-    case vscode.DiagnosticSeverity.Warning:
-      return "warning";
-    case vscode.DiagnosticSeverity.Information:
-      return "info";
-    case vscode.DiagnosticSeverity.Hint:
-    default:
-      return "hint";
-  }
-}
-
 function diagnosticCodeLabel(code: vscode.Diagnostic["code"]): string | undefined {
   if (typeof code === "string" || typeof code === "number") {
     return String(code);
@@ -605,93 +560,4 @@ async function revealDiagnosticTarget(target: PreviewDiagnosticTarget): Promise<
     preserveFocus: false,
     selection: range,
   });
-}
-
-async function showDiagnosticFixes(target: PreviewDiagnosticTarget): Promise<void> {
-  const uri = vscode.Uri.parse(target.uri);
-  const range = new vscode.Range(
-    new vscode.Position(target.startLine, target.startCharacter),
-    new vscode.Position(target.endLine, target.endCharacter),
-  );
-  const actions =
-    (await vscode.commands.executeCommand<(vscode.Command | vscode.CodeAction)[]>(
-      "vscode.executeCodeActionProvider",
-      uri,
-      range,
-      vscode.CodeActionKind.QuickFix.value,
-      DIAGNOSTICS_PREVIEW_LIMIT,
-    )) ?? [];
-
-  const applicable = actions.filter((action) => isApplicableQuickFix(action, range));
-  if (applicable.length === 0) {
-    void vscode.window.showInformationMessage("No quick fixes available for this diagnostic.");
-    return;
-  }
-
-  if (applicable.length === 1) {
-    const onlyAction = applicable[0];
-    if (!onlyAction) {
-      return;
-    }
-    await applyCodeActionLike(onlyAction);
-    return;
-  }
-
-  const picked = await vscode.window.showQuickPick(
-    applicable.map((action) => ({
-      label: action.title,
-      description: isPreferredCodeAction(action) ? "Preferred" : undefined,
-      detail: isCodeAction(action) && action.disabled ? action.disabled.reason : undefined,
-      action,
-    })),
-    {
-      placeHolder: "Select a quick fix to apply",
-      matchOnDescription: true,
-      matchOnDetail: true,
-    },
-  );
-  if (!picked?.action) {
-    return;
-  }
-
-  await applyCodeActionLike(picked.action);
-}
-
-function isApplicableQuickFix(
-  action: vscode.Command | vscode.CodeAction,
-  range: vscode.Range,
-): boolean {
-  if (isCodeAction(action)) {
-    if (action.disabled) {
-      return false;
-    }
-    const diagnostics = action.diagnostics ?? [];
-    if (diagnostics.length === 0) {
-      return true;
-    }
-    return diagnostics.some((diagnostic) => diagnostic.range.intersection(range));
-  }
-  return true;
-}
-
-function isCodeAction(action: vscode.Command | vscode.CodeAction): action is vscode.CodeAction {
-  return "edit" in action || "kind" in action || "diagnostics" in action || "isPreferred" in action;
-}
-
-function isPreferredCodeAction(action: vscode.Command | vscode.CodeAction): boolean {
-  return isCodeAction(action) && action.isPreferred === true;
-}
-
-async function applyCodeActionLike(action: vscode.Command | vscode.CodeAction): Promise<void> {
-  if (isCodeAction(action) && action.edit) {
-    const applied = await vscode.workspace.applyEdit(action.edit);
-    if (!applied) {
-      void vscode.window.showWarningMessage("Failed to apply quick fix edits.");
-      return;
-    }
-  }
-  const command = isCodeAction(action) ? action.command : action;
-  if (command) {
-    await vscode.commands.executeCommand(command.command, ...(command.arguments ?? []));
-  }
 }

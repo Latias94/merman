@@ -5,6 +5,7 @@ import {
   SOURCE_ACTION_COMMANDS,
   buildMermaidSourceCodeLensSpecs,
   isMermaidSourceCommandTarget,
+  mermaidSourceMoreActions,
   mermaidSourceCommandSourceId,
   mermaidSourceCommandTarget,
   mermaidSourceCommandUri,
@@ -21,10 +22,7 @@ describe("Mermaid source actions", () => {
       specs.map((spec) => [spec.line, spec.sourceId, spec.title, spec.command]),
       [
         [0, "document", "Preview", SOURCE_ACTION_COMMANDS.preview],
-        [0, "document", "Export SVG", SOURCE_ACTION_COMMANDS.exportSvg],
-        [0, "document", "Export PNG", SOURCE_ACTION_COMMANDS.exportPng],
-        [0, "document", "Copy SVG", SOURCE_ACTION_COMMANDS.copySvg],
-        [0, "document", "Copy PNG", SOURCE_ACTION_COMMANDS.copyPng],
+        [0, "document", "More...", SOURCE_ACTION_COMMANDS.more],
       ],
     );
   });
@@ -44,14 +42,28 @@ describe("Mermaid source actions", () => {
     );
   });
 
-  it("omits Copy PNG when the local platform cannot provide a reliable clipboard path", () => {
-    const specs = buildMermaidSourceCodeLensSpecs(
-      [{ sourceId: "document", sourceRange: { startLine: 0, endLine: 0 } }],
-      { includeCopyPng: false },
-    );
+  it("keeps platform-sensitive copy commands out of the top-level CodeLens row", () => {
+    const specs = buildMermaidSourceCodeLensSpecs([
+      { sourceId: "document", sourceRange: { startLine: 0, endLine: 0 } },
+    ]);
 
     assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.copyPng), false);
-    assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.copySvg), true);
+    assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.copySvg), false);
+    assert.equal(specs.some((spec) => spec.command === SOURCE_ACTION_COMMANDS.more), true);
+  });
+
+  it("keeps export and copy commands available from the More action", () => {
+    assert.deepEqual(
+      mermaidSourceMoreActions({ includeCopyPng: false }).map((action) => [
+        action.title,
+        action.command,
+      ]),
+      [
+        ["Export SVG", SOURCE_ACTION_COMMANDS.exportSvg],
+        ["Export PNG", SOURCE_ACTION_COMMANDS.exportPng],
+        ["Copy SVG", SOURCE_ACTION_COMMANDS.copySvg],
+      ],
+    );
   });
 
   it("carries the source id through command targets without depending on cursor state", () => {

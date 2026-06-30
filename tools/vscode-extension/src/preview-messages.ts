@@ -75,7 +75,6 @@ export type PreviewFromWebviewMessage =
   | { type: "copySvg"; svg: string }
   | { type: "exportRendered"; format: "svg" | "png" }
   | { type: "revealDiagnostic"; target: string }
-  | { type: "showDiagnosticFixes"; target: string }
   | { type: "selectSource"; sourceId: string }
   | { type: "setDiagramTheme"; theme: PreviewDiagramTheme }
   | { type: "setDisplayMode"; mode: PreviewDisplayMode }
@@ -115,7 +114,6 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
     case "exportRendered":
       return record.format === "svg" || record.format === "png";
     case "revealDiagnostic":
-    case "showDiagnosticFixes":
       return typeof record.target === "string";
     case "selectSource":
       return typeof record.sourceId === "string";

@@ -4,23 +4,10 @@ export type PreviewDiagramTheme = "source" | "default" | "dark" | "forest" | "ne
 export type PreviewDisplayMode = "svg" | "ascii" | "unicode";
 export type PreviewBackground = "transparent" | "paper" | "dark";
 
-export interface PreviewDiagnosticItem {
-  severityLabel: string;
-  severityKey: "error" | "warning" | "info" | "hint";
-  line: number;
-  column: number;
-  target: PreviewDiagnosticTarget;
-  source?: string;
-  code?: string;
-  message: string;
-  hasQuickFixes: boolean;
-}
-
 export interface PreviewDiagnostics {
   summary: string;
-  visibleCount: number;
   totalCount: number;
-  items: PreviewDiagnosticItem[];
+  firstTarget?: PreviewDiagnosticTarget;
 }
 
 export interface PreviewDiagnosticTarget {
@@ -47,7 +34,7 @@ export interface PreviewSnapshot {
   sources: readonly PreviewInput[];
   diagnostics?: PreviewDiagnostics;
   selectionLine: number;
-  pinned: boolean;
+  selected: boolean;
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
@@ -61,7 +48,7 @@ export interface CreatePreviewSnapshotRequest {
   sources: readonly PreviewInput[];
   diagnostics?: PreviewDiagnostics;
   selectionLine: number;
-  pinned: boolean;
+  selected: boolean;
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;

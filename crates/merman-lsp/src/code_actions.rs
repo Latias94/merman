@@ -95,6 +95,9 @@ fn workspace_edit_for_fix(
                 right.range.end.character,
             ))
     });
+    if has_overlapping_edits(&edits) {
+        return None;
+    }
 
     let mut changes = std::collections::HashMap::new();
     changes.insert(uri.clone(), edits);
@@ -103,6 +106,16 @@ fn workspace_edit_for_fix(
         changes: Some(changes),
         document_changes: None,
         change_annotations: None,
+    })
+}
+
+fn has_overlapping_edits(edits: &[TextEdit]) -> bool {
+    edits.windows(2).any(|window| {
+        let [left, right] = window else {
+            return false;
+        };
+        (left.range.end.line, left.range.end.character)
+            > (right.range.start.line, right.range.start.character)
     })
 }
 
@@ -118,9 +131,9 @@ mod tests {
     use super::code_actions_for_params;
     use crate::diagnostics::analysis_payload_to_diagnostics;
     use merman_analysis::{
-        AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticFix,
-        DiagnosticFixEdit, DiagnosticSpan, Utf16Position, document::analyze_document,
-        markdown::markdown_source_descriptor,
+        AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticCategory,
+        DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, Utf16Position,
+        document::analyze_document, markdown::markdown_source_descriptor,
     };
     use merman_editor_core::DiagnosticCodeActionData;
     use tower_lsp::lsp_types::{
@@ -144,6 +157,11 @@ mod tests {
             data: Some(
                 serde_json::to_value(DiagnosticCodeActionData {
                     id: "merman.test".to_string(),
+                    code: None,
+                    code_name: None,
+                    category: DiagnosticCategory::Semantic,
+                    diagram_type: None,
+                    help: None,
                     fixes: vec![DiagnosticFix {
                         title: "Replace text".to_string(),
                         edits: vec![DiagnosticFixEdit::new(
@@ -224,6 +242,82 @@ mod tests {
             tags: None,
             data: None,
         };
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::parse("file:///tmp/example.mmd").unwrap(),
+            },
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 5),
+            },
+            context: CodeActionContext {
+                diagnostics: vec![diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        assert!(code_actions_for_params(&params).is_none());
+    }
+
+    #[test]
+    fn overlapping_fix_edits_do_not_create_actions() {
+        let mut diagnostic = diagnostic_with_fix();
+        let data = DiagnosticCodeActionData {
+            id: "merman.test".to_string(),
+            code: None,
+            code_name: None,
+            category: DiagnosticCategory::Semantic,
+            diagram_type: None,
+            help: None,
+            fixes: vec![DiagnosticFix {
+                title: "Overlapping replacement".to_string(),
+                edits: vec![
+                    DiagnosticFixEdit::new(
+                        DiagnosticSpan::new(
+                            0,
+                            4,
+                            1,
+                            1,
+                            1,
+                            5,
+                            Utf16Position {
+                                line: 0,
+                                character: 0,
+                            },
+                            Utf16Position {
+                                line: 0,
+                                character: 4,
+                            },
+                        ),
+                        "left",
+                    ),
+                    DiagnosticFixEdit::new(
+                        DiagnosticSpan::new(
+                            2,
+                            5,
+                            1,
+                            3,
+                            1,
+                            6,
+                            Utf16Position {
+                                line: 0,
+                                character: 2,
+                            },
+                            Utf16Position {
+                                line: 0,
+                                character: 5,
+                            },
+                        ),
+                        "right",
+                    ),
+                ],
+                is_preferred: true,
+            }],
+        };
+        diagnostic.data = Some(serde_json::to_value(data).unwrap());
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::parse("file:///tmp/example.mmd").unwrap(),

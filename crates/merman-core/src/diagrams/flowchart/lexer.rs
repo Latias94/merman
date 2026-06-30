@@ -760,43 +760,42 @@ impl<'input> Lexer<'input> {
             Some((match_start, token_end, token))
         };
 
-        let compute_link = |end: String,
-                            start: Option<String>|
-         -> std::result::Result<LinkToken, LexError> {
-            let (end_type, stroke, length) = destruct_end_link(&end);
-            let mut edge_type = end_type;
+        let compute_link =
+            |end: String, start: Option<String>| -> std::result::Result<LinkToken, LexError> {
+                let (end_type, stroke, length) = destruct_end_link(&end);
+                let mut edge_type = end_type;
 
-            if let Some(start_str) = start.as_deref() {
-                let (start_type, start_stroke) = destruct_start_link(start_str);
-                if start_stroke != stroke.as_str() {
-                    return Err(LexError {
-                        message: "Invalid link: stroke mismatch between start and end".to_string(),
-                    });
-                }
-
-                if start_type == "arrow_open" {
-                    edge_type = edge_type.clone();
-                } else {
-                    if start_type != edge_type.as_str() {
-                        return Err(LexError {
-                            message: "Invalid link: start/end arrowhead mismatch".to_string(),
-                        });
+                if let Some(start_str) = start.as_deref() {
+                    let (start_type, start_stroke) = destruct_start_link(start_str);
+                    if start_stroke != stroke.as_str() {
+                        return Err(LexError::new(
+                            "Invalid link: stroke mismatch between start and end".to_string(),
+                        ));
                     }
-                    edge_type = format!("double_{start_type}");
+
+                    if start_type == "arrow_open" {
+                        edge_type = edge_type.clone();
+                    } else {
+                        if start_type != edge_type.as_str() {
+                            return Err(LexError::new(
+                                "Invalid link: start/end arrowhead mismatch".to_string(),
+                            ));
+                        }
+                        edge_type = format!("double_{start_type}");
+                    }
+
+                    if edge_type == "double_arrow" {
+                        edge_type = "double_arrow_point".to_string();
+                    }
                 }
 
-                if edge_type == "double_arrow" {
-                    edge_type = "double_arrow_point".to_string();
-                }
-            }
-
-            Ok(LinkToken {
-                end,
-                edge_type,
-                stroke,
-                length,
-            })
-        };
+                Ok(LinkToken {
+                    end,
+                    edge_type,
+                    stroke,
+                    length,
+                })
+            };
 
         // 1) Prefer full LINK tokens (matches Jison longest-match behavior).
         let families = [
@@ -930,9 +929,10 @@ impl<'input> Lexer<'input> {
             scan += 1;
         }
 
-        Some(Err(LexError {
-            message: "Unterminated edge label (missing link terminator)".to_string(),
-        }))
+        Some(Err(LexError::with_span(
+            "Unterminated edge label (missing link terminator)",
+            SourceSpan::new(edge_text_start, self.input.len()),
+        )))
     }
 
     pub(super) fn lex_node_label(
@@ -963,9 +963,11 @@ impl<'input> Lexer<'input> {
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
                     }
-                    return Some(Err(LexError {
-                        message: "Unterminated node label (missing `/]` or `\\]`)".to_string(),
-                    }));
+                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    return Some(Err(LexError::with_span(
+                        "Unterminated node label (missing `/]` or `\\]`)",
+                        SourceSpan::new(start, token_end),
+                    )));
                 }
                 (Some(p), None) => (p, "/]", "inv_trapezoid"),
                 (None, Some(p)) => (p, "\\]", "lean_left"),
@@ -1015,9 +1017,11 @@ impl<'input> Lexer<'input> {
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
                     }
-                    return Some(Err(LexError {
-                        message: "Unterminated node label (missing `/]` or `\\]`)".to_string(),
-                    }));
+                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    return Some(Err(LexError::with_span(
+                        "Unterminated node label (missing `/]` or `\\]`)",
+                        SourceSpan::new(start, token_end),
+                    )));
                 }
                 (Some(p), None) => (p, "/]", "lean_right"),
                 (None, Some(p)) => (p, "\\]", "trapezoid"),
@@ -1079,9 +1083,11 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    return Some(Err(LexError {
-                        message: format!("Unterminated node label (missing `{close}`)"),
-                    }));
+                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    return Some(Err(LexError::with_span(
+                        format!("Unterminated node label (missing `{close}`)"),
+                        SourceSpan::new(start, token_end),
+                    )));
                 }
                 let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
                 let token = build_partial_node_label_token_from_raw(
@@ -1125,9 +1131,11 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    return Some(Err(LexError {
-                        message: "Unterminated node label (missing `]`)".to_string(),
-                    }));
+                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    return Some(Err(LexError::with_span(
+                        "Unterminated node label (missing `]`)",
+                        SourceSpan::new(start, token_end),
+                    )));
                 }
                 let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
                 let (shape, label_raw, label_offset) = lex::parse_rect_border_label(&raw);
@@ -1168,9 +1176,11 @@ impl<'input> Lexer<'input> {
                     token
                 } else {
                     if !self.recover_partial_node_labels {
-                        return Some(Err(LexError {
-                            message: "Unterminated node label (missing `}`)".to_string(),
-                        }));
+                        let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                        return Some(Err(LexError::with_span(
+                            "Unterminated node label (missing `}`)",
+                            SourceSpan::new(start, token_end),
+                        )));
                     }
                     let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
                     let token = build_partial_node_label_token_from_raw(
@@ -1206,9 +1216,11 @@ impl<'input> Lexer<'input> {
                     token
                 } else {
                     if !self.recover_partial_node_labels {
-                        return Some(Err(LexError {
-                            message: "Unterminated node label (missing `)`)".to_string(),
-                        }));
+                        let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                        return Some(Err(LexError::with_span(
+                            "Unterminated node label (missing `)`)",
+                            SourceSpan::new(start, token_end),
+                        )));
                     }
                     let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
                     let token = build_partial_node_label_token_from_raw(

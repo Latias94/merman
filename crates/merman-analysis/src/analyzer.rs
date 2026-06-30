@@ -7,7 +7,8 @@ use crate::rules::{
 };
 use crate::{AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, SourceDescriptor, SourceMap};
 use merman_core::{
-    EditorSemanticDiagnostic, Engine, Error as CoreError, MermaidConfig, ParseOptions,
+    EditorSemanticDiagnostic, Engine, Error as CoreError, MermaidConfig, ParseDiagnostic,
+    ParseDiagnosticSpanKind, ParseOptions,
 };
 use std::panic::{self, AssertUnwindSafe};
 
@@ -161,11 +162,9 @@ impl Analyzer {
                         diagnostics.push(diagnostic);
                     }
                     if let Some(diagram_type) = diagram_type {
-                        diagnostics.extend(self.editor_recovery_diagnostics(
-                            source,
-                            &diagram_type,
-                            &source_map,
-                        ));
+                        let recovery_diagnostics =
+                            self.editor_recovery_diagnostics(source, &diagram_type, &source_map);
+                        merge_recovery_diagnostics(&mut diagnostics, recovery_diagnostics);
                     }
                     self.payload(diagnostics)
                 }
@@ -216,6 +215,54 @@ impl Analyzer {
             Ok(Ok(None) | Err(_)) => Vec::new(),
         }
     }
+}
+
+fn merge_recovery_diagnostics(
+    diagnostics: &mut Vec<AnalysisDiagnostic>,
+    recovery_diagnostics: Vec<AnalysisDiagnostic>,
+) {
+    for recovery in recovery_diagnostics {
+        if merge_duplicate_parse_recovery_diagnostic(diagnostics, &recovery) {
+            continue;
+        }
+        diagnostics.push(recovery);
+    }
+}
+
+fn merge_duplicate_parse_recovery_diagnostic(
+    diagnostics: &mut [AnalysisDiagnostic],
+    recovery: &AnalysisDiagnostic,
+) -> bool {
+    if recovery.id != RECOVERED_EDITOR_FACTS_RULE_ID {
+        return false;
+    }
+
+    let Some(detail) = recovered_parse_error_detail(&recovery.message) else {
+        return false;
+    };
+
+    let Some(primary) = diagnostics
+        .iter_mut()
+        .find(|diagnostic| diagnostic.id == DIAGRAM_PARSE_RULE_ID && diagnostic.message == detail)
+    else {
+        return false;
+    };
+
+    if recovery
+        .span
+        .as_ref()
+        .is_some_and(|span| span.byte_start < span.byte_end)
+    {
+        primary.span = recovery.span.clone();
+    }
+    true
+}
+
+fn recovered_parse_error_detail(message: &str) -> Option<&str> {
+    message
+        .split_once(" after parse error: ")
+        .map(|(_, detail)| detail.trim())
+        .filter(|detail| !detail.is_empty())
 }
 
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
@@ -290,6 +337,13 @@ fn core_error_diagnostic(
             .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
             Some(diagram_type),
         ),
+        CoreError::DiagramParseDiagnostic {
+            diagram_type,
+            diagnostic,
+        } => (
+            parse_diagnostic(diagnostic, &diagram_type, source_map, rule_config),
+            Some(diagram_type),
+        ),
         CoreError::MalformedFrontMatter => (
             rule_diagnostic(
                 MALFORMED_FRONT_MATTER_RULE_ID,
@@ -321,6 +375,55 @@ fn core_error_diagnostic(
             None,
         ),
     }
+}
+
+fn parse_diagnostic(
+    diagnostic: ParseDiagnostic,
+    diagram_type: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
+    let rule_id = diagnostic
+        .code
+        .as_deref()
+        .and_then(rule_descriptor)
+        .map(|descriptor| descriptor.id)
+        .unwrap_or(DIAGRAM_PARSE_RULE_ID);
+    let mut out = rule_diagnostic_without_default_span(
+        rule_id,
+        AnalysisStatus::ParseError,
+        diagnostic.message,
+        rule_config,
+    )?
+    .with_diagram_type(diagram_type);
+
+    if let Some(span) = diagnostic
+        .span
+        .and_then(|span| source_map.span(span.start, span.end).ok())
+    {
+        match diagnostic.span_kind {
+            ParseDiagnosticSpanKind::Exact | ParseDiagnosticSpanKind::InsertionPoint => {
+                out = out.with_span(span);
+            }
+            ParseDiagnosticSpanKind::Fallback => {
+                out.related.push(crate::DiagnosticRelated {
+                    message: "Parser reported a fallback location for this syntax error."
+                        .to_string(),
+                    span: Some(span.clone()),
+                });
+                out = out.with_span(span);
+            }
+        }
+    } else if let Ok(span) = source_map.whole_source_span() {
+        out.related.push(crate::DiagnosticRelated {
+            message: "Parser did not report a precise source location for this syntax error."
+                .to_string(),
+            span: Some(span.clone()),
+        });
+        out = out.with_span(span);
+    }
+
+    Some(out)
 }
 
 fn panic_diagnostic(
@@ -387,17 +490,36 @@ fn rule_diagnostic(
         return None;
     }
 
-    let mut diagnostic = AnalysisDiagnostic::new(
-        descriptor.id,
-        rule_config.severity_for(descriptor),
-        descriptor.category,
-        message,
-    )
-    .with_code(status.code(), status.code_name());
+    let mut diagnostic =
+        rule_diagnostic_without_default_span(rule_id, status, message, rule_config)?;
     if let Ok(span) = source_map.whole_source_span() {
         diagnostic = diagnostic.with_span(span);
     }
     Some(diagnostic)
+}
+
+fn rule_diagnostic_without_default_span(
+    rule_id: &'static str,
+    status: AnalysisStatus,
+    message: impl Into<String>,
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
+    let message = message.into();
+    let descriptor = rule_descriptor(rule_id)?;
+
+    if !rule_config.is_rule_enabled(descriptor) {
+        return None;
+    }
+
+    Some(
+        AnalysisDiagnostic::new(
+            descriptor.id,
+            rule_config.severity_for(descriptor),
+            descriptor.category,
+            message,
+        )
+        .with_code(status.code(), status.code_name()),
+    )
 }
 
 #[cfg(test)]
@@ -407,14 +529,15 @@ mod tests {
     use crate::{AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, SourceMap};
 
     #[test]
-    fn analyze_state_parse_failure_surfaces_recovery_diagnostic() {
+    fn analyze_state_parse_failure_deduplicates_matching_recovery_diagnostic() {
         let analyzer = Analyzer::new();
         let source = "stateDiagram-v2\nIdle --> Running\nRunning -->";
         let payload = analyzer.analyze(source);
 
         assert!(!payload.valid);
         assert_eq!(payload.summary.errors, 1);
-        assert_eq!(payload.summary.warnings, 1);
+        assert_eq!(payload.summary.warnings, 0);
+        assert_eq!(payload.diagnostics.len(), 1);
 
         let parse_error = payload
             .diagnostics
@@ -424,14 +547,31 @@ mod tests {
         assert_eq!(parse_error.severity, DiagnosticSeverity::Error);
         assert_eq!(parse_error.category, DiagnosticCategory::Parse);
         assert_eq!(parse_error.diagram_type.as_deref(), Some("stateDiagram"));
-        let recovered = payload
-            .diagnostics
-            .iter()
-            .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
-            .expect("recovered editor diagnostic");
-        assert_eq!(recovered.severity, DiagnosticSeverity::Warning);
-        assert_eq!(recovered.category, DiagnosticCategory::Parse);
-        assert_eq!(recovered.diagram_type.as_deref(), Some("stateDiagram"));
+        assert!(
+            payload
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.id != "merman.parse.recovered_editor_facts")
+        );
+    }
+
+    #[test]
+    fn analyze_flowchart_parse_failure_deduplicates_matching_recovery_diagnostic() {
+        let analyzer = Analyzer::new();
+        let source = "flowchart TD\nA[unterminated";
+        let payload = analyzer.analyze(source);
+
+        assert!(!payload.valid);
+        assert_eq!(payload.summary.errors, 1);
+        assert_eq!(payload.summary.warnings, 0);
+        assert_eq!(payload.diagnostics.len(), 1);
+
+        let diagnostic = &payload.diagnostics[0];
+        assert_eq!(diagnostic.id, "merman.parse.diagram_parse");
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
+        assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
+        assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
+        assert_eq!(diagnostic.message, "Unterminated node label (missing `]`)");
     }
 
     #[test]

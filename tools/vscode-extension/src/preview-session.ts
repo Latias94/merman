@@ -22,7 +22,7 @@ export type PreviewDiagnosticsProvider = (
 export class PreviewSession {
   private currentSnapshot: PreviewSnapshot | undefined;
   private lastPreviewEditorUri: string | undefined;
-  private pinnedSource: PreviewSourcePin | undefined;
+  private selectedSource: PreviewSourceSelection | undefined;
   private theme: PreviewDiagramTheme = "source";
   private displayMode: PreviewDisplayMode = "svg";
   private background: PreviewBackground = "paper";
@@ -46,7 +46,7 @@ export class PreviewSession {
   reset(): void {
     this.currentSnapshot = undefined;
     this.lastPreviewEditorUri = undefined;
-    this.pinnedSource = undefined;
+    this.selectedSource = undefined;
     this.theme = "source";
     this.displayMode = "svg";
     this.background = "paper";
@@ -54,11 +54,15 @@ export class PreviewSession {
 
   clearSource(): void {
     this.currentSnapshot = undefined;
-    this.pinnedSource = undefined;
+    this.selectedSource = undefined;
   }
 
   rememberResource(uri: vscode.Uri): void {
     this.lastPreviewEditorUri = uri.toString();
+  }
+
+  clearSelectedSource(): void {
+    this.selectedSource = undefined;
   }
 
   rememberSnapshot(snapshot: PreviewSnapshot): void {
@@ -86,7 +90,7 @@ export class PreviewSession {
       sources,
       diagnostics,
       selectionLine: editor.selection.active.line,
-      pinned: this.isPinnedInput(input),
+      selected: this.isSelectedInput(input),
       diagramTheme: this.theme,
       displayMode: this.displayMode,
       background: this.background,
@@ -125,7 +129,7 @@ export class PreviewSession {
     if (!input) {
       return false;
     }
-    this.pinnedSource = {
+    this.selectedSource = {
       uri: editor.document.uri.toString(),
       sourceId: input.sourceId,
     };
@@ -158,27 +162,27 @@ export class PreviewSession {
 
   private resolvePreviewInput(editor: vscode.TextEditor): PreviewInput | null {
     const editorUri = editor.document.uri.toString();
-    if (this.pinnedSource?.uri === editorUri) {
-      const pinned = extractPreviewInput(editor, this.pinnedSource.sourceId);
-      if (pinned) {
-        return pinned;
+    if (this.selectedSource?.uri === editorUri) {
+      const selected = extractPreviewInput(editor, this.selectedSource.sourceId);
+      if (selected) {
+        return selected;
       }
-      this.pinnedSource = undefined;
+      this.selectedSource = undefined;
     }
     return extractPreviewInput(editor);
   }
 
-  private isPinnedInput(input: PreviewInput | undefined): boolean {
+  private isSelectedInput(input: PreviewInput | undefined): boolean {
     return (
       !!input &&
-      !!this.pinnedSource &&
-      this.lastPreviewEditorUri === this.pinnedSource.uri &&
-      input.sourceId === this.pinnedSource.sourceId
+      !!this.selectedSource &&
+      this.lastPreviewEditorUri === this.selectedSource.uri &&
+      input.sourceId === this.selectedSource.sourceId
     );
   }
 }
 
-interface PreviewSourcePin {
+interface PreviewSourceSelection {
   uri: string;
   sourceId: string;
 }

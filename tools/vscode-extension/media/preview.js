@@ -271,7 +271,23 @@
     if (!svg) {
       return;
     }
-    post("copySvg", { svg: svg.outerHTML });
+    post("copySvg", { svg: serializedSourceSvg(svg) });
+  }
+
+  function serializedSourceSvg(svg) {
+    const copy = svg.cloneNode(true);
+    if (!(copy instanceof SVGElement)) {
+      return svg.outerHTML;
+    }
+    const baseWidth = svg.dataset.baseWidth;
+    const baseHeight = svg.dataset.baseHeight;
+    if (baseWidth && baseHeight) {
+      copy.setAttribute("width", baseWidth);
+      copy.setAttribute("height", baseHeight);
+    }
+    delete copy.dataset.baseWidth;
+    delete copy.dataset.baseHeight;
+    return copy.outerHTML;
   }
 
   function setText(element, text) {
@@ -344,83 +360,25 @@
 
     diagnosticsElement.hidden = false;
     diagnosticsElement.replaceChildren();
-    const summary = document.createElement("p");
+    const summary = document.createElement("button");
+    summary.type = "button";
     summary.className = "diagnostics-summary";
     summary.textContent = diagnosticsSummaryText(diagnostics);
+    if (diagnostics.firstTarget) {
+      summary.dataset.action = "diagnostic";
+      summary.dataset.target = JSON.stringify(diagnostics.firstTarget);
+      summary.title = "Open first diagnostic location in editor";
+    } else {
+      summary.disabled = true;
+    }
     diagnosticsElement.appendChild(summary);
-
-    if (!Array.isArray(diagnostics.items) || diagnostics.items.length === 0) {
-      return;
-    }
-
-    const list = document.createElement("ol");
-    list.className = "diagnostics-list";
-    for (const item of diagnostics.items) {
-      list.appendChild(renderDiagnosticItem(item));
-    }
-    diagnosticsElement.appendChild(list);
   }
 
   function diagnosticsSummaryText(diagnostics) {
-    if (diagnostics.totalCount > diagnostics.visibleCount) {
-      return `${diagnostics.summary}. Showing first ${diagnostics.visibleCount} of ${diagnostics.totalCount}.`;
-    }
     if (diagnostics.totalCount > 0) {
-      return `${diagnostics.summary}. Showing ${diagnostics.totalCount}.`;
+      return diagnostics.summary;
     }
-    return `${diagnostics.summary}. No issues in the active preview range.`;
-  }
-
-  function renderDiagnosticItem(item) {
-    const listItem = document.createElement("li");
-    listItem.className = "diagnostic-item";
-    listItem.dataset.severity = item.severityKey;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "diagnostic-button";
-    button.dataset.action = "diagnostic";
-    button.dataset.target = JSON.stringify(item.target);
-    button.title = "Open diagnostic location in editor";
-
-    const header = document.createElement("p");
-    header.className = "diagnostic-header";
-    for (const part of [
-      ["diagnostic-severity", item.severityLabel],
-      ["diagnostic-location", `Ln ${item.line}, Col ${item.column}`],
-      ["diagnostic-source", [item.source, item.code].filter(Boolean).join(": ")],
-    ]) {
-      if (!part[1]) {
-        continue;
-      }
-      const span = document.createElement("span");
-      span.className = part[0];
-      span.textContent = part[1];
-      header.appendChild(span);
-    }
-    button.appendChild(header);
-
-    const message = document.createElement("p");
-    message.className = "diagnostic-message";
-    message.textContent = item.message || "";
-    button.appendChild(message);
-    listItem.appendChild(button);
-
-    if (item.hasQuickFixes) {
-      const actions = document.createElement("p");
-      actions.className = "diagnostic-actions";
-      const fix = document.createElement("button");
-      fix.type = "button";
-      fix.className = "diagnostic-action";
-      fix.dataset.action = "quick-fix";
-      fix.dataset.target = JSON.stringify(item.target);
-      fix.title = "Request available quick fixes";
-      fix.textContent = "Quick Fixes";
-      actions.appendChild(fix);
-      listItem.appendChild(actions);
-    }
-
-    return listItem;
+    return diagnostics.summary;
   }
 
   function showStatus(text, kind) {
@@ -577,9 +535,6 @@
         break;
       case "diagnostic":
         post("revealDiagnostic", { target: actionElement.dataset.target });
-        break;
-      case "quick-fix":
-        post("showDiagnosticFixes", { target: actionElement.dataset.target });
         break;
     }
   });

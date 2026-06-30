@@ -1,20 +1,29 @@
 use crate::types::Range;
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisPayload, DiagnosticFix, DiagnosticSeverity, DiagnosticSpan,
+    AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticSeverity,
+    DiagnosticSpan,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 const RECOVERED_EDITOR_FACTS_RULE_ID: &str = "merman.parse.recovered_editor_facts";
 
 pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload) -> Vec<EditorDiagnostic> {
-    let mut seen = HashSet::new();
-    payload
+    let mut diagnostics: Vec<EditorDiagnostic> = Vec::new();
+    for diagnostic in payload
         .diagnostics
         .iter()
         .map(analysis_diagnostic_to_editor)
-        .filter(|diagnostic| seen.insert(diagnostic.dedup_key()))
-        .collect()
+    {
+        if let Some(existing) = diagnostics
+            .iter_mut()
+            .find(|existing| existing.dedup_key() == diagnostic.dedup_key())
+        {
+            existing.merge_metadata(diagnostic);
+        } else {
+            diagnostics.push(diagnostic);
+        }
+    }
+    diagnostics
 }
 
 pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorDiagnostic {
@@ -25,10 +34,7 @@ pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorD
             .map(range_from_span)
             .unwrap_or_default(),
         severity: diagnostic.severity,
-        code: diagnostic
-            .code
-            .map(EditorDiagnosticCode::Number)
-            .unwrap_or_else(|| EditorDiagnosticCode::String(diagnostic.id.clone())),
+        code: EditorDiagnosticCode::String(diagnostic.id.clone()),
         source: "merman".to_string(),
         message: diagnostic_message(diagnostic),
         related: diagnostic
@@ -41,7 +47,7 @@ pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorD
                 })
             })
             .collect(),
-        data: diagnostic_code_action_data(diagnostic),
+        data: diagnostic_data(diagnostic),
     }
 }
 
@@ -68,11 +74,14 @@ fn humanize_recovered_parser_message(message: &str) -> String {
     }
 }
 
-pub fn diagnostic_code_action_data(
-    diagnostic: &AnalysisDiagnostic,
-) -> Option<DiagnosticCodeActionData> {
-    (!diagnostic.fixes.is_empty()).then(|| DiagnosticCodeActionData {
+pub fn diagnostic_data(diagnostic: &AnalysisDiagnostic) -> Option<DiagnosticCodeActionData> {
+    Some(DiagnosticCodeActionData {
         id: diagnostic.id.clone(),
+        code: diagnostic.code,
+        code_name: diagnostic.code_name.clone(),
+        category: diagnostic.category,
+        diagram_type: diagnostic.diagram_type.clone(),
+        help: diagnostic.help.clone(),
         fixes: diagnostic.fixes.clone(),
     })
 }
@@ -105,6 +114,19 @@ impl EditorDiagnostic {
             message: self.message.clone(),
         }
     }
+
+    fn merge_metadata(&mut self, other: Self) {
+        if self.related.is_empty() {
+            self.related = other.related;
+        } else {
+            self.related.extend(other.related);
+        }
+        match (&mut self.data, other.data) {
+            (Some(current), Some(other)) => current.merge(other),
+            (None, Some(other)) => self.data = Some(other),
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -133,5 +155,42 @@ pub struct EditorDiagnosticRelated {
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticCodeActionData {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_name: Option<String>,
+    #[serde(default = "default_diagnostic_category")]
+    pub category: DiagnosticCategory,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagram_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fixes: Vec<DiagnosticFix>,
+}
+
+impl DiagnosticCodeActionData {
+    fn merge(&mut self, other: Self) {
+        if self.code.is_none() {
+            self.code = other.code;
+        }
+        if self.code_name.is_none() {
+            self.code_name = other.code_name;
+        }
+        if self.diagram_type.is_none() {
+            self.diagram_type = other.diagram_type;
+        }
+        if self.help.is_none() {
+            self.help = other.help;
+        }
+        if self.fixes.is_empty() {
+            self.fixes = other.fixes;
+        } else {
+            self.fixes.extend(other.fixes);
+        }
+    }
+}
+
+fn default_diagnostic_category() -> DiagnosticCategory {
+    DiagnosticCategory::Internal
 }

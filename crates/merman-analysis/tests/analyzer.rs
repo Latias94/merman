@@ -1,6 +1,7 @@
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
-    DiagnosticCategory, DiagnosticSeverity,
+    DiagnosticCategory, DiagnosticSeverity, SourceDescriptor, document::analyze_document,
+    markdown::markdown_source_descriptor,
 };
 
 fn analyze(source: &str) -> merman_analysis::AnalysisPayload {
@@ -40,6 +41,191 @@ fn invalid_syntax_returns_parse_error_with_diagram_type() {
     assert!(diagnostic.span.is_some());
     assert!(!diagnostic.message.contains("UnrecognizedToken"));
     assert!(diagnostic.message.contains("unexpected"));
+}
+
+#[test]
+fn common_authoring_parse_errors_are_single_precise_or_explicit_fallback_diagnostics() {
+    struct Case<'a> {
+        label: &'a str,
+        source: &'a str,
+        expected_diagram_type: &'a str,
+    }
+
+    let cases = [
+        Case {
+            label: "unterminated flowchart label",
+            source: "flowchart TD\nA[unterminated",
+            expected_diagram_type: "flowchart-v2",
+        },
+        Case {
+            label: "dangling flowchart edge",
+            source: "flowchart TD\nA -->\n",
+            expected_diagram_type: "flowchart-v2",
+        },
+        Case {
+            label: "dangling state transition",
+            source: "stateDiagram-v2\nIdle --> Running\nRunning -->",
+            expected_diagram_type: "stateDiagram",
+        },
+        Case {
+            label: "dangling sequence arrow",
+            source: "sequenceDiagram\nAlice->>Bob: Hi\nBob->>",
+            expected_diagram_type: "sequence",
+        },
+        Case {
+            label: "dangling class inheritance",
+            source: "classDiagram\nA <|--",
+            expected_diagram_type: "classDiagram",
+        },
+        Case {
+            label: "dangling er relationship label",
+            source: "erDiagram\nCUSTOMER ||--o{ ORDER :",
+            expected_diagram_type: "er",
+        },
+    ];
+
+    for case in cases {
+        let payload = analyze(case.source);
+        assert!(!payload.valid, "{}", case.label);
+        let parse_diagnostics: Vec<_> = payload
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+            .collect();
+        assert_eq!(parse_diagnostics.len(), 1, "{}", case.label);
+
+        let diagnostic = parse_diagnostics[0];
+        assert_eq!(
+            diagnostic.diagram_type.as_deref(),
+            Some(case.expected_diagram_type),
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            diagnostic.category,
+            DiagnosticCategory::Parse,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            diagnostic.severity,
+            DiagnosticSeverity::Error,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            diagnostic.code,
+            Some(AnalysisStatus::ParseError.code()),
+            "{}",
+            case.label
+        );
+
+        let span = diagnostic.span.as_ref().expect(case.label);
+        assert!(
+            span.byte_end <= case.source.len(),
+            "{} span escaped source",
+            case.label
+        );
+        assert!(
+            span.byte_start == span.byte_end || span.byte_end - span.byte_start < case.source.len(),
+            "{} should not use a whole-source parse span",
+            case.label
+        );
+        assert!(
+            span.byte_start > 0 || span.byte_end > 0,
+            "{} should not default to the document start",
+            case.label
+        );
+        assert!(
+            diagnostic.related.is_empty()
+                || diagnostic
+                    .related
+                    .iter()
+                    .any(|related| related.message.contains("fallback")),
+            "{} only fallback parse spans should add related fallback context",
+            case.label
+        );
+    }
+}
+
+#[test]
+fn source_wide_diagnostics_remain_whole_source_by_contract() {
+    let no_diagram = analyze("");
+    let no_diagram_span = no_diagram.diagnostics[0].span.as_ref().unwrap();
+    assert_eq!(no_diagram.diagnostics[0].id, "merman.parse.no_diagram");
+    assert_eq!(no_diagram_span.byte_start, 0);
+    assert_eq!(no_diagram_span.byte_end, 0);
+
+    let source = "flowchart TD\nA-->B\n";
+    let options = AnalysisOptions::default().with_max_source_bytes(Some(8));
+    let resource = Analyzer::with_options(options).analyze(source);
+    let resource_span = resource.diagnostics[0].span.as_ref().unwrap();
+    assert_eq!(
+        resource.diagnostics[0].id,
+        "merman.resource.source_bytes_exceeded"
+    );
+    assert_eq!(resource_span.byte_start, 0);
+    assert_eq!(resource_span.byte_end, source.len());
+}
+
+#[test]
+fn markdown_fence_parse_diagnostic_remaps_to_fence_body_not_whole_document() {
+    let source = concat!(
+        "# Title\n\n",
+        "```mermaid\n",
+        "flowchart TD\n",
+        "A[unterminated\n",
+        "```\n\n",
+        "```mermaid\n",
+        "flowchart TD\n",
+        "B-->C\n",
+        "```\n",
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_source(SourceDescriptor::diagram()));
+    let payload = analyze_document(
+        source,
+        &analyzer,
+        markdown_source_descriptor(Some("doc.md")),
+    );
+
+    assert!(!payload.valid);
+    let parse_diagnostics: Vec<_> = payload
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+        .collect();
+    assert_eq!(parse_diagnostics.len(), 1);
+
+    let diagnostic = parse_diagnostics[0];
+    let span = diagnostic.span.as_ref().expect("diagnostic span");
+    let first_body_start = source.find("flowchart TD").unwrap();
+    let unterminated_label_start = source.find("[unterminated").unwrap();
+    let unterminated_label_end = unterminated_label_start + "[unterminated".len();
+    let first_fence_end = source.find("\n```\n\n").unwrap();
+    assert_eq!(span.byte_start, unterminated_label_start);
+    assert_eq!(span.byte_end, unterminated_label_end);
+    let expected_span = merman_analysis::SourceMap::new(source)
+        .span(unterminated_label_start, unterminated_label_end)
+        .unwrap();
+    assert_eq!(span.line, expected_span.line);
+    assert_eq!(span.column, expected_span.column);
+    assert_eq!(span.end_line, expected_span.end_line);
+    assert_eq!(span.end_column, expected_span.end_column);
+    assert_eq!(span.lsp_range, expected_span.lsp_range);
+    assert!(span.byte_start >= first_body_start);
+    assert!(span.byte_end <= first_fence_end);
+    assert!(
+        span.byte_start > first_body_start || span.byte_end < first_fence_end,
+        "parse diagnostic should keep token/fallback precision instead of taking the whole fence"
+    );
+    assert!(diagnostic.related.iter().any(|related| {
+        related.message == "Mermaid fence 1"
+            && related
+                .span
+                .as_ref()
+                .is_some_and(|span| span.byte_start < first_body_start)
+    }));
 }
 
 #[test]

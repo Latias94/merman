@@ -5,8 +5,8 @@ use merman_editor_core::{
     analysis_payload_to_diagnostics as analysis_payload_to_editor_diagnostics,
 };
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity as LspSeverity, Location,
-    NumberOrString, Position, Range, Url,
+    CodeDescription, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity as LspSeverity,
+    DiagnosticTag, Location, NumberOrString, Position, Range, Url,
 };
 
 pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload, uri: &Url) -> Vec<Diagnostic> {
@@ -21,22 +21,49 @@ pub fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) ->
 }
 
 pub fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diagnostic {
+    let code = match diagnostic.code.clone() {
+        EditorDiagnosticCode::Number(code) => NumberOrString::Number(code),
+        EditorDiagnosticCode::String(code) => NumberOrString::String(code),
+    };
+    let code_description = code_description(&diagnostic.code);
+    let tags = diagnostic_tags(diagnostic.data.as_ref());
     Diagnostic {
         range: range_to_lsp(diagnostic.range),
         severity: Some(severity_to_lsp(diagnostic.severity)),
-        code: Some(match diagnostic.code {
-            EditorDiagnosticCode::Number(code) => NumberOrString::Number(code),
-            EditorDiagnosticCode::String(code) => NumberOrString::String(code),
-        }),
+        code: Some(code),
         source: Some(diagnostic.source),
         message: diagnostic.message,
         related_information: related_information(diagnostic.related, uri),
-        tags: None,
-        code_description: None,
+        tags,
+        code_description,
         data: diagnostic
             .data
             .and_then(|data| serde_json::to_value(data).ok()),
     }
+}
+
+fn code_description(code: &EditorDiagnosticCode) -> Option<CodeDescription> {
+    let EditorDiagnosticCode::String(code) = code else {
+        return None;
+    };
+    if !code.starts_with("merman.") {
+        return None;
+    }
+    Url::parse(&format!("https://github.com/frankorz/merman/rules/{code}"))
+        .ok()
+        .map(|href| CodeDescription { href })
+}
+
+fn diagnostic_tags(
+    data: Option<&merman_editor_core::DiagnosticCodeActionData>,
+) -> Option<Vec<DiagnosticTag>> {
+    let data = data?;
+    let deprecated = data.id.contains(".deprecated_")
+        || data
+            .help
+            .as_deref()
+            .is_some_and(|help| help.to_ascii_lowercase().contains("deprecated"));
+    deprecated.then(|| vec![DiagnosticTag::DEPRECATED])
 }
 
 fn severity_to_lsp(severity: DiagnosticSeverity) -> LspSeverity {

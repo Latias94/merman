@@ -3,7 +3,7 @@ use crate::{
     DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
+    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -222,9 +222,11 @@ fn parse_flowchart_semantic_source(
 fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst> {
     flowchart_grammar::FlowchartAstParser::new()
         .parse(Lexer::new(code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format_lalrpop_parse_error(&e),
+        .map_err(|e| {
+            Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(&e, code.len()),
+            )
         })
 }
 

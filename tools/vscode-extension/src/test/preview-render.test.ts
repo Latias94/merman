@@ -170,7 +170,7 @@ function snapshot(): PreviewSnapshot {
     input,
     sources: [input],
     selectionLine: 0,
-    pinned: false,
+    selected: false,
     diagramTheme: "source",
     displayMode: "svg",
     background: "paper",

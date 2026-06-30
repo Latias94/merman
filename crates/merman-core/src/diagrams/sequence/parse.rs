@@ -1,7 +1,7 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
+    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use serde_json::Value;
 
@@ -61,9 +61,11 @@ fn parse_sequence_db(code: &str, meta: &ParseMetadata) -> Result<SequenceDb> {
 
     let actions = sequence_grammar::ActionsParser::new()
         .parse(Lexer::new(code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format_lalrpop_parse_error(&e),
+        .map_err(|e| {
+            Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(&e, code.len()),
+            )
         })?;
 
     let mut db = SequenceDb::new(wrap_enabled);

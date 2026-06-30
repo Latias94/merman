@@ -55,6 +55,7 @@ pub struct MermanLanguageServer {
     analyzer: Arc<Mutex<Analyzer>>,
     semantic_tokens_refresh_supported: AtomicBool,
     diagnostic_pull_supported: AtomicBool,
+    diagnostic_refresh_supported: AtomicBool,
 }
 
 impl MermanLanguageServer {
@@ -65,6 +66,7 @@ impl MermanLanguageServer {
             analyzer: Arc::new(Mutex::new(Analyzer::new())),
             semantic_tokens_refresh_supported: AtomicBool::new(false),
             diagnostic_pull_supported: AtomicBool::new(false),
+            diagnostic_refresh_supported: AtomicBool::new(false),
         }
     }
 
@@ -116,7 +118,7 @@ impl MermanLanguageServer {
         DiagnosticOptions {
             identifier: Some("merman".to_string()),
             inter_file_dependencies: false,
-            workspace_diagnostics: true,
+            workspace_diagnostics: false,
             work_done_progress_options: Default::default(),
         }
     }
@@ -229,10 +231,20 @@ impl MermanLanguageServer {
     fn client_supports_diagnostic_pull(params: &InitializeParams) -> bool {
         params
             .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|text_document| text_document.diagnostic.as_ref())
+            .is_some()
+    }
+
+    fn client_supports_diagnostic_refresh(params: &InitializeParams) -> bool {
+        params
+            .capabilities
             .workspace
             .as_ref()
             .and_then(|workspace| workspace.diagnostic.as_ref())
-            .is_some()
+            .and_then(|diagnostic| diagnostic.refresh_support)
+            .unwrap_or(false)
     }
 
     async fn apply_initialization_options(
@@ -275,6 +287,10 @@ impl LanguageServer for MermanLanguageServer {
         );
         self.diagnostic_pull_supported.store(
             Self::client_supports_diagnostic_pull(&params),
+            Ordering::Relaxed,
+        );
+        self.diagnostic_refresh_supported.store(
+            Self::client_supports_diagnostic_refresh(&params),
             Ordering::Relaxed,
         );
         self.apply_initialization_options(params.initialization_options)
@@ -330,7 +346,11 @@ impl LanguageServer for MermanLanguageServer {
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.store.lock().await.remove(&params.text_document.uri);
+        let uri = params.text_document.uri;
+        self.store.lock().await.remove(&uri);
+        if !self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+            self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        }
     }
 
     async fn did_change_configuration(
@@ -362,7 +382,9 @@ impl LanguageServer for MermanLanguageServer {
         {
             let _ = self.client.semantic_tokens_refresh().await;
         }
-        if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+        if self.diagnostic_pull_supported.load(Ordering::Relaxed)
+            && self.diagnostic_refresh_supported.load(Ordering::Relaxed)
+        {
             let _ = self.client.workspace_diagnostic_refresh().await;
         }
     }
@@ -738,6 +760,83 @@ mod tests {
             .unwrap()
             .refresh_support = Some(true);
         assert!(MermanLanguageServer::client_supports_semantic_tokens_refresh(&params));
+    }
+
+    #[test]
+    fn diagnostic_pull_support_comes_from_text_document_client_capabilities() {
+        let mut params = InitializeParams::default();
+        assert!(!MermanLanguageServer::client_supports_diagnostic_pull(
+            &params
+        ));
+
+        params.capabilities.workspace = Some(Default::default());
+        params.capabilities.workspace.as_mut().unwrap().diagnostic = Some(
+            tower_lsp::lsp_types::DiagnosticWorkspaceClientCapabilities {
+                refresh_support: Some(true),
+            },
+        );
+        assert!(!MermanLanguageServer::client_supports_diagnostic_pull(
+            &params
+        ));
+
+        params.capabilities.text_document = Some(Default::default());
+        params
+            .capabilities
+            .text_document
+            .as_mut()
+            .unwrap()
+            .diagnostic = Some(tower_lsp::lsp_types::DiagnosticClientCapabilities {
+            dynamic_registration: None,
+            related_document_support: None,
+        });
+        assert!(MermanLanguageServer::client_supports_diagnostic_pull(
+            &params
+        ));
+    }
+
+    #[test]
+    fn diagnostic_refresh_support_comes_from_workspace_client_capabilities() {
+        let mut params = InitializeParams::default();
+        assert!(!MermanLanguageServer::client_supports_diagnostic_refresh(
+            &params
+        ));
+
+        params.capabilities.text_document = Some(Default::default());
+        params
+            .capabilities
+            .text_document
+            .as_mut()
+            .unwrap()
+            .diagnostic = Some(tower_lsp::lsp_types::DiagnosticClientCapabilities {
+            dynamic_registration: None,
+            related_document_support: None,
+        });
+        assert!(!MermanLanguageServer::client_supports_diagnostic_refresh(
+            &params
+        ));
+
+        params.capabilities.workspace = Some(Default::default());
+        params.capabilities.workspace.as_mut().unwrap().diagnostic = Some(
+            tower_lsp::lsp_types::DiagnosticWorkspaceClientCapabilities {
+                refresh_support: None,
+            },
+        );
+        assert!(!MermanLanguageServer::client_supports_diagnostic_refresh(
+            &params
+        ));
+
+        params
+            .capabilities
+            .workspace
+            .as_mut()
+            .unwrap()
+            .diagnostic
+            .as_mut()
+            .unwrap()
+            .refresh_support = Some(true);
+        assert!(MermanLanguageServer::client_supports_diagnostic_refresh(
+            &params
+        ));
     }
 
     #[test]

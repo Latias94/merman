@@ -1,6 +1,9 @@
-use merman_analysis::{AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, SourceDescriptor};
+use merman_analysis::{
+    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticSeverity,
+    SourceDescriptor,
+};
 use merman_lsp::diagnostics::analysis_payload_to_diagnostics;
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{DiagnosticTag, NumberOrString, Url};
 
 #[test]
 fn diagnostics_projection_preserves_uri_and_message() {
@@ -17,6 +20,13 @@ fn diagnostics_projection_preserves_uri_and_message() {
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].message, "no Mermaid diagram detected");
+    assert_eq!(
+        diagnostics[0].code,
+        Some(NumberOrString::String(
+            "merman.parse.no_diagram".to_string()
+        ))
+    );
+    assert!(diagnostics[0].code_description.is_some());
 }
 
 #[test]
@@ -53,4 +63,97 @@ fn diagnostics_projection_humanizes_recovered_parser_messages() {
         diagnostics[0].message,
         "Mermaid syntax issue: unexpected statement separator"
     );
+}
+
+#[test]
+fn flowchart_parse_recovery_does_not_duplicate_lsp_diagnostics() {
+    let payload = Analyzer::new().analyze("flowchart TD\nA[unterminated");
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].message,
+        "Unterminated node label (missing `]`)"
+    );
+    assert_eq!(
+        diagnostics[0].code,
+        Some(NumberOrString::String(
+            "merman.parse.diagram_parse".to_string()
+        ))
+    );
+}
+
+#[test]
+fn class_and_er_parse_spans_project_to_lsp_diagnostics() {
+    let cases = [
+        ("classDiagram\nA <|--", "class parse"),
+        ("erDiagram\nCUSTOMER ||--o{ ORDER :", "er parse"),
+    ];
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    for (source, label) in cases {
+        let payload = Analyzer::new().analyze(source);
+        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+        assert_eq!(diagnostics.len(), 1, "{label}");
+        assert_eq!(
+            diagnostics[0].code,
+            Some(NumberOrString::String(
+                "merman.parse.diagram_parse".to_string()
+            )),
+            "{label}"
+        );
+        assert!(
+            diagnostics[0].range.start.line > 0 || diagnostics[0].range.start.character > 0,
+            "{label} should not default to the document start"
+        );
+    }
+}
+
+#[test]
+fn diagnostics_projection_preserves_rule_metadata_in_data() {
+    let payload = Analyzer::new().analyze("flowchart TD\nA-->B\n");
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+    assert!(diagnostics.is_empty());
+
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![
+            AnalysisDiagnostic::new(
+                "merman.test.info",
+                DiagnosticSeverity::Hint,
+                DiagnosticCategory::Config,
+                "test metadata",
+            )
+            .with_diagram_type("flowchart-v2")
+            .with_help("See rule docs."),
+        ],
+    );
+    let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+    let data = diagnostics[0].data.as_ref().expect("diagnostic data");
+
+    assert_eq!(data["id"], "merman.test.info");
+    assert_eq!(data["category"], "config");
+    assert_eq!(data["diagramType"], "flowchart-v2");
+    assert_eq!(data["help"], "See rule docs.");
+}
+
+#[test]
+fn deprecated_diagnostics_project_lsp_tag() {
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![AnalysisDiagnostic::new(
+            "merman.compatibility.config.deprecated_flowchart_html_labels",
+            DiagnosticSeverity::Warning,
+            DiagnosticCategory::Config,
+            "deprecated option",
+        )],
+    );
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+
+    assert_eq!(diagnostics[0].tags, Some(vec![DiagnosticTag::DEPRECATED]));
 }

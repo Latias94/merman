@@ -1,7 +1,7 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_recovery_span},
+    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -360,9 +360,11 @@ fn split_styles(raw: &str) -> Vec<String> {
 fn parse_er_db(code: &str, meta: &ParseMetadata) -> Result<ErDb> {
     let actions = er_grammar::ActionsParser::new()
         .parse(Lexer::new(code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format_lalrpop_parse_error(&e),
+        .map_err(|e| {
+            Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(&e, code.len()),
+            )
         })?;
 
     let mut db = ErDb::new();
@@ -718,6 +720,12 @@ impl std::fmt::Display for LexError {
 }
 
 impl std::error::Error for LexError {}
+
+impl crate::ParseErrorSourceSpan for LexError {
+    fn source_span(&self) -> Option<crate::SourceSpan> {
+        None
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
