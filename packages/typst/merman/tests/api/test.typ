@@ -21,20 +21,20 @@
 #let validation = validate-mermaid(source)
 #assert.eq(validation.code_name, "MERMAN_OK")
 
-#let profile = mermaid-profile(
+#let svg-profile = mermaid-profile(
   id: "api-profile",
   pipeline: "readable",
   typography: (font: "API Profile Sans", size: "18px"),
   figure: (placement: bottom, outlined: false),
 )
 
-#let profiled-svg = mermaid-svg(source, profile: profile)
+#let profiled-svg = mermaid-svg(source, profile: svg-profile)
 #assert(profiled-svg.contains("api-profile"), message: "profile should apply to SVG export")
 #assert(profiled-svg.contains("API Profile Sans"), message: "profile typography should apply")
 
 #let direct-svg = mermaid-svg(
   source,
-  profile: profile,
+  profile: svg-profile,
   id: "api-direct",
   typography: (font: "API Direct Sans", size: "19px"),
   host-theme: (font_family: "API Host Sans", font_size: "20px"),
@@ -45,7 +45,7 @@
 
 #let options-svg = mermaid-svg(
   source,
-  profile: profile,
+  profile: svg-profile,
   id: "api-direct",
   options: (
     svg: (diagram_id: "api-options", pipeline: "readable"),
@@ -61,17 +61,23 @@
 #assert(capabilities.text_measurement.vendored, message: "capabilities should keep text measurement boundary")
 #assert(not capabilities.text_measurement.host_callback, message: "Typst host callback measurement is not supported")
 
-#mermaid(source, profile: profile, width: 80%, alt: "Canonical API image")
+#let image-profile = mermaid-profile(
+  id: "api-image",
+  typography: (font: "API Image Sans", size: "18px"),
+  figure: (placement: bottom, outlined: false),
+)
+
+#mermaid(source, profile: image-profile, width: 80%, alt: "Canonical API image")
 
 #mermaid-figure(
   source,
-  profile: profile,
+  profile: image-profile,
   caption: [Canonical API figure],
   width: 80%,
 )
 
 #show raw.where(lang: "mermaid-api"): show-mermaid-blocks(
-  profile: profile,
+  profile: image-profile,
   width: 80%,
   error-mode: "panic",
 )

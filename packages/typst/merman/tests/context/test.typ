@@ -26,7 +26,6 @@
   source,
   document-context: true,
   id: "context-enabled",
-  pipeline: "readable",
   width: 100%,
 )
 
@@ -34,7 +33,6 @@
   source,
   document-context: true,
   id: "context-direct-width",
-  pipeline: "readable",
   viewport-width: 444,
   width: 100%,
 )
@@ -43,7 +41,6 @@
   source,
   document-context: true,
   id: "context-direct-layout",
-  pipeline: "readable",
   layout: (viewport_width: 333),
   width: 100%,
 )

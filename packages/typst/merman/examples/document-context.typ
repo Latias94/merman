@@ -6,7 +6,6 @@
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   document-context: true,
   width: 100%,
-  pipeline: "readable",
 )
 
 = Document context example

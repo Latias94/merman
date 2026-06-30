@@ -5,14 +5,12 @@
 
 #show raw.where(lang: "mermaid-explicit"): show-mermaid-blocks(
   width: 100%,
-  pipeline: "readable",
   error-mode: "panic",
 )
 
 #show raw.where(lang: "mermaid-docctx"): show-mermaid-blocks(
   document-context: true,
   width: 100%,
-  pipeline: "readable",
   error-mode: "panic",
 )
 

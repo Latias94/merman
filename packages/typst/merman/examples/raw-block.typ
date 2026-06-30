@@ -3,7 +3,6 @@
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   document-context: true,
   width: 100%,
-  pipeline: "readable",
   alt: "A Mermaid diagram rendered from a raw block",
 )
 

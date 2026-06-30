@@ -2,7 +2,7 @@
 name = "merman"
 version = "0.1.0"
 entrypoint = "lib.typ"
-compiler = "0.14.0"
+compiler = "0.15.0"
 authors = ["Mingzhen Zhuang <@Latias94>"]
 license = "MIT OR Apache-2.0"
 description = "Render Mermaid diagrams as SVG."

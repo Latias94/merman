@@ -4,6 +4,8 @@ Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
 `merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project.
 
+Requires Typst 0.15.0 or newer.
+
 ## Quick Start
 
 Import `mermaid` and pass a Mermaid source string:
@@ -103,6 +105,8 @@ Use `mermaid-profile(...)` for reusable diagram settings:
 
 Profiles work with `mermaid(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `validate-mermaid(...)`, and raw-block show rules. The optional `figure` section is consumed only by `mermaid-figure(...)`; it does not change raw SVG rendering or non-figure image calls.
 
+For normal documents, start with `width`, `theme-name`, `theme`, `background`, `typography`, `document-context`, and reusable `profile` values. Lower-level renderer fields remain available when you need parity debugging or deterministic fixture control, but they are not the main authoring path.
+
 Precedence is:
 
 1. `options`
@@ -173,22 +177,24 @@ Common parameters:
 - `document-context`: `false` by default. Set to `true` to inherit Typst text font, text size, and available width for image rendering.
 - `profile`: reusable options produced by `mermaid-profile(...)`.
 - `typography`: high-level font and size intent, mapped to the current `host-theme` fields.
-- `pipeline`: `"resvg-safe"` by default for Typst rendering. Use `"parity"` when you need Mermaid-like SVG DOM output, or `"readable"` for inline SVG inspection.
 - `id`: stable SVG root id. `diagram-id` is kept as the lower-level binding name and takes precedence when both are provided.
 - `background`: SVG root background color, mapped to `svg.root_background_color`.
 - `theme-name`: Mermaid theme name, such as `"base"` or `"dark"`.
 - `theme`: Mermaid `themeVariables`.
-- `site-config`: full Mermaid site config object.
-- `host-theme`: merman host theme profile object.
-- `layout`: full binding layout object. This overrides the shorthand layout parameters below.
-- `text-measurer`: `"vendored"` or `"deterministic"`.
-- `viewport-width`, `viewport-height`, `math-renderer`: layout shorthands.
-- `scoped-css`, `css-override-policy`, `drop-native-duplicate-fallbacks`: advanced SVG post-processing shorthands.
-- `fixed-today`: `YYYY-MM-DD` for date-sensitive diagrams.
 - `error-mode`: `"panic"` by default. Use `"placeholder"` or `"text"` to show diagram errors in the document instead of failing the Typst compile. These modes handle structured errors returned by `merman`; missing wasm files, Typst plugin loading failures, invalid `error-mode` values, and SVG image decoding failures still fail the Typst compile.
-- `options`: escape hatch; when present, it is passed through directly to the Rust binding options and overrides shorthand parameters.
 
 This entry point is explicit-only unless `document-context: true` is set.
+
+Advanced renderer parameters:
+
+- `pipeline`: `"resvg-safe"` by default for embedded Typst images. Use `"parity"` when you need Mermaid-like SVG DOM output, or `"readable"` for inline SVG inspection.
+- `site-config`: full Mermaid site config object.
+- `host-theme`: merman host theme profile object.
+- `layout`: full binding layout object. This overrides layout shorthands.
+- `viewport-width`, `viewport-height`, `text-measurer`, `math-renderer`: layout shorthands for deterministic exports and fixtures.
+- `scoped-css`, `css-override-policy`, `drop-native-duplicate-fallbacks`: SVG post-processing shorthands.
+- `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
+- `options`: escape hatch; when present, it is passed through directly to the Rust binding options and overrides shorthand parameters.
 
 ### `mermaid-profile(..)`
 
