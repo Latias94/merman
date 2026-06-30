@@ -11,4 +11,4 @@
 
 #mermaid(invalid-source, error-mode: "placeholder", width: 80%)
 
-Error modes fixture passed.
+Error fixture passed.

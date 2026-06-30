@@ -5,11 +5,8 @@
 "
 
 #let figure-profile = mermaid-profile(
-  id: "figure-wrapper",
-  typography: (
-    font: "Figure Sans",
-    size: "18px",
-  ),
+  id: "figure-profile",
+  typography: (font: "Figure Sans", size: "18px"),
   figure: (
     placement: bottom,
     scope: "parent",
@@ -32,7 +29,7 @@
 
 #mermaid-figure(
   source,
-  caption: [Context-aware figure caption],
+  caption: [Document-context figure caption],
   document-context: true,
   profile: figure-profile,
   id: "document-context-figure",
@@ -58,4 +55,4 @@
   assert(document-context-figure.caption.position == bottom, message: "direct caption position should override profile")
 }
 
-Figure wrapper fixture passed.
+Figure fixture passed.
