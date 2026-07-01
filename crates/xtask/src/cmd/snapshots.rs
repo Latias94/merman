@@ -54,6 +54,21 @@ pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::Mermai
         .map(merman::MermaidConfig::from_value)
 }
 
+fn layout_snapshot_site_config() -> merman::MermaidConfig {
+    // Keep this aligned with `crates/merman-render/tests/common/mod.rs` so
+    // regenerated layout goldens match the test harness exactly.
+    merman::MermaidConfig::from_value(serde_json::json!({
+        "secure": [
+            "secure",
+            "securityLevel",
+            "startOnLoad",
+            "maxTextSize",
+            "suppressErrorRendering",
+            "maxEdges"
+        ]
+    }))
+}
+
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -189,9 +204,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
 
     merman::time::with_fixed_local_offset_minutes(Some(0), || {
         let engine = merman::Engine::new()
-            .with_site_config(merman::MermaidConfig::from_value(
-                serde_json::json!({ "handDrawnSeed": 1 }),
-            ))
+            .with_site_config(layout_snapshot_site_config())
             .with_fixed_today(Some(
                 chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
             ))
@@ -208,12 +221,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 }
             };
 
-            let fixture_engine = match fixture_site_config_for_path(&mmd_path) {
-                Some(site_config) => engine.clone().with_site_config(site_config),
-                None => engine.clone(),
-            };
-
-            let parsed = match futures::executor::block_on(fixture_engine.parse_diagram(
+            let parsed = match futures::executor::block_on(engine.parse_diagram(
                 &text,
                 merman::ParseOptions {
                     suppress_errors: true,

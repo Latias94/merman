@@ -28,7 +28,7 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanEngine.layoutJson(source, optionsJson = null)`
 - `MermanEngine.validateJson(source, optionsJson = null)`
 - `MermanEngine.supportedDiagramsJson()`
-- `MermanEngine.asciiSupportedDiagramsJson()`
+- `MermanEngine.asciiCapabilitiesJson()`
 - `MermanEngine.diagramFamilyCapabilitiesJson()`
 - `MermanEngine.lintRuleCatalogJson()`
 - `MermanEngine.supportedThemesJson()`

@@ -527,6 +527,8 @@ pub struct XyChartDiagramLayout {
     pub chart_orientation: String,
     #[serde(rename = "showDataLabel")]
     pub show_data_label: bool,
+    #[serde(rename = "showDataLabelOutsideBar", default)]
+    pub show_data_label_outside_bar: bool,
     #[serde(rename = "backgroundColor")]
     pub background_color: String,
     #[serde(rename = "labelData")]

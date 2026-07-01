@@ -1,10 +1,12 @@
+use super::{SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, validate::validate_supported_sequence_model};
+use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
+use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
+use crate::text::{display_width, split_label_lines, wrap_label_lines};
 use merman_core::diagrams::sequence::{
     SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage, SequenceMessagePayload,
 };
 use std::collections::HashMap;
-
-use super::validate::validate_supported_sequence_model;
 
 const AUTONUMBER_MESSAGE_TYPE: i32 = 26;
 pub(super) const NOTE_MESSAGE_TYPE: i32 = 2;
@@ -50,13 +52,52 @@ pub(crate) struct AsciiSequenceDiagram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceParticipant {
     pub(super) id: String,
-    pub(super) label: String,
+    pub(super) label: SequenceParticipantLabel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SequenceParticipantLabel {
+    lines: Vec<String>,
+    width: usize,
+}
+
+impl SequenceParticipantLabel {
+    pub(super) fn from_raw(raw: &str, wrap: bool) -> Self {
+        let lines = if wrap {
+            wrap_label_lines(raw, SEQUENCE_ACTOR_WRAP_TEXT_WIDTH)
+        } else {
+            split_label_lines(raw)
+        };
+        Self::from_lines(lines)
+    }
+
+    pub(super) fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    pub(super) fn width(&self) -> usize {
+        self.width
+    }
+
+    fn from_lines(mut lines: Vec<String>) -> Self {
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        let width = lines
+            .iter()
+            .map(|line| display_width(line))
+            .max()
+            .unwrap_or_default();
+        Self { lines, width }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceGroupBox {
     pub(super) actor_indices: Vec<usize>,
     pub(super) label: Option<String>,
+    pub(super) background: Option<AsciiRgb>,
+    pub(super) wrap: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -105,6 +146,7 @@ pub(super) struct SequenceControlStart {
     pub(super) model_index: usize,
     pub(super) kind: SequenceControlKind,
     pub(super) label: String,
+    pub(super) background: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -299,12 +341,6 @@ pub(crate) fn from_sequence_model(
         if message.message_type == NOTE_MESSAGE_TYPE {
             let placement = SequenceNotePlacement::from_model(message.placement)?;
             let label = message.message_text();
-            if label.contains(['\r', '\n']) {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "sequence",
-                    feature: "multiline notes",
-                });
-            }
             events.push(SequenceEvent::Note(SequenceNote {
                 model_index,
                 from,
@@ -403,13 +439,31 @@ fn sequence_control_event(
     ensure_endpointless_control_message(message)?;
 
     if is_start {
+        let raw_label = message.message_text();
+        let (label, background) = sequence_control_start_label(kind, raw_label);
         Ok(Some(SequenceEvent::ControlStart(SequenceControlStart {
             model_index,
             kind,
-            label: message.message_text().to_string(),
+            label,
+            background,
         })))
     } else {
         Ok(Some(SequenceEvent::ControlEnd { kind, model_index }))
+    }
+}
+
+fn sequence_control_start_label(
+    kind: SequenceControlKind,
+    raw_label: &str,
+) -> (String, Option<AsciiRgb>) {
+    if kind != SequenceControlKind::Rect {
+        return (raw_label.to_string(), None);
+    }
+
+    match parse_css_color_value(raw_label) {
+        Some(CssColor::Rgb(color)) => (String::new(), Some(color)),
+        Some(CssColor::Transparent) => (String::new(), None),
+        None => (raw_label.to_string(), None),
     }
 }
 
@@ -434,7 +488,7 @@ fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequencePart
     ids.into_iter()
         .filter_map(|id| {
             let actor = model.actors.get(&id)?;
-            let label = if actor.description.is_empty() {
+            let raw_label = if actor.description.is_empty() {
                 if actor.name.is_empty() {
                     id.clone()
                 } else {
@@ -443,6 +497,7 @@ fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequencePart
             } else {
                 actor.description.clone()
             };
+            let label = SequenceParticipantLabel::from_raw(&raw_label, actor.wrap);
             Some(SequenceParticipant { id, label })
         })
         .collect()
@@ -478,6 +533,8 @@ fn sequence_boxes(
             Ok(SequenceGroupBox {
                 actor_indices,
                 label,
+                background: parse_css_color(&sequence_box.fill),
+                wrap: sequence_box.wrap,
             })
         })
         .collect()

@@ -1,0 +1,7 @@
+erDiagram
+CUSTOMER
+ORDER
+INVOICE
+CUSTOMER ||--o{ ORDER : places
+CUSTOMER ||--o{ INVOICE : billed
+ORDER ||--|| INVOICE : invoices

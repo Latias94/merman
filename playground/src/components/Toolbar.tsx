@@ -19,8 +19,12 @@ import {
   exportASCII,
   copySVGToClipboard,
   copyCodeToClipboard,
-  isAsciiSupported,
 } from "@/src/lib/export";
+import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import {
+  asciiSupportDescription,
+  asciiSupportLabelKey,
+} from "@/src/lib/ascii-support";
 import { useMerman } from "@/src/hooks/useMerman";
 import { BenchDialog } from "@/src/components/BenchDialog";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
@@ -104,6 +108,7 @@ export function Toolbar() {
   } = useAppStore();
   const { copyShareUrl } = useShare();
   const { render, renderAscii, getThemes } = useMerman();
+  const asciiSupport = useAsciiSupport();
   const [isExporting, setIsExporting] = useState(false);
   const currentLang = getCurrentLanguage();
 
@@ -148,6 +153,13 @@ export function Toolbar() {
       ? t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })
       : t(`hostThemes.${hostThemePreset}`, { defaultValue: hostThemePreset });
   const renderSettingsLabel = t("toolbar.renderSettings");
+  const asciiCapability = asciiSupport.capabilityFor(diagramType);
+  const asciiSupported = asciiSupport.isSupported(diagramType);
+  const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
+  const asciiSupportLimit = asciiSupportDescription(asciiCapability);
+  const asciiExportDescription = asciiSupported
+    ? [asciiSupportLabel, asciiSupportLimit].filter(Boolean).join(" · ")
+    : t("export.asciiNotSupported");
 
   const UI_THEME_OPTIONS: { value: UITheme; label: string }[] = [
     { value: "light", label: t("uiThemes.light") },
@@ -191,7 +203,7 @@ export function Toolbar() {
 
   // 导出 ASCII
   const handleExportASCII = useCallback(() => {
-    if (!isAsciiSupported(diagramType)) {
+    if (!asciiSupport.isSupported(diagramType)) {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
@@ -202,7 +214,7 @@ export function Toolbar() {
     }
     exportASCII(ascii, "merman-diagram");
     toast.success(t("export.asciiSuccess"));
-  }, [code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
+  }, [asciiSupport, code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
 
   // 复制代码
   const handleCopyCode = useCallback(async () => {
@@ -388,8 +400,6 @@ export function Toolbar() {
     </DropdownMenuContent>
   );
 
-  const asciiSupported = isAsciiSupported(diagramType);
-
   return (
     <>
       <Toaster position="bottom-right" richColors />
@@ -482,6 +492,9 @@ export function Toolbar() {
               <DropdownMenuItem onClick={handleExportASCII} disabled={!asciiSupported}>
                 <FileText className="size-4" />
                 {t("export.ascii")}
+                <span className="ml-auto max-w-44 truncate text-xs text-muted-foreground">
+                  {asciiExportDescription}
+                </span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleCopyCode}>
@@ -601,7 +614,7 @@ export function Toolbar() {
                 <FileText className="size-4" />
                 {t("export.ascii")}
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {asciiSupported ? t("export.asciiDesc") : t("export.asciiNotSupported")}
+                  {asciiExportDescription}
                 </span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

@@ -78,42 +78,37 @@ fn security_level_from_json(value: &serde_json::Value) -> Option<&'static str> {
         .and_then(normalize_security_level)
 }
 
-fn security_level_from_yaml(value: &serde_yaml::Value) -> Option<&'static str> {
-    let mapping = value.as_mapping()?;
-    let direct = serde_yaml::Value::String("securityLevel".to_string());
+fn security_level_from_yaml(value: &serde_json::Value) -> Option<&'static str> {
+    let mapping = value.as_object()?;
+    let direct = "securityLevel";
     if let Some(level) = mapping
-        .get(&direct)
-        .and_then(serde_yaml::Value::as_str)
+        .get(direct)
+        .and_then(serde_json::Value::as_str)
         .and_then(normalize_security_level)
     {
         return Some(level);
     }
 
-    let config_key = serde_yaml::Value::String("config".to_string());
+    let config_key = "config";
     mapping
-        .get(&config_key)
-        .and_then(serde_yaml::Value::as_mapping)
-        .and_then(|config| config.get(&direct))
-        .and_then(serde_yaml::Value::as_str)
+        .get(config_key)
+        .and_then(serde_json::Value::as_object)
+        .and_then(|config| config.get(direct))
+        .and_then(serde_json::Value::as_str)
         .and_then(normalize_security_level)
 }
 
-fn yaml_mapping_str<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a str> {
-    mapping
-        .get(serde_yaml::Value::String(key.to_string()))
-        .and_then(serde_yaml::Value::as_str)
-}
-
-fn config_look_from_yaml(value: &serde_yaml::Value) -> Option<&str> {
-    let mapping = value.as_mapping()?;
-    if let Some(look) = yaml_mapping_str(mapping, "look") {
+fn config_look_from_yaml(value: &serde_json::Value) -> Option<&str> {
+    let mapping = value.as_object()?;
+    if let Some(look) = mapping.get("look").and_then(serde_json::Value::as_str) {
         return Some(look);
     }
 
     mapping
-        .get(serde_yaml::Value::String("config".to_string()))
-        .and_then(serde_yaml::Value::as_mapping)
-        .and_then(|config| yaml_mapping_str(config, "look"))
+        .get("config")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|config| config.get("look"))
+        .and_then(serde_json::Value::as_str)
 }
 
 fn split_yaml_frontmatter(input: &str) -> Option<(&str, &str)> {
@@ -140,13 +135,13 @@ fn split_yaml_frontmatter(input: &str) -> Option<(&str, &str)> {
 
 fn security_level_from_frontmatter(body: &str) -> Option<&'static str> {
     let (yaml, _) = split_yaml_frontmatter(body)?;
-    let parsed = serde_yaml::from_str::<serde_yaml::Value>(yaml).ok()?;
+    let parsed = serde_saphyr::from_str::<serde_json::Value>(yaml).ok()?;
     security_level_from_yaml(&parsed)
 }
 
 pub(crate) fn imported_fixture_config_look(body: &str) -> Option<String> {
     let (yaml, _) = split_yaml_frontmatter(body)?;
-    let parsed = serde_yaml::from_str::<serde_yaml::Value>(yaml).ok()?;
+    let parsed = serde_saphyr::from_str::<serde_json::Value>(yaml).ok()?;
     config_look_from_yaml(&parsed).map(str::to_string)
 }
 
@@ -568,7 +563,7 @@ flowchart TD
         let mut overrides = serde_json::Map::new();
         overrides.insert(
             "flowchart/example.mmd".to_string(),
-            serde_json::json!({ "securityLevel": "loose" }),
+            json!({ "securityLevel": "loose" }),
         );
 
         let changed = apply_site_config_override(
@@ -586,7 +581,7 @@ flowchart TD
         let mut overrides = serde_json::Map::new();
         overrides.insert(
             "flowchart/example.mmd".to_string(),
-            serde_json::json!({ "securityLevel": "sandbox" }),
+            json!({ "securityLevel": "sandbox" }),
         );
 
         let changed = apply_site_config_override(

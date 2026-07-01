@@ -97,7 +97,64 @@ export interface CommonBindingOptions {
   parse?: ParseOptions;
 }
 
-export type AsciiBindingOptions = CommonBindingOptions;
+export type AsciiCharsetOption = "ascii" | "unicode";
+export type AsciiDirectionOption =
+  | "lr"
+  | "left-right"
+  | "left_right"
+  | "td"
+  | "tb"
+  | "top-down"
+  | "top_down";
+export type AsciiColorModeOption =
+  | "plain"
+  | "none"
+  | "auto"
+  | "ansi16"
+  | "ansi-16"
+  | "ansi_16"
+  | "ansi256"
+  | "ansi-256"
+  | "ansi_256"
+  | "truecolor"
+  | "true-color"
+  | "true_color"
+  | "html";
+
+export interface AsciiThemeOptions {
+  foreground?: string;
+  fg?: string;
+  background?: string;
+  bg?: string;
+  line?: string;
+  accent?: string;
+  muted?: string;
+  surface?: string;
+  border?: string;
+}
+
+export interface AsciiRenderOptions {
+  charset?: AsciiCharsetOption;
+  default_direction?: AsciiDirectionOption;
+  defaultDirection?: AsciiDirectionOption;
+  color_mode?: AsciiColorModeOption;
+  colorMode?: AsciiColorModeOption;
+  theme?: AsciiThemeOptions;
+  sequence_mirror_actors?: boolean;
+  sequenceMirrorActors?: boolean;
+  xychart_vertical_plot_height?: number;
+  xychartVerticalPlotHeight?: number;
+  xychart_category_band_width?: number;
+  xychartCategoryBandWidth?: number;
+  xychart_horizontal_plot_width?: number;
+  xychartHorizontalPlotWidth?: number;
+  max_grid_cells?: number;
+  maxGridCells?: number;
+}
+
+export interface AsciiBindingOptions extends CommonBindingOptions {
+  ascii?: AsciiRenderOptions;
+}
 
 export interface SvgBindingOptions extends CommonBindingOptions {
   host_theme?: HostThemeOptions;
@@ -204,6 +261,26 @@ export const SUPPORTED_DIAGRAMS = [
 
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 
+export const SUPPORTED_ASCII_DIAGRAMS = [
+  "class",
+  "er",
+  "flowchart",
+  "gantt",
+  "gitgraph",
+  "journey",
+  "kanban",
+  "mindmap",
+  "packet",
+  "sequence",
+  "state",
+  "timeline",
+  "treeView",
+  "xychart",
+  "zenuml",
+] as const;
+
+export type AsciiDiagramType = (typeof SUPPORTED_ASCII_DIAGRAMS)[number];
+
 export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_OK",
   "MERMAN_INVALID_ARGUMENT",
@@ -281,6 +358,32 @@ export interface LintRuleCatalogEntry {
   fixable: boolean;
 }
 
+export type AsciiSupportLevel = "full" | "partial" | "summary" | "unsupported";
+
+export type AsciiEvidenceKind =
+  | "mermaid_ascii_oracle"
+  | "beautiful_mermaid_prior_art"
+  | "local_semantic_probe"
+  | "local_advantage"
+  | "support_matrix"
+  | "gap_registry";
+
+export interface AsciiCapabilityEvidence {
+  kind: AsciiEvidenceKind | string;
+  source: string;
+  note: string;
+}
+
+export interface AsciiCapability {
+  diagram_type: AsciiDiagramType | string;
+  display_name: string;
+  support_level: AsciiSupportLevel;
+  summary_fallback: boolean;
+  supported_semantics: string[];
+  limits: string[];
+  evidence: AsciiCapabilityEvidence[];
+}
+
 export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
   render: true,
   ascii: true,
@@ -303,6 +406,12 @@ export function isHostThemePresetName(
 
 export function isDiagramType(diagram: string): diagram is DiagramType {
   return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
+}
+
+export function isAsciiDiagramType(
+  diagram: string
+): diagram is AsciiDiagramType {
+  return (SUPPORTED_ASCII_DIAGRAMS as readonly string[]).includes(diagram);
 }
 
 export function isBindingStatusCodeName(
@@ -612,13 +721,15 @@ export interface MermanWasmModule {
     uri?: string | null
   ) => EditorSemanticToken[];
   asciiSupportedDiagrams: () => string[];
+  asciiCapabilities?: () => AsciiCapability[];
   bindingCapabilities?: () => BindingCapabilities;
   selectedRegistryProfile?: () => string;
   diagramFamilyCapabilities?: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogEntry[];
   supportedDiagrams: () => string[];
   supportedHostThemePresets?: () => string[];
-  supportedThemes: () => string[];
+  supportedThemes?: () => string[];
+  themes?: () => string[];
 }
 
 export type MermanWasmLoader = () => Promise<MermanWasmModule>;
@@ -633,7 +744,8 @@ export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
 let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
 let supportedDiagramsCache: DiagramType[] | null = null;
-let asciiSupportedDiagramsCache: DiagramType[] | null = null;
+let asciiSupportedDiagramsCache: AsciiDiagramType[] | null = null;
+let asciiCapabilitiesCache: AsciiCapability[] | null = null;
 let diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null = null;
 let lintRuleCatalogCache: LintRuleCatalogEntry[] | null = null;
 let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
@@ -663,7 +775,7 @@ async function doInit(init?: MermanInitInput): Promise<MermanWasmModule> {
 }
 
 async function defaultLoader(): Promise<MermanWasmModule> {
-  return (await import("../pkg/merman_wasm.js")) as MermanWasmModule;
+  return (await import("../pkg/merman_wasm.js")) as unknown as MermanWasmModule;
 }
 
 export function getMerman(): MermanWasmModule {
@@ -1059,15 +1171,32 @@ export function lintRuleCatalog(): LintRuleCatalogEntry[] {
   }));
 }
 
-export function asciiSupportedDiagrams(): DiagramType[] {
+export function asciiSupportedDiagrams(): AsciiDiagramType[] {
   asciiSupportedDiagramsCache ??= getMerman()
     .asciiSupportedDiagrams()
-    .map(assertDiagramType);
+    .map(assertAsciiDiagramType);
   return [...asciiSupportedDiagramsCache];
 }
 
+export function asciiCapabilities(): AsciiCapability[] {
+  asciiCapabilitiesCache ??= (
+    getMerman().asciiCapabilities?.() ?? fallbackAsciiCapabilities()
+  ).map(normalizeAsciiCapability);
+  return asciiCapabilitiesCache.map((capability) => ({
+    ...capability,
+    supported_semantics: [...capability.supported_semantics],
+    limits: [...capability.limits],
+    evidence: capability.evidence.map((evidence) => ({ ...evidence })),
+  }));
+}
+
 export function supportedThemes(): ThemeName[] {
-  supportedThemesCache ??= getMerman().supportedThemes().map(assertThemeName);
+  const merman = getMerman();
+  supportedThemesCache ??= (
+    merman.supportedThemes?.() ??
+    merman.themes?.() ??
+    SUPPORTED_THEMES
+  ).map(assertThemeName);
   return [...supportedThemesCache];
 }
 
@@ -1100,6 +1229,13 @@ function assertDiagramType(diagram: string): DiagramType {
     return diagram;
   }
   throw new Error(`Merman WASM returned unknown diagram type: ${diagram}`);
+}
+
+function assertAsciiDiagramType(diagram: string): AsciiDiagramType {
+  if (isAsciiDiagramType(diagram)) {
+    return diagram;
+  }
+  throw new Error(`Merman WASM returned unknown ASCII diagram type: ${diagram}`);
 }
 
 function normalizeDiagramFamilyCapability(
@@ -1189,6 +1325,72 @@ function assertCatalogValue<const T extends string>(
     return value as T;
   }
   throw new Error(`Merman WASM returned an invalid lint rule catalog value: ${String(value)}`);
+}
+
+function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability {
+  if (!capability || typeof capability !== "object") {
+    throw new Error("Merman WASM returned an invalid ASCII capability.");
+  }
+  if (typeof capability.diagram_type !== "string") {
+    throw new Error("Merman WASM returned an invalid ASCII capability.");
+  }
+
+  const supportLevel = normalizeAsciiSupportLevel(capability.support_level);
+  const evidence = Array.isArray(capability.evidence)
+    ? capability.evidence.map(normalizeAsciiCapabilityEvidence)
+    : [];
+
+  return {
+    diagram_type: capability.diagram_type,
+    display_name:
+      typeof capability.display_name === "string"
+        ? capability.display_name
+        : capability.diagram_type,
+    support_level: supportLevel,
+    summary_fallback: Boolean(capability.summary_fallback),
+    supported_semantics: Array.isArray(capability.supported_semantics)
+      ? capability.supported_semantics.map(String)
+      : [],
+    limits: Array.isArray(capability.limits) ? capability.limits.map(String) : [],
+    evidence,
+  };
+}
+
+function normalizeAsciiCapabilityEvidence(
+  evidence: AsciiCapabilityEvidence
+): AsciiCapabilityEvidence {
+  return {
+    kind: typeof evidence.kind === "string" ? evidence.kind : "support_matrix",
+    source: typeof evidence.source === "string" ? evidence.source : "",
+    note: typeof evidence.note === "string" ? evidence.note : "",
+  };
+}
+
+function normalizeAsciiSupportLevel(level: unknown): AsciiSupportLevel {
+  return level === "full" ||
+    level === "partial" ||
+    level === "summary" ||
+    level === "unsupported"
+    ? level
+    : "unsupported";
+}
+
+function fallbackAsciiCapabilities(): AsciiCapability[] {
+  return asciiSupportedDiagrams().map((diagramType) => ({
+    diagram_type: diagramType,
+    display_name: diagramType,
+    support_level: "partial",
+    summary_fallback: false,
+    supported_semantics: [],
+    limits: [],
+    evidence: [
+      {
+        kind: "support_matrix",
+        source: "SUPPORTED_ASCII_DIAGRAMS",
+        note: "fallback capability synthesized from the legacy supported diagram list",
+      },
+    ],
+  }));
 }
 
 function assertThemeName(theme: string): ThemeName {

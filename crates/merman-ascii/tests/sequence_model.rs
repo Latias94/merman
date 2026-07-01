@@ -38,6 +38,21 @@ fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::R
     render_model(&parsed.model, options)
 }
 
+fn read_local_semantic_fixture(path: &str) -> String {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/testdata/local-semantic")
+        .join(path);
+    std::fs::read_to_string(&fixture_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture_path.display()))
+}
+
+fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
+    rendered
+        .lines()
+        .position(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
 fn parse_sequence_render_model(input: &str) -> SequenceDiagramRenderModel {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -145,6 +160,13 @@ fn strip_html_spans(input: &str) -> String {
     output
 }
 
+fn cjk_test_width(input: &str) -> usize {
+    input
+        .chars()
+        .map(|ch| if ch.is_ascii() { 1 } else { 2 })
+        .sum()
+}
+
 #[test]
 fn sequence_color_truecolor_emits_participant_lifeline_activation_and_message_roles() {
     let theme = AsciiColorTheme::default_light()
@@ -231,30 +253,30 @@ fn sequence_color_html_wraps_boxes_notes_control_frames_and_messages_without_cha
     assert_eq!(
         strip_html_spans(&rendered),
         concat!(
-            "+- Group -------+\n",
-            "|+---+     +---+|\n",
-            "|| A |     | B ||\n",
-            "|+-+-+     +-+-+|\n",
-            "|+ loop Work ----+\n",
-            "|| |         |  ||\n",
-            "|| | Start   |  ||\n",
-            "|| +-------->|  ||\n",
-            "|| |         #  ||\n",
-            "||+-----------+ ||\n",
-            "|||   Wait    | ||\n",
-            "||+-----------+ ||\n",
-            "|| |         #  ||\n",
-            "|| | Done    #  ||\n",
-            "|| |<........+  ||\n",
-            "|+---------------+\n",
-            "|  |         |  |\n",
-            "+---------------+\n",
+            "+- Group ------------+\n",
+            "| +---+     +---+    |\n",
+            "| | A |     | B |    |\n",
+            "| +-+-+     +-+-+    |\n",
+            "| + loop Work ----+  |\n",
+            "| | |         |   |  |\n",
+            "| | | Start   |   |  |\n",
+            "| | +-------->|   |  |\n",
+            "| | |         #   |  |\n",
+            "| |+-----------+  |  |\n",
+            "| ||   Wait    |  |  |\n",
+            "| |+-----------+  |  |\n",
+            "| | |         #   |  |\n",
+            "| | | Done    #   |  |\n",
+            "| | |<........+   |  |\n",
+            "| +---------------+  |\n",
+            "|   |         |      |\n",
+            "+--------------------+\n",
         )
     );
     for expected_fragment in [
         "<span style=\"color:#202020\">+-</span><span style=\"color:#101010\"> Group </span>",
-        "<span style=\"color:#202020\">|+</span><span style=\"color:#101010\"> loop Work </span>",
-        "<span style=\"color:#202020\">||+-----------+</span>",
+        "<span style=\"color:#202020\">|</span> <span style=\"color:#202020\">+</span><span style=\"color:#101010\"> loop Work </span>",
+        "<span style=\"color:#202020\">|</span> <span style=\"color:#202020\">|+-----------+</span>",
         "<span style=\"color:#707070\">Start</span>",
         "<span style=\"color:#505050\">--------</span><span style=\"color:#606060\">&gt;</span>",
         "<span style=\"color:#404040\">#</span>",
@@ -265,6 +287,77 @@ fn sequence_color_html_wraps_boxes_notes_control_frames_and_messages_without_cha
             "missing {expected_fragment:?} in {rendered:?}"
         );
     }
+}
+
+#[test]
+fn sequence_box_fill_truecolor_maps_background_without_plain_text_changes() {
+    let input =
+        "sequenceDiagram\nbox green Group\nparticipant A\nparticipant B\nend\nA->>B: Inside";
+    let plain =
+        render_sequence(input, &AsciiRenderOptions::ascii()).expect("plain sequence should render");
+    let rendered = render_sequence(
+        input,
+        &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor),
+    )
+    .expect("sequence box fill should render in truecolor mode");
+
+    assert_eq!(strip_ansi(&rendered), plain);
+    assert!(
+        rendered.contains("\u{1b}[48;2;0;128;0m"),
+        "missing sequence box background in {rendered:?}"
+    );
+    assert!(
+        !rendered.contains("\u{1b}[38;2;0;128;0m"),
+        "box fill should not be emitted as foreground in {rendered:?}"
+    );
+}
+
+#[test]
+fn sequence_box_hsl_fill_truecolor_maps_background_without_plain_text_changes() {
+    let input = concat!(
+        "sequenceDiagram\n",
+        "box hsl(120, 100%, 25%) Group\n",
+        "participant A\n",
+        "participant B\n",
+        "end\n",
+        "A->>B: Inside",
+    );
+    let plain =
+        render_sequence(input, &AsciiRenderOptions::ascii()).expect("plain sequence should render");
+    let rendered = render_sequence(
+        input,
+        &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor),
+    )
+    .expect("sequence box hsl fill should render in truecolor mode");
+
+    assert_eq!(strip_ansi(&rendered), plain);
+    assert!(
+        rendered.contains("\u{1b}[48;2;0;128;0m"),
+        "missing sequence box hsl background in {rendered:?}"
+    );
+}
+
+#[test]
+fn sequence_rect_rgb_color_html_maps_background_without_plain_text_changes() {
+    let input =
+        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgb(255,238,204)\nA->>B: Shaded\nend";
+    let plain =
+        render_sequence(input, &AsciiRenderOptions::ascii()).expect("plain sequence should render");
+    let rendered = render_sequence(
+        input,
+        &AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html),
+    )
+    .expect("sequence rect fill should render in HTML color mode");
+
+    assert_eq!(strip_html_spans(&rendered), plain);
+    assert!(
+        !plain.contains("rgb(255,238,204)"),
+        "parseable rect colors should be treated as style, not visible labels:\n{plain}"
+    );
+    assert!(
+        rendered.contains("background-color:#ffeecc"),
+        "missing rect background in {rendered:?}"
+    );
 }
 
 #[test]
@@ -374,17 +467,6 @@ fn assert_unsupported_sequence_model(model: SequenceDiagramRenderModel, feature:
     );
 }
 
-fn assert_unsupported_sequence_input(input: &str, feature: &'static str) {
-    let err = render_sequence(input, &AsciiRenderOptions::unicode()).unwrap_err();
-    assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature,
-        }
-    );
-}
-
 fn message(from: Option<&str>, to: Option<&str>, message_type: i32) -> SequenceMessage {
     SequenceMessage {
         id: "m0".to_string(),
@@ -485,7 +567,7 @@ fn sequence_notes_render_from_typed_model() {
 }
 
 #[test]
-fn sequence_multiline_notes_are_explicitly_unsupported() {
+fn sequence_multiline_notes_render_from_typed_model() {
     let mut model = basic_sequence_model();
     model.notes.push(SequenceNote {
         actor: "A".into(),
@@ -505,7 +587,57 @@ fn sequence_multiline_notes_are_explicitly_unsupported() {
         central_connection: 0,
     });
 
-    assert_unsupported_sequence_model(model, "multiline notes");
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("sequence should render");
+    let lines = normalize_sequence_output(&rendered)
+        .lines()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    let line_1 = lines
+        .iter()
+        .position(|line| line.contains("line 1"))
+        .expect("first note line should render");
+    let line_2 = lines
+        .iter()
+        .position(|line| line.contains("line 2"))
+        .expect("second note line should render");
+
+    assert_eq!(
+        line_2,
+        line_1 + 1,
+        "multiline notes should render as adjacent note content rows:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_note_html_breaks_render_multiline_note_boxes() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nA->>A: Ping\nNote right of A: First<br/>Second",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence should render");
+    let lines = normalize_sequence_output(&rendered)
+        .lines()
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    let first = lines
+        .iter()
+        .position(|line| line.contains("First"))
+        .expect("first note line should render");
+    let second = lines
+        .iter()
+        .position(|line| line.contains("Second"))
+        .expect("second note line should render");
+
+    assert_eq!(
+        second,
+        first + 1,
+        "HTML line breaks should become adjacent note content rows:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("<br"),
+        "HTML break markup should not leak into ASCII output:\n{rendered}"
+    );
 }
 
 #[test]
@@ -559,6 +691,30 @@ fn sequence_wrapped_messages_respect_display_width_for_cjk() {
 }
 
 #[test]
+fn sequence_message_labels_reserve_display_cells_for_cjk() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: 数据",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("CJK sequence messages should render");
+
+    let label_line = rendered
+        .lines()
+        .find(|line| line.contains("数据"))
+        .expect("message label should be rendered");
+    let arrow_line = rendered
+        .lines()
+        .find(|line| line.contains('>'))
+        .expect("message arrow should be rendered");
+
+    assert_eq!(
+        cjk_test_width(label_line),
+        cjk_test_width(arrow_line),
+        "message labels should reserve the same terminal columns as the arrow row:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_boxes_render_from_typed_model() {
     let rendered = render_sequence(
         "sequenceDiagram\nbox green Group 1\nparticipant A\nparticipant B\nend\nA->>B: Inside",
@@ -584,16 +740,65 @@ fn sequence_boxes_render_from_typed_model() {
 }
 
 #[test]
-fn sequence_wrapped_boxes_are_explicitly_unsupported() {
-    let mut model = basic_sequence_model();
-    model.boxes.push(SequenceBox {
-        actor_keys: vec!["A".to_string()],
-        fill: "green".to_string(),
-        name: Some("Group".to_string()),
-        wrap: true,
-    });
+fn sequence_wrapped_boxes_render_multiline_labels() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox :wrap: Alpha Beta Gamma Delta\nparticipant A\nend\nA->>A: Ping",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("wrapped sequence boxes should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+    let alpha = lines
+        .iter()
+        .position(|line| line.contains("Alpha"))
+        .expect("first wrapped box label line should render");
+    let gamma = lines
+        .iter()
+        .position(|line| line.contains("Gamma"))
+        .expect("second wrapped box label line should render");
 
-    assert_unsupported_sequence_model(model, "wrapped boxes");
+    assert_eq!(
+        gamma,
+        alpha + 1,
+        "wrapped box label lines should stay adjacent above participant content:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Beta") && rendered.contains("Delta"),
+        "wrapped box labels should keep all words:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Alpha Beta Gamma Delta") && !rendered.contains(":wrap:"),
+        "wrapped box label should not render as one long line or leak wrap syntax:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_box_html_breaks_render_multiline_labels() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox First<br/>Second\nparticipant A\nend\nA->>A: Ping",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence box labels with HTML breaks should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+    let first = lines
+        .iter()
+        .position(|line| line.contains("First"))
+        .expect("first box label line should render");
+    let second = lines
+        .iter()
+        .position(|line| line.contains("Second"))
+        .expect("second box label line should render");
+
+    assert_eq!(
+        second,
+        first + 1,
+        "HTML breaks in box labels should create adjacent label rows:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("<br"),
+        "HTML break markup should not leak into sequence box labels:\n{rendered}"
+    );
 }
 
 #[test]
@@ -607,6 +812,35 @@ fn sequence_boxes_with_unknown_actors_are_explicitly_unsupported() {
     });
 
     assert_unsupported_sequence_model(model, "boxes with unknown actors");
+}
+
+#[test]
+fn sequence_empty_boxes_render_as_diagram_wide_regions() {
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model.boxes.push(SequenceBox {
+        actor_keys: Vec::new(),
+        fill: "green".to_string(),
+        name: Some("System boundary".to_string()),
+        wrap: false,
+    });
+    model.messages.push(message(Some("A"), Some("B"), 0));
+
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("empty sequence boxes should render as diagram-wide regions");
+
+    assert!(
+        rendered.contains("System boundary"),
+        "empty box title should remain visible:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Hi"),
+        "empty box should preserve sequence contents:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("+"),
+        "empty box should render a terminal region border:\n{rendered}"
+    );
 }
 
 #[test]
@@ -994,6 +1228,71 @@ fn sequence_sectioned_control_blocks_frame_multiple_sections_and_notes() {
 }
 
 #[test]
+fn sequence_nested_loop_inside_alt_keeps_frame_padding() {
+    let input = "sequenceDiagram
+    participant Client
+    participant API
+    participant Worker
+    Client->>API: Submit job
+    alt Valid request
+      API->>Worker: Queue work
+      loop Poll status
+        Client->>API: GET /jobs/123
+        API-->>Client: Running
+      end
+    else Invalid request
+      API-->>Client: 400 Bad Request
+    end";
+
+    let rendered = render_sequence(input, &AsciiRenderOptions::ascii())
+        .expect("nested loop inside alt should render");
+
+    let loop_top = rendered
+        .lines()
+        .find(|line| line.contains("loop Poll status"))
+        .unwrap_or_else(|| panic!("loop frame should render:\n{rendered}"));
+    assert!(
+        loop_top.starts_with("| + loop Poll status "),
+        "nested loop frame should not touch the parent frame border:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("| |  |") && line.contains("GET /jobs/123")),
+        "nested loop body should keep participant lifelines aligned with the outer frame:\n{rendered}"
+    );
+    assert!(
+        !rendered
+            .lines()
+            .any(|line| line.starts_with("| |    |") && line.contains("GET /jobs/123")),
+        "nested frame padding must not shift participant lifelines to the right:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("|+")),
+        "nested frame top border must not touch the parent border:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("||")),
+        "nested frame body border must not touch the parent border:\n{rendered}"
+    );
+
+    let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+        .expect("nested loop inside alt should render as Unicode");
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("│ │  │") && line.contains("GET /jobs/123")),
+        "nested Unicode loop body should keep participant lifelines aligned with the outer frame:\n{rendered}"
+    );
+    assert!(
+        !rendered
+            .lines()
+            .any(|line| line.starts_with("│ │    │") && line.contains("GET /jobs/123")),
+        "nested Unicode frame padding must not shift participant lifelines to the right:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_rect_par_over_blocks_are_core_control_signals() {
     struct Case {
         name: &'static str,
@@ -1238,14 +1537,42 @@ fn sequence_rect_par_over_control_blocks_support_created_and_destroyed_actors() 
 }
 
 #[test]
-fn sequence_rect_par_over_nested_control_blocks_are_explicitly_unsupported() {
+fn sequence_rect_par_over_nested_control_blocks_render() {
     let cases = [
-        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\npar_over Everyone\nA->>B: Work\nend\nend",
-        "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nrect rgba(0,0,0,0.1)\nA->>B: Work\nend\nend",
+        (
+            "rect contains par_over",
+            "rect rgba(0,0,0,0.1)",
+            "par_over Everyone",
+            "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\npar_over Everyone\nA->>B: Work\nend\nend",
+        ),
+        (
+            "par_over contains rect",
+            "par_over Everyone",
+            "rect rgba(0,0,0,0.1)",
+            "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nrect rgba(0,0,0,0.1)\nA->>B: Work\nend\nend",
+        ),
     ];
 
-    for input in cases {
-        assert_unsupported_sequence_input(input, "nested control blocks");
+    for (name, outer, inner, input) in cases {
+        let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("{name} should render: {err}"));
+
+        assert!(
+            rendered.contains(outer),
+            "{name} should render the outer frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with("│ ┌") && line.contains(inner)),
+            "{name} should render the inner frame inside the outer frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with("│ │") && line.contains("Work")),
+            "{name} should keep messages inside both nested frames:\n{rendered}"
+        );
     }
 }
 
@@ -1302,10 +1629,30 @@ fn sequence_rect_par_over_malformed_ordering_is_explicitly_unsupported() {
 }
 
 #[test]
-fn sequence_nested_control_blocks_are_explicitly_unsupported() {
-    assert_unsupported_sequence_input(
+fn sequence_nested_control_blocks_render() {
+    let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nloop Outer\nopt Inner\nA->>B: Work\nend\nend",
-        "nested control blocks",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("nested control blocks should render");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("┌ loop Outer ")),
+        "outer frame should render:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("│ ┌ opt Inner ")),
+        "inner frame should render inside the outer frame:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("│ │") && line.contains("Work")),
+        "message rows should stay inside both frames:\n{rendered}"
     );
 }
 
@@ -1411,6 +1758,223 @@ fn sequence_control_blocks_render_inside_participant_boxes() {
 }
 
 #[test]
+fn sequence_box_keeps_inner_padding_around_participants_and_frames() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox Group\nparticipant A\nparticipant B\nend\nloop Work\nA->>B: Hi\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("boxed control block should render");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("| + loop Work ")),
+        "control frame should keep one column of padding inside sequence box:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("|+")),
+        "sequence box inner content should not touch the left border:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("||")),
+        "sequence box body rows should not merge with inner frame or participant borders:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_box_with_lifecycle_and_mirror_keeps_boundaries() {
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    add_sequence_participant(&mut model, "C");
+    model.boxes.push(SequenceBox {
+        actor_keys: vec!["A".to_string(), "B".to_string(), "C".to_string()],
+        fill: "green".to_string(),
+        name: Some("Group".to_string()),
+        wrap: false,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m0".to_string(),
+        from: None,
+        to: None,
+        message_type: LINETYPE_LOOP_START,
+        message: SequenceMessagePayload::Text("Setup".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m1".to_string(),
+        from: Some("B".to_string()),
+        to: Some("C".to_string()),
+        message_type: 0,
+        message: SequenceMessagePayload::Text("Hello C".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m2".to_string(),
+        from: Some("C".to_string()),
+        to: Some("B".to_string()),
+        message_type: 0,
+        message: SequenceMessagePayload::Text("Still here".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(SequenceMessage {
+        id: "m3".to_string(),
+        from: Some("B".to_string()),
+        to: Some("C".to_string()),
+        message_type: 6,
+        message: SequenceMessagePayload::Text("Bye C".to_string()),
+        wrap: false,
+        activate: false,
+        placement: None,
+        central_connection: 0,
+    });
+    model.messages.push(message(None, None, LINETYPE_LOOP_END));
+    model.created_actors.insert("C".to_string(), 1);
+    model.destroyed_actors.insert("C".to_string(), 3);
+
+    let rendered = render_sequence_model(
+        &model,
+        &AsciiRenderOptions::ascii().with_sequence_mirror_actors(true),
+    )
+    .expect("boxed lifecycle control block with mirrored actors should render");
+
+    for expected in ["Group", "loop Setup", "Hello C", "Still here", "Bye C"] {
+        assert!(
+            rendered.contains(expected),
+            "boxed lifecycle sequence should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.matches("| C |").count() == 1,
+        "created then destroyed actor should render at lifecycle point, not in the final mirror footer:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('x'),
+        "destroyed actor should render a termination marker:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("| + loop Setup ")),
+        "control frame should keep padding inside the outer sequence box:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("|+")),
+        "outer sequence box and inner frame borders should not merge:\n{rendered}"
+    );
+    assert!(
+        !rendered.lines().any(|line| line.starts_with("||")),
+        "outer sequence box and participant or frame borders should not merge:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_local_semantic_fixture_covers_dense_control_rows() {
+    let input = read_local_semantic_fixture("sequence/dense_control_rows.mmd");
+
+    let rendered = render_sequence(&input, &AsciiRenderOptions::unicode())
+        .expect("dense local semantic sequence fixture should render");
+
+    for expected in [
+        "Outer Work",
+        "Coordinate",
+        "Parallel Branches",
+        "Fallback",
+        "Retry",
+        "Stop",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "dense semantic sequence fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.contains('┃'),
+        "dense semantic sequence fixture should keep active lifelines visible:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "dense semantic sequence fixture should produce a multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_local_semantic_fixture_covers_self_messages_with_notes_and_alt_branch() {
+    let input = read_local_semantic_fixture("sequence/self_messages_with_notes.mmd");
+
+    let rendered = render_sequence(&input, &AsciiRenderOptions::unicode())
+        .expect("self-message local semantic sequence fixture should render");
+
+    for expected in [
+        "Main Process",
+        "Renderer",
+        "3s Fallback Timer",
+        "Multiple panels",
+        "Single panel",
+        "closePanel(focusedId)",
+        "closePanel(lastId)",
+        "Panel removed",
+        "Stack becomes []",
+        "Panel reopens",
+        "window.destroy()",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "self-message semantic sequence fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    assert!(
+        first_line_index_containing(&rendered, "Multiple panels")
+            < first_line_index_containing(&rendered, "Single panel"),
+        "alt branch order should remain readable in the semantic fixture:\n{rendered}"
+    );
+    assert!(
+        first_line_index_containing(&rendered, "Panel removed")
+            < first_line_index_containing(&rendered, "Panel reopens"),
+        "branch-local note ordering should stay visible:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() >= 10,
+        "self-message semantic sequence fixture should produce a multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_local_semantic_fixture_covers_multiple_reference_messages() {
+    let input = read_local_semantic_fixture("sequence/multiple_messages.mmd");
+    let rendered = render_sequence(&input, &AsciiRenderOptions::ascii())
+        .expect("local semantic multiple-message fixture should render");
+
+    for expected in [
+        "Alice", "Bob", "Charlie", "Hello", "Forward", "Reply", "Done",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "sequence multiple-message fixture should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    assert!(
+        first_line_index_containing(&rendered, "Hello")
+            < first_line_index_containing(&rendered, "Forward"),
+        "sequence messages should preserve source order before the cross-participant reply:\n{rendered}"
+    );
+    assert!(
+        first_line_index_containing(&rendered, "Reply")
+            < first_line_index_containing(&rendered, "Done"),
+        "sequence replies should preserve source order:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_open_arrows_render_from_typed_model() {
     let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nA->B: Open\nA-->B: Dotted\nB->A: Back",
@@ -1472,32 +2036,149 @@ fn sequence_titles_render_above_participants() {
 }
 
 #[test]
-fn sequence_actor_shapes_are_explicitly_unsupported() {
-    let mut model = basic_sequence_model();
-    model.actors.get_mut("A").unwrap().actor_type = "actor".to_string();
+fn sequence_actor_keyword_renders_as_participant_box() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nactor U as User\nparticipant S as System\nU->>S: Click",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence actor keyword should render in ASCII");
 
-    assert_unsupported_sequence_model(model, "actor participant shapes");
+    assert!(
+        rendered.contains("| User |") && rendered.contains("| System |"),
+        "actor and participant labels should both render as ASCII participant boxes:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Click"),
+        "messages involving actor declarations should keep rendering:\n{rendered}"
+    );
 }
 
 #[test]
-fn sequence_wrapped_actor_labels_are_explicitly_unsupported() {
-    let mut model = basic_sequence_model();
-    model.actors.get_mut("A").unwrap().wrap = true;
+fn sequence_extended_actor_types_render_as_participant_boxes() {
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "participant API@{ \"type\" : \"boundary\", \"alias\": \"Public API\" }\n",
+            "participant Auth@{ \"type\" : \"control\" } as Auth Controller\n",
+            "participant Entity@{ \"type\" : \"entity\" }\n",
+            "participant DB@{ \"type\" : \"database\" }\n",
+            "participant Queue@{ \"type\" : \"queue\" }\n",
+            "actor Store@{ \"type\" : \"collections\" } as Event Store\n",
+            "API->>Auth: Request\n",
+            "Auth->>Entity: Validate\n",
+            "Entity->>DB: Query\n",
+            "DB-->>Queue: Result\n",
+            "Queue-->>Store: Publish",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("extended actor types should render as ASCII participant boxes");
 
-    assert_unsupported_sequence_model(model, "wrapped actor labels");
+    for label in [
+        "Public API",
+        "Auth Controller",
+        "Entity",
+        "DB",
+        "Queue",
+        "Event Store",
+    ] {
+        assert!(
+            rendered.contains(label),
+            "extended actor label {label:?} should render:\n{rendered}"
+        );
+    }
+    for message in ["Request", "Validate", "Query", "Result", "Publish"] {
+        assert!(
+            rendered.contains(message),
+            "messages involving extended actor types should render:\n{rendered}"
+        );
+    }
 }
 
 #[test]
-fn sequence_actor_links_are_explicitly_unsupported() {
+fn sequence_unknown_actor_types_are_explicitly_unsupported() {
+    let mut model = basic_sequence_model();
+    model.actors.get_mut("A").unwrap().actor_type = "gateway".to_string();
+
+    assert_unsupported_sequence_model(model, "actor types");
+}
+
+#[test]
+fn sequence_wrapped_actor_labels_render_multiline_participant_boxes() {
+    let mut model = basic_sequence_model();
+    let actor = model.actors.get_mut("A").unwrap();
+    actor.description = "Public API Gateway".to_string();
+    actor.wrap = true;
+
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("sequence should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+
+    assert_eq!(lines[0], "+------------+");
+    assert_eq!(lines[1], "| Public API |");
+    assert_eq!(lines[2], "|  Gateway   |");
+    assert_eq!(lines[3], "+------+-----+");
+    assert_eq!(lines[4], "       |");
+}
+
+#[test]
+fn sequence_actor_label_html_breaks_render_multiline_participant_boxes() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A as First<br />Line\nA->>A: Hi",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence should render");
+    let normalized = normalize_sequence_output(&rendered);
+    let lines = normalized.lines().collect::<Vec<_>>();
+
+    assert!(
+        lines.len() >= 5,
+        "rendered sequence should include multiline participant header:\n{rendered}"
+    );
+    assert_eq!(lines[0], "+-------+");
+    assert_eq!(lines[1], "| First |");
+    assert_eq!(lines[2], "| Line  |");
+    assert_eq!(lines[3], "+---+---+");
+    assert_eq!(lines[4], "    |");
+}
+
+#[test]
+fn sequence_actor_links_do_not_block_ascii_rendering() {
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant B\n",
+            "links A: { \"Docs\": \"https://example.com/docs\" }\n",
+            "link B: Repo @ https://example.com/repo\n",
+            "A->>B: Hi",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence actor links should not block ASCII rendering");
+
+    assert!(
+        rendered.contains("Hi"),
+        "linked actors should keep sequence messages renderable:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("example.com"),
+        "actor link URLs are SVG metadata and should not leak into ASCII output:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_actor_properties_are_explicitly_unsupported() {
     let mut model = basic_sequence_model();
     model
         .actors
         .get_mut("A")
         .unwrap()
-        .links
-        .insert("docs".to_string(), "https://example.com".into());
+        .properties
+        .insert("icon".to_string(), "@clock".into());
 
-    assert_unsupported_sequence_model(model, "actor links/properties");
+    assert_unsupported_sequence_model(model, "actor properties");
 }
 
 #[test]
@@ -1526,4 +2207,15 @@ fn sequence_other_model_features_are_explicitly_unsupported() {
     for (model, feature) in cases {
         assert_unsupported_sequence_model(model, feature);
     }
+}
+
+#[test]
+fn sequence_box_hex_color_is_not_treated_as_drawable_background() {
+    let model = parse_sequence_render_model(
+        "sequenceDiagram\nbox #112233 Group\nparticipant A\nend\nA->>A: Self",
+    );
+
+    assert_eq!(model.boxes.len(), 1);
+    assert_eq!(model.boxes[0].fill, "transparent");
+    assert!(model.boxes[0].name.is_none());
 }

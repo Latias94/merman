@@ -1,4 +1,5 @@
 import {
+  asciiCapabilities,
   asciiSupportedDiagrams,
   bindingCapabilities,
   createBrowserTextMeasurer,
@@ -25,6 +26,8 @@ import {
   supportedThemes,
   selectedRegistryProfile,
   validate as validateDiagram,
+  type AsciiBindingOptions,
+  type AsciiCapability,
   type BindingCapabilities,
   type HostTextMeasurer,
   type HostThemePresetName,
@@ -54,7 +57,7 @@ import {
 } from "@/src/lib/diagram-font";
 
 export { SUPPORTED_THEMES };
-export type { BindingCapabilities, RegistryProfile };
+export type { AsciiCapability, BindingCapabilities, RegistryProfile };
 
 export interface ValidationResult {
   valid: boolean;
@@ -83,7 +86,12 @@ export interface MermanWasm {
     configJson?: string,
     options?: WasmRenderOptions
   ): string;
-  render_ascii(code: string, theme?: string, configJson?: string): string | null;
+  render_ascii(
+    code: string,
+    theme?: string,
+    configJson?: string,
+    options?: AsciiBindingOptions
+  ): string | null;
   parse_json(
     code: string,
     theme?: string,
@@ -99,6 +107,7 @@ export interface MermanWasm {
   get_supported_diagrams(): string[];
   get_supported_themes(): string[];
   get_ascii_supported_diagrams(): string[];
+  get_ascii_capabilities(): AsciiCapability[];
   validate(code: string): ValidationResult;
   editor_diagnostics(code: string): EditorDiagnosticsResult;
   editor_code_actions(code: string): EditorCodeAction[];
@@ -281,10 +290,11 @@ function createWasmAdapter(): MermanWasm {
     render_ascii(
       code: string,
       theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options?: AsciiBindingOptions
     ): string | null {
       try {
-        return renderAscii(sourceWithConfig(code, theme, configJson));
+        return renderAscii(sourceWithConfig(code, theme, configJson), options);
       } catch {
         return null;
       }
@@ -335,6 +345,10 @@ function createWasmAdapter(): MermanWasm {
 
     get_ascii_supported_diagrams(): string[] {
       return asciiSupportedDiagrams();
+    },
+
+    get_ascii_capabilities(): AsciiCapability[] {
+      return asciiCapabilities();
     },
 
     validate(code: string): ValidationResult {

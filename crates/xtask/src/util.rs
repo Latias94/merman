@@ -1,7 +1,5 @@
 use crate::XtaskError;
 use serde_json::Value as JsonValue;
-use serde_yaml::Value as YamlValue;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -108,20 +106,17 @@ pub(crate) fn extract_string_array_at(
     Err(XtaskError::ParseDompurify("unterminated array".to_string()))
 }
 
-pub(crate) fn extract_defaults(schema: &YamlValue, root: &YamlValue) -> Option<JsonValue> {
+pub(crate) fn extract_defaults(schema: &JsonValue, root: &JsonValue) -> Option<JsonValue> {
     let schema = expand_schema(schema, root);
 
-    if let Some(default) = schema
-        .as_mapping()
-        .and_then(|m| m.get(YamlValue::String("default".to_string())))
-    {
-        return yaml_to_json(default).ok();
+    if let Some(default) = schema.as_object().and_then(|m| m.get("default")).cloned() {
+        return Some(default);
     }
 
     if let Some(any_of) = schema
-        .as_mapping()
-        .and_then(|m| m.get(YamlValue::String("anyOf".to_string())))
-        .and_then(|v| v.as_sequence())
+        .as_object()
+        .and_then(|m| m.get("anyOf"))
+        .and_then(|v| v.as_array())
     {
         for s in any_of {
             if let Some(d) = extract_defaults(s, root) {
@@ -131,9 +126,9 @@ pub(crate) fn extract_defaults(schema: &YamlValue, root: &YamlValue) -> Option<J
     }
 
     if let Some(one_of) = schema
-        .as_mapping()
-        .and_then(|m| m.get(YamlValue::String("oneOf".to_string())))
-        .and_then(|v| v.as_sequence())
+        .as_object()
+        .and_then(|m| m.get("oneOf"))
+        .and_then(|v| v.as_array())
     {
         for s in one_of {
             if let Some(d) = extract_defaults(s, root) {
@@ -143,23 +138,21 @@ pub(crate) fn extract_defaults(schema: &YamlValue, root: &YamlValue) -> Option<J
     }
 
     let is_object_type = schema
-        .as_mapping()
-        .and_then(|m| m.get(YamlValue::String("type".to_string())))
+        .as_object()
+        .and_then(|m| m.get("type"))
         .and_then(|v| v.as_str())
         == Some("object");
-
     let props = schema
-        .as_mapping()
-        .and_then(|m| m.get(YamlValue::String("properties".to_string())))
-        .and_then(|v| v.as_mapping());
+        .as_object()
+        .and_then(|m| m.get("properties"))
+        .and_then(|v| v.as_object());
 
     if is_object_type || props.is_some() {
-        let mut out: BTreeMap<String, JsonValue> = BTreeMap::new();
+        let mut out = std::collections::BTreeMap::<String, JsonValue>::new();
         if let Some(props) = props {
             for (k, v) in props {
-                let Some(k) = k.as_str() else { continue };
                 if let Some(d) = extract_defaults(v, root) {
-                    out.insert(k.to_string(), d);
+                    out.insert(k.clone(), d);
                 }
             }
         }
@@ -172,25 +165,25 @@ pub(crate) fn extract_defaults(schema: &YamlValue, root: &YamlValue) -> Option<J
     None
 }
 
-pub(crate) fn expand_schema(schema: &YamlValue, root: &YamlValue) -> YamlValue {
+pub(crate) fn expand_schema(schema: &JsonValue, root: &JsonValue) -> JsonValue {
     let mut schema = schema.clone();
     schema = resolve_ref(&schema, root).unwrap_or(schema);
 
     let all_of = schema
-        .as_mapping()
-        .and_then(|m| m.get(YamlValue::String("allOf".to_string())))
-        .and_then(|v| v.as_sequence())
+        .as_object()
+        .and_then(|m| m.get("allOf"))
+        .and_then(|v| v.as_array())
         .cloned();
 
     if let Some(all_of) = all_of {
-        let mut merged = YamlValue::Mapping(Default::default());
+        let mut merged = JsonValue::Object(Default::default());
         for s in all_of {
             let s = expand_schema(&s, root);
             merged = merge_yaml(merged, s);
         }
         let mut overlay = schema.clone();
-        if let Some(m) = overlay.as_mapping_mut() {
-            m.remove(YamlValue::String("allOf".to_string()));
+        if let Some(m) = overlay.as_object_mut() {
+            m.remove("allOf");
         }
         merged = merge_yaml(merged, overlay);
         merged
@@ -199,48 +192,44 @@ pub(crate) fn expand_schema(schema: &YamlValue, root: &YamlValue) -> YamlValue {
     }
 }
 
-pub(crate) fn resolve_ref(schema: &YamlValue, root: &YamlValue) -> Result<YamlValue, XtaskError> {
-    let Some(map) = schema.as_mapping() else {
+pub(crate) fn resolve_ref(schema: &JsonValue, root: &JsonValue) -> Result<JsonValue, XtaskError> {
+    let Some(map) = schema.as_object() else {
         return Ok(schema.clone());
     };
-    let Some(ref_str) = map
-        .get(YamlValue::String("$ref".to_string()))
-        .and_then(|v| v.as_str())
-    else {
+    let Some(ref_str) = map.get("$ref").and_then(|v| v.as_str()) else {
         return Ok(schema.clone());
     };
     let target = resolve_ref_target(ref_str, root)?;
     let mut base = expand_schema(target, root);
 
     // Overlay other keys on top of the resolved target.
-    let mut overlay = YamlValue::Mapping(map.clone());
-    if let Some(m) = overlay.as_mapping_mut() {
-        m.remove(YamlValue::String("$ref".to_string()));
+    let mut overlay = JsonValue::Object(map.clone());
+    if let Some(m) = overlay.as_object_mut() {
+        m.remove("$ref");
     }
     base = merge_yaml(base, overlay);
     Ok(base)
 }
 
-fn resolve_ref_target<'a>(r: &str, root: &'a YamlValue) -> Result<&'a YamlValue, XtaskError> {
+fn resolve_ref_target<'a>(r: &str, root: &'a JsonValue) -> Result<&'a JsonValue, XtaskError> {
     if !r.starts_with("#/") {
         return Err(XtaskError::InvalidRef(r.to_string()));
     }
     let mut cur = root;
     for seg in r.trim_start_matches("#/").split('/') {
-        let Some(map) = cur.as_mapping() else {
+        let Some(map) = cur.as_object() else {
             return Err(XtaskError::UnresolvedRef(r.to_string()));
         };
-        let key = YamlValue::String(seg.to_string());
         cur = map
-            .get(&key)
+            .get(seg)
             .ok_or_else(|| XtaskError::UnresolvedRef(r.to_string()))?;
     }
     Ok(cur)
 }
 
-pub(crate) fn merge_yaml(mut base: YamlValue, overlay: YamlValue) -> YamlValue {
+pub(crate) fn merge_yaml(mut base: JsonValue, overlay: JsonValue) -> JsonValue {
     match (&mut base, overlay) {
-        (YamlValue::Mapping(dst), YamlValue::Mapping(src)) => {
+        (JsonValue::Object(dst), JsonValue::Object(src)) => {
             for (k, v) in src {
                 match dst.get_mut(&k) {
                     Some(existing) => {
@@ -258,18 +247,14 @@ pub(crate) fn merge_yaml(mut base: YamlValue, overlay: YamlValue) -> YamlValue {
     }
 }
 
-pub(crate) fn yaml_to_json(v: &YamlValue) -> Result<JsonValue, serde_json::Error> {
-    serde_json::to_value(v)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     #[test]
     fn extract_defaults_all_of_keeps_local_property_defaults_over_refs() {
-        let schema: YamlValue = serde_yaml::from_str(
+        let schema = serde_saphyr::from_str::<Value>(
             r#"
 $defs:
   BaseDiagramConfig:

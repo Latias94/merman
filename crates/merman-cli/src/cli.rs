@@ -632,6 +632,72 @@ pub(crate) struct TextOutputCliArgs {
     /// Mirror sequence participants below lifelines for ASCII/Unicode output.
     #[arg(long = "sequence-mirror-actors", help_heading = "Text output")]
     pub(crate) sequence_mirror_actors: bool,
+
+    /// Override the text renderer character set.
+    #[arg(long = "ascii-charset", value_enum, help_heading = "Text output")]
+    pub(crate) ascii_charset: Option<TextCharset>,
+
+    /// Override the default graph direction when Mermaid input omits one.
+    #[arg(long = "ascii-direction", value_enum, help_heading = "Text output")]
+    pub(crate) ascii_direction: Option<TextDirection>,
+
+    /// Color mode for terminal text output.
+    #[arg(long = "ascii-color", value_enum, help_heading = "Text output")]
+    pub(crate) ascii_color: Option<TextColorMode>,
+
+    /// XYChart vertical plot height for text output.
+    #[arg(
+        long = "xychart-vertical-plot-height",
+        value_parser = parse_positive_usize,
+        help_heading = "Text output"
+    )]
+    pub(crate) xychart_vertical_plot_height: Option<usize>,
+
+    /// XYChart category band width for text output.
+    #[arg(
+        long = "xychart-category-band-width",
+        value_parser = parse_positive_usize,
+        help_heading = "Text output"
+    )]
+    pub(crate) xychart_category_band_width: Option<usize>,
+
+    /// XYChart horizontal plot width for text output.
+    #[arg(
+        long = "xychart-horizontal-plot-width",
+        value_parser = parse_positive_usize,
+        help_heading = "Text output"
+    )]
+    pub(crate) xychart_horizontal_plot_width: Option<usize>,
+
+    /// Maximum graph grid cells for text route planning.
+    #[arg(
+        long = "ascii-max-grid-cells",
+        value_parser = parse_positive_usize,
+        help_heading = "Text output"
+    )]
+    pub(crate) ascii_max_grid_cells: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum TextCharset {
+    Ascii,
+    Unicode,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum TextDirection {
+    LeftRight,
+    TopDown,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum TextColorMode {
+    Plain,
+    Auto,
+    Ansi16,
+    Ansi256,
+    Truecolor,
+    Html,
 }
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]

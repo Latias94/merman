@@ -1,0 +1,7 @@
+flowchart TD
+    Start --> Ingest
+    subgraph pipe [Pipeline]
+        direction LR
+        Ingest --> Publish
+    end
+    Publish -->|boundaryLabelWithEnoughWidth| Success[Success]

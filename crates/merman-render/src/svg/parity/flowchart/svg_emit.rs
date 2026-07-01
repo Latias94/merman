@@ -1,5 +1,3 @@
-use std::fmt::Write as _;
-
 use super::defs::prepare_flowchart_defs;
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::render_config::{FlowchartRenderConfig, prepare_flowchart_render_config};
@@ -23,11 +21,8 @@ pub(super) fn render_flowchart_v2_svg(
 }
 
 #[inline]
-fn section<'a>(
-    enabled: bool,
-    dst: &'a mut web_time::Duration,
-) -> Option<super::super::timing::TimingGuard<'a>> {
-    enabled.then(|| super::super::timing::TimingGuard::new(dst))
+fn section(enabled: bool, dst: &mut web_time::Duration) -> Option<timing::TimingGuard<'_>> {
+    enabled.then(|| timing::TimingGuard::new(dst))
 }
 
 pub(super) fn render_flowchart_v2_svg_model_with_config(
@@ -38,8 +33,8 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
-    let mut timings = super::super::timing::RenderTimings::default();
+    let timing_enabled = timing::render_timing_enabled();
+    let mut timings = timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
 
     render_flowchart_v2_svg_with_config_inner(
@@ -65,8 +60,8 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
-    let mut timings = super::super::timing::RenderTimings::default();
+    let timing_enabled = timing::render_timing_enabled();
+    let mut timings = timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
 
     let model: crate::flowchart::FlowchartV2Model = {
@@ -91,7 +86,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
 
 struct FlowchartSvgTiming<'a> {
     enabled: bool,
-    timings: &'a mut super::super::timing::RenderTimings,
+    timings: &'a mut timing::RenderTimings,
     total_start: web_time::Instant,
 }
 

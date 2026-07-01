@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-06-26
+Last updated: 2026-06-30
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -46,6 +46,26 @@ numeric values return binding errors instead of panicking.
   },
   "parse": {
     "suppress_errors": false
+  },
+  "ascii": {
+    "charset": "unicode",
+    "defaultDirection": "leftRight",
+    "colorMode": "plain",
+    "sequenceMirrorActors": false,
+    "xychartVerticalPlotHeight": 5,
+    "xychartCategoryBandWidth": 3,
+    "xychartHorizontalPlotWidth": 10,
+    "maxGridCells": 250000,
+    "relationSummaryDiagnostics": false,
+    "theme": {
+      "foreground": "#e5e7eb",
+      "background": "#111827",
+      "line": "#94a3b8",
+      "accent": "#60a5fa",
+      "muted": "#9ca3af",
+      "surface": "#1f2937",
+      "border": "#475569"
+    }
   },
   "layout": {
     "viewport_width": 1024,
@@ -102,6 +122,7 @@ Every field is optional.
 | `host_theme` | object | none | Opt-in host/editor theme profile compiled into Mermaid config and SVG output settings. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
+| `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
 | `layout` | object | defaults | Layout and text measurement behavior. |
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
@@ -251,6 +272,28 @@ Render-only options such as `layout.*`, `svg.*`, and host text-measurement setti
 required for the default analyzer. Layout-backed or render-backed diagnostics may opt into those
 fields later, but they must be profile-controlled and reported through the same diagnostic payload
 defined by ADR 0070.
+
+## ASCII Options
+
+`ascii` applies to `render_ascii` and reusable engines that call ASCII rendering. These options do
+not affect SVG, parse JSON, layout JSON, or validation output.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
+| `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
+| `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`, `truecolor`, or `html`. |
+| `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
+| `ascii.sequence_mirror_actors` / `ascii.sequenceMirrorActors` | boolean | `false` | Renders mirrored bottom participant boxes for sequence diagrams. |
+| `ascii.xychart_vertical_plot_height` / `ascii.xychartVerticalPlotHeight` | positive integer | `5` | Compact vertical XYChart plot height. |
+| `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
+| `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
+| `ascii.max_grid_cells` / `ascii.maxGridCells` | positive integer | `250000` | Maximum terminal grid cells for graph-like ASCII layouts before fallback or error behavior. |
+| `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` fallback summaries include a `reason:` row such as `grid_budget actual=12 limit=1`, `crossing`, `route_collision`, or `overlay_collision`. |
+
+`relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
+internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
+that need to classify why a dense Class/ER relation layout used a summary.
 
 ## Layout Options
 

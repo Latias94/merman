@@ -38,7 +38,7 @@ typedef struct MermanApi {
     MermanCall layout_json;
     MermanCall validate_json;
     MermanResult (*supported_diagrams_json)(void);
-    MermanResult (*ascii_supported_diagrams_json)(void);
+    MermanResult (*ascii_capabilities_json)(void);
     MermanResult (*diagram_family_capabilities_json)(void);
     MermanResult (*lint_rule_catalog_json)(void);
     MermanResult (*supported_themes_json)(void);
@@ -130,7 +130,7 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.layout_json == NULL ||
         api.validate_json == NULL ||
         api.supported_diagrams_json == NULL ||
-        api.ascii_supported_diagrams_json == NULL ||
+        api.ascii_capabilities_json == NULL ||
         api.diagram_family_capabilities_json == NULL ||
         api.lint_rule_catalog_json == NULL ||
         api.supported_themes_json == NULL ||
@@ -250,9 +250,9 @@ int merman_c_consumer_smoke(MermanApi api) {
     }
 
     rc = expect_ok_with(
-        api.ascii_supported_diagrams_json(),
+        api.ascii_capabilities_json(),
         api.buffer_free,
-        api.ascii_enabled ? "sequence" : "[]"
+        api.ascii_enabled ? "\"support_level\":\"summary\"" : "[]"
     );
     if (rc != 0) {
         return rc;

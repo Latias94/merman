@@ -481,14 +481,14 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeSupportedDiagramsJson(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_merman_MermanEngine_nativeAsciiSupportedDiagramsJson(
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAsciiCapabilitiesJson(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     with_env_resolved(&mut unowned_env, |env| {
         Ok(call_metadata(
             env,
-            merman_bindings_core::ascii_supported_diagrams_json,
+            merman_bindings_core::ascii_capabilities_json,
         ))
     })
 }

@@ -240,6 +240,7 @@ initialization is usually simpler.
   `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
   `editorSemanticTokenLegend()`, `editorSemanticTokens()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
+- `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
 - `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
@@ -249,7 +250,10 @@ All render, parse, layout, analysis, validation, editor, and metadata functions 
 same completion, diagnostics, hover, symbol, code-action, rename, and semantic-token semantics.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()`, and `lintRuleCatalog()` return typed metadata and fail fast if the
-generated WebAssembly metadata drifts from the TypeScript surface.
+generated WebAssembly metadata drifts from the TypeScript surface. ASCII support is typed
+separately from SVG diagram metadata because some terminal-friendly renderers, such as `treeView`,
+can be exposed through `asciiSupportedDiagrams()` even when they are not part of the public SVG
+`supportedDiagrams()` list.
 
 ## Benchmarking against Mermaid JS
 

@@ -28,6 +28,8 @@ pub mod sanitize;
 mod theme;
 pub mod time;
 pub mod utils;
+#[cfg(feature = "full-config")]
+mod yaml_config;
 
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
@@ -226,6 +228,11 @@ impl Engine {
     pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
         self.fixed_local_offset_minutes = offset_minutes;
         self
+    }
+
+    /// Returns the fixed local timezone offset configured for this engine.
+    pub fn fixed_local_offset_minutes(&self) -> Option<i32> {
+        self.fixed_local_offset_minutes
     }
 
     /// Applies site-level Mermaid config defaults.

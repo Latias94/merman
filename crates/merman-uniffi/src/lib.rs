@@ -14,7 +14,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
-static ASCII_SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
+static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS: OnceLock<Vec<String>> = OnceLock::new();
 
@@ -92,6 +92,24 @@ pub struct MermanLintRuleCatalogEntry {
     pub origin: String,
     pub configurable: bool,
     pub fixable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanAsciiCapabilityEvidence {
+    pub kind: String,
+    pub source: String,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanAsciiCapability {
+    pub diagram_type: String,
+    pub display_name: String,
+    pub support_level: String,
+    pub summary_fallback: bool,
+    pub supported_semantics: Vec<String>,
+    pub limits: Vec<String>,
+    pub evidence: Vec<MermanAsciiCapabilityEvidence>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -427,11 +445,39 @@ impl MermanEngine {
         )
     }
 
-    pub fn ascii_supported_diagrams(&self) -> Vec<String> {
-        cached_string_vec(
-            &ASCII_SUPPORTED_DIAGRAMS,
-            merman_bindings_core::ascii_supported_diagrams,
-        )
+    pub fn ascii_capabilities(&self) -> Vec<MermanAsciiCapability> {
+        ASCII_CAPABILITIES
+            .get_or_init(|| {
+                merman_bindings_core::ascii_capabilities()
+                    .into_iter()
+                    .map(|capability| MermanAsciiCapability {
+                        diagram_type: capability.diagram_type.to_string(),
+                        display_name: capability.display_name.to_string(),
+                        support_level: capability.support_level.to_string(),
+                        summary_fallback: capability.summary_fallback,
+                        supported_semantics: capability
+                            .supported_semantics
+                            .iter()
+                            .map(|semantic| (*semantic).to_string())
+                            .collect(),
+                        limits: capability
+                            .limits
+                            .iter()
+                            .map(|limit| (*limit).to_string())
+                            .collect(),
+                        evidence: capability
+                            .evidence
+                            .into_iter()
+                            .map(|evidence| MermanAsciiCapabilityEvidence {
+                                kind: evidence.kind.to_string(),
+                                source: evidence.source.to_string(),
+                                note: evidence.note.to_string(),
+                            })
+                            .collect(),
+                    })
+                    .collect()
+            })
+            .clone()
     }
 
     pub fn supported_themes(&self) -> Vec<String> {
@@ -795,11 +841,26 @@ mod tests {
                 .supported_diagrams()
                 .contains(&"flowchart".to_string())
         );
-        assert!(
-            engine
-                .ascii_supported_diagrams()
-                .contains(&"sequence".to_string())
-        );
+        let ascii_capabilities = engine.ascii_capabilities();
+        let sequence = ascii_capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "sequence")
+            .expect("expected UniFFI ASCII capabilities to include sequence");
+        assert_eq!(sequence.support_level, "full");
+
+        let gantt = ascii_capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "gantt")
+            .expect("expected UniFFI ASCII capabilities to include gantt");
+        assert_eq!(gantt.support_level, "summary");
+        assert!(!gantt.summary_fallback);
+
+        let class = ascii_capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "class")
+            .expect("expected UniFFI ASCII capabilities to include class");
+        assert_eq!(class.support_level, "partial");
+        assert!(class.summary_fallback);
         assert!(engine.supported_themes().contains(&"default".to_string()));
         assert!(
             engine

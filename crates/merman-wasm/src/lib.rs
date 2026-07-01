@@ -419,6 +419,12 @@ pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = asciiCapabilities)]
+pub fn ascii_capabilities() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&merman_bindings_core::ascii_capabilities())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 #[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorDiagnostics)]
 pub fn editor_diagnostics(

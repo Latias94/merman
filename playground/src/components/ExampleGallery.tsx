@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { categories, getExamplesByCategory } from "@/src/lib/examples";
+import { categories, getExamplesByCategory, type Example } from "@/src/lib/examples";
+import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import type { AsciiCapability } from "@/src/lib/ascii-support";
+import { detectDiagramType } from "@/src/lib/diagram-detection";
 import { useAppStore } from "@/src/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { X, Code, ChevronRight } from "lucide-react";
 
@@ -33,17 +37,62 @@ const categoryKeys: Record<string, string> = {
   Sankey: "examples.categories.sankey",
   Radar: "examples.categories.radar",
   Treemap: "examples.categories.treemap",
+  TreeView: "examples.categories.treeview",
   Requirement: "examples.categories.requirement",
 };
 
 export function ExampleGallery() {
   const { t } = useTranslation();
   const { showExamples, toggleExamples, setCode } = useAppStore();
+  const asciiSupport = useAsciiSupport();
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [asciiOnly, setAsciiOnly] = useState(false);
+
+  const isExampleAsciiSupported = useMemo(
+    () => (example: Example) =>
+      example.asciiSupported ??
+      asciiSupport.isSupported(detectDiagramType(example.code)),
+    [asciiSupport]
+  );
+
+  const visibleCategories = useMemo(
+    () =>
+      categories.filter(
+        (category) =>
+          category === "All" ||
+          !asciiOnly ||
+          getExamplesByCategory(category).some(isExampleAsciiSupported)
+      ),
+    [asciiOnly, isExampleAsciiSupported]
+  );
+
+  const filteredExamples = useMemo(
+    () =>
+      getExamplesByCategory(selectedCategory).filter(
+        (example) => !asciiOnly || isExampleAsciiSupported(example)
+      ),
+    [asciiOnly, isExampleAsciiSupported, selectedCategory]
+  );
+  const asciiReadyCount = useMemo(
+    () => getExamplesByCategory("All").filter(isExampleAsciiSupported).length,
+    [isExampleAsciiSupported]
+  );
+
+  const asciiCapabilityForExample = useMemo(
+    () => (example: Example) =>
+      asciiSupport.capabilityFor(detectDiagramType(example.code)),
+    [asciiSupport]
+  );
+
+  useEffect(() => {
+    if (!visibleCategories.includes(selectedCategory)) {
+      setSelectedCategory("All");
+    }
+  }, [selectedCategory, visibleCategories]);
 
   if (!showExamples) return null;
 
-  const filteredExamples = getExamplesByCategory(selectedCategory);
+  const toggleAsciiOnly = () => setAsciiOnly((value) => !value);
 
   const handleSelectExample = (code: string) => {
     setCode(code);
@@ -73,8 +122,34 @@ export function ExampleGallery() {
       <div className="flex-1 flex flex-col overflow-hidden md:flex-row">
         {/* 左侧分类 */}
         <div className="scrollbar-thin shrink-0 overflow-x-auto border-b p-2 md:w-48 md:overflow-y-auto md:border-b-0 md:border-r">
+          <div className="mb-2 hidden w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground md:flex">
+            <Checkbox
+              checked={asciiOnly}
+              onCheckedChange={(checked) => setAsciiOnly(checked === true)}
+            />
+            <button
+              type="button"
+              onClick={toggleAsciiOnly}
+              className="flex-1 text-left"
+            >
+              {t("examples.asciiOnly")}
+            </button>
+          </div>
           <nav className="flex gap-1 md:block md:space-y-1">
-            {categories.map((category) => (
+            <div className="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden">
+              <Checkbox
+                checked={asciiOnly}
+                onCheckedChange={(checked) => setAsciiOnly(checked === true)}
+              />
+              <button
+                type="button"
+                onClick={toggleAsciiOnly}
+                className="text-left"
+              >
+                {t("examples.asciiOnly")}
+              </button>
+            </div>
+            {visibleCategories.map((category) => (
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
@@ -97,6 +172,16 @@ export function ExampleGallery() {
 
         {/* 右侧示例列表 */}
         <ScrollArea className="flex-1">
+          <div className="border-b px-4 py-2 text-xs text-muted-foreground">
+            {asciiOnly
+              ? t("examples.asciiFilterActive", {
+                  count: filteredExamples.length,
+                  total: asciiReadyCount,
+                })
+              : t("examples.asciiFilterAvailable", {
+                  count: asciiReadyCount,
+                })}
+          </div>
           <div className="p-4 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             {filteredExamples.map((example) => (
               <button
@@ -115,8 +200,16 @@ export function ExampleGallery() {
                       {getCategoryLabel(example.category)}
                     </span>
                   </div>
-                  <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                    {example.code.split("\n").length} {t("examples.lines")}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                      {example.code.split("\n").length} {t("examples.lines")}
+                    </div>
+                    {isExampleAsciiSupported(example) && (
+                      <AsciiCapabilityBadge
+                        capability={asciiCapabilityForExample(example)}
+                        t={t}
+                      />
+                    )}
                   </div>
                 </div>
                 <pre className="text-xs text-muted-foreground bg-muted/50 p-2 rounded overflow-hidden max-h-24 font-mono">
@@ -129,5 +222,20 @@ export function ExampleGallery() {
         </ScrollArea>
       </div>
     </div>
+  );
+}
+
+function AsciiCapabilityBadge({
+  capability,
+  t,
+}: {
+  capability: AsciiCapability | null;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const level = capability?.support_level ?? "partial";
+  return (
+    <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+      {t(`asciiSupport.levels.${level}`)}
+    </span>
   );
 }

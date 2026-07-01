@@ -1,5 +1,3 @@
-paddingX=2
-paddingY=1
 graph LR
 A --> B
 ---

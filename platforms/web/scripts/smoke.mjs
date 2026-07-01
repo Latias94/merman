@@ -242,7 +242,7 @@ if (capabilities.core_full) {
 
 const asciiDiagrams = api.asciiSupportedDiagrams();
 for (const diagram of asciiDiagrams) {
-  assert.equal(api.isDiagramType(diagram), true);
+  assert.equal(api.isAsciiDiagramType(diagram), true);
 }
 
 function textMeasureRequest(text, maxWidth) {

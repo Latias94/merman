@@ -83,11 +83,74 @@ jobs:
 
   typst-package:
     name: typst-package
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
-      TYPST_CLI_VERSION: "0.14.2"
+      TYPST_CLI_VERSION: "0.15.0"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@wasm-tools
+
+      - name: Download Typst
+        shell: bash
+        run: |
+          set -euo pipefail
+          typst_asset="typst-x86_64-unknown-linux-musl.tar.xz"
+          typst_root="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}"
+          download_dir="$(mktemp -d)"
+          curl -fsSL --retry 3 --retry-connrefused --retry-delay 2 \
+            -o "${download_dir}/${typst_asset}" \
+            "https://github.com/typst/typst/releases/download/v${TYPST_CLI_VERSION}/${typst_asset}"
+          tar -xJf "${download_dir}/${typst_asset}" -C "${download_dir}"
+          mkdir -p "${typst_root}"
+          install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
+          "${typst_root}/typst" --version
+
+      - name: Test Typst plugin crate
+        run: cargo test -p merman-typst-plugin
+
+      - name: Build Typst package
+        run: cargo run -p xtask -- build-typst-package
+
+      - name: Check Typst wasm ABI and size
+        run: cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+
+      - name: Smoke Typst package
+        shell: bash
+        run: |
+          set -euo pipefail
+          typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
+          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst "${typst_bin}"
+
+      - name: Upload Typst package smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: typst-package-smoke
+          path: target/typst-package-smoke
+          if-no-files-found: ignore
+
+  typst-package-compat:
+    name: typst-package-compat
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
       TYPST_COMPAT_CLI_VERSION: "0.15.0"
     steps:
       - uses: actions/checkout@v6
@@ -108,70 +171,38 @@ jobs:
       - name: Check WASM size budgets
         run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
-      - name: Install Typst
-        run: cargo install typst-cli --version "${TYPST_CLI_VERSION}" --locked
-
-      - name: Test Typst plugin crate
-        run: cargo test -p merman-typst-plugin
-
       - name: Build Typst package
         run: cargo run -p xtask -- build-typst-package
 
-      - name: Check Typst wasm ABI and size
-        run: cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
-
-      - name: Compile Typst package examples
+      - name: Download Typst compatibility version
         shell: bash
         run: |
           set -euo pipefail
-          typst_package_version="$(grep '^version = ' packages/typst/merman/typst.toml | sed 's/version = "\(.*\)"/\1/')"
-          typst_package_root="dist/typst/merman/${typst_package_version}"
-          mkdir -p "target/typst-preview/preview/merman/${typst_package_version}"
-          cp -R "${typst_package_root}"/. "target/typst-preview/preview/merman/${typst_package_version}/"
-          mkdir -p target/typst-smoke
-          for example in "${typst_package_root}"/examples/*.typ; do
-            name="$(basename "$example" .typ)"
-            typst compile --package-path target/typst-preview "$example" "target/typst-smoke/${name}.pdf"
-          done
-
-      - name: Smoke preview Typst package import
-        shell: bash
-        run: |
-          set -euo pipefail
-          typst_package_version="$(grep '^version = ' packages/typst/merman/typst.toml | sed 's/version = "\(.*\)"/\1/')"
-          typst_package_root="dist/typst/merman/${typst_package_version}"
-          mkdir -p "target/typst-preview/preview/merman/${typst_package_version}"
-          cp -R "${typst_package_root}"/. "target/typst-preview/preview/merman/${typst_package_version}/"
-          sed "s/@VERSION@/${typst_package_version}/g" > target/typst-smoke/preview-package.typ <<'EOF'
-          #import "@preview/merman:@VERSION@": mermaid, mermaid-result, show-mermaid-blocks
-
-          #show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 80%)
-
-          = Preview package smoke
-
-          #let result = mermaid-result("flowchart LR\n  A[Typst] --> B[merman]\n")
-          Render result: `#result.code_name`
-
-          #mermaid("flowchart LR\n  A[Typst] --> B[merman]\n", width: 80%)
-
-          #let elk = mermaid-result("flowchart-elk TD\n  A[Typst] --> B[ELK]\n")
-          ELK result: `#elk.code_name`
-          #mermaid("flowchart-elk TD\n  A[Typst] --> B[ELK]\n", width: 80%)
-
-          ```mermaid
-          sequenceDiagram
-            participant A
-            participant B
-            A->>B: preview import works
-          ```
-          EOF
-          typst compile --package-path target/typst-preview target/typst-smoke/preview-package.typ target/typst-smoke/preview-package.pdf
-
-      - name: Install Typst compatibility version
-        run: cargo install typst-cli --version "${TYPST_COMPAT_CLI_VERSION}" --locked --force
+          typst_asset="typst-x86_64-unknown-linux-musl.tar.xz"
+          typst_root="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}"
+          download_dir="$(mktemp -d)"
+          curl -fsSL --retry 3 --retry-connrefused --retry-delay 2 \
+            -o "${download_dir}/${typst_asset}" \
+            "https://github.com/typst/typst/releases/download/v${TYPST_COMPAT_CLI_VERSION}/${typst_asset}"
+          tar -xJf "${download_dir}/${typst_asset}" -C "${download_dir}"
+          mkdir -p "${typst_root}"
+          install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
+          "${typst_root}/typst" --version
 
       - name: Smoke Typst compatibility version
-        run: cargo run -p xtask -- typst-package-smoke --skip-wasm-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          typst_bin="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}/typst"
+          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --tests-only --typst "${typst_bin}"
+
+      - name: Upload Typst package compatibility artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: typst-package-compat-smoke
+          path: target/typst-package-smoke
+          if-no-files-found: ignore
 
   platform-script-syntax:
     name: platform-script-syntax

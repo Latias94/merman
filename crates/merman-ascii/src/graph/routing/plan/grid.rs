@@ -2,41 +2,62 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
+use super::super::label::{
+    RoutedLabelPlacement, RoutedLabelText, routed_label_placement_for_text,
+    routed_label_right_of_vertical_route_placement_for_text,
+};
 use super::super::path::{
-    Port, StepDirection, merge_grid_path, route_grid_path_with_ports, step_direction,
+    GridPathPortPolicy, Port, PortPair, StepDirection, merge_grid_path, route_grid_path,
+    step_direction,
 };
 use super::{
-    PlannedRouteCell, PlannedRouteSegment, RoutePlan, edge_arrow_cell_in_segment,
-    edge_line_cell_in_segment, planned_label_on_canvas_lines, route_cell_in_segment,
-    route_turn_char,
+    PlannedRouteCell, PlannedRouteLabel, PlannedRouteSegment, RoutePlan,
+    edge_arrow_cell_in_segment, edge_line_cell_in_segment, route_cell_in_segment, route_turn_char,
 };
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GridRouteOptions {
-    start_port: Option<Port>,
-    end_port: Option<Port>,
+    port_policy: GridPathPortPolicy,
     segment: PlannedRouteSegment,
+    label_mode: GridRouteLabelMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GridRouteLabelMode {
+    InlineLongestSegment,
+    FirstVerticalTransitLane,
+    LastVerticalTransitLane,
 }
 
 impl GridRouteOptions {
     pub(super) fn direct() -> Self {
         Self {
-            start_port: None,
-            end_port: None,
+            port_policy: GridPathPortPolicy::DirectionalShortest,
             segment: PlannedRouteSegment::Direct,
+            label_mode: GridRouteLabelMode::InlineLongestSegment,
         }
     }
 
-    pub(super) fn with_ports(start_port: Option<Port>, end_port: Option<Port>) -> Self {
+    pub(super) fn with_fixed_ports(start_port: Port, end_port: Port) -> Self {
         Self {
-            start_port,
-            end_port,
+            port_policy: GridPathPortPolicy::Fixed(PortPair::new(start_port, end_port)),
             segment: PlannedRouteSegment::Direct,
+            label_mode: GridRouteLabelMode::InlineLongestSegment,
         }
     }
 
     pub(super) fn with_segment(mut self, segment: PlannedRouteSegment) -> Self {
         self.segment = segment;
+        self
+    }
+
+    pub(super) fn with_first_vertical_transit_label(mut self) -> Self {
+        self.label_mode = GridRouteLabelMode::FirstVerticalTransitLane;
+        self
+    }
+
+    pub(super) fn with_last_vertical_transit_label(mut self) -> Self {
+        self.label_mode = GridRouteLabelMode::LastVerticalTransitLane;
         self
     }
 }
@@ -58,25 +79,6 @@ pub(super) fn plan_left_right_grid_path_route(
     )
 }
 
-pub(super) fn plan_left_right_grid_path_route_with_ports(
-    graph_layout: &GraphLayout,
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-    start_port: Option<Port>,
-    end_port: Option<Port>,
-) -> Option<RoutePlan> {
-    plan_left_right_grid_path_route_with_options(
-        graph_layout,
-        from,
-        to,
-        edge,
-        charset,
-        GridRouteOptions::with_ports(start_port, end_port),
-    )
-}
-
 pub(super) fn plan_left_right_grid_path_route_with_options(
     graph_layout: &GraphLayout,
     from: &NodeLayout,
@@ -85,13 +87,10 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     charset: &GraphCharset,
     options: GridRouteOptions,
 ) -> Option<RoutePlan> {
-    let (path, start_port, end_port) = route_grid_path_with_ports(
-        &graph_layout.nodes,
-        from,
-        to,
-        options.start_port,
-        options.end_port,
-    )?;
+    let route = route_grid_path(&graph_layout.nodes, from, to, options.port_policy)?;
+    let path = route.path;
+    let start_port = route.ports.start();
+    let end_port = route.ports.end();
     if path.len() < 2 {
         return None;
     }
@@ -114,16 +113,84 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     plan_grid_arrow_head(
         &mut cells,
         lines_drawn.last().map(Vec::as_slice).unwrap_or_default(),
-        *line_dirs.last().unwrap_or(&end_port.step_fallback()),
+        *line_dirs.last().unwrap_or(&end_port.terminal_direction()),
         edge,
         charset,
         segment,
     );
-    let labels = planned_label_on_canvas_lines(edge.label.as_deref(), &lines_drawn)
-        .into_iter()
-        .collect();
+    let labels = planned_grid_label(
+        edge.label.as_deref(),
+        &lines_drawn,
+        &line_dirs,
+        options.label_mode,
+    )
+    .into_iter()
+    .collect();
 
-    Some(RoutePlan { cells, labels })
+    Some(RoutePlan::new(cells, labels))
+}
+
+fn planned_grid_label(
+    label: Option<&str>,
+    lines: &[Vec<CanvasCoord>],
+    directions: &[StepDirection],
+    mode: GridRouteLabelMode,
+) -> Option<PlannedRouteLabel> {
+    let label = label.filter(|label| !label.trim().is_empty())?;
+    let text = RoutedLabelText::new(label)?;
+    let (line, direction) = grid_label_line(lines, directions, mode)?;
+    let first = line.first().copied()?;
+    let last = line.last().copied()?;
+    let placement = grid_label_placement(&text, first, last, mode, direction)?;
+    Some(PlannedRouteLabel::new(text, placement))
+}
+
+fn grid_label_line<'a>(
+    lines: &'a [Vec<CanvasCoord>],
+    directions: &[StepDirection],
+    mode: GridRouteLabelMode,
+) -> Option<(&'a Vec<CanvasCoord>, StepDirection)> {
+    let candidates = lines.iter().zip(directions.iter().copied());
+    match mode {
+        GridRouteLabelMode::InlineLongestSegment => candidates.max_by_key(|(line, _)| line.len()),
+        GridRouteLabelMode::FirstVerticalTransitLane => first_vertical_grid_label_line(candidates),
+        GridRouteLabelMode::LastVerticalTransitLane => last_vertical_grid_label_line(candidates),
+    }
+}
+
+fn first_vertical_grid_label_line<'a>(
+    mut candidates: impl Iterator<Item = (&'a Vec<CanvasCoord>, StepDirection)>,
+) -> Option<(&'a Vec<CanvasCoord>, StepDirection)> {
+    candidates.find(|(_, direction)| matches!(direction, StepDirection::Up | StepDirection::Down))
+}
+
+fn last_vertical_grid_label_line<'a>(
+    candidates: impl Iterator<Item = (&'a Vec<CanvasCoord>, StepDirection)>,
+) -> Option<(&'a Vec<CanvasCoord>, StepDirection)> {
+    candidates
+        .filter(|(_, direction)| matches!(direction, StepDirection::Up | StepDirection::Down))
+        .last()
+}
+
+fn grid_label_placement(
+    label: &RoutedLabelText,
+    first: CanvasCoord,
+    last: CanvasCoord,
+    mode: GridRouteLabelMode,
+    direction: StepDirection,
+) -> Option<RoutedLabelPlacement> {
+    match mode {
+        GridRouteLabelMode::InlineLongestSegment => {
+            routed_label_placement_for_text(first, last, label)
+        }
+        GridRouteLabelMode::FirstVerticalTransitLane
+        | GridRouteLabelMode::LastVerticalTransitLane => match direction {
+            StepDirection::Up | StepDirection::Down => {
+                routed_label_right_of_vertical_route_placement_for_text(first, last, label)
+            }
+            StepDirection::Left | StepDirection::Right => None,
+        },
+    }
 }
 
 fn plan_grid_path(
@@ -238,7 +305,7 @@ fn plan_grid_box_start(
         return;
     };
 
-    let cell = match start_port.step_fallback() {
+    let cell = match start_port.terminal_direction() {
         StepDirection::Up => {
             edge_line_cell_in_segment(from.x, from.y + 1, charset.up_connector, segment)
         }
@@ -264,7 +331,7 @@ fn plan_grid_box_start(
 fn plan_grid_arrow_head(
     cells: &mut Vec<PlannedRouteCell>,
     last_line: &[CanvasCoord],
-    fallback: StepDirection,
+    default_direction: StepDirection,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
@@ -278,7 +345,7 @@ fn plan_grid_arrow_head(
     let direction = last_line
         .first()
         .and_then(|first| canvas_line_direction(*first, last))
-        .unwrap_or(fallback);
+        .unwrap_or(default_direction);
     let ch = match direction {
         StepDirection::Up => charset.arrow_up,
         StepDirection::Down => charset.arrow_down,

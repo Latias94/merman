@@ -304,10 +304,6 @@ fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
 }
 
 fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConfig)> {
-    if !input.trim_start().starts_with("---") {
-        return Ok((input, None, MermaidConfig::empty_object()));
-    }
-
     let Some((yaml_body, stripped)) = split_frontmatter(input) else {
         return Ok((input, None, MermaidConfig::empty_object()));
     };
@@ -320,17 +316,15 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
 
     #[cfg(feature = "full-config")]
     {
-        if config_nesting_exceeds_limit(yaml_body) {
+        if config_nesting_exceeds_limit(yaml_body.as_ref()) {
             return Err(Error::InvalidFrontMatterYaml {
                 message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
             });
         }
 
-        let raw_yaml: serde_yaml::Value =
-            serde_yaml::from_str(yaml_body).map_err(|e| Error::InvalidFrontMatterYaml {
-                message: e.to_string(),
-            })?;
-        let parsed = serde_json::to_value(raw_yaml).unwrap_or(Value::Null);
+        let parsed =
+            crate::yaml_config::parse_yaml_value(yaml_body.as_ref(), MAX_CONFIG_NESTING_DEPTH)
+                .map_err(|e| Error::InvalidFrontMatterYaml { message: e })?;
         let parsed_obj = match parsed {
             Value::Object(obj) => obj,
             other => {
@@ -342,16 +336,25 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
         let mut title = None;
         let mut display_mode = None;
 
-        if let Some(Value::String(t)) = parsed_obj.get("title") {
-            title = Some(t.clone());
+        if let Some(t) = parsed_obj
+            .get("title")
+            .filter(|value| frontmatter_truthy(value))
+        {
+            title = Some(frontmatter_to_string(t));
         }
-        if let Some(Value::String(dm)) = parsed_obj.get("displayMode") {
-            display_mode = Some(dm.clone());
+        if let Some(dm) = parsed_obj
+            .get("displayMode")
+            .filter(|value| frontmatter_truthy(value))
+        {
+            display_mode = Some(frontmatter_to_string(dm));
         }
 
         let mut config = MermaidConfig::empty_object();
         merge_top_level_frontmatter_diagram_configs(&parsed_obj, &mut config);
-        if let Some(v) = parsed_obj.get("config") {
+        if let Some(v) = parsed_obj
+            .get("config")
+            .filter(|value| frontmatter_truthy(value))
+        {
             config.deep_merge(v);
         }
         crate::config::mirror_legacy_font_family_into_theme_variables(&mut config);
@@ -364,28 +367,87 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
     }
 }
 
-fn split_frontmatter(input: &str) -> Option<(&str, &str)> {
-    let after_marker = input.strip_prefix("---")?;
-    let open_line_end = after_marker.find('\n')?;
-    if !after_marker[..open_line_end].trim().is_empty() {
+fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
+    let open_line_end = input.find('\n')?;
+    let open_line = input[..open_line_end].trim_end_matches('\r');
+    let indent_end = frontmatter_indent_end(open_line);
+    let indent = &open_line[..indent_end];
+    let after_indent = &open_line[indent_end..];
+    if !after_indent.starts_with("---") || !after_indent[3..].trim().is_empty() {
         return None;
     }
 
-    let body_start = 3 + open_line_end + 1;
+    let body_start = open_line_end + 1;
     let rest = &input[body_start..];
     let mut offset = 0usize;
 
     for line in rest.split_inclusive('\n') {
         let without_newline = line.trim_end_matches(['\r', '\n']);
-        if without_newline.trim() == "---" {
-            let body = &rest[..offset];
+        if is_frontmatter_closing_line(without_newline, indent) {
+            let body = rest[..offset].strip_suffix('\n').unwrap_or(&rest[..offset]);
             let stripped = &rest[offset + line.len()..];
-            return Some((body, stripped));
+            return Some((dedent_frontmatter_body(body, indent), stripped));
         }
         offset += line.len();
     }
 
     None
+}
+
+fn frontmatter_indent_end(line: &str) -> usize {
+    let mut end = 0usize;
+    for (idx, ch) in line.char_indices() {
+        if ch == '\n' || ch == '\r' || !ch.is_whitespace() {
+            break;
+        }
+        end = idx + ch.len_utf8();
+    }
+    end
+}
+
+fn is_frontmatter_closing_line(line: &str, indent: &str) -> bool {
+    let Some(after_indent) = line.strip_prefix(indent) else {
+        return false;
+    };
+    after_indent.starts_with("---") && after_indent[3..].trim().is_empty()
+}
+
+fn dedent_frontmatter_body<'a>(body: &'a str, indent: &str) -> Cow<'a, str> {
+    if indent.is_empty() {
+        return Cow::Borrowed(body);
+    }
+
+    let mut out = String::with_capacity(body.len());
+    for (idx, line) in body.split('\n').enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        out.push_str(line.strip_prefix(indent).unwrap_or(line));
+    }
+    Cow::Owned(out)
+}
+
+#[cfg(feature = "full-config")]
+fn frontmatter_truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(value) => value.as_f64().is_some_and(|value| value != 0.0),
+        Value::String(value) => !value.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}
+
+#[cfg(feature = "full-config")]
+fn frontmatter_to_string(value: &Value) -> String {
+    match value {
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        Value::Bool(true) => "true".to_string(),
+        Value::Bool(false) => "false".to_string(),
+        Value::Null => "null".to_string(),
+        Value::Array(_) | Value::Object(_) => value.to_string(),
+    }
 }
 
 #[cfg(feature = "full-config")]

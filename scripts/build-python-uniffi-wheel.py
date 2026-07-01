@@ -41,7 +41,23 @@ assert "flowchart-v2" in engine.parse_json(source, None)
 assert "layout" in engine.layout_json(source, None)
 assert engine.validate(source, None).valid
 assert "flowchart" in engine.supported_diagrams()
-assert "sequence" in engine.ascii_supported_diagrams()
+ascii_capabilities = engine.ascii_capabilities()
+assert any(
+    item.diagram_type == "sequence" and item.support_level == "full"
+    for item in ascii_capabilities
+)
+assert any(
+    item.diagram_type == "gantt"
+    and item.support_level == "summary"
+    and not item.summary_fallback
+    for item in ascii_capabilities
+)
+assert any(
+    item.diagram_type == "class"
+    and item.support_level == "partial"
+    and item.summary_fallback
+    for item in ascii_capabilities
+)
 assert "default" in engine.supported_themes()
 assert any(item.diagram_type == "flowchart" for item in engine.diagram_family_capabilities())
 

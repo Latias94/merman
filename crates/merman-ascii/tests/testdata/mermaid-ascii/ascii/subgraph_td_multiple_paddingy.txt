@@ -1,5 +1,3 @@
-paddingX=3
-paddingY=3
 graph TD
 subgraph Frontend
     UI --> API

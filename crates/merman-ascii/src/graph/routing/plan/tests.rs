@@ -1,6 +1,5 @@
 use super::grid::{
-    GridRouteOptions, plan_left_right_grid_path_route,
-    plan_left_right_grid_path_route_with_options, plan_left_right_grid_path_route_with_ports,
+    GridRouteOptions, plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_options,
 };
 use super::left_right::{
     plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
@@ -9,9 +8,11 @@ use super::left_right::{
 };
 use super::top_down::{
     plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
+    plan_top_down_side_entry_route,
 };
 use super::*;
 use crate::AsciiRenderOptions;
+use crate::color::AsciiColorRole;
 use crate::graph::charset::GraphCharset;
 use crate::graph::label::GraphLabel;
 use crate::graph::layout::{GraphLayout, GridCoord, NodeLayout, layout_graph};
@@ -19,8 +20,13 @@ use crate::graph::model::{
     AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStroke, GraphEdgeStyle,
     GraphNodeShape, GraphNodeStyle,
 };
+use crate::graph::routing::label::RoutedLabelPlacement;
+use crate::graph::routing::label::RoutedLabelText;
+use crate::graph::routing::plan::PlannedRoutePaint;
 use crate::graph::routing::plan::PlannedRouteSegment;
-use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
+use crate::graph::routing::plan::select::{
+    EdgeBoundaryContext, UnsupportedEdgeRouteReason, edge_boundary_context,
+};
 
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {
@@ -103,89 +109,66 @@ fn edge_route_selects_top_down_same_rank_direct_route() {
 }
 
 #[test]
-fn route_canvas_extent_accounts_for_left_right_back_lane() {
+fn edge_route_reports_unsupported_boundary_direction() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("x", "X");
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "one",
+        "TD Group",
+        Some(GraphDirection::TopDown),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+    let edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
+    let layout = layout_graph(&graph, &options);
+    let from = node("x", 0, 0, 3, 3);
+    let to = node("a", 0, 0, 3, 3);
+
+    let planned = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: std::slice::from_ref(&edge),
+        from: &from,
+        to: &to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    });
+
+    let EdgeRoutePlan::Unsupported(route) = planned else {
+        panic!("unsupported boundary route should not be silently treated as routed");
+    };
+    assert_eq!(
+        route.reason(),
+        UnsupportedEdgeRouteReason::BoundaryDirection
+    );
+    assert_eq!(route.feature(), "unsupported graph boundary routes");
+}
+
+#[test]
+fn route_plan_canvas_extent_accounts_for_left_right_back_lane() {
     let from = node("a", 10, 0, 3, 3);
     let to = node("b", 0, 0, 3, 3);
-    let layouts = vec![from, to];
-    let edges = vec![edge_between("a", "b", None, GraphEdgeArrow::Point)];
-    let graph = test_graph(GraphDirection::LeftRight, &[("a", "b")]);
+    let edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let plan = plan_left_right_bottom_lane_route(&from, &to, &edge, &charset).unwrap();
 
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &edges, GraphDirection::LeftRight),
-        (14, 5)
-    );
+    assert_eq!(plan.canvas_extent(), (14, 5));
 }
 
 #[test]
-fn route_canvas_extent_accounts_for_top_down_back_label_width() {
+fn route_plan_canvas_extent_accounts_for_top_down_back_label_width() {
     let from = node("a", 0, 6, 3, 3);
     let to = node("b", 0, 0, 3, 3);
-    let layouts = vec![from, to];
-    let edges = vec![edge_between("a", "b", Some("back"), GraphEdgeArrow::Point)];
-    let graph = test_graph(GraphDirection::TopDown, &[("a", "b")]);
+    let edge = edge_between("a", "b", Some("back"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let plan = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
 
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &edges, GraphDirection::TopDown),
-        (9, 0)
-    );
-}
-
-#[test]
-fn route_canvas_extent_uses_local_direction_only_for_internal_subgraph_edges() {
-    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    graph.add_node("x", "X");
-    graph.add_group_with_style(
-        "one",
-        "LR Group",
-        Some(GraphDirection::LeftRight),
-        vec!["a".to_string(), "b".to_string()],
-        Default::default(),
-    );
-
-    let layouts = vec![
-        node("x", 8, 0, 3, 3),
-        node("a", 0, 8, 3, 3),
-        node("b", 8, 8, 3, 3),
-    ];
-    let internal_edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
-    let external_edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
-
-    assert_eq!(
-        route_canvas_extent(
-            &graph,
-            &layouts,
-            std::slice::from_ref(&internal_edge),
-            GraphDirection::TopDown
-        ),
-        (0, 0)
-    );
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &[external_edge], GraphDirection::TopDown),
-        (0, 0)
-    );
-}
-
-#[test]
-fn internal_subgraph_edge_marks_local_group_context_through_extent_behavior() {
-    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    graph.add_group_with_style(
-        "one",
-        "LR Group",
-        Some(GraphDirection::LeftRight),
-        vec!["a".to_string(), "b".to_string()],
-        Default::default(),
-    );
-    let layouts = vec![node("a", 0, 8, 3, 3), node("b", 8, 8, 3, 3)];
-    let internal_edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
-
-    assert_eq!(
-        route_canvas_extent(&graph, &layouts, &[internal_edge], GraphDirection::TopDown),
-        (0, 0)
-    );
+    assert_eq!(plan.canvas_extent(), (12, 8));
 }
 
 #[test]
@@ -235,6 +218,45 @@ fn edge_boundary_context_classifies_external_internal_entering_and_leaving_edges
 }
 
 #[test]
+fn edge_boundary_context_prefers_the_narrowest_nested_group_boundary() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_node("c", "C");
+    graph.add_group_with_style(
+        "outer",
+        "Outer",
+        Some(GraphDirection::TopDown),
+        vec!["a".to_string(), "inner".to_string()],
+        Default::default(),
+    );
+    graph.add_group_with_style(
+        "inner",
+        "Inner",
+        Some(GraphDirection::LeftRight),
+        vec!["b".to_string(), "c".to_string()],
+        Default::default(),
+    );
+
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("a", "b", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::Entering {
+            group_id: "inner",
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight
+        }
+    );
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("b", "a", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::Leaving {
+            group_id: "inner",
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight
+        }
+    );
+}
+
+#[test]
 fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     let options = AsciiRenderOptions::ascii();
     let charset = GraphCharset::for_options(&options);
@@ -250,7 +272,7 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
         Default::default(),
     );
     let layout = layout_graph(&graph, &options);
-    let edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
+    let edge = edge_between("x", "a", Some("enter"), GraphEdgeArrow::Point);
     let from = layout_node(&layout, "x");
     let to = layout_node(&layout, "a");
 
@@ -266,9 +288,25 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     })
     .expect("entering boundary route should use the grid path stub");
 
-    let expected = plan_left_right_grid_path_route(&layout, from, to, &edge, &charset)
-        .expect("grid path should exist");
+    let expected = plan_left_right_grid_path_route_with_options(
+        &layout,
+        from,
+        to,
+        &edge,
+        &charset,
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Left,
+        )
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_first_vertical_transit_label(),
+    )
+    .expect("grid path should exist");
     assert_eq!(plan, expected);
+    assert_eq!(
+        plan.labels.first().map(|label| label.placement),
+        Some(RoutedLabelPlacement::new(21, 10, 5))
+    );
 }
 
 #[test]
@@ -287,7 +325,7 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
         Default::default(),
     );
     let layout = layout_graph(&graph, &options);
-    let edge = edge_between("b", "y", None, GraphEdgeArrow::Point);
+    let edge = edge_between("b", "y", Some("leave"), GraphEdgeArrow::Point);
     let from = layout_node(&layout, "b");
     let to = layout_node(&layout, "y");
 
@@ -309,14 +347,19 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
         to,
         &edge,
         &charset,
-        GridRouteOptions::with_ports(
-            Some(crate::graph::routing::path::Port::Right),
-            Some(crate::graph::routing::path::Port::Right),
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Right,
         )
-        .with_segment(PlannedRouteSegment::Boundary),
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_last_vertical_transit_label(),
     )
     .expect("grid path should exist");
     assert_eq!(plan, expected);
+    assert_eq!(
+        plan.labels.first().map(|label| label.placement),
+        Some(RoutedLabelPlacement::new(18, 10, 5))
+    );
 }
 
 #[test]
@@ -339,14 +382,18 @@ fn entering_boundary_route_uses_explicit_left_boundary_ports() {
     let from = layout_node(&layout, "x");
     let to = layout_node(&layout, "a");
 
-    let expected = plan_left_right_grid_path_route_with_ports(
+    let expected = plan_left_right_grid_path_route_with_options(
         &layout,
         from,
         to,
         &edge,
         &charset,
-        Some(crate::graph::routing::path::Port::Right),
-        Some(crate::graph::routing::path::Port::Left),
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Left,
+        )
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_first_vertical_transit_label(),
     )
     .expect("grid path should exist");
 
@@ -384,14 +431,18 @@ fn leaving_boundary_route_uses_explicit_right_boundary_ports() {
     let from = layout_node(&layout, "b");
     let to = layout_node(&layout, "y");
 
-    let expected = plan_left_right_grid_path_route_with_ports(
+    let expected = plan_left_right_grid_path_route_with_options(
         &layout,
         from,
         to,
         &edge,
         &charset,
-        Some(crate::graph::routing::path::Port::Right),
-        Some(crate::graph::routing::path::Port::Right),
+        GridRouteOptions::with_fixed_ports(
+            crate::graph::routing::path::Port::Right,
+            crate::graph::routing::path::Port::Right,
+        )
+        .with_segment(PlannedRouteSegment::Boundary)
+        .with_last_vertical_transit_label(),
     )
     .expect("grid path should exist");
 
@@ -466,11 +517,10 @@ fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() 
     );
     assert_eq!(
         plan.labels,
-        vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 5, y: 1 },
-            end: CanvasCoord { x: 9, y: 1 },
-            text: "label".to_string(),
-        }]
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("label").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(5, 1, 5),
+        )]
     );
 }
 
@@ -551,11 +601,10 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
     );
     assert_eq!(
         plan.labels,
-        vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 5, y: 2 },
-            end: CanvasCoord { x: 9, y: 2 },
-            text: "go".to_string(),
-        }]
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("go").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(6, 2, 2),
+        )]
     );
 }
 
@@ -586,7 +635,9 @@ fn left_right_grid_path_route_plans_bent_path_cells_and_corner() {
             .any(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
     );
     assert_eq!(
-        plan.labels.first().map(|label| label.text.as_str()),
+        plan.labels
+            .first()
+            .and_then(|label| label.text.lines().first().map(String::as_str)),
         Some("down")
     );
 }
@@ -751,11 +802,10 @@ fn left_right_bottom_lane_route_plans_reverse_lane_and_label() {
     );
     assert_eq!(
         plan.labels,
-        vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 1, y: 4 },
-            end: CanvasCoord { x: 11, y: 4 },
-            text: "back".to_string(),
-        }]
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("back").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(4, 4, 4),
+        )]
     );
 }
 
@@ -785,11 +835,10 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
     );
     assert_eq!(
         plan.labels,
-        vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 3, y: 1 },
-            end: CanvasCoord { x: 9, y: 1 },
-            text: "rev".to_string(),
-        }]
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("rev").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(5, 1, 3),
+        )]
     );
 }
 
@@ -822,7 +871,7 @@ fn left_right_self_loop_route_plans_loop_and_arrow() {
 }
 
 #[test]
-fn top_down_bent_route_plans_right_bend_arrow_and_label() {
+fn top_down_bent_route_plans_side_bend_arrow_and_label() {
     let from = node("a", 0, 0, 3, 3);
     let to = node("b", 6, 5, 3, 3);
     let edge = edge(Some("bend"), GraphEdgeArrow::Point);
@@ -846,11 +895,42 @@ fn top_down_bent_route_plans_right_bend_arrow_and_label() {
     );
     assert_eq!(
         plan.labels,
-        vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 7, y: 2 },
-            end: CanvasCoord { x: 7, y: 4 },
-            text: "bend".to_string(),
-        }]
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("bend").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(2, 1, 4),
+        )]
+    );
+}
+
+#[test]
+fn top_down_choice_bent_route_drops_before_turning_and_labels_horizontal_segment() {
+    let from = node_with_shape("a", 0, 0, 3, 3, GraphNodeShape::Choice);
+    let to = node("b", 6, 5, 3, 3);
+    let edge = edge(Some("bend"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+    let plan = plan_top_down_bent_route(&from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(
+        plan.cells,
+        vec![
+            cell(1, 2, '-', PlannedRouteCellKind::EdgeLine),
+            cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
+            cell(1, 4, '+', PlannedRouteCellKind::RouteCell),
+            cell(2, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(3, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(4, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(5, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(6, 4, '-', PlannedRouteCellKind::RouteCell),
+            cell(7, 4, 'v', PlannedRouteCellKind::EdgeArrow),
+        ]
+    );
+    assert_eq!(
+        plan.labels,
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("bend").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(2, 4, 4),
+        )]
     );
 }
 
@@ -866,15 +946,14 @@ fn top_down_bent_route_plans_right_bend_unicode_corner() {
     assert!(
         plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '┐'),
-        "right/down bend should connect from the left into a downward leg: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 2, y: 1 } && cell.ch == '├'),
+        "right/down bend should leave the source side with a connector: {plan:?}"
     );
     assert!(
-        !plan
-            .cells
+        plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '└'),
-        "right/down bend must not use the left-right/down-up corner: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '┐'),
+        "right/down bend should turn down with a connected top-right corner: {plan:?}"
     );
 }
 
@@ -891,14 +970,14 @@ fn top_down_bent_route_plans_left_bend_open_endpoint() {
         plan.cells,
         vec![
             cell(10, 1, '|', PlannedRouteCellKind::EdgeLine),
-            cell(2, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(3, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(4, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(5, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(7, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(8, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(9, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(8, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(7, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(5, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(4, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(3, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(2, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(1, 1, '+', PlannedRouteCellKind::RouteCell),
             cell(1, 2, '|', PlannedRouteCellKind::RouteCell),
             cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
@@ -920,15 +999,14 @@ fn top_down_bent_route_plans_left_bend_unicode_corner() {
     assert!(
         plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '┌'),
-        "left/down bend should connect from the right into a downward leg: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 10, y: 1 } && cell.ch == '┤'),
+        "left/down bend should leave the source side with a connector: {plan:?}"
     );
     assert!(
-        !plan
-            .cells
+        plan.cells
             .iter()
-            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '└'),
-        "left/down bend must not use the left-right/down-up corner: {plan:?}"
+            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '┌'),
+        "left/down bend should turn down with a connected top-left corner: {plan:?}"
     );
 }
 
@@ -962,11 +1040,10 @@ fn top_down_back_route_plans_lane_arrow_and_label() {
     );
     assert_eq!(
         plan.labels,
-        vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 6, y: 1 },
-            end: CanvasCoord { x: 6, y: 7 },
-            text: "back".to_string(),
-        }]
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("back").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(7, 4, 4),
+        )]
     );
 }
 
@@ -990,11 +1067,10 @@ fn top_down_direct_route_plans_connector_line_arrow_and_label() {
     );
     assert_eq!(
         plan.labels,
-        vec![PlannedRouteLabel {
-            start: CanvasCoord { x: 4, y: 3 },
-            end: CanvasCoord { x: 4, y: 5 },
-            text: "label".to_string(),
-        }]
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("label").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(2, 4, 5),
+        )]
     );
 }
 
@@ -1024,12 +1100,45 @@ fn top_down_direct_route_rejects_adjacent_boxes() {
     assert!(plan_top_down_direct_route(&from, &to, &edge, &charset).is_none());
 }
 
+#[test]
+fn top_down_side_entry_route_plans_unicode_connector_and_label() {
+    let from = node("a", 0, 0, 3, 3);
+    let to = node("group", 6, 0, 3, 3);
+    let edge = edge(Some("enter"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
+
+    let plan = plan_top_down_side_entry_route(&from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(
+        plan.cells,
+        vec![
+            cell(2, 1, '├', PlannedRouteCellKind::EdgeLine),
+            cell(3, 1, '─', PlannedRouteCellKind::RouteCell),
+            cell(4, 1, '─', PlannedRouteCellKind::RouteCell),
+            cell(5, 1, '►', PlannedRouteCellKind::EdgeArrow),
+        ]
+    );
+    assert_eq!(
+        plan.labels,
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("enter").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(2, 1, 5),
+        )]
+    );
+}
+
 fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
         ch,
         kind,
         segment: PlannedRouteSegment::Direct,
+        paint: PlannedRoutePaint::role(match kind {
+            PlannedRouteCellKind::EdgeArrow => AsciiColorRole::EdgeArrow,
+            PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {
+                AsciiColorRole::EdgeLine
+            }
+        }),
     }
 }
 
@@ -1055,10 +1164,21 @@ fn edge_between(
 }
 
 fn node(id: &str, x: usize, y: usize, width: usize, height: usize) -> NodeLayout {
+    node_with_shape(id, x, y, width, height, GraphNodeShape::Rect)
+}
+
+fn node_with_shape(
+    id: &str,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    shape: GraphNodeShape,
+) -> NodeLayout {
     NodeLayout {
         id: id.to_string(),
         label: GraphLabel::new(id),
-        shape: GraphNodeShape::Rect,
+        shape,
         style: GraphNodeStyle::default(),
         grid: GridCoord { x: 0, y: 0 },
         x,
@@ -1079,19 +1199,6 @@ fn left_right_layout(edges: &[(&str, &str)], options: &AsciiRenderOptions) -> Gr
         graph.add_edge(*from, *to);
     }
     layout_graph(&graph, options)
-}
-
-fn test_graph(direction: GraphDirection, edges: &[(&str, &str)]) -> AsciiGraph {
-    let mut graph = AsciiGraph::new(direction);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    if edges.iter().any(|(_, to)| *to == "c") {
-        graph.add_node("c", "C");
-    }
-    for (from, to) in edges {
-        graph.add_edge(*from, *to);
-    }
-    graph
 }
 
 fn layout_node<'a>(layout: &'a GraphLayout, id: &str) -> &'a NodeLayout {

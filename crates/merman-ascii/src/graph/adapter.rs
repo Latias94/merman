@@ -17,7 +17,7 @@ pub(crate) fn from_flowchart_model(
     let direction = if let Some(direction) = model.direction.as_deref() {
         parse_direction(direction)?
     } else {
-        match options.fallback_direction {
+        match options.default_direction {
             AsciiDirection::LeftRight => GraphDirection::LeftRight,
             AsciiDirection::TopDown => GraphDirection::TopDown,
         }
@@ -109,13 +109,33 @@ fn parse_edge_arrow(edge_type: &str) -> Result<GraphEdgeArrow> {
 fn parse_node_shape(shape: Option<&str>) -> Result<GraphNodeShape> {
     match shape.unwrap_or("squareRect") {
         "rect" | "rectangle" | "square" | "squareRect" => Ok(GraphNodeShape::Rect),
-        "roundedRect" | "rounded" | "event" | "stadium" | "terminal" | "pill" | "circle"
-        | "circ" | "doublecircle" | "dbl-circ" | "double-circle" => Ok(GraphNodeShape::Rounded),
+        "roundedRect" | "rounded" | "event" | "ellipse" => Ok(GraphNodeShape::Rounded),
+        "circle" | "circ" => Ok(GraphNodeShape::Circle),
+        "stadium" | "terminal" | "pill" => Ok(GraphNodeShape::Stadium),
+        "doublecircle" | "dbl-circ" | "double-circle" => Ok(GraphNodeShape::DoubleCircle),
         "diamond" | "question" | "diam" | "decision" => Ok(GraphNodeShape::Diamond),
         "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
             Ok(GraphNodeShape::Subroutine)
         }
         "cylinder" | "cyl" | "db" | "database" => Ok(GraphNodeShape::Cylinder),
+        "lean_right" | "lean-r" | "lean-right" | "in-out" => Ok(GraphNodeShape::LeanRight),
+        "lean_left" | "lean-l" | "lean-left" | "out-in" => Ok(GraphNodeShape::LeanLeft),
+        "datastore" | "data-store" => Ok(GraphNodeShape::Datastore),
+        "doc" | "document" | "docs" | "documents" | "st-doc" | "stacked-document" | "lin-doc"
+        | "lined-document" | "tag-doc" | "tagged-document" => Ok(GraphNodeShape::Document),
+        "st-rect" | "stacked-rectangle" | "processes" | "procs" | "tag-rect" | "tag-proc"
+        | "tagged-process" | "tagged-rectangle" | "lin-rect" | "lin-proc" | "lined-process"
+        | "lined-rectangle" | "shaded-process" => Ok(GraphNodeShape::Rect),
+        "hexagon" | "hex" | "prepare" => Ok(GraphNodeShape::Hexagon),
+        "odd" | "rect_left_inv_arrow" | "flag" | "paper-tape" => Ok(GraphNodeShape::Asymmetric),
+        "choice" => Ok(GraphNodeShape::Choice),
+        "fork" | "join" | "forkJoin" => Ok(GraphNodeShape::ForkJoinHorizontal),
+        "start" | "small-circle" | "sm-circ" | "stateStart" => Ok(GraphNodeShape::StateStart),
+        "stop" | "framed-circle" | "fr-circ" | "stateEnd" => Ok(GraphNodeShape::StateEnd),
+        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => Ok(GraphNodeShape::Trapezoid),
+        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
+            Ok(GraphNodeShape::TrapezoidAlt)
+        }
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
             feature: "non-rectangular node shapes",
@@ -132,17 +152,6 @@ fn validate_supported_flowchart_model(model: &FlowchartV2Model) -> Result<()> {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
             feature: "subgraph member ids with line breaks",
-        });
-    }
-
-    if model.edges.iter().any(|edge| {
-        edge.label
-            .as_deref()
-            .is_some_and(|label| label.contains('\n'))
-    }) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "multiline edge labels",
         });
     }
 

@@ -1,12 +1,15 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
 use super::layout::{CanvasCoord, GroupLayout, NodeLayout, layout_graph};
-use super::model::{AsciiGraph, GraphDirection, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
+use super::model::{
+    AsciiGraph, GraphDirection, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
+};
 use super::routing;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
+use crate::terminal::char_display_width;
 use crate::text::display_width;
 use std::collections::HashSet;
 
@@ -18,8 +21,8 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 
     let charset = GraphCharset::for_options(options);
     let graph_layout = layout_graph(graph, options);
-    let (edge_width, edge_height) =
-        routing::edge_canvas_extent(graph, &graph_layout.nodes, &graph.edges, graph.direction);
+    let route_scene = routing::prepare_route_scene(graph, &graph_layout, &graph.edges, &charset)?;
+    let (edge_width, edge_height) = route_scene.canvas_extent();
     let width = graph_layout
         .nodes
         .iter()
@@ -56,7 +59,6 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 
     let mut canvas = Canvas::new(width, height);
     let mut route_cells = HashSet::new();
-    let mut edge_labels = Vec::new();
     for group in &graph_layout.groups {
         draw_group(&mut canvas, group, &charset);
     }
@@ -64,51 +66,23 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         draw_node(&mut canvas, layout, &charset, options);
     }
     {
-        let mut route_drawing =
-            routing::RouteDrawing::new(&mut canvas, &mut route_cells, &mut edge_labels);
-        for (edge_index, edge) in graph
-            .edges
-            .iter()
-            .enumerate()
-            .filter(|(_, edge)| edge.from == edge.to)
-        {
-            routing::draw_edge(
-                &mut route_drawing,
-                routing::DrawEdgeRequest {
-                    graph,
-                    graph_layout: &graph_layout,
-                    edges: &graph.edges,
-                    edge_index,
-                    edge,
-                    charset: &charset,
-                },
-            );
-        }
-        for (edge_index, edge) in graph
-            .edges
-            .iter()
-            .enumerate()
-            .filter(|(_, edge)| edge.from != edge.to)
-        {
-            routing::draw_edge(
-                &mut route_drawing,
-                routing::DrawEdgeRequest {
-                    graph,
-                    graph_layout: &graph_layout,
-                    edges: &graph.edges,
-                    edge_index,
-                    edge,
-                    charset: &charset,
-                },
-            );
-        }
+        let mut route_drawing = routing::RouteDrawing::new(&mut canvas, &mut route_cells);
+        route_scene.paint_routes(&mut route_drawing);
     }
 
     let output_transform = OutputTransform::for_direction(graph.direction);
     if output_transform.is_identity() {
-        for label in &edge_labels {
-            routing::draw_routed_label(&mut canvas, label);
-        }
+        redraw_transformed_node_labels(
+            &mut canvas,
+            &graph_layout.nodes,
+            output_transform,
+            width,
+            height,
+        );
+        route_scene.draw_labels(
+            &mut canvas,
+            output_transform.route_label_transform(width, height),
+        );
         for group in &graph_layout.groups {
             draw_group_title(&mut canvas, group);
         }
@@ -123,12 +97,10 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         width,
         height,
     );
-    for label in &edge_labels {
-        let label = routing::transform_routed_label(label, |coord| {
-            output_transform.coord(coord, width, height)
-        });
-        routing::draw_routed_label(&mut canvas, &label);
-    }
+    route_scene.draw_labels(
+        &mut canvas,
+        output_transform.route_label_transform(width, height),
+    );
     for group in &graph_layout.groups {
         draw_transformed_group_title(&mut canvas, group, output_transform, width, height);
     }
@@ -177,10 +149,10 @@ impl OutputTransform {
                 let Some(ch) = source.get(x, y) else {
                     continue;
                 };
-                let coord = self.coord(CanvasCoord { x, y }, width, height);
+                let coord = self.coord_for_char(CanvasCoord { x, y }, ch, width, height);
                 let ch = self.map_char(ch);
-                if let Some(color) = source.get_color(x, y) {
-                    canvas.set_canvas_color(coord.x, coord.y, ch, color);
+                if let Some(style) = source.get_style(x, y) {
+                    canvas.set_style(coord.x, coord.y, ch, style);
                 } else {
                     canvas.set(coord.x, coord.y, ch);
                 }
@@ -189,9 +161,27 @@ impl OutputTransform {
         canvas
     }
 
+    fn coord_for_char(
+        self,
+        coord: CanvasCoord,
+        ch: char,
+        width: usize,
+        height: usize,
+    ) -> CanvasCoord {
+        match self {
+            Self::HorizontalMirror => CanvasCoord {
+                x: width
+                    .saturating_sub(coord.x)
+                    .saturating_sub(char_display_width(ch)),
+                y: coord.y,
+            },
+            Self::Identity | Self::VerticalMirror => self.coord(coord, width, height),
+        }
+    }
+
     fn text_x(self, x: usize, text: &str, width: usize) -> usize {
         match self {
-            Self::HorizontalMirror => width.saturating_sub(x).saturating_sub(text.chars().count()),
+            Self::HorizontalMirror => width.saturating_sub(x).saturating_sub(display_width(text)),
             Self::Identity | Self::VerticalMirror => x,
         }
     }
@@ -210,12 +200,22 @@ impl OutputTransform {
             Self::VerticalMirror => mirror_vertical_char(ch),
         }
     }
+
+    fn route_label_transform(self, width: usize, height: usize) -> routing::RouteLabelTransform {
+        match self {
+            Self::Identity => routing::RouteLabelTransform::Identity,
+            Self::HorizontalMirror => routing::RouteLabelTransform::HorizontalMirror { width },
+            Self::VerticalMirror => routing::RouteLabelTransform::VerticalMirror { height },
+        }
+    }
 }
 
 fn mirror_horizontal_char(ch: char) -> char {
     match ch {
         '>' => '<',
         '<' => '>',
+        '▷' => '◁',
+        '◁' => '▷',
         '►' => '◄',
         '◄' => '►',
         '/' => '\\',
@@ -230,6 +230,12 @@ fn mirror_horizontal_char(ch: char) -> char {
         '╮' => '╭',
         '╰' => '╯',
         '╯' => '╰',
+        '⌜' => '⌝',
+        '⌝' => '⌜',
+        '⌞' => '⌟',
+        '⌟' => '⌞',
+        '(' => ')',
+        ')' => '(',
         ch => ch,
     }
 }
@@ -252,6 +258,10 @@ fn mirror_vertical_char(ch: char) -> char {
         '╰' => '╭',
         '╮' => '╯',
         '╯' => '╮',
+        '⌜' => '⌞',
+        '⌞' => '⌜',
+        '⌝' => '⌟',
+        '⌟' => '⌝',
         ch => ch,
     }
 }
@@ -262,16 +272,69 @@ fn draw_node(
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
 ) {
+    paint_node_background(canvas, layout);
     match layout.shape {
         GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
         GraphNodeShape::Rounded => draw_rounded_node(canvas, layout, charset, options),
+        GraphNodeShape::Circle => draw_circle_node(canvas, layout, charset, options),
+        GraphNodeShape::Stadium => draw_stadium_node(canvas, layout, charset, options),
+        GraphNodeShape::DoubleCircle => draw_double_circle_node(canvas, layout, charset, options),
         GraphNodeShape::Diamond => draw_diamond_node(canvas, layout, charset, options),
         GraphNodeShape::Subroutine => draw_subroutine_node(canvas, layout, charset, options),
         GraphNodeShape::Cylinder => draw_cylinder_node(canvas, layout, charset, options),
+        GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset, options, true),
+        GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options, false),
+        GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset, options),
+        GraphNodeShape::Document => draw_document_node(canvas, layout, charset, options),
+        GraphNodeShape::Hexagon => draw_hexagon_node(canvas, layout, charset, options),
+        GraphNodeShape::Asymmetric => draw_asymmetric_node(canvas, layout, charset, options),
+        GraphNodeShape::Trapezoid => draw_trapezoid_node(canvas, layout, charset, options),
+        GraphNodeShape::TrapezoidAlt => draw_trapezoid_alt_node(canvas, layout, charset, options),
+        GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset),
+        GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset),
+        GraphNodeShape::ForkJoinHorizontal => {
+            draw_fork_join_node(canvas, layout, charset, options, false)
+        }
+        GraphNodeShape::ForkJoinVertical => {
+            draw_fork_join_node(canvas, layout, charset, options, true)
+        }
+        GraphNodeShape::Choice => draw_choice_node(canvas, layout),
     }
 }
 
 fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) {
+    if group.kind == GraphGroupKind::Container {
+        paint_group_background(canvas, group);
+    }
+    match group.kind {
+        GraphGroupKind::Container => draw_group_box(canvas, group, charset),
+        GraphGroupKind::Divider => draw_group_divider(canvas, group, charset),
+    }
+}
+
+fn paint_node_background(canvas: &mut Canvas, layout: &NodeLayout) {
+    let Some(color) = layout.style.background else {
+        return;
+    };
+    for y in layout.y..=layout.bottom() {
+        for x in layout.x..=layout.right() {
+            canvas.set_background_color(x, y, color);
+        }
+    }
+}
+
+fn paint_group_background(canvas: &mut Canvas, group: &GroupLayout) {
+    let Some(color) = group.style.background else {
+        return;
+    };
+    for y in group.y..=group.bottom() {
+        for x in group.x..=group.right() {
+            canvas.set_background_color(x, y, color);
+        }
+    }
+}
+
+fn draw_group_box(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) {
     let right = group.right();
     let bottom = group.bottom();
 
@@ -291,7 +354,19 @@ fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) 
     }
 }
 
+fn draw_group_divider(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) {
+    let Some(span) = group.divider_span else {
+        return;
+    };
+    for x in span.x_start..=span.x_end {
+        set_group_border(canvas, x, group.y, charset.dotted_horizontal, group.style);
+    }
+}
+
 fn draw_group_title(canvas: &mut Canvas, group: &GroupLayout) {
+    if group.kind == GraphGroupKind::Divider {
+        return;
+    }
     for (line_index, line) in group.title.lines().iter().enumerate() {
         let Some((title_x, title_y)) = group_title_line_position(group, line, line_index) else {
             continue;
@@ -307,6 +382,9 @@ fn draw_transformed_group_title(
     width: usize,
     height: usize,
 ) {
+    if group.kind == GraphGroupKind::Divider {
+        return;
+    }
     let line_step = GRAPH_LABEL_LINE_GAP + 1;
     let content_y = group.y + 1;
     let last_line_y = content_y + group.title.lines().len().saturating_sub(1) * line_step;
@@ -423,6 +501,71 @@ fn draw_rounded_node(
             top_right: charset.rounded_top_right,
             bottom_left: charset.rounded_bottom_left,
             bottom_right: charset.rounded_bottom_right,
+        },
+    );
+}
+
+fn draw_circle_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '◯' } else { 'o' },
+            top_right: if charset.unicode { '◯' } else { 'o' },
+            bottom_left: if charset.unicode { '◯' } else { 'o' },
+            bottom_right: if charset.unicode { '◯' } else { 'o' },
+        },
+    );
+}
+
+fn draw_stadium_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    let corners = if layout.height == 3 || !charset.unicode {
+        RoundedCorners {
+            top_left: '(',
+            top_right: ')',
+            bottom_left: '(',
+            bottom_right: ')',
+        }
+    } else {
+        RoundedCorners {
+            top_left: charset.rounded_top_left,
+            top_right: charset.rounded_top_right,
+            bottom_left: charset.rounded_bottom_left,
+            bottom_right: charset.rounded_bottom_right,
+        }
+    };
+
+    draw_node_with_corners(canvas, layout, charset, options, corners);
+}
+
+fn draw_double_circle_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '◎' } else { '@' },
+            top_right: if charset.unicode { '◎' } else { '@' },
+            bottom_left: if charset.unicode { '◎' } else { '@' },
+            bottom_right: if charset.unicode { '◎' } else { '@' },
         },
     );
 }
@@ -581,6 +724,306 @@ fn draw_cylinder_node(
     write_centered_label(canvas, layout, options);
 }
 
+fn draw_lean_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+    lean_right: bool,
+) {
+    let right = layout.right();
+    let top = layout.y;
+    let bottom = layout.bottom();
+    let slant = layout
+        .height
+        .saturating_sub(1)
+        .min(layout.width.saturating_sub(2));
+    let left_shift = if lean_right { 0 } else { slant };
+    let right_shift = if lean_right { slant } else { 0 };
+    let top_left = layout.x + left_shift;
+    let top_right = right.saturating_sub(right_shift);
+    let bottom_left = layout.x + right_shift;
+    let bottom_right = right.saturating_sub(left_shift);
+
+    set_node_border(
+        canvas,
+        top_left,
+        top,
+        if lean_right { '/' } else { '\\' },
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        top_right,
+        top,
+        if lean_right { '\\' } else { '/' },
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        bottom_left,
+        bottom,
+        if lean_right { '\\' } else { '/' },
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        bottom_right,
+        bottom,
+        if lean_right { '/' } else { '\\' },
+        layout.style,
+    );
+
+    let top_inner_start = top_left + 1;
+    let top_inner_end = top_right;
+    for x in top_inner_start..top_inner_end {
+        set_node_border(canvas, x, top, charset.horizontal, layout.style);
+    }
+
+    let bottom_inner_start = bottom_left + 1;
+    let bottom_inner_end = bottom_right;
+    for x in bottom_inner_start..bottom_inner_end {
+        set_node_border(canvas, x, bottom, charset.horizontal, layout.style);
+    }
+
+    let start_y = top + 1;
+    let end_y = bottom.saturating_sub(1);
+    let denom = bottom.saturating_sub(top).max(1);
+    for y in start_y..=end_y {
+        let progress = y - top;
+        let shift = progress.saturating_mul(slant) / denom;
+        let left_x = if lean_right {
+            top_left + shift
+        } else {
+            top_left.saturating_sub(shift)
+        };
+        let right_x = if lean_right {
+            top_right + shift
+        } else {
+            top_right.saturating_sub(shift)
+        };
+        set_node_border(
+            canvas,
+            left_x,
+            y,
+            if lean_right { '/' } else { '\\' },
+            layout.style,
+        );
+        set_node_border(
+            canvas,
+            right_x,
+            y,
+            if lean_right { '\\' } else { '/' },
+            layout.style,
+        );
+        for x in (left_x + 1)..right_x {
+            canvas.set(x, y, ' ');
+        }
+    }
+
+    write_centered_label(canvas, layout, options);
+}
+
+fn draw_datastore_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_rect_node(canvas, layout, charset, options);
+
+    let right = layout.right();
+    for y in (layout.y + 1)..layout.bottom() {
+        set_node_border(canvas, layout.x, y, ' ', layout.style);
+        set_node_border(canvas, right, y, ' ', layout.style);
+    }
+}
+
+fn draw_document_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_rect_node(canvas, layout, charset, options);
+
+    let bottom = layout.bottom();
+    let fold_start = layout.right().saturating_sub(2);
+    for x in layout.x..=layout.right() {
+        let ch = if x >= fold_start { '/' } else { '~' };
+        set_node_border(canvas, x, bottom, ch, layout.style);
+    }
+}
+
+fn draw_hexagon_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '⌜' } else { '*' },
+            top_right: if charset.unicode { '⌝' } else { '*' },
+            bottom_left: if charset.unicode { '⌞' } else { '*' },
+            bottom_right: if charset.unicode { '⌟' } else { '*' },
+        },
+    );
+}
+
+fn draw_asymmetric_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '▷' } else { '>' },
+            top_right: if charset.unicode { '┐' } else { '+' },
+            bottom_left: if charset.unicode { '▷' } else { '>' },
+            bottom_right: if charset.unicode { '┘' } else { '+' },
+        },
+    );
+}
+
+fn draw_trapezoid_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: '/',
+            top_right: '\\',
+            bottom_left: if charset.unicode { '└' } else { '+' },
+            bottom_right: if charset.unicode { '┘' } else { '+' },
+        },
+    );
+}
+
+fn draw_trapezoid_alt_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        options,
+        RoundedCorners {
+            top_left: if charset.unicode { '┌' } else { '+' },
+            top_right: if charset.unicode { '┐' } else { '+' },
+            bottom_left: '\\',
+            bottom_right: '/',
+        },
+    );
+}
+
+fn draw_state_start_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {
+    let symbol = if charset.unicode { '●' } else { '*' };
+    draw_state_pseudo_node(canvas, layout, charset, symbol);
+}
+
+fn draw_state_end_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {
+    let symbol = if charset.unicode { '◎' } else { '@' };
+    draw_state_pseudo_node(canvas, layout, charset, symbol);
+}
+
+fn draw_state_pseudo_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    symbol: char,
+) {
+    draw_node_with_corners(
+        canvas,
+        layout,
+        charset,
+        &AsciiRenderOptions::default(),
+        RoundedCorners {
+            top_left: charset.rounded_top_left,
+            top_right: charset.rounded_top_right,
+            bottom_left: charset.rounded_bottom_left,
+            bottom_right: charset.rounded_bottom_right,
+        },
+    );
+    let symbol = symbol.to_string();
+    write_node_text(
+        canvas,
+        layout.center_x(),
+        layout.center_y(),
+        &symbol,
+        layout.style,
+    );
+}
+
+fn draw_fork_join_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+    _vertical: bool,
+) {
+    let right = layout.right();
+    let bottom = layout.bottom();
+
+    set_node_border(canvas, layout.x, layout.y, charset.top_left, layout.style);
+    set_node_border(canvas, right, layout.y, charset.top_right, layout.style);
+    set_node_border(canvas, layout.x, bottom, charset.bottom_left, layout.style);
+    set_node_border(canvas, right, bottom, charset.bottom_right, layout.style);
+
+    for x in (layout.x + 1)..right {
+        set_node_border(canvas, x, layout.y, charset.thick_horizontal, layout.style);
+        set_node_border(canvas, x, bottom, charset.thick_horizontal, layout.style);
+    }
+
+    for y in (layout.y + 1)..bottom {
+        set_node_border(canvas, layout.x, y, charset.thick_vertical, layout.style);
+        set_node_border(canvas, right, y, charset.thick_vertical, layout.style);
+    }
+
+    write_centered_label(canvas, layout, options);
+}
+
+fn draw_choice_node(canvas: &mut Canvas, layout: &NodeLayout) {
+    let center_x = layout.center_x();
+    let center_y = layout.center_y();
+    set_node_border(
+        canvas,
+        center_x.saturating_sub(1),
+        layout.y,
+        '/',
+        layout.style,
+    );
+    set_node_border(canvas, center_x + 1, layout.y, '\\', layout.style);
+    set_node_border(canvas, layout.x, center_y, '<', layout.style);
+    set_node_border(canvas, layout.right(), center_y, '>', layout.style);
+    set_node_border(
+        canvas,
+        center_x.saturating_sub(1),
+        layout.bottom(),
+        '\\',
+        layout.style,
+    );
+    set_node_border(canvas, center_x + 1, layout.bottom(), '/', layout.style);
+}
+
 fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, _options: &AsciiRenderOptions) {
     let inner_height = layout.height.saturating_sub(2);
     let content_height = layout.label.content_height();
@@ -602,8 +1045,18 @@ fn redraw_transformed_node_labels(
     height: usize,
 ) {
     for layout in layouts {
+        if !node_shape_draws_centered_label(layout.shape) {
+            continue;
+        }
         redraw_transformed_node_label(canvas, layout, transform, width, height);
     }
+}
+
+fn node_shape_draws_centered_label(shape: GraphNodeShape) -> bool {
+    !matches!(
+        shape,
+        GraphNodeShape::StateStart | GraphNodeShape::StateEnd | GraphNodeShape::Choice
+    )
 }
 
 fn redraw_transformed_node_label(
@@ -646,7 +1099,7 @@ fn redraw_transformed_node_label(
 }
 
 fn clear_text_span(canvas: &mut Canvas, x: usize, y: usize, text: &str) {
-    for offset in 0..text.chars().count() {
+    for offset in 0..display_width(text) {
         canvas.set(x + offset, y, ' ');
     }
 }

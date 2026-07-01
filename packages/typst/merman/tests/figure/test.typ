@@ -5,11 +5,8 @@
 "
 
 #let figure-profile = mermaid-profile(
-  id: "figure-wrapper",
-  typography: (
-    font: "Figure Sans",
-    size: "18px",
-  ),
+  id: "figure-profile",
+  typography: (font: "Figure Sans", size: "18px"),
   figure: (
     placement: bottom,
     scope: "parent",
@@ -32,10 +29,10 @@
 
 #mermaid-figure(
   source,
-  caption: [Context-aware figure caption],
-  context-aware: true,
+  caption: [Document-context figure caption],
+  document-context: true,
   profile: figure-profile,
-  id: "context-aware-figure",
+  id: "document-context-figure",
   placement: top,
   caption-position: bottom,
   width: 80%,
@@ -53,9 +50,9 @@
   assert(profiled.gap == 1em, message: "profile figure gap should be forwarded")
   assert(profiled.caption.position == top, message: "profile caption position should be forwarded")
 
-  let context-aware = figures.at(1)
-  assert(context-aware.placement == top, message: "direct figure placement should override profile")
-  assert(context-aware.caption.position == bottom, message: "direct caption position should override profile")
+  let document-context-figure = figures.at(1)
+  assert(document-context-figure.placement == top, message: "direct figure placement should override profile")
+  assert(document-context-figure.caption.position == bottom, message: "direct caption position should override profile")
 }
 
-Figure wrapper fixture passed.
+Figure fixture passed.

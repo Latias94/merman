@@ -3,7 +3,6 @@ use crate::svgdom;
 use crate::util::{extract_add_to_set_string_array, extract_defaults, extract_frozen_string_array};
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use serde_yaml::Value as YamlValue;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -125,13 +124,6 @@ fn upstream_svg_fixture_is_skipped_for_generation(diagram: &str, path: &Path) ->
     {
         return true;
     }
-    if diagram == "state" && name == "upstream_state_parser_spec.mmd" {
-        // Mermaid upstream currently crashes on this input (kept for parser parity).
-        return true;
-    }
-    if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
-        return true;
-    }
     if diagram == "c4" {
         // Mermaid C4 has known render-time type assumptions that make some valid parser
         // fixtures non-renderable (e.g. kv-objects stored in `label.text` or
@@ -176,9 +168,6 @@ fn upstream_svg_fixture_is_skipped_for_check(diagram: &str, path: &Path) -> bool
         return true;
     }
     if diagram == "state" && (name.contains("_parser_") || name.contains("_parser_spec")) {
-        return true;
-    }
-    if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
         return true;
     }
     if diagram == "c4" {
@@ -1661,7 +1650,7 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
         path: schema_path.display().to_string(),
         source,
     })?;
-    let schema_yaml: YamlValue = serde_yaml::from_str(&schema_text)?;
+    let schema_yaml = serde_saphyr::from_str::<JsonValue>(&schema_text)?;
 
     let Some(mut root_defaults) = extract_defaults(&schema_yaml, &schema_yaml) else {
         return Err(XtaskError::InvalidRef(

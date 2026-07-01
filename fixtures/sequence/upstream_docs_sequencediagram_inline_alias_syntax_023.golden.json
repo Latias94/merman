@@ -13,7 +13,7 @@
     "actors": {
       "API": {
         "name": "API",
-        "description": "API",
+        "description": "Public API",
         "wrap": false,
         "type": "boundary",
         "links": {},
@@ -21,7 +21,7 @@
       },
       "Auth": {
         "name": "Auth",
-        "description": "Auth",
+        "description": "Auth Service",
         "wrap": false,
         "type": "control",
         "links": {},
@@ -29,7 +29,7 @@
       },
       "DB": {
         "name": "DB",
-        "description": "DB",
+        "description": "User Database",
         "wrap": false,
         "type": "database",
         "links": {},

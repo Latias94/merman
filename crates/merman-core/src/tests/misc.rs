@@ -360,6 +360,51 @@ A-->B
 }
 
 #[test]
+#[cfg(feature = "full-config")]
+fn parse_stringifies_truthy_frontmatter_title_like_upstream() {
+    let engine = Engine::new();
+    let meta = engine
+        .parse_metadata_sync(
+            "---
+title: true
+---
+sequenceDiagram
+Alice->Bob: Hi
+",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(meta.title, Some("true".to_string()));
+}
+
+#[test]
+#[cfg(feature = "full-config")]
+fn parse_indented_frontmatter_like_upstream() {
+    let engine = Engine::new();
+    let meta = engine
+        .parse_metadata_sync(
+            "   ---
+   title: Flow
+   config:
+     flowchart:
+       htmlLabels: true
+   ---
+   graph TD
+   A-->B
+",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(meta.diagram_type, "flowchart-v2");
+    assert_eq!(meta.title, Some("Flow".to_string()));
+    assert_eq!(meta.config.get_bool("flowchart.htmlLabels"), Some(true));
+}
+
+#[test]
 fn parse_merges_init_directive_numeric_values_like_upstream() {
     let engine = Engine::new();
     let text = r#"%%{init: { 'logLevel': 0 } }%%
@@ -1502,6 +1547,7 @@ line "Series 2" [2, 3]
             );
             assert_eq!(model.plots.len(), 2);
             assert_eq!(model.plots[0].plot_type, XyChartPlotType::Bar);
+            assert_eq!(model.plots[0].title.as_deref(), Some("Series 1"));
             assert_eq!(model.plots[0].values, vec![1.0, 2.0]);
             assert_eq!(
                 model.plots[0].data,
@@ -1511,6 +1557,7 @@ line "Series 2" [2, 3]
                 ]
             );
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
+            assert_eq!(model.plots[1].title.as_deref(), Some("Series 2"));
             model.to_compat_json(&parsed.meta)
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
@@ -1531,8 +1578,51 @@ line "Series 2" [2, 3]
     assert_eq!(parsed_json.model["yAxis"]["min"], json!(1.0));
     assert_eq!(parsed_json.model["yAxis"]["max"], json!(5.0));
     assert_eq!(parsed_json.model["plots"][0]["type"], json!("bar"));
+    assert!(parsed_json.model["plots"][0].get("title").is_none());
     assert_eq!(parsed_json.model["plots"][1]["type"], json!("line"));
+    assert!(parsed_json.model["plots"][1].get("title").is_none());
     assert!(parsed_json.model.get("config").is_some());
+    assert_eq!(typed_json, parsed_json.model);
+}
+
+#[test]
+fn parse_xychart_render_model_includes_display_policy_from_effective_config() {
+    let engine = Engine::new();
+    let input = r#"%%{init: {"xyChart": {"showTitle": false, "showDataLabel": true, "showDataLabelOutsideBar": true, "xAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}, "yAxis": {"showLabel": false, "showTitle": false, "showTick": false, "showAxisLine": false}}}}%%
+xychart
+x-axis "X Axis" [Alpha, Beta]
+y-axis "Y Axis" 1 --> 5
+bar "Series 1" [1, 2]
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    let typed_json = match &parsed.model {
+        RenderSemanticModel::XyChart(model) => {
+            assert!(!model.display.show_title);
+            assert!(model.display.show_data_label);
+            assert!(model.display.show_data_label_outside_bar);
+            assert!(!model.display.x_axis.show_label);
+            assert!(!model.display.x_axis.show_title);
+            assert!(!model.display.x_axis.show_tick);
+            assert!(!model.display.x_axis.show_axis_line);
+            assert!(!model.display.y_axis.show_label);
+            assert!(!model.display.y_axis.show_title);
+            assert!(!model.display.y_axis.show_tick);
+            assert!(!model.display.y_axis.show_axis_line);
+            model.to_compat_json(&parsed.meta)
+        }
+        other => panic!("xychart render parse should return typed model, got {other:?}"),
+    };
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert!(parsed_json.model.get("display").is_none());
     assert_eq!(typed_json, parsed_json.model);
 }
 

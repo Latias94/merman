@@ -47,7 +47,7 @@ int merman_header_smoke(void) {
     MermanResult (*layout_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_layout_json;
     MermanResult (*validate_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_validate_json;
     MermanResult (*supported_diagrams_json)(void) = &merman_supported_diagrams_json;
-    MermanResult (*ascii_supported_diagrams_json)(void) = &merman_ascii_supported_diagrams_json;
+    MermanResult (*ascii_capabilities_json)(void) = &merman_ascii_capabilities_json;
     MermanResult (*diagram_family_capabilities_json)(void) = &merman_diagram_family_capabilities_json;
     MermanResult (*lint_rule_catalog_json)(void) = &merman_lint_rule_catalog_json;
     MermanResult (*supported_themes_json)(void) = &merman_supported_themes_json;
@@ -95,7 +95,7 @@ int merman_header_smoke(void) {
     (void)layout_json;
     (void)validate_json;
     (void)supported_diagrams_json;
-    (void)ascii_supported_diagrams_json;
+    (void)ascii_capabilities_json;
     (void)diagram_family_capabilities_json;
     (void)lint_rule_catalog_json;
     (void)supported_themes_json;

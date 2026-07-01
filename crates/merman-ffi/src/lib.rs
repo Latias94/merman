@@ -642,10 +642,10 @@ pub extern "C" fn merman_supported_diagrams_json() -> MermanResult {
     ffi_result(merman_bindings_core::supported_diagrams_json)
 }
 
-/// Return ASCII-supported diagram type metadata as a JSON string array.
+/// Return ASCII rendering capability metadata as a JSON array.
 #[unsafe(no_mangle)]
-pub extern "C" fn merman_ascii_supported_diagrams_json() -> MermanResult {
-    ffi_result(merman_bindings_core::ascii_supported_diagrams_json)
+pub extern "C" fn merman_ascii_capabilities_json() -> MermanResult {
+    ffi_result(merman_bindings_core::ascii_capabilities_json)
 }
 
 /// Return diagram family parser/render capability metadata as a JSON array.
@@ -1157,21 +1157,22 @@ mod tests {
     #[test]
     fn metadata_entry_points_return_json_arrays() {
         let diagrams = merman_supported_diagrams_json();
-        let ascii_diagrams = merman_ascii_supported_diagrams_json();
+        let ascii_capabilities = merman_ascii_capabilities_json();
         let family_capabilities = merman_diagram_family_capabilities_json();
         let lint_rules = merman_lint_rule_catalog_json();
         let themes = merman_supported_themes_json();
         let host_theme_presets = merman_supported_host_theme_presets_json();
 
         assert_eq!(diagrams.code, BindingStatus::Ok.code());
-        assert_eq!(ascii_diagrams.code, BindingStatus::Ok.code());
+        assert_eq!(ascii_capabilities.code, BindingStatus::Ok.code());
         assert_eq!(family_capabilities.code, BindingStatus::Ok.code());
         assert_eq!(lint_rules.code, BindingStatus::Ok.code());
         assert_eq!(themes.code, BindingStatus::Ok.code());
         assert_eq!(host_theme_presets.code, BindingStatus::Ok.code());
 
         let diagrams: Value = serde_json::from_str(&take_text(diagrams.data)).unwrap();
-        let ascii_diagrams: Value = serde_json::from_str(&take_text(ascii_diagrams.data)).unwrap();
+        let ascii_capabilities: Value =
+            serde_json::from_str(&take_text(ascii_capabilities.data)).unwrap();
         let family_capabilities: Value =
             serde_json::from_str(&take_text(family_capabilities.data)).unwrap();
         let lint_rules: Value = serde_json::from_str(&take_text(lint_rules.data)).unwrap();
@@ -1185,7 +1186,28 @@ mod tests {
                 .unwrap()
                 .contains(&Value::String("flowchart".to_string()))
         );
-        assert!(ascii_diagrams.is_array());
+        let ascii_capabilities = ascii_capabilities.as_array().unwrap();
+        if cfg!(feature = "ascii") {
+            let sequence = ascii_capabilities
+                .iter()
+                .find(|capability| capability["diagram_type"] == "sequence")
+                .expect("expected ASCII capability metadata to include sequence");
+            assert_eq!(sequence["support_level"], "full");
+
+            let gantt = ascii_capabilities
+                .iter()
+                .find(|capability| capability["diagram_type"] == "gantt")
+                .expect("expected ASCII capability metadata to include gantt");
+            assert_eq!(gantt["support_level"], "summary");
+
+            let class = ascii_capabilities
+                .iter()
+                .find(|capability| capability["diagram_type"] == "class")
+                .expect("expected ASCII capability metadata to include class");
+            assert_eq!(class["summary_fallback"], true);
+        } else {
+            assert!(ascii_capabilities.is_empty());
+        }
         assert!(family_capabilities.as_array().unwrap().iter().any(
             |capability| capability["diagram_type"] == "flowchart"
                 && capability["metadata_id"] == "flowchart"

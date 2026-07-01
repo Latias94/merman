@@ -1,0 +1,414 @@
+name: Performance
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+    paths:
+      - ".github/workflows/performance.yml"
+      - "tools/bench/**"
+      - "tools/mermaid-cli/**"
+      - "crates/merman/**"
+      - "crates/merman-core/**"
+      - "crates/merman-render/**"
+      - "crates/manatee/**"
+      - "crates/dugong/**"
+      - "crates/dugong-graphlib/**"
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      run:
+        description: "Which performance lane to run"
+        type: choice
+        default: regression
+        options:
+          - contracts
+          - frontmatter
+          - regression
+          - reference
+          - full
+      preset:
+        description: "Benchmark preset"
+        type: choice
+        default: long
+        options:
+          - quick
+          - long
+      suite:
+        description: "Corpus suite"
+        type: choice
+        default: canary
+        options:
+          - canary
+          - standard
+          - cross_family
+          - full
+      base_ref:
+        description: "Base ref for regression comparisons"
+        required: false
+        default: main
+      base_repository:
+        description: "Base repository for manual regression comparisons"
+        required: false
+        default: ""
+      head_ref:
+        description: "Head ref for manual runs; set this when head_repository differs"
+        required: false
+        default: ""
+      head_repository:
+        description: "Head repository for manual runs"
+        required: false
+        default: ""
+      warn_threshold_percent:
+        description: "Warn threshold percentage"
+        required: false
+        default: "5"
+      fail_threshold_percent:
+        description: "Fail threshold percentage"
+        required: false
+        default: "10"
+      include_mermaid_js:
+        description: "Also run Mermaid JS comparison"
+        type: boolean
+        default: false
+      mmdr_ref:
+        description: "Pinned mermaid-rs-renderer ref"
+        required: false
+        default: "859253415e69dce28bd65cd5a7c1d1ae8b39f4a1"
+      mmdr_toolchain:
+        description: "Rust toolchain for mermaid-rs-renderer"
+        required: false
+        default: "1.92.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: perf-contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@v6
+        with:
+          path: head
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
+
+      - name: Check Python performance scripts
+        working-directory: head
+        run: |
+          python3 -m py_compile \
+            tools/bench/compare_mermaid_renderers.py \
+            tools/bench/compare_self.py \
+            tools/bench/corpus_utils.py \
+            tools/bench/perf_runner.py \
+            tools/bench/render_perf_comment.py \
+            tools/bench/stage_spotcheck.py \
+            tools/bench/test_perf_contracts.py
+
+      - name: Check performance helper contracts
+        working-directory: head
+        run: python3 tools/bench/test_perf_contracts.py
+
+  regression:
+    name: perf-regression
+    runs-on: ubuntu-24.04
+    if: (github.event_name == 'workflow_dispatch' && (inputs.run == 'regression' || inputs.run == 'full')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf'))
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@v6
+        with:
+          path: head
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
+
+      - name: Checkout base
+        uses: actions/checkout@v6
+        with:
+          path: base
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Run self regression comparison
+        working-directory: head
+        run: |
+          set -euo pipefail
+          preset="${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}"
+          suite="${{ github.event_name == 'pull_request' && 'canary' || inputs.suite }}"
+          warn_threshold="${{ inputs.warn_threshold_percent || '5' }}"
+          fail_threshold="${{ inputs.fail_threshold_percent || '10' }}"
+          base_label="${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}"
+          head_label="${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}"
+          python3 tools/bench/compare_self.py \
+            --base-dir ../base \
+            --head-dir . \
+            --base-target-dir target/performance/base \
+            --head-target-dir target/performance/head \
+            --base-label "$base_label" \
+            --head-label "$head_label" \
+            --preset "$preset" \
+            --suite "$suite" \
+            --warn-threshold-percent "$warn_threshold" \
+            --fail-threshold-percent "$fail_threshold" \
+            --out target/performance/self_comparison.md \
+            --json-out target/performance/self_comparison.json
+
+      - name: Upload regression artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-regression
+          path: |
+            head/target/performance/self_comparison.md
+            head/target/performance/self_comparison.json
+
+      - name: Render regression PR comment
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        working-directory: head
+        run: |
+          set -euo pipefail
+          python3 tools/bench/render_perf_comment.py \
+            --json target/performance/self_comparison.json \
+            --out target/performance/pr_comment.md \
+            --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --artifact perf-regression
+
+      - name: Comment regression summary
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        working-directory: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker="<!-- merman-perf-regression -->"
+          body_file="target/performance/pr_comment.md"
+          comment_ids="$(
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+              --jq ".[] | select(.body | contains(\"$marker\")) | .id"
+          )"
+          comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
+          python3 - "$body_file" <<'PY' > comment_payload.json
+          import json
+          import sys
+
+          body_path = sys.argv[1]
+          body = open(body_path, encoding="utf-8").read()
+          print(json.dumps({"body": body}))
+          PY
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json
+          else
+            gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json
+          fi
+
+  frontmatter:
+    name: perf-frontmatter
+    runs-on: ubuntu-24.04
+    if: (github.event_name == 'workflow_dispatch' && (inputs.run == 'frontmatter' || inputs.run == 'full')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf-frontmatter'))
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@v6
+        with:
+          path: head
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
+
+      - name: Checkout base
+        uses: actions/checkout@v6
+        with:
+          path: base
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Run frontmatter regression comparison
+        working-directory: head
+        run: |
+          set -euo pipefail
+          preset="${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}"
+          warn_threshold="${{ inputs.warn_threshold_percent || '5' }}"
+          fail_threshold="${{ inputs.fail_threshold_percent || '10' }}"
+          base_label="${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}"
+          head_label="${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}"
+          python3 tools/bench/compare_self.py \
+            --base-dir ../base \
+            --head-dir . \
+            --base-target-dir target/performance/base \
+            --head-target-dir target/performance/head \
+            --base-label "$base_label" \
+            --head-label "$head_label" \
+            --preset "$preset" \
+            --suite frontmatter \
+            --group frontmatter_preprocess \
+            --warn-threshold-percent "$warn_threshold" \
+            --fail-threshold-percent "$fail_threshold" \
+            --out target/performance/frontmatter_comparison.md \
+            --json-out target/performance/frontmatter_comparison.json
+
+      - name: Upload frontmatter artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-frontmatter
+          path: |
+            head/target/performance/frontmatter_comparison.md
+            head/target/performance/frontmatter_comparison.json
+
+      - name: Render frontmatter PR comment
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        working-directory: head
+        run: |
+          set -euo pipefail
+          python3 tools/bench/render_perf_comment.py \
+            --json target/performance/frontmatter_comparison.json \
+            --out target/performance/frontmatter_pr_comment.md \
+            --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --artifact perf-frontmatter \
+            --marker "<!-- merman-perf-frontmatter -->" \
+            --title "Merman Frontmatter Performance Regression"
+
+      - name: Comment frontmatter summary
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        working-directory: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker="<!-- merman-perf-frontmatter -->"
+          body_file="target/performance/frontmatter_pr_comment.md"
+          comment_ids="$(
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+              --jq ".[] | select(.body | contains(\"$marker\")) | .id"
+          )"
+          comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
+          python3 - "$body_file" <<'PY' > comment_payload.json
+          import json
+          import sys
+
+          body_path = sys.argv[1]
+          body = open(body_path, encoding="utf-8").read()
+          print(json.dumps({"body": body}))
+          PY
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json
+          else
+            gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json
+          fi
+
+  reference:
+    name: perf-reference
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'schedule' || inputs.run == 'reference' || inputs.run == 'full'
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - name: Checkout head
+        uses: actions/checkout@v6
+        with:
+          path: head
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.head_ref || github.sha }}
+          repository: ${{ github.event_name == 'workflow_dispatch' && inputs.head_repository || github.repository }}
+
+      - name: Checkout mermaid-rs-renderer
+        uses: actions/checkout@v6
+        with:
+          repository: 1jehuang/mermaid-rs-renderer
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '859253415e69dce28bd65cd5a7c1d1ae8b39f4a1' }}
+          path: head/repo-ref/mermaid-rs-renderer
+          fetch-depth: 1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Install mermaid-rs-renderer toolchain
+        shell: bash
+        run: rustup toolchain install "${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}" --profile minimal
+
+      - name: Setup Node for Mermaid JS
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: head/tools/mermaid-cli/package-lock.json
+
+      - name: Install Mermaid JS toolchain
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
+        working-directory: head/tools/mermaid-cli
+        run: npm ci
+
+      - name: Run cross-repo comparison
+        working-directory: head
+        run: |
+          set -euo pipefail
+          preset="${{ github.event_name == 'workflow_dispatch' && inputs.preset || 'long' }}"
+          suite="${{ github.event_name == 'workflow_dispatch' && inputs.suite || 'canary' }}"
+          mmdr_toolchain="${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}"
+          args=(
+            --preset "$preset"
+            --suite "$suite"
+            --mmdr-dir repo-ref/mermaid-rs-renderer
+            --mmdr-toolchain "$mmdr_toolchain"
+            --out target/performance/reference_comparison.md
+            --json-out target/performance/reference_comparison.json
+          )
+          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js || false }}" = "true" ]; then
+            echo "Mermaid JS comparison enabled."
+          else
+            args+=(--skip-mermaid-js)
+          fi
+          python3 tools/bench/compare_mermaid_renderers.py "${args[@]}"
+
+      - name: Upload reference artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-reference
+          path: |
+            head/target/performance/reference_comparison.md
+            head/target/performance/reference_comparison.json

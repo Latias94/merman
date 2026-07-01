@@ -11,6 +11,13 @@ import {
   mermanRuntimeErrorI18nKey,
   useMerman,
 } from "@/src/hooks/useMerman";
+import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import {
+  asciiSupportDescription,
+  asciiSupportLabelKey,
+  type AsciiCapability,
+} from "@/src/lib/ascii-support";
+import { detectDiagramType } from "@/src/lib/diagram-detection";
 import { prewarmWasmRenderer } from "@/src/lib/wasm-loader";
 import { useAppStore } from "@/src/store";
 import {
@@ -77,8 +84,6 @@ interface DiagnosticArtifact {
   elapsedMs: number | null;
 }
 
-const ASCII_SUPPORTED_TYPES = ["flowchart", "sequence", "class", "er", "xychart"];
-
 const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
   parse: { json: null, error: null, elapsedMs: null },
   layout: { json: null, error: null, elapsedMs: null },
@@ -98,6 +103,7 @@ export function Preview({ className }: PreviewProps) {
     isDarkMode,
   } = useAppStore();
   const { ready, loading, render, renderAscii, parseJson, layoutJson } = useMerman();
+  const asciiSupport = useAsciiSupport();
   const [svg, setSvg] = useState<string | null>(null);
   const [ascii, setAscii] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -147,37 +153,10 @@ export function Preview({ className }: PreviewProps) {
     [activeHostThemePreset, diagramFont, textMeasurementMode]
   );
 
-  const detectDiagramType = useCallback((source: string): string => {
-    const firstLine = source.trim().split("\n")[0]?.toLowerCase() || "";
-    if (firstLine.startsWith("flowchart") || firstLine.startsWith("graph")) return "flowchart";
-    if (firstLine.startsWith("sequencediagram")) return "sequence";
-    if (firstLine.startsWith("classdiagram")) return "class";
-    if (firstLine.startsWith("statediagram")) return "state";
-    if (firstLine.startsWith("erdiagram")) return "er";
-    if (firstLine.startsWith("gantt")) return "gantt";
-    if (firstLine.startsWith("pie")) return "pie";
-    if (firstLine.startsWith("mindmap")) return "mindmap";
-    if (firstLine.startsWith("gitgraph")) return "gitgraph";
-    if (firstLine.startsWith("timeline")) return "timeline";
-    if (firstLine.startsWith("journey")) return "journey";
-    if (firstLine.startsWith("info")) return "info";
-    if (firstLine.startsWith("zenuml")) return "zenuml";
-    if (firstLine.startsWith("eventmodeling")) return "eventmodeling";
-    if (firstLine.startsWith("c4")) return "c4";
-    if (firstLine.startsWith("xychart")) return "xychart";
-    if (firstLine.startsWith("architecture")) return "architecture";
-    if (firstLine.startsWith("block")) return "block";
-    if (firstLine.startsWith("packet")) return "packet";
-    if (firstLine.startsWith("kanban")) return "kanban";
-    if (firstLine.startsWith("quadrantchart")) return "quadrantchart";
-    if (firstLine.startsWith("sankey")) return "sankey";
-    if (firstLine.startsWith("radar")) return "radar";
-    if (firstLine.startsWith("treemap")) return "treemap";
-    if (firstLine.startsWith("requirementdiagram")) return "requirement";
-    return "unknown";
-  }, []);
-
-  const isAsciiSupported = ASCII_SUPPORTED_TYPES.includes(currentDiagramType);
+  const isAsciiSupported = asciiSupport.isSupported(currentDiagramType);
+  const asciiCapability = asciiSupport.capabilityFor(currentDiagramType);
+  const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
+  const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const localizeMermanError = useCallback(
     (message: string | null): string | null => {
       if (!message) return null;
@@ -235,7 +214,7 @@ export function Preview({ className }: PreviewProps) {
           setMermanRenderTime(result.error ? null : result.renderTime);
           setLastRenderTime(result.renderTime);
 
-          if (ASCII_SUPPORTED_TYPES.includes(diagramType)) {
+          if (asciiSupport.isSupported(diagramType)) {
             setAscii(renderAscii(code, diagramTheme, mermaidConfig));
           } else {
             setAscii(null);
@@ -258,7 +237,7 @@ export function Preview({ className }: PreviewProps) {
   }, [
     code,
     activeHostThemePreset,
-    detectDiagramType,
+    asciiSupport,
     diagramTheme,
     localizeMermanError,
     mermaidConfig,
@@ -492,6 +471,9 @@ export function Preview({ className }: PreviewProps) {
       onModeChange={setPreviewMode}
       onCompareWarmup={warmCompareRenderer}
       isAsciiSupported={isAsciiSupported}
+      asciiCapability={asciiCapability}
+      asciiSupportLabel={asciiSupportLabel}
+      asciiSupportLimit={asciiSupportLimit}
       t={t}
       rightContent={rightContent}
     />
@@ -691,30 +673,45 @@ export function Preview({ className }: PreviewProps) {
         {previewMode === "ascii" && (
           <div className="h-full w-full">
             {ascii ? (
-              <Editor
-                height="100%"
-                language="plaintext"
-                value={ascii}
-                theme={isDarkMode ? "vs-dark" : "light"}
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-                  lineNumbers: "off",
-                  scrollBeyondLastLine: false,
-                  wordWrap: "off",
-                  renderLineHighlight: "none",
-                  selectionHighlight: false,
-                  occurrencesHighlight: "off",
-                  folding: false,
-                  padding: { top: 16, bottom: 16 },
-                  domReadOnly: true,
-                }}
-              />
+              <div className="flex h-full flex-col">
+                <AsciiSupportBanner
+                  capability={asciiCapability}
+                  label={asciiSupportLabel}
+                  limit={asciiSupportLimit}
+                  t={t}
+                />
+                <div className="min-h-0 flex-1">
+                  <Editor
+                    height="100%"
+                    language="plaintext"
+                    value={ascii}
+                    theme={isDarkMode ? "vs-dark" : "light"}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                      lineNumbers: "off",
+                      scrollBeyondLastLine: false,
+                      wordWrap: "off",
+                      renderLineHighlight: "none",
+                      selectionHighlight: false,
+                      occurrencesHighlight: "off",
+                      folding: false,
+                      padding: { top: 16, bottom: 16 },
+                      domReadOnly: true,
+                    }}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">
-                <p>{t("preview.asciiNotAvailable")}</p>
+                <div className="max-w-sm text-center">
+                  <p>{t("preview.asciiNotAvailable")}</p>
+                  <p className="mt-1 text-xs">
+                    {asciiSupportLimit || t("preview.asciiNotSupported")}
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -729,6 +726,9 @@ interface TabBarProps {
   onModeChange: (mode: PreviewMode) => void;
   onCompareWarmup: () => void;
   isAsciiSupported: boolean;
+  asciiCapability: AsciiCapability | null;
+  asciiSupportLabel: string;
+  asciiSupportLimit: string;
   t: (key: string) => string;
   rightContent?: ReactNode;
 }
@@ -738,6 +738,9 @@ function TabBar({
   onModeChange,
   onCompareWarmup,
   isAsciiSupported,
+  asciiCapability,
+  asciiSupportLabel,
+  asciiSupportLimit,
   t,
   rightContent,
 }: TabBarProps) {
@@ -764,10 +767,17 @@ function TabBar({
               ASCII
             </button>
           </TooltipTrigger>
-          {!isAsciiSupported && (
-            <TooltipContent>{t("preview.asciiNotSupported")}</TooltipContent>
-          )}
+          <TooltipContent>
+            {isAsciiSupported
+              ? asciiSupportTooltip(asciiCapability, asciiSupportLabel, asciiSupportLimit)
+              : t("preview.asciiNotSupported")}
+          </TooltipContent>
         </Tooltip>
+        {isAsciiSupported && (
+          <span className="hidden shrink-0 rounded bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">
+            {asciiSupportLabel}
+          </span>
+        )}
         <TabButton
           active={mode === "compare"}
           onClick={() => onModeChange("compare")}
@@ -789,6 +799,46 @@ function TabBar({
       </div>
     </div>
   );
+}
+
+function AsciiSupportBanner({
+  capability,
+  label,
+  limit,
+  t,
+}: {
+  capability: AsciiCapability | null;
+  label: string;
+  limit: string;
+  t: (key: string) => string;
+}) {
+  if (!capability) {
+    return null;
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      <span className="rounded bg-background px-2 py-0.5 text-foreground">
+        {label}
+      </span>
+      {capability.summary_fallback && (
+        <span>{t("asciiSupport.summaryFallback")}</span>
+      )}
+      {limit && <span className="truncate">{limit}</span>}
+    </div>
+  );
+}
+
+function asciiSupportTooltip(
+  capability: AsciiCapability | null,
+  label: string,
+  limit: string
+): string {
+  if (!capability) {
+    return label;
+  }
+  const parts = [capability.display_name, label, limit].filter(Boolean);
+  return parts.join(" · ");
 }
 
 interface TabButtonProps {

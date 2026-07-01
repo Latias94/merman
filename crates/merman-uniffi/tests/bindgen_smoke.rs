@@ -83,6 +83,14 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose MermanDiagramFamilyCapability"
     );
     assert!(
+        generated.contains("class MermanAsciiCapability"),
+        "generated binding should expose MermanAsciiCapability"
+    );
+    assert!(
+        generated.contains("class MermanAsciiCapabilityEvidence"),
+        "generated binding should expose MermanAsciiCapabilityEvidence"
+    );
+    assert!(
         generated.contains("def render_svg"),
         "generated binding should expose render_svg"
     );
@@ -97,6 +105,10 @@ fn generates_python_binding_from_cdylib_metadata() {
     assert!(
         generated.contains("def supported_diagrams"),
         "generated binding should expose supported_diagrams"
+    );
+    assert!(
+        generated.contains("def ascii_capabilities"),
+        "generated binding should expose ascii_capabilities"
     );
     assert!(
         generated.contains("def supported_host_theme_presets"),
@@ -179,6 +191,8 @@ fn staged_python_package_imports_and_calls_rust_engine() {
 
 const PYTHON_PACKAGE_INIT: &str = r#"
 from .merman_uniffi import (
+    MermanAsciiCapability,
+    MermanAsciiCapabilityEvidence,
     MermanDiagramFamilyCapability,
     MermanEngine,
     MermanError,
@@ -193,6 +207,8 @@ from .merman_uniffi import (
 )
 
 __all__ = [
+    "MermanAsciiCapability",
+    "MermanAsciiCapabilityEvidence",
     "MermanDiagramFamilyCapability",
     "MermanEngine",
     "MermanError",
@@ -244,7 +260,23 @@ assert invalid.code_name == "MERMAN_NO_DIAGRAM"
 assert "no Mermaid diagram" in invalid.error
 
 assert "flowchart" in engine.supported_diagrams()
-assert "sequence" in engine.ascii_supported_diagrams()
+ascii_capabilities = engine.ascii_capabilities()
+assert any(
+    item.diagram_type == "sequence" and item.support_level == "full"
+    for item in ascii_capabilities
+)
+assert any(
+    item.diagram_type == "gantt"
+    and item.support_level == "summary"
+    and not item.summary_fallback
+    for item in ascii_capabilities
+)
+assert any(
+    item.diagram_type == "class"
+    and item.support_level == "partial"
+    and item.summary_fallback
+    for item in ascii_capabilities
+)
 assert "default" in engine.supported_themes()
 assert "one-dark" in engine.supported_host_theme_presets()
 assert any(

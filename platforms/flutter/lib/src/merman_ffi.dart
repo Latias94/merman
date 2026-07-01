@@ -328,8 +328,7 @@ class MermanTextMeasureResult {
 /// Return `null` for requests the host does not support; the native engine will
 /// fall back to its vendored compatibility metrics for that request.
 typedef MermanTextMeasurer = MermanTextMeasureResult? Function(
-  MermanTextMeasureRequest request,
-);
+    MermanTextMeasureRequest request);
 
 typedef _AbiVersionC = Uint32 Function();
 typedef _AbiVersionDart = int Function();
@@ -353,7 +352,10 @@ typedef _EngineCallC = NativeMermanResult Function(
   UintPtr,
 );
 typedef _EngineCallDart = NativeMermanResult Function(
-    Pointer<NativeMermanEngine>, Pointer<Uint8>, int);
+  Pointer<NativeMermanEngine>,
+  Pointer<Uint8>,
+  int,
+);
 
 typedef _HostTextMeasureCallbackC = NativeMermanHostTextMeasureResult Function(
   NativeMermanHostTextMeasureRequest,
@@ -366,9 +368,10 @@ typedef _EngineSetTextMeasureCallbackC = NativeMermanResult Function(
   Pointer<Void>,
 );
 typedef _EngineSetTextMeasureCallbackDart = NativeMermanResult Function(
-    Pointer<NativeMermanEngine>,
-    Pointer<NativeFunction<_HostTextMeasureCallbackC>>,
-    Pointer<Void>);
+  Pointer<NativeMermanEngine>,
+  Pointer<NativeFunction<_HostTextMeasureCallbackC>>,
+  Pointer<Void>,
+);
 
 typedef _MermanCallC = NativeMermanResult Function(
   Pointer<Uint8>,
@@ -472,6 +475,123 @@ class MermanValidationResult {
       error: error is String ? error : null,
       code: code.toInt(),
       codeName: codeName,
+    );
+  }
+}
+
+/// Evidence attached to an ASCII rendering capability record.
+class MermanAsciiCapabilityEvidence {
+  /// Creates an ASCII capability evidence record.
+  const MermanAsciiCapabilityEvidence({
+    required this.kind,
+    required this.source,
+    required this.note,
+  });
+
+  /// Evidence category, such as `local_advantage` or `beautiful_mermaid_prior_art`.
+  final String kind;
+
+  /// Source identifier used to trace the capability claim.
+  final String source;
+
+  /// Human-readable note for the evidence.
+  final String note;
+
+  /// Decodes an evidence object produced by the native ABI.
+  factory MermanAsciiCapabilityEvidence.fromJson(Map<String, Object?> json) {
+    final kind = json['kind'];
+    final source = json['source'];
+    final note = json['note'];
+    if (kind is! String || source is! String || note is! String) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_JSON_TYPE_ERROR',
+        message: 'expected ASCII capability evidence JSON object',
+      );
+    }
+    return MermanAsciiCapabilityEvidence(
+      kind: kind,
+      source: source,
+      note: note,
+    );
+  }
+}
+
+/// ASCII rendering capability for one Mermaid diagram type.
+class MermanAsciiCapability {
+  /// Creates an ASCII capability record.
+  const MermanAsciiCapability({
+    required this.diagramType,
+    required this.displayName,
+    required this.supportLevel,
+    required this.summaryFallback,
+    required this.supportedSemantics,
+    required this.limits,
+    required this.evidence,
+  });
+
+  /// Mermaid diagram type identifier.
+  final String diagramType;
+
+  /// Display name for host UI.
+  final String displayName;
+
+  /// Support level, currently `full`, `partial`, `summary`, or `unsupported`.
+  final String supportLevel;
+
+  /// Whether rendering may fall back to a structured summary for unsupported semantics.
+  final bool summaryFallback;
+
+  /// Semantics implemented by the ASCII renderer.
+  final List<String> supportedSemantics;
+
+  /// Known limits for the ASCII renderer.
+  final List<String> limits;
+
+  /// Source-backed evidence for this capability record.
+  final List<MermanAsciiCapabilityEvidence> evidence;
+
+  /// Decodes a capability object produced by the native ABI.
+  factory MermanAsciiCapability.fromJson(Map<String, Object?> json) {
+    final diagramType = json['diagram_type'];
+    final displayName = json['display_name'];
+    final supportLevel = json['support_level'];
+    final summaryFallback = json['summary_fallback'];
+    final supportedSemantics = json['supported_semantics'];
+    final limits = json['limits'];
+    final evidence = json['evidence'];
+    if (diagramType is! String ||
+        displayName is! String ||
+        supportLevel is! String ||
+        summaryFallback is! bool ||
+        supportedSemantics is! List ||
+        limits is! List ||
+        evidence is! List ||
+        !supportedSemantics.every((item) => item is String) ||
+        !limits.every((item) => item is String)) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_JSON_TYPE_ERROR',
+        message: 'expected ASCII capability JSON object',
+      );
+    }
+    return MermanAsciiCapability(
+      diagramType: diagramType,
+      displayName: displayName,
+      supportLevel: supportLevel,
+      summaryFallback: summaryFallback,
+      supportedSemantics: supportedSemantics.cast<String>(),
+      limits: limits.cast<String>(),
+      evidence: evidence.map((item) {
+        if (item is Map<String, Object?>) {
+          return MermanAsciiCapabilityEvidence.fromJson(item);
+        }
+        throw const MermanException(
+          code: -1,
+          codeName: 'DART_JSON_TYPE_ERROR',
+          message: 'expected ASCII capability evidence JSON object',
+        );
+      }).toList(growable: false),
     );
   }
 }
@@ -659,19 +779,13 @@ class MermanReusableEngine {
 
     if (measurer == null) {
       _bindings.checkResult(
-        _bindings.engineSetTextMeasureCallback(
-          _engine,
-          nullptr,
-          nullptr,
-        ),
+        _bindings.engineSetTextMeasureCallback(_engine, nullptr, nullptr),
       );
       return;
     }
 
     final nativeCallback =
-        NativeCallable<_HostTextMeasureCallbackC>.isolateLocal(
-      _measureText,
-    );
+        NativeCallable<_HostTextMeasureCallbackC>.isolateLocal(_measureText);
     _textMeasureCallback = nativeCallback;
     try {
       _bindings.checkResult(
@@ -690,19 +804,22 @@ class MermanReusableEngine {
   /// Renders Mermaid [source] to SVG text.
   String renderSvg(String source) {
     return _decodeText(
-        _bindings.engineCall(_bindings.engineRenderSvg, _engine, source));
+      _bindings.engineCall(_bindings.engineRenderSvg, _engine, source),
+    );
   }
 
   /// Renders Mermaid [source] to Unicode ASCII-art text.
   String renderAscii(String source) {
     return _decodeText(
-        _bindings.engineCall(_bindings.engineRenderAscii, _engine, source));
+      _bindings.engineCall(_bindings.engineRenderAscii, _engine, source),
+    );
   }
 
   /// Parses Mermaid [source] and returns raw semantic JSON text.
   String parseJsonRaw(String source) {
     return _decodeText(
-        _bindings.engineCall(_bindings.engineParseJson, _engine, source));
+      _bindings.engineCall(_bindings.engineParseJson, _engine, source),
+    );
   }
 
   /// Parses Mermaid [source] and returns the semantic JSON object.
@@ -713,7 +830,8 @@ class MermanReusableEngine {
   /// Lays out Mermaid [source] and returns raw layout JSON text.
   String layoutJsonRaw(String source) {
     return _decodeText(
-        _bindings.engineCall(_bindings.engineLayoutJson, _engine, source));
+      _bindings.engineCall(_bindings.engineLayoutJson, _engine, source),
+    );
   }
 
   /// Lays out Mermaid [source] and returns the layout JSON object.
@@ -735,7 +853,8 @@ class MermanReusableEngine {
   /// Validates Mermaid [source] and returns raw validation JSON text.
   String validateJsonRaw(String source) {
     return _decodeText(
-        _bindings.engineCall(_bindings.engineValidateJson, _engine, source));
+      _bindings.engineCall(_bindings.engineValidateJson, _engine, source),
+    );
   }
 
   /// Validates Mermaid [source] without throwing for ordinary parse errors.
@@ -822,7 +941,7 @@ class Merman {
 
   final _MermanBindings _bindings;
   List<String>? _supportedDiagramsCache;
-  List<String>? _asciiSupportedDiagramsCache;
+  List<MermanAsciiCapability>? _asciiCapabilitiesCache;
   List<MermanDiagramFamilyCapability>? _diagramFamilyCapabilitiesCache;
   List<MermanLintRuleCatalogEntry>? _lintRuleCatalogCache;
   List<String>? _themesCache;
@@ -911,11 +1030,11 @@ class Merman {
     );
   }
 
-  /// Returns diagram types currently supported by ASCII rendering.
-  List<String> asciiSupportedDiagrams() {
-    return _asciiSupportedDiagramsCache ??= List.unmodifiable(
-      _decodeJsonStringList(
-        _decodeText(_bindings.metadata(_bindings.asciiSupportedDiagramsJson)),
+  /// Returns ASCII rendering capability records for the active native artifact.
+  List<MermanAsciiCapability> asciiCapabilities() {
+    return _asciiCapabilitiesCache ??= List.unmodifiable(
+      _decodeJsonAsciiCapabilityList(
+        _decodeText(_bindings.metadata(_bindings.asciiCapabilitiesJson)),
       ),
     );
   }
@@ -925,7 +1044,8 @@ class Merman {
     return _diagramFamilyCapabilitiesCache ??= List.unmodifiable(
       _decodeJsonCapabilityList(
         _decodeText(
-            _bindings.metadata(_bindings.diagramFamilyCapabilitiesJson)),
+          _bindings.metadata(_bindings.diagramFamilyCapabilitiesJson),
+        ),
       ),
     );
   }
@@ -1030,6 +1150,29 @@ class Merman {
       message: 'expected lint rule catalog JSON array',
     );
   }
+
+  static List<MermanAsciiCapability> _decodeJsonAsciiCapabilityList(
+    String text,
+  ) {
+    final decoded = jsonDecode(text);
+    if (decoded is List) {
+      return decoded.map((item) {
+        if (item is Map<String, Object?>) {
+          return MermanAsciiCapability.fromJson(item);
+        }
+        throw const MermanException(
+          code: -1,
+          codeName: 'DART_JSON_TYPE_ERROR',
+          message: 'expected ASCII capability JSON object',
+        );
+      }).toList(growable: false);
+    }
+    throw const MermanException(
+      code: -1,
+      codeName: 'DART_JSON_TYPE_ERROR',
+      message: 'expected ASCII capability JSON array',
+    );
+  }
 }
 
 class _MermanBindings {
@@ -1068,9 +1211,9 @@ class _MermanBindings {
           'merman_engine_free',
         ),
         engineSetTextMeasureCallback = library.lookupFunction<
-            _EngineSetTextMeasureCallbackC, _EngineSetTextMeasureCallbackDart>(
-          'merman_engine_set_text_measure_callback',
-        ),
+                _EngineSetTextMeasureCallbackC,
+                _EngineSetTextMeasureCallbackDart>(
+            'merman_engine_set_text_measure_callback'),
         engineRenderSvg = library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_render_svg',
         ),
@@ -1115,9 +1258,9 @@ class _MermanBindings {
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_supported_diagrams_json',
         ),
-        asciiSupportedDiagramsJson =
+        asciiCapabilitiesJson =
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
-          'merman_ascii_supported_diagrams_json',
+          'merman_ascii_capabilities_json',
         ),
         diagramFamilyCapabilitiesJson =
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
@@ -1163,7 +1306,7 @@ class _MermanBindings {
   final _MermanCallDart analyzeJson;
   final _MermanCallDart validateJson;
   final _MermanMetadataDart supportedDiagramsJson;
-  final _MermanMetadataDart asciiSupportedDiagramsJson;
+  final _MermanMetadataDart asciiCapabilitiesJson;
   final _MermanMetadataDart diagramFamilyCapabilitiesJson;
   final _MermanMetadataDart lintRuleCatalogJson;
   final _MermanMetadataDart supportedThemesJson;

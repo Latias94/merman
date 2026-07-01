@@ -1,0 +1,10 @@
+classDiagram
+class Service
+class Repo
+class Cache
+class Logger
+Service --> Repo : fetch
+Service --> Cache : read
+Service --> Logger : trace
+Repo --> Logger : log
+Cache --> Logger : log

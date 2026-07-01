@@ -91,6 +91,9 @@
     "title": "示例库",
     "description": "选择一个示例加载到编辑器",
     "all": "全部",
+    "asciiOnly": "支持 ASCII",
+    "asciiFilterAvailable": "有 {{count}} 个示例支持 ASCII 筛选",
+    "asciiFilterActive": "正在显示 {{count}} / {{total}} 个支持 ASCII 的示例",
     "lines": "行",
     "categories": {
       "flowchart": "流程图",
@@ -116,6 +119,7 @@
       "sankey": "桑基图",
       "radar": "雷达图",
       "treemap": "矩形树图",
+      "treeview": "树视图",
       "requirement": "需求图"
     },
     "items": {
@@ -170,8 +174,20 @@
       "radar-named-values": "命名值",
       "treemap-package-surface": "包结构",
       "treemap-styled-sections": "样式分区",
+      "treeview-package-tree": "包树",
       "requirement-ffi-api": "FFI API 需求",
       "requirement-styled-elements": "样式元素"
+    }
+  },
+  "asciiSupport": {
+    "unsupported": "不支持",
+    "summary": "摘要",
+    "summaryFallback": "复杂终端布局可能改用摘要输出。",
+    "levels": {
+      "full": "完整 ASCII",
+      "partial": "部分 ASCII",
+      "summary": "摘要 ASCII",
+      "unsupported": "不支持"
     }
   },
   "editor": {
@@ -326,6 +342,7 @@
     "sankey": "桑基图",
     "radar": "雷达图",
     "treemap": "矩形树图",
+    "treeView": "树视图",
     "requirement": "需求图",
     "unknown": "未知"
   }

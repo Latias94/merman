@@ -3,6 +3,7 @@ export interface Example {
   name: string;
   category: string;
   code: string;
+  asciiSupported?: boolean;
 }
 
 export const examples: Example[] = [
@@ -139,6 +140,7 @@ export const examples: Example[] = [
     id: "class-nested-namespace",
     name: "Nested Namespace",
     category: "Class",
+    asciiSupported: false,
     code: `classDiagram
     namespace Platform["Platform Layer"] {
       namespace FFI {
@@ -321,6 +323,7 @@ export const examples: Example[] = [
     id: "mindmap-shapes-icons",
     name: "Shapes and Icons",
     category: "Mindmap",
+    asciiSupported: false,
     code: `mindmap
   root((Merman))
     Parser[Parser]
@@ -341,20 +344,20 @@ export const examples: Example[] = [
     name: "Git Graph",
     category: "Git",
     code: `gitGraph
-    commit
-    commit
+    commit id: "init"
+    commit id: "main-api"
     branch develop
     checkout develop
-    commit
-    commit
+    commit id: "parser"
+    commit id: "renderer"
     checkout main
-    merge develop
-    commit
+    merge develop id: "merge-develop"
+    commit id: "release"
     branch feature
     checkout feature
-    commit
+    commit id: "playground"
     checkout main
-    merge feature`,
+    merge feature id: "merge-feature"`,
   },
   {
     id: "gitgraph-tags-cherrypick",
@@ -758,6 +761,21 @@ export const examples: Example[] = [
   "CLI": 10
 
 classDef hot fill:#fecaca,color:#7f1d1d,stroke:#f87171;`,
+  },
+  {
+    id: "treeview-package-tree",
+    name: "Package Tree",
+    category: "TreeView",
+    code: `treeView-beta
+    "packages"
+        "merman"
+            "src"
+        "merman-core"
+            "src"
+        "merman-ascii"
+            "src"
+        "web"
+            "src"`,
   },
   {
     id: "requirement-ffi-api",

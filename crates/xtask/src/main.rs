@@ -28,7 +28,7 @@ enum XtaskError {
         source: std::io::Error,
     },
     #[error("failed to parse YAML schema: {0}")]
-    ParseYaml(#[from] serde_yaml::Error),
+    ParseYaml(#[from] serde_saphyr::Error),
     #[error("failed to process JSON: {0}")]
     Json(#[from] serde_json::Error),
     #[error("invalid $ref: {0}")]
@@ -155,6 +155,7 @@ fn print_help(topic: Option<&str>) {
     println!(
         "  - `cargo run -p xtask -- compare-all-svgs --report-root --report-root-all --dom-mode parity-root`"
     );
+    println!("  - `cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst <path>`");
     println!("  - `cargo run -p xtask -- gen-upstream-svgs --diagram <name>`");
     println!();
     println!("Topics:");

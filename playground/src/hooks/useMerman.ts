@@ -1,10 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 import {
+  FALLBACK_ASCII_CAPABILITIES,
+  FALLBACK_ASCII_SUPPORTED_TYPES,
+} from "@/src/lib/ascii-support";
+import {
   getWasm,
   isWasmLoaded,
   loadWasm,
   SUPPORTED_THEMES,
+  type AsciiCapability,
   type BindingCapabilities,
   type MermanWasm,
   type RegistryProfile,
@@ -180,7 +185,7 @@ export function useMerman() {
 
   const getAsciiSupportedDiagrams = useCallback((): string[] => {
     if (!ready || !wasmRef.current) {
-      return ['flowchart', 'sequence', 'class', 'er', 'xychart'];
+      return [...FALLBACK_ASCII_SUPPORTED_TYPES];
     }
     return wasmRef.current.get_ascii_supported_diagrams();
   }, [ready]);
@@ -199,6 +204,18 @@ export function useMerman() {
     return wasmRef.current.selected_registry_profile();
   }, [ready]);
 
+  const getAsciiCapabilities = useCallback((): AsciiCapability[] => {
+    if (!ready || !wasmRef.current) {
+      return FALLBACK_ASCII_CAPABILITIES.map((capability) => ({
+        ...capability,
+        supported_semantics: [...capability.supported_semantics],
+        limits: [...capability.limits],
+        evidence: capability.evidence.map((evidence) => ({ ...evidence })),
+      }));
+    }
+    return wasmRef.current.get_ascii_capabilities();
+  }, [ready]);
+
   return {
     ready,
     loading,
@@ -214,5 +231,6 @@ export function useMerman() {
     getAsciiSupportedDiagrams,
     getBindingCapabilities,
     getRegistryProfile,
+    getAsciiCapabilities,
   };
 }

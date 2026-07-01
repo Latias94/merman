@@ -87,6 +87,7 @@ mod tests {
         assert!(svg.contains("World"));
     }
 
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_svg_returns_svg_for_flowchart_elk() {
         let svg =
@@ -97,6 +98,19 @@ mod tests {
         assert!(svg.contains("Hello"));
         assert!(svg.contains("World"));
         assert!(!svg.contains("NaN"));
+    }
+
+    #[cfg(not(feature = "elk-layout"))]
+    #[test]
+    fn render_svg_reports_unsupported_flowchart_elk_without_elk_layout() {
+        let err = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"").unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::RenderError);
+        assert!(
+            err.message()
+                .contains("unsupported diagram type for layout: flowchart-elk"),
+            "{err:?}"
+        );
     }
 
     #[test]
@@ -766,6 +780,7 @@ Missing ref: id2,after missing,1d
         assert!(err.message().contains("resources.max_svg_bytes"), "{err:?}");
     }
 
+    #[cfg(feature = "elk-layout")]
     #[test]
     fn render_svg_accepts_explicit_flowchart_elk_backend_option() {
         let svg = String::from_utf8(

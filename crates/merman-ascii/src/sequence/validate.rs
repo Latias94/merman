@@ -6,29 +6,22 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
     if model
         .actors
         .values()
-        .any(|actor| actor.actor_type != "participant")
+        .any(|actor| !is_supported_sequence_actor_type(&actor.actor_type))
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "actor participant shapes",
-        });
-    }
-
-    if model.actors.values().any(|actor| actor.wrap) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "wrapped actor labels",
+            feature: "actor types",
         });
     }
 
     if model
         .actors
         .values()
-        .any(|actor| !actor.links.is_empty() || !actor.properties.is_empty())
+        .any(|actor| !actor.properties.is_empty())
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "actor links/properties",
+            feature: "actor properties",
         });
     }
 
@@ -41,24 +34,6 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "notes without drawable messages",
-        });
-    }
-
-    if model.boxes.iter().any(|sequence_box| sequence_box.wrap) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "wrapped boxes",
-        });
-    }
-
-    if model
-        .boxes
-        .iter()
-        .any(|sequence_box| sequence_box.actor_keys.is_empty())
-    {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "empty boxes",
         });
     }
 
@@ -87,4 +62,18 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
     }
 
     Ok(())
+}
+
+fn is_supported_sequence_actor_type(actor_type: &str) -> bool {
+    matches!(
+        actor_type,
+        "participant"
+            | "actor"
+            | "boundary"
+            | "control"
+            | "entity"
+            | "database"
+            | "collections"
+            | "queue"
+    )
 }

@@ -1,0 +1,12 @@
+flowchart TD
+start[入口] --> check
+subgraph pipe [流程中枢]
+    direction LR
+    check[检查] --> parse[解析]
+    subgraph validate [校验层]
+        direction TD
+        verify[验证] --> publish[发布]
+    end
+    parse --> verify
+end
+publish --> finish[完成]

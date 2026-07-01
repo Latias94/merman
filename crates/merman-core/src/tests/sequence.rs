@@ -660,6 +660,30 @@ dsa --> Database: hello
 }
 
 #[test]
+fn parse_diagram_sequence_extended_participant_syntax_supports_aliases_and_actor_keyword() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant API@{ "type" : "boundary", "alias": "Internal API" } as Public API
+actor DB@{ "type" : "database" } as Data Store
+actor Queue@{ "type" : "queue", "alias": "Message Queue" }
+API->>DB: query
+DB->>Queue: enqueue
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let actors = res.model["actors"].as_object().unwrap();
+
+    assert_eq!(actors["API"]["type"], json!("boundary"));
+    assert_eq!(actors["API"]["description"], json!("Public API"));
+    assert_eq!(actors["DB"]["type"], json!("database"));
+    assert_eq!(actors["DB"]["description"], json!("Data Store"));
+    assert_eq!(actors["Queue"]["type"], json!("queue"));
+    assert_eq!(actors["Queue"]["description"], json!("Message Queue"));
+}
+
+#[test]
 fn parse_diagram_sequence_extended_participant_syntax_invalid_config_fails() {
     let engine = Engine::new();
     let bad_json = r#"sequenceDiagram

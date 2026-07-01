@@ -16,7 +16,7 @@ Status: experimental generated-binding surface.
 - `MermanEngine::reusable_engine(options_json)`
 - `MermanEngine::reusable_engine_with_text_measurer(options_json, measurer)`
 - `MermanEngine::supported_diagrams()`
-- `MermanEngine::ascii_supported_diagrams()`
+- `MermanEngine::ascii_capabilities()`
 - `MermanEngine::supported_themes()`
 - `MermanEngine::supported_host_theme_presets()`
 - `MermanEngine::diagram_family_capabilities()`
@@ -28,6 +28,10 @@ Status: experimental generated-binding surface.
 - `MermanReusableEngine::clear_text_measurer()`
 - `MermanTextMeasurer` callback interface
 - `MermanError::Binding { code, code_name, message }`
+
+`MermanEngine::ascii_capabilities()` returns typed records with `diagram_type`, `display_name`,
+`support_level`, `summary_fallback`, `supported_semantics`, `limits`, and `evidence`, so generated
+bindings can label `full`, `partial`, and summary-only ASCII support before rendering.
 
 The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a convenience layer for
 Swift, Kotlin, Python, and Ruby package lanes.
@@ -73,7 +77,8 @@ metadata into a temporary package, copies the native library beside the generate
 the package with Python, and calls `MermanEngine.abi_version`, `MermanEngine.package_version`,
 `MermanEngine.render_svg`, `MermanEngine.render_ascii`, `MermanEngine.parse_json`,
 `MermanEngine.layout_json`, `MermanEngine.validate`, metadata methods,
-`MermanEngine.diagram_family_capabilities`, `MermanEngine.reusable_engine_with_text_measurer`,
+`MermanEngine.ascii_capabilities`, `MermanEngine.diagram_family_capabilities`,
+`MermanEngine.reusable_engine_with_text_measurer`,
 `MermanReusableEngine.set_text_measurer`, `MermanReusableEngine.clear_text_measurer`, plus a
 `MermanError.Binding` error-path check.
 

@@ -16,8 +16,9 @@ published PyPI page shows this README together with the metadata links in `pypro
 package page can point directly to the binding docs, issues, and changelog.
 
 `MermanReusableEngine` exposes the reusable render path, and `MermanTextMeasurer` lets Python
-hosts provide a callback when they need host-owned text measurement. `diagram_family_capabilities()`
-is available for capability discovery.
+hosts provide a callback when they need host-owned text measurement. `ascii_capabilities()` reports
+ASCII support grades and summary fallback metadata; `diagram_family_capabilities()` reports
+parser/render family availability.
 
 For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -37,9 +38,10 @@ semantic_json = engine.parse_json(source, None)
 layout_json = engine.layout_json(source, None)
 validation = engine.validate(source, None)
 diagrams = engine.supported_diagrams()
+ascii_capabilities = engine.ascii_capabilities()
 themes = engine.supported_themes()
 host_presets = engine.supported_host_theme_presets()
-capabilities = engine.diagram_family_capabilities()
+family_capabilities = engine.diagram_family_capabilities()
 
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):

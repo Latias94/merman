@@ -38,8 +38,26 @@ def main() -> None:
 
     if "flowchart" not in engine.supported_diagrams():
         raise RuntimeError("supported diagrams smoke failed")
-    if "sequence" not in engine.ascii_supported_diagrams():
-        raise RuntimeError("ASCII supported diagrams smoke failed")
+    ascii_capabilities = engine.ascii_capabilities()
+    if not any(
+        item.diagram_type == "sequence" and item.support_level == "full"
+        for item in ascii_capabilities
+    ):
+        raise RuntimeError("ASCII full capability smoke failed")
+    if not any(
+        item.diagram_type == "gantt"
+        and item.support_level == "summary"
+        and not item.summary_fallback
+        for item in ascii_capabilities
+    ):
+        raise RuntimeError("ASCII summary capability smoke failed")
+    if not any(
+        item.diagram_type == "class"
+        and item.support_level == "partial"
+        and item.summary_fallback
+        for item in ascii_capabilities
+    ):
+        raise RuntimeError("ASCII fallback capability smoke failed")
     if "default" not in engine.supported_themes():
         raise RuntimeError("themes smoke failed")
     if "one-dark" not in engine.supported_host_theme_presets():
