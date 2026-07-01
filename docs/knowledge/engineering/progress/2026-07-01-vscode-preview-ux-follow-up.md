@@ -35,6 +35,8 @@ completed diagnostics plan.
   spelling extensions do not pollute the Mermaid preview summary.
 - Same-source render failures now mark the visible diagram as stale and label it as the last
   successful preview instead of silently showing old output as if it were current.
+- Stale preview output actions are blocked: Copy SVG, Export SVG, and Export PNG are disabled while
+  the visible diagram is the last successful render, then restored after a successful render.
 
 ## Subagent Findings
 
@@ -55,11 +57,6 @@ completed diagnostics plan.
 
 ## Remaining UX Work
 
-- Decide stale output actions explicitly. Preview-panel Copy SVG currently copies the retained DOM,
-  so stale state means it copies the last successful render. Preview-panel Export SVG/PNG uses the
-  current `PreviewSession` snapshot and re-renders the current source, so it may fail or produce a
-  different result than the visible stale DOM. A small UX PR should disable or retitle output
-  actions while `data-render-state="stale"`, and add webview tests for stale Copy SVG/Export.
 - Refactor the single global preview controller into `PreviewManager` plus `PreviewInstance`
   ownership before adding multiple locked preview panels, show-source, refresh, and command-palette
   scoping. The first architecture PR should be a no-behavior-change extraction: one manager, one

@@ -27,6 +27,10 @@ status: active
   session snapshot; the next small UX slice should make that split explicit. Architecture research
   recommends extracting a `PreviewInstance` behind the current single-preview behavior before
   enabling true multi-preview parity.
+- Implemented the stale output-action UX slice: when the preview is showing the last successful
+  render, Copy SVG, Export SVG, and Export PNG are disabled with explicit titles, and disabled
+  toolbar buttons are ignored by the webview click handler. Verified with `npm run check`,
+  `npm test` (81 tests), and `git diff --check`.
 
 ## 2026-06-30
 - Finished the editor diagnostics architecture cleanup plan end-to-end. Final gates passed Rust

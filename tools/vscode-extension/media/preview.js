@@ -15,6 +15,23 @@
   const backgroundElement = document.querySelector('[data-action="background"]');
   const lockElement = document.querySelector("[data-preview-lock]");
   const outputControlsElement = document.querySelector("[data-preview-output-controls]");
+  const outputActionElements = [
+    {
+      element: document.querySelector('[data-action="copy-svg"]'),
+      readyTitle: "Copy rendered SVG",
+      staleTitle: "Copy SVG is disabled while the preview shows the last successful render",
+    },
+    {
+      element: document.querySelector('[data-action="export-svg"]'),
+      readyTitle: "Export SVG",
+      staleTitle: "Export SVG is disabled while the preview shows the last successful render",
+    },
+    {
+      element: document.querySelector('[data-action="export-png"]'),
+      readyTitle: "Export PNG",
+      staleTitle: "Export PNG is disabled while the preview shows the last successful render",
+    },
+  ];
   const persisted = vscode.getState?.() || {};
   const state = {
     zoom: finiteNumber(persisted.zoom, 1),
@@ -452,6 +469,18 @@
       return;
     }
     frame.dataset.renderState = renderState;
+    updateOutputActions(renderState);
+  }
+
+  function updateOutputActions(renderState) {
+    const disabled = renderState === "stale";
+    for (const { element, readyTitle, staleTitle } of outputActionElements) {
+      if (!(element instanceof HTMLButtonElement)) {
+        continue;
+      }
+      element.disabled = disabled;
+      element.title = disabled ? staleTitle : readyTitle;
+    }
   }
 
   function hasPreviewContent() {
@@ -599,6 +628,9 @@
     if (!(actionElement instanceof HTMLElement)) {
       return;
     }
+    if (actionElement instanceof HTMLButtonElement && actionElement.disabled) {
+      return;
+    }
 
     switch (actionElement.dataset.action) {
       case "zoom-in":
@@ -743,6 +775,7 @@
   if (lockElement instanceof HTMLButtonElement) {
     updateLockControl(false);
   }
+  setRenderState("empty");
 
   if (viewport && canvas && stage && typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {

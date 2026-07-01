@@ -216,9 +216,14 @@ summary {
   white-space: nowrap;
 }
 
-.toolbar button:hover,
+.toolbar button:not(:disabled):hover,
 .preview-menu summary:hover {
   background: var(--vscode-toolbar-hoverBackground, var(--vscode-button-hoverBackground));
+}
+
+.toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .zoom-readout {

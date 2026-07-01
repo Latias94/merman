@@ -77,6 +77,56 @@ describe("preview webview app", () => {
     );
     assert.equal(app.document.status.dataset.kind, "error");
     assert.equal(app.document.frame.dataset.renderState, "stale");
+    assert.equal(app.document.copySvg.disabled, true);
+    assert.equal(app.document.exportSvg.disabled, true);
+    assert.equal(app.document.exportPng.disabled, true);
+    assert.equal(
+      app.document.copySvg.title,
+      "Copy SVG is disabled while the preview shows the last successful render",
+    );
+  });
+
+  it("blocks stale output actions until the preview renders successfully again", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 2,
+      reason: "document-change",
+      snapshot: snapshot({ sourceHash: "hash-b" }),
+    });
+    app.dispatch({
+      type: "renderFailed",
+      requestId: 2,
+      snapshot: snapshot({ sourceHash: "hash-b" }),
+      error: "syntax issue",
+    });
+
+    const postedBeforeStaleClicks = app.postedMessages.length;
+    app.click(app.document.copySvg);
+    app.click(app.document.exportSvg);
+    app.click(app.document.exportPng);
+
+    assert.equal(app.postedMessages.length, postedBeforeStaleClicks);
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 3,
+      snapshot: snapshot({ sourceHash: "hash-c" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+
+    assert.equal(app.document.copySvg.disabled, false);
+    assert.equal(app.document.exportSvg.disabled, false);
+    assert.equal(app.document.exportPng.disabled, false);
+    assert.equal(app.document.copySvg.title, "Copy rendered SVG");
+    assert.equal(app.document.exportSvg.title, "Export SVG");
   });
 
   it("clears the previous SVG when a different source render fails", () => {
@@ -603,6 +653,8 @@ class FakeDocument {
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
   readonly copySvg = new FakeButtonElement({ dataset: { action: "copy-svg" } });
+  readonly exportSvg = new FakeButtonElement({ dataset: { action: "export-svg" } });
+  readonly exportPng = new FakeButtonElement({ dataset: { action: "export-png" } });
   readonly lock = new FakeButtonElement({ dataset: { previewLock: "", action: "lock" } });
   readonly fit = new FakeButtonElement({ dataset: { action: "fit" } });
   readonly reset = new FakeButtonElement({ dataset: { action: "reset" } });
@@ -646,6 +698,10 @@ class FakeDocument {
         return this.background;
       case '[data-action="copy-svg"]':
         return this.copySvg;
+      case '[data-action="export-svg"]':
+        return this.exportSvg;
+      case '[data-action="export-png"]':
+        return this.exportPng;
       case "[data-preview-lock]":
         return this.lock;
       case '[data-action="fit"]':
