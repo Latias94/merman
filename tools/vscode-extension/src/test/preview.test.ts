@@ -65,6 +65,15 @@ describe("preview html", () => {
     assert.doesNotMatch(html, /Mermaid syntax issue/);
   });
 
+  it("keeps preview diagnostics and render errors from overlapping", () => {
+    const styles = fs.readFileSync(path.join(process.cwd(), "media", "preview.css"), "utf8");
+
+    assert.match(styles, /\.diagnostics\s*\{[\s\S]*?left:\s*10px;[\s\S]*?bottom:\s*10px;/);
+    assert.match(styles, /\.preview-status\s*\{[\s\S]*?right:\s*10px;[\s\S]*?bottom:\s*10px;/);
+    assert.match(styles, /\.preview-status\s*\{[\s\S]*?calc\(100% - 280px\)/);
+    assert.match(styles, /@media \(max-width:\s*820px\)\s*\{[\s\S]*?\.preview-status\s*\{[\s\S]*?bottom:\s*54px;/);
+  });
+
   it("keeps source editor focus when opening or revealing the preview", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "src", "preview-instance.ts"), "utf8");
 

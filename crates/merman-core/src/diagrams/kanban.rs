@@ -471,6 +471,21 @@ fn kanban_exact_suffix(
     Error::diagram_parse_exact("kanban", message, SourceSpan::new(start, end))
 }
 
+fn kanban_delimited_suffix_error(
+    message: String,
+    line: &str,
+    line_start: usize,
+    suffix: &str,
+) -> Error {
+    let suffix = suffix.trim_start();
+    let start = kanban_suffix_start(line, line_start, suffix);
+    if message == "unterminated node delimiter" {
+        return Error::diagram_parse_insertion_point("kanban", message, start + suffix.len());
+    }
+
+    Error::diagram_parse_insertion_point("kanban", message, start)
+}
+
 fn parse_node_spec_for_render(
     input: &str,
     line: &str,
@@ -487,13 +502,8 @@ fn parse_node_spec_for_render(
     }
 
     if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let (inner, tail) = extract_delimited(input, start, end).map_err(|message| {
-            Error::diagram_parse_insertion_point(
-                "kanban",
-                message,
-                kanban_suffix_start(line, line_start, input),
-            )
-        })?;
+        let (inner, tail) = extract_delimited(input, start, end)
+            .map_err(|message| kanban_delimited_suffix_error(message, line, line_start, input))?;
         if !tail.trim().is_empty() {
             return Err(kanban_exact_suffix(
                 "unexpected trailing input",
@@ -538,13 +548,8 @@ fn parse_node_spec_for_render(
         ));
     };
 
-    let (inner, tail) = extract_delimited(rest, start, end).map_err(|message| {
-        Error::diagram_parse_insertion_point(
-            "kanban",
-            message,
-            kanban_suffix_start(line, line_start, rest),
-        )
-    })?;
+    let (inner, tail) = extract_delimited(rest, start, end)
+        .map_err(|message| kanban_delimited_suffix_error(message, line, line_start, rest))?;
     if !tail.trim().is_empty() {
         return Err(kanban_exact_suffix(
             "unexpected trailing input",
@@ -1296,7 +1301,7 @@ mod tests {
     fn kanban_unterminated_node_delimiter_reports_insertion_point() {
         let text = "kanban\n  root[Open\n";
         let diagnostic = parse_err(text);
-        let offset = text.find('[').unwrap();
+        let offset = text.trim_end().len();
 
         assert_eq!(diagnostic.message(), "unterminated node delimiter");
         assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset)));

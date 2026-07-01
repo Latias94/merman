@@ -409,9 +409,9 @@ summary {
 
 .preview-status {
   position: absolute;
-  left: 10px;
+  right: 10px;
   bottom: 10px;
-  max-width: min(720px, calc(100% - 20px));
+  max-width: min(560px, calc(100% - 280px));
   z-index: 4;
   padding: 8px 10px;
   border: 1px solid var(--vscode-panel-border);
@@ -431,4 +431,13 @@ summary {
 .preview-status[data-kind="error"] {
   border-color: color-mix(in srgb, var(--vscode-errorForeground) 65%, var(--vscode-panel-border) 35%);
   color: var(--vscode-errorForeground);
+}
+
+@media (max-width: 820px) {
+  .preview-status {
+    left: 10px;
+    right: 10px;
+    bottom: 54px;
+    max-width: none;
+  }
 }
