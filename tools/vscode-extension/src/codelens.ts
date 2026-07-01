@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { getSourceActionSettings } from "./config.js";
 import { pngClipboardCommand } from "./export-options.js";
 import { listPreviewInputsFromDocument } from "./preview-source.js";
 import {
@@ -38,7 +39,7 @@ class MermaidSourceCodeLensProvider implements vscode.CodeLensProvider {
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
     const inputs = listPreviewInputsFromDocument(document);
-    const specs = buildMermaidSourceCodeLensSpecs(inputs);
+    const specs = buildMermaidSourceCodeLensSpecs(inputs, getSourceActionSettings());
     return specs.map((spec) => {
       const line = Math.max(0, Math.min(spec.line, document.lineCount - 1));
       return new vscode.CodeLens(new vscode.Range(line, 0, line, 0), {

@@ -76,9 +76,33 @@ Mermaid files and Markdown/MDX Mermaid fences also show low-noise CodeLens sourc
 Markdown fence actions carry that stable fence id, so they do not retarget when the cursor moves
 before the command runs.
 
-The extension intentionally coexists with VS Code's built-in Mermaid support in Markdown preview.
-Use Merman for semantic editing, `.mmd` files, fence-aware diagnostics, local preview inspection,
-and export; it does not replace VS Code's Markdown preview renderer.
+The extension intentionally coexists with VS Code's built-in Mermaid support in Markdown preview,
+external Mermaid preview extensions, and project lint tools. Use Merman for semantic editing,
+`.mmd` files, optional fence-aware diagnostics, local preview inspection, and export; it does not
+replace VS Code's Markdown preview renderer or repository lint policy.
+
+## Coexistence modes
+
+Keep Merman language intelligence while another preview extension owns editor actions:
+
+```json
+{
+  "merman.sourceActions.enabled": false
+}
+```
+
+Keep Merman completion, hover, symbols, references, rename, and semantic tokens while another linter
+owns VS Code Problems:
+
+```json
+{
+  "merman.diagnostics.enabled": false
+}
+```
+
+JavaScript lint tools that want Merman parser-backed evidence can use `@mermanjs/web`
+`analyzeDocument(source, options, uri)` without adopting the LSP. See
+`docs/integrations/` for adapter guidance and coexistence examples.
 
 ## Preview behavior
 
@@ -110,6 +134,8 @@ continues to inspect vector output rather than a PNG snapshot.
 - `merman.cli.useCargoRun`: development-only fallback through `cargo run -p merman-cli --`
 - `merman.cli.cargoArgs`: development-only Cargo flags before `--`
 - `merman.trace.server`: VS Code LSP trace level
+- `merman.diagnostics.enabled`: publish Merman diagnostics to VS Code Problems
+- `merman.sourceActions.enabled`: show source-scoped Merman CodeLens actions
 - `merman.analysis.*`: analysis/lint settings forwarded to `merman-lsp`
 
 ## Packaging

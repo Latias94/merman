@@ -15,6 +15,14 @@ export interface MermanCliSettings {
   cargoArgs: string[];
 }
 
+export interface DiagnosticsSettings {
+  enabled: boolean;
+}
+
+export interface SourceActionSettings {
+  enabled: boolean;
+}
+
 export interface LintRuleSeverityOverride {
   rule_id: string;
   severity: "error" | "warning" | "info" | "hint";
@@ -63,6 +71,20 @@ export function getCliSettings(): MermanCliSettings {
     path: config.get<string>("cli.path", "").trim(),
     useCargoRun: config.get<boolean>("cli.useCargoRun", false),
     cargoArgs: sanitizeStringArray(config.get<unknown[]>("cli.cargoArgs", [])),
+  };
+}
+
+export function getDiagnosticsSettings(): DiagnosticsSettings {
+  const config = getMermanConfiguration();
+  return {
+    enabled: config.get<boolean>("diagnostics.enabled", true),
+  };
+}
+
+export function getSourceActionSettings(): SourceActionSettings {
+  const config = getMermanConfiguration();
+  return {
+    enabled: config.get<boolean>("sourceActions.enabled", true),
   };
 }
 

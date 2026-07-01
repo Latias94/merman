@@ -135,6 +135,16 @@
           "default": "off",
           "markdownDescription": "LSP trace level forwarded to the VS Code language client."
         },
+        "merman.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Publish Merman diagnostics to VS Code Problems. Disable this when another Mermaid or Markdown linter owns diagnostics; Merman completion, hover, symbols, references, rename, semantic tokens, preview, and export remain available."
+        },
+        "merman.sourceActions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show Merman source-scoped CodeLens actions above `.mmd` files and Markdown/MDX Mermaid fences. Disable this when another preview/export extension owns those editor actions."
+        },
         "merman.analysis.fixed_today": {
           "type": "string",
           "default": "",

@@ -30,6 +30,10 @@ export interface MermaidSourceCodeLensSpec {
   command: MermaidSourceActionCommand;
 }
 
+export interface MermaidSourceCodeLensOptions {
+  enabled?: boolean;
+}
+
 export interface MermaidSourceExportCopyActionOptions {
   includeCopyPng?: boolean;
 }
@@ -58,7 +62,12 @@ export const SOURCE_EXPORT_COPY_ACTIONS: readonly SourceActionDescriptor[] = [
 
 export function buildMermaidSourceCodeLensSpecs(
   inputs: readonly Pick<PreviewInput, "sourceId" | "sourceRange">[],
+  options: MermaidSourceCodeLensOptions = {},
 ): MermaidSourceCodeLensSpec[] {
+  if (options.enabled === false) {
+    return [];
+  }
+
   return inputs.flatMap((input) =>
     SOURCE_ACTIONS.map((action) => ({
       line: input.sourceRange.startLine,

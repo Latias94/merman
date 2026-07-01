@@ -12,11 +12,13 @@ import {
 
 import {
   getAnalysisSettings,
+  getDiagnosticsSettings,
   getDidChangeConfigurationPayload,
   getServerSettings,
   getTraceSetting,
 } from "./config.js";
 import { resolveMermanBinary } from "./binaries.js";
+import { projectOwnedDiagnostics } from "./diagnostic-ownership.js";
 import { workspaceRoots } from "./workspace.js";
 
 export const RULE_CATALOG_METHOD = "merman/ruleCatalog";
@@ -82,6 +84,11 @@ export async function createLanguageClient(
     markdown: {
       isTrusted: true,
       supportHtml: false,
+    },
+    middleware: {
+      handleDiagnostics(uri, diagnostics, next) {
+        next(uri, projectOwnedDiagnostics(diagnostics, getDiagnosticsSettings()));
+      },
     },
   };
 

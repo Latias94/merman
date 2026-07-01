@@ -42,6 +42,15 @@ describe("Mermaid source actions", () => {
     );
   });
 
+  it("can disable source CodeLens actions for preview coexistence", () => {
+    const specs = buildMermaidSourceCodeLensSpecs(
+      [{ sourceId: "document", sourceRange: { startLine: 0, endLine: 4 } }],
+      { enabled: false },
+    );
+
+    assert.deepEqual(specs, []);
+  });
+
   it("keeps platform-sensitive copy commands out of the top-level CodeLens row", () => {
     const specs = buildMermaidSourceCodeLensSpecs([
       { sourceId: "document", sourceRange: { startLine: 0, endLine: 0 } },
