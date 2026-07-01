@@ -15,7 +15,8 @@ export type PreviewUpdateReason =
   | "source-select"
   | "diagram-theme"
   | "display-mode"
-  | "background";
+  | "background"
+  | "lock";
 
 export type PreviewAction =
   | { type: "showEmpty" }
@@ -55,7 +56,8 @@ export function planPreviewUpdate(
     previous.selected !== next.selected ||
     previous.diagramTheme !== next.diagramTheme ||
     previous.displayMode !== next.displayMode ||
-    previous.background !== next.background
+    previous.background !== next.background ||
+    previous.locked !== next.locked
   ) {
     actions.push({ type: "settingsUpdated", snapshot: next });
   }

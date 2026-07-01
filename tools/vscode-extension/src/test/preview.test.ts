@@ -45,6 +45,9 @@ describe("preview html", () => {
     assert.match(html, /data-preview-output-controls/);
     assert.match(html, /data-action="export-svg"/);
     assert.match(html, /data-action="export-png"/);
+    assert.match(html, /data-action="lock"/);
+    assert.match(html, /data-preview-lock/);
+    assert.match(html, /data-preview-lock[^>]*disabled/);
     assert.match(html, /data-action="diagram-theme"/);
     assert.match(html, /value="forest"/);
     assert.doesNotMatch(html, /<svg viewBox/);
@@ -58,6 +61,32 @@ describe("preview html", () => {
     assert.match(html, /data-preview-diagnostics/);
     assert.doesNotMatch(html, /data-action="diagnostic"/);
     assert.doesNotMatch(html, /Mermaid syntax issue/);
+  });
+
+  it("keeps source editor focus when opening or revealing the preview", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "src", "preview.ts"), "utf8");
+
+    assert.match(
+      source,
+      /createWebviewPanel\(\s*"mermanPreview",\s*PREVIEW_TITLE,\s*\{[\s\S]*?preserveFocus:\s*true/,
+    );
+    assert.match(source, /this\.panel\.reveal\(this\.panel\.viewColumn,\s*true\)/);
+    assert.match(
+      source,
+      /openResource[\s\S]*?showTextDocument\(document,\s*\{[\s\S]*?preserveFocus:\s*true/,
+    );
+    assert.doesNotMatch(source, /panel\.reveal\(vscode\.ViewColumn\.Beside,\s*false\)/);
+  });
+
+  it("retargets empty previews and guards lock before a source exists", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "src", "preview.ts"), "utf8");
+
+    assert.match(
+      source,
+      /const shouldRetargetSource = !this\.panel \|\| !this\.session\.isLocked \|\| !this\.session\.snapshot/,
+    );
+    assert.match(source, /rememberResource\(resource,\s*\{\s*preferOnce:\s*true\s*\}\)/);
+    assert.match(source, /if \(locked && !this\.session\.snapshot\)/);
   });
 
   it("ships message-driven viewport media with persisted pan, vector zoom, and auto-fit", () => {
@@ -76,7 +105,7 @@ describe("preview html", () => {
     assert.match(script, /case "renderFailed"/);
     assert.match(script, /case "diagnosticsUpdated"/);
     assert.match(script, /replacePreviewContent\(message\.content, message\.snapshot\)/);
-    assert.doesNotMatch(script, /case "renderFailed":[\s\S]*canvas\.replaceChildren\(\)/);
+    assert.match(script, /case "renderFailed":[\s\S]*isDifferentSourceLocation\(message\.snapshot\)/);
     assert.match(script, /addEventListener\("wheel"/);
     assert.match(script, /setPointerCapture/);
     assert.match(script, /ResizeObserver/);
@@ -86,6 +115,7 @@ describe("preview html", () => {
     assert.match(script, /applyVectorZoom/);
     assert.match(script, /post\("setDiagramTheme"/);
     assert.match(script, /post\("setDisplayMode"/);
+    assert.match(script, /post\("setLocked"/);
     assert.match(script, /post\("exportRendered"/);
     assert.match(script, /document\.addEventListener\("pointermove"/);
     assert.doesNotMatch(script, /dataset\.action\) {\n\s+case "theme":/);

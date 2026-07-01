@@ -38,6 +38,7 @@ export interface PreviewSnapshot {
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
+  locked: boolean;
   sourceKey: PreviewSourceKey;
 }
 
@@ -52,6 +53,7 @@ export interface CreatePreviewSnapshotRequest {
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
+  locked: boolean;
 }
 
 export function createPreviewSnapshot(request: CreatePreviewSnapshotRequest): PreviewSnapshot {

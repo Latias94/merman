@@ -174,5 +174,6 @@ function snapshot(): PreviewSnapshot {
     diagramTheme: "source",
     displayMode: "svg",
     background: "paper",
+    locked: false,
   });
 }

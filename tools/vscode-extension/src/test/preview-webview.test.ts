@@ -45,7 +45,7 @@ describe("preview webview app", () => {
     );
   });
 
-  it("keeps the previous SVG visible when the current render fails", () => {
+  it("keeps the previous SVG visible when the same source edit fails", () => {
     const app = loadPreviewApp();
 
     app.dispatch({
@@ -73,6 +73,52 @@ describe("preview webview app", () => {
     assert.equal(app.document.status.hidden, false);
     assert.equal(app.document.status.textContent, "syntax issue");
     assert.equal(app.document.status.dataset.kind, "error");
+  });
+
+  it("clears the previous SVG when a different source render fails", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({
+        documentUri: "file:///workspace/one.mmd",
+        sourceId: "document",
+        sourceHash: "hash-a",
+      }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 2,
+      reason: "active-editor",
+      snapshot: snapshot({
+        documentUri: "file:///workspace/two.mmd",
+        sourceId: "document",
+        sourceHash: "hash-b",
+      }),
+    });
+    app.dispatch({
+      type: "renderFailed",
+      requestId: 2,
+      snapshot: snapshot({
+        documentUri: "file:///workspace/two.mmd",
+        sourceId: "document",
+        sourceHash: "hash-b",
+      }),
+      error: "syntax issue",
+    });
+
+    assert.equal(app.document.canvas.querySelector("svg"), null);
+    assert.equal(app.document.empty.hidden, true);
+    assert.equal(app.document.status.hidden, false);
+    assert.equal(app.document.status.textContent, "syntax issue");
+    assert.equal(app.document.status.dataset.kind, "error");
+    assert.equal(
+      app.persistedState.sourceLocationKey,
+      previewSourceLocation("file:///workspace/two.mmd", "document"),
+    );
   });
 
   it("hides the empty placeholder as soon as rendering starts", () => {
@@ -347,6 +393,38 @@ describe("preview webview app", () => {
     assert.equal(app.document.sourceBar.hidden, false);
     assert.equal(app.document.viewport.classList.contains("has-sourcebar"), true);
   });
+
+  it("shows and toggles the preview lock state", () => {
+    const app = loadPreviewApp();
+
+    assert.equal(app.document.lock.disabled, true);
+
+    app.dispatch({
+      type: "settingsUpdated",
+      snapshot: snapshot({ locked: true }),
+    });
+
+    assert.equal(app.document.lock.textContent, "Locked");
+    assert.equal(app.document.lock.getAttribute("aria-pressed"), "true");
+    assert.equal(app.document.lock.disabled, false);
+    assert.equal(app.persistedState.locked, true);
+
+    app.click(app.document.lock);
+
+    const message = app.postedMessages.at(-1) as { type?: string; locked?: boolean };
+    assert.equal(message.type, "setLocked");
+    assert.equal(message.locked, false);
+
+    app.dispatch({
+      type: "showEmpty",
+      heading: "No Mermaid source available",
+      detail: "Focus a Mermaid source.",
+    });
+
+    assert.equal(app.document.lock.textContent, "Follow");
+    assert.equal(app.document.lock.disabled, true);
+    assert.equal(app.persistedState.locked, false);
+  });
 });
 
 interface PreviewAppHarness {
@@ -435,6 +513,7 @@ function snapshot(options: {
   diagnostics?: unknown;
   displayMode?: string;
   background?: string;
+  locked?: boolean;
   sources?: Array<{
     sourceId: string;
     title: string;
@@ -448,6 +527,7 @@ function snapshot(options: {
   const diagramTheme = options.diagramTheme ?? "source";
   const displayMode = options.displayMode ?? "svg";
   const background = options.background ?? "paper";
+  const locked = options.locked ?? false;
   return {
     documentUri,
     sourceId,
@@ -458,6 +538,7 @@ function snapshot(options: {
     diagramTheme,
     displayMode,
     background,
+    locked,
     sourceKey: {
       documentUri,
       sourceId,
@@ -491,6 +572,10 @@ function previewSourceIdentity(documentUri: string, sourceId: string, sourceHash
   return [documentUri, sourceId, sourceHash].join("\u0000");
 }
 
+function previewSourceLocation(documentUri: string, sourceId: string): string {
+  return [documentUri, sourceId].join("\u0000");
+}
+
 class FakeDocument {
   readonly frame = new FakeElement("section", { className: "frame" });
   readonly viewport = new FakeElement("section", {
@@ -511,6 +596,7 @@ class FakeDocument {
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
   readonly copySvg = new FakeButtonElement({ dataset: { action: "copy-svg" } });
+  readonly lock = new FakeButtonElement({ dataset: { previewLock: "", action: "lock" } });
   readonly fit = new FakeButtonElement({ dataset: { action: "fit" } });
   readonly reset = new FakeButtonElement({ dataset: { action: "reset" } });
   readonly zoomIn = new FakeButtonElement({ dataset: { action: "zoom-in" } });
@@ -553,6 +639,8 @@ class FakeDocument {
         return this.background;
       case '[data-action="copy-svg"]':
         return this.copySvg;
+      case "[data-preview-lock]":
+        return this.lock;
       case '[data-action="fit"]':
         return this.fit;
       case '[data-action="reset"]':
@@ -594,6 +682,7 @@ class FakeElement {
   readonly classList = new FakeClassList();
   readonly children: FakeElement[] = [];
   hidden = false;
+  disabled = false;
   className = "";
   textContent = "";
   title = "";
@@ -639,6 +728,7 @@ class FakeElement {
     clone.type = this.type;
     clone.value = this.value;
     clone.selected = this.selected;
+    clone.disabled = this.disabled;
     clone.html = this.html;
     for (const [name, value] of this.attributes.entries()) {
       clone.attributes.set(name, value);

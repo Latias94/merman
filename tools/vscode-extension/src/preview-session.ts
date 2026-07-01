@@ -22,10 +22,12 @@ export type PreviewDiagnosticsProvider = (
 export class PreviewSession {
   private currentSnapshot: PreviewSnapshot | undefined;
   private lastPreviewEditorUri: string | undefined;
+  private preferredEditorUri: string | undefined;
   private selectedSource: PreviewSourceSelection | undefined;
   private theme: PreviewDiagramTheme = "source";
   private displayMode: PreviewDisplayMode = "svg";
   private background: PreviewBackground = "paper";
+  private locked = false;
 
   get snapshot(): PreviewSnapshot | undefined {
     return this.currentSnapshot;
@@ -43,26 +45,44 @@ export class PreviewSession {
     return this.background;
   }
 
+  get isLocked(): boolean {
+    return this.locked;
+  }
+
   reset(): void {
     this.currentSnapshot = undefined;
     this.lastPreviewEditorUri = undefined;
+    this.preferredEditorUri = undefined;
     this.selectedSource = undefined;
     this.theme = "source";
     this.displayMode = "svg";
     this.background = "paper";
+    this.locked = false;
   }
 
   clearSource(): void {
     this.currentSnapshot = undefined;
+    this.preferredEditorUri = undefined;
     this.selectedSource = undefined;
   }
 
-  rememberResource(uri: vscode.Uri): void {
+  rememberResource(uri: vscode.Uri, options: { preferOnce?: boolean } = {}): void {
     this.lastPreviewEditorUri = uri.toString();
+    if (options.preferOnce) {
+      this.preferredEditorUri = this.lastPreviewEditorUri;
+    }
   }
 
   clearSelectedSource(): void {
     this.selectedSource = undefined;
+  }
+
+  setLocked(locked: boolean): boolean {
+    if (this.locked === locked) {
+      return false;
+    }
+    this.locked = locked;
+    return true;
   }
 
   rememberSnapshot(snapshot: PreviewSnapshot): void {
@@ -75,10 +95,14 @@ export class PreviewSession {
     visibleEditors: readonly vscode.TextEditor[],
     diagnosticsProvider: PreviewDiagnosticsProvider,
   ): PreviewSnapshot | undefined {
-    const editor = this.resolvePreviewEditor(activeEditor, visibleEditors);
-    const input = editor ? this.resolvePreviewInput(editor) : null;
-    if (!editor || !input) {
-      return undefined;
+    const editor = this.resolveSnapshotEditor(activeEditor, visibleEditors);
+    if (!editor) {
+      return this.locked ? this.createSnapshotFromCurrentState() : undefined;
+    }
+
+    const input = this.resolvePreviewInput(editor);
+    if (!input) {
+      return this.locked ? this.createSnapshotFromCurrentState() : undefined;
     }
 
     const sources = listPreviewInputsFromDocument(editor.document, editor.selection.active.line);
@@ -94,6 +118,7 @@ export class PreviewSession {
       diagramTheme: this.theme,
       displayMode: this.displayMode,
       background: this.background,
+      locked: this.locked,
     });
   }
 
@@ -101,7 +126,7 @@ export class PreviewSession {
     activeEditor: vscode.TextEditor | undefined,
     visibleEditors: readonly vscode.TextEditor[],
   ): vscode.TextEditor | undefined {
-    if (activeEditor && this.resolvePreviewInput(activeEditor)) {
+    if (!this.locked && activeEditor && this.resolvePreviewInput(activeEditor)) {
       return activeEditor;
     }
 
@@ -113,6 +138,16 @@ export class PreviewSession {
       (editor) =>
         editor.document.uri.toString() === this.lastPreviewEditorUri &&
         this.resolvePreviewInput(editor) !== null,
+    );
+  }
+
+  private resolveSnapshotEditor(
+    activeEditor: vscode.TextEditor | undefined,
+    visibleEditors: readonly vscode.TextEditor[],
+  ): vscode.TextEditor | undefined {
+    return (
+      this.takePreferredEditor(visibleEditors) ??
+      this.resolvePreviewEditor(activeEditor, visibleEditors)
     );
   }
 
@@ -167,6 +202,9 @@ export class PreviewSession {
       if (selected) {
         return selected;
       }
+      if (this.locked) {
+        return null;
+      }
       this.selectedSource = undefined;
     }
     return extractPreviewInput(editor);
@@ -179,6 +217,40 @@ export class PreviewSession {
       this.lastPreviewEditorUri === this.selectedSource.uri &&
       input.sourceId === this.selectedSource.sourceId
     );
+  }
+
+  private takePreferredEditor(visibleEditors: readonly vscode.TextEditor[]): vscode.TextEditor | undefined {
+    if (this.locked || !this.preferredEditorUri) {
+      return undefined;
+    }
+
+    const preferredEditorUri = this.preferredEditorUri;
+    this.preferredEditorUri = undefined;
+    return visibleEditors.find(
+      (editor) =>
+        editor.document.uri.toString() === preferredEditorUri &&
+        this.resolvePreviewInput(editor) !== null,
+    );
+  }
+
+  private createSnapshotFromCurrentState(): PreviewSnapshot | undefined {
+    if (!this.currentSnapshot) {
+      return undefined;
+    }
+
+    return createPreviewSnapshot({
+      documentUri: this.currentSnapshot.documentUri,
+      documentVersion: this.currentSnapshot.documentVersion,
+      input: this.currentSnapshot.input,
+      sources: this.currentSnapshot.sources,
+      diagnostics: this.currentSnapshot.diagnostics,
+      selectionLine: this.currentSnapshot.selectionLine,
+      selected: this.currentSnapshot.selected,
+      diagramTheme: this.theme,
+      displayMode: this.displayMode,
+      background: this.background,
+      locked: this.locked,
+    });
   }
 }
 

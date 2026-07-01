@@ -24,6 +24,7 @@
     "onLanguage:mdx",
     "onCommand:merman.restartLanguageServer",
     "onCommand:merman.openPreview",
+    "onCommand:merman.togglePreviewLock",
     "onCommand:merman.export",
     "onCommand:merman.exportSvg",
     "onCommand:merman.exportPng",
@@ -201,6 +202,12 @@
         "title": "Merman: Open Preview",
         "category": "Merman",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "merman.togglePreviewLock",
+        "title": "Merman: Toggle Preview Lock",
+        "category": "Merman",
+        "icon": "$(lock)"
       },
       {
         "command": "merman.export",

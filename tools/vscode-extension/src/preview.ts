@@ -40,6 +40,7 @@ import { assertSafePreviewSvg } from "./preview-svg-safety.js";
 import { PreviewWebviewClient } from "./preview-webview-client.js";
 
 const PREVIEW_COMMAND = "merman.openPreview";
+const TOGGLE_PREVIEW_LOCK_COMMAND = "merman.togglePreviewLock";
 const PREVIEW_TITLE = "Merman Preview";
 const RENDER_DEBOUNCE_MS = 180;
 
@@ -68,6 +69,11 @@ class MermanPreviewController implements vscode.Disposable {
           await this.open(target);
         },
       ),
+    );
+    this.disposables.push(
+      vscode.commands.registerCommand(TOGGLE_PREVIEW_LOCK_COMMAND, () => {
+        this.setLocked(!this.session.isLocked, true);
+      }),
     );
     this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor(() => {
@@ -110,12 +116,18 @@ class MermanPreviewController implements vscode.Disposable {
   }
 
   private async open(target?: MermaidSourceCommandArgument): Promise<void> {
-    await this.openResource(target);
+    const shouldRetargetSource = !this.panel || !this.session.isLocked || !this.session.snapshot;
+    if (shouldRetargetSource) {
+      await this.openResource(target);
+    }
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "mermanPreview",
         PREVIEW_TITLE,
-        vscode.ViewColumn.Beside,
+        {
+          viewColumn: vscode.ViewColumn.Beside,
+          preserveFocus: true,
+        },
         {
           enableCommandUris: false,
           enableScripts: true,
@@ -142,11 +154,11 @@ class MermanPreviewController implements vscode.Disposable {
         }
       }, null, this.disposables);
     } else {
-      this.panel.reveal(vscode.ViewColumn.Beside, false);
+      this.panel.reveal(this.panel.viewColumn, true);
     }
 
     this.ensureWebviewHtml(panelOrThrow(this.panel));
-    this.scheduleRefresh("manual-open", true);
+    this.scheduleRefresh(shouldRetargetSource ? "manual-open" : "panel-visible", true);
   }
 
   private async openResource(target?: MermaidSourceCommandArgument): Promise<void> {
@@ -156,17 +168,17 @@ class MermanPreviewController implements vscode.Disposable {
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor && extractPreviewInput(activeEditor)) {
         this.session.clearSelectedSource();
-        this.session.rememberResource(activeEditor.document.uri);
+        this.session.rememberResource(activeEditor.document.uri, { preferOnce: true });
       }
       return;
     }
-    this.session.rememberResource(resource);
+    this.session.rememberResource(resource, { preferOnce: true });
     let editor = vscode.window.activeTextEditor;
     if (editor?.document.uri.toString() !== resource.toString()) {
       const document = await vscode.workspace.openTextDocument(resource);
       editor = await vscode.window.showTextDocument(document, {
         preview: true,
-        preserveFocus: false,
+        preserveFocus: true,
       });
     }
     if (sourceId && editor) {
@@ -333,6 +345,9 @@ class MermanPreviewController implements vscode.Disposable {
       case "selectSource":
         this.selectSource(message.sourceId);
         return;
+      case "setLocked":
+        this.setLocked(message.locked, false);
+        return;
       case "setDiagramTheme":
         this.setDiagramTheme(message.theme);
         return;
@@ -377,6 +392,28 @@ class MermanPreviewController implements vscode.Disposable {
       return;
     }
     this.scheduleRefresh("background", true);
+  }
+
+  private setLocked(locked: boolean, notify: boolean): void {
+    if (locked && !this.session.snapshot) {
+      if (notify) {
+        void vscode.window.showWarningMessage(
+          "Open a Mermaid preview before locking it to a source.",
+        );
+      }
+      return;
+    }
+    if (!this.session.setLocked(locked)) {
+      return;
+    }
+    this.scheduleRefresh("lock", true);
+    if (notify) {
+      void vscode.window.showInformationMessage(
+        locked
+          ? "Merman preview is locked to the current source."
+          : "Merman preview is following the active source.",
+      );
+    }
   }
 
   private async exportRendered(format: ExportFormat): Promise<void> {

@@ -13,6 +13,7 @@
   const displayModeElement = document.querySelector('[data-action="display-mode"]');
   const themeElement = document.querySelector('[data-action="diagram-theme"]');
   const backgroundElement = document.querySelector('[data-action="background"]');
+  const lockElement = document.querySelector("[data-preview-lock]");
   const outputControlsElement = document.querySelector("[data-preview-output-controls]");
   const persisted = vscode.getState?.() || {};
   const state = {
@@ -22,7 +23,10 @@
     autoFit: persisted.autoFit !== false,
     background: typeof persisted.background === "string" ? persisted.background : "paper",
     displayMode: typeof persisted.displayMode === "string" ? persisted.displayMode : "svg",
+    locked: persisted.locked === true,
     sourceKeyId: typeof persisted.sourceKeyId === "string" ? persisted.sourceKeyId : undefined,
+    sourceLocationKey:
+      typeof persisted.sourceLocationKey === "string" ? persisted.sourceLocationKey : undefined,
     sourceIdentityKey:
       typeof persisted.sourceIdentityKey === "string" ? persisted.sourceIdentityKey : undefined,
     activeRequestId: undefined,
@@ -46,7 +50,9 @@
       autoFit: state.autoFit,
       background: state.background,
       displayMode: state.displayMode,
+      locked: state.locked,
       sourceKeyId: state.sourceKeyId,
+      sourceLocationKey: state.sourceLocationKey,
       sourceIdentityKey: state.sourceIdentityKey,
     });
   }
@@ -80,6 +86,23 @@
     }
     const key = snapshot.sourceKey;
     return [key.documentUri, key.sourceId, key.sourceHash].join("\u0000");
+  }
+
+  function sourceLocationKey(snapshot) {
+    if (!snapshot?.sourceKey) {
+      return undefined;
+    }
+    const key = snapshot.sourceKey;
+    return [key.documentUri, key.sourceId].join("\u0000");
+  }
+
+  function isDifferentSourceLocation(snapshot) {
+    const nextLocationKey = sourceLocationKey(snapshot);
+    return (
+      state.sourceLocationKey !== undefined &&
+      nextLocationKey !== undefined &&
+      state.sourceLocationKey !== nextLocationKey
+    );
   }
 
   function updateCanvas() {
@@ -330,9 +353,11 @@
   function patchSettings(snapshot) {
     state.displayMode = snapshot.displayMode || "svg";
     state.background = snapshot.background || state.background;
+    state.locked = snapshot.locked === true;
     if (frame) {
       frame.dataset.displayMode = state.displayMode;
       frame.dataset.background = state.background;
+      frame.dataset.locked = state.locked ? "true" : "false";
     }
     if (displayModeElement instanceof HTMLSelectElement) {
       displayModeElement.value = state.displayMode;
@@ -346,7 +371,22 @@
     if (outputControlsElement instanceof HTMLElement) {
       outputControlsElement.hidden = state.displayMode !== "svg";
     }
+    updateLockControl(true);
     persistState();
+  }
+
+  function updateLockControl(enabled) {
+    if (!(lockElement instanceof HTMLButtonElement)) {
+      return;
+    }
+    lockElement.textContent = state.locked ? "Locked" : "Follow";
+    lockElement.title = enabled
+      ? state.locked
+        ? "Unlock preview so it follows the active source"
+        : "Lock preview to the current source"
+      : "Open a Mermaid preview before locking it to a source";
+    lockElement.disabled = !enabled;
+    lockElement.setAttribute("aria-pressed", state.locked ? "true" : "false");
   }
 
   function patchDiagnostics(diagnostics) {
@@ -406,6 +446,7 @@
   }
 
   function showEmpty(heading, detail) {
+    state.locked = false;
     if (emptyElement) {
       emptyElement.hidden = false;
       const headingElement = emptyElement.querySelector("h2");
@@ -416,7 +457,23 @@
     if (canvas) {
       canvas.replaceChildren();
     }
+    if (frame) {
+      frame.dataset.locked = "false";
+    }
+    updateLockControl(false);
     hideStatus();
+    persistState();
+  }
+
+  function clearPreviewContent(snapshot) {
+    if (canvas) {
+      canvas.replaceChildren();
+    }
+    resetViewportForNewContent();
+    state.sourceKeyId = sourceKeyId(snapshot);
+    state.sourceLocationKey = sourceLocationKey(snapshot);
+    state.sourceIdentityKey = sourceIdentityKey(snapshot);
+    updateCanvas();
   }
 
   function replacePreviewContent(content, snapshot) {
@@ -453,6 +510,7 @@
       state.panY = 0;
     }
     state.sourceKeyId = nextSourceKeyId;
+    state.sourceLocationKey = sourceLocationKey(snapshot);
     state.sourceIdentityKey = nextSourceIdentityKey;
     updateCanvas();
     if (state.autoFit && snapshot?.displayMode === "svg") {
@@ -474,6 +532,9 @@
         break;
       case "renderStarted":
         state.activeRequestId = message.requestId;
+        if (isDifferentSourceLocation(message.snapshot)) {
+          clearPreviewContent(message.snapshot);
+        }
         patchSnapshot(message.snapshot);
         hideEmpty();
         showStatus(
@@ -493,6 +554,9 @@
       case "renderFailed":
         if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {
           return;
+        }
+        if (isDifferentSourceLocation(message.snapshot)) {
+          clearPreviewContent(message.snapshot);
         }
         patchSnapshot(message.snapshot);
         state.activeRequestId = undefined;
@@ -533,6 +597,11 @@
         break;
       case "export-png":
         post("exportRendered", { format: "png" });
+        break;
+      case "lock":
+        state.locked = !state.locked;
+        post("setLocked", { locked: state.locked });
+        persistState();
         break;
       case "diagnostic":
         post("revealDiagnostic", { target: actionElement.dataset.target });
@@ -646,6 +715,9 @@
   }
   if (backgroundElement instanceof HTMLSelectElement) {
     backgroundElement.value = state.background;
+  }
+  if (lockElement instanceof HTMLButtonElement) {
+    updateLockControl(false);
   }
 
   if (viewport && canvas && stage && typeof ResizeObserver !== "undefined") {

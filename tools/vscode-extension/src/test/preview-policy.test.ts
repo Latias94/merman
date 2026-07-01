@@ -92,6 +92,18 @@ describe("preview update policy", () => {
     assert.ok(actions.some((action) => action.type === "renderRequested"));
   });
 
+  it("updates settings without rerendering when preview lock changes", () => {
+    const previous = snapshot({ locked: false });
+    const next = snapshot({ locked: true });
+
+    const actions = planPreviewUpdate(previous, next, "lock");
+
+    assert.deepEqual(
+      actions.map((action) => action.type),
+      ["settingsUpdated"],
+    );
+  });
+
   it("shows an empty preview when no source is available", () => {
     const previous = snapshot({});
 
@@ -111,6 +123,7 @@ function snapshot(
     diagramTheme?: PreviewSnapshot["diagramTheme"];
     displayMode?: PreviewSnapshot["displayMode"];
     background?: PreviewSnapshot["background"];
+    locked?: boolean;
     diagnostics?: PreviewDiagnostics;
   },
 ): PreviewSnapshot {
@@ -126,6 +139,7 @@ function snapshot(
     diagramTheme: options.diagramTheme ?? "source",
     displayMode: options.displayMode ?? "svg",
     background: options.background ?? "paper",
+    locked: options.locked ?? false,
   });
 }
 

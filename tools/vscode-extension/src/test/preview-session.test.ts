@@ -57,6 +57,84 @@ describe("preview session", () => {
     assert.equal(snapshot?.input.sourceId, "fence-1");
     assert.equal(snapshot?.selected, false);
   });
+
+  it("prefers an explicitly opened resource once without disabling follow mode", () => {
+    const session = new PreviewSession();
+    const first = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
+    const second = textEditor("file:///workspace/two.mmd", "two.mmd", "sequenceDiagram\nA->>B: hi\n");
+
+    session.rememberResource(second.document.uri, { preferOnce: true });
+
+    let snapshot = session.createSnapshot(first, [first, second], emptyDiagnostics);
+    assert.equal(snapshot?.documentUri, "file:///workspace/two.mmd");
+
+    snapshot = session.createSnapshot(first, [first, second], emptyDiagnostics);
+    assert.equal(snapshot?.documentUri, "file:///workspace/one.mmd");
+  });
+
+  it("keeps a locked preview on the remembered source instead of following the active editor", () => {
+    const session = new PreviewSession();
+    const first = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
+    const second = textEditor("file:///workspace/two.mmd", "two.mmd", "sequenceDiagram\nA->>B: hi\n");
+
+    session.rememberResource(first.document.uri);
+    const initial = session.createSnapshot(first, [first], emptyDiagnostics);
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    const snapshot = session.createSnapshot(second, [first, second], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, "file:///workspace/one.mmd");
+    assert.equal(snapshot?.locked, true);
+  });
+
+  it("keeps a locked preview on the last snapshot when the source editor is no longer visible", () => {
+    const session = new PreviewSession();
+    const first = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
+    const second = textEditor("file:///workspace/two.mmd", "two.mmd", "sequenceDiagram\nA->>B: hi\n");
+
+    session.rememberResource(first.document.uri);
+    const initial = session.createSnapshot(first, [first], emptyDiagnostics);
+    assert.ok(initial);
+    session.rememberSnapshot(initial);
+    assert.equal(session.setLocked(true), true);
+    assert.equal(session.setDiagramTheme("dark"), true);
+
+    const snapshot = session.createSnapshot(second, [second], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, "file:///workspace/one.mmd");
+    assert.equal(snapshot?.input.source, "flowchart TD\nA --> B\n");
+    assert.equal(snapshot?.diagramTheme, "dark");
+    assert.equal(snapshot?.sourceKey.diagramTheme, "dark");
+    assert.equal(snapshot?.locked, true);
+  });
+
+  it("keeps a locked Markdown fence on the last snapshot when the selected fence disappears", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7);
+    const edited = textEditor(
+      uri,
+      "notes.md",
+      ["```mermaid", "flowchart TD", "A --> B", "```"].join("\n"),
+      "markdown",
+      1,
+    );
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi");
+    assert.equal(snapshot?.locked, true);
+  });
 });
 
 function emptyDiagnostics() {
@@ -95,4 +173,23 @@ function textEditor(
       },
     },
   } as unknown as vscode.TextEditor;
+}
+
+function markdownWithTwoFences(): string {
+  return [
+    "```mermaid",
+    "flowchart TD",
+    "A --> B",
+    "```",
+    "",
+    "```mermaid",
+    "sequenceDiagram",
+    "A->>B: hi",
+    "```",
+  ].join("\n");
+}
+
+function assertDefined<T>(value: T | undefined): T {
+  assert.ok(value);
+  return value;
 }

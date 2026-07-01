@@ -5,6 +5,19 @@ status: active
 
 # Log
 
+## 2026-07-01
+- Recovered session `019f1389-55d7-7b11-974a-c732f43a4473` and continued the VS Code preview UX
+  follow-up after the editor diagnostics cleanup goal was already complete.
+- Spawned read-only subagents for preview state, VS Code parity, and LSP/diagnostics UX. Fixed the
+  two low-risk preview state issues they found: explicit target opens now prefer the target once
+  despite `preserveFocus: true`, and empty previews can no longer be locked.
+- Kept larger parity work out of the small slice: multi-preview manager/instance ownership,
+  show-source/refresh commands, stale same-source failure labeling, and preview diagnostic source
+  filtering remain separate follow-ups.
+- Verified the current uncommitted follow-up with `npm run check`, `npm test`,
+  `cargo nextest run -p merman-core kanban_recovered_editor_fact_diagnostics_are_english`, and
+  `git diff --check`.
+
 ## 2026-06-30
 - Finished the editor diagnostics architecture cleanup plan end-to-end. Final gates passed Rust
   formatting, diff hygiene, engineering memory validation, Rust analysis/editor-core/LSP compile

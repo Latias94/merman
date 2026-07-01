@@ -24,6 +24,7 @@ export interface PreviewSnapshotMessagePayload {
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
+  locked: boolean;
   sourceKey: PreviewSourceKey;
   sources: PreviewSourceOption[];
   diagnostics?: PreviewDiagnostics;
@@ -76,6 +77,7 @@ export type PreviewFromWebviewMessage =
   | { type: "exportRendered"; format: "svg" | "png" }
   | { type: "revealDiagnostic"; target: string }
   | { type: "selectSource"; sourceId: string }
+  | { type: "setLocked"; locked: boolean }
   | { type: "setDiagramTheme"; theme: PreviewDiagramTheme }
   | { type: "setDisplayMode"; mode: PreviewDisplayMode }
   | { type: "setBackground"; background: PreviewBackground };
@@ -90,6 +92,7 @@ export function snapshotMessagePayload(snapshot: PreviewSnapshot): PreviewSnapsh
     diagramTheme: snapshot.diagramTheme,
     displayMode: snapshot.displayMode,
     background: snapshot.background,
+    locked: snapshot.locked,
     sourceKey: snapshot.sourceKey,
     diagnostics: snapshot.diagnostics,
     sources: snapshot.sources.map((source) => ({
@@ -117,6 +120,8 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
       return typeof record.target === "string";
     case "selectSource":
       return typeof record.sourceId === "string";
+    case "setLocked":
+      return typeof record.locked === "boolean";
     case "setDiagramTheme":
       return isPreviewDiagramTheme(record.theme);
     case "setDisplayMode":

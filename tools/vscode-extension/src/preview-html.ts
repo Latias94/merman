@@ -66,6 +66,9 @@ function renderToolbar(): string {
       <button type="button" data-action="export-svg" title="Export SVG">Export SVG</button>
       <button type="button" data-action="export-png" title="Export PNG">Export PNG</button>
     </span>
+    <span class="toolbar-group">
+      <button type="button" data-action="lock" data-preview-lock title="Open a Mermaid preview before locking it to a source" disabled>Follow</button>
+    </span>
     <details class="preview-menu" data-preview-menu>
       <summary title="Preview settings">...</summary>
       <label>
