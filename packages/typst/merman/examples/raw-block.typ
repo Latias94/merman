@@ -1,8 +1,8 @@
-#import "@preview/merman:0.1.0": show-mermaid-blocks-context
+#import "@preview/merman:0.1.0": show-mermaid-blocks
 
-#show raw.where(lang: "mermaid"): show-mermaid-blocks-context(
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(
+  document-context: true,
   width: 100%,
-  pipeline: "readable",
   alt: "A Mermaid diagram rendered from a raw block",
 )
 

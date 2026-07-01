@@ -10,7 +10,7 @@ use std::fmt::{self, Display, Formatter};
 #[cfg(target_arch = "wasm32")]
 wasm_minimal_protocol::initiate_protocol!();
 
-const ABI_VERSION: &[u8] = b"1";
+pub const TYPST_PLUGIN_ABI_VERSION: &str = "1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypstPluginError {
@@ -45,7 +45,7 @@ impl From<merman_bindings_core::BindingError> for TypstPluginError {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn abi_version() -> &'static [u8] {
-    ABI_VERSION
+    TYPST_PLUGIN_ABI_VERSION.as_bytes()
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
@@ -123,6 +123,7 @@ mod tests {
 
     #[test]
     fn abi_version_is_stable() {
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION, "1");
         assert_eq!(abi_version(), b"1");
     }
 

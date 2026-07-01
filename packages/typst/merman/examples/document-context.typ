@@ -1,20 +1,21 @@
-#import "@preview/merman:0.1.0": mermaid-context, show-mermaid-blocks-context
+#import "@preview/merman:0.1.0": mermaid, show-mermaid-blocks
 
 #set page(width: 16cm, margin: 18mm)
 #set text(font: "Arial", size: 13pt)
 
-#show raw.where(lang: "mermaid"): show-mermaid-blocks-context(
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(
+  document-context: true,
   width: 100%,
-  pipeline: "readable",
 )
 
 = Document context example
 
-#mermaid-context(
+#mermaid(
   "flowchart LR
-    A[Document font] --> B[Context-aware wrapper]
+    A[Document font] --> B[document-context render]
     B --> C[Respects container width]
   ",
+  document-context: true,
   width: 100%,
 )
 
@@ -22,6 +23,6 @@
 sequenceDiagram
   participant Typst
   participant merman
-  Typst->>merman: Use the show-block wrapper
+  Typst->>merman: Use document-context raw blocks
   merman-->>Typst: Render with the current document context
 ```
