@@ -1132,7 +1132,7 @@ pub fn parse_kanban_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSem
                             }
                             None => {
                                 facts.mark_recovered_with_diagnostic(
-                                    "无法从 kanban 头部同一行恢复节点语义",
+                                    "Unable to recover kanban node semantics from the header line",
                                     Some(SourceSpan::new(
                                         line_start + rel,
                                         line_start + rel + rest.len(),
@@ -1211,7 +1211,7 @@ pub fn parse_kanban_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSem
             || rest.contains(']')
         {
             facts.mark_recovered_with_diagnostic(
-                "无法完整恢复 kanban 节点语义",
+                "Unable to fully recover kanban node semantics",
                 Some(SourceSpan::new(
                     line_start + line.find(rest).unwrap_or(0),
                     line_start + line.find(rest).unwrap_or(0) + rest.len(),
@@ -1270,6 +1270,26 @@ mod tests {
                 .iter()
                 .any(|symbol| symbol.name == "highlight")
         );
+    }
+
+    #[test]
+    fn kanban_recovered_editor_fact_diagnostics_are_english() {
+        let engine = Engine::new();
+        let text = "kanban\n  broken[Open\n";
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("kanban", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.diagnostics.iter().any(
+            |diagnostic| diagnostic.message == "Unable to fully recover kanban node semantics"
+        ));
+        assert!(facts.diagnostics.iter().all(|diagnostic| {
+            !diagnostic
+                .message
+                .chars()
+                .any(|ch| ('\u{4E00}'..='\u{9FFF}').contains(&ch))
+        }));
     }
 
     #[test]
