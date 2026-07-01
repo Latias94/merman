@@ -1,0 +1,96 @@
+name: VS Code Extension
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/vscode-extension.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/merman*/**"
+      - "tools/vscode-extension/**"
+  pull_request:
+    paths:
+      - ".github/workflows/vscode-extension.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/merman*/**"
+      - "tools/vscode-extension/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vscode-extension-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+          - os: macos-15
+          - os: windows-2025-vs2026
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/vscode-extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: tools/vscode-extension
+        run: npm ci
+
+      - name: Detect package platform
+        id: package-platform
+        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'key=' + process.platform + '-' + process.arch + '\n')"
+
+      - name: Build release runtime binaries
+        run: cargo build --release --locked -p merman-lsp -p merman-cli
+
+      - name: Typecheck extension
+        working-directory: tools/vscode-extension
+        run: npm run check
+
+      - name: Test extension
+        working-directory: tools/vscode-extension
+        run: npm test
+
+      - name: Stage runtime binaries
+        working-directory: tools/vscode-extension
+        run: npm run prepare:binaries
+
+      - name: Package VSIX
+        working-directory: tools/vscode-extension
+        run: npm run package -- --out "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix"
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-vscode-${{ steps.package-platform.outputs.key }}
+          path: tools/vscode-extension/merman-vscode-${{ steps.package-platform.outputs.key }}.vsix
+          if-no-files-found: error

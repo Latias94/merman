@@ -3,9 +3,14 @@
   "displayName": "Merman",
   "description": "Local Mermaid authoring, diagnostics, preview, and export powered by Merman.",
   "version": "0.1.0",
-  "private": true,
+  "publisher": "latias94",
+  "preview": true,
   "license": "MIT OR Apache-2.0",
-  "publisher": "local",
+  "homepage": "https://github.com/Latias94/merman#readme",
+  "bugs": {
+    "url": "https://github.com/Latias94/merman/issues"
+  },
+  "qna": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/Latias94/merman.git"
@@ -18,6 +23,20 @@
     "Linters",
     "Other"
   ],
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "preview",
+    "lsp",
+    "diagnostics",
+    "export",
+    "markdown",
+    "mdx"
+  ],
+  "galleryBanner": {
+    "color": "#0B3D3A",
+    "theme": "dark"
+  },
   "activationEvents": [
     "onLanguage:mermaid",
     "onLanguage:markdown",

@@ -127,3 +127,16 @@ npm run package
 `npm run package` expects `npm run prepare:binaries` to have populated `bin/<platform>-<arch>/`.
 The development-only Cargo fallbacks are disabled by default so a packaged VSIX does not silently
 depend on a Rust workspace.
+
+The GitHub Actions workflow `.github/workflows/vscode-extension.yml` runs the same package smoke on
+Linux, macOS, and Windows and uploads platform-specific VSIX artifacts named from the detected Node
+runtime platform, such as:
+
+- `merman-vscode-linux-x64.vsix`
+- `merman-vscode-darwin-arm64.vsix`
+- `merman-vscode-win32-x64.vsix`
+
+Before publishing a VSIX to the Marketplace, verify that `package.json` has the intended
+`publisher`, `version`, `preview` status, repository links, and changelog entry. The extension is
+packaged with runtime binaries for the platform that built it, so publish or distribute the matching
+artifact for the target host.
