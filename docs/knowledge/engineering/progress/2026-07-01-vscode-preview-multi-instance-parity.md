@@ -38,11 +38,16 @@ creates or reuses a follow preview instead of retargeting the locked panel.
   Mermaid source range.
 - Extended manager, policy, message, HTML shell, and webview tests for multi-preview routing,
   forced refresh, active-preview source reveal, and panel-origin commands.
+- Added headless smoke-equivalent manager tests for follow preview close/reopen, webview-ready
+  state replay, panel-origin source reveal, and panel-local Copy SVG plus Export SVG/PNG routing.
 
 ## Verified
 
 - `npm run check` from `tools/vscode-extension`
-- `npm test -- --test-reporter=spec` from `tools/vscode-extension` (96 tests)
+- focused `node --test dist/test/preview-manager.test.js --test-reporter=spec` from
+  `tools/vscode-extension` (13 tests)
+- `npm test -- --test-reporter=spec` from `tools/vscode-extension` (100 tests)
+- `npm run package` from `tools/vscode-extension`
 - `git diff --check` from the repository root
 
 Rust verification was not required because this slice touched only VS Code extension TypeScript,
@@ -50,10 +55,13 @@ webview media, package metadata, tests, plan documentation, and engineering memo
 
 ## Remaining Work
 
-- Manual VS Code extension-host smoke is still useful before shipping: open two previews by locking
-  one source and opening another, toggle lock from both command palette and toolbar, run Refresh
-  globally and from one panel, run Show Preview Source from command palette and toolbar, close and
-  reopen panels, reload the webview, and verify Copy SVG plus Export SVG/PNG remain panel-local.
+- Optional real VS Code Extension Host/manual GUI smoke is still useful for visual confidence:
+  open two previews by locking one source and opening another, toggle lock from both command
+  palette and toolbar, run Refresh globally and from one panel, run Show Preview Source from
+  command palette and toolbar, close and reopen panels, reload the webview, and verify Copy SVG
+  plus Export SVG/PNG remain panel-local. No automated extension-host integration harness exists
+  in the current repo; the headless manager/webview tests and package smoke cover the same routing
+  and packaging risks that can be exercised without a GUI session.
 - Full Markdown Preview parity remains deferred: custom editor restoration, serializer support,
   scroll synchronization, view-column matching, preview links, image copy, security selector, and
   plugin reload behavior are intentionally out of scope.

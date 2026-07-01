@@ -6,6 +6,14 @@ status: active
 # Log
 
 ## 2026-07-01
+- Added headless smoke-equivalent coverage for the VS Code preview multi-instance parity slice and
+  committed it as `1b400ddaa`. The new manager tests cover follow preview close/reopen,
+  webview-ready state replay, panel-origin source reveal, and panel-local Copy SVG plus Export
+  SVG/PNG routing. Verification passed with `npm run check`, focused
+  `node --test dist/test/preview-manager.test.js --test-reporter=spec` (13 tests),
+  `npm test -- --test-reporter=spec` (100 tests), `npm run package`, and `git diff --check`.
+  Direct GUI Extension Host smoke was not run because the repo has no automated extension-host
+  integration harness in this checkout; manual GUI smoke remains optional visual confidence.
 - Completed the no-user-visible-behavior-change VS Code `PreviewInstance` extraction from
   `docs/plans/2026-07-01-001-refactor-vscode-preview-instance-extraction-plan.md`. The manager now
   owns command/global event routing and one current instance; `PreviewInstance` owns panel-local
