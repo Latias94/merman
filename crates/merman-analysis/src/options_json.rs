@@ -383,6 +383,40 @@ mod tests {
     }
 
     #[test]
+    fn shared_analysis_options_json_rejects_external_lint_rule_ids() {
+        let cases = [
+            serde_json::json!({
+                "lint": {
+                    "enable_rules": ["require-direction"]
+                }
+            }),
+            serde_json::json!({
+                "lint": {
+                    "disable_rules": ["mermaid-lint/no-empty-labels"]
+                }
+            }),
+            serde_json::json!({
+                "lint": {
+                    "rule_severities": [
+                        {
+                            "rule_id": "duplicate-ids",
+                            "severity": "warning"
+                        }
+                    ]
+                }
+            }),
+        ];
+
+        for options in cases {
+            let err = analysis_options_from_json_value(&options).unwrap_err();
+            assert!(
+                err.to_string().contains("configurable analysis rule id"),
+                "unexpected error for {options}: {err}"
+            );
+        }
+    }
+
+    #[test]
     fn shared_analysis_options_json_rejects_internal_lint_rule_ids() {
         let wrapped = serde_json::json!({
             "lint": {

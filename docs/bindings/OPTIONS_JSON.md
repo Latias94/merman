@@ -156,6 +156,14 @@ Bindings expose the same rule registry through their lint-rule catalog metadata 
 should read that catalog when building settings UI instead of duplicating rule ids, evidence
 references, and origins.
 
+Only Merman rule ids from the lint-rule catalog are accepted here. External linter ids such as
+markdownlint, remark, textlint, or `mermaid-lint` rules must stay in the host tool's own
+configuration. For example, `mermaid-lint` rules such as `require-direction`, `duplicate-ids`, or
+`no-empty-labels` should not be passed through `lint.enable_rules`, `lint.disable_rules`, or
+`lint.rule_severities`. Adapters can convert Merman diagnostics outward into an external report
+format, but they should not translate external rule ids into `lint.*` options unless Merman exposes
+a distinct source-backed `merman.*` rule.
+
 `analyzeDocument(source, options, uri)` uses this same options contract. The URI determines whether
 the payload source is a standalone Mermaid diagram, Markdown, or MDX document; Markdown and MDX
 diagnostics, related locations, and fixes are remapped to host-document coordinates. Use

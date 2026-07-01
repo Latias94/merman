@@ -43,6 +43,26 @@ const analysis = analyzeDocument(markdownSource, {
 5. Layer external rules separately instead of remapping them into Merman rule ids.
 6. Keep Mermaid.js fallback if your tool promises Mermaid runtime parity.
 
+## Rule Policy Boundary
+
+Merman lint configuration accepts only Merman-governed rule ids from the analysis rule catalog.
+External rule ids such as `require-direction`, `duplicate-ids`, `no-empty-labels`, or
+`no-orphan-nodes` remain external linter policy. Passing those ids through `lint.enable_rules`,
+`lint.disable_rules`, or `lint.rule_severities` is invalid by design.
+
+When an external tool wants to combine rule sets, keep two namespaces:
+
+| External policy | Merman boundary |
+| --- | --- |
+| `require-direction` | Closest Merman rule is `merman.authoring.flowchart.explicit_direction`, but it is an opt-in Merman authoring hint, not the same rule id or authority claim. |
+| `duplicate-ids` | Keep the external rule id for project-wide style policy. Merman only emits the specific parser/semantic diagnostics it owns, such as `merman.git_graph.duplicate_commit_id`. |
+| `no-empty-labels`, `no-orphan-nodes`, project style packs | Keep these in the external linter. Do not mirror them into Merman config unless Merman later adds source-backed rules with new `merman.*` ids. |
+
+If an external rule wants to reuse Merman parser evidence, keep the mapping in the adapter: run
+`analyzeDocument()` with a Merman profile or explicit Merman rule ids, read Merman spans and related
+locations, emit the external tool's own rule id from the external rule implementation, and attach
+the original `merman.*` id as secondary metadata only when it helps debugging.
+
 ## VS Code Coexistence
 
 When an external linter owns Problems output, users can keep Merman language features and suppress duplicate Merman diagnostics:

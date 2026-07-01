@@ -50,6 +50,9 @@ The governance rules are:
 8. `disable_rules` wins over profile defaults and explicit enablement.
 9. Severity overrides do not imply authority. Raising an authoring rule to warning or error is a
    host policy choice, not a Merman claim about Mermaid.
+10. External lint rule ids remain in their owning tools. Merman configuration rejects ids that are
+    not present in the public `merman.*` rule catalog instead of treating markdownlint, remark,
+    textlint, `mermaid-lint`, or project-specific style policy as Merman-governed policy.
 
 The first breaking rule-id migrations are:
 
@@ -109,4 +112,6 @@ The first breaking rule-id migrations are:
 - The lint catalog can grow without pretending to be Mermaid official.
 - LSP and CLI can offer productivity quickfixes behind explicit rule profiles.
 - Alpha users must update old authoring rule IDs.
+- External linters can consume Merman diagnostics without giving up their own rule namespace,
+  discovery policy, Mermaid.js fallback, or CI severity model.
 - Future rule additions need evidence and origin classification before becoming configurable.

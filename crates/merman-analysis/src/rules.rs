@@ -34,7 +34,6 @@ pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
 pub const FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID: &str =
     "merman.semantic.flowchart.unknown_style_target";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
-pub const SEMANTIC_WARNING_RULE_ID: &str = "merman.semantic.warning";
 
 const DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS: [&[&str]; 2] = [
     &["flowchart", "htmlLabels"],
@@ -243,7 +242,7 @@ const RECOVERED_EDITOR_FACTS_RULE: RuleDescriptor = RuleDescriptor {
     id: RECOVERED_EDITOR_FACTS_RULE_ID,
     description: "Report parser recovery diagnostics emitted while producing editor semantic facts.",
     evidence: &[
-        "crates/merman-core/src/editor.rs",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/mermaid.ts",
         "docs/adr/0070-diagnostics-first-analysis-contract.md",
     ],
     default_severity: DiagnosticSeverity::Warning,
@@ -401,21 +400,6 @@ const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
-const SEMANTIC_WARNING_RULE: RuleDescriptor = RuleDescriptor {
-    id: SEMANTIC_WARNING_RULE_ID,
-    description: "Project registered diagram-family semantic warnings that do not yet have a family-specific rule.",
-    evidence: &[
-        "crates/merman-core/src/diagram/mod.rs",
-        "docs/plans/2026-06-24-003-refactor-mature-mermaid-lsp-roadmap-plan.md",
-    ],
-    default_severity: DiagnosticSeverity::Warning,
-    category: DiagnosticCategory::Semantic,
-    default_enabled: true,
-    default_profile: AnalysisRuleProfile::Core,
-    origin: RuleOrigin::MermaidCompatibility,
-    fixable: false,
-};
-
 const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PREFER_INIT_DIRECTIVE_RULE,
     PREFER_FRONTMATTER_CONFIG_RULE,
@@ -435,7 +419,6 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     FLOWCHART_EXPLICIT_DIRECTION_RULE,
     FLOWCHART_UNKNOWN_STYLE_TARGET_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
-    SEMANTIC_WARNING_RULE,
 ];
 
 pub fn rule_descriptors() -> &'static [RuleDescriptor] {
@@ -700,7 +683,6 @@ fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
         FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID => Some(FLOWCHART_EXPLICIT_DIRECTION_RULE),
         FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID => Some(FLOWCHART_UNKNOWN_STYLE_TARGET_RULE),
         GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => Some(GIT_GRAPH_DUPLICATE_COMMIT_RULE),
-        SEMANTIC_WARNING_RULE_ID => Some(SEMANTIC_WARNING_RULE),
         _ => None,
     }
 }
@@ -1325,7 +1307,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 19);
+        assert_eq!(descriptors.len(), 18);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert!(descriptors[0].description.contains("canonical `init`"));
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1532,11 +1514,77 @@ mod tests {
                 .iter()
                 .any(|descriptor| descriptor.id == GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID)
         );
-        assert!(
-            descriptors
-                .iter()
-                .any(|descriptor| descriptor.id == SEMANTIC_WARNING_RULE_ID)
-        );
+    }
+
+    #[test]
+    fn rule_descriptors_enforce_governance_boundaries() {
+        let mut ids = std::collections::BTreeSet::new();
+
+        for descriptor in rule_descriptors() {
+            assert!(
+                descriptor.id.starts_with("merman."),
+                "{} must stay in the Merman-owned rule namespace",
+                descriptor.id
+            );
+            assert!(
+                ids.insert(descriptor.id),
+                "duplicate rule id {}",
+                descriptor.id
+            );
+            assert!(
+                !descriptor.evidence.is_empty(),
+                "{} must publish evidence",
+                descriptor.id
+            );
+
+            match descriptor.origin {
+                RuleOrigin::MermaidSyntax | RuleOrigin::MermaidCompatibility => {
+                    assert!(
+                        descriptor.evidence.iter().any(|evidence| evidence
+                            .starts_with("https://github.com/mermaid-js/mermaid/blob/")),
+                        "{} must cite public Mermaid source evidence",
+                        descriptor.id
+                    );
+                    assert_eq!(
+                        descriptor.default_profile,
+                        AnalysisRuleProfile::Core,
+                        "{} is Mermaid-backed and should remain in the conservative core profile",
+                        descriptor.id
+                    );
+                }
+                RuleOrigin::MermanAuthoring => {
+                    assert!(
+                        descriptor.id.starts_with("merman.authoring."),
+                        "{} must make Merman authoring authority explicit",
+                        descriptor.id
+                    );
+                    assert!(
+                        !descriptor.default_enabled,
+                        "{} must be opt-in outside the recommended profile",
+                        descriptor.id
+                    );
+                    assert_eq!(
+                        descriptor.default_profile,
+                        AnalysisRuleProfile::Recommended,
+                        "{} must not be enabled by the core profile",
+                        descriptor.id
+                    );
+                    assert_eq!(
+                        descriptor.default_severity,
+                        DiagnosticSeverity::Hint,
+                        "{} must surface as an authoring hint by default",
+                        descriptor.id
+                    );
+                }
+                RuleOrigin::MermanResourcePolicy => {
+                    assert_eq!(descriptor.default_profile, AnalysisRuleProfile::Core);
+                    assert_eq!(descriptor.category, DiagnosticCategory::Resource);
+                }
+                RuleOrigin::MermanInternal => {
+                    assert_eq!(descriptor.category, DiagnosticCategory::Internal);
+                }
+            }
+        }
     }
 
     #[test]
@@ -1613,11 +1661,6 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
-        );
-        assert!(
-            descriptors
-                .iter()
-                .any(|descriptor| descriptor.id == SEMANTIC_WARNING_RULE_ID)
         );
         assert!(
             descriptors
