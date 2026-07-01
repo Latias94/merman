@@ -58,6 +58,23 @@ intentionally sparse on rename/reference targets. They still belong in the first
 because completion, hover, diagnostics, and semantic indexing are wired, but the family itself
 does not expose many entity-bearing spans.
 
+## Semantic Fact Provenance
+
+Editor features are backed by `merman-editor-core` query results. Those results expose
+`FenceTextIndexSource` provenance so callers can distinguish first-class parser facts from fallback
+behavior:
+
+| Provenance | Meaning | Product status |
+| --- | --- | --- |
+| `ParserComplete` | Semantic facts came from a successful family parser/editor-facts path. | Mature when covered by the family row and editor-core tests. |
+| `ParserRecovered` | Semantic facts came from parser recovery after an incomplete or invalid edit buffer. | Mature for incomplete-buffer editing when tests cover the family and feature. |
+| `TextScan` | Semantic facts came from the bounded text-scan fallback. | Fallback only; not a mature family capability and must stay visible to callers. |
+
+The matrix above requires parser-backed complete or recovered provenance for first-class feature
+claims. Text-scan fallback may still support source-start headers/templates and conservative
+directive prefixes, but it must not be counted as mature body completion, navigation, rename, or
+semantic-token support.
+
 ## Parser Diagnostic Span Coverage
 
 Core parser diagnostics use explicit span classes before they reach analysis:

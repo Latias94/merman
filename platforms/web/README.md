@@ -131,10 +131,14 @@ applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWi
 label can make the diagram wider than Mermaid would make it in the browser.
 
 `analyze()` returns the diagnostics payload JSON object for a standalone Mermaid diagram.
-`analyzeDocument(source, options, uri)` uses the URI extension to analyze standalone `.mmd`,
-Markdown, or MDX documents and returns diagnostics, related locations, and fixes in host-document
-coordinates. Downstream lint tools should use `analyzeDocument()` when they scan Markdown files and
-want Merman as an optional analysis engine without adopting the LSP.
+`analyzeDocument(source, options, uri)` uses the shared document source model to analyze standalone
+`.mmd`, Markdown, or MDX documents and returns diagnostics, related locations, and fixes in
+host-document coordinates. Downstream lint tools should use `analyzeDocument()` when they scan
+Markdown files and want Merman as an optional analysis engine without adopting the LSP.
+
+This web surface is an integration bridge, not a request that external linters copy Merman policy.
+Adapters should preserve `merman.*` rule ids for Merman diagnostics and layer their own style rules
+under their own namespaces.
 
 ## Custom wasm loading
 
@@ -252,6 +256,8 @@ All render, parse, layout, analysis, validation, editor, and metadata functions 
 `initMerman()` first. The editor functions are stateless document queries backed by
 `merman-editor-core`; they return UTF-16 positions/ranges so Monaco and LSP adapters can project the
 same completion, diagnostics, hover, symbol, code-action, rename, and semantic-token semantics.
+Editor query results expose semantic fact provenance where applicable, matching the
+`ParserComplete`, `ParserRecovered`, and `TextScan` boundary used by `merman-editor-core`.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()`, and `lintRuleCatalog()` return typed metadata and fail fast if the
 generated WebAssembly metadata drifts from the TypeScript surface. ASCII support is typed

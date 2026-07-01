@@ -80,6 +80,9 @@ The contract has these rules:
    - Plain `.mmd` input uses the whole document as diagram source.
    - Markdown/MDX scanning records fence offsets and maps diagnostic ranges back to host-document
      ranges.
+   - The shared `DocumentSource` model is the source/fence boundary for analysis, editor-core,
+     LSP, CLI, and web bindings. Wrappers choose a source descriptor; they do not duplicate fence
+     extraction or range remapping policy.
    - Whole-diagram or whole-fence spans are reserved for source-wide conditions or parser failures
      that genuinely do not expose a narrower deterministic location.
 
@@ -200,6 +203,8 @@ Ship a standalone linter before changing the shared bindings.
 ## Consequences
 
 - Lint and LSP work reuse the same source-map and diagnostic model.
+- Document-level analysis gives JavaScript lint adapters a non-LSP bridge for `.mmd`, Markdown,
+  and MDX while preserving host-document coordinates.
 - Binding packages gain a richer payload without changing every host around a Rust enum.
 - Existing `validate` users have a migration bridge during alpha.
 - Parser families need incremental span and warning upgrades.

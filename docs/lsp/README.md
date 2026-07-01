@@ -6,12 +6,11 @@ status: active
 # Merman LSP
 
 `merman-lsp` is the canonical LSP transport for diagnostics, completion, structure-aware
-navigation, code-action, and semantic-token foundations. The semantic editor queries are shared
-with browser integrations through `merman-editor-core`; this crate owns protocol-neutral document
-snapshots, UTF-16 ranges, completion, diagnostics, symbols, navigation, rename, code-action
-metadata, and semantic-token selection. `merman-lsp` keeps the LSP lifecycle, capability
-negotiation, diagnostics publication, semantic-token delta state, custom requests, and
-`tower_lsp::lsp_types` projection.
+navigation, code-action, and semantic-token surfaces. The semantic editor queries are shared with
+browser integrations through `merman-editor-core`; editor-core owns protocol-neutral document
+snapshots, UTF-16 ranges, completion, symbols, navigation, rename, and semantic-token selection.
+`merman-lsp` keeps the LSP lifecycle, capability negotiation, diagnostics publication,
+semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projection.
 
 ## Responsibilities
 
@@ -24,10 +23,8 @@ negotiation, diagnostics publication, semantic-token delta state, custom request
 - Publish diagnostics from `merman-analysis` and answer standard pull diagnostic requests from the
   same analysis payloads.
 - Keep document state versioned so stale diagnostics are never republished.
-- Provide the first completion surface for diagram structure, directions, shapes, and local
-  identifiers.
-- Provide fence-local structure and navigation responses for hover, document symbols, definition,
-  references, and rename.
+- Project `merman-editor-core` completion, hover, document symbols, definition, references,
+  prepare-rename, rename, workspace symbols, and semantic tokens into LSP types.
 - Provide workspace symbols from tracked document snapshots.
 - Preserve parser-backed semantic items from `merman-analysis` so semantic tokens, future lint, and
   code actions can consume payload roles without LSP-local parsing.
@@ -49,7 +46,7 @@ negotiation, diagnostics publication, semantic-token delta state, custom request
 ## Product Direction
 
 - LSP behavior is driven by parser-backed semantic facts.
-- Raw-text scans are migration shims, not the target architecture.
+- Text-scan results are visible fallback provenance, not a mature capability signal.
 - `docs/lsp/CAPABILITIES.md` is the maturity contract. Families outside that matrix may still
   parse or render, but they are not first-class LSP commitments yet.
 - The current supported product-family set is first-class in the capability matrix. `error`
@@ -88,7 +85,7 @@ negotiation, diagnostics publication, semantic-token delta state, custom request
 
 - Plain Mermaid files and Markdown/MDX fenced Mermaid blocks are both supported.
 - Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
-- Completion uses snapshot-derived replacement ranges, so header, operator, direction, shape, and
-  node completions replace the current token instead of blindly inserting at the cursor.
+- Completion uses editor-core replacement ranges, so header, operator, direction, shape, and node
+  completions replace the current token instead of blindly inserting at the cursor.
 - Completion items carry stable resolve data and `completionItem/resolve` adds Markdown
   documentation without changing insert text or text edits.

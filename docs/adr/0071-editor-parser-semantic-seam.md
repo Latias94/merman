@@ -10,8 +10,9 @@ generator backed; others are hand-written because their syntax shape fits that b
 reasonable implementation choice.
 
 The problem now is not parser technology selection by itself. Editor-facing consumers need stable
-spans, recoverable partial results, and semantic identity. The current fence-local structure scans
-in `merman-lsp` are useful as a bootstrap, but they are not a product-grade contract.
+spans, recoverable partial results, semantic identity, and visible provenance for fallback behavior.
+The old fence-local structure scans in `merman-lsp` were useful as a bootstrap, but they are not a
+product-grade contract.
 
 ## Decision
 
@@ -22,16 +23,22 @@ in `merman-lsp` are useful as a bootstrap, but they are not a product-grade cont
   outline surfaces; outline facts may feed document symbols and hover without becoming completion
   candidates; payload facts preserve source spans for lint and future semantic consumers without
   being projected into the LSP migration index.
-- Route analysis, lint, and LSP features through semantic facts instead of raw-text structure scans.
+- Route analysis, lint, editor-core, WASM editor queries, and LSP features through semantic facts
+  instead of raw-text structure scans.
 - Keep render-model generation as a downstream projection, not the public parsing contract.
 
 Temporary raw-text scans may remain during migration, but only as compatibility shims. They are not
 the target architecture.
 
-As of 2026-06-24, the migration shim is centralized as `merman-analysis::FenceTextIndex`. LSP
-consumes that shared index and no longer owns separate completion, outline, navigation, and rename
-scans. This is an intermediate consolidation step; family parsers still need to produce the
-span-rich facts that will replace the shim.
+As of 2026-07-01, `merman-analysis::FenceTextIndex` is the shared semantic index and
+`merman-editor-core` is the protocol-neutral query boundary. LSP and WASM editor APIs project
+editor-core responses into their host protocols; they do not own separate completion, outline,
+navigation, rename, or semantic-token scans.
+
+Every editor-core result that depends on semantic facts carries `FenceTextIndexSource` provenance:
+`ParserComplete`, `ParserRecovered`, or `TextScan`. Parser-backed and recovered results may be
+first-class editor behavior when covered by tests. Text-scan results remain bounded fallback
+behavior and must stay visible in capability docs and tests.
 
 `FenceTextIndex` must respect semantic roles when it projects parser facts. It should not treat
 every parser-produced span as a graph-node completion id. For example, ER attribute names can be
@@ -41,8 +48,8 @@ polluting node-id completion.
 ## Consequences
 
 - `merman-core` gets a stronger contract for semantic facts and source locations.
-- `merman-analysis` and `merman-lsp` can stop rediscovering structure from raw text on the
-  supported families.
+- `merman-analysis`, `merman-editor-core`, WASM editor bindings, and `merman-lsp` can stop
+  rediscovering structure from raw text on the supported families.
 - Parser refactors become local to each family instead of forcing a repository-wide parser-generator
   rewrite.
 - Recovery and span coverage become part of the test surface, which raises the parser maintenance

@@ -81,6 +81,10 @@ external Mermaid preview extensions, and project lint tools. Use Merman for sema
 `.mmd` files, optional fence-aware diagnostics, local preview inspection, and export; it does not
 replace VS Code's Markdown preview renderer or repository lint policy.
 
+The packaged extension is a local capability surface over `merman-lsp` and `merman-cli`, not a
+claim that every project should adopt an LSP-first Mermaid workflow. Users can keep preview/export
+only, language intelligence without diagnostics, or the full local authoring stack.
+
 ## Coexistence modes
 
 Use Merman only for local preview and export without starting the language server:
