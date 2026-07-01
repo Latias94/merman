@@ -5,22 +5,26 @@ status: active
 
 # Current State
 
-- Goal: VS Code preview architecture is ready for the next parity slice after completing the
-  no-behavior-change `PreviewInstance` extraction.
+- Goal: VS Code preview multi-instance parity is implemented on top of the extracted
+  `PreviewInstance` boundary.
 - Branch: `feat/editor-core-language-intelligence`.
-- Last verified: `npm run check`, `npm test -- --test-reporter=spec` (87 tests), and
+- Last verified: `npm run check`, `npm test -- --test-reporter=spec` (96 tests), and
   `git diff --check`.
 - Done: editor diagnostics cleanup is complete; the preview UX follow-up hardens lock/follow,
   explicit target opening, cross-source render failure clearing, Merman-only preview diagnostic
   summaries, stale same-source render failure labeling, stale output-action blocking, and the
-  single-preview manager plus per-panel `PreviewInstance` ownership boundary.
+  single-preview manager plus per-panel `PreviewInstance` ownership boundary. The next preview
+  parity slice adds a manager-owned instance collection, active preview tracking, one unlocked
+  follow preview, multiple locked previews, manual refresh commands, toolbar Refresh/Source
+  actions, and source-range reveal.
 - In progress: none.
 - Blocked: none.
-- Next action: run optional VS Code extension-host smoke for preview lifecycle/output actions before
-  shipping, then plan true multi-preview parity work on top of the manager/instance boundary.
+- Next action: run optional VS Code extension-host smoke for multi-preview lifecycle and panel-local
+  output actions before shipping.
 
 # Citations
 
 - [Editor diagnostics architecture cleanup plan](../../plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md)
 - [VS Code Preview UX Follow-up](progress/2026-07-01-vscode-preview-ux-follow-up.md)
 - [VS Code PreviewInstance Extraction](progress/2026-07-01-vscode-preview-instance-extraction.md)
+- [VS Code Preview Multi-Instance Parity](progress/2026-07-01-vscode-preview-multi-instance-parity.md)
