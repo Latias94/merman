@@ -5,15 +5,22 @@ status: active
 
 # Current State
 
-- Goal: Finish the recovered VS Code preview UX follow-up after completing `docs/plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md`.
+- Goal: VS Code preview architecture is ready for the next parity slice after completing the
+  no-behavior-change `PreviewInstance` extraction.
 - Branch: `feat/editor-core-language-intelligence`.
-- Last verified: `npm run check`, `npm test` (81 tests), `cargo nextest run -p merman-core kanban_recovered_editor_fact_diagnostics_are_english`, and `git diff --check`.
-- Done: editor diagnostics cleanup plan is complete; the preview UX follow-up hardens preview lock/follow, explicit target opening, cross-source render failure clearing, kanban English recovery diagnostics, Merman-only preview diagnostic summaries, stale same-source render failure labeling, and stale preview output-action blocking.
+- Last verified: `npm run check`, `npm test -- --test-reporter=spec` (87 tests), and
+  `git diff --check`.
+- Done: editor diagnostics cleanup is complete; the preview UX follow-up hardens lock/follow,
+  explicit target opening, cross-source render failure clearing, Merman-only preview diagnostic
+  summaries, stale same-source render failure labeling, stale output-action blocking, and the
+  single-preview manager plus per-panel `PreviewInstance` ownership boundary.
 - In progress: none.
 - Blocked: none.
-- Next action: start a no-behavior-change `PreviewInstance` extraction before true multi-preview support.
+- Next action: run optional VS Code extension-host smoke for preview lifecycle/output actions before
+  shipping, then plan true multi-preview parity work on top of the manager/instance boundary.
 
 # Citations
 
 - [Editor diagnostics architecture cleanup plan](../../plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md)
 - [VS Code Preview UX Follow-up](progress/2026-07-01-vscode-preview-ux-follow-up.md)
+- [VS Code PreviewInstance Extraction](progress/2026-07-01-vscode-preview-instance-extraction.md)

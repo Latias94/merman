@@ -6,6 +6,13 @@ status: active
 # Log
 
 ## 2026-07-01
+- Completed the no-user-visible-behavior-change VS Code `PreviewInstance` extraction from
+  `docs/plans/2026-07-01-001-refactor-vscode-preview-instance-extraction-plan.md`. The manager now
+  owns command/global event routing and one current instance; `PreviewInstance` owns panel-local
+  session, render queue, webview client, message handling, export/copy, and disposal cleanup.
+  Verification passed with `npm run check`, `npm test -- --test-reporter=spec` (87 tests), and
+  `git diff --check`. Remaining validation is optional extension-host smoke for panel close/reopen,
+  webview reload/replay, Copy SVG, and Export SVG/PNG.
 - Recovered session `019f1389-55d7-7b11-974a-c732f43a4473` and continued the VS Code preview UX
   follow-up after the editor diagnostics cleanup goal was already complete.
 - Spawned read-only subagents for preview state, VS Code parity, and LSP/diagnostics UX. Fixed the
