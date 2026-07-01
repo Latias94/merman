@@ -38,6 +38,7 @@ import { PreviewRenderQueue } from "./preview-render.js";
 import { PreviewSession } from "./preview-session.js";
 import { assertSafePreviewSvg } from "./preview-svg-safety.js";
 import { PreviewWebviewClient } from "./preview-webview-client.js";
+import { collectMermanPreviewDiagnostics } from "./preview-diagnostics.js";
 
 const PREVIEW_COMMAND = "merman.openPreview";
 const TOGGLE_PREVIEW_LOCK_COMMAND = "merman.togglePreviewLock";
@@ -470,100 +471,11 @@ export function collectPreviewDiagnostics(
   uri: vscode.Uri,
   diagnosticRange: { startLine: number; endLine: number },
 ): PreviewDiagnostics {
-  const diagnostics = deduplicateDiagnostics(
-    vscode.languages
-      .getDiagnostics(uri)
-      .filter((diagnostic) => isDiagnosticInRange(diagnostic, diagnosticRange))
-      .sort(compareDiagnostics),
+  return collectMermanPreviewDiagnostics(
+    vscode.languages.getDiagnostics(uri),
+    uri.toString(),
+    diagnosticRange,
   );
-
-  const counts = {
-    error: diagnostics.filter((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error)
-      .length,
-    warning: diagnostics.filter(
-      (diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Warning,
-    ).length,
-    info: diagnostics.filter((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Information)
-      .length,
-    hint: diagnostics.filter((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Hint)
-      .length,
-  };
-
-  return {
-    summary: `${counts.error} errors, ${counts.warning} warnings, ${counts.info} infos, ${counts.hint} hints`,
-    totalCount: diagnostics.length,
-    firstTarget: diagnostics[0]
-      ? {
-          uri: uri.toString(),
-          startLine: diagnostics[0].range.start.line,
-          startCharacter: diagnostics[0].range.start.character,
-          endLine: diagnostics[0].range.end.line,
-          endCharacter: diagnostics[0].range.end.character,
-        }
-      : undefined,
-  };
-}
-
-function deduplicateDiagnostics(diagnostics: readonly vscode.Diagnostic[]): vscode.Diagnostic[] {
-  const seen = new Set<string>();
-  return diagnostics.filter((diagnostic) => {
-    const key = [
-      diagnostic.range.start.line,
-      diagnostic.range.start.character,
-      diagnostic.range.end.line,
-      diagnostic.range.end.character,
-      diagnostic.severity,
-      diagnostic.source ?? "",
-      diagnosticCodeLabel(diagnostic.code) ?? "",
-      diagnostic.message,
-    ].join("\u0000");
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
-}
-
-function isDiagnosticInRange(
-  diagnostic: vscode.Diagnostic,
-  diagnosticRange: { startLine: number; endLine: number },
-): boolean {
-  const startLine = diagnostic.range.start.line;
-  const endLine = diagnostic.range.end.line;
-  return startLine <= diagnosticRange.endLine && endLine >= diagnosticRange.startLine;
-}
-
-function compareDiagnostics(a: vscode.Diagnostic, b: vscode.Diagnostic): number {
-  return (
-    diagnosticSeverityRank(a.severity) - diagnosticSeverityRank(b.severity) ||
-    a.range.start.line - b.range.start.line ||
-    a.range.start.character - b.range.start.character
-  );
-}
-
-function diagnosticSeverityRank(severity: vscode.DiagnosticSeverity): number {
-  switch (severity) {
-    case vscode.DiagnosticSeverity.Error:
-      return 0;
-    case vscode.DiagnosticSeverity.Warning:
-      return 1;
-    case vscode.DiagnosticSeverity.Information:
-      return 2;
-    case vscode.DiagnosticSeverity.Hint:
-    default:
-      return 3;
-  }
-}
-
-function diagnosticCodeLabel(code: vscode.Diagnostic["code"]): string | undefined {
-  if (typeof code === "string" || typeof code === "number") {
-    return String(code);
-  }
-  if (code && typeof code === "object" && "value" in code) {
-    return String(code.value);
-  }
-  return undefined;
 }
 
 function parseDiagnosticTarget(raw: string): PreviewDiagnosticTarget {

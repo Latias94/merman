@@ -431,12 +431,31 @@
     statusElement.textContent = text;
   }
 
+  function showRenderFailure(error, stale) {
+    const text = stale
+      ? `Render failed. Showing last successful preview.\n${error || "Render failed"}`
+      : error || "Render failed";
+    showStatus(text, "error");
+    setRenderState(stale ? "stale" : "error");
+  }
+
   function hideStatus() {
     if (statusElement) {
       statusElement.hidden = true;
       statusElement.textContent = "";
       delete statusElement.dataset.kind;
     }
+  }
+
+  function setRenderState(renderState) {
+    if (!frame) {
+      return;
+    }
+    frame.dataset.renderState = renderState;
+  }
+
+  function hasPreviewContent() {
+    return !!canvas && canvas.children.length > 0;
   }
 
   function hideEmpty() {
@@ -447,6 +466,7 @@
 
   function showEmpty(heading, detail) {
     state.locked = false;
+    setRenderState("empty");
     if (emptyElement) {
       emptyElement.hidden = false;
       const headingElement = emptyElement.querySelector("h2");
@@ -473,6 +493,7 @@
     state.sourceKeyId = sourceKeyId(snapshot);
     state.sourceLocationKey = sourceLocationKey(snapshot);
     state.sourceIdentityKey = sourceIdentityKey(snapshot);
+    setRenderState("empty");
     updateCanvas();
   }
 
@@ -512,6 +533,7 @@
     state.sourceKeyId = nextSourceKeyId;
     state.sourceLocationKey = sourceLocationKey(snapshot);
     state.sourceIdentityKey = nextSourceIdentityKey;
+    setRenderState("ready");
     updateCanvas();
     if (state.autoFit && snapshot?.displayMode === "svg") {
       requestAnimationFrame(fitToView);
@@ -535,6 +557,7 @@
         if (isDifferentSourceLocation(message.snapshot)) {
           clearPreviewContent(message.snapshot);
         }
+        setRenderState("loading");
         patchSnapshot(message.snapshot);
         hideEmpty();
         showStatus(
@@ -555,12 +578,13 @@
         if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {
           return;
         }
-        if (isDifferentSourceLocation(message.snapshot)) {
+        const sourceLocationChanged = isDifferentSourceLocation(message.snapshot);
+        if (sourceLocationChanged) {
           clearPreviewContent(message.snapshot);
         }
         patchSnapshot(message.snapshot);
         state.activeRequestId = undefined;
-        showStatus(message.error || "Render failed", "error");
+        showRenderFailure(message.error, !sourceLocationChanged && hasPreviewContent());
         break;
     }
   }

@@ -106,6 +106,7 @@ describe("preview html", () => {
     assert.match(script, /case "diagnosticsUpdated"/);
     assert.match(script, /replacePreviewContent\(message\.content, message\.snapshot\)/);
     assert.match(script, /case "renderFailed":[\s\S]*isDifferentSourceLocation\(message\.snapshot\)/);
+    assert.match(script, /Showing last successful preview/);
     assert.match(script, /addEventListener\("wheel"/);
     assert.match(script, /setPointerCapture/);
     assert.match(script, /ResizeObserver/);
@@ -124,6 +125,7 @@ describe("preview html", () => {
     assert.match(styles, /\.stage/);
     assert.match(styles, /align-items:\s*center/);
     assert.match(styles, /\[data-preview-output-controls\]\[hidden\]/);
+    assert.match(styles, /\[data-render-state="stale"\]/);
     assert.doesNotMatch(styles, /scale\(var\(--preview-zoom/);
     assert.match(styles, /\.canvas svg \{[^}]*pointer-events:\s*none/s);
   });

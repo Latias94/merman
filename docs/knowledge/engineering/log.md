@@ -17,6 +17,11 @@ status: active
 - Verified the current uncommitted follow-up with `npm run check`, `npm test`,
   `cargo nextest run -p merman-core kanban_recovered_editor_fact_diagnostics_are_english`, and
   `git diff --check`.
+- Continued the same follow-up by extracting preview diagnostic collection into a pure
+  Merman-filtered module and adding a stale render state for same-source failures. The extension
+  now ignores non-Merman diagnostics in the preview summary and labels retained old output as the
+  last successful preview when the current same-source render fails. Re-verified with
+  `npm run check`, `npm test` (80 tests), and `git diff --check`.
 
 ## 2026-06-30
 - Finished the editor diagnostics architecture cleanup plan end-to-end. Final gates passed Rust

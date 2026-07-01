@@ -45,7 +45,7 @@ describe("preview webview app", () => {
     );
   });
 
-  it("keeps the previous SVG visible when the same source edit fails", () => {
+  it("marks the previous SVG as stale when the same source edit fails", () => {
     const app = loadPreviewApp();
 
     app.dispatch({
@@ -71,8 +71,12 @@ describe("preview webview app", () => {
 
     assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
     assert.equal(app.document.status.hidden, false);
-    assert.equal(app.document.status.textContent, "syntax issue");
+    assert.equal(
+      app.document.status.textContent,
+      "Render failed. Showing last successful preview.\nsyntax issue",
+    );
     assert.equal(app.document.status.dataset.kind, "error");
+    assert.equal(app.document.frame.dataset.renderState, "stale");
   });
 
   it("clears the previous SVG when a different source render fails", () => {
@@ -115,6 +119,7 @@ describe("preview webview app", () => {
     assert.equal(app.document.status.hidden, false);
     assert.equal(app.document.status.textContent, "syntax issue");
     assert.equal(app.document.status.dataset.kind, "error");
+    assert.equal(app.document.frame.dataset.renderState, "error");
     assert.equal(
       app.persistedState.sourceLocationKey,
       previewSourceLocation("file:///workspace/two.mmd", "document"),
@@ -134,6 +139,7 @@ describe("preview webview app", () => {
     assert.equal(app.document.empty.hidden, true);
     assert.equal(app.document.status.hidden, false);
     assert.equal(app.document.status.textContent, "Rendering SVG preview: Mermaid fence 1");
+    assert.equal(app.document.frame.dataset.renderState, "loading");
   });
 
   it("keeps the empty placeholder hidden when the first render fails for an identified source", () => {
@@ -156,6 +162,7 @@ describe("preview webview app", () => {
     assert.equal(app.document.status.hidden, false);
     assert.equal(app.document.status.textContent, "syntax issue");
     assert.equal(app.document.status.dataset.kind, "error");
+    assert.equal(app.document.frame.dataset.renderState, "error");
   });
 
   it("ignores stale render success messages after a newer render starts", () => {

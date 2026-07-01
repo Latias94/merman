@@ -31,14 +31,17 @@ completed diagnostics plan.
   to Follow, and the controller warns instead of locking without a snapshot.
 - The existing kanban editor-fact recovery diagnostics were converted from Chinese to English and
   covered by a focused core test.
+- Preview diagnostics now collect only Merman-sourced VS Code diagnostics, so Markdown linting and
+  spelling extensions do not pollute the Mermaid preview summary.
+- Same-source render failures now mark the visible diagram as stale and label it as the last
+  successful preview instead of silently showing old output as if it were current.
 
 ## Subagent Findings
 
 - `preview_state`: the highest-risk low-cost issues were wrong-source rendering after explicit
   target opens and empty preview lock dead-end; both were fixed in this slice.
-- `lsp_ux`: preview render failures and LSP diagnostics are still separate error sources, and
-  preview diagnostics currently collect all VS Code diagnostics in range rather than only Merman
-  diagnostics.
+- `lsp_ux`: preview render failures and LSP diagnostics are still separate error sources. The
+  diagnostic-source pollution finding was fixed by filtering preview diagnostics to Merman.
 - `vscode_parity`: true parity with VS Code Markdown Preview requires a larger
   `PreviewManager + PreviewInstance` model with separate dynamic/locked previews, show-source,
   refresh, and scoped preview commands.
@@ -52,9 +55,7 @@ completed diagnostics plan.
 
 ## Remaining UX Work
 
-- Add an explicit stale/last-successful render state for same-source failures, especially because
-  Copy SVG may still copy the previous successful DOM while Export uses the current source.
-- Filter or group preview diagnostics so external Markdown diagnostics do not look like Mermaid
-  render/parse failures.
+- Consider whether Copy SVG should be disabled or retitled while the preview is stale, because it
+  still copies the previous successful DOM while Export uses the current source.
 - Refactor single global preview controller into preview manager/instance ownership before adding
   multiple locked preview panels, show-source, refresh, and command-palette scoping.
