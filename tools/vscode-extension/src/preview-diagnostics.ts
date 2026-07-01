@@ -39,10 +39,19 @@ export function collectMermanPreviewDiagnostics(
   };
 
   return {
-    summary: `${counts.error} errors, ${counts.warning} warnings, ${counts.info} infos, ${counts.hint} hints`,
+    summary: [
+      diagnosticCountLabel(counts.error, "error"),
+      diagnosticCountLabel(counts.warning, "warning"),
+      diagnosticCountLabel(counts.info, "info"),
+      diagnosticCountLabel(counts.hint, "hint"),
+    ].join(", "),
     totalCount: filtered.length,
     firstTarget: filtered[0] ? diagnosticTarget(uri, filtered[0]) : undefined,
   };
+}
+
+function diagnosticCountLabel(count: number, label: string): string {
+  return `${count} ${label}${count === 1 ? "" : "s"}`;
 }
 
 function isMermanDiagnostic(diagnostic: PreviewDiagnosticInput): boolean {
