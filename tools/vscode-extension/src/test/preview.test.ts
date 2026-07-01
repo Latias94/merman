@@ -64,7 +64,7 @@ describe("preview html", () => {
   });
 
   it("keeps source editor focus when opening or revealing the preview", () => {
-    const source = fs.readFileSync(path.join(process.cwd(), "src", "preview.ts"), "utf8");
+    const source = fs.readFileSync(path.join(process.cwd(), "src", "preview-instance.ts"), "utf8");
 
     assert.match(
       source,
@@ -79,14 +79,16 @@ describe("preview html", () => {
   });
 
   it("retargets empty previews and guards lock before a source exists", () => {
-    const source = fs.readFileSync(path.join(process.cwd(), "src", "preview.ts"), "utf8");
+    const manager = fs.readFileSync(path.join(process.cwd(), "src", "preview.ts"), "utf8");
+    const instance = fs.readFileSync(path.join(process.cwd(), "src", "preview-instance.ts"), "utf8");
 
     assert.match(
-      source,
+      instance,
       /const shouldRetargetSource = !this\.panel \|\| !this\.session\.isLocked \|\| !this\.session\.snapshot/,
     );
-    assert.match(source, /rememberResource\(resource,\s*\{\s*preferOnce:\s*true\s*\}\)/);
-    assert.match(source, /if \(locked && !this\.session\.snapshot\)/);
+    assert.match(instance, /rememberResource\(resource,\s*\{\s*preferOnce:\s*true\s*\}\)/);
+    assert.match(instance, /if \(locked && !this\.session\.snapshot\)/);
+    assert.match(manager, /if \(!instance\) \{[\s\S]*?showWarningMessage\(EMPTY_PREVIEW_LOCK_WARNING\)/);
   });
 
   it("ships message-driven viewport media with persisted pan, vector zoom, and auto-fit", () => {
