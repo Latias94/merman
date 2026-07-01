@@ -47,6 +47,11 @@ impl SourceDescriptor {
         self.diagram_index = Some(diagram_index);
         self
     }
+
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = language.into();
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

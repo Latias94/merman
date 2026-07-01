@@ -141,8 +141,9 @@ fn common_authoring_parse_errors_are_single_precise_or_explicit_fallback_diagnos
                 || diagnostic
                     .related
                     .iter()
-                    .any(|related| related.message.contains("fallback")),
-            "{} only fallback parse spans should add related fallback context",
+                    .any(|related| related.message.contains("fallback")
+                        || related.message.contains("Parser recovery produced")),
+            "{} only fallback parse spans or deduped parser recovery should add related context",
             case.label
         );
     }

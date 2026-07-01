@@ -1,6 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
-use merman_analysis::{FenceTextIndex, SourceMap, markdown::extract_charts_with_spans};
+use merman_analysis::{
+    DocumentDiagram, DocumentSource, FenceTextIndex, SourceDescriptor, SourceKind,
+};
 use merman_core::{Engine, ParseOptions};
 use std::collections::HashMap;
 
@@ -32,44 +34,20 @@ impl DocumentWorkspace {
         kind: DocumentKind,
     ) -> DocumentSnapshot {
         let uri = uri.into();
-        let fences = if kind.is_markdown() {
-            extract_charts_with_spans(&text)
-                .into_iter()
-                .enumerate()
-                .map(|(index, chart)| {
-                    let definition = chart.definition;
-                    let diagram_type = self.diagram_type_for_text(&definition);
-                    let text_index = self.text_index(&definition, diagram_type.as_deref());
-                    FenceSnapshot {
-                        index,
-                        start: chart.start,
-                        body_start: chart.body_start,
-                        end: chart.end,
-                        text: definition,
-                        diagram_type,
-                        text_index,
-                    }
-                })
-                .collect::<Vec<_>>()
-        } else {
-            let diagram_type = self.diagram_type_for_text(&text);
-            let text_index = self.text_index(&text, diagram_type.as_deref());
-            vec![FenceSnapshot {
-                index: 0,
-                start: 0,
-                body_start: 0,
-                end: text.len(),
-                text: text.clone(),
-                diagram_type,
-                text_index,
-            }]
-        };
+        let source = source_descriptor_for_document(&uri, kind);
+        let document = DocumentSource::new(text.clone(), source.clone());
+        let fences = document
+            .diagrams()
+            .iter()
+            .map(|diagram| self.fence_snapshot(diagram))
+            .collect::<Vec<_>>();
         let snapshot = DocumentSnapshot {
             uri: uri.clone(),
             version,
             kind,
-            source_map: SourceMap::new(text.clone()),
+            source,
             text,
+            source_map: document.source_map().clone(),
             fences,
         };
         self.documents.insert(uri, snapshot.clone());
@@ -108,5 +86,47 @@ impl DocumentWorkspace {
         }
 
         FenceTextIndex::from_text(text, diagram_type)
+    }
+
+    fn fence_snapshot(&self, diagram: &DocumentDiagram) -> FenceSnapshot {
+        let diagram_type = self.diagram_type_for_text(&diagram.text);
+        let text_index = self.text_index(&diagram.text, diagram_type.as_deref());
+        FenceSnapshot {
+            source_id: diagram.id.clone(),
+            index: diagram.index,
+            source: diagram.source.clone(),
+            start: diagram.start,
+            body_start: diagram.body_start,
+            body_end: diagram.body_end,
+            end: diagram.end,
+            text: diagram.text.clone(),
+            fence_delimiter: diagram.fence_delimiter,
+            diagram_type,
+            text_index,
+        }
+    }
+}
+
+fn source_descriptor_for_document(uri: &DocumentUri, kind: DocumentKind) -> SourceDescriptor {
+    let path = Some(uri.as_str().to_string());
+    match kind {
+        DocumentKind::Diagram => SourceDescriptor {
+            kind: SourceKind::Diagram,
+            path,
+            diagram_index: None,
+            language: "mermaid".to_string(),
+        },
+        DocumentKind::Markdown => SourceDescriptor {
+            kind: SourceKind::Markdown,
+            path,
+            diagram_index: None,
+            language: "markdown".to_string(),
+        },
+        DocumentKind::Mdx => SourceDescriptor {
+            kind: SourceKind::Mdx,
+            path,
+            diagram_index: None,
+            language: "mdx".to_string(),
+        },
     }
 }

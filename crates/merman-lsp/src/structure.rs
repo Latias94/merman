@@ -492,13 +492,20 @@ mod tests {
             uri: Url::parse("file:///tmp/example.mmd").unwrap(),
             version: 1,
             text: text.clone(),
+            source: merman_analysis::SourceDescriptor::diagram()
+                .with_path("file:///tmp/example.mmd"),
             source_map: SourceMap::new(text.clone()),
             fences: vec![FenceSnapshot {
+                source_id: "document".to_string(),
                 index: 0,
+                source: merman_analysis::SourceDescriptor::diagram()
+                    .with_path("file:///tmp/example.mmd"),
                 start: 0,
                 body_start: 0,
+                body_end: text.len(),
                 end: text.len(),
                 text,
+                fence_delimiter: None,
                 diagram_type: Some("flowchart-v2".to_string()),
                 text_index,
             }],

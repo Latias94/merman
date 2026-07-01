@@ -1,5 +1,5 @@
 use crate::{
-    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticRelated, DiagnosticSpan,
+    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticSpan, DocumentSource,
     SourceDescriptor, SourceKind, SourceMap,
 };
 use std::path::Path;
@@ -8,8 +8,10 @@ use std::path::Path;
 pub struct MarkdownChart {
     pub start: usize,
     pub body_start: usize,
+    pub body_end: usize,
     pub end: usize,
     pub definition: String,
+    pub source_id: String,
 }
 
 pub fn is_markdown_path(path: &Path) -> bool {
@@ -43,57 +45,19 @@ pub fn markdown_source_descriptor(path: Option<&str>) -> SourceDescriptor {
 }
 
 pub fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
-    let mut charts = Vec::new();
-    let mut cursor = 0;
-
-    while cursor < source.len() {
-        let line_end = next_line_end(source, cursor);
-        let line = trim_line_ending(&source[cursor..line_end]);
-
-        if let Some((marker, opener_trimmed_len)) = mermaid_fence_kind(line) {
-            let body_start = line_end;
-            let mut body_end = source.len();
-            let mut search_start = body_start;
-
-            while search_start < source.len() {
-                let closing_end = next_line_end(source, search_start);
-                let closing_line = trim_line_ending(&source[search_start..closing_end]);
-                if is_matching_closing_fence(closing_line, marker) {
-                    body_end = search_start;
-                    charts.push(MarkdownChart {
-                        start: cursor,
-                        body_start,
-                        end: closing_end,
-                        definition: source[body_start..body_end].to_string(),
-                    });
-                    cursor = closing_end;
-                    break;
-                }
-                search_start = closing_end;
-            }
-
-            if body_end == source.len() {
-                charts.push(MarkdownChart {
-                    start: cursor,
-                    body_start,
-                    end: source.len(),
-                    definition: source[body_start..].to_string(),
-                });
-                break;
-            }
-
-            let _ = opener_trimmed_len;
-            continue;
-        }
-
-        cursor = if line_end == cursor {
-            source.len()
-        } else {
-            line_end
-        };
-    }
-
-    charts
+    let document = DocumentSource::new(source, markdown_source_descriptor(None));
+    document
+        .diagrams()
+        .iter()
+        .map(|diagram| MarkdownChart {
+            start: diagram.start,
+            body_start: diagram.body_start,
+            body_end: diagram.body_end,
+            end: diagram.end,
+            definition: diagram.text.clone(),
+            source_id: diagram.id.clone(),
+        })
+        .collect()
 }
 
 pub fn analyze_markdown_source(
@@ -101,25 +65,7 @@ pub fn analyze_markdown_source(
     analyzer: &Analyzer,
     document_source: SourceDescriptor,
 ) -> AnalysisPayload {
-    let document_map = SourceMap::new(text);
-    let mut diagnostics = Vec::new();
-
-    for (index, chart) in extract_charts_with_spans(text).into_iter().enumerate() {
-        let fence_span = document_map.span(chart.start, chart.end).ok();
-        let mut payload = analyzer.analyze(&chart.definition);
-
-        diagnostics.extend(payload.diagnostics.drain(..).map(|diagnostic| {
-            remap_markdown_diagnostic(
-                diagnostic,
-                &document_map,
-                chart.body_start,
-                fence_span.clone(),
-                index,
-            )
-        }));
-    }
-
-    AnalysisPayload::new(document_source, diagnostics)
+    crate::document::analyze_document(text, analyzer, document_source)
 }
 
 pub fn remap_markdown_diagnostic(
@@ -147,7 +93,7 @@ pub fn remap_markdown_diagnostic(
     diagnostic.fixes.retain(|fix| !fix.edits.is_empty());
 
     if let Some(span) = fence_span {
-        diagnostic.related.push(DiagnosticRelated {
+        diagnostic.related.push(crate::DiagnosticRelated {
             message: format!("Mermaid fence {}", diagram_index + 1),
             span: Some(span),
         });
@@ -166,55 +112,23 @@ pub fn remap_span_to_document(
         .ok()
 }
 
-fn mermaid_fence_kind(line: &str) -> Option<(&'static str, usize)> {
-    let trimmed = line.trim_start();
-    let indentation = line.len().saturating_sub(trimmed.len());
-
-    for (marker, prefix) in [("```", "```mermaid"), (":::", ":::mermaid")] {
-        if let Some(rest) = trimmed.strip_prefix(prefix) {
-            if rest.chars().all(|ch| ch.is_whitespace()) {
-                return Some((marker, indentation + prefix.len()));
-            }
-        }
-    }
-
-    None
-}
-
-fn is_matching_closing_fence(line: &str, marker: &str) -> bool {
-    let trimmed = line.trim_start();
-    let Some(rest) = trimmed.strip_prefix(marker) else {
-        return false;
-    };
-    rest.chars().all(|ch| ch.is_whitespace())
-}
-
-fn trim_line_ending(line: &str) -> &str {
-    line.strip_suffix('\n')
-        .map(|line| line.strip_suffix('\r').unwrap_or(line))
-        .unwrap_or(line)
-}
-
-fn next_line_end(source: &str, start: usize) -> usize {
-    match source[start..].find('\n') {
-        Some(relative) => start + relative + 1,
-        None => source.len(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit};
 
     #[test]
-    fn extracts_backtick_and_colon_mermaid_blocks() {
-        let source = "before\n```mermaid\nflowchart LR\nA-->B\n```\n:::mermaid\nsequenceDiagram\nA->>B: Hi\n:::\nafter";
+    fn extracts_backtick_tilde_and_colon_mermaid_blocks() {
+        let source = "before\n```mermaid\nflowchart LR\nA-->B\n```\n~~~mermaid\nsequenceDiagram\nA->>B: Hi\n~~~~\n:::mermaid\npie\n:::\nafter";
         let charts = extract_charts_with_spans(source);
 
-        assert_eq!(charts.len(), 2);
+        assert_eq!(charts.len(), 3);
+        assert_eq!(charts[0].source_id, "mermaid-fence-1");
+        assert_eq!(charts[1].source_id, "mermaid-fence-2");
+        assert_eq!(charts[2].source_id, "mermaid-fence-3");
         assert!(charts[0].definition.contains("flowchart LR"));
         assert!(charts[1].definition.contains("sequenceDiagram"));
+        assert!(charts[2].definition.contains("pie"));
     }
 
     #[test]

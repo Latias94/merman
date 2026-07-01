@@ -18,6 +18,10 @@ mod source_map;
 mod status;
 
 pub use analyzer::{AnalysisOptions, Analyzer};
+pub use document::{
+    DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceMarker,
+    analyze_document,
+};
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext,
     FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,

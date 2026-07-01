@@ -245,7 +245,7 @@ fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
         },
         selection: ByteSpan {
             start: fence.body_start,
-            end: fence.body_start.saturating_add(fence.text.len()),
+            end: fence.body_end,
         },
         children: outline_children(fence),
     }
