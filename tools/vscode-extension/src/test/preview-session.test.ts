@@ -72,6 +72,31 @@ describe("preview session", () => {
     assert.equal(snapshot?.documentUri, "file:///workspace/one.mmd");
   });
 
+  it("prefers an explicitly opened Markdown source once without disabling follow mode", () => {
+    const session = new PreviewSession();
+    const active = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
+    const target = textEditor(
+      "file:///workspace/notes.md",
+      "notes.md",
+      markdownWithTwoFences(),
+      "markdown",
+      7,
+    );
+
+    session.rememberResource(target.document.uri, { preferOnce: true });
+    assert.equal(session.selectSource(target, [active, target], "fence-2"), true);
+
+    let snapshot = session.createSnapshot(active, [active, target], emptyDiagnostics);
+    assert.equal(snapshot?.documentUri, "file:///workspace/notes.md");
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.selected, true);
+
+    snapshot = session.createSnapshot(active, [active, target], emptyDiagnostics);
+    assert.equal(snapshot?.documentUri, "file:///workspace/one.mmd");
+    assert.equal(snapshot?.input.sourceId, "document");
+    assert.equal(snapshot?.selected, false);
+  });
+
   it("keeps a locked preview on the remembered source instead of following the active editor", () => {
     const session = new PreviewSession();
     const first = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
