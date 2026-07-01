@@ -301,6 +301,89 @@ jobs:
         working-directory: platforms/web
         run: npm pack --dry-run
 
+  vscode-extension-dry-run:
+    name: vscode-extension-dry-run (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - macos-15
+          - windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify release versions
+        run: python scripts/release-version.py check --version "${{ inputs.version }}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/vscode-extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: tools/vscode-extension
+        run: npm ci
+
+      - name: Detect package platform
+        id: package-platform
+        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'key=' + process.platform + '-' + process.arch + '\n')"
+
+      - name: Build release runtime binaries
+        run: cargo build --release --locked -p merman-lsp -p merman-cli
+
+      - name: Typecheck extension
+        working-directory: tools/vscode-extension
+        run: npm run check
+
+      - name: Test extension
+        working-directory: tools/vscode-extension
+        run: npm test
+
+      - name: Stage runtime binaries
+        working-directory: tools/vscode-extension
+        run: npm run prepare:binaries
+
+      - name: Package VSIX
+        working-directory: tools/vscode-extension
+        run: npm run package -- --out "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix"
+
+      - name: Verify VSIX contents
+        working-directory: tools/vscode-extension
+        run: npm run verify:vsix -- --vsix "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix" --platform "${{ steps.package-platform.outputs.key }}"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: preflight-vscode-extension-${{ steps.package-platform.outputs.key }}
+          path: tools/vscode-extension/merman-vscode-${{ steps.package-platform.outputs.key }}.vsix
+          if-no-files-found: error
+
   flutter-dry-run:
     name: flutter-dry-run
     runs-on: macos-15
