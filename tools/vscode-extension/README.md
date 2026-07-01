@@ -83,6 +83,14 @@ replace VS Code's Markdown preview renderer or repository lint policy.
 
 ## Coexistence modes
 
+Use Merman only for local preview and export without starting the language server:
+
+```json
+{
+  "merman.languageIntelligence.enabled": false
+}
+```
+
 Keep Merman language intelligence while another preview extension owns editor actions:
 
 ```json
@@ -134,6 +142,7 @@ continues to inspect vector output rather than a PNG snapshot.
 - `merman.cli.useCargoRun`: development-only fallback through `cargo run -p merman-cli --`
 - `merman.cli.cargoArgs`: development-only Cargo flags before `--`
 - `merman.trace.server`: VS Code LSP trace level
+- `merman.languageIntelligence.enabled`: start local `merman-lsp` language intelligence
 - `merman.diagnostics.enabled`: publish Merman diagnostics to VS Code Problems
 - `merman.sourceActions.enabled`: show source-scoped Merman CodeLens actions
 - `merman.analysis.*`: analysis/lint settings forwarded to `merman-lsp`

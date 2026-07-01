@@ -135,6 +135,11 @@
           "default": "off",
           "markdownDescription": "LSP trace level forwarded to the VS Code language client."
         },
+        "merman.languageIntelligence.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Start the local `merman-lsp` language server for completion, hover, symbols, references, rename, semantic tokens, diagnostics, and quick fixes. Disable this when using the extension only for preview and export."
+        },
         "merman.diagnostics.enabled": {
           "type": "boolean",
           "default": true,

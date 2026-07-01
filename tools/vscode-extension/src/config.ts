@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import type { LanguageIntelligenceSettings } from "./language-intelligence.js";
+
 export type TraceSetting = "off" | "messages" | "verbose";
 
 export interface MermanServerSettings {
@@ -85,6 +87,13 @@ export function getSourceActionSettings(): SourceActionSettings {
   const config = getMermanConfiguration();
   return {
     enabled: config.get<boolean>("sourceActions.enabled", true),
+  };
+}
+
+export function getLanguageIntelligenceSettings(): LanguageIntelligenceSettings {
+  const config = getMermanConfiguration();
+  return {
+    enabled: config.get<boolean>("languageIntelligence.enabled", true),
   };
 }
 

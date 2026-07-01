@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { LanguageClient, State, StateChangeEvent } from "vscode-languageclient/node";
 
+import { getLanguageIntelligenceSettings } from "./config.js";
 import {
   createLanguageClient,
   type LspRuleCatalogEntry,
@@ -11,6 +12,11 @@ import {
 } from "./server.js";
 import { registerSourceCodeLens } from "./codelens.js";
 import { registerExport } from "./export.js";
+import {
+  LANGUAGE_INTELLIGENCE_SETTING,
+  languageIntelligenceDisabledMessage,
+  shouldStartLanguageClient,
+} from "./language-intelligence.js";
 import { registerPreview } from "./preview.js";
 
 let client: LanguageClient | undefined;
@@ -22,8 +28,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerExport(context);
   registerSourceCodeLens(context);
 
-  client = await createLanguageClient(context);
-  wireClientStatus(client);
   context.subscriptions.push({
     dispose: () => {
       void deactivate();
@@ -32,7 +36,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("merman.restartLanguageServer", async () => {
-      updateStatusBar("Starting", "Restarting language server");
+      if (!languageIntelligenceEnabled()) {
+        updateDisabledStatus();
+        void vscode.window.showWarningMessage(languageIntelligenceDisabledMessage());
+        return;
+      }
+
       await restartClient(context);
       void vscode.window.showInformationMessage("Merman language server restarted.");
     }),
@@ -40,6 +49,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("merman.showRuleCatalog", async () => {
+      if (!languageIntelligenceEnabled()) {
+        void vscode.window.showWarningMessage(languageIntelligenceDisabledMessage());
+        return;
+      }
       if (!client) {
         void vscode.window.showWarningMessage("Merman language server is not running.");
         return;
@@ -51,6 +64,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("merman.showConfigSchema", async () => {
+      if (!languageIntelligenceEnabled()) {
+        void vscode.window.showWarningMessage(languageIntelligenceDisabledMessage());
+        return;
+      }
       if (!client) {
         void vscode.window.showWarningMessage("Merman language server is not running.");
         return;
@@ -65,7 +82,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!event.affectsConfiguration("merman")) {
         return;
       }
-      if (!client) {
+
+      if (event.affectsConfiguration(LANGUAGE_INTELLIGENCE_SETTING)) {
+        await reconcileLanguageClient(context);
+        return;
+      }
+
+      if (!languageIntelligenceEnabled()) {
+        updateDisabledStatus();
         return;
       }
 
@@ -80,13 +104,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
-      await pushConfiguration(client);
+      if (client) {
+        await pushConfiguration(client);
+      }
     }),
   );
 
-  updateStatusBar("Starting", "Starting language server");
-  await client.start();
-  await pushConfiguration(client);
+  await reconcileLanguageClient(context);
 }
 
 export async function deactivate(): Promise<void> {
@@ -100,11 +124,39 @@ export async function deactivate(): Promise<void> {
 
 async function restartClient(context: vscode.ExtensionContext): Promise<void> {
   await deactivate();
+  await startClient(context, "Restarting language server");
+}
+
+async function reconcileLanguageClient(context: vscode.ExtensionContext): Promise<void> {
+  if (!languageIntelligenceEnabled()) {
+    await deactivate();
+    updateDisabledStatus();
+    return;
+  }
+
+  if (!client) {
+    await startClient(context, "Starting language server");
+    return;
+  }
+
+  await pushConfiguration(client);
+}
+
+async function startClient(context: vscode.ExtensionContext, tooltip: string): Promise<void> {
   ensureStatusItem(context);
   client = await createLanguageClient(context);
   wireClientStatus(client);
+  updateStatusBar("Starting", tooltip);
   await client.start();
   await pushConfiguration(client);
+}
+
+function languageIntelligenceEnabled(): boolean {
+  return shouldStartLanguageClient(getLanguageIntelligenceSettings());
+}
+
+function updateDisabledStatus(): void {
+  updateStatusBar("Disabled", languageIntelligenceDisabledMessage());
 }
 
 function wireClientStatus(activeClient: LanguageClient): void {
