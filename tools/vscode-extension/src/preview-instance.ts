@@ -57,12 +57,18 @@ export class PreviewInstance implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly outputChannel: vscode.LogOutputChannel,
     private readonly onDispose: (instance: PreviewInstance) => void,
+    private readonly onDidChangeActiveState: (instance: PreviewInstance, active: boolean) => void,
+    private readonly onDidChangeLockState: (instance: PreviewInstance) => void,
   ) {
     this.webviewClient = new PreviewWebviewClient(context.extensionUri);
   }
 
   get isLocked(): boolean {
     return this.session.isLocked;
+  }
+
+  get hasSnapshot(): boolean {
+    return !!this.session.snapshot;
   }
 
   dispose(): void {
@@ -116,6 +122,10 @@ export class PreviewInstance implements vscode.Disposable {
     this.renderTimer = setTimeout(refresh, RENDER_DEBOUNCE_MS);
   }
 
+  forceRefresh(): void {
+    this.scheduleRefresh("manual-refresh", true);
+  }
+
   resolvePreviewEditor(): vscode.TextEditor | undefined {
     return this.session.resolvePreviewEditor(
       vscode.window.activeTextEditor,
@@ -123,15 +133,15 @@ export class PreviewInstance implements vscode.Disposable {
     );
   }
 
-  setLocked(locked: boolean, notify: boolean): void {
+  setLocked(locked: boolean, notify: boolean): boolean {
     if (locked && !this.session.snapshot) {
       if (notify) {
         void vscode.window.showWarningMessage(EMPTY_PREVIEW_LOCK_WARNING);
       }
-      return;
+      return false;
     }
     if (!this.session.setLocked(locked)) {
-      return;
+      return false;
     }
     this.scheduleRefresh("lock", true);
     if (notify) {
@@ -141,6 +151,36 @@ export class PreviewInstance implements vscode.Disposable {
           : "Merman preview is following the active source.",
       );
     }
+    this.onDidChangeLockState(this);
+    return true;
+  }
+
+  tracksDocument(uri: vscode.Uri): boolean {
+    const trackedUri = this.resolvePreviewEditor()?.document.uri.toString() ?? this.session.snapshot?.documentUri;
+    return trackedUri === uri.toString();
+  }
+
+  async showSource(): Promise<boolean> {
+    const snapshot = this.session.snapshot;
+    if (!snapshot) {
+      return false;
+    }
+
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(snapshot.documentUri));
+    const sourceRange = snapshot.input.sourceRange;
+    const endLine = Math.min(sourceRange.endLine, Math.max(document.lineCount - 1, 0));
+    const startLine = Math.min(sourceRange.startLine, endLine);
+    const endCharacter = document.lineAt(endLine).text.length;
+    const range = new vscode.Range(
+      new vscode.Position(startLine, 0),
+      new vscode.Position(endLine, endCharacter),
+    );
+    await vscode.window.showTextDocument(document, {
+      preview: false,
+      preserveFocus: false,
+      selection: range,
+    });
+    return true;
   }
 
   private createPanel(): vscode.WebviewPanel {
@@ -173,6 +213,7 @@ export class PreviewInstance implements vscode.Disposable {
       if (this.panel?.visible) {
         this.scheduleRefresh("panel-visible");
       }
+      this.onDidChangeActiveState(this, this.panel?.active === true);
     }, null, this.panelDisposables);
     return panel;
   }
@@ -343,6 +384,12 @@ export class PreviewInstance implements vscode.Disposable {
             ]),
           (snapshot) => this.renderSnapshot(snapshot, "panel-visible"),
         );
+        return;
+      case "refresh":
+        this.forceRefresh();
+        return;
+      case "showSource":
+        await this.showSource();
         return;
       case "copySvg":
         await vscode.env.clipboard.writeText(message.svg);

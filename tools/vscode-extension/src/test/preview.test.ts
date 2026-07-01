@@ -43,6 +43,8 @@ describe("preview html", () => {
     assert.match(html, /data-zoom-value/);
     assert.match(html, /data-background="paper"/);
     assert.match(html, /data-preview-output-controls/);
+    assert.match(html, /data-action="refresh"/);
+    assert.match(html, /data-action="show-source"/);
     assert.match(html, /data-action="export-svg"/);
     assert.match(html, /data-action="export-png"/);
     assert.match(html, /data-action="lock"/);

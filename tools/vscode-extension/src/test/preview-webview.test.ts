@@ -482,6 +482,18 @@ describe("preview webview app", () => {
     assert.equal(app.document.lock.disabled, true);
     assert.equal(app.persistedState.locked, false);
   });
+
+  it("posts preview instance commands from toolbar actions", () => {
+    const app = loadPreviewApp();
+
+    app.click(app.document.refresh);
+    app.click(app.document.showSource);
+
+    assert.deepEqual(app.postedMessages.slice(-2).map((message) => (message as { type?: string }).type), [
+      "refresh",
+      "showSource",
+    ]);
+  });
 });
 
 interface PreviewAppHarness {
@@ -653,6 +665,8 @@ class FakeDocument {
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
   readonly copySvg = new FakeButtonElement({ dataset: { action: "copy-svg" } });
+  readonly refresh = new FakeButtonElement({ dataset: { action: "refresh" } });
+  readonly showSource = new FakeButtonElement({ dataset: { action: "show-source" } });
   readonly exportSvg = new FakeButtonElement({ dataset: { action: "export-svg" } });
   readonly exportPng = new FakeButtonElement({ dataset: { action: "export-png" } });
   readonly lock = new FakeButtonElement({ dataset: { previewLock: "", action: "lock" } });
@@ -698,6 +712,10 @@ class FakeDocument {
         return this.background;
       case '[data-action="copy-svg"]':
         return this.copySvg;
+      case '[data-action="refresh"]':
+        return this.refresh;
+      case '[data-action="show-source"]':
+        return this.showSource;
       case '[data-action="export-svg"]':
         return this.exportSvg;
       case '[data-action="export-png"]':

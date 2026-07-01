@@ -62,6 +62,18 @@ describe("preview update policy", () => {
     assert.deepEqual(actions, []);
   });
 
+  it("forces a render for manual refresh even when the render key is unchanged", () => {
+    const previous = snapshot({});
+    const next = snapshot({});
+
+    const actions = planPreviewUpdate(previous, next, "manual-refresh");
+
+    assert.deepEqual(
+      actions.map((action) => action.type),
+      ["renderRequested"],
+    );
+  });
+
   it("requests a render when the diagram theme changes", () => {
     const previous = snapshot({ diagramTheme: "source" });
     const next = snapshot({ diagramTheme: "forest" });

@@ -25,6 +25,8 @@
     "onCommand:merman.restartLanguageServer",
     "onCommand:merman.openPreview",
     "onCommand:merman.togglePreviewLock",
+    "onCommand:merman.refreshPreview",
+    "onCommand:merman.showPreviewSource",
     "onCommand:merman.export",
     "onCommand:merman.exportSvg",
     "onCommand:merman.exportPng",
@@ -210,6 +212,18 @@
         "icon": "$(lock)"
       },
       {
+        "command": "merman.refreshPreview",
+        "title": "Merman: Refresh Preview",
+        "category": "Merman",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "merman.showPreviewSource",
+        "title": "Merman: Show Preview Source",
+        "category": "Merman",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "merman.export",
         "title": "Merman: Export...",
         "category": "Merman",
@@ -326,6 +340,12 @@
         {
           "command": "merman.openPreview",
           "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.refreshPreview"
+        },
+        {
+          "command": "merman.showPreviewSource"
         },
         {
           "command": "merman.export",

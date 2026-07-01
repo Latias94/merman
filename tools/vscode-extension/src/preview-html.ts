@@ -62,6 +62,8 @@ function renderToolbar(): string {
       <button type="button" data-action="reset" title="Reset to actual size">1:1</button>
     </span>
     <span class="toolbar-group" data-preview-output-controls>
+      <button type="button" data-action="refresh" title="Refresh preview">Refresh</button>
+      <button type="button" data-action="show-source" title="Show preview source">Source</button>
       <button type="button" data-action="copy-svg" title="Copy rendered SVG">Copy SVG</button>
       <button type="button" data-action="export-svg" title="Export SVG">Export SVG</button>
       <button type="button" data-action="export-png" title="Export PNG">Export PNG</button>

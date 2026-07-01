@@ -16,6 +16,8 @@ describe("preview message validation", () => {
 
   it("accepts valid webview command payloads", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "ready" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "refresh" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "showSource" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: "<svg></svg>" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "svg" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "png" }), true);

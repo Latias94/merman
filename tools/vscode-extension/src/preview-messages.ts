@@ -73,6 +73,8 @@ export type PreviewToWebviewMessage =
 
 export type PreviewFromWebviewMessage =
   | { type: "ready" }
+  | { type: "refresh" }
+  | { type: "showSource" }
   | { type: "copySvg"; svg: string }
   | { type: "exportRendered"; format: "svg" | "png" }
   | { type: "revealDiagnostic"; target: string }
@@ -111,6 +113,8 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
   const record = value as Record<string, unknown>;
   switch (record.type) {
     case "ready":
+    case "refresh":
+    case "showSource":
       return true;
     case "copySvg":
       return typeof record.svg === "string";

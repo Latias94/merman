@@ -648,6 +648,12 @@
       case "copy-svg":
         copySvg();
         break;
+      case "refresh":
+        post("refresh", {});
+        break;
+      case "show-source":
+        post("showSource", {});
+        break;
       case "export-svg":
         post("exportRendered", { format: "svg" });
         break;

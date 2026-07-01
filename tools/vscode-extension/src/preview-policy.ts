@@ -7,6 +7,7 @@ import {
 
 export type PreviewUpdateReason =
   | "manual-open"
+  | "manual-refresh"
   | "active-editor"
   | "selection"
   | "document-change"
@@ -71,6 +72,9 @@ export function planPreviewUpdate(
   }
 
   if (!sameRenderKey) {
+    actions.push({ type: "renderRequested", snapshot: next, reason });
+  }
+  if (sameRenderKey && reason === "manual-refresh") {
     actions.push({ type: "renderRequested", snapshot: next, reason });
   }
 
