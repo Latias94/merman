@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ByteSpan {
     pub start: usize,
@@ -85,12 +87,30 @@ impl FenceReferenceGroup {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FenceTextIndexSource {
+    /// Legacy text scan used only when parser facts are unavailable.
     #[default]
     TextScan,
+    /// Parser-backed facts from a complete family parse.
     ParserComplete,
+    /// Parser-backed facts from a recoverable partial parse.
     ParserRecovered,
+}
+
+impl FenceTextIndexSource {
+    pub fn is_parser_backed(self) -> bool {
+        matches!(self, Self::ParserComplete | Self::ParserRecovered)
+    }
+
+    pub fn is_text_scan(self) -> bool {
+        matches!(self, Self::TextScan)
+    }
+
+    pub fn is_recovered(self) -> bool {
+        matches!(self, Self::ParserRecovered)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -151,10 +171,7 @@ impl FenceCursorContext {
     }
 
     pub fn has_parser_backed_facts(&self) -> bool {
-        matches!(
-            self.source,
-            FenceTextIndexSource::ParserComplete | FenceTextIndexSource::ParserRecovered
-        )
+        self.source.is_parser_backed()
     }
 
     pub fn is_source_start(&self) -> bool {
@@ -474,10 +491,7 @@ impl FenceTextIndex {
                 completion_kinds.push(FenceCursorCompletionKind::DiagramHeader);
             }
 
-            if matches!(
-                self.source,
-                FenceTextIndexSource::ParserComplete | FenceTextIndexSource::ParserRecovered
-            ) {
+            if self.source.is_parser_backed() {
                 if offer_operator_items(&prefix) {
                     completion_kinds.push(FenceCursorCompletionKind::Operator);
                 }

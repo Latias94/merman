@@ -549,11 +549,14 @@ export interface EditorRange {
 }
 
 export interface EditorTextEdit {
+  factSource?: EditorSemanticFactSource | null;
   range: EditorRange;
   newText: string;
 }
 
-export type EditorCompletionItemKind = "keyword" | "variable";
+export type EditorSemanticFactSource = "text_scan" | "parser_complete" | "parser_recovered";
+
+export type EditorCompletionItemKind = "keyword" | "variable" | "class" | "snippet";
 
 export interface EditorCompletionResolveData {
   kind:
@@ -562,7 +565,12 @@ export interface EditorCompletionResolveData {
     | "direction"
     | "directive"
     | "shape"
-    | "node_identifier";
+    | "class_name"
+    | "node_identifier"
+    | "style"
+    | "interaction"
+    | "frontmatter"
+    | "template";
   label: string;
 }
 
@@ -577,6 +585,7 @@ export interface EditorCompletionItem {
   detail?: string | null;
   data?: EditorCompletionResolveData | null;
   insert_text?: string | null;
+  insert_text_format?: "plain_text" | "snippet";
   text_edit?: EditorCompletionTextEdit | null;
   label_details?: {
     description?: string | null;
@@ -586,6 +595,7 @@ export interface EditorCompletionItem {
 
 export interface EditorCompletionList {
   is_incomplete: boolean;
+  fact_source?: EditorSemanticFactSource | null;
   items: EditorCompletionItem[];
 }
 
@@ -639,6 +649,7 @@ export interface EditorMarkupContent {
 
 export interface EditorHover {
   contents: EditorMarkupContent;
+  factSource: EditorSemanticFactSource;
   range?: EditorRange | null;
 }
 
@@ -659,6 +670,7 @@ export interface EditorDocumentSymbol {
   name: string;
   detail?: string | null;
   kind: EditorSymbolKind;
+  factSource: EditorSemanticFactSource;
   range: EditorRange;
   selectionRange: EditorRange;
   children: EditorDocumentSymbol[];
@@ -666,22 +678,26 @@ export interface EditorDocumentSymbol {
 
 export interface EditorLocation {
   uri: string;
+  factSource: EditorSemanticFactSource;
   range: EditorRange;
 }
 
 export interface EditorSymbolInformation {
   name: string;
   kind: EditorSymbolKind;
+  factSource: EditorSemanticFactSource;
   location: EditorLocation;
   containerName?: string | null;
 }
 
 export interface EditorPrepareRename {
+  factSource: EditorSemanticFactSource;
   range: EditorRange;
   placeholder: string;
 }
 
 export interface EditorWorkspaceEdit {
+  factSource?: EditorSemanticFactSource | null;
   changes: Record<string, EditorTextEdit[]>;
 }
 
@@ -696,6 +712,7 @@ export interface EditorSemanticToken {
   length: number;
   tokenType: string;
   tokenModifier: string;
+  factSource: EditorSemanticFactSource;
 }
 
 export interface MermanWasmModule {

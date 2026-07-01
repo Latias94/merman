@@ -1,6 +1,7 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use merman_analysis::{
-    ByteSpan, EditorSymbolKind, FenceSemanticItem, FenceSemanticRole, SourceMap,
+    ByteSpan, EditorSymbolKind, FenceSemanticItem, FenceSemanticRole, FenceTextIndexSource,
+    SourceMap,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +11,7 @@ pub struct SemanticToken {
     pub length: u32,
     pub kind: SemanticTokenKind,
     pub modifier: SemanticTokenModifier,
+    pub fact_source: FenceTextIndexSource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +109,7 @@ fn tokens_for_item(
             length: piece.length,
             kind: token_kind_for_symbol(item.kind),
             modifier: token_modifier_for_role(item.role),
+            fact_source: fence.text_index.source(),
         })
         .collect()
 }

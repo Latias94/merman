@@ -62,10 +62,11 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn has_parser_backed_facts(&self) -> bool {
-        matches!(
-            self.source,
-            FenceTextIndexSource::ParserComplete | FenceTextIndexSource::ParserRecovered
-        )
+        self.source.is_parser_backed()
+    }
+
+    pub fn fact_source(&self) -> FenceTextIndexSource {
+        self.source
     }
 
     pub fn is_source_start(&self) -> bool {

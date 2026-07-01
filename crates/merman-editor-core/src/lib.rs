@@ -24,6 +24,7 @@ pub use diagnostics::{
     DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticRelated,
     analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,
 };
+pub use merman_analysis::FenceTextIndexSource;
 pub use semantic_tokens::{
     SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
     semantic_token_legend, semantic_tokens_for_snapshot,

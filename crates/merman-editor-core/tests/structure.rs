@@ -1,6 +1,9 @@
+use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SourceMap};
+use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, Position, document_symbols, goto_definition, hover,
-    prepare_rename, references, rename, workspace_symbols,
+    DocumentKind, DocumentSnapshot, DocumentUri, DocumentWorkspace, FenceSnapshot, Position,
+    document_symbols, goto_definition, hover, prepare_rename, references, rename,
+    workspace_symbols,
 };
 
 #[test]
@@ -17,12 +20,30 @@ fn document_symbols_include_root_and_child_items() {
 
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].name, "flowchart-v2 diagram");
+    assert_eq!(symbols[0].fact_source, FenceTextIndexSource::ParserComplete);
     assert!(
         symbols[0]
             .children
             .iter()
             .any(|symbol| symbol.name == "group")
     );
+}
+
+#[test]
+fn hover_reports_the_active_outline_entry() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let hover = hover(&snapshot, Position::new(1, 0)).unwrap();
+
+    assert!(hover.contents.value.contains("A"));
+    assert!(hover.contents.value.contains("Diagram:"));
+    assert_eq!(hover.fact_source, FenceTextIndexSource::ParserComplete);
 }
 
 #[test]
@@ -39,6 +60,23 @@ fn hover_reports_payload_semantic_items() {
 
     assert!(hover.contents.value.contains("Diagram Title"));
     assert!(hover.contents.value.contains("sequence title"));
+    assert_eq!(hover.fact_source, FenceTextIndexSource::ParserComplete);
+}
+
+#[test]
+fn payload_semantic_items_are_not_navigation_targets() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "sequenceDiagram\ntitle: Diagram Title\nAlice->>Bob: Hello\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let position = Position::new(1, 8);
+    assert!(goto_definition(&snapshot, position).is_none());
+    assert!(references(&snapshot, position, true).is_none());
+    assert!(prepare_rename(&snapshot, position).is_none());
 }
 
 #[test]
@@ -52,15 +90,74 @@ fn navigation_ignores_payload_spans_and_tracks_entities() {
     );
 
     let position = Position::new(1, 0);
-    assert!(goto_definition(&snapshot, position).is_some());
-    assert_eq!(references(&snapshot, position, true).unwrap().len(), 2);
-    assert_eq!(
-        prepare_rename(&snapshot, position).unwrap().placeholder,
-        "A"
+    let definition = goto_definition(&snapshot, position).unwrap();
+    assert_eq!(definition.fact_source, FenceTextIndexSource::ParserComplete);
+    let refs = references(&snapshot, position, true).unwrap();
+    assert_eq!(refs.len(), 2);
+    assert!(
+        refs.iter()
+            .all(|location| location.fact_source == FenceTextIndexSource::ParserComplete)
     );
+    let prepare = prepare_rename(&snapshot, position).unwrap();
+    assert_eq!(prepare.placeholder, "A");
+    assert_eq!(prepare.fact_source, FenceTextIndexSource::ParserComplete);
 
     let edit = rename(&snapshot, position, "X").unwrap().unwrap();
+    assert_eq!(edit.fact_source, FenceTextIndexSource::ParserComplete);
     assert_eq!(edit.changes.get(&snapshot.uri).unwrap().len(), 2);
+}
+
+#[test]
+fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "mindmap\nroot(Root Node)\n child1(Child 1)\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let id_position = Position::new(1, 0);
+    let prepare = prepare_rename(&snapshot, id_position).unwrap();
+    assert_eq!(prepare.placeholder, "root");
+    assert_eq!(prepare.fact_source, FenceTextIndexSource::ParserComplete);
+
+    let refs = references(&snapshot, id_position, true).unwrap();
+    assert_eq!(refs.len(), 1);
+
+    let edit = rename(&snapshot, id_position, "root_alpha")
+        .unwrap()
+        .expect("expected rename edit");
+    assert_eq!(
+        edit.changes.get(&snapshot.uri).unwrap().len(),
+        1,
+        "rename should only update the mindmap node id"
+    );
+
+    let payload_position = Position::new(1, 5);
+    assert!(goto_definition(&snapshot, payload_position).is_none());
+    assert!(references(&snapshot, payload_position, true).is_none());
+    assert!(prepare_rename(&snapshot, payload_position).is_none());
+}
+
+#[test]
+fn typed_reference_groups_keep_same_name_different_kinds_separate() {
+    let snapshot = typed_reference_snapshot();
+
+    let module_refs = references(&snapshot, Position::new(0, 0), true).unwrap();
+    let property_refs = references(&snapshot, Position::new(1, 0), true).unwrap();
+
+    assert_eq!(module_refs.len(), 1);
+    assert_eq!(property_refs.len(), 1);
+
+    let module_rename = rename(&snapshot, Position::new(0, 0), "ModuleShared")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        module_rename.changes.get(&snapshot.uri).unwrap().len(),
+        1,
+        "rename should only touch the module group"
+    );
 }
 
 #[test]
@@ -80,4 +177,51 @@ fn workspace_symbols_filter_and_include_outline_items() {
     let group_symbols = workspace_symbols(&snapshot, "group");
     assert_eq!(group_symbols.len(), 1);
     assert_eq!(group_symbols[0].name, "group");
+    assert_eq!(
+        group_symbols[0].fact_source,
+        FenceTextIndexSource::ParserComplete
+    );
+}
+
+fn typed_reference_snapshot() -> DocumentSnapshot {
+    let text = "Shared\nShared\n".to_string();
+    let mut facts = EditorSemanticFacts::new();
+    facts.push_symbol(EditorSemanticSymbol::new(
+        "Shared",
+        Some("module entity".to_string()),
+        EditorSemanticKind::Module,
+        SourceSpan::new(0, 6),
+        SourceSpan::new(0, 6),
+    ));
+    facts.push_symbol(EditorSemanticSymbol::new(
+        "Shared",
+        Some("property entity".to_string()),
+        EditorSemanticKind::Property,
+        SourceSpan::new(7, 13),
+        SourceSpan::new(7, 13),
+    ));
+
+    let text_index = FenceTextIndex::from_core_facts(facts);
+    DocumentSnapshot {
+        uri: DocumentUri::from("file:///tmp/example.mmd"),
+        version: 1,
+        kind: DocumentKind::Diagram,
+        source: merman_analysis::SourceDescriptor::diagram().with_path("file:///tmp/example.mmd"),
+        source_map: SourceMap::new(text.clone()),
+        fences: vec![FenceSnapshot {
+            source_id: "document".to_string(),
+            index: 0,
+            source: merman_analysis::SourceDescriptor::diagram()
+                .with_path("file:///tmp/example.mmd"),
+            start: 0,
+            body_start: 0,
+            body_end: text.len(),
+            end: text.len(),
+            text: text.clone(),
+            fence_delimiter: None,
+            diagram_type: Some("flowchart-v2".to_string()),
+            text_index,
+        }],
+        text,
+    }
 }

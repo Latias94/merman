@@ -1,3 +1,4 @@
+use merman_analysis::FenceTextIndexSource;
 use merman_editor_core::{
     CompletionContext, CompletionDataKind, CompletionInsertTextFormat, CompletionItemKind,
     DocumentKind, DocumentWorkspace, Position, completion_documentation, completion_for_snapshot,
@@ -148,6 +149,135 @@ fn completion_stays_fence_local_in_markdown_documents() {
 
     let sequence_list = completion_for_snapshot(&snapshot, Position::new(9, 14));
     assert!(sequence_list.items.is_empty());
+}
+
+#[test]
+fn completion_uses_parser_identifier_context_after_operator() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\nC-->".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 4));
+
+    assert!(list.items.iter().any(|item| item.label == "A"));
+    assert!(list.items.iter().any(|item| item.label == "B"));
+    assert!(
+        list.items.iter().all(|item| item.label != "-->"),
+        "parser identifier context must not offer operator completions: {:?}",
+        list.items
+            .iter()
+            .map(|item| &item.label)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn completion_keeps_known_node_ids_when_parser_recovers() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nsubgraph group\nA-->B\nC-->".to_string(),
+        DocumentKind::Diagram,
+    );
+    let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 4)).unwrap();
+    let list = completion_for_snapshot(&snapshot, Position::new(3, 4));
+
+    assert_eq!(context.fact_source(), FenceTextIndexSource::ParserRecovered);
+    assert!(
+        list.items.iter().any(|item| item.label == "A"),
+        "recovered parser context should still offer existing node ids"
+    );
+    assert!(
+        list.items.iter().any(|item| item.label == "B"),
+        "recovered parser context should still offer existing node ids"
+    );
+}
+
+#[test]
+fn completion_payload_contexts_return_no_body_items() {
+    for (source, position, label) in [
+        (
+            concat!("stateDiagram-v2\n", "state \"Small State\" as namedState\n"),
+            Position::new(1, 8),
+            "state",
+        ),
+        (
+            "sequenceDiagram\nparticipant Alice\nAlice->Bob: Hello",
+            Position::new(2, 14),
+            "sequence",
+        ),
+        ("gantt\ntitle Roadmap", Position::new(1, 10), "gantt"),
+        ("mindmap\nroot(Root Node)\n", Position::new(1, 8), "mindmap"),
+        (
+            "flowchart TD\nA[\"Start node\"]-->B",
+            Position::new(1, 5),
+            "flowchart",
+        ),
+        (
+            "block\nA[\"Start node\"] --> B\n",
+            Position::new(1, 5),
+            "block",
+        ),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace.upsert(
+            "file:///tmp/example.mmd",
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        );
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items.is_empty(),
+            "{label} payload context must not offer generic identifiers or headers: {:?}",
+            list.items
+                .iter()
+                .map(|item| &item.label)
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn completion_bounds_text_scan_fallback_to_source_start() {
+    let mut workspace = DocumentWorkspace::new();
+    let source_start = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flow".to_string(),
+        DocumentKind::Diagram,
+    );
+    let context = CompletionContext::from_snapshot(&source_start, Position::new(0, 4)).unwrap();
+    let list = completion_for_snapshot(&source_start, Position::new(0, 4));
+
+    assert_eq!(context.fact_source(), FenceTextIndexSource::TextScan);
+    assert!(list.items.iter().any(|item| {
+        item.data
+            .as_ref()
+            .is_some_and(|data| data.kind == CompletionDataKind::DiagramHeader)
+    }));
+    assert!(list.items.iter().any(|item| {
+        item.data
+            .as_ref()
+            .is_some_and(|data| data.kind == CompletionDataKind::Template)
+    }));
+
+    let body = workspace.upsert(
+        "file:///tmp/unknown.mmd",
+        1,
+        "unknownDiagram\nA-".to_string(),
+        DocumentKind::Diagram,
+    );
+    let context = CompletionContext::from_snapshot(&body, Position::new(1, 2)).unwrap();
+    let list = completion_for_snapshot(&body, Position::new(1, 2));
+
+    assert_eq!(context.fact_source(), FenceTextIndexSource::TextScan);
+    assert!(list.items.is_empty());
 }
 
 #[test]

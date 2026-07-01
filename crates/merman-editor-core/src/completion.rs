@@ -1,6 +1,7 @@
 use crate::context::CompletionContext;
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
+use merman_analysis::FenceTextIndexSource;
 use merman_core::{diagram_header_facts_for_profile, selected_baseline_registry_profile};
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +11,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     let Some(context) = CompletionContext::from_snapshot(snapshot, position) else {
         return CompletionList {
             is_incomplete: false,
+            fact_source: None,
             items: Vec::new(),
         };
     };
@@ -71,6 +73,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
 
     CompletionList {
         is_incomplete: false,
+        fact_source: Some(context.fact_source()),
         items,
     }
 }
@@ -559,6 +562,7 @@ pub fn completion_documentation(data: &CompletionResolveData) -> String {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompletionList {
     pub is_incomplete: bool,
+    pub fact_source: Option<FenceTextIndexSource>,
     pub items: Vec<CompletionItem>,
 }
 

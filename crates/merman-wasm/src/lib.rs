@@ -7,7 +7,8 @@
 
 #[cfg(feature = "editor-language")]
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, Analyzer, EditorSymbolKind, SourceDescriptor, Summary,
+    AnalysisOptions, AnalysisPayload, Analyzer, EditorSymbolKind, FenceTextIndexSource,
+    SourceDescriptor, Summary,
 };
 use merman_bindings_core::BindingError;
 #[cfg(feature = "editor-language")]
@@ -60,6 +61,7 @@ struct WasmEditorDiagnostics {
 #[serde(rename_all = "camelCase")]
 struct WasmHover {
     contents: WasmMarkupContent,
+    fact_source: &'static str,
     range: Option<Range>,
 }
 
@@ -79,6 +81,7 @@ impl From<EditorHover> for WasmHover {
                 kind: "markdown",
                 value: value.contents.value,
             },
+            fact_source: fact_source_name(value.fact_source),
             range: value.range,
         }
     }
@@ -91,6 +94,7 @@ struct WasmDocumentSymbol {
     name: String,
     detail: Option<String>,
     kind: &'static str,
+    fact_source: &'static str,
     range: Range,
     selection_range: Range,
     children: Vec<WasmDocumentSymbol>,
@@ -103,6 +107,7 @@ impl From<EditorDocumentSymbol> for WasmDocumentSymbol {
             name: value.name,
             detail: value.detail,
             kind: symbol_kind_name(value.kind),
+            fact_source: fact_source_name(value.fact_source),
             range: value.range,
             selection_range: value.selection_range,
             children: value.children.into_iter().map(Self::from).collect(),
@@ -116,6 +121,7 @@ impl From<EditorDocumentSymbol> for WasmDocumentSymbol {
 struct WasmSymbolInformation {
     name: String,
     kind: &'static str,
+    fact_source: &'static str,
     location: WasmLocation,
     container_name: Option<String>,
 }
@@ -126,6 +132,7 @@ impl From<merman_editor_core::EditorSymbolInformation> for WasmSymbolInformation
         Self {
             name: value.name,
             kind: symbol_kind_name(value.kind),
+            fact_source: fact_source_name(value.fact_source),
             location: WasmLocation::from(value.location),
             container_name: value.container_name,
         }
@@ -137,6 +144,7 @@ impl From<merman_editor_core::EditorSymbolInformation> for WasmSymbolInformation
 #[serde(rename_all = "camelCase")]
 struct WasmLocation {
     uri: String,
+    fact_source: &'static str,
     range: Range,
 }
 
@@ -145,6 +153,7 @@ impl From<EditorLocation> for WasmLocation {
     fn from(value: EditorLocation) -> Self {
         Self {
             uri: value.uri.as_str().to_string(),
+            fact_source: fact_source_name(value.fact_source),
             range: value.range,
         }
     }
@@ -154,6 +163,7 @@ impl From<EditorLocation> for WasmLocation {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmPrepareRename {
+    fact_source: &'static str,
     range: Range,
     placeholder: String,
 }
@@ -162,6 +172,7 @@ struct WasmPrepareRename {
 impl From<EditorPrepareRename> for WasmPrepareRename {
     fn from(value: EditorPrepareRename) -> Self {
         Self {
+            fact_source: fact_source_name(value.fact_source),
             range: value.range,
             placeholder: value.placeholder,
         }
@@ -172,6 +183,8 @@ impl From<EditorPrepareRename> for WasmPrepareRename {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmWorkspaceEdit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fact_source: Option<&'static str>,
     changes: HashMap<String, Vec<WasmTextEdit>>,
 }
 
@@ -179,6 +192,7 @@ struct WasmWorkspaceEdit {
 impl From<EditorWorkspaceEdit> for WasmWorkspaceEdit {
     fn from(value: EditorWorkspaceEdit) -> Self {
         Self {
+            fact_source: Some(fact_source_name(value.fact_source)),
             changes: value
                 .changes
                 .into_iter()
@@ -197,6 +211,8 @@ impl From<EditorWorkspaceEdit> for WasmWorkspaceEdit {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WasmTextEdit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fact_source: Option<&'static str>,
     range: Range,
     new_text: String,
 }
@@ -205,6 +221,7 @@ struct WasmTextEdit {
 impl From<EditorTextEdit> for WasmTextEdit {
     fn from(value: EditorTextEdit) -> Self {
         Self {
+            fact_source: Some(fact_source_name(value.fact_source)),
             range: value.range,
             new_text: value.new_text,
         }
@@ -257,6 +274,7 @@ struct WasmSemanticToken {
     length: u32,
     token_type: &'static str,
     token_modifier: &'static str,
+    fact_source: &'static str,
 }
 
 #[cfg(feature = "editor-language")]
@@ -268,6 +286,7 @@ impl From<SemanticToken> for WasmSemanticToken {
             length: value.length,
             token_type: semantic_token_kind_name(value.kind),
             token_modifier: semantic_token_modifier_name(value.modifier),
+            fact_source: fact_source_name(value.fact_source),
         }
     }
 }
@@ -699,6 +718,7 @@ fn code_actions_for_diagnostics(
                         .edits
                         .iter()
                         .map(|edit| WasmTextEdit {
+                            fact_source: None,
                             range: Range::new(
                                 Position::new(
                                     edit.span.lsp_range.start.line,
@@ -721,6 +741,7 @@ fn code_actions_for_diagnostics(
                         kind: "quickfix",
                         diagnostics: vec![diagnostic.clone()],
                         edit: WasmWorkspaceEdit {
+                            fact_source: None,
                             changes: HashMap::from([(uri.to_string(), edits)]),
                         },
                         is_preferred: fix.is_preferred,
@@ -745,6 +766,15 @@ fn symbol_kind_name(kind: EditorSymbolKind) -> &'static str {
         EditorSymbolKind::String => "string",
         EditorSymbolKind::Struct => "struct",
         EditorSymbolKind::Variable => "variable",
+    }
+}
+
+#[cfg(feature = "editor-language")]
+fn fact_source_name(source: FenceTextIndexSource) -> &'static str {
+    match source {
+        FenceTextIndexSource::TextScan => "text_scan",
+        FenceTextIndexSource::ParserComplete => "parser_complete",
+        FenceTextIndexSource::ParserRecovered => "parser_recovered",
     }
 }
 

@@ -1,6 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
-use merman_analysis::{ByteSpan, EditorSymbolKind, FenceLineItem, FenceSemanticItem, SourceMap};
+use merman_analysis::{
+    ByteSpan, EditorSymbolKind, FenceLineItem, FenceSemanticItem, FenceTextIndexSource, SourceMap,
+};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -9,6 +11,7 @@ struct OutlineItem {
     name: String,
     detail: Option<String>,
     kind: EditorSymbolKind,
+    fact_source: FenceTextIndexSource,
     span: ByteSpan,
     selection: ByteSpan,
     children: Vec<OutlineItem>,
@@ -23,6 +26,7 @@ impl OutlineItem {
             name: self.name.clone(),
             detail: self.detail.clone(),
             kind: self.kind,
+            fact_source: self.fact_source,
             range,
             selection_range,
             children: self
@@ -123,6 +127,7 @@ pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorHo
 
     Some(EditorHover {
         contents: item.hover_markdown(fence),
+        fact_source: item.fact_source,
         range,
     })
 }
@@ -135,6 +140,7 @@ pub fn goto_definition(snapshot: &DocumentSnapshot, position: Position) -> Optio
     let range = range_from_span(&snapshot.source_map, span)?;
     Some(EditorLocation {
         uri: snapshot.uri.clone(),
+        fact_source: fence.text_index.source(),
         range,
     })
 }
@@ -156,6 +162,7 @@ pub fn references(
             let span = absolute_span(fence, span);
             range_from_span(&snapshot.source_map, span).map(|range| EditorLocation {
                 uri: snapshot.uri.clone(),
+                fact_source: fence.text_index.source(),
                 range,
             })
         })
@@ -185,7 +192,11 @@ pub fn prepare_rename(
         .text
         .get(selection.start..selection.end)?
         .to_string();
-    Some(EditorPrepareRename { range, placeholder })
+    Some(EditorPrepareRename {
+        fact_source: fence.text_index.source(),
+        range,
+        placeholder,
+    })
 }
 
 pub fn rename(
@@ -220,6 +231,7 @@ fn rename_edits(
         .copied()
         .filter_map(|span| range_from_span(&snapshot.source_map, absolute_span(fence, span)))
         .map(|range| EditorTextEdit {
+            fact_source: fence.text_index.source(),
             range,
             new_text: new_name.to_string(),
         })
@@ -231,7 +243,10 @@ fn rename_edits(
 
     let mut changes = HashMap::new();
     changes.insert(snapshot.uri.clone(), edits);
-    Some(EditorWorkspaceEdit { changes })
+    Some(EditorWorkspaceEdit {
+        fact_source: fence.text_index.source(),
+        changes,
+    })
 }
 
 fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
@@ -239,6 +254,7 @@ fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
         name: fence_name(fence),
         detail: fence_detail(fence),
         kind: generic_kind(fence.diagram_type.as_deref()),
+        fact_source: fence.text_index.source(),
         span: ByteSpan {
             start: fence.start,
             end: fence.end,
@@ -265,6 +281,7 @@ fn outline_item_from_index(fence: &FenceSnapshot, item: &FenceLineItem) -> Outli
         name: item.name.clone(),
         detail: item.detail.clone(),
         kind: item.kind,
+        fact_source: fence.text_index.source(),
         span: absolute_span(fence, item.span),
         selection: absolute_span(fence, item.selection),
         children: Vec::new(),
@@ -276,6 +293,7 @@ fn outline_item_from_semantic(fence: &FenceSnapshot, item: &FenceSemanticItem) -
         name: item.name.clone(),
         detail: item.detail.clone(),
         kind: item.kind,
+        fact_source: fence.text_index.source(),
         span: absolute_span(fence, item.span),
         selection: absolute_span(fence, item.selection),
         children: Vec::new(),
@@ -295,6 +313,7 @@ fn collect_workspace_symbols(
         symbols.push(EditorSymbolInformation {
             name: item.name.clone(),
             kind: item.kind,
+            fact_source: item.fact_source,
             location,
             container_name: container_name.map(str::to_string),
         });
@@ -317,6 +336,7 @@ fn workspace_symbol_location(
     let range = range_from_span(&snapshot.source_map, item.selection)?;
     Some(EditorLocation {
         uri: snapshot.uri.clone(),
+        fact_source: item.fact_source,
         range,
     })
 }
@@ -433,6 +453,7 @@ pub struct EditorDocumentSymbol {
     pub name: String,
     pub detail: Option<String>,
     pub kind: EditorSymbolKind,
+    pub fact_source: FenceTextIndexSource,
     pub range: Range,
     pub selection_range: Range,
     pub children: Vec<EditorDocumentSymbol>,
@@ -442,6 +463,7 @@ pub struct EditorDocumentSymbol {
 pub struct EditorSymbolInformation {
     pub name: String,
     pub kind: EditorSymbolKind,
+    pub fact_source: FenceTextIndexSource,
     pub location: EditorLocation,
     pub container_name: Option<String>,
 }
@@ -449,12 +471,14 @@ pub struct EditorSymbolInformation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorLocation {
     pub uri: DocumentUri,
+    pub fact_source: FenceTextIndexSource,
     pub range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorHover {
     pub contents: EditorMarkupContent,
+    pub fact_source: FenceTextIndexSource,
     pub range: Option<Range>,
 }
 
@@ -465,17 +489,20 @@ pub struct EditorMarkupContent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorPrepareRename {
+    pub fact_source: FenceTextIndexSource,
     pub range: Range,
     pub placeholder: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorWorkspaceEdit {
+    pub fact_source: FenceTextIndexSource,
     pub changes: HashMap<DocumentUri, Vec<EditorTextEdit>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorTextEdit {
+    pub fact_source: FenceTextIndexSource,
     pub range: Range,
     pub new_text: String,
 }
