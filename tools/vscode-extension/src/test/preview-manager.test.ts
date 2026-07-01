@@ -25,6 +25,7 @@ interface FakePanel {
   active: boolean;
   visible: boolean;
   disposed: boolean;
+  postedMessages: unknown[];
   title: string;
   reveal(viewColumn: number, preserveFocus?: boolean): void;
   receive(message: unknown): Promise<void>;
@@ -41,7 +42,8 @@ interface FakePanel {
 class FakePreviewHost {
   readonly commands = new Map<string, CommandHandler>();
   readonly panels: FakePanel[] = [];
-  readonly renderCalls: string[] = [];
+  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string }> = [];
+  readonly clipboardWrites: string[] = [];
   readonly warnings: string[] = [];
   readonly revealCalls: Array<{ viewColumn: number; preserveFocus?: boolean }> = [];
   readonly showTextDocumentCalls: Array<{
@@ -50,6 +52,7 @@ class FakePreviewHost {
     selection?: unknown;
   }> = [];
   readonly subscriptions: FakeDisposable[] = [];
+  private saveDialogCounter = 0;
   readonly activeDocument = textDocument("file:///workspace/notes.txt", "notes.txt", "plain text", "plaintext");
   readonly targetDocument = textDocument(
     "file:///workspace/example.mmd",
@@ -155,7 +158,10 @@ class FakePreviewHost {
         },
         showInformationMessage: () => Promise.resolve(undefined),
         showErrorMessage: () => Promise.resolve(undefined),
-        showSaveDialog: () => Promise.resolve(undefined),
+        showSaveDialog: () => {
+          this.saveDialogCounter += 1;
+          return Promise.resolve(uri(`file:///workspace/export-${this.saveDialogCounter}.svg`, `/workspace/export-${this.saveDialogCounter}.svg`));
+        },
       },
       workspace: {
         openTextDocument: async (resource: { toString(): string }) => {
@@ -172,7 +178,9 @@ class FakePreviewHost {
       },
       env: {
         clipboard: {
-          writeText: async () => {},
+          writeText: async (value: string) => {
+            host.clipboardWrites.push(value);
+          },
         },
       },
       Range: class {
@@ -210,6 +218,7 @@ class FakePreviewHost {
       active: true,
       visible: true,
       disposed: false,
+      postedMessages: [],
       title,
       webview: {
         html: "",
@@ -223,7 +232,10 @@ class FakePreviewHost {
           disposables?.push(disposable);
           return disposable;
         },
-        postMessage: async () => true,
+        postMessage: async (message) => {
+          panel.postedMessages.push(message);
+          return true;
+        },
       },
       reveal: (column, preserveFocus) => {
         this.revealCalls.push({ viewColumn: column, preserveFocus });
@@ -458,7 +470,7 @@ describe("preview manager", () => {
     await host.commands.get("merman.refreshPreview")?.();
     await flushPreviewWork();
 
-    assert.deepEqual(host.renderCalls, [
+    assert.deepEqual(host.renderCalls.map((call) => call.source), [
       "flowchart TD\nA --> B\n",
       "sequenceDiagram\nA->>B: hi\n",
     ]);
@@ -484,7 +496,113 @@ describe("preview manager", () => {
     await host.panels[0]?.receive({ type: "refresh" });
     await flushPreviewWork();
 
-    assert.deepEqual(host.renderCalls, ["flowchart TD\nA --> B\n"]);
+    assert.deepEqual(host.renderCalls.map((call) => call.source), ["flowchart TD\nA --> B\n"]);
+  });
+
+  it("reopens a follow preview after its panel is closed", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    assert.equal(host.panels.length, 1);
+    host.panels[0]?.dispose();
+
+    await host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
+
+    assert.equal(host.panels.length, 2);
+    assert.equal(host.panels[0]?.disposed, true);
+    assert.equal(host.panels[1]?.disposed, false);
+    assert.deepEqual(host.showTextDocumentCalls.map((call) => call.documentUri), [
+      "file:///workspace/example.mmd",
+      "file:///workspace/second.mmd",
+    ]);
+  });
+
+  it("replays preview state when the webview becomes ready again", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    host.panels[0]?.postedMessages.splice(0);
+
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+
+    assert.deepEqual(host.panels[0]?.postedMessages.map((message) => (message as { type?: string }).type), [
+      "sourceListUpdated",
+      "diagnosticsUpdated",
+      "settingsUpdated",
+      "renderSucceeded",
+    ]);
+  });
+
+  it("reveals source for the preview that sends a webview showSource message", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await host.commands.get("merman.togglePreviewLock")?.();
+    await host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
+    await host.panels[1]?.receive({ type: "ready" });
+
+    await host.panels[0]?.receive({ type: "showSource" });
+
+    const sourceReveal = host.showTextDocumentCalls.at(-1);
+    assert.equal(sourceReveal?.documentUri, "file:///workspace/example.mmd");
+    assert.equal(sourceReveal?.preserveFocus, false);
+  });
+
+  it("keeps copy and export actions scoped to the sending preview instance", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await host.commands.get("merman.togglePreviewLock")?.();
+    await host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
+    await host.panels[1]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    host.renderCalls.splice(0);
+
+    await host.panels[0]?.receive({ type: "copySvg", svg: "<svg id=\"first\"></svg>" });
+    await host.panels[1]?.receive({ type: "copySvg", svg: "<svg id=\"second\"></svg>" });
+    await host.panels[0]?.receive({ type: "exportRendered", format: "svg" });
+    await host.panels[1]?.receive({ type: "exportRendered", format: "png" });
+
+    assert.deepEqual(host.clipboardWrites, [
+      "<svg id=\"first\"></svg>",
+      "<svg id=\"second\"></svg>",
+    ]);
+    assert.deepEqual(host.renderCalls.map((call) => ({
+      source: call.source,
+      format: call.format,
+    })), [
+      { source: "flowchart TD\nA --> B\n", format: "svg" },
+      { source: "sequenceDiagram\nA->>B: hi\n", format: "png" },
+    ]);
   });
 });
 
@@ -503,8 +621,12 @@ function loadPreviewModule(host: FakePreviewHost): typeof import("../preview.js"
     }
     if (request === "./renderer.js") {
       return {
-        renderMermanSource: async (renderRequest: { source: string }) => {
-          host.renderCalls.push(renderRequest.source);
+        renderMermanSource: async (renderRequest: { source: string; format?: string; outputPath?: string }) => {
+          host.renderCalls.push({
+            source: renderRequest.source,
+            format: renderRequest.format,
+            outputPath: renderRequest.outputPath,
+          });
           return {
             stdout: Buffer.from("<svg viewBox=\"0 0 10 10\"></svg>"),
             stderr: "",
