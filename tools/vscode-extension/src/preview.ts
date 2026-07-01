@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 
-import { PreviewInstance } from "./preview-instance.js";
+import {
+  EMPTY_PREVIEW_LOCK_WARNING,
+  PreviewInstance,
+} from "./preview-instance.js";
 import {
   isActiveEditorSelectionChange,
   isTrackedPreviewDiagnosticsChange,
@@ -11,7 +14,6 @@ import type { MermaidSourceCommandArgument } from "./source-actions.js";
 
 const PREVIEW_COMMAND = "merman.openPreview";
 const TOGGLE_PREVIEW_LOCK_COMMAND = "merman.togglePreviewLock";
-const EMPTY_PREVIEW_LOCK_WARNING = "Open a Mermaid preview before locking it to a source.";
 
 export function registerPreview(context: vscode.ExtensionContext): void {
   const manager = new MermanPreviewManager(context);

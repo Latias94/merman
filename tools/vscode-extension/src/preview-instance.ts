@@ -42,6 +42,7 @@ import {
 
 const PREVIEW_TITLE = "Merman Preview";
 const RENDER_DEBOUNCE_MS = 180;
+export const EMPTY_PREVIEW_LOCK_WARNING = "Open a Mermaid preview before locking it to a source.";
 
 export class PreviewInstance implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
@@ -82,14 +83,18 @@ export class PreviewInstance implements vscode.Disposable {
     const shouldRetargetSource = !this.panel || !this.session.isLocked || !this.session.snapshot;
     if (shouldRetargetSource) {
       await this.openResource(target);
+      if (this.disposed) {
+        return;
+      }
     }
-    if (!this.panel) {
-      this.createPanel();
+    let panel = this.panel;
+    if (!panel) {
+      panel = this.createPanel();
     } else {
-      this.panel.reveal(this.panel.viewColumn, true);
+      panel.reveal(panel.viewColumn, true);
     }
 
-    this.ensureWebviewHtml(panelOrThrow(this.panel));
+    this.ensureWebviewHtml(panel);
     this.scheduleRefresh(shouldRetargetSource ? "manual-open" : "panel-visible", true);
   }
 
@@ -121,9 +126,7 @@ export class PreviewInstance implements vscode.Disposable {
   setLocked(locked: boolean, notify: boolean): void {
     if (locked && !this.session.snapshot) {
       if (notify) {
-        void vscode.window.showWarningMessage(
-          "Open a Mermaid preview before locking it to a source.",
-        );
+        void vscode.window.showWarningMessage(EMPTY_PREVIEW_LOCK_WARNING);
       }
       return;
     }
@@ -140,8 +143,8 @@ export class PreviewInstance implements vscode.Disposable {
     }
   }
 
-  private createPanel(): void {
-    this.panel = vscode.window.createWebviewPanel(
+  private createPanel(): vscode.WebviewPanel {
+    const panel = vscode.window.createWebviewPanel(
       "mermanPreview",
       PREVIEW_TITLE,
       {
@@ -155,21 +158,23 @@ export class PreviewInstance implements vscode.Disposable {
         retainContextWhenHidden: true,
       },
     );
-    this.panel.webview.onDidReceiveMessage(
+    this.panel = panel;
+    panel.webview.onDidReceiveMessage(
       (message: PreviewFromWebviewMessage) => {
         void this.handleWebviewMessage(message);
       },
       null,
       this.panelDisposables,
     );
-    this.panel.onDidDispose(() => {
+    panel.onDidDispose(() => {
       this.handlePanelDisposed();
     }, null, this.panelDisposables);
-    this.panel.onDidChangeViewState(() => {
+    panel.onDidChangeViewState(() => {
       if (this.panel?.visible) {
         this.scheduleRefresh("panel-visible");
       }
     }, null, this.panelDisposables);
+    return panel;
   }
 
   private handlePanelDisposed(): void {
@@ -183,6 +188,7 @@ export class PreviewInstance implements vscode.Disposable {
 
   private disposePanelState(): void {
     this.clearPendingRender();
+    this.renderQueue.cancelPending();
     this.panel = undefined;
     this.session.reset();
     this.webviewClient.reset();
@@ -441,13 +447,6 @@ export class PreviewInstance implements vscode.Disposable {
       void vscode.window.showErrorMessage(`Merman preview export failed: ${message}`);
     }
   }
-}
-
-function panelOrThrow(panel: vscode.WebviewPanel | undefined): vscode.WebviewPanel {
-  if (!panel) {
-    throw new Error("Preview panel is not available");
-  }
-  return panel;
 }
 
 function collectPreviewDiagnostics(

@@ -70,7 +70,7 @@ describe("preview html", () => {
       source,
       /createWebviewPanel\(\s*"mermanPreview",\s*PREVIEW_TITLE,\s*\{[\s\S]*?preserveFocus:\s*true/,
     );
-    assert.match(source, /this\.panel\.reveal\(this\.panel\.viewColumn,\s*true\)/);
+    assert.match(source, /panel\.reveal\(panel\.viewColumn,\s*true\)/);
     assert.match(
       source,
       /openResource[\s\S]*?showTextDocument\(document,\s*\{[\s\S]*?preserveFocus:\s*true/,
