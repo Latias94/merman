@@ -93,6 +93,19 @@ impl BindingEngine {
             .map_err(common::internal_json_error)
     }
 
+    pub fn analyze_document_json(
+        &self,
+        source: &[u8],
+        uri: &[u8],
+    ) -> Result<Vec<u8>, BindingError> {
+        let source = common::source_text_utf8(source)?;
+        let uri = common::source_text_utf8(uri)?;
+        let descriptor = common::source_descriptor_for_uri(uri);
+        merman_analysis::analyze_document(source, &self.analyzer, descriptor)
+            .to_json_bytes()
+            .map_err(common::internal_json_error)
+    }
+
     pub fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         common::validation_payload_json_from_analysis(&self.analyze_payload(source)?)
     }
@@ -143,6 +156,29 @@ mod tests {
 
         assert_eq!(validation["valid"], false);
         assert_eq!(validation["code_name"], "MERMAN_NO_DIAGRAM");
+    }
+
+    #[test]
+    fn engine_analyzes_markdown_documents() {
+        let engine = BindingEngine::new(b"").unwrap();
+        let payload: Value = serde_json::from_slice(
+            &engine
+                .analyze_document_json(
+                    b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+                    b"file:///tmp/example.md",
+                )
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(payload["source"]["kind"], "markdown");
+        assert!(
+            payload["diagnostics"][0]["related"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|related| related["message"] == "Mermaid fence 1")
+        );
     }
 
     #[test]

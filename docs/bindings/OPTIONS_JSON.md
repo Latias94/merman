@@ -156,6 +156,12 @@ Bindings expose the same rule registry through their lint-rule catalog metadata 
 should read that catalog when building settings UI instead of duplicating rule ids, evidence
 references, and origins.
 
+`analyzeDocument(source, options, uri)` uses this same options contract. The URI determines whether
+the payload source is a standalone Mermaid diagram, Markdown, or MDX document; Markdown and MDX
+diagnostics, related locations, and fixes are remapped to host-document coordinates. Use
+`analyze()` for a single Mermaid diagram body and `analyzeDocument()` for lint integrations that
+scan files or Markdown fences.
+
 Rule governance is intentionally conservative because Merman is not the Mermaid project:
 
 | Origin | Meaning | Default profile |

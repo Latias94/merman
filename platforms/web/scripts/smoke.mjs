@@ -141,6 +141,37 @@ assert.equal(
   true
 );
 
+const markdownAnalysis = api.analyzeDocument(
+  "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+  deterministicTime,
+  "file:///tmp/example.md"
+);
+assert.equal(markdownAnalysis.valid, false);
+assert.equal(markdownAnalysis.source.kind, "markdown");
+assert.equal(markdownAnalysis.diagnostics[0].span.line, 4);
+assert.equal(
+  markdownAnalysis.diagnostics[0].related.some(
+    (related) => related.message === "Mermaid fence 1"
+  ),
+  true
+);
+
+const markdownFixAnalysis = api.analyzeDocument(
+  '```mermaid\n%%{ initialize: {"theme":"dark"} }%%\nflowchart TD\nA-->B\n```\n',
+  {
+    ...deterministicTime,
+    lint: { profile: "recommended" },
+  },
+  "file:///tmp/example.md"
+);
+const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
+  (diagnostic) =>
+    diagnostic.category === "config" &&
+    diagnostic.fixes.some((fix) => fix.edits.length > 0)
+);
+assert.ok(configFixDiagnostic);
+assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);
+
 assertEditorLanguageSurface(capabilities.editor_language);
 
 if (capabilities.render) {

@@ -54,6 +54,15 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
         .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
 }
 
+pub fn analyze_document_json(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    document_analysis_payload(source, options_json, uri)
+        .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
+}
+
 pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     common::validation_payload_json_from_analysis(&analysis_payload(source, options_json)?)
 }
@@ -80,6 +89,22 @@ fn analysis_payload(source: &[u8], options_json: &[u8]) -> Result<AnalysisPayloa
     let source = common::source_text_utf8(source)?;
     let options = common::parse_options(options_json)?;
     Ok(Analyzer::with_options(common::analysis_options(&options)?).analyze(source))
+}
+
+fn document_analysis_payload(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<AnalysisPayload, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    let uri = common::source_text_utf8(uri)?;
+    let descriptor = common::source_descriptor_for_uri(uri);
+    let options = common::parse_options(options_json)?;
+    let analyzer =
+        Analyzer::with_options(common::analysis_options(&options)?.with_source(descriptor.clone()));
+    Ok(merman_analysis::analyze_document(
+        source, &analyzer, descriptor,
+    ))
 }
 
 #[cfg(all(test, any(not(feature = "render"), not(feature = "ascii"))))]
@@ -115,6 +140,27 @@ mod tests {
         assert_eq!(json["version"], 1);
         assert_eq!(json["valid"], false);
         assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
+    }
+
+    #[test]
+    fn analyze_document_json_reports_markdown_source_and_host_ranges() {
+        let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
+        let json: Value = serde_json::from_slice(
+            &analyze_document_json(source, b"", b"file:///tmp/example.md").unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["source"]["kind"], "markdown");
+        assert_eq!(json["source"]["path"], "file:///tmp/example.md");
+        assert_eq!(json["diagnostics"][0]["span"]["line"], 4);
+        assert!(
+            json["diagnostics"][0]["related"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|related| related["message"] == "Mermaid fence 1")
+        );
     }
 
     #[test]

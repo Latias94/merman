@@ -364,6 +364,20 @@ pub fn analyze_json(source: &str, options_json: Option<String>) -> Result<JsValu
     analyze(source, options_json)
 }
 
+#[wasm_bindgen(js_name = analyzeDocument)]
+pub fn analyze_document(
+    source: &str,
+    options_json: Option<String>,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let uri = document_uri(uri);
+    json_value_result(merman_bindings_core::analyze_document_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        uri.as_bytes(),
+    ))
+}
+
 #[wasm_bindgen]
 pub fn validate(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
     json_value_result(merman_bindings_core::validate_json(
@@ -601,10 +615,14 @@ fn js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(value).map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-#[cfg(feature = "editor-language")]
-fn editor_uri(uri: Option<String>) -> String {
+fn document_uri(uri: Option<String>) -> String {
     uri.filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "file:///merman/document.mmd".to_string())
+}
+
+#[cfg(feature = "editor-language")]
+fn editor_uri(uri: Option<String>) -> String {
+    document_uri(uri)
 }
 
 #[cfg(feature = "editor-language")]
@@ -1056,6 +1074,49 @@ mod tests {
         assert_eq!(value["version"], 1);
         assert_eq!(value["valid"], false);
         assert_eq!(value["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn analyze_document_exposes_markdown_diagnostics_payload() {
+        let value: Value = serde_wasm_bindgen::from_value(
+            analyze_document(
+                "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+                None,
+                Some("file:///tmp/example.md".to_string()),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn analyze_document_exposes_markdown_diagnostics_payload() {
+        let value: Value = serde_json::from_slice(
+            &merman_bindings_core::analyze_document_json(
+                b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+                b"",
+                b"file:///tmp/example.md",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_payload(&value);
+    }
+
+    fn assert_markdown_document_analysis_payload(value: &Value) {
+        assert_eq!(value["valid"], false);
+        assert_eq!(value["source"]["kind"], "markdown");
+        assert_eq!(value["diagnostics"][0]["span"]["line"], 4);
+        assert!(
+            value["diagnostics"][0]["related"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|related| related["message"] == "Mermaid fence 1")
+        );
     }
 
     #[test]

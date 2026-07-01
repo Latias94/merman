@@ -95,6 +95,7 @@ export interface CommonBindingOptions {
   fixed_local_offset_minutes?: number;
   site_config?: MermaidSiteConfig;
   parse?: ParseOptions;
+  lint?: LintBindingOptions;
 }
 
 export type AsciiCharsetOption = "ascii" | "unicode";
@@ -358,6 +359,18 @@ export interface LintRuleCatalogEntry {
   fixable: boolean;
 }
 
+export interface LintRuleSeverityOverrideOptions {
+  rule_id: string;
+  severity: LintRuleSeverity;
+}
+
+export interface LintBindingOptions {
+  profile?: LintRuleProfile;
+  enable_rules?: string[];
+  disable_rules?: string[];
+  rule_severities?: LintRuleSeverityOverrideOptions[];
+}
+
 export type AsciiSupportLevel = "full" | "partial" | "summary" | "unsupported";
 
 export type AsciiEvidenceKind =
@@ -451,30 +464,78 @@ export interface ValidationResult {
   code_name: BindingStatusCodeName;
 }
 
+export type AnalysisSourceKind = "diagram" | "markdown" | "mdx";
+
+export interface AnalysisSource {
+  kind: AnalysisSourceKind;
+  path?: string | null;
+  diagram_index?: number | null;
+  language: string;
+}
+
+export interface AnalysisSummary {
+  errors: number;
+  warnings: number;
+  infos: number;
+  hints: number;
+}
+
+export interface AnalysisUtf16Position {
+  line: number;
+  character: number;
+}
+
+export interface AnalysisLspRange {
+  start: AnalysisUtf16Position;
+  end: AnalysisUtf16Position;
+}
+
+export interface AnalysisSpan {
+  byte_start: number;
+  byte_end: number;
+  line: number;
+  column: number;
+  end_line: number;
+  end_column: number;
+  lsp_range: AnalysisLspRange;
+}
+
+export interface AnalysisDiagnosticRelated {
+  message: string;
+  span?: AnalysisSpan | null;
+}
+
+export interface AnalysisDiagnosticFixEdit {
+  span: AnalysisSpan;
+  replacement: string;
+}
+
+export interface AnalysisDiagnosticFix {
+  title: string;
+  edits: AnalysisDiagnosticFixEdit[];
+  is_preferred?: boolean;
+}
+
+export interface AnalysisDiagnostic {
+  id: string;
+  severity: LintRuleSeverity;
+  category: LintRuleCategory | string;
+  message: string;
+  code?: number | null;
+  code_name?: string | null;
+  diagram_type?: string | null;
+  span?: AnalysisSpan | null;
+  related: AnalysisDiagnosticRelated[];
+  help?: string | null;
+  fixes: AnalysisDiagnosticFix[];
+}
+
 export interface AnalysisResult {
   version: number;
   valid: boolean;
-  summary: {
-    errors: number;
-    warnings: number;
-    infos: number;
-    hints: number;
-  };
-  source: {
-    kind: "diagram" | "markdown" | "mdx";
-    path?: string | null;
-    diagram_index?: number | null;
-    language: string;
-  };
-  diagnostics: Array<{
-    id: string;
-    severity: "error" | "warning" | "info" | "hint";
-    category: string;
-    message: string;
-    code?: number | null;
-    code_name?: string | null;
-    diagram_type?: string | null;
-  }>;
+  summary: AnalysisSummary;
+  source: AnalysisSource;
+  diagnostics: AnalysisDiagnostic[];
 }
 
 export interface EditorPosition {
@@ -657,6 +718,11 @@ export interface MermanWasmModule {
   ) => string;
   analyze: (source: string, optionsJson?: string | null) => AnalysisResult;
   analyzeJson?: (source: string, optionsJson?: string | null) => AnalysisResult;
+  analyzeDocument?: (
+    source: string,
+    optionsJson?: string | null,
+    uri?: string | null
+  ) => AnalysisResult;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   editorDiagnostics?: (
     source: string,
@@ -997,7 +1063,9 @@ export function layoutObject<T = unknown>(source: string, options?: SvgBindingOp
 
 export function analyze(source: string, options?: SvgBindingOptions | string): AnalysisResult {
   const merman = getMerman();
-  const analysis = merman.analyze?.(source, encodeOptions(options)) ?? merman.analyzeJson?.(source, encodeOptions(options));
+  const encodedOptions = encodeOptions(options);
+  const analysis =
+    merman.analyze?.(source, encodedOptions) ?? merman.analyzeJson?.(source, encodedOptions);
   if (!analysis) {
     throw new Error("Merman analyze() is not available in this artifact.");
   }
@@ -1009,6 +1077,18 @@ export function analyzeJson(
   options?: SvgBindingOptions | string
 ): AnalysisResult {
   return analyze(source, options);
+}
+
+export function analyzeDocument(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): AnalysisResult {
+  const analyzeDocument = getMerman().analyzeDocument;
+  if (!analyzeDocument) {
+    throw new Error("Merman analyzeDocument() is not available in this artifact.");
+  }
+  return analyzeDocument(source, encodeOptions(options), uri);
 }
 
 export function validate(source: string, options?: SvgBindingOptions | string): ValidationResult {

@@ -130,7 +130,11 @@ main thread through your own worker protocol.
 applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
 label can make the diagram wider than Mermaid would make it in the browser.
 
-`analyze()` returns the diagnostics payload JSON object for linting and editor integrations.
+`analyze()` returns the diagnostics payload JSON object for a standalone Mermaid diagram.
+`analyzeDocument(source, options, uri)` uses the URI extension to analyze standalone `.mmd`,
+Markdown, or MDX documents and returns diagnostics, related locations, and fixes in host-document
+coordinates. Downstream lint tools should use `analyzeDocument()` when they scan Markdown files and
+want Merman as an optional analysis engine without adopting the LSP.
 
 ## Custom wasm loading
 
@@ -234,7 +238,7 @@ initialization is usually simpler.
 - `renderAscii()`
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
-- `analyze()`, `analyzeJson()`, `validate()`
+- `analyze()`, `analyzeJson()`, `analyzeDocument()`, `validate()`
 - `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
   `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
   `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
