@@ -55,7 +55,29 @@ completed diagnostics plan.
 
 ## Remaining UX Work
 
-- Consider whether Copy SVG should be disabled or retitled while the preview is stale, because it
-  still copies the previous successful DOM while Export uses the current source.
-- Refactor single global preview controller into preview manager/instance ownership before adding
-  multiple locked preview panels, show-source, refresh, and command-palette scoping.
+- Decide stale output actions explicitly. Preview-panel Copy SVG currently copies the retained DOM,
+  so stale state means it copies the last successful render. Preview-panel Export SVG/PNG uses the
+  current `PreviewSession` snapshot and re-renders the current source, so it may fail or produce a
+  different result than the visible stale DOM. A small UX PR should disable or retitle output
+  actions while `data-render-state="stale"`, and add webview tests for stale Copy SVG/Export.
+- Refactor the single global preview controller into `PreviewManager` plus `PreviewInstance`
+  ownership before adding multiple locked preview panels, show-source, refresh, and command-palette
+  scoping. The first architecture PR should be a no-behavior-change extraction: one manager, one
+  instance, existing tests still passing.
+- VS Code Markdown Preview parity evidence: upstream uses `MarkdownPreviewManager` with dynamic
+  and static preview stores, an active preview, and per-preview lock/refresh behavior. Use that as
+  a design reference, not a mandate to copy every Markdown feature in one change.
+
+## Research Evidence
+
+- Merman preview-panel Copy SVG serializes the currently visible SVG DOM in
+  `tools/vscode-extension/media/preview.js`.
+- Merman preview-panel Export SVG/PNG handles the webview message in
+  `tools/vscode-extension/src/preview.ts` and calls `renderMermanSource` with
+  `this.session.snapshot.input.source`.
+- Source CodeLens export/copy commands use `tools/vscode-extension/src/export.ts` and resolve the
+  source from command arguments or the active editor, so they are separate from preview-panel stale
+  DOM behavior.
+- VS Code reference: `microsoft/vscode` `extensions/markdown-language-features/src/preview/previewManager.ts`
+  keeps dynamic/static preview stores and an active preview; `preview.ts` keeps per-preview dynamic
+  lock/update behavior.

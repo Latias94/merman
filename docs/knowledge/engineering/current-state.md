@@ -11,7 +11,7 @@ status: active
 - Done: editor diagnostics cleanup plan is complete; the preview UX follow-up hardens preview lock/follow, explicit target opening, cross-source render failure clearing, kanban English recovery diagnostics, Merman-only preview diagnostic summaries, and stale same-source render failure labeling.
 - In progress: none.
 - Blocked: none.
-- Next action: continue separate UX research around multi-preview manager parity and stale-copy/export behavior.
+- Next action: choose the next VS Code preview slice: either disable/retitle stale preview output actions, or start a no-behavior-change `PreviewInstance` extraction before true multi-preview support.
 
 # Citations
 

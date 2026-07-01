@@ -22,6 +22,11 @@ status: active
   now ignores non-Merman diagnostics in the preview summary and labels retained old output as the
   last successful preview when the current same-source render fails. Re-verified with
   `npm run check`, `npm test` (80 tests), and `git diff --check`.
+- Committed the diagnostic/stale preview slice as `1b7792d53`. Follow-up research found that stale
+  preview Copy SVG currently copies the retained DOM, while preview Export re-renders the current
+  session snapshot; the next small UX slice should make that split explicit. Architecture research
+  recommends extracting a `PreviewInstance` behind the current single-preview behavior before
+  enabling true multi-preview parity.
 
 ## 2026-06-30
 - Finished the editor diagnostics architecture cleanup plan end-to-end. Final gates passed Rust
