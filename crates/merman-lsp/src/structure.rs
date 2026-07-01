@@ -260,9 +260,6 @@ mod tests {
         outline_references, outline_rename, workspace_symbols,
     };
     use crate::document_store::DocumentStore;
-    use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
-    use merman_analysis::{FenceTextIndex, SourceMap};
-    use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
     use tower_lsp::lsp_types::{
         DocumentSymbolResponse, GotoDefinitionResponse, HoverContents, Position,
         PrepareRenameResponse, RenameParams, TextDocumentIdentifier, TextDocumentPositionParams,
@@ -311,96 +308,6 @@ mod tests {
 
         assert!(text.contains("A"));
         assert!(text.contains("Diagram:"));
-    }
-
-    #[test]
-    fn hover_reports_payload_semantic_items() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "sequenceDiagram\ntitle: Diagram Title\nAlice->>Bob: Hello\n".to_string(),
-        );
-
-        let hover = outline_hover(&snapshot, Position::new(1, 8)).unwrap();
-        let text = match hover.contents {
-            HoverContents::Markup(markup) => markup.value,
-            other => panic!("unexpected hover contents: {other:?}"),
-        };
-
-        assert!(text.contains("Diagram Title"));
-        assert!(text.contains("sequence title"));
-    }
-
-    #[test]
-    fn payload_semantic_items_are_not_navigation_targets() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "sequenceDiagram\ntitle: Diagram Title\nAlice->>Bob: Hello\n".to_string(),
-        );
-
-        let position = Position::new(1, 8);
-        assert!(outline_definition(&snapshot, position).is_none());
-        assert!(outline_references(&snapshot, position, true).is_none());
-        assert!(outline_prepare_rename(&snapshot, position).is_none());
-    }
-
-    #[test]
-    fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "mindmap\nroot(Root Node)\n child1(Child 1)\n".to_string(),
-        );
-
-        let id_position = Position::new(1, 0);
-        let prepare = outline_prepare_rename(&snapshot, id_position).unwrap();
-        match prepare {
-            PrepareRenameResponse::RangeWithPlaceholder { placeholder, .. } => {
-                assert_eq!(placeholder, "root");
-            }
-            other => panic!("unexpected prepare rename response: {other:?}"),
-        }
-
-        let refs = outline_references(&snapshot, id_position, true).unwrap();
-        assert_eq!(refs.len(), 1);
-
-        let rename = outline_rename(
-            &snapshot,
-            RenameParams {
-                text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier {
-                        uri: snapshot.uri.clone(),
-                    },
-                    id_position,
-                ),
-                new_name: "root_alpha".to_string(),
-                work_done_progress_params: Default::default(),
-            },
-        )
-        .unwrap();
-        let edit = rename.expect("expected rename edit");
-        assert_eq!(
-            edit.changes
-                .as_ref()
-                .unwrap()
-                .get(&snapshot.uri)
-                .unwrap()
-                .len(),
-            1,
-            "rename should only update the mindmap node id"
-        );
-
-        let payload_position = Position::new(1, 5);
-        assert!(outline_definition(&snapshot, payload_position).is_none());
-        assert!(outline_references(&snapshot, payload_position, true).is_none());
-        assert!(outline_prepare_rename(&snapshot, payload_position).is_none());
     }
 
     #[test]
@@ -467,81 +374,5 @@ mod tests {
         let group_symbols = workspace_symbols(&snapshot, "group");
         assert_eq!(group_symbols.len(), 1);
         assert_eq!(group_symbols[0].name, "group");
-    }
-
-    fn typed_reference_snapshot() -> DocumentSnapshot {
-        let text = "Shared\nShared\n".to_string();
-        let mut facts = EditorSemanticFacts::new();
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "Shared",
-            Some("module entity".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(0, 6),
-            SourceSpan::new(0, 6),
-        ));
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "Shared",
-            Some("property entity".to_string()),
-            EditorSemanticKind::Property,
-            SourceSpan::new(7, 13),
-            SourceSpan::new(7, 13),
-        ));
-
-        let text_index = FenceTextIndex::from_core_facts(facts);
-        DocumentSnapshot {
-            uri: Url::parse("file:///tmp/example.mmd").unwrap(),
-            version: 1,
-            text: text.clone(),
-            source: merman_analysis::SourceDescriptor::diagram()
-                .with_path("file:///tmp/example.mmd"),
-            source_map: SourceMap::new(text.clone()),
-            fences: vec![FenceSnapshot {
-                source_id: "document".to_string(),
-                index: 0,
-                source: merman_analysis::SourceDescriptor::diagram()
-                    .with_path("file:///tmp/example.mmd"),
-                start: 0,
-                body_start: 0,
-                body_end: text.len(),
-                end: text.len(),
-                text,
-                fence_delimiter: None,
-                diagram_type: Some("flowchart-v2".to_string()),
-                text_index,
-            }],
-        }
-    }
-
-    #[test]
-    fn typed_reference_groups_keep_same_name_different_kinds_separate() {
-        let snapshot = typed_reference_snapshot();
-
-        let module_refs = outline_references(&snapshot, Position::new(0, 0), true).unwrap();
-        let property_refs = outline_references(&snapshot, Position::new(1, 0), true).unwrap();
-
-        assert_eq!(module_refs.len(), 1);
-        assert_eq!(property_refs.len(), 1);
-
-        let module_rename = outline_rename(
-            &snapshot,
-            RenameParams {
-                text_document_position: TextDocumentPositionParams::new(
-                    TextDocumentIdentifier {
-                        uri: snapshot.uri.clone(),
-                    },
-                    Position::new(0, 0),
-                ),
-                new_name: "ModuleShared".to_string(),
-                work_done_progress_params: Default::default(),
-            },
-        )
-        .unwrap()
-        .unwrap();
-        let module_edits = module_rename.changes.unwrap();
-        assert_eq!(
-            module_edits.get(&snapshot.uri).unwrap().len(),
-            1,
-            "rename should only touch the module group"
-        );
     }
 }

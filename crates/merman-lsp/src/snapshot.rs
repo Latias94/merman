@@ -1,102 +1,48 @@
-use merman_analysis::{FenceDelimiter, FenceTextIndex, SourceDescriptor, SourceMap};
+use std::ops::Deref;
+
 use tower_lsp::lsp_types::{Position, Url};
 
 #[derive(Debug, Clone)]
 pub struct DocumentSnapshot {
     pub uri: Url,
-    pub version: i32,
-    pub text: String,
-    pub source: SourceDescriptor,
-    pub source_map: SourceMap,
-    pub fences: Vec<FenceSnapshot>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FenceSnapshot {
-    pub source_id: String,
-    pub index: usize,
-    pub source: SourceDescriptor,
-    pub start: usize,
-    pub body_start: usize,
-    pub body_end: usize,
-    pub end: usize,
-    pub text: String,
-    pub fence_delimiter: Option<FenceDelimiter>,
-    pub diagram_type: Option<String>,
-    pub text_index: FenceTextIndex,
+    editor: merman_editor_core::DocumentSnapshot,
 }
 
 impl DocumentSnapshot {
     pub fn from_editor(snapshot: merman_editor_core::DocumentSnapshot, uri: Url) -> Self {
         Self {
             uri,
-            version: snapshot.version,
-            text: snapshot.text,
-            source: snapshot.source,
-            source_map: snapshot.source_map,
-            fences: snapshot
-                .fences
-                .into_iter()
-                .map(|fence| FenceSnapshot {
-                    source_id: fence.source_id,
-                    index: fence.index,
-                    source: fence.source,
-                    start: fence.start,
-                    body_start: fence.body_start,
-                    body_end: fence.body_end,
-                    end: fence.end,
-                    text: fence.text,
-                    fence_delimiter: fence.fence_delimiter,
-                    diagram_type: fence.diagram_type,
-                    text_index: fence.text_index,
-                })
-                .collect(),
+            editor: snapshot,
         }
     }
 
     pub fn to_editor(&self) -> merman_editor_core::DocumentSnapshot {
-        merman_editor_core::DocumentSnapshot {
-            uri: merman_editor_core::DocumentUri::new(self.uri.as_str()),
-            version: self.version,
-            kind: merman_editor_core::DocumentKind::from_path(self.uri.path()),
-            text: self.text.clone(),
-            source: self.source.clone(),
-            source_map: self.source_map.clone(),
-            fences: self
-                .fences
-                .iter()
-                .map(|fence| merman_editor_core::FenceSnapshot {
-                    source_id: fence.source_id.clone(),
-                    index: fence.index,
-                    source: fence.source.clone(),
-                    start: fence.start,
-                    body_start: fence.body_start,
-                    body_end: fence.body_end,
-                    end: fence.end,
-                    text: fence.text.clone(),
-                    fence_delimiter: fence.fence_delimiter,
-                    diagram_type: fence.diagram_type.clone(),
-                    text_index: fence.text_index.clone(),
-                })
-                .collect(),
-        }
+        self.editor.clone()
     }
 
     pub fn byte_offset_for_position(&self, position: Position) -> Option<usize> {
-        self.source_map
-            .byte_offset_for_utf16_position(merman_analysis::Utf16Position {
-                line: position.line as usize,
-                character: position.character as usize,
-            })
+        self.editor
+            .byte_offset_for_position(position_to_editor(position))
     }
 
-    pub fn fence_at_position(&self, position: Position) -> Option<&FenceSnapshot> {
-        let offset = self.byte_offset_for_position(position)?;
-
-        self.fences
-            .iter()
-            .find(|fence| offset >= fence.start && offset <= fence.end)
+    pub fn fence_at_position(
+        &self,
+        position: Position,
+    ) -> Option<&merman_editor_core::FenceSnapshot> {
+        self.editor.fence_at_position(position_to_editor(position))
     }
+}
+
+impl Deref for DocumentSnapshot {
+    type Target = merman_editor_core::DocumentSnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.editor
+    }
+}
+
+fn position_to_editor(position: Position) -> merman_editor_core::Position {
+    merman_editor_core::Position::new(position.line as usize, position.character as usize)
 }
 
 #[cfg(test)]

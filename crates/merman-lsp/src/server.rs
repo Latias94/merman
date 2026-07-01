@@ -325,7 +325,7 @@ impl LanguageServer for MermanLanguageServer {
             return;
         };
 
-        let mut text = current.text;
+        let mut text = current.text.clone();
         for change in params.content_changes {
             text = change.text;
         }
