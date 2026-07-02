@@ -11,6 +11,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - `merman-cli` now treats icon pack HTTP(S) loading as opt-in: local `node_modules`, local JSON paths, and `file://` sources still work by default, but unpkg fallback and explicit HTTP(S) icon pack URLs require `--allow-network`.
 - `merman-cli` now uses categorized runtime exit statuses: invalid input/config/output contracts exit with code 2, direct I/O failures exit with code 3, and render/runtime failures keep code 1. Broken stdout pipes are treated as normal pipeline termination.
 - `merman-cli` now writes non-error diagnostics and Markdown batch progress to stderr instead of stdout so stdout remains reserved for requested payload bytes.
+- Removed the optional `merman` `egui-example` feature and desktop GUI example to avoid retaining an unauditable transitive Wayland XML scanner stack in `Cargo.lock`.
 
 ### Added
 
@@ -22,10 +23,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Changed
 
 - Split the `merman-cli` render implementation into focused plan, executor, Markdown export, raster/PDF, icon loading, and SVG pipeline modules while keeping the public CLI entrypoints unchanged.
+- Refreshed workspace dependencies, including `toml` 1.1 and UniFFI 0.32, and pruned the unused GUI example dependency graph from the lockfile.
 
 ### Fixed
 
 - Fixed `resvg-safe` SVG output options so hosts that explicitly enable `drop_native_duplicate_fallbacks` can remove duplicate native/fallback labels after raster-safe fallback generation.
+- Cleared the `quick-xml` RustSec audit failures by removing the stale optional GUI example dependency path that pulled in the vulnerable Wayland scanner build dependency.
 
 ## [0.8.0-alpha.2] - 2026-06-23
 

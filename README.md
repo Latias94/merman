@@ -210,12 +210,7 @@ files.
 | 07 | Use Mermaid theme variables and `themeCSS` | `render` | `cargo run -p merman --features render --example example_07_theme_css > themed.svg` |
 | 08 | Make time-sensitive Gantt parsing deterministic | none | `cargo run -p merman --example example_08_deterministic_gantt` |
 | 09 | Inline multiple diagrams without SVG id collisions | `render` | `cargo run -p merman --features render --example example_09_multiple_diagrams` |
-| 10 | Integrate with a desktop GUI host via egui | `egui-example` | `cargo run -p merman --features egui-example --example example_10_integration_egui` |
 | 11 | Build a custom host output environment | `render` | `cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg` |
-
-The egui example is intentionally a host-integration skeleton rather than a full playground: it
-keeps a long-lived renderer, edits Mermaid source, previews a raster texture, reports render
-errors, and saves SVG/PNG outputs.
 
 ## Quickstart (CLI)
 
