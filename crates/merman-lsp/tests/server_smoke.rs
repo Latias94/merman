@@ -1208,6 +1208,97 @@ async fn lsp_service_refreshes_diagnostics_after_configuration_change_when_suppo
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                },
+                "workspace": {
+                    "diagnostic": {
+                        "refreshSupport": true
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "gitGraph\ncommit id:\"dup\"\ncommit id:\"dup\"\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::json!({
+                    "lint": {
+                        "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+                    }
+                }),
+            })
+            .unwrap(),
+        )
+        .finish();
+    let mut change_fut = Box::pin(service.ready().await.unwrap().call(change));
+    let refresh = tokio::select! {
+        result = &mut change_fut => {
+            panic!("configuration change finished before refresh request: {result:?}");
+        }
+        message = socket.next() => {
+            message.expect("expected workspace diagnostic refresh request")
+        }
+    };
+    assert_eq!(refresh.method(), "workspace/diagnostic/refresh");
+
+    socket
+        .send(tower_lsp::jsonrpc::Response::from_ok(
+            refresh.id().cloned().expect("refresh request id"),
+            serde_json::Value::Null,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(change_fut.await.unwrap(), None);
+    assert!(
+        timeout(Duration::from_millis(50), socket.next())
+            .await
+            .is_err(),
+        "unexpected publishDiagnostics message in diagnostic-pull mode"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();

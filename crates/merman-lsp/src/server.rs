@@ -269,6 +269,10 @@ impl MermanLanguageServer {
     }
 
     async fn republish_all(&self) {
+        if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+            return;
+        }
+
         let (documents, analyzer) = {
             let store = self.store.lock().await;
             store.documents_with_analyzer()

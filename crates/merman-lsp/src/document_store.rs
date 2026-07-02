@@ -4,13 +4,19 @@ use merman_editor_core::{DocumentKind, DocumentWorkspace};
 use std::collections::HashMap;
 use tower_lsp::lsp_types::{SemanticToken, Url};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DocumentStore {
     workspace: DocumentWorkspace,
     analyzer: Analyzer,
     documents: HashMap<Url, StoredDocument>,
     snapshots: HashMap<Url, DocumentSnapshot>,
     semantic_tokens_state: HashMap<Url, SemanticTokensState>,
+}
+
+impl Default for DocumentStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -53,14 +59,13 @@ impl DocumentStore {
         if change.affects_snapshots() {
             self.replace_analyzer(analyzer);
         } else {
-            self.set_analyzer(analyzer);
+            self.set_diagnostic_analyzer(analyzer);
         }
         change
     }
 
-    fn set_analyzer(&mut self, analyzer: Analyzer) {
-        self.analyzer = analyzer.clone();
-        self.workspace.set_analyzer(analyzer);
+    fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
+        self.analyzer = analyzer;
     }
 
     fn replace_analyzer(&mut self, analyzer: Analyzer) {

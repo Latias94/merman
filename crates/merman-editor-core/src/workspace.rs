@@ -29,12 +29,8 @@ impl DocumentWorkspace {
         }
     }
 
-    pub fn set_analyzer(&mut self, analyzer: Analyzer) {
-        self.analyzer = analyzer;
-    }
-
     pub fn replace_analyzer(&mut self, analyzer: Analyzer) {
-        self.set_analyzer(analyzer);
+        self.analyzer = analyzer;
         self.documents.clear();
     }
 
