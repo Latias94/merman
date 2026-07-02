@@ -129,7 +129,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -198,9 +198,24 @@ jobs:
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --artifact perf-regression
 
+      - name: Write regression job summary
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        working-directory: head
+        run: |
+          set -euo pipefail
+          body_file="target/performance/pr_comment.md"
+          if [ -s "$body_file" ]; then
+            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Merman Performance Regression"
+              echo
+              echo "The performance comment body was not generated. Check the job logs and artifact upload step."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Comment regression summary
         if: ${{ always() && github.event_name == 'pull_request' }}
-        continue-on-error: true
         working-directory: head
         env:
           GH_TOKEN: ${{ github.token }}
@@ -210,10 +225,17 @@ jobs:
           set -euo pipefail
           marker="<!-- merman-perf-regression -->"
           body_file="target/performance/pr_comment.md"
-          comment_ids="$(
+          if [ ! -s "$body_file" ]; then
+            echo "::warning title=Performance comment unavailable::Performance comment body is missing; see the job summary and uploaded artifacts."
+            exit 0
+          fi
+          if ! comment_ids="$(
             gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
               --jq ".[] | select(.body | contains(\"$marker\")) | .id"
-          )"
+          )"; then
+            echo "::warning title=Performance comment unavailable::Could not read existing PR comments; see the job summary and perf-regression artifact."
+            exit 0
+          fi
           comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
           python3 - "$body_file" <<'PY' > comment_payload.json
           import json
@@ -224,9 +246,13 @@ jobs:
           print(json.dumps({"body": body}))
           PY
           if [ -n "$comment_id" ]; then
-            gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json
+            if ! gh api --silent --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json; then
+              echo "::warning title=Performance comment unavailable::Could not update the PR performance comment; see the job summary and perf-regression artifact."
+            fi
           else
-            gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json
+            if ! gh api --silent --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json; then
+              echo "::warning title=Performance comment unavailable::Could not create the PR performance comment; see the job summary and perf-regression artifact."
+            fi
           fi
 
   frontmatter:
@@ -236,7 +262,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -307,9 +333,24 @@ jobs:
             --marker "<!-- merman-perf-frontmatter -->" \
             --title "Merman Frontmatter Performance Regression"
 
+      - name: Write frontmatter job summary
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        working-directory: head
+        run: |
+          set -euo pipefail
+          body_file="target/performance/frontmatter_pr_comment.md"
+          if [ -s "$body_file" ]; then
+            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Merman Frontmatter Performance Regression"
+              echo
+              echo "The frontmatter performance comment body was not generated. Check the job logs and artifact upload step."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Comment frontmatter summary
         if: ${{ always() && github.event_name == 'pull_request' }}
-        continue-on-error: true
         working-directory: head
         env:
           GH_TOKEN: ${{ github.token }}
@@ -319,10 +360,17 @@ jobs:
           set -euo pipefail
           marker="<!-- merman-perf-frontmatter -->"
           body_file="target/performance/frontmatter_pr_comment.md"
-          comment_ids="$(
+          if [ ! -s "$body_file" ]; then
+            echo "::warning title=Frontmatter performance comment unavailable::Frontmatter performance comment body is missing; see the job summary and uploaded artifacts."
+            exit 0
+          fi
+          if ! comment_ids="$(
             gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
               --jq ".[] | select(.body | contains(\"$marker\")) | .id"
-          )"
+          )"; then
+            echo "::warning title=Frontmatter performance comment unavailable::Could not read existing PR comments; see the job summary and perf-frontmatter artifact."
+            exit 0
+          fi
           comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
           python3 - "$body_file" <<'PY' > comment_payload.json
           import json
@@ -333,9 +381,13 @@ jobs:
           print(json.dumps({"body": body}))
           PY
           if [ -n "$comment_id" ]; then
-            gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json
+            if ! gh api --silent --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json; then
+              echo "::warning title=Frontmatter performance comment unavailable::Could not update the PR frontmatter performance comment; see the job summary and perf-frontmatter artifact."
+            fi
           else
-            gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json
+            if ! gh api --silent --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json; then
+              echo "::warning title=Frontmatter performance comment unavailable::Could not create the PR frontmatter performance comment; see the job summary and perf-frontmatter artifact."
+            fi
           fi
 
   reference:
