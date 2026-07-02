@@ -1,9 +1,9 @@
 use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SourceMap};
 use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, DocumentUri, DocumentWorkspace, FenceSnapshot, Position,
-    document_symbols, goto_definition, hover, prepare_rename, references, rename,
-    workspace_symbols,
+    DocumentKind, DocumentSnapshot, DocumentUri, DocumentWorkspace, FenceSnapshot, Position, Range,
+    document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references, rename,
+    selection_range, workspace_symbols,
 };
 
 #[test]
@@ -183,6 +183,60 @@ fn workspace_symbols_filter_and_include_outline_items() {
     );
 }
 
+#[test]
+fn selection_range_returns_parser_backed_symbol_chain() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let selection = selection_range(&snapshot, Position::new(2, 0)).unwrap();
+    let ranges = selection_chain_ranges(&selection);
+
+    assert_eq!(selection.fact_source, FenceTextIndexSource::ParserComplete);
+    assert_eq!(
+        ranges[0],
+        Range::new(Position::new(2, 0), Position::new(2, 1))
+    );
+    assert!(ranges.len() >= 2);
+    assert_eq!(ranges.last().unwrap().start, Position::new(0, 0));
+}
+
+#[test]
+fn selection_range_ignores_markdown_prose() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.md",
+        1,
+        "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+        DocumentKind::Markdown,
+    );
+
+    assert!(selection_range(&snapshot, Position::new(0, 1)).is_none());
+    assert!(selection_range(&snapshot, Position::new(3, 0)).is_some());
+}
+
+#[test]
+fn folding_ranges_include_markdown_fences() {
+    let mut workspace = DocumentWorkspace::new();
+    let markdown = workspace.upsert(
+        "file:///tmp/example.md",
+        1,
+        "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+        DocumentKind::Markdown,
+    );
+    let markdown_ranges = folding_ranges(&markdown);
+
+    assert!(markdown_ranges.iter().any(|range| {
+        range.range.start.line == 1
+            && range.range.end.line == 4
+            && range.fact_source == FenceTextIndexSource::ParserComplete
+    }));
+}
+
 fn typed_reference_snapshot() -> DocumentSnapshot {
     let text = "Shared\nShared\n".to_string();
     let mut facts = EditorSemanticFacts::new();
@@ -224,4 +278,14 @@ fn typed_reference_snapshot() -> DocumentSnapshot {
         }],
         text,
     }
+}
+
+fn selection_chain_ranges(selection: &merman_editor_core::EditorSelectionRange) -> Vec<Range> {
+    let mut ranges = Vec::new();
+    let mut current = Some(selection);
+    while let Some(selection) = current {
+        ranges.push(selection.range);
+        current = selection.parent.as_deref();
+    }
+    ranges
 }

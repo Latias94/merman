@@ -104,6 +104,107 @@ pub fn workspace_symbols_for_snapshots(
     symbols
 }
 
+pub fn selection_ranges(
+    snapshot: &DocumentSnapshot,
+    positions: &[Position],
+) -> Vec<Option<EditorSelectionRange>> {
+    positions
+        .iter()
+        .copied()
+        .map(|position| selection_range(snapshot, position))
+        .collect()
+}
+
+pub fn selection_range(
+    snapshot: &DocumentSnapshot,
+    position: Position,
+) -> Option<EditorSelectionRange> {
+    let fence = snapshot.fence_at_position(position)?;
+    let absolute_offset = snapshot.byte_offset_for_position(position)?;
+    let outline = outline_for_fence(fence);
+    let mut spans = Vec::new();
+
+    if let Some(relative_offset) = fence_relative_offset(snapshot, fence, position) {
+        if let Some(item) = fence.text_index.semantic_item_at_offset(relative_offset) {
+            push_selection_span(
+                &mut spans,
+                absolute_offset,
+                absolute_span(fence, item.selection),
+            );
+            push_selection_span(&mut spans, absolute_offset, absolute_span(fence, item.span));
+        }
+    }
+
+    if let Some(item) = outline.find_deepest(absolute_offset) {
+        push_selection_span(&mut spans, absolute_offset, item.selection);
+        push_selection_span(&mut spans, absolute_offset, item.span);
+    }
+
+    push_selection_span(
+        &mut spans,
+        absolute_offset,
+        ByteSpan {
+            start: fence.body_start,
+            end: fence.body_end,
+        },
+    );
+    push_selection_span(
+        &mut spans,
+        absolute_offset,
+        ByteSpan {
+            start: fence.start,
+            end: fence.end,
+        },
+    );
+
+    spans_to_selection_range(&snapshot.source_map, fence.text_index.source(), spans)
+}
+
+pub fn folding_ranges(snapshot: &DocumentSnapshot) -> Vec<EditorFoldingRange> {
+    let mut ranges = Vec::new();
+
+    for fence in &snapshot.fences {
+        if fence.fence_delimiter.is_some() {
+            push_folding_span(
+                &mut ranges,
+                &snapshot.source_map,
+                fence.text_index.source(),
+                trim_folding_span(
+                    &snapshot.text,
+                    ByteSpan {
+                        start: fence.start,
+                        end: fence.end,
+                    },
+                ),
+            );
+        }
+
+        for child in outline_children(fence) {
+            push_folding_span(
+                &mut ranges,
+                &snapshot.source_map,
+                child.fact_source,
+                trim_folding_span(&snapshot.text, child.span),
+            );
+        }
+    }
+
+    ranges.sort_by(|left, right| compare_range(&left.range, &right.range));
+    ranges.dedup_by(|left, right| left.range == right.range);
+    ranges
+}
+
+fn trim_folding_span(text: &str, mut span: ByteSpan) -> ByteSpan {
+    while span.end > span.start {
+        let previous = text.as_bytes()[span.end - 1];
+        if !matches!(previous, b'\n' | b'\r') {
+            break;
+        }
+        span.end -= 1;
+    }
+    span
+}
+
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorHover> {
     let fence = snapshot.fence_at_position(position)?;
     let absolute_offset = snapshot.byte_offset_for_position(position)?;
@@ -367,6 +468,53 @@ fn absolute_span(fence: &FenceSnapshot, span: ByteSpan) -> ByteSpan {
     }
 }
 
+fn push_selection_span(spans: &mut Vec<ByteSpan>, offset: usize, span: ByteSpan) {
+    if span.start >= span.end || !span.contains(offset) || spans.iter().any(|item| *item == span) {
+        return;
+    }
+
+    spans.push(span);
+}
+
+fn spans_to_selection_range(
+    source_map: &SourceMap,
+    fact_source: FenceTextIndexSource,
+    spans: Vec<ByteSpan>,
+) -> Option<EditorSelectionRange> {
+    let mut parent = None;
+
+    for span in spans.into_iter().rev() {
+        let range = range_from_span(source_map, span)?;
+        parent = Some(EditorSelectionRange {
+            range,
+            fact_source,
+            parent: parent.map(Box::new),
+        });
+    }
+
+    parent
+}
+
+fn push_folding_span(
+    ranges: &mut Vec<EditorFoldingRange>,
+    source_map: &SourceMap,
+    fact_source: FenceTextIndexSource,
+    span: ByteSpan,
+) {
+    let Some(range) = range_from_span(source_map, span) else {
+        return;
+    };
+    if range.start.line >= range.end.line {
+        return;
+    }
+
+    ranges.push(EditorFoldingRange {
+        range,
+        kind: EditorFoldingRangeKind::Region,
+        fact_source,
+    });
+}
+
 fn fence_name(fence: &FenceSnapshot) -> String {
     match fence.diagram_type.as_deref() {
         Some(kind) => format!("{kind} diagram"),
@@ -457,6 +605,25 @@ pub struct EditorDocumentSymbol {
     pub range: Range,
     pub selection_range: Range,
     pub children: Vec<EditorDocumentSymbol>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditorSelectionRange {
+    pub range: Range,
+    pub parent: Option<Box<EditorSelectionRange>>,
+    pub fact_source: FenceTextIndexSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditorFoldingRange {
+    pub range: Range,
+    pub kind: EditorFoldingRangeKind,
+    pub fact_source: FenceTextIndexSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorFoldingRangeKind {
+    Region,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

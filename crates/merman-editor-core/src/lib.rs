@@ -31,10 +31,11 @@ pub use semantic_tokens::{
 };
 pub use snapshot::{DocumentSnapshot, FenceSnapshot};
 pub use structure::{
-    EditorDocumentSymbol, EditorHover, EditorLocation, EditorMarkupContent, EditorPrepareRename,
-    EditorSymbolInformation, EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols,
-    goto_definition, hover, prepare_rename, references, rename, workspace_symbols,
-    workspace_symbols_for_snapshots,
+    EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover, EditorLocation,
+    EditorMarkupContent, EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation,
+    EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols, folding_ranges,
+    goto_definition, hover, prepare_rename, references, rename, selection_range, selection_ranges,
+    workspace_symbols, workspace_symbols_for_snapshots,
 };
 pub use types::{DocumentKind, DocumentUri, Position, Range};
 pub use workspace::DocumentWorkspace;

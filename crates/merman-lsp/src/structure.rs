@@ -1,19 +1,22 @@
 use crate::snapshot::DocumentSnapshot;
 use merman_analysis::EditorSymbolKind;
 use merman_editor_core::{
-    EditorDocumentSymbol, EditorHover, EditorLocation, EditorPrepareRename,
-    EditorSymbolInformation, EditorWorkspaceEdit, Range as CoreRange, RenameError,
-    document_symbols as core_document_symbols, goto_definition as core_goto_definition,
+    EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover, EditorLocation,
+    EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation, EditorWorkspaceEdit,
+    Range as CoreRange, RenameError, document_symbols as core_document_symbols,
+    folding_ranges as core_folding_ranges, goto_definition as core_goto_definition,
     hover as core_hover, prepare_rename as core_prepare_rename, references as core_references,
-    rename as core_rename, workspace_symbols as core_workspace_symbols,
+    rename as core_rename, selection_ranges as core_selection_ranges,
+    workspace_symbols as core_workspace_symbols,
     workspace_symbols_for_snapshots as core_workspace_symbols_for_snapshots,
 };
 use std::collections::HashMap;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
-    DocumentSymbol, DocumentSymbolResponse, GotoDefinitionResponse, Hover, HoverContents, Location,
-    MarkupContent, MarkupKind, Position, PrepareRenameResponse, Range, RenameParams,
-    SymbolInformation, SymbolKind, TextEdit, Url, WorkspaceEdit,
+    DocumentSymbol, DocumentSymbolResponse, FoldingRange, FoldingRangeKind, GotoDefinitionResponse,
+    Hover, HoverContents, Location, MarkupContent, MarkupKind, Position, PrepareRenameResponse,
+    Range, RenameParams, SelectionRange, SymbolInformation, SymbolKind, TextEdit, Url,
+    WorkspaceEdit,
 };
 
 #[allow(deprecated)]
@@ -58,6 +61,28 @@ pub fn workspace_symbols_for_snapshots(
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
     core_hover(&snapshot.to_editor(), position_to_core(position)).map(hover_to_lsp)
+}
+
+pub fn selection_ranges(
+    snapshot: &DocumentSnapshot,
+    positions: &[Position],
+) -> Option<Vec<SelectionRange>> {
+    let positions = positions
+        .iter()
+        .copied()
+        .map(position_to_core)
+        .collect::<Vec<_>>();
+    core_selection_ranges(&snapshot.to_editor(), &positions)
+        .into_iter()
+        .map(|range| selection_range_to_lsp(range?))
+        .collect()
+}
+
+pub fn folding_ranges(snapshot: &DocumentSnapshot) -> Vec<FoldingRange> {
+    core_folding_ranges(&snapshot.to_editor())
+        .into_iter()
+        .map(folding_range_to_lsp)
+        .collect()
 }
 
 pub fn goto_definition(
@@ -112,6 +137,33 @@ fn hover_to_lsp(hover: EditorHover) -> Hover {
             value: hover.contents.value,
         }),
         range: hover.range.map(range_to_lsp),
+    }
+}
+
+fn selection_range_to_lsp(selection_range: EditorSelectionRange) -> Option<SelectionRange> {
+    let parent = match selection_range.parent {
+        Some(parent) => Some(Box::new(selection_range_to_lsp(*parent)?)),
+        None => None,
+    };
+
+    Some(SelectionRange {
+        range: range_to_lsp(selection_range.range),
+        parent,
+    })
+}
+
+fn folding_range_to_lsp(folding_range: EditorFoldingRange) -> FoldingRange {
+    let kind = match folding_range.kind {
+        EditorFoldingRangeKind::Region => FoldingRangeKind::Region,
+    };
+
+    FoldingRange {
+        start_line: folding_range.range.start.line as u32,
+        start_character: Some(folding_range.range.start.character as u32),
+        end_line: folding_range.range.end.line as u32,
+        end_character: Some(folding_range.range.end.character as u32),
+        kind: Some(kind),
+        collapsed_text: None,
     }
 }
 
@@ -224,6 +276,17 @@ pub fn outline_document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolRe
     document_symbols(snapshot)
 }
 
+pub fn outline_selection_ranges(
+    snapshot: &DocumentSnapshot,
+    positions: &[Position],
+) -> Option<Vec<SelectionRange>> {
+    selection_ranges(snapshot, positions)
+}
+
+pub fn outline_folding_ranges(snapshot: &DocumentSnapshot) -> Vec<FoldingRange> {
+    folding_ranges(snapshot)
+}
+
 pub fn outline_definition(
     snapshot: &DocumentSnapshot,
     position: Position,
@@ -256,12 +319,13 @@ pub fn outline_rename(
 #[cfg(test)]
 mod tests {
     use super::{
-        outline_definition, outline_document_symbols, outline_hover, outline_prepare_rename,
-        outline_references, outline_rename, workspace_symbols,
+        outline_definition, outline_document_symbols, outline_folding_ranges, outline_hover,
+        outline_prepare_rename, outline_references, outline_rename, outline_selection_ranges,
+        workspace_symbols,
     };
     use crate::document_store::DocumentStore;
     use tower_lsp::lsp_types::{
-        DocumentSymbolResponse, GotoDefinitionResponse, HoverContents, Position,
+        DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse, HoverContents, Position,
         PrepareRenameResponse, RenameParams, TextDocumentIdentifier, TextDocumentPositionParams,
         Url,
     };
@@ -308,6 +372,43 @@ mod tests {
 
         assert!(text.contains("A"));
         assert!(text.contains("Diagram:"));
+    }
+
+    #[test]
+    fn selection_ranges_return_nested_parser_backed_ranges() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
+        );
+
+        let ranges = outline_selection_ranges(&snapshot, &[Position::new(2, 0)]).unwrap();
+
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].range.start, Position::new(2, 0));
+        assert_eq!(ranges[0].range.end, Position::new(2, 1));
+        assert!(ranges[0].parent.is_some());
+    }
+
+    #[test]
+    fn folding_ranges_return_lsp_regions() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.md").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+        );
+
+        let ranges = outline_folding_ranges(&snapshot);
+
+        assert!(ranges.iter().any(|range| {
+            range.start_line == 1
+                && range.end_line == 4
+                && range.kind == Some(FoldingRangeKind::Region)
+        }));
     }
 
     #[test]

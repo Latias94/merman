@@ -14,9 +14,10 @@ use crate::semantic_tokens::{
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
-    document_symbols as structure_document_symbols, goto_definition as structure_goto_definition,
-    hover as structure_hover, prepare_rename as structure_prepare_rename,
-    references as structure_references, rename as structure_rename,
+    document_symbols as structure_document_symbols, folding_ranges as structure_folding_ranges,
+    goto_definition as structure_goto_definition, hover as structure_hover,
+    prepare_rename as structure_prepare_rename, references as structure_references,
+    rename as structure_rename, selection_ranges as structure_selection_ranges,
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
@@ -34,10 +35,12 @@ use tower_lsp::lsp_types::{
     DiagnosticOptions, DiagnosticServerCapabilities, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentSymbolParams, DocumentSymbolResponse, FullDocumentDiagnosticReport,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, FullDocumentDiagnosticReport, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
     RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, RenameParams,
+    SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
     SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
@@ -78,6 +81,7 @@ impl MermanLanguageServer {
     pub fn capabilities() -> ServerCapabilities {
         ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions {
                 resolve_provider: Some(true),
@@ -96,6 +100,7 @@ impl MermanLanguageServer {
                 work_done_progress_options: Default::default(),
                 resolve_provider: Some(false),
             })),
+            folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
             semantic_tokens_provider: Some(
                 SemanticTokensServerCapabilities::SemanticTokensOptions(semantic_tokens_options()),
             ),
@@ -518,6 +523,23 @@ impl LanguageServer for MermanLanguageServer {
         Ok(snapshot.and_then(|snapshot| structure_hover(&snapshot, position)))
     }
 
+    async fn selection_range(
+        &self,
+        params: SelectionRangeParams,
+    ) -> Result<Option<Vec<SelectionRange>>> {
+        let uri = params.text_document.uri;
+        let snapshot = self.snapshot_for_uri(&uri).await;
+
+        Ok(snapshot.and_then(|snapshot| structure_selection_ranges(&snapshot, &params.positions)))
+    }
+
+    async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
+        let uri = params.text_document.uri;
+        let snapshot = self.snapshot_for_uri(&uri).await;
+
+        Ok(snapshot.map(|snapshot| structure_folding_ranges(&snapshot)))
+    }
+
     async fn document_symbol(
         &self,
         params: DocumentSymbolParams,
@@ -598,7 +620,8 @@ mod tests {
         CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
     };
     use crate::structure::{
-        document_symbols, goto_definition, hover, prepare_rename, references, rename,
+        document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references,
+        rename, selection_ranges,
     };
     use merman_analysis::{
         AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, SourceMap,
@@ -609,12 +632,13 @@ mod tests {
     use tower_lsp::lsp_types::SemanticTokensResult;
     use tower_lsp::lsp_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-        CodeActionProviderCapability, DocumentSymbolResponse, GotoDefinitionResponse,
-        HoverContents, HoverParams, InitializeParams, Position, Range, RenameParams,
-        SemanticTokensFullOptions, SemanticTokensParams, SemanticTokensRangeParams,
-        SemanticTokensRangeResult, SemanticTokensServerCapabilities, TextDocumentIdentifier,
-        TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-        WorkspaceSymbolParams,
+        CodeActionProviderCapability, DocumentSymbolResponse, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
+        InitializeParams, Position, Range, RenameParams, SelectionRangeParams,
+        SelectionRangeProviderCapability, SemanticTokensFullOptions, SemanticTokensParams,
+        SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensServerCapabilities,
+        TextDocumentIdentifier, TextDocumentPositionParams, TextDocumentSyncCapability,
+        TextDocumentSyncKind, Url, WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -629,6 +653,14 @@ mod tests {
         assert!(matches!(
             capabilities.hover_provider,
             Some(HoverProviderCapability::Simple(true))
+        ));
+        assert!(matches!(
+            capabilities.selection_range_provider,
+            Some(SelectionRangeProviderCapability::Simple(true))
+        ));
+        assert!(matches!(
+            capabilities.folding_range_provider,
+            Some(FoldingRangeProviderCapability::Simple(true))
         ));
         assert!(matches!(
             capabilities.document_symbol_provider,
@@ -807,6 +839,23 @@ mod tests {
         };
         assert!(text.contains("group"));
 
+        let selection_ranges = selection_ranges(&snapshot, &[Position::new(2, 0)]).unwrap();
+        assert_eq!(selection_ranges.len(), 1);
+        assert!(selection_ranges[0].parent.is_some());
+
+        let markdown_uri = Url::parse("file:///tmp/example.md").unwrap();
+        let markdown_snapshot = store.upsert(
+            markdown_uri,
+            1,
+            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+        );
+        let folding_ranges = folding_ranges(&markdown_snapshot);
+        assert!(
+            folding_ranges
+                .iter()
+                .any(|range| range.start_line == 1 && range.end_line == 4)
+        );
+
         let symbols = match document_symbols(&snapshot) {
             DocumentSymbolResponse::Nested(symbols) => symbols,
             other => panic!("unexpected symbol response: {other:?}"),
@@ -873,6 +922,11 @@ mod tests {
                 1,
                 "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
             );
+            store.upsert(
+                Url::parse("file:///tmp/example.md").unwrap(),
+                1,
+                "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+            );
         }
 
         let hover = server
@@ -886,6 +940,36 @@ mod tests {
             .await
             .unwrap();
         assert!(hover.is_some());
+
+        let selection_ranges = server
+            .selection_range(SelectionRangeParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                positions: vec![Position::new(2, 0)],
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .await
+            .unwrap()
+            .expect("expected selection range response");
+        assert_eq!(selection_ranges.len(), 1);
+        assert!(selection_ranges[0].parent.is_some());
+
+        let folding_ranges = server
+            .folding_range(FoldingRangeParams {
+                text_document: TextDocumentIdentifier {
+                    uri: Url::parse("file:///tmp/example.md").unwrap(),
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .await
+            .unwrap()
+            .expect("expected folding range response");
+        assert!(
+            folding_ranges
+                .iter()
+                .any(|range| range.start_line == 1 && range.end_line == 4)
+        );
 
         let semantic_tokens = server
             .semantic_tokens_full(SemanticTokensParams {
