@@ -27,4 +27,3 @@ semantic index instead of suppressing them behind a prefix heuristic.
 - `cargo test -p merman-lsp --test completion -- --nocapture`
 - `cargo fmt --all --check`
 - `git diff --check`
-

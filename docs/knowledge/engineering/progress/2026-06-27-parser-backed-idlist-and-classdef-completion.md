@@ -33,4 +33,3 @@ through the shared analysis/LSP contract instead of relying on transport-local h
 - `cargo test -p merman-lsp --test completion -j1 completion_uses_er_parser_expected_id_list_context_for_class_def -- --nocapture`
 - `cargo test -p merman-lsp --test completion -j1 completion_uses_class_parser_expected_node_identifier_context_for_class_def -- --nocapture`
 - `cargo fmt --all --check`
-

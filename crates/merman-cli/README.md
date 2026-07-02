@@ -203,7 +203,7 @@ terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 ```sh
 merman-cli lint path/to/diagram.mmd
 merman-cli lint --markdown path/to/README.md
-printf "flowchart TD\nA -->\n" | merman-cli lint --format text - 
+printf "flowchart TD\nA -->\n" | merman-cli lint --format text -
 printf "```mermaid\nflowchart TD\nA -->\n```" | \
   merman-cli lint --markdown --stdin-file-name notes.md --format text -
 ```
