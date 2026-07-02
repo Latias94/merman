@@ -488,13 +488,10 @@ reported in `data`:
 }
 ```
 
-If the native library is built without the `render` feature, this function still returns
-`MERMAN_OK`, with `MERMAN_UNSUPPORTED_FORMAT` represented inside the validation payload.
-
-Validation is now a legacy compatibility projection over diagnostics analysis. The payload shape is
-kept for older consumers.
-implemented, `valid` should be derived from the diagnostics summary, and the top-level `error`,
-`message`, `code`, and `code_name` fields should mirror the first error diagnostic when present.
+Validation is a legacy compatibility projection over render-free diagnostics analysis. It does not
+require the native library to be built with the `render` feature. The payload shape is kept for older
+consumers: `valid` is derived from the diagnostics summary, and the top-level `error`, `message`,
+`code`, and `code_name` fields mirror the first error diagnostic when present.
 Bindings may add optional fields such as `version`, `summary`, or `diagnostics` while preserving the
 legacy top-level fields. New integrations should prefer analysis JSON after the active package
 exports it.

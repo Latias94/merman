@@ -18,7 +18,8 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Coordinate system: UTF-16 LSP positions
 - Markdown fences: remapped to the host document URI and range
 - Visible Problems code: string analysis rule id such as `merman.parse.diagram_parse`; numeric
-  analysis status code and `code_name` remain only in diagnostic `data`.
+  analysis status code and camelCase metadata such as `codeName` and `diagramType` remain only in
+  diagnostic `data`.
 
 ## Compatibility
 

@@ -380,7 +380,16 @@ impl Analyzer {
                 )
             }
             Ok(Ok(facts)) => Ok(facts),
-            Ok(Err(_)) => Ok(None),
+            Ok(Err(CoreError::UnsupportedDiagram { .. })) => Ok(None),
+            Ok(Err(error)) => {
+                Err(
+                    core_error_diagnostic(error, source_map, &self.options.rule_config)
+                        .diagnostic
+                        .map(AnalysisRecoveryDiagnostic::plain)
+                        .into_iter()
+                        .collect(),
+                )
+            }
         }
     }
 }

@@ -41,7 +41,7 @@ export interface PreviewSourceSummary {
 }
 
 export interface PreviewInputTextSource {
-  text: string;
+  text?: string;
   languageId: string;
   fileName: string;
   activeLine?: number;
@@ -59,10 +59,11 @@ export function extractPreviewInputFromDocument(
   activeLine?: number,
   sourceId?: string,
 ): PreviewInput | null {
+  const fileName = document.uri.fsPath || document.fileName;
   return extractPreviewInputFromText({
-    text: document.getText(),
     languageId: document.languageId,
-    fileName: document.uri.fsPath || document.fileName,
+    fileName,
+    text: isMermaidSource(document.languageId, fileName) ? document.getText() : undefined,
     lineCount: document.lineCount,
     lineAt: (lineIndex) => document.lineAt(lineIndex).text,
     activeLine,
@@ -74,10 +75,11 @@ export function listPreviewInputsFromDocument(
   document: vscode.TextDocument,
   activeLine?: number,
 ): PreviewInput[] {
+  const fileName = document.uri.fsPath || document.fileName;
   return listPreviewInputsFromText({
-    text: document.getText(),
     languageId: document.languageId,
-    fileName: document.uri.fsPath || document.fileName,
+    fileName,
+    text: isMermaidSource(document.languageId, fileName) ? document.getText() : undefined,
     lineCount: document.lineCount,
     lineAt: (lineIndex) => document.lineAt(lineIndex).text,
     activeLine,
@@ -102,12 +104,12 @@ export function extractPreviewInputFromText(sourceDocument: PreviewInputTextSour
 }
 
 export function listPreviewInputsFromText(sourceDocument: PreviewInputTextSource): PreviewInput[] {
-  const lines = splitLines(sourceDocument.text);
-  const lineCount = sourceDocument.lineCount ?? lines.length;
-  const lineAt = sourceDocument.lineAt ?? ((lineIndex) => lines[lineIndex] ?? "");
+  const lineSource = lineSourceFor(sourceDocument);
+  const lineCount = lineSource.lineCount;
+  const lineAt = lineSource.lineAt;
 
   if (isMermaidSource(sourceDocument.languageId, sourceDocument.fileName)) {
-    const source = sourceDocument.text;
+    const source = sourceDocument.text ?? collectDocumentText(lineCount, lineAt);
     if (source.trim().length === 0) {
       return [];
     }
@@ -285,6 +287,32 @@ function repeatedMarkerLength(line: string, marker: string): number {
     length += 1;
   }
   return length;
+}
+
+function lineSourceFor(sourceDocument: PreviewInputTextSource): {
+  lineCount: number;
+  lineAt: (lineIndex: number) => string;
+} {
+  if (sourceDocument.lineAt && sourceDocument.lineCount !== undefined) {
+    return {
+      lineCount: sourceDocument.lineCount,
+      lineAt: sourceDocument.lineAt,
+    };
+  }
+
+  const lines = splitLines(sourceDocument.text ?? "");
+  return {
+    lineCount: sourceDocument.lineCount ?? lines.length,
+    lineAt: (lineIndex) => lines[lineIndex] ?? "",
+  };
+}
+
+function collectDocumentText(lineCount: number, lineAt: (lineIndex: number) => string): string {
+  const lines: string[] = [];
+  for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
+    lines.push(lineAt(lineIndex));
+  }
+  return lines.join("\n");
 }
 
 function splitLines(text: string): string[] {

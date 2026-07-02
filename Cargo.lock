@@ -2141,7 +2141,6 @@ dependencies = [
  "merman-analysis",
  "png",
  "rayon",
- "regex",
  "reqwest",
  "serde",
  "serde_json",

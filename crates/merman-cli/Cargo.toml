@@ -27,7 +27,6 @@ chrono.workspace = true
 merman = { workspace = true, features = ["core-full", "core-host", "raster"] }
 merman-analysis.workspace = true
 rayon.workspace = true
-regex.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

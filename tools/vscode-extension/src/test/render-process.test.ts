@@ -54,6 +54,48 @@ describe("render process lifecycle", () => {
       assert.equal(fs.readFileSync(markerPath, "utf8"), "aborted");
     }
   });
+
+  it("force kills a render process that ignores graceful timeout termination", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const tempDir = tempDirPath();
+    const cliPath = path.join(tempDir, "merman-cli");
+    const readyPath = path.join(tempDir, "ready");
+    const termPath = path.join(tempDir, "term");
+    fs.writeFileSync(
+      cliPath,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        `const ready = ${JSON.stringify(readyPath)};`,
+        `const term = ${JSON.stringify(termPath)};`,
+        "process.on('SIGTERM', () => { fs.writeFileSync(term, 'ignored'); });",
+        "fs.writeFileSync(ready, 'ready');",
+        "process.stdin.resume();",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    fs.chmodSync(cliPath, 0o755);
+
+    const render = runRenderProcess({
+      invocation: {
+        command: process.execPath,
+        args: [cliPath],
+        source: "explicit",
+        label: "test cli",
+      },
+      source: "flowchart TD\nA --> B\n",
+      timeoutMs: 500,
+      killGraceMs: 20,
+    });
+    const rejected = assert.rejects(render, /timed out/);
+    await waitUntil(() => fs.existsSync(readyPath));
+
+    await rejected;
+    assert.equal(fs.readFileSync(termPath, "utf8"), "ignored");
+  });
 });
 
 function tempDirPath(): string {

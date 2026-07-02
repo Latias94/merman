@@ -1,9 +1,8 @@
 use crate::cli::RenderFormat;
 use crate::error::CliError;
-use regex::Regex;
+use merman_analysis::{DocumentSource, source_descriptor_for_markdown_path};
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
-use std::sync::OnceLock;
 
 #[derive(Debug, Clone)]
 pub(crate) struct MarkdownChart {
@@ -31,16 +30,14 @@ pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
 }
 
 pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
-    chart_regex()
-        .captures_iter(source)
-        .filter_map(|captures| {
-            let whole = captures.get(0)?;
-            let definition = captures.get(2)?;
-            Some(MarkdownChart {
-                start: whole.start(),
-                end: whole.end(),
-                definition: definition.as_str().to_string(),
-            })
+    let document = DocumentSource::new(source, source_descriptor_for_markdown_path(None));
+    document
+        .diagrams()
+        .iter()
+        .map(|diagram| MarkdownChart {
+            start: diagram.start,
+            end: diagram.end,
+            definition: diagram.text.clone(),
         })
         .collect()
 }
@@ -106,14 +103,6 @@ fn markdown_image(image: &MarkdownImage) -> String {
         Some(title) => format!("![{}]({} \"{}\")", alt, image.url, escape_title(title)),
         None => format!("![{}]({})", alt, image.url),
     }
-}
-
-fn chart_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(r"(?ms)^[^\S\n]*[`:]{3}(?:mermaid)([^\S\n]*\r?\n(.*?))[`:]{3}[^\S\n]*$")
-            .expect("valid Mermaid Markdown chart regex")
-    })
 }
 
 fn escape_alt(value: &str) -> String {
@@ -197,12 +186,13 @@ mod tests {
 
     #[test]
     fn extracts_backtick_and_colon_mermaid_blocks() {
-        let source = "before\n```mermaid\nflowchart LR\nA-->B\n```\n:::mermaid\nsequenceDiagram\nA->>B: Hi\n:::\nafter";
+        let source = "before\n```Mermaid title=Main\nflowchart LR\nA-->B\n```\n~~~ mermaid\nsequenceDiagram\nA->>B: Hi\n~~~\n:::MERMAID extra info\npie title Work\n:::\n```mermaidx\nignored\n```\nafter";
         let charts = extract_charts(source);
 
-        assert_eq!(charts.len(), 2);
+        assert_eq!(charts.len(), 3);
         assert!(charts[0].definition.contains("flowchart LR"));
         assert!(charts[1].definition.contains("sequenceDiagram"));
+        assert!(charts[2].definition.contains("pie title Work"));
     }
 
     #[test]

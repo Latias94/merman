@@ -1,7 +1,8 @@
 import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type * as vscode from "vscode";
 
-import { extractPreviewInputFromText, listPreviewInputsFromText } from "../preview-source.js";
+import { extractPreviewInputFromText, listPreviewInputsFromDocument, listPreviewInputsFromText } from "../preview-source.js";
 
 describe("preview source extraction", () => {
   it("extracts Mermaid files as whole-document sources", () => {
@@ -107,6 +108,32 @@ describe("preview source extraction", () => {
     assert.deepEqual(
       inputs.map((input) => input.sourceId),
       ["fence-1", "fence-2"],
+    );
+  });
+
+  it("scans Markdown TextDocuments by line without copying the whole document", () => {
+    const lines = [
+      "# Notes",
+      "```mermaid title=Main",
+      "flowchart LR",
+      "```",
+    ];
+    const document = {
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+      uri: { fsPath: "/workspace/notes.md" },
+      lineCount: lines.length,
+      lineAt: (lineIndex: number) => ({ text: lines[lineIndex] ?? "" }),
+      getText: () => {
+        throw new Error("Markdown preview extraction should not copy whole documents");
+      },
+    } as unknown as vscode.TextDocument;
+
+    const inputs = listPreviewInputsFromDocument(document);
+
+    assert.deepEqual(
+      inputs.map((input) => input.source),
+      ["flowchart LR"],
     );
   });
 

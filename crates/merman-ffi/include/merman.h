@@ -280,8 +280,8 @@ MermanResult merman_layout_json(
  * source is represented inside data:
  *   {"valid":false,"error":"...","code":5,"code_name":"MERMAN_PARSE_ERROR"}
  *
- * If the library was built without render support, this still returns MERMAN_OK with
- * MERMAN_UNSUPPORTED_FORMAT represented inside the validation payload.
+ * Validation is produced from render-free diagnostics analysis. It does not require render
+ * support.
  */
 MermanResult merman_validate_json(
     const uint8_t* source,
