@@ -43,6 +43,34 @@ fn run_with_stdin_in_dir(args: &[&str], input: &str, cwd: Option<&Path>) -> Outp
     child.wait_with_output().expect("wait cli")
 }
 
+fn run_with_closed_stdout(args: &[&str], input: Option<&[u8]>) -> Output {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut command = Command::new(exe);
+    command
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if input.is_some() {
+        command.stdin(Stdio::piped());
+    } else {
+        command.stdin(Stdio::null());
+    }
+
+    let mut child = command.spawn().expect("spawn cli");
+    drop(child.stdout.take().expect("stdout pipe"));
+    if let Some(input) = input {
+        child
+            .stdin
+            .as_mut()
+            .expect("stdin")
+            .write_all(input)
+            .expect("write stdin");
+        drop(child.stdin.take());
+    }
+
+    child.wait_with_output().expect("wait cli")
+}
+
 fn pdf_media_box(bytes: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(bytes);
     let marker = text.find("/MediaBox")?;
@@ -569,25 +597,7 @@ fn stdout_output_does_not_mix_non_error_logs() {
 
 #[test]
 fn stdout_broken_pipe_exits_success_without_diagnostic() {
-    let exe = assert_cmd::cargo_bin!("merman-cli");
-    let mut child = Command::new(exe)
-        .args(["-i", "-", "-o", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn cli");
-
-    drop(child.stdout.take().expect("stdout pipe"));
-    child
-        .stdin
-        .as_mut()
-        .expect("stdin")
-        .write_all(b"flowchart LR\nA-->B\n")
-        .expect("write stdin");
-    drop(child.stdin.take());
-
-    let output = child.wait_with_output().expect("wait cli");
+    let output = run_with_closed_stdout(&["-i", "-", "-o", "-"], Some(b"flowchart LR\nA-->B\n"));
     assert!(
         output.status.success(),
         "broken stdout pipe should be treated as normal pipe termination: {:?}",
@@ -597,6 +607,36 @@ fn stdout_broken_pipe_exits_success_without_diagnostic() {
     assert!(
         !stderr.contains("I/O error") && !stderr.contains("Broken pipe"),
         "broken pipe should not print a generic diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn parse_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(&["parse", "-"], Some(b"flowchart LR\nA-->B\n"));
+    assert!(
+        output.status.success(),
+        "parse broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn completion_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(&["completion", "bash"], None);
+    assert!(
+        output.status.success(),
+        "completion broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
     );
 }
 
