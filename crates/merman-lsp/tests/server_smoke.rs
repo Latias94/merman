@@ -1591,7 +1591,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_range() {
     let response = service.ready().await.unwrap().call(request).await.unwrap();
     let value = response
         .as_ref()
-        .and_then(|response| response.result().clone())
+        .and_then(|response| response.result().cloned())
         .expect("expected semantic tokens range result");
     let _: SemanticTokensRangeResult = serde_json::from_value(value.clone()).unwrap();
 }
@@ -1664,7 +1664,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
         .unwrap();
     let full_value = full_response
         .as_ref()
-        .and_then(|response| response.result().clone())
+        .and_then(|response| response.result().cloned())
         .expect("expected semantic tokens full result");
     let full_result: SemanticTokensResult = serde_json::from_value(full_value.clone()).unwrap();
     let previous_result_id = match full_result {
@@ -1724,7 +1724,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_delta() {
         .unwrap();
     let delta_value = delta_response
         .as_ref()
-        .and_then(|response| response.result().clone())
+        .and_then(|response| response.result().cloned())
         .expect("expected semantic tokens delta result");
     let delta_result: SemanticTokensFullDeltaResult =
         serde_json::from_value(delta_value.clone()).unwrap();

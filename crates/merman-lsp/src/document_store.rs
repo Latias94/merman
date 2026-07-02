@@ -1,5 +1,5 @@
 use crate::snapshot::DocumentSnapshot;
-use merman_analysis::Analyzer;
+use merman_analysis::{AnalysisOptions, Analyzer};
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
 use std::collections::HashMap;
 use tower_lsp::lsp_types::{SemanticToken, Url};
@@ -7,6 +7,7 @@ use tower_lsp::lsp_types::{SemanticToken, Url};
 #[derive(Debug, Default)]
 pub struct DocumentStore {
     workspace: DocumentWorkspace,
+    analyzer: Analyzer,
     documents: HashMap<Url, StoredDocument>,
     snapshots: HashMap<Url, DocumentSnapshot>,
     semantic_tokens_state: HashMap<Url, SemanticTokensState>,
@@ -29,22 +30,51 @@ pub struct SemanticTokensState {
 
 impl DocumentStore {
     pub fn new() -> Self {
+        let analyzer = Analyzer::new();
         Self {
-            workspace: DocumentWorkspace::new(),
+            workspace: DocumentWorkspace::with_analyzer(analyzer.clone()),
+            analyzer,
             documents: HashMap::new(),
             snapshots: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
         }
     }
 
-    pub fn set_analyzer(&mut self, analyzer: Analyzer) {
+    pub fn apply_analyzer_options(
+        &mut self,
+        options: AnalysisOptions,
+    ) -> AnalyzerConfigurationChange {
+        let change = analyzer_configuration_change(self.analyzer.options(), &options);
+        if matches!(change, AnalyzerConfigurationChange::Unchanged) {
+            return change;
+        }
+
+        let analyzer = Analyzer::with_options(options);
+        if change.affects_snapshots() {
+            self.replace_analyzer(analyzer);
+        } else {
+            self.set_analyzer(analyzer);
+        }
+        change
+    }
+
+    fn set_analyzer(&mut self, analyzer: Analyzer) {
+        self.analyzer = analyzer.clone();
         self.workspace.set_analyzer(analyzer);
     }
 
-    pub fn replace_analyzer(&mut self, analyzer: Analyzer) {
+    fn replace_analyzer(&mut self, analyzer: Analyzer) {
+        self.analyzer = analyzer.clone();
         self.workspace.replace_analyzer(analyzer);
         self.snapshots.clear();
         self.semantic_tokens_state.clear();
+    }
+
+    pub(crate) fn diagnostic_context(&self, uri: &Url) -> Option<(StoredDocument, Analyzer)> {
+        self.documents
+            .get(uri)
+            .cloned()
+            .map(|document| (document, self.analyzer.clone()))
     }
 
     pub fn upsert_text(&mut self, uri: Url, version: i32, text: String) -> StoredDocument {
@@ -107,6 +137,10 @@ impl DocumentStore {
         self.documents.values().cloned().collect()
     }
 
+    pub(crate) fn documents_with_analyzer(&self) -> (Vec<StoredDocument>, Analyzer) {
+        (self.documents(), self.analyzer.clone())
+    }
+
     pub fn snapshots(&mut self) -> Vec<DocumentSnapshot> {
         let uris = self.documents.keys().cloned().collect::<Vec<_>>();
         uris.into_iter()
@@ -124,5 +158,35 @@ impl DocumentStore {
 
     pub fn set_semantic_tokens_state(&mut self, uri: Url, state: SemanticTokensState) {
         self.semantic_tokens_state.insert(uri, state);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnalyzerConfigurationChange {
+    Unchanged,
+    DiagnosticsOnly,
+    SnapshotAffecting,
+}
+
+impl AnalyzerConfigurationChange {
+    pub fn affects_diagnostics(self) -> bool {
+        !matches!(self, Self::Unchanged)
+    }
+
+    pub fn affects_snapshots(self) -> bool {
+        matches!(self, Self::SnapshotAffecting)
+    }
+}
+
+pub(crate) fn analyzer_configuration_change(
+    current: &AnalysisOptions,
+    next: &AnalysisOptions,
+) -> AnalyzerConfigurationChange {
+    if current == next {
+        AnalyzerConfigurationChange::Unchanged
+    } else if current.snapshot_affecting_eq(next) {
+        AnalyzerConfigurationChange::DiagnosticsOnly
+    } else {
+        AnalyzerConfigurationChange::SnapshotAffecting
     }
 }

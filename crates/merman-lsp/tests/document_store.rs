@@ -1,5 +1,5 @@
 use merman_analysis::{
-    AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticSeverity, FenceSemanticRole,
+    AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
     FenceTextIndexSource,
 };
 use merman_lsp::document_store::{DocumentStore, SemanticTokensState};
@@ -208,13 +208,12 @@ fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
         },
     );
 
-    let diagnostic_only = Analyzer::with_options(
+    store.apply_analyzer_options(
         AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
         ),
     );
-    store.set_analyzer(diagnostic_only);
 
     assert!(store.has_snapshot(&uri));
     assert_eq!(
@@ -254,10 +253,9 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
         },
     );
 
-    let limited = Analyzer::with_options(
+    store.apply_analyzer_options(
         AnalysisOptions::default().with_max_source_bytes(Some("flowchart TD\nA-->B\n".len() - 1)),
     );
-    store.replace_analyzer(limited);
 
     assert!(!store.has_snapshot(&uri));
     assert!(store.semantic_tokens_state(&uri).is_none());

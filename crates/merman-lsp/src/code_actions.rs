@@ -42,8 +42,7 @@ fn code_actions_for_diagnostic(diagnostic: &Diagnostic, uri: &Url) -> Vec<CodeAc
         return Vec::new();
     };
 
-    let actions = data
-        .fixes
+    data.fixes
         .into_iter()
         .filter_map(|fix| {
             let edit = workspace_edit_for_fix(&fix, uri)?;
@@ -59,9 +58,7 @@ fn code_actions_for_diagnostic(diagnostic: &Diagnostic, uri: &Url) -> Vec<CodeAc
             })
         })
         .map(tower_lsp::lsp_types::CodeActionOrCommand::CodeAction)
-        .collect::<Vec<_>>();
-
-    actions
+        .collect::<Vec<_>>()
 }
 
 fn workspace_edit_for_fix(

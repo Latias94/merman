@@ -54,10 +54,9 @@ fn capability_matrix_document_marks_partial_families_outside_first_class_contrac
         "capability matrix is missing the coverage boundary section"
     );
 
-    for expected in ["| Error | Internal only |"] {
-        assert!(
-            contents.contains(expected),
-            "capability matrix is missing partial-family row: {expected}"
-        );
-    }
+    let expected = "| Error | Internal only |";
+    assert!(
+        contents.contains(expected),
+        "capability matrix is missing partial-family row: {expected}"
+    );
 }

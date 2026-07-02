@@ -1,7 +1,7 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_diagnostics;
-use crate::document_store::SemanticTokensState;
+use crate::document_store::{AnalyzerConfigurationChange, SemanticTokensState};
 use crate::document_store::{DocumentStore, StoredDocument};
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -49,28 +49,10 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AnalyzerConfigurationChange {
-    Unchanged,
-    DiagnosticsOnly,
-    SnapshotAffecting,
-}
-
-impl AnalyzerConfigurationChange {
-    fn affects_diagnostics(self) -> bool {
-        !matches!(self, Self::Unchanged)
-    }
-
-    fn affects_snapshots(self) -> bool {
-        matches!(self, Self::SnapshotAffecting)
-    }
-}
-
 #[derive(Debug)]
 pub struct MermanLanguageServer {
     client: Client,
     store: Arc<Mutex<DocumentStore>>,
-    analyzer: Arc<Mutex<Analyzer>>,
     semantic_tokens_refresh_supported: AtomicBool,
     diagnostic_pull_supported: AtomicBool,
     diagnostic_refresh_supported: AtomicBool,
@@ -81,7 +63,6 @@ impl MermanLanguageServer {
         Self {
             client,
             store: Arc::new(Mutex::new(DocumentStore::new())),
-            analyzer: Arc::new(Mutex::new(Analyzer::new())),
             semantic_tokens_refresh_supported: AtomicBool::new(false),
             diagnostic_pull_supported: AtomicBool::new(false),
             diagnostic_refresh_supported: AtomicBool::new(false),
@@ -148,17 +129,16 @@ impl MermanLanguageServer {
         store.snapshot_cloned(uri)
     }
 
-    async fn diagnostics_for_document(
-        &self,
+    fn diagnostics_for_document(
         document: &StoredDocument,
+        analyzer: &Analyzer,
     ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
         let source = if document.kind.is_markdown() {
             merman_analysis::source_descriptor_for_uri(document.uri.as_str())
         } else {
             merman_analysis::SourceDescriptor::diagram().with_path(document.uri.as_str())
         };
-        let analyzer = self.analyzer.lock().await;
-        let payload = analyze_document(&document.text, &analyzer, source);
+        let payload = analyze_document(&document.text, analyzer, source);
         analysis_payload_to_diagnostics(&payload, &document.uri)
     }
 
@@ -203,16 +183,16 @@ impl MermanLanguageServer {
             return;
         }
 
-        let document = {
+        let context = {
             let store = self.store.lock().await;
-            store.get(uri).cloned()
+            store.diagnostic_context(uri)
         };
 
-        let Some(document) = document else {
+        let Some((document, analyzer)) = context else {
             return;
         };
 
-        let diagnostics = self.diagnostics_for_document(&document).await;
+        let diagnostics = Self::diagnostics_for_document(&document, &analyzer);
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, version)
             .await;
@@ -237,23 +217,8 @@ impl MermanLanguageServer {
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
-        let mut analyzer = self.analyzer.lock().await;
-        let change = analyzer_configuration_change(analyzer.options(), &options);
-        if matches!(change, AnalyzerConfigurationChange::Unchanged) {
-            return change;
-        }
-
-        let next = Analyzer::with_options(options);
-        *analyzer = next.clone();
-        drop(analyzer);
-
         let mut store = self.store.lock().await;
-        if change.affects_snapshots() {
-            store.replace_analyzer(next);
-        } else {
-            store.set_analyzer(next);
-        }
-        change
+        store.apply_analyzer_options(options)
     }
 
     fn client_supports_semantic_tokens_refresh(params: &InitializeParams) -> bool {
@@ -304,28 +269,17 @@ impl MermanLanguageServer {
     }
 
     async fn republish_all(&self) {
-        let documents = {
+        let (documents, analyzer) = {
             let store = self.store.lock().await;
-            store.documents()
+            store.documents_with_analyzer()
         };
 
         for document in documents {
-            self.publish_for_uri(&document.uri, Some(document.version))
+            let diagnostics = Self::diagnostics_for_document(&document, &analyzer);
+            self.client
+                .publish_diagnostics(document.uri.clone(), diagnostics, Some(document.version))
                 .await;
         }
-    }
-}
-
-fn analyzer_configuration_change(
-    current: &AnalysisOptions,
-    next: &AnalysisOptions,
-) -> AnalyzerConfigurationChange {
-    if current == next {
-        AnalyzerConfigurationChange::Unchanged
-    } else if current.snapshot_affecting_eq(next) {
-        AnalyzerConfigurationChange::DiagnosticsOnly
-    } else {
-        AnalyzerConfigurationChange::SnapshotAffecting
     }
 }
 
@@ -449,11 +403,11 @@ impl LanguageServer for MermanLanguageServer {
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri;
-        let document = {
+        let context = {
             let store = self.store.lock().await;
-            store.get(&uri).cloned()
+            store.diagnostic_context(&uri)
         };
-        let Some(document) = document else {
+        let Some((document, analyzer)) = context else {
             let diagnostics = Vec::new();
             let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
@@ -463,7 +417,7 @@ impl LanguageServer for MermanLanguageServer {
             ));
         };
 
-        let diagnostics = self.diagnostics_for_document(&document).await;
+        let diagnostics = Self::diagnostics_for_document(&document, &analyzer);
         let result_id = Some(Self::diagnostic_result_id(&diagnostics));
         Ok(Self::document_diagnostic_report(
             diagnostics,
@@ -709,8 +663,8 @@ mod tests {
         );
 
         assert_eq!(
-            super::analyzer_configuration_change(&current, &next),
-            super::AnalyzerConfigurationChange::DiagnosticsOnly
+            crate::document_store::analyzer_configuration_change(&current, &next),
+            crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
         );
     }
 
@@ -724,8 +678,8 @@ mod tests {
 
         for next in [changed_parse, changed_resource, changed_date] {
             assert_eq!(
-                super::analyzer_configuration_change(&current, &next),
-                super::AnalyzerConfigurationChange::SnapshotAffecting
+                crate::document_store::analyzer_configuration_change(&current, &next),
+                crate::document_store::AnalyzerConfigurationChange::SnapshotAffecting
             );
         }
     }
@@ -735,8 +689,8 @@ mod tests {
         let current = AnalysisOptions::default();
 
         assert_eq!(
-            super::analyzer_configuration_change(&current, &current),
-            super::AnalyzerConfigurationChange::Unchanged
+            crate::document_store::analyzer_configuration_change(&current, &current),
+            crate::document_store::AnalyzerConfigurationChange::Unchanged
         );
     }
 
