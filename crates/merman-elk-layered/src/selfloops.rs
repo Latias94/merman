@@ -1723,7 +1723,7 @@ fn create_self_loop_crossing_graph(
         for second in (first + 1)..holder.hyper_loops.len() {
             create_self_loop_slot_dependencies(
                 holder,
-                &activity_over_ports,
+                activity_over_ports,
                 label_crossing_matrix,
                 &mut graph,
                 first,
@@ -1919,10 +1919,14 @@ fn shift_slots_towards_node_on_side(
     for (loop_index, _) in loops {
         let active_at_port = &activity_over_ports[loop_index];
         let mut lowest_available_slot = 0usize;
-        for port in min_port..=max_port {
+        for (port, next_free_slot) in next_free_routing_slot_at_port
+            .iter()
+            .enumerate()
+            .take(max_port + 1)
+            .skip(min_port)
+        {
             if active_at_port.get(port).copied().unwrap_or(false) {
-                lowest_available_slot =
-                    lowest_available_slot.max(next_free_routing_slot_at_port[port]);
+                lowest_available_slot = lowest_available_slot.max(*next_free_slot);
             }
         }
 
@@ -1946,9 +1950,14 @@ fn shift_slots_towards_node_on_side(
         }
 
         holder.hyper_loops[loop_index].routing_slots[side.ordinal()] = lowest_available_slot;
-        for port in min_port..=max_port {
+        for (port, next_free_slot) in next_free_routing_slot_at_port
+            .iter_mut()
+            .enumerate()
+            .take(max_port + 1)
+            .skip(min_port)
+        {
             if active_at_port.get(port).copied().unwrap_or(false) {
-                next_free_routing_slot_at_port[port] = lowest_available_slot + 1;
+                *next_free_slot = lowest_available_slot + 1;
             }
         }
         if let Some(label_id) = holder.hyper_loops[loop_index]

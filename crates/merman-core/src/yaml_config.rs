@@ -422,10 +422,8 @@ fn is_yaml_float_body(body: &str) -> bool {
         if int_digits == 0 && frac_digits == 0 {
             return false;
         }
-    } else if int_digits == 0 {
-        if chars.peek() != Some(&'.') {
-            return false;
-        }
+    } else if int_digits == 0 && chars.peek() != Some(&'.') {
+        return false;
     }
 
     if let Some(&ch) = chars.peek()

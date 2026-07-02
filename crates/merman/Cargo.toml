@@ -31,7 +31,6 @@ ascii = ["dep:merman-ascii", "dep:thiserror"]
 cytoscape-layout = ["render", "merman-render/cytoscape-layout"]
 elk-layout = ["render", "merman-render/elk-layout"]
 ratex-math = ["render", "merman-render/ratex-math"]
-egui-example = ["raster", "dep:eframe"]
 raster = [
     "render",
     "dep:image",
@@ -48,7 +47,6 @@ merman-core.workspace = true
 merman-ascii = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
-eframe = { version = "0.34.3", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"], optional = true }
 image = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true }
@@ -126,10 +124,6 @@ name = "example_08_deterministic_gantt"
 [[example]]
 name = "example_09_multiple_diagrams"
 required-features = ["render"]
-
-[[example]]
-name = "example_10_integration_egui"
-required-features = ["egui-example"]
 
 [[example]]
 name = "example_11_custom_output_environment"

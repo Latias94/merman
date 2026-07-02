@@ -333,11 +333,11 @@ fn score_ordered_layered_group_candidate<'a>(
     seen: &mut HashSet<Vec<Vec<&'a str>>>,
     best: &mut Option<(usize, Vec<Vec<&'a RelationGraphBox>>)>,
 ) -> Option<Vec<Vec<&'a RelationGraphBox>>> {
-    if !seen.insert(layered_group_candidate_key(&candidate)) {
+    if !seen.insert(layered_group_candidate_key(candidate)) {
         return None;
     }
 
-    let crossings = crossing_layered_relation_count(edges, levels, &candidate);
+    let crossings = crossing_layered_relation_count(edges, levels, candidate);
     if crossings == 0 {
         return Some(candidate.to_vec());
     }
@@ -373,7 +373,7 @@ enum LayeredRelationSweep {
 
 impl LayeredRelationSweep {
     fn alternating(self, index: usize) -> Self {
-        if index % 2 == 0 {
+        if index.is_multiple_of(2) {
             self
         } else {
             self.opposite()

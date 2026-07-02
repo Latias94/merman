@@ -41,9 +41,7 @@ pub fn render_mindmap_diagram(
     trim_trailing_blank_lines(lines).join("\n")
 }
 
-fn index_nodes<'a>(
-    nodes: &'a [MindmapDiagramRenderNode],
-) -> HashMap<&'a str, &'a MindmapDiagramRenderNode> {
+fn index_nodes(nodes: &[MindmapDiagramRenderNode]) -> HashMap<&str, &MindmapDiagramRenderNode> {
     let mut out = HashMap::with_capacity(nodes.len());
     for node in nodes {
         out.insert(node.id.as_str(), node);
@@ -75,10 +73,10 @@ fn root_ids(nodes: &[MindmapDiagramRenderNode], edges: &[MindmapDiagramRenderEdg
         }
     }
 
-    if roots.is_empty() {
-        if let Some(node) = nodes.first() {
-            roots.push(node.id.clone());
-        }
+    if roots.is_empty()
+        && let Some(node) = nodes.first()
+    {
+        roots.push(node.id.clone());
     }
 
     roots

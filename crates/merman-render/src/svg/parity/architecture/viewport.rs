@@ -162,13 +162,13 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
 
     let mut view_box_attr = viewport.view_box_attr();
     let mut max_w_attr = fmt_string(viewport.width);
-    if apply_root_overrides {
-        if let Some((override_viewbox, override_max_w)) = crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id) {
-            if std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_none() {
-                view_box_attr = override_viewbox.to_string();
-                max_w_attr = override_max_w.to_string();
-            }
-        }
+    if apply_root_overrides
+        && let Some((override_viewbox, override_max_w)) =
+            crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id)
+        && std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_none()
+    {
+        view_box_attr = override_viewbox.to_string();
+        max_w_attr = override_max_w.to_string();
     }
 
     let mut replacements: Vec<(usize, std::ops::Range<usize>, &str)> =
@@ -178,10 +178,8 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
         root_open.viewbox_placeholder_range,
         view_box_attr.as_str(),
     ));
-    if use_max_width {
-        if let Some(range) = root_open.max_width_placeholder_range {
-            replacements.push((range.start, range, max_w_attr.as_str()));
-        }
+    if use_max_width && let Some(range) = root_open.max_width_placeholder_range {
+        replacements.push((range.start, range, max_w_attr.as_str()));
     }
     replacements.sort_by_key(|(start, _, _)| std::cmp::Reverse(*start));
     for (_, range, replacement) in replacements {

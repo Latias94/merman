@@ -2171,6 +2171,7 @@ impl SimGraph {
         out
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_spring_embedder(
         &mut self,
         constraints: &Constraints,
@@ -5347,6 +5348,7 @@ fn calc_repulsion_force_non_overlapping_from_points(
     (-repulsion_fx, -repulsion_fy)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn calc_repulsion_force(
     a: &SimNode,
@@ -5370,6 +5372,7 @@ fn calc_repulsion_force(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn calc_repulsion_force_with_centers(
     a: &SimNode,
@@ -5432,6 +5435,7 @@ impl RepulsionGrid {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_or_reuse(
         grid: Option<Self>,
         left: f64,
@@ -5506,6 +5510,7 @@ impl RepulsionGrid {
         Some(grid)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn refresh_node_surrounding(
         &self,
         node_idx: usize,

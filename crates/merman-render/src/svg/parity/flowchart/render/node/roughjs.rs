@@ -214,6 +214,7 @@ pub(in crate::svg::parity) fn roughjs_hand_drawn_stroke_path_for_svg_path(
     Some(ops_to_svg_path_d(&opset))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     svg_path_data: &str,
     fill: &str,
@@ -268,6 +269,7 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     Some((fill_d?, stroke_d?))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     x: f64,
     y: f64,

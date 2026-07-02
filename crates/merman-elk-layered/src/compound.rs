@@ -313,12 +313,11 @@ fn introduce_source_ported_hierarchy_edge(
             .labels
             .iter()
             .zip(label_segments.iter())
-            .filter_map(|(label, label_segment)| {
-                (*label_segment == segment_index).then(|| {
-                    let mut label = label.clone();
-                    label.original_label_edge = Some(edge.id.clone());
-                    label
-                })
+            .filter(|(_, label_segment)| **label_segment == segment_index)
+            .map(|(label, _)| {
+                let mut label = label.clone();
+                label.original_label_edge = Some(edge.id.clone());
+                label
             })
             .collect::<Vec<_>>();
         let graph = graph_for_parent_mut(graph, pending.graph_parent.as_deref());
@@ -894,18 +893,16 @@ fn create_parent_external_port(
     } else {
         port_side
     };
-    graph
+    let port = graph
         .add_port(parent_node, port_type, port_side, Default::default())
-        .map(|port| {
-            if let Some(port_key) = port_key
-                && !port_key.is_empty()
-                && let Some(port_data) = graph.layerless_nodes[parent_node].ports.get_mut(port.port)
-            {
-                port_data.id = port_key.to_string();
-            }
-            port
-        })
-        .expect("parent compound node should exist when linking external dummy")
+        .expect("parent compound node should exist when linking external dummy");
+    if let Some(port_key) = port_key
+        && !port_key.is_empty()
+        && let Some(port_data) = graph.layerless_nodes[parent_node].ports.get_mut(port.port)
+    {
+        port_data.id = port_key.to_string();
+    }
+    port
 }
 
 fn external_dummy_for_compound_edge(

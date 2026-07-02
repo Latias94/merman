@@ -18,7 +18,6 @@ cargo run -p merman --features render --example example_06_svg_pipeline > pipeli
 cargo run -p merman --features render --example example_07_theme_css > themed.svg
 cargo run -p merman --example example_08_deterministic_gantt
 cargo run -p merman --features render --example example_09_multiple_diagrams
-cargo run -p merman --features egui-example --example example_10_integration_egui
 cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg
 cargo run -p merman --features render --example profile_render -- --input crates/merman/benches/fixtures/architecture_medium.mmd --stage render --seconds 5
 ```
@@ -55,7 +54,6 @@ printf "flowchart LR\nA --> B\n" | \
 - `example_05` writes PNG to `target/merman-raster-example.png` by default, or to the path passed
   after `--`.
 - `example_09` writes SVG files to `target/merman-multiple-diagrams/`.
-- `example_10` opens an egui desktop window.
 - `profile_render` writes a profiling summary to stderr and is intended for CPU profilers.
 
 ## Profiling

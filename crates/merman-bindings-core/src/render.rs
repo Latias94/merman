@@ -566,12 +566,12 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn resvg_safe_svg_options_do_not_add_generic_duplicate_cleanup() {
+    fn resvg_safe_svg_options_can_drop_native_duplicate_fallbacks() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
-<switch>
+<text class="task">Make tea</text>
+<g transform="translate(0,0)">
   <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
-  <text class="task">Make tea</text>
-</switch>
+</g>
 <g transform="translate(0,40)">
   <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Only fallback</p></div></foreignObject>
 </g>
@@ -584,7 +584,7 @@ B -->|No| D[Debug]";
             default_out
                 .matches(r#"data-merman-foreignobject="fallback""#)
                 .count(),
-            1,
+            2,
             "{default_out}"
         );
 
@@ -594,8 +594,6 @@ B -->|No| D[Debug]";
         .unwrap();
         let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
         let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
-
-        assert_eq!(cleanup_out, default_out);
 
         assert_eq!(
             cleanup_out

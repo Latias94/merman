@@ -210,12 +210,7 @@ files.
 | 07 | Use Mermaid theme variables and `themeCSS` | `render` | `cargo run -p merman --features render --example example_07_theme_css > themed.svg` |
 | 08 | Make time-sensitive Gantt parsing deterministic | none | `cargo run -p merman --example example_08_deterministic_gantt` |
 | 09 | Inline multiple diagrams without SVG id collisions | `render` | `cargo run -p merman --features render --example example_09_multiple_diagrams` |
-| 10 | Integrate with a desktop GUI host via egui | `egui-example` | `cargo run -p merman --features egui-example --example example_10_integration_egui` |
 | 11 | Build a custom host output environment | `render` | `cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg` |
-
-The egui example is intentionally a host-integration skeleton rather than a full playground: it
-keeps a long-lived renderer, edits Mermaid source, previews a raster texture, reports render
-errors, and saves SVG/PNG outputs.
 
 ## Quickstart (CLI)
 
@@ -322,6 +317,8 @@ If your downstream renderer does not support SVG `<foreignObject>` (common for r
 prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use
 `HeadlessRenderer::render_svg_readable_sync()` when you want to keep the original
 `<foreignObject>` nodes and add best-effort `<text>/<tspan>` fallback overlays.
+For CLI output, `merman-cli -i diagram.mmd -o diagram.svg --svg-pipeline resvg-safe` writes the
+same export-oriented SVG contract directly.
 
 When you enable the `raster` feature, PNG/JPG conversion is target-aware and budgeted. A Mermaid
 SVG can legitimately have a very large `viewBox`; browser previews usually draw that vector SVG

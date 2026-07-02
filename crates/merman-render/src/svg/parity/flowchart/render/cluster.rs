@@ -79,6 +79,7 @@ fn flowchart_hand_drawn_seed(ctx: &FlowchartRenderCtx<'_>) -> u64 {
         .unwrap_or(0)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_flowchart_cluster_shape(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,

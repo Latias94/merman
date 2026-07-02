@@ -1400,8 +1400,10 @@ impl HierarchySweep {
         total
     }
 
+    #[allow(clippy::eq_op, clippy::nonminimal_bool)]
     fn use_node_port_order_crossing_counter(&self, root: &LGraph, info_index: usize) -> bool {
         let graph = graph_at_path(root, &self.infos[info_index].path);
+        // layout-base compatibility: port influence alone must not enable this counter gate.
         graph
             .options
             .consider_model_order_crossing_counter_node_influence
@@ -2171,16 +2173,12 @@ fn remap_forster_constraints(groups: &mut [ConstraintGroup], old_to_new: &[usize
             .collect::<Vec<_>>();
     }
 
-    for group_index in 0..groups.len() {
-        groups[group_index]
-            .outgoing
-            .retain(|successor| *successor != group_index);
+    for (group_index, group) in groups.iter_mut().enumerate() {
+        group.outgoing.retain(|successor| *successor != group_index);
         let mut seen = HashSet::new();
-        groups[group_index]
-            .outgoing
-            .retain(|successor| seen.insert(*successor));
-        groups[group_index].incoming.clear();
-        groups[group_index].incoming_count = 0;
+        group.outgoing.retain(|successor| seen.insert(*successor));
+        group.incoming.clear();
+        group.incoming_count = 0;
     }
 
     let edges = groups
@@ -2298,7 +2296,7 @@ impl AdjacencyList {
         self.current_adjacency().position
     }
 
-    fn size(&self) -> usize {
+    fn current_size(&self) -> usize {
         self.current_size
     }
 
@@ -2445,7 +2443,7 @@ impl BetweenLayerEdgeTwoNodeCrossingsCounter {
         };
         upper.reset();
         lower.reset();
-        if upper.size() == 0 || lower.size() == 0 {
+        if upper.current_size() == 0 || lower.current_size() == 0 {
             return;
         }
         self.count_crossings_by_merging_adjacency_lists(upper, lower);
@@ -2458,10 +2456,10 @@ impl BetweenLayerEdgeTwoNodeCrossingsCounter {
     ) {
         while !upper_adjacencies.is_empty() && !lower_adjacencies.is_empty() {
             if is_below(upper_adjacencies.first(), lower_adjacencies.first()) {
-                self.upper_lower_crossings += upper_adjacencies.size();
+                self.upper_lower_crossings += upper_adjacencies.current_size();
                 lower_adjacencies.remove_first();
             } else if is_below(lower_adjacencies.first(), upper_adjacencies.first()) {
-                self.lower_upper_crossings += lower_adjacencies.size();
+                self.lower_upper_crossings += lower_adjacencies.current_size();
                 upper_adjacencies.remove_first();
             } else {
                 self.upper_lower_crossings +=
@@ -2531,6 +2529,7 @@ impl CrossingMatrixFiller {
         self.crossing_matrix[upper_position][lower_position]
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fill_crossing_matrix(
         &mut self,
         graph: &LGraph,
@@ -3937,12 +3936,12 @@ fn is_first_layer(order: &[Vec<usize>], current_index: usize, forward: bool) -> 
 }
 
 trait PortSideExt {
-    fn is_north(self) -> bool;
+    fn is_north(&self) -> bool;
 }
 
 impl PortSideExt for crate::graph::PortSide {
-    fn is_north(self) -> bool {
-        self == crate::graph::PortSide::North
+    fn is_north(&self) -> bool {
+        *self == crate::graph::PortSide::North
     }
 }
 

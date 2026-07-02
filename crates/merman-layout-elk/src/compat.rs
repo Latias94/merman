@@ -66,17 +66,9 @@ impl Default for Spacing {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct LayoutOptions {
     pub layered: LayeredOptions,
-}
-
-impl Default for LayoutOptions {
-    fn default() -> Self {
-        Self {
-            layered: LayeredOptions::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -486,7 +478,7 @@ impl<'a> LayoutEngine<'a> {
 
         let mut cross_positions: HashMap<&'a str, f64> = HashMap::new();
         for (rank, ids) in &by_rank {
-            let Some((_, total_cross)) = rank_span.get(&rank) else {
+            let Some((_, total_cross)) = rank_span.get(rank) else {
                 continue;
             };
             let mut cross_cursor = -total_cross / 2.0;
@@ -922,10 +914,10 @@ impl<'a> LayoutEngine<'a> {
                     EdgeRouting::Orthogonal => orthogonal_route(source, target, direction),
                     EdgeRouting::Polyline => polyline_route(source, target, direction),
                 };
-                if !self.graph.options.layered.merge_edges {
-                    if let Some((index, total)) = parallel_edges.get(edge.id.as_str()).copied() {
-                        offset_parallel_route(&mut points, direction, index, total);
-                    }
+                if !self.graph.options.layered.merge_edges
+                    && let Some((index, total)) = parallel_edges.get(edge.id.as_str()).copied()
+                {
+                    offset_parallel_route(&mut points, direction, index, total);
                 }
                 if let Some(label) = edge.label {
                     insert_label_clearance(&mut points, label, direction);
@@ -1100,6 +1092,7 @@ fn align_rank_cross_positions<'a>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn align_single_rank_cross_positions<'a>(
     by_rank: &BTreeMap<usize, Vec<&'a str>>,
     rank: usize,
