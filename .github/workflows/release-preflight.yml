@@ -47,26 +47,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/package-lists
-          crates=(
-            roughr-merman
-            dugong-graphlib
-            dugong
-            manatee
-            merman-core
-            merman-elk-layered
-            merman-layout-elk
-            merman-render
-            merman-ascii
-            merman
-            merman-rustdoc
-            merman-bindings-core
-            merman-ffi
-            merman-uniffi
-            merman-cli
-          )
-          for crate in "${crates[@]}"; do
+          cargo metadata --no-deps --format-version 1 \
+            | python3 -c 'import json, sys; metadata = json.load(sys.stdin); [print(package["name"]) for package in metadata["packages"] if package.get("publish") != []]' \
+            > target/package-lists/crates.txt
+          while IFS= read -r crate; do
             cargo package -p "$crate" --list > "target/package-lists/$crate.txt"
-          done
+          done < target/package-lists/crates.txt
 
       - name: Verify registry-independent crate dry-runs
         run: |

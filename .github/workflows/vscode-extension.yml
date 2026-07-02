@@ -9,14 +9,14 @@ on:
       - ".github/workflows/vscode-extension.yml"
       - "Cargo.lock"
       - "Cargo.toml"
-      - "crates/merman*/**"
+      - "crates/**"
       - "tools/vscode-extension/**"
   pull_request:
     paths:
       - ".github/workflows/vscode-extension.yml"
       - "Cargo.lock"
       - "Cargo.toml"
-      - "crates/merman*/**"
+      - "crates/**"
       - "tools/vscode-extension/**"
   workflow_dispatch:
 
