@@ -192,14 +192,10 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
     let diagnostic_context = store
         .diagnostic_context(&uri)
         .expect("expected initial diagnostic context");
-    store.set_semantic_tokens_state(
-        uri.clone(),
-        SemanticTokensState {
-            version: Some(1),
-            result_id: Some("tokens-1".to_string()),
-            tokens: Vec::new(),
-        },
-    );
+    assert!(store.set_semantic_tokens_state_if_current(
+        &snapshot_context,
+        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+    ));
 
     assert_eq!(
         store.apply_analyzer_options(AnalysisOptions::default()),
@@ -229,14 +225,10 @@ fn diagnostic_only_analyzer_update_stales_diagnostics_but_preserves_snapshots_an
     let diagnostic_context = store
         .diagnostic_context(&uri)
         .expect("expected initial diagnostic context");
-    store.set_semantic_tokens_state(
-        uri.clone(),
-        SemanticTokensState {
-            version: Some(1),
-            result_id: Some("tokens-1".to_string()),
-            tokens: Vec::new(),
-        },
-    );
+    assert!(store.set_semantic_tokens_state_if_current(
+        &snapshot_context,
+        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+    ));
 
     store.apply_analyzer_options(
         AnalysisOptions::default().with_rule_config(
@@ -268,14 +260,10 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
     let diagnostic_context = store
         .diagnostic_context(&uri)
         .expect("expected initial diagnostic context");
-    store.set_semantic_tokens_state(
-        uri.clone(),
-        SemanticTokensState {
-            version: Some(1),
-            result_id: Some("tokens-1".to_string()),
-            tokens: Vec::new(),
-        },
-    );
+    assert!(store.set_semantic_tokens_state_if_current(
+        &snapshot_context,
+        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+    ));
 
     store.upsert_text(
         uri.clone(),
@@ -306,14 +294,10 @@ fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_st
     let diagnostic_context = store
         .diagnostic_context(&uri)
         .expect("expected initial diagnostic context");
-    store.set_semantic_tokens_state(
-        uri.clone(),
-        SemanticTokensState {
-            version: Some(1),
-            result_id: Some("tokens-1".to_string()),
-            tokens: Vec::new(),
-        },
-    );
+    assert!(store.set_semantic_tokens_state_if_current(
+        &snapshot_context,
+        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+    ));
 
     store.apply_analyzer_options(
         AnalysisOptions::default().with_max_source_bytes(Some("flowchart TD\nA-->B\n".len() - 1)),
@@ -337,14 +321,10 @@ fn remove_stales_existing_contexts_and_clears_document_state() {
     let diagnostic_context = store
         .diagnostic_context(&uri)
         .expect("expected initial diagnostic context");
-    store.set_semantic_tokens_state(
-        uri.clone(),
-        SemanticTokensState {
-            version: Some(1),
-            result_id: Some("tokens-1".to_string()),
-            tokens: Vec::new(),
-        },
-    );
+    assert!(store.set_semantic_tokens_state_if_current(
+        &snapshot_context,
+        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+    ));
 
     store.remove(&uri);
 
@@ -353,6 +333,74 @@ fn remove_stales_existing_contexts_and_clears_document_state() {
     assert!(store.semantic_tokens_state(&uri).is_none());
     assert!(!store.is_snapshot_context_current(&snapshot_context));
     assert!(!store.is_diagnostic_context_current(&diagnostic_context));
+}
+
+#[test]
+fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacement() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+    );
+
+    assert!(!store.set_semantic_tokens_state_if_current(
+        &snapshot_context,
+        SemanticTokensState::new(Some(1), Some("tokens-stale".to_string()), Vec::new()),
+    ));
+    assert!(store.semantic_tokens_state(&uri).is_none());
+}
+
+#[test]
+fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_config_change() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    assert!(store.set_semantic_tokens_state_if_current(
+        &snapshot_context,
+        SemanticTokensState::new(
+            Some(1),
+            Some("tokens-1".to_string()),
+            vec![SemanticToken {
+                delta_line: 0,
+                delta_start: 0,
+                length: 4,
+                token_type: 0,
+                token_modifiers_bitset: 0,
+            }],
+        ),
+    ));
+
+    store.upsert_text(uri.clone(), 2, "flowchart TD\nAlpha-->B\n".to_string());
+
+    assert!(
+        store
+            .semantic_tokens_state_for_delta(&uri, "tokens-1")
+            .is_some(),
+        "text edits should preserve the last committed token state as a delta baseline"
+    );
+
+    store.apply_analyzer_options(
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some("flowchart TD\nAlpha-->B\n".len() - 1)),
+    );
+
+    assert!(
+        store
+            .semantic_tokens_state_for_delta(&uri, "tokens-1")
+            .is_none()
+    );
 }
 
 #[test]
@@ -368,20 +416,23 @@ fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
         snapshot.fences[0].diagram_type.as_deref(),
         Some("flowchart-v2")
     );
-    store.set_semantic_tokens_state(
-        uri.clone(),
-        SemanticTokensState {
-            version: Some(1),
-            result_id: Some("tokens-1".to_string()),
-            tokens: vec![SemanticToken {
+    let token_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    assert!(store.set_semantic_tokens_state_if_current(
+        &token_context,
+        SemanticTokensState::new(
+            Some(1),
+            Some("tokens-1".to_string()),
+            vec![SemanticToken {
                 delta_line: 0,
                 delta_start: 0,
                 length: 4,
                 token_type: 0,
                 token_modifiers_bitset: 0,
             }],
-        },
-    );
+        ),
+    ));
 
     store.apply_analyzer_options(
         AnalysisOptions::default().with_rule_config(
@@ -419,14 +470,13 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
         snapshot.fences[0].diagram_type.as_deref(),
         Some("flowchart-v2")
     );
-    store.set_semantic_tokens_state(
-        uri.clone(),
-        SemanticTokensState {
-            version: Some(1),
-            result_id: Some("tokens-1".to_string()),
-            tokens: Vec::new(),
-        },
-    );
+    let token_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    assert!(store.set_semantic_tokens_state_if_current(
+        &token_context,
+        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+    ));
 
     store.apply_analyzer_options(
         AnalysisOptions::default().with_max_source_bytes(Some("flowchart TD\nA-->B\n".len() - 1)),

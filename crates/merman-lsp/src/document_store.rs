@@ -13,7 +13,7 @@ pub struct DocumentStore {
     next_document_epoch: u64,
     documents: HashMap<Url, DocumentRecord>,
     snapshots: HashMap<Url, DocumentSnapshot>,
-    semantic_tokens_state: HashMap<Url, SemanticTokensState>,
+    semantic_tokens_state: HashMap<Url, StoredSemanticTokensState>,
 }
 
 impl Default for DocumentStore {
@@ -35,6 +35,20 @@ pub struct SemanticTokensState {
     pub version: Option<i32>,
     pub result_id: Option<String>,
     pub tokens: Vec<SemanticToken>,
+}
+
+impl SemanticTokensState {
+    pub fn new(
+        version: Option<i32>,
+        result_id: Option<String>,
+        tokens: Vec<SemanticToken>,
+    ) -> Self {
+        Self {
+            version,
+            result_id,
+            tokens,
+        }
+    }
 }
 
 impl DocumentStore {
@@ -222,15 +236,40 @@ impl DocumentStore {
     }
 
     pub fn semantic_tokens_state(&self, uri: &Url) -> Option<&SemanticTokensState> {
-        self.semantic_tokens_state.get(uri)
+        self.semantic_tokens_state
+            .get(uri)
+            .map(|stored| &stored.state)
     }
 
-    pub fn semantic_tokens_state_cloned(&self, uri: &Url) -> Option<SemanticTokensState> {
-        self.semantic_tokens_state.get(uri).cloned()
+    pub fn semantic_tokens_state_for_delta(
+        &self,
+        uri: &Url,
+        previous_result_id: &str,
+    ) -> Option<SemanticTokensState> {
+        self.semantic_tokens_state.get(uri).and_then(|stored| {
+            (stored.snapshot_generation == self.snapshot_generation
+                && stored.state.result_id.as_deref() == Some(previous_result_id))
+            .then(|| stored.state.clone())
+        })
     }
 
-    pub fn set_semantic_tokens_state(&mut self, uri: Url, state: SemanticTokensState) {
-        self.semantic_tokens_state.insert(uri, state);
+    pub fn set_semantic_tokens_state_if_current(
+        &mut self,
+        context: &SnapshotContext,
+        state: SemanticTokensState,
+    ) -> bool {
+        if !self.is_snapshot_context_current(context) {
+            return false;
+        }
+
+        self.semantic_tokens_state.insert(
+            context.snapshot.uri.clone(),
+            StoredSemanticTokensState {
+                snapshot_generation: context.generation,
+                state,
+            },
+        );
+        true
     }
 }
 
@@ -238,6 +277,12 @@ impl DocumentStore {
 struct DocumentRecord {
     document: StoredDocument,
     epoch: DocumentEpoch,
+}
+
+#[derive(Debug, Clone)]
+struct StoredSemanticTokensState {
+    snapshot_generation: SnapshotGeneration,
+    state: SemanticTokensState,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

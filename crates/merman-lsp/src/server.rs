@@ -1,7 +1,7 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_diagnostics;
-use crate::document_store::{AnalyzerConfigurationChange, SemanticTokensState};
+use crate::document_store::{AnalyzerConfigurationChange, SemanticTokensState, SnapshotContext};
 use crate::document_store::{DocumentStore, StoredDocument};
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -125,8 +125,17 @@ impl MermanLanguageServer {
     }
 
     async fn snapshot_for_uri(&self, uri: &tower_lsp::lsp_types::Url) -> Option<DocumentSnapshot> {
+        self.snapshot_context_for_uri(uri)
+            .await
+            .map(|context| context.snapshot)
+    }
+
+    async fn snapshot_context_for_uri(
+        &self,
+        uri: &tower_lsp::lsp_types::Url,
+    ) -> Option<SnapshotContext> {
         let mut store = self.store.lock().await;
-        store.snapshot_cloned(uri)
+        store.snapshot_context(uri)
     }
 
     fn diagnostics_for_document(
@@ -200,19 +209,14 @@ impl MermanLanguageServer {
 
     async fn record_semantic_tokens_state(
         &self,
-        uri: &tower_lsp::lsp_types::Url,
-        version: Option<i32>,
+        context: &SnapshotContext,
         tokens: Vec<tower_lsp::lsp_types::SemanticToken>,
         result_id: Option<String>,
     ) {
         let mut store = self.store.lock().await;
-        store.set_semantic_tokens_state(
-            uri.clone(),
-            SemanticTokensState {
-                version,
-                result_id,
-                tokens,
-            },
+        store.set_semantic_tokens_state_if_current(
+            context,
+            SemanticTokensState::new(Some(context.snapshot.version), result_id, tokens),
         );
     }
 
@@ -452,22 +456,18 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let snapshot = self.snapshot_for_uri(&uri).await;
+        let snapshot_context = self.snapshot_context_for_uri(&uri).await;
 
-        let Some(snapshot) = snapshot else {
+        let Some(snapshot_context) = snapshot_context else {
             return Ok(None);
         };
+        let snapshot = &snapshot_context.snapshot;
 
-        let tokens = semantic_tokens_for_snapshot(&snapshot);
-        let result_id = semantic_tokens_result_id(&snapshot, &tokens.data);
-        let tokens = semantic_tokens_for_snapshot_with_result_id(&snapshot, result_id.clone());
-        self.record_semantic_tokens_state(
-            &uri,
-            Some(snapshot.version),
-            tokens.data.clone(),
-            Some(result_id),
-        )
-        .await;
+        let tokens = semantic_tokens_for_snapshot(snapshot);
+        let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
+        let tokens = semantic_tokens_for_snapshot_with_result_id(snapshot, result_id.clone());
+        self.record_semantic_tokens_state(&snapshot_context, tokens.data.clone(), Some(result_id))
+            .await;
 
         Ok(Some(SemanticTokensResult::Tokens(tokens)))
     }
@@ -477,30 +477,27 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensDeltaParams,
     ) -> Result<Option<SemanticTokensFullDeltaResult>> {
         let uri = params.text_document.uri;
-        let snapshot = self.snapshot_for_uri(&uri).await;
-        let Some(snapshot) = snapshot else {
+        let snapshot_context = self.snapshot_context_for_uri(&uri).await;
+        let Some(snapshot_context) = snapshot_context else {
             return Ok(None);
         };
+        let snapshot = &snapshot_context.snapshot;
 
-        let current_tokens = semantic_tokens_for_snapshot(&snapshot);
-        let current_result_id = semantic_tokens_result_id(&snapshot, &current_tokens.data);
+        let current_tokens = semantic_tokens_for_snapshot(snapshot);
+        let current_result_id = semantic_tokens_result_id(snapshot, &current_tokens.data);
         let delta = {
             let store = self.store.lock().await;
-            let previous = store.semantic_tokens_state_cloned(&uri);
+            let previous =
+                store.semantic_tokens_state_for_delta(&uri, params.previous_result_id.as_str());
             match previous {
-                Some(previous)
-                    if previous.result_id.as_deref()
-                        == Some(params.previous_result_id.as_str()) =>
-                {
-                    semantic_tokens_delta_result(
-                        &previous.tokens,
-                        &current_tokens.data,
-                        current_result_id.clone(),
-                    )
-                }
+                Some(previous) => semantic_tokens_delta_result(
+                    &previous.tokens,
+                    &current_tokens.data,
+                    current_result_id.clone(),
+                ),
                 _ => SemanticTokensFullDeltaResult::Tokens(
                     semantic_tokens_for_snapshot_with_result_id(
-                        &snapshot,
+                        snapshot,
                         current_result_id.clone(),
                     ),
                 ),
@@ -508,8 +505,7 @@ impl LanguageServer for MermanLanguageServer {
         };
 
         self.record_semantic_tokens_state(
-            &uri,
-            Some(snapshot.version),
+            &snapshot_context,
             current_tokens.data,
             Some(current_result_id),
         )
