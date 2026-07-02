@@ -72,6 +72,8 @@ impl DocumentStore {
     }
 
     pub fn snapshot_cloned(&mut self, uri: &Url) -> Option<DocumentSnapshot> {
+        // Request handlers own this snapshot so they can release the store mutex before
+        // running editor queries. Projection code should borrow from it instead of cloning it.
         if let Some(snapshot) = self.snapshots.get(uri) {
             return Some(snapshot.clone());
         }

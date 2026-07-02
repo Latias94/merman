@@ -92,12 +92,12 @@ pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<Editor
     symbols
 }
 
-pub fn workspace_symbols_for_snapshots(
-    snapshots: &[DocumentSnapshot],
+pub fn workspace_symbols_for_snapshots<'a>(
+    snapshots: impl IntoIterator<Item = &'a DocumentSnapshot>,
     query: &str,
 ) -> Vec<EditorSymbolInformation> {
     let mut symbols = snapshots
-        .iter()
+        .into_iter()
         .flat_map(|snapshot| workspace_symbols(snapshot, query))
         .collect::<Vec<_>>();
     sort_workspace_symbols(&mut symbols);

@@ -13,7 +13,7 @@ use tower_lsp::lsp_types::{
 
 pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) -> CompletionList {
     core_completion_to_lsp(core_completion_for_snapshot(
-        &snapshot.to_editor(),
+        snapshot.as_editor(),
         merman_editor_core::Position::new(position.line as usize, position.character as usize),
     ))
 }

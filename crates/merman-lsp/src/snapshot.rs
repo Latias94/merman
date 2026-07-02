@@ -16,8 +16,8 @@ impl DocumentSnapshot {
         }
     }
 
-    pub fn to_editor(&self) -> merman_editor_core::DocumentSnapshot {
-        self.editor.clone()
+    pub fn as_editor(&self) -> &merman_editor_core::DocumentSnapshot {
+        &self.editor
     }
 
     pub fn byte_offset_for_position(&self, position: Position) -> Option<usize> {

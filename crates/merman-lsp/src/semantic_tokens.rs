@@ -121,7 +121,7 @@ pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[Semantic
 }
 
 fn absolute_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<AbsoluteToken> {
-    core_semantic_tokens_for_snapshot(&snapshot.to_editor())
+    core_semantic_tokens_for_snapshot(snapshot.as_editor())
         .into_iter()
         .map(|token| AbsoluteToken {
             line: token.line,

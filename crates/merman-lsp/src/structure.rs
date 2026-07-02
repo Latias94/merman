@@ -22,7 +22,7 @@ use tower_lsp::lsp_types::{
 #[allow(deprecated)]
 pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
     DocumentSymbolResponse::Nested(
-        core_document_symbols(&snapshot.to_editor())
+        core_document_symbols(snapshot.as_editor())
             .into_iter()
             .map(document_symbol_to_lsp)
             .collect(),
@@ -31,7 +31,7 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
 
 #[allow(deprecated)]
 pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<SymbolInformation> {
-    core_workspace_symbols(&snapshot.to_editor(), query)
+    core_workspace_symbols(snapshot.as_editor(), query)
         .into_iter()
         .filter_map(|symbol| symbol_information_to_lsp(symbol, Some(&snapshot.uri)))
         .collect()
@@ -41,16 +41,12 @@ pub fn workspace_symbols_for_snapshots(
     snapshots: &[DocumentSnapshot],
     query: &str,
 ) -> Vec<SymbolInformation> {
-    let editor_snapshots = snapshots
-        .iter()
-        .map(DocumentSnapshot::to_editor)
-        .collect::<Vec<_>>();
     let uri_lookup = snapshots
         .iter()
         .map(|snapshot| (snapshot.uri.as_str().to_string(), snapshot.uri.clone()))
         .collect::<HashMap<_, _>>();
 
-    core_workspace_symbols_for_snapshots(&editor_snapshots, query)
+    core_workspace_symbols_for_snapshots(snapshots.iter().map(DocumentSnapshot::as_editor), query)
         .into_iter()
         .filter_map(|symbol| {
             let uri = uri_lookup.get(symbol.location.uri.as_str());
@@ -60,7 +56,7 @@ pub fn workspace_symbols_for_snapshots(
 }
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
-    core_hover(&snapshot.to_editor(), position_to_core(position)).map(hover_to_lsp)
+    core_hover(snapshot.as_editor(), position_to_core(position)).map(hover_to_lsp)
 }
 
 pub fn selection_ranges(
@@ -74,7 +70,7 @@ pub fn selection_ranges(
         .collect::<Vec<_>>();
 
     Some(
-        core_selection_ranges(&snapshot.to_editor(), &core_positions)
+        core_selection_ranges(snapshot.as_editor(), &core_positions)
             .into_iter()
             .zip(positions.iter().copied())
             .map(|(range, position)| {
@@ -87,7 +83,7 @@ pub fn selection_ranges(
 }
 
 pub fn folding_ranges(snapshot: &DocumentSnapshot) -> Vec<FoldingRange> {
-    core_folding_ranges(&snapshot.to_editor())
+    core_folding_ranges(snapshot.as_editor())
         .into_iter()
         .map(folding_range_to_lsp)
         .collect()
@@ -97,7 +93,7 @@ pub fn goto_definition(
     snapshot: &DocumentSnapshot,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
-    core_goto_definition(&snapshot.to_editor(), position_to_core(position))
+    core_goto_definition(snapshot.as_editor(), position_to_core(position))
         .and_then(|location| location_to_lsp(location, &snapshot.uri))
         .map(Into::into)
 }
@@ -108,7 +104,7 @@ pub fn references(
     include_declaration: bool,
 ) -> Option<Vec<Location>> {
     core_references(
-        &snapshot.to_editor(),
+        snapshot.as_editor(),
         position_to_core(position),
         include_declaration,
     )
@@ -124,13 +120,13 @@ pub fn prepare_rename(
     snapshot: &DocumentSnapshot,
     position: Position,
 ) -> Option<PrepareRenameResponse> {
-    core_prepare_rename(&snapshot.to_editor(), position_to_core(position)).map(prepare_to_lsp)
+    core_prepare_rename(snapshot.as_editor(), position_to_core(position)).map(prepare_to_lsp)
 }
 
 pub fn rename(snapshot: &DocumentSnapshot, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
     let position = params.text_document_position.position;
     core_rename(
-        &snapshot.to_editor(),
+        snapshot.as_editor(),
         position_to_core(position),
         &params.new_name,
     )
