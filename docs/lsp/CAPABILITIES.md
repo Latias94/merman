@@ -25,6 +25,14 @@ diagnostics without invalidating editor snapshots or semantic-token result state
 changes such as parse options, site config, fixed date/time, resource limits, or source descriptor
 changes clear snapshot-dependent state.
 
+Request handlers capture document/configuration generations before running projection work outside
+the store lock. Semantic-token responses only commit cached token state while the captured snapshot
+is still current; stale previous result ids fall back to full tokens after snapshot-affecting
+configuration changes. Push diagnostics re-check currentness immediately before publishing and
+suppress contexts that are already stale. Pull diagnostics recompute once from the latest context
+when stale analyzer output is detected. This is a bounded LSP adapter contract, not a cancellation
+framework for notifications already handed to the client transport.
+
 External lint and preview tools can integrate with Merman analysis, coexist beside it, or ignore it.
 Merman language intelligence does not require a host to replace VS Code built-in Mermaid preview,
 third-party preview extensions, markdownlint/remark/textlint rules, or `mermaid-lint`-style CI
@@ -199,7 +207,8 @@ Remaining fallback ledger:
   configuration changes ask the client to refresh semantic tokens when refresh support is
   advertised and clear cached token state. Diagnostic-only lint configuration changes refresh
   diagnostics without invalidating semantic-token state. Delta requests reuse cached previous token
-  state when the result id matches.
+  state only when the result id matches state from the current snapshot generation; otherwise they
+  return full tokens.
 - Text-scan fallback: may support source-start headers/templates and record directive prefixes for
   unmigrated paths, but must not assert body completion availability. It must not project
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`

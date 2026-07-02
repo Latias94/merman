@@ -47,6 +47,20 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
   frontmatter `config` preference; the frontmatter-config rule now carries a migration fix that
   rewrites init/initialize directive config into YAML frontmatter.
 
+## Request Interleaving
+
+Diagnostics are computed from captured document/analyzer contexts so the server can release the
+document-store lock while projecting analysis payloads. Before sending push diagnostics, the server
+checks that the captured document epoch and diagnostic configuration generation are still current;
+stale contexts observed before the final publish attempt are suppressed. A notification already
+handed to the client transport is outside this cancellation boundary.
+
+For pull diagnostics, `textDocument/diagnostic` performs the same currentness check after analysis.
+If the captured context became stale, the server recomputes once from the latest context and returns
+that result. Pull-mode configuration changes invalidate client caches with
+`workspace/diagnostic/refresh` when the client advertises refresh support, and they do not also push
+open-document diagnostics.
+
 ## Deferred
 
 - Formatting remains deferred.
