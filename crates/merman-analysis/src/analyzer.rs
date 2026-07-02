@@ -1,9 +1,9 @@
 use crate::rules::AnalysisRuleConfig;
 use crate::rules::{
-    DIAGRAM_PARSE_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID, INVALID_FRONT_MATTER_YAML_RULE_ID,
-    MALFORMED_FRONT_MATTER_RULE_ID, NO_DIAGRAM_RULE_ID, PANIC_RULE_ID,
-    RECOVERED_EDITOR_FACTS_RULE_ID, RESOURCE_LIMIT_RULE_ID, UNSUPPORTED_DIAGRAM_RULE_ID,
-    internal_rule_registry_gap_diagnostic, rule_descriptor,
+    DIAGRAM_PARSE_RULE_ID, FLOWCHART_FACTS_PROJECTION_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID,
+    INVALID_FRONT_MATTER_YAML_RULE_ID, MALFORMED_FRONT_MATTER_RULE_ID, NO_DIAGRAM_RULE_ID,
+    PANIC_RULE_ID, RECOVERED_EDITOR_FACTS_RULE_ID, RESOURCE_LIMIT_RULE_ID,
+    UNSUPPORTED_DIAGRAM_RULE_ID, internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
 use crate::{
     AnalysisDiagnostic, AnalysisFlowchartFacts, AnalysisPayload, AnalysisResult, AnalysisStatus,
@@ -242,9 +242,11 @@ impl Analyzer {
                 LocalAnalysis::empty_syntax_with_type(Some(diagram_type), diagnostics)
             }
             AnalysisMode::RichFacts => {
-                let flowchart_facts = AnalysisFlowchartFacts::from_model(&parsed.model);
+                let flowchart_projection =
+                    self.flowchart_facts_projection(&parsed.model, &diagram_type, source_map);
+                diagnostics.extend(flowchart_projection.diagnostics);
                 let editor_projection =
-                    self.editor_facts_projection(source, &diagram_type, source_map);
+                    self.editor_facts_projection(source, &diagram_type, source_map, mode);
                 diagnostics.extend(
                     editor_projection
                         .diagnostics
@@ -257,7 +259,7 @@ impl Analyzer {
                         Some(diagram_type),
                         editor_projection.text_index,
                     )
-                    .with_flowchart(flowchart_facts),
+                    .with_flowchart(flowchart_projection.facts),
                 }
             }
         }
@@ -275,20 +277,10 @@ impl Analyzer {
         if let Some(diagnostic) = core_diagnostic.diagnostic {
             diagnostics.push(diagnostic);
         }
-        let syntax = match (core_diagnostic.diagram_type, mode) {
-            (Some(diagram_type), AnalysisMode::Diagnostics) => {
-                let recovery_diagnostics =
-                    self.editor_recovery_diagnostics(source, &diagram_type, source_map);
-                merge_recovery_diagnostics(
-                    &mut diagnostics,
-                    recovery_diagnostics,
-                    core_diagnostic.parse_location,
-                );
-                AnalysisSyntaxFacts::new(Some(diagram_type), FenceTextIndex::default())
-            }
-            (Some(diagram_type), AnalysisMode::RichFacts) => {
+        let syntax = match core_diagnostic.diagram_type {
+            Some(diagram_type) => {
                 let editor_projection =
-                    self.editor_facts_projection(source, &diagram_type, source_map);
+                    self.editor_facts_projection(source, &diagram_type, source_map, mode);
                 merge_recovery_diagnostics(
                     &mut diagnostics,
                     editor_projection.diagnostics,
@@ -296,32 +288,14 @@ impl Analyzer {
                 );
                 AnalysisSyntaxFacts::new(Some(diagram_type), editor_projection.text_index)
             }
-            (None, AnalysisMode::Diagnostics) => {
+            None if mode == AnalysisMode::Diagnostics => {
                 AnalysisSyntaxFacts::new(None, FenceTextIndex::default())
             }
-            (None, AnalysisMode::RichFacts) => AnalysisSyntaxFacts::text_scan(source, None),
+            None => AnalysisSyntaxFacts::text_scan(source, None),
         };
         LocalAnalysis {
             diagnostics,
             syntax,
-        }
-    }
-
-    fn editor_recovery_diagnostics(
-        &self,
-        source: &str,
-        diagram_type: &str,
-        source_map: &SourceMap,
-    ) -> Vec<AnalysisRecoveryDiagnostic> {
-        match self.parse_editor_semantic_facts(source, diagram_type, source_map) {
-            Err(diagnostics) => diagnostics,
-            Ok(Some(facts)) => editor_recovery_diagnostics(
-                facts.diagnostics,
-                diagram_type,
-                source_map,
-                &self.options.rule_config,
-            ),
-            Ok(None) => Vec::new(),
         }
     }
 
@@ -330,10 +304,11 @@ impl Analyzer {
         source: &str,
         diagram_type: &str,
         source_map: &SourceMap,
+        mode: AnalysisMode,
     ) -> EditorFactsProjection {
         match self.parse_editor_semantic_facts(source, diagram_type, source_map) {
             Err(diagnostics) => {
-                EditorFactsProjection::text_scan(source, Some(diagram_type), diagnostics)
+                EditorFactsProjection::fallback(source, Some(diagram_type), diagnostics, mode)
             }
             Ok(Some(facts)) => {
                 let diagnostics = editor_recovery_diagnostics(
@@ -343,11 +318,41 @@ impl Analyzer {
                     &self.options.rule_config,
                 );
                 EditorFactsProjection {
-                    text_index: FenceTextIndex::from_core_facts(facts),
+                    text_index: match mode {
+                        AnalysisMode::Diagnostics => FenceTextIndex::default(),
+                        AnalysisMode::RichFacts => FenceTextIndex::from_core_facts(facts),
+                    },
                     diagnostics,
                 }
             }
-            Ok(None) => EditorFactsProjection::text_scan(source, Some(diagram_type), Vec::new()),
+            Ok(None) => {
+                EditorFactsProjection::fallback(source, Some(diagram_type), Vec::new(), mode)
+            }
+        }
+    }
+
+    fn flowchart_facts_projection(
+        &self,
+        model: &serde_json::Value,
+        diagram_type: &str,
+        source_map: &SourceMap,
+    ) -> FlowchartFactsProjection {
+        match AnalysisFlowchartFacts::try_from_model(model) {
+            Ok(facts) => FlowchartFactsProjection {
+                facts,
+                diagnostics: Vec::new(),
+            },
+            Err(error) => FlowchartFactsProjection {
+                facts: None,
+                diagnostics: flowchart_facts_projection_diagnostic(
+                    error,
+                    diagram_type,
+                    source_map,
+                    &self.options.rule_config,
+                )
+                .into_iter()
+                .collect(),
+            },
         }
     }
 
@@ -440,16 +445,26 @@ struct EditorFactsProjection {
 }
 
 impl EditorFactsProjection {
-    fn text_scan(
+    fn fallback(
         source: &str,
         diagram_type: Option<&str>,
         diagnostics: Vec<AnalysisRecoveryDiagnostic>,
+        mode: AnalysisMode,
     ) -> Self {
         Self {
-            text_index: FenceTextIndex::from_text(source, diagram_type),
+            text_index: match mode {
+                AnalysisMode::Diagnostics => FenceTextIndex::default(),
+                AnalysisMode::RichFacts => FenceTextIndex::from_text(source, diagram_type),
+            },
             diagnostics,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct FlowchartFactsProjection {
+    facts: Option<AnalysisFlowchartFacts>,
+    diagnostics: Vec<AnalysisDiagnostic>,
 }
 
 #[derive(Debug, Clone)]
@@ -800,6 +815,22 @@ fn panic_diagnostic(
         source_map,
         rule_config,
     )
+}
+
+fn flowchart_facts_projection_diagnostic(
+    error: impl std::fmt::Display,
+    diagram_type: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+) -> Option<AnalysisDiagnostic> {
+    rule_diagnostic(
+        FLOWCHART_FACTS_PROJECTION_RULE_ID,
+        AnalysisStatus::InternalError,
+        format!("failed to project flowchart facts from parser model: {error}"),
+        source_map,
+        rule_config,
+    )
+    .map(|diagnostic| diagnostic.with_diagram_type(diagram_type))
 }
 
 fn recovered_editor_diagnostic(

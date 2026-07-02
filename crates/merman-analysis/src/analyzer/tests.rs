@@ -3,6 +3,8 @@ use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
 use crate::{
     AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource, SourceMap,
 };
+use merman_core::{MermaidConfig, ParseMetadata, ParsedDiagram};
+use serde_json::json;
 
 #[test]
 fn analyze_state_parse_failure_deduplicates_matching_recovery_diagnostic() {
@@ -95,6 +97,58 @@ fn rich_facts_mode_projects_valid_syntax_facts() {
 }
 
 #[test]
+fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
+    let analyzer = Analyzer::new();
+    let source = "flowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+    let local = analyzer.analyze_parsed_diagram(
+        source,
+        &source_map,
+        malformed_flowchart_parsed_diagram(),
+        Vec::new(),
+        super::AnalysisMode::RichFacts,
+    );
+
+    assert!(local.syntax.flowchart.is_none());
+    let diagnostic = local
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID)
+        .expect("flowchart projection diagnostic");
+    assert_eq!(diagnostic.category, DiagnosticCategory::Internal);
+    assert_eq!(diagnostic.code, Some(AnalysisStatus::InternalError.code()));
+    assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert!(
+        diagnostic
+            .message
+            .contains("failed to project flowchart facts from parser model")
+    );
+}
+
+#[test]
+fn diagnostics_mode_does_not_project_flowchart_facts_failures() {
+    let analyzer = Analyzer::new();
+    let source = "flowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+    let local = analyzer.analyze_parsed_diagram(
+        source,
+        &source_map,
+        malformed_flowchart_parsed_diagram(),
+        Vec::new(),
+        super::AnalysisMode::Diagnostics,
+    );
+
+    assert!(
+        local.diagnostics.iter().all(|diagnostic| {
+            diagnostic.id != crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
+        })
+    );
+    assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
+    assert!(local.syntax.flowchart.is_none());
+}
+
+#[test]
 fn disabled_resource_limit_diagnostic_still_stops_rich_facts_projection() {
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
@@ -111,6 +165,23 @@ fn disabled_resource_limit_diagnostic_still_stops_rich_facts_projection() {
     assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
     assert!(local.syntax.text_index.node_ids().next().is_none());
     assert!(local.syntax.text_index.semantic_items().is_empty());
+}
+
+fn malformed_flowchart_parsed_diagram() -> ParsedDiagram {
+    ParsedDiagram {
+        meta: ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        },
+        model: json!({
+            "type": "flowchart-v2",
+            "nodes": [
+                { "id": 1 }
+            ]
+        }),
+    }
 }
 
 #[test]

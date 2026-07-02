@@ -7,6 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct AnalysisResult {
@@ -295,13 +296,38 @@ pub struct AnalysisFlowchartFacts {
 }
 
 impl AnalysisFlowchartFacts {
-    pub fn from_model(model: &Value) -> Option<Self> {
+    pub(crate) fn try_from_model(
+        model: &Value,
+    ) -> Result<Option<Self>, AnalysisFlowchartFactsProjectionError> {
         let diagram_type = model.get("type").and_then(Value::as_str);
         if !matches!(diagram_type, Some("flowchart-v2" | "flowchart-elk")) {
-            return None;
+            return Ok(None);
         }
 
-        serde_json::from_value(model.clone()).ok()
+        serde_json::from_value(model.clone())
+            .map(Some)
+            .map_err(AnalysisFlowchartFactsProjectionError::from)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AnalysisFlowchartFactsProjectionError {
+    message: String,
+}
+
+impl fmt::Display for AnalysisFlowchartFactsProjectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for AnalysisFlowchartFactsProjectionError {}
+
+impl From<serde_json::Error> for AnalysisFlowchartFactsProjectionError {
+    fn from(error: serde_json::Error) -> Self {
+        Self {
+            message: error.to_string(),
+        }
     }
 }
 

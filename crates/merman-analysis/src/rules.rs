@@ -28,6 +28,7 @@ pub const INVALID_DIRECTIVE_JSON_RULE_ID: &str = "merman.config.invalid_directiv
 pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front_matter_yaml";
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
+pub const FLOWCHART_FACTS_PROJECTION_RULE_ID: &str = "merman.internal.flowchart_facts_projection";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
     "merman.authoring.flowchart.explicit_direction";
@@ -343,6 +344,22 @@ const INTERNAL_RULE_REGISTRY_GAP_RULE: RuleDescriptor = RuleDescriptor {
     fixable: false,
 };
 
+const FLOWCHART_FACTS_PROJECTION_RULE: RuleDescriptor = RuleDescriptor {
+    id: FLOWCHART_FACTS_PROJECTION_RULE_ID,
+    description: "Report an internal failure while projecting flowchart parser model facts.",
+    evidence: &[
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+        "crates/merman-analysis/src/result.rs",
+        "crates/merman-analysis/src/analyzer.rs",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Internal,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanInternal,
+    fixable: false,
+};
+
 const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     id: BLOCK_WIDTH_RULE_ID,
     description: "Report block diagram entries that exceed the configured column width.",
@@ -415,6 +432,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     INVALID_FRONT_MATTER_YAML_RULE,
     PANIC_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
+    FLOWCHART_FACTS_PROJECTION_RULE,
     BLOCK_WIDTH_RULE,
     FLOWCHART_EXPLICIT_DIRECTION_RULE,
     FLOWCHART_UNKNOWN_STYLE_TARGET_RULE,
@@ -1307,7 +1325,7 @@ mod tests {
     fn rule_descriptors_expose_stable_rule_metadata() {
         let descriptors = rule_descriptors();
 
-        assert_eq!(descriptors.len(), 18);
+        assert_eq!(descriptors.len(), 19);
         assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
         assert!(descriptors[0].description.contains("canonical `init`"));
         assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1423,6 +1441,11 @@ mod tests {
             descriptors
                 .iter()
                 .any(|descriptor| descriptor.id == INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.id == FLOWCHART_FACTS_PROJECTION_RULE_ID)
         );
         assert!(
             descriptors
@@ -1672,6 +1695,11 @@ mod tests {
                 .iter()
                 .all(|descriptor| descriptor.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
         );
+        assert!(
+            descriptors
+                .iter()
+                .all(|descriptor| descriptor.id != FLOWCHART_FACTS_PROJECTION_RULE_ID)
+        );
     }
 
     #[test]
@@ -1786,6 +1814,11 @@ mod tests {
             catalog
                 .iter()
                 .all(|entry| entry.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
+        );
+        assert!(
+            catalog
+                .iter()
+                .all(|entry| entry.id != FLOWCHART_FACTS_PROJECTION_RULE_ID)
         );
     }
 }
