@@ -1,6 +1,8 @@
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
-    DiagnosticCategory, DiagnosticSeverity, SourceDescriptor, document::analyze_document,
+    DiagnosticCategory, DiagnosticSeverity, FenceExpectedSyntaxKind, FenceTextIndexSource,
+    SourceDescriptor,
+    document::{analyze_document, analyze_document_result},
     source_descriptor_for_markdown_path,
 };
 
@@ -272,6 +274,84 @@ fn recovered_mindmap_editor_diagnostic_is_projected() {
     assert_eq!(
         diagnostic.span.as_ref().map(|span| span.byte_start),
         source.find("child")
+    );
+}
+
+#[test]
+fn analyze_result_exposes_complete_parser_syntax_facts() {
+    let source = "flowchart TD\nA-->B\n";
+    let result = Analyzer::new().analyze_result(source);
+
+    assert!(result.payload().valid);
+    assert!(result.diagnostics().is_empty());
+    assert_eq!(result.diagrams().len(), 1);
+
+    let diagram = &result.diagrams()[0];
+    assert_eq!(diagram.source_id, "document");
+    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert_eq!(
+        diagram.syntax.source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    assert!(diagram.syntax.text_index.node_ids().any(|id| id == "A"));
+}
+
+#[test]
+fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
+    let source = "flowchart TD\nA@{\n  shape: rou\n}\n";
+    let result = Analyzer::new().analyze_result(source);
+
+    assert!(!result.payload().valid);
+    assert_eq!(result.diagrams().len(), 1);
+
+    let diagram = &result.diagrams()[0];
+    assert_eq!(diagram.source_id, "document");
+    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert!(diagram.syntax.source().is_parser_backed());
+    assert!(
+        diagram
+            .syntax
+            .text_index
+            .expected_syntax()
+            .iter()
+            .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
+    );
+}
+
+#[test]
+fn document_analysis_result_keeps_local_fence_syntax_facts() {
+    let source = concat!(
+        "before\n",
+        "```mermaid\n",
+        "flowchart TD\n",
+        "A@{\n",
+        "  shape: rou\n",
+        "}\n",
+        "```\n",
+        "after\n",
+    );
+    let analyzer = Analyzer::new();
+    let result = analyze_document_result(
+        source,
+        &analyzer,
+        source_descriptor_for_markdown_path(Some("doc.md")),
+    );
+
+    assert!(!result.payload().valid);
+    assert_eq!(result.diagrams().len(), 1);
+
+    let diagram = &result.diagrams()[0];
+    assert_eq!(diagram.source_id, "mermaid-fence-1");
+    assert_eq!(diagram.source.diagram_index, Some(0));
+    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert!(diagram.syntax.source().is_parser_backed());
+    assert!(
+        diagram
+            .syntax
+            .text_index
+            .expected_syntax()
+            .iter()
+            .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
     );
 }
 

@@ -5,7 +5,10 @@ use crate::rules::{
     RECOVERED_EDITOR_FACTS_RULE_ID, RESOURCE_LIMIT_RULE_ID, UNSUPPORTED_DIAGRAM_RULE_ID,
     internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
-use crate::{AnalysisDiagnostic, AnalysisPayload, AnalysisStatus, SourceDescriptor, SourceMap};
+use crate::{
+    AnalysisDiagnostic, AnalysisPayload, AnalysisResult, AnalysisStatus, AnalysisSyntaxFacts,
+    AnalyzedDiagram, DocumentDiagram, FenceTextIndex, SourceDescriptor, SourceMap,
+};
 use merman_core::{
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, Engine, Error as CoreError,
     MermaidConfig, ParseDiagnostic, ParseDiagnosticSpanKind, ParseOptions,
@@ -102,14 +105,39 @@ impl Analyzer {
         Self { engine, options }
     }
 
+    pub fn analyze_result(&self, source: &str) -> AnalysisResult {
+        let source_map = SourceMap::new(source);
+        let diagram = crate::document::whole_document_diagram(source, &self.options.source);
+        let analyzed = self.analyze_diagram(&diagram);
+        AnalysisResult::new(
+            self.options.source.clone(),
+            source_map,
+            analyzed.diagnostics.clone(),
+            vec![analyzed],
+        )
+    }
+
     pub fn analyze(&self, source: &str) -> AnalysisPayload {
+        self.analyze_result(source).into_payload()
+    }
+
+    pub fn analyze_json(&self, source: &str) -> Result<Vec<u8>, serde_json::Error> {
+        self.analyze(source).to_json_bytes()
+    }
+
+    pub(crate) fn analyze_diagram(&self, diagram: &DocumentDiagram) -> AnalyzedDiagram {
+        let local = self.analyze_local(&diagram.text);
+        AnalyzedDiagram::from_document_diagram(diagram, local.diagnostics, local.syntax)
+    }
+
+    fn analyze_local(&self, source: &str) -> LocalAnalysis {
         let source_map = SourceMap::new(source);
 
         if source.trim().is_empty() {
             let diagnostics = no_diagram_diagnostic(&source_map, &self.options.rule_config)
                 .into_iter()
                 .collect();
-            return self.payload(diagnostics);
+            return LocalAnalysis::text_scan(source, None, diagnostics);
         }
 
         if let Some(limit) = self.options.max_source_bytes
@@ -117,7 +145,7 @@ impl Analyzer {
             && let Some(diagnostic) =
                 source_limit_diagnostic(source.len(), limit, &source_map, &self.options.rule_config)
         {
-            return self.payload(vec![diagnostic]);
+            return LocalAnalysis::text_scan(source, None, vec![diagnostic]);
         }
 
         let source_lints =
@@ -135,29 +163,35 @@ impl Analyzer {
                 {
                     diagnostics.push(diagnostic);
                 }
-                self.payload(diagnostics)
+                LocalAnalysis::text_scan(source, None, diagnostics)
             }
             Ok(parse_result) => match parse_result {
                 Ok(Some(parsed)) => {
+                    let diagram_type = parsed.meta.diagram_type;
+                    let editor_projection =
+                        self.editor_facts_projection(source, &diagram_type, &source_map);
                     let mut diagnostics = source_lints;
                     diagnostics.extend(crate::rules::semantic_warning_diagnostics(
-                        &parsed.meta.diagram_type,
+                        &diagram_type,
                         &parsed.model,
                         &source_map,
                         &self.options.rule_config,
                     ));
                     diagnostics.extend(
-                        self.editor_recovery_diagnostics(
-                            source,
-                            &parsed.meta.diagram_type,
-                            &source_map,
-                        )
-                        .into_iter()
-                        .map(|recovery| recovery.diagnostic),
+                        editor_projection
+                            .diagnostics
+                            .into_iter()
+                            .map(|recovery| recovery.diagnostic),
                     );
-                    self.payload(diagnostics)
+                    LocalAnalysis {
+                        diagnostics,
+                        syntax: AnalysisSyntaxFacts::new(
+                            Some(diagram_type),
+                            editor_projection.text_index,
+                        ),
+                    }
                 }
-                Ok(None) => self.payload(source_lints),
+                Ok(None) => LocalAnalysis::text_scan(source, None, source_lints),
                 Err(error) => {
                     let core_diagnostic =
                         core_error_diagnostic(error, &source_map, &self.options.rule_config);
@@ -165,35 +199,33 @@ impl Analyzer {
                     if let Some(diagnostic) = core_diagnostic.diagnostic {
                         diagnostics.push(diagnostic);
                     }
-                    if let Some(diagram_type) = core_diagnostic.diagram_type {
-                        let recovery_diagnostics =
-                            self.editor_recovery_diagnostics(source, &diagram_type, &source_map);
+                    let syntax = if let Some(diagram_type) = core_diagnostic.diagram_type {
+                        let editor_projection =
+                            self.editor_facts_projection(source, &diagram_type, &source_map);
                         merge_recovery_diagnostics(
                             &mut diagnostics,
-                            recovery_diagnostics,
+                            editor_projection.diagnostics,
                             core_diagnostic.parse_location,
                         );
+                        AnalysisSyntaxFacts::new(Some(diagram_type), editor_projection.text_index)
+                    } else {
+                        AnalysisSyntaxFacts::text_scan(source, None)
+                    };
+                    LocalAnalysis {
+                        diagnostics,
+                        syntax,
                     }
-                    self.payload(diagnostics)
                 }
             },
         }
     }
 
-    pub fn analyze_json(&self, source: &str) -> Result<Vec<u8>, serde_json::Error> {
-        self.analyze(source).to_json_bytes()
-    }
-
-    fn payload(&self, diagnostics: Vec<AnalysisDiagnostic>) -> AnalysisPayload {
-        AnalysisPayload::new(self.options.source.clone(), diagnostics)
-    }
-
-    fn editor_recovery_diagnostics(
+    fn editor_facts_projection(
         &self,
         source: &str,
         diagram_type: &str,
         source_map: &SourceMap,
-    ) -> Vec<AnalysisRecoveryDiagnostic> {
+    ) -> EditorFactsProjection {
         let facts_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine.parse_editor_semantic_facts_with_type_sync(
                 diagram_type,
@@ -204,24 +236,73 @@ impl Analyzer {
 
         match facts_result {
             Err(panic_payload) => {
-                panic_diagnostic(panic_payload, source_map, &self.options.rule_config)
-                    .map(AnalysisRecoveryDiagnostic::plain)
-                    .into_iter()
-                    .collect()
+                let diagnostics =
+                    panic_diagnostic(panic_payload, source_map, &self.options.rule_config)
+                        .map(AnalysisRecoveryDiagnostic::plain)
+                        .into_iter()
+                        .collect();
+                EditorFactsProjection::text_scan(source, Some(diagram_type), diagnostics)
             }
-            Ok(Ok(Some(facts))) => facts
-                .diagnostics
-                .into_iter()
-                .filter_map(|diagnostic| {
-                    recovered_editor_diagnostic(
-                        diagnostic,
-                        diagram_type,
-                        source_map,
-                        &self.options.rule_config,
-                    )
-                })
-                .collect(),
-            Ok(Ok(None) | Err(_)) => Vec::new(),
+            Ok(Ok(Some(facts))) => {
+                let diagnostics = facts
+                    .diagnostics
+                    .iter()
+                    .cloned()
+                    .filter_map(|diagnostic| {
+                        recovered_editor_diagnostic(
+                            diagnostic,
+                            diagram_type,
+                            source_map,
+                            &self.options.rule_config,
+                        )
+                    })
+                    .collect();
+                EditorFactsProjection {
+                    text_index: FenceTextIndex::from_core_facts(facts),
+                    diagnostics,
+                }
+            }
+            Ok(Ok(None) | Err(_)) => {
+                EditorFactsProjection::text_scan(source, Some(diagram_type), Vec::new())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LocalAnalysis {
+    diagnostics: Vec<AnalysisDiagnostic>,
+    syntax: AnalysisSyntaxFacts,
+}
+
+impl LocalAnalysis {
+    fn text_scan(
+        source: &str,
+        diagram_type: Option<String>,
+        diagnostics: Vec<AnalysisDiagnostic>,
+    ) -> Self {
+        Self {
+            diagnostics,
+            syntax: AnalysisSyntaxFacts::text_scan(source, diagram_type),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct EditorFactsProjection {
+    text_index: FenceTextIndex,
+    diagnostics: Vec<AnalysisRecoveryDiagnostic>,
+}
+
+impl EditorFactsProjection {
+    fn text_scan(
+        source: &str,
+        diagram_type: Option<&str>,
+        diagnostics: Vec<AnalysisRecoveryDiagnostic>,
+    ) -> Self {
+        Self {
+            text_index: FenceTextIndex::from_text(source, diagram_type),
+            diagnostics,
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
-    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticRelated, DiagnosticSpan,
-    SourceDescriptor, SourceKind, SourceMap,
+    AnalysisDiagnostic, AnalysisPayload, AnalysisResult, Analyzer, DiagnosticRelated,
+    DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
 };
 use std::path::Path;
 
@@ -208,30 +208,55 @@ pub fn analyze_document(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisPayload {
+    analyze_document_result(text, analyzer, source).into_payload()
+}
+
+pub fn analyze_document_result(
+    text: &str,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+) -> AnalysisResult {
     let document = DocumentSource::new(text, source.clone());
 
     match source.kind {
         SourceKind::Diagram => {
-            let mut payload = analyzer.analyze(text);
-            payload.source = source;
-            payload
+            let mut analyzed_diagrams = Vec::new();
+            let mut diagnostics = Vec::new();
+            for diagram in document.diagrams() {
+                let analyzed = analyzer.analyze_diagram(diagram);
+                diagnostics.extend(analyzed.diagnostics.iter().cloned());
+                analyzed_diagrams.push(analyzed);
+            }
+            AnalysisResult::new(
+                source,
+                document.source_map().clone(),
+                diagnostics,
+                analyzed_diagrams,
+            )
         }
         SourceKind::Markdown | SourceKind::Mdx => {
             let mut diagnostics = Vec::new();
+            let mut analyzed_diagrams = Vec::new();
             for diagram in document.diagrams() {
-                let mut payload = analyzer.analyze(&diagram.text);
+                let analyzed = analyzer.analyze_diagram(diagram);
                 diagnostics.extend(
-                    payload.diagnostics.drain(..).map(|diagnostic| {
+                    analyzed.diagnostics.iter().cloned().map(|diagnostic| {
                         document.remap_diagnostic_to_document(diagram, diagnostic)
                     }),
                 );
+                analyzed_diagrams.push(analyzed);
             }
-            AnalysisPayload::new(source, diagnostics)
+            AnalysisResult::new(
+                source,
+                document.source_map().clone(),
+                diagnostics,
+                analyzed_diagrams,
+            )
         }
     }
 }
 
-fn whole_document_diagram(text: &str, source: &SourceDescriptor) -> DocumentDiagram {
+pub(crate) fn whole_document_diagram(text: &str, source: &SourceDescriptor) -> DocumentDiagram {
     DocumentDiagram {
         id: "document".to_string(),
         index: 0,

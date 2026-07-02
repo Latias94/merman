@@ -1,15 +1,14 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    DocumentDiagram, DocumentSource, FenceTextIndex, SourceDescriptor, SourceKind,
+    AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind, analyze_document_result,
 };
-use merman_core::{Engine, ParseOptions};
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct DocumentWorkspace {
     documents: HashMap<DocumentUri, DocumentSnapshot>,
-    engine: Engine,
+    analyzer: Analyzer,
 }
 
 impl Default for DocumentWorkspace {
@@ -22,7 +21,7 @@ impl DocumentWorkspace {
     pub fn new() -> Self {
         Self {
             documents: HashMap::new(),
-            engine: Engine::new(),
+            analyzer: Analyzer::new(),
         }
     }
 
@@ -35,11 +34,11 @@ impl DocumentWorkspace {
     ) -> DocumentSnapshot {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
-        let document = DocumentSource::new(text.clone(), source.clone());
-        let fences = document
+        let analysis = analyze_document_result(&text, &self.analyzer, source.clone());
+        let fences = analysis
             .diagrams()
             .iter()
-            .map(|diagram| self.fence_snapshot(diagram))
+            .map(Self::fence_snapshot)
             .collect::<Vec<_>>();
         let snapshot = DocumentSnapshot {
             uri: uri.clone(),
@@ -47,7 +46,7 @@ impl DocumentWorkspace {
             kind,
             source,
             text,
-            source_map: document.source_map().clone(),
+            source_map: analysis.source_map().clone(),
             fences,
         };
         self.documents.insert(uri, snapshot.clone());
@@ -66,33 +65,9 @@ impl DocumentWorkspace {
         self.documents.values().cloned().collect()
     }
 
-    fn diagram_type_for_text(&self, text: &str) -> Option<String> {
-        self.engine
-            .parse_metadata_sync(text, ParseOptions::strict())
-            .ok()
-            .flatten()
-            .map(|meta| meta.diagram_type)
-    }
-
-    fn text_index(&self, text: &str, diagram_type: Option<&str>) -> FenceTextIndex {
-        if let Some(diagram_type) = diagram_type
-            && let Ok(Some(facts)) = self.engine.parse_editor_semantic_facts_with_type_sync(
-                diagram_type,
-                text,
-                ParseOptions::strict(),
-            )
-        {
-            return FenceTextIndex::from_core_facts(facts);
-        }
-
-        FenceTextIndex::from_text(text, diagram_type)
-    }
-
-    fn fence_snapshot(&self, diagram: &DocumentDiagram) -> FenceSnapshot {
-        let diagram_type = self.diagram_type_for_text(&diagram.text);
-        let text_index = self.text_index(&diagram.text, diagram_type.as_deref());
+    fn fence_snapshot(diagram: &AnalyzedDiagram) -> FenceSnapshot {
         FenceSnapshot {
-            source_id: diagram.id.clone(),
+            source_id: diagram.source_id.clone(),
             index: diagram.index,
             source: diagram.source.clone(),
             start: diagram.start,
@@ -101,8 +76,8 @@ impl DocumentWorkspace {
             end: diagram.end,
             text: diagram.text.clone(),
             fence_delimiter: diagram.fence_delimiter,
-            diagram_type,
-            text_index,
+            diagram_type: diagram.syntax.diagram_type.clone(),
+            text_index: diagram.syntax.text_index.clone(),
         }
     }
 }

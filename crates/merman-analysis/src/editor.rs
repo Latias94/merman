@@ -134,9 +134,9 @@ pub enum FenceExpectedSyntaxKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FenceExpectedSyntax {
-    kind: FenceExpectedSyntaxKind,
-    span: ByteSpan,
+pub struct FenceExpectedSyntax {
+    pub kind: FenceExpectedSyntaxKind,
+    pub span: ByteSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -466,6 +466,10 @@ impl FenceTextIndex {
 
     pub fn semantic_items(&self) -> &[FenceSemanticItem] {
         &self.semantic_items
+    }
+
+    pub fn expected_syntax(&self) -> &[FenceExpectedSyntax] {
+        &self.expected_syntax
     }
 
     pub fn source(&self) -> FenceTextIndexSource {
