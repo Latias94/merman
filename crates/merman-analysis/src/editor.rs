@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ByteSpan {
     pub start: usize,
     pub end: usize,
@@ -15,7 +15,8 @@ impl ByteSpan {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EditorSymbolKind {
     Class,
     Event,
@@ -30,7 +31,7 @@ pub enum EditorSymbolKind {
     Variable,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FenceLineItem {
     pub name: String,
     pub detail: Option<String>,
@@ -39,14 +40,15 @@ pub struct FenceLineItem {
     pub selection: ByteSpan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FenceSemanticRole {
     Entity,
     Outline,
     Payload,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FenceSemanticItem {
     pub name: String,
     pub detail: Option<String>,
@@ -68,7 +70,7 @@ impl FenceSemanticItem {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct FenceReferenceGroup {
     pub name: String,
     pub kind: EditorSymbolKind,
@@ -123,7 +125,8 @@ pub enum FenceCursorCompletionKind {
     NodeIdentifier,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FenceExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
@@ -133,7 +136,7 @@ pub enum FenceExpectedSyntaxKind {
     Payload,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FenceExpectedSyntax {
     pub kind: FenceExpectedSyntaxKind,
     pub span: ByteSpan,
@@ -421,6 +424,12 @@ impl FenceTextIndex {
 
     pub fn reference_spans_in_group(&self, group: &FenceReferenceGroup) -> &[ByteSpan] {
         self.references.get(group).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    pub fn references(&self) -> impl Iterator<Item = (&FenceReferenceGroup, &[ByteSpan])> {
+        self.references
+            .iter()
+            .map(|(group, spans)| (group, spans.as_slice()))
     }
 
     pub fn symbol_at_offset(&self, offset: usize) -> Option<(String, ByteSpan)> {

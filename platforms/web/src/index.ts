@@ -538,6 +538,165 @@ export interface AnalysisResult {
   diagnostics: AnalysisDiagnostic[];
 }
 
+export interface AnalysisByteSpan {
+  start: number;
+  end: number;
+}
+
+export interface AnalysisFactSpan {
+  local: AnalysisByteSpan;
+  document?: AnalysisSpan | null;
+}
+
+export type AnalysisDiagramKind = "whole_document" | "mermaid_fence" | string;
+
+export type AnalysisFenceMarker = "backtick" | "tilde" | "colon" | string;
+
+export interface AnalysisFenceDelimiterFacts {
+  marker: AnalysisFenceMarker;
+  len: number;
+}
+
+export type AnalysisEditorSymbolKind =
+  | "class"
+  | "event"
+  | "function"
+  | "module"
+  | "namespace"
+  | "object"
+  | "package"
+  | "property"
+  | "string"
+  | "struct"
+  | "variable"
+  | string;
+
+export type AnalysisSemanticRole = "entity" | "outline" | "payload" | string;
+
+export type AnalysisExpectedSyntaxKind =
+  | "id_list"
+  | "node_identifier"
+  | "shape"
+  | "shape_trigger"
+  | "direction"
+  | "payload"
+  | string;
+
+export interface AnalysisReferenceFacts {
+  name: string;
+  kind: AnalysisEditorSymbolKind;
+  spans: AnalysisFactSpan[];
+}
+
+export interface AnalysisLineItemFacts {
+  name: string;
+  detail?: string | null;
+  kind: AnalysisEditorSymbolKind;
+  span: AnalysisFactSpan;
+  selection: AnalysisFactSpan;
+}
+
+export interface AnalysisSemanticItemFacts extends AnalysisLineItemFacts {
+  role: AnalysisSemanticRole;
+}
+
+export interface AnalysisExpectedSyntaxFacts {
+  kind: AnalysisExpectedSyntaxKind;
+  span: AnalysisFactSpan;
+}
+
+export interface AnalysisFlowchartEdgeDefaults {
+  interpolate?: string | null;
+  style: string[];
+}
+
+export interface AnalysisFlowchartNodeFacts {
+  id: string;
+  label?: string | null;
+  labelType?: string | null;
+  layoutShape?: string | null;
+  icon?: string | null;
+  form?: string | null;
+  pos?: string | null;
+  img?: string | null;
+  constraint?: string | null;
+  assetWidth?: number | null;
+  assetHeight?: number | null;
+  classes: string[];
+  styles: string[];
+  link?: string | null;
+  linkTarget?: string | null;
+  haveCallback: boolean;
+}
+
+export interface AnalysisFlowchartEdgeFacts {
+  id: string;
+  from: string;
+  to: string;
+  label?: string | null;
+  labelType?: string | null;
+  type?: string | null;
+  stroke?: string | null;
+  interpolate?: string | null;
+  classes: string[];
+  style: string[];
+  animate?: boolean | null;
+  animation?: string | null;
+  length: number;
+}
+
+export interface AnalysisFlowchartSubgraphFacts {
+  id: string;
+  title: string;
+  dir?: string | null;
+  labelType?: string | null;
+  classes: string[];
+  styles: string[];
+  nodes: string[];
+}
+
+export interface AnalysisFlowchartFacts {
+  direction?: string | null;
+  classDefs: Record<string, string[]>;
+  edgeDefaults?: AnalysisFlowchartEdgeDefaults | null;
+  vertexCalls: string[];
+  nodes: AnalysisFlowchartNodeFacts[];
+  edges: AnalysisFlowchartEdgeFacts[];
+  subgraphs: AnalysisFlowchartSubgraphFacts[];
+  tooltips: Record<string, string>;
+}
+
+export interface AnalysisDiagramSyntaxFacts {
+  diagram_type?: string | null;
+  fact_source: EditorSemanticFactSource;
+  parser_backed: boolean;
+  recovered: boolean;
+  flowchart?: AnalysisFlowchartFacts | null;
+  node_ids: string[];
+  class_names: string[];
+  directive_prefixes: string[];
+  references: AnalysisReferenceFacts[];
+  outline_items: AnalysisLineItemFacts[];
+  semantic_items: AnalysisSemanticItemFacts[];
+  expected_syntax: AnalysisExpectedSyntaxFacts[];
+}
+
+export interface AnalysisDiagramFacts {
+  source_id: string;
+  index: number;
+  kind: AnalysisDiagramKind;
+  source: AnalysisSource;
+  span?: AnalysisSpan | null;
+  body_span?: AnalysisSpan | null;
+  text_len: number;
+  fence_delimiter?: AnalysisFenceDelimiterFacts | null;
+  syntax: AnalysisDiagramSyntaxFacts;
+}
+
+export interface AnalysisFactsResult extends AnalysisResult {
+  diagrams: AnalysisDiagramFacts[];
+}
+
 export interface EditorPosition {
   line: number;
   character: number;
@@ -735,11 +894,18 @@ export interface MermanWasmModule {
   ) => string;
   analyze: (source: string, optionsJson?: string | null) => AnalysisResult;
   analyzeJson?: (source: string, optionsJson?: string | null) => AnalysisResult;
+  analysisFacts?: (source: string, optionsJson?: string | null) => AnalysisFactsResult;
+  analyzeFacts?: (source: string, optionsJson?: string | null) => AnalysisFactsResult;
   analyzeDocument?: (
     source: string,
     optionsJson?: string | null,
     uri?: string | null
   ) => AnalysisResult;
+  analyzeDocumentFacts?: (
+    source: string,
+    optionsJson?: string | null,
+    uri?: string | null
+  ) => AnalysisFactsResult;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   editorDiagnostics?: (
     source: string,
@@ -1096,6 +1262,25 @@ export function analyzeJson(
   return analyze(source, options);
 }
 
+export function analysisFacts(
+  source: string,
+  options?: SvgBindingOptions | string
+): AnalysisFactsResult {
+  const merman = getMerman();
+  const facts = merman.analysisFacts ?? merman.analyzeFacts;
+  if (!facts) {
+    throw new Error("Merman analysisFacts() is not available in this artifact.");
+  }
+  return facts(source, encodeOptions(options));
+}
+
+export function analyzeFacts(
+  source: string,
+  options?: SvgBindingOptions | string
+): AnalysisFactsResult {
+  return analysisFacts(source, options);
+}
+
 export function analyzeDocument(
   source: string,
   options?: SvgBindingOptions | string,
@@ -1106,6 +1291,18 @@ export function analyzeDocument(
     throw new Error("Merman analyzeDocument() is not available in this artifact.");
   }
   return analyzeDocument(source, encodeOptions(options), uri);
+}
+
+export function analyzeDocumentFacts(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): AnalysisFactsResult {
+  const analyzeDocumentFacts = getMerman().analyzeDocumentFacts;
+  if (!analyzeDocumentFacts) {
+    throw new Error("Merman analyzeDocumentFacts() is not available in this artifact.");
+  }
+  return analyzeDocumentFacts(source, encodeOptions(options), uri);
 }
 
 export function validate(source: string, options?: SvgBindingOptions | string): ValidationResult {

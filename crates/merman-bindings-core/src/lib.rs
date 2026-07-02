@@ -32,7 +32,7 @@ pub use metadata::{
 };
 
 pub use merman_analysis::RuleCatalogEntry;
-use merman_analysis::{AnalysisPayload, Analyzer};
+use merman_analysis::{AnalysisFactsPayload, AnalysisPayload, Analyzer};
 
 #[cfg(feature = "ascii")]
 pub use ascii::render_ascii;
@@ -54,12 +54,26 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
         .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
 }
 
+pub fn analysis_facts_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    analysis_facts_payload(source, options_json)
+        .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
+}
+
 pub fn analyze_document_json(
     source: &[u8],
     options_json: &[u8],
     uri: &[u8],
 ) -> Result<Vec<u8>, BindingError> {
     document_analysis_payload(source, options_json, uri)
+        .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
+}
+
+pub fn analyze_document_facts_json(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    document_analysis_facts_payload(source, options_json, uri)
         .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
 }
 
@@ -91,6 +105,15 @@ fn analysis_payload(source: &[u8], options_json: &[u8]) -> Result<AnalysisPayloa
     Ok(Analyzer::with_options(common::analysis_options(&options)?).analyze(source))
 }
 
+fn analysis_facts_payload(
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<AnalysisFactsPayload, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    let options = common::parse_options(options_json)?;
+    Ok(Analyzer::with_options(common::analysis_options(&options)?).analyze_facts(source))
+}
+
 fn document_analysis_payload(
     source: &[u8],
     options_json: &[u8],
@@ -103,6 +126,22 @@ fn document_analysis_payload(
     let analyzer =
         Analyzer::with_options(common::analysis_options(&options)?.with_source(descriptor.clone()));
     Ok(merman_analysis::analyze_document(
+        source, &analyzer, descriptor,
+    ))
+}
+
+fn document_analysis_facts_payload(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<AnalysisFactsPayload, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    let uri = common::source_text_utf8(uri)?;
+    let descriptor = common::source_descriptor_for_uri(uri);
+    let options = common::parse_options(options_json)?;
+    let analyzer =
+        Analyzer::with_options(common::analysis_options(&options)?.with_source(descriptor.clone()));
+    Ok(merman_analysis::analyze_document_facts(
         source, &analyzer, descriptor,
     ))
 }
@@ -143,6 +182,33 @@ mod tests {
     }
 
     #[test]
+    fn analysis_facts_json_reports_parser_backed_syntax_facts() {
+        let json: Value =
+            serde_json::from_slice(&analysis_facts_json(b"flowchart TD\nA-->B\n", b"").unwrap())
+                .unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["valid"], true);
+        assert_eq!(json["diagrams"][0]["kind"], "whole_document");
+        assert_eq!(
+            json["diagrams"][0]["syntax"]["diagram_type"],
+            "flowchart-v2"
+        );
+        assert_eq!(
+            json["diagrams"][0]["syntax"]["fact_source"],
+            "parser_complete"
+        );
+        assert_eq!(
+            json["diagrams"][0]["syntax"]["node_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|id| id == "A"),
+            true
+        );
+    }
+
+    #[test]
     fn analyze_document_json_reports_markdown_source_and_host_ranges() {
         let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
         let json: Value = serde_json::from_slice(
@@ -179,6 +245,29 @@ mod tests {
             "file:///tmp/example.mdx?rev=1#fence"
         );
         assert_eq!(json["diagnostics"][0]["span"]["line"], 4);
+    }
+
+    #[test]
+    fn analyze_document_facts_json_reports_markdown_fence_facts_with_host_ranges() {
+        let source = b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n";
+        let json: Value = serde_json::from_slice(
+            &analyze_document_facts_json(source, b"", b"file:///tmp/example.md").unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["source"]["kind"], "markdown");
+        assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
+        assert_eq!(json["diagrams"][0]["kind"], "mermaid_fence");
+        assert_eq!(json["diagrams"][0]["syntax"]["parser_backed"], true);
+        assert!(
+            json["diagrams"][0]["syntax"]["expected_syntax"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|expected| {
+                    expected["kind"] == "shape" && expected["span"]["document"].is_object()
+                })
+        );
     }
 
     #[test]

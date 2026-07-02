@@ -93,6 +93,13 @@ impl BindingEngine {
             .map_err(common::internal_json_error)
     }
 
+    pub fn analysis_facts_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = common::source_text_utf8(source)?;
+        self.analyzer
+            .analyze_facts_json(source)
+            .map_err(common::internal_json_error)
+    }
+
     pub fn analyze_document_json(
         &self,
         source: &[u8],
@@ -102,6 +109,19 @@ impl BindingEngine {
         let uri = common::source_text_utf8(uri)?;
         let descriptor = common::source_descriptor_for_uri(uri);
         merman_analysis::analyze_document(source, &self.analyzer, descriptor)
+            .to_json_bytes()
+            .map_err(common::internal_json_error)
+    }
+
+    pub fn analyze_document_facts_json(
+        &self,
+        source: &[u8],
+        uri: &[u8],
+    ) -> Result<Vec<u8>, BindingError> {
+        let source = common::source_text_utf8(source)?;
+        let uri = common::source_text_utf8(uri)?;
+        let descriptor = common::source_descriptor_for_uri(uri);
+        merman_analysis::analyze_document_facts(source, &self.analyzer, descriptor)
             .to_json_bytes()
             .map_err(common::internal_json_error)
     }

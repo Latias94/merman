@@ -383,6 +383,19 @@ pub fn analyze_json(source: &str, options_json: Option<String>) -> Result<JsValu
     analyze(source, options_json)
 }
 
+#[wasm_bindgen(js_name = analysisFacts)]
+pub fn analysis_facts(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    json_value_result(merman_bindings_core::analysis_facts_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+    ))
+}
+
+#[wasm_bindgen(js_name = analyzeFacts)]
+pub fn analyze_facts(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    analysis_facts(source, options_json)
+}
+
 #[wasm_bindgen(js_name = analyzeDocument)]
 pub fn analyze_document(
     source: &str,
@@ -391,6 +404,20 @@ pub fn analyze_document(
 ) -> Result<JsValue, JsValue> {
     let uri = document_uri(uri);
     json_value_result(merman_bindings_core::analyze_document_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        uri.as_bytes(),
+    ))
+}
+
+#[wasm_bindgen(js_name = analyzeDocumentFacts)]
+pub fn analyze_document_facts(
+    source: &str,
+    options_json: Option<String>,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let uri = document_uri(uri);
+    json_value_result(merman_bindings_core::analyze_document_facts_json(
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
         uri.as_bytes(),
@@ -1108,6 +1135,40 @@ mod tests {
 
     #[cfg(target_arch = "wasm32")]
     #[test]
+    fn analysis_facts_exposes_parser_backed_syntax_payload() {
+        let value: Value =
+            serde_wasm_bindgen::from_value(analysis_facts("flowchart TD\nA-->B\n", None).unwrap())
+                .unwrap();
+        assert_parser_backed_analysis_facts_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn analysis_facts_exposes_parser_backed_syntax_payload() {
+        let value: Value = serde_json::from_slice(
+            &merman_bindings_core::analysis_facts_json(b"flowchart TD\nA-->B\n", b"").unwrap(),
+        )
+        .unwrap();
+        assert_parser_backed_analysis_facts_payload(&value);
+    }
+
+    fn assert_parser_backed_analysis_facts_payload(value: &Value) {
+        assert_eq!(value["valid"], true);
+        assert_eq!(
+            value["diagrams"][0]["syntax"]["fact_source"],
+            "parser_complete"
+        );
+        assert!(
+            value["diagrams"][0]["syntax"]["semantic_items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["name"] == "A" && item["span"]["document"].is_object())
+        );
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
     fn analyze_document_exposes_markdown_diagnostics_payload() {
         let value: Value = serde_wasm_bindgen::from_value(
             analyze_document(
@@ -1146,6 +1207,52 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|related| related["message"] == "Mermaid fence 1")
+        );
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn analyze_document_facts_exposes_markdown_syntax_payload() {
+        let value: Value = serde_wasm_bindgen::from_value(
+            analyze_document_facts(
+                "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+                None,
+                Some("file:///tmp/example.md".to_string()),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_facts_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn analyze_document_facts_exposes_markdown_syntax_payload() {
+        let value: Value = serde_json::from_slice(
+            &merman_bindings_core::analyze_document_facts_json(
+                b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+                b"",
+                b"file:///tmp/example.md",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_facts_payload(&value);
+    }
+
+    fn assert_markdown_document_analysis_facts_payload(value: &Value) {
+        assert_eq!(value["valid"], false);
+        assert_eq!(value["source"]["kind"], "markdown");
+        assert_eq!(value["diagrams"][0]["source_id"], "mermaid-fence-1");
+        assert_eq!(value["diagrams"][0]["syntax"]["parser_backed"], true);
+        assert!(
+            value["diagrams"][0]["syntax"]["expected_syntax"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|expected| {
+                    expected["kind"] == "shape" && expected["span"]["document"].is_object()
+                })
         );
     }
 

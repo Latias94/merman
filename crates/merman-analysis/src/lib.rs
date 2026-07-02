@@ -21,11 +21,11 @@ mod status;
 pub use analyzer::{AnalysisOptions, Analyzer};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceMarker,
-    analyze_document, analyze_document_result, source_descriptor_for_kind,
+    analyze_document, analyze_document_facts, analyze_document_result, source_descriptor_for_kind,
     source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
 };
 pub use editor::{
-    ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext,
+    ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
     FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,
     FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
 };
@@ -38,7 +38,14 @@ pub use payload::{
     DiagnosticRelated, DiagnosticSeverity, DiagnosticSpan, SourceDescriptor, SourceKind, Summary,
     Utf16Position,
 };
-pub use result::{AnalysisResult, AnalysisSyntaxFacts, AnalyzedDiagram};
+pub use result::{
+    AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts, AnalysisExpectedSyntaxFacts,
+    AnalysisFactSpan, AnalysisFactsPayload, AnalysisFenceDelimiterFacts,
+    AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts, AnalysisFlowchartFacts,
+    AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts, AnalysisLineItemFacts,
+    AnalysisReferenceFacts, AnalysisResult, AnalysisSemanticItemFacts, AnalysisSyntaxFacts,
+    AnalyzedDiagram,
+};
 pub use rules::{
     AnalysisRuleConfig, AnalysisRuleProfile, RuleCatalogEntry, RuleDescriptor, RuleOrigin,
     configurable_rule_catalog, configurable_rule_catalog_json_bytes, configurable_rule_descriptor,

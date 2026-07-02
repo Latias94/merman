@@ -156,6 +156,32 @@ assert.equal(
   true
 );
 
+const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
+assert.equal(flowchartFacts.valid, true);
+assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
+assert.equal(
+  flowchartFacts.diagrams[0].syntax.semantic_items.some(
+    (item) => item.name === "A" && item.span.document
+  ),
+  true
+);
+
+const markdownFacts = api.analyzeDocumentFacts(
+  "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+  deterministicTime,
+  "file:///tmp/example.md"
+);
+assert.equal(markdownFacts.valid, false);
+assert.equal(markdownFacts.source.kind, "markdown");
+assert.equal(markdownFacts.diagrams[0].source_id, "mermaid-fence-1");
+assert.equal(markdownFacts.diagrams[0].syntax.parser_backed, true);
+assert.equal(
+  markdownFacts.diagrams[0].syntax.expected_syntax.some(
+    (expected) => expected.kind === "shape" && expected.span.document
+  ),
+  true
+);
+
 const mdxAnalysis = api.analyzeDocument(
   "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
   deterministicTime,

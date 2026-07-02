@@ -6,8 +6,9 @@ use crate::rules::{
     internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
 use crate::{
-    AnalysisDiagnostic, AnalysisPayload, AnalysisResult, AnalysisStatus, AnalysisSyntaxFacts,
-    AnalyzedDiagram, DocumentDiagram, FenceTextIndex, SourceDescriptor, SourceMap,
+    AnalysisDiagnostic, AnalysisFlowchartFacts, AnalysisPayload, AnalysisResult, AnalysisStatus,
+    AnalysisSyntaxFacts, AnalyzedDiagram, DocumentDiagram, FenceTextIndex, SourceDescriptor,
+    SourceMap,
 };
 use merman_core::{
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, Engine, Error as CoreError,
@@ -121,8 +122,16 @@ impl Analyzer {
         self.analyze_result(source).into_payload()
     }
 
+    pub fn analyze_facts(&self, source: &str) -> crate::AnalysisFactsPayload {
+        self.analyze_result(source).to_facts_payload()
+    }
+
     pub fn analyze_json(&self, source: &str) -> Result<Vec<u8>, serde_json::Error> {
         self.analyze(source).to_json_bytes()
+    }
+
+    pub fn analyze_facts_json(&self, source: &str) -> Result<Vec<u8>, serde_json::Error> {
+        self.analyze_facts(source).to_json_bytes()
     }
 
     pub(crate) fn analyze_diagram(&self, diagram: &DocumentDiagram) -> AnalyzedDiagram {
@@ -168,6 +177,7 @@ impl Analyzer {
             Ok(parse_result) => match parse_result {
                 Ok(Some(parsed)) => {
                     let diagram_type = parsed.meta.diagram_type;
+                    let flowchart_facts = AnalysisFlowchartFacts::from_model(&parsed.model);
                     let editor_projection =
                         self.editor_facts_projection(source, &diagram_type, &source_map);
                     let mut diagnostics = source_lints;
@@ -188,7 +198,8 @@ impl Analyzer {
                         syntax: AnalysisSyntaxFacts::new(
                             Some(diagram_type),
                             editor_projection.text_index,
-                        ),
+                        )
+                        .with_flowchart(flowchart_facts),
                     }
                 }
                 Ok(None) => LocalAnalysis::text_scan(source, None, source_lints),

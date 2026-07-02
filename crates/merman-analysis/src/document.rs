@@ -211,6 +211,14 @@ pub fn analyze_document(
     analyze_document_result(text, analyzer, source).into_payload()
 }
 
+pub fn analyze_document_facts(
+    text: &str,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+) -> crate::AnalysisFactsPayload {
+    analyze_document_result(text, analyzer, source).to_facts_payload()
+}
+
 pub fn analyze_document_result(
     text: &str,
     analyzer: &Analyzer,
