@@ -1,6 +1,8 @@
 use super::{AnalysisOptions, Analyzer};
 use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
-use crate::{AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, SourceMap};
+use crate::{
+    AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource, SourceMap,
+};
 
 #[test]
 fn analyze_state_parse_failure_deduplicates_matching_recovery_diagnostic() {
@@ -51,6 +53,45 @@ fn analyze_flowchart_parse_failure_deduplicates_matching_recovery_diagnostic() {
     assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
     assert_eq!(diagnostic.message, "Unterminated node label (missing `]`)");
+}
+
+#[test]
+fn diagnostics_mode_does_not_project_valid_syntax_facts() {
+    let analyzer = Analyzer::new();
+    let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::Diagnostics);
+
+    assert!(local.diagnostics.is_empty());
+    assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
+    assert!(local.syntax.flowchart.is_none());
+    assert!(local.syntax.text_index.node_ids().next().is_none());
+    assert!(local.syntax.text_index.semantic_items().is_empty());
+}
+
+#[test]
+fn rich_facts_mode_projects_valid_syntax_facts() {
+    let analyzer = Analyzer::new();
+    let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::RichFacts);
+
+    assert!(local.diagnostics.is_empty());
+    assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert_eq!(local.syntax.source(), FenceTextIndexSource::ParserComplete);
+    assert!(local.syntax.flowchart.is_some());
+    assert!(
+        local
+            .syntax
+            .text_index
+            .node_ids()
+            .any(|node_id| node_id == "A")
+    );
+    assert!(
+        local
+            .syntax
+            .text_index
+            .semantic_items()
+            .iter()
+            .any(|item| item.name == "A")
+    );
 }
 
 #[test]

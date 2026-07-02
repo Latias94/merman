@@ -208,7 +208,15 @@ pub fn analyze_document(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisPayload {
-    analyze_document_result(text, analyzer, source).into_payload()
+    match source.kind {
+        SourceKind::Diagram => {
+            AnalysisPayload::new(source, analyzer.analyze_source_diagnostics(text))
+        }
+        SourceKind::Markdown | SourceKind::Mdx => {
+            let document = DocumentSource::new(text, source.clone());
+            AnalysisPayload::new(source, analyze_document_diagnostics(&document, analyzer))
+        }
+    }
 }
 
 pub fn analyze_document_facts(
@@ -226,41 +234,51 @@ pub fn analyze_document_result(
 ) -> AnalysisResult {
     let document = DocumentSource::new(text, source.clone());
 
-    match source.kind {
-        SourceKind::Diagram => {
-            let mut analyzed_diagrams = Vec::new();
-            let mut diagnostics = Vec::new();
-            for diagram in document.diagrams() {
-                let analyzed = analyzer.analyze_diagram(diagram);
-                diagnostics.extend(analyzed.diagnostics.iter().cloned());
-                analyzed_diagrams.push(analyzed);
-            }
-            AnalysisResult::new(
-                source,
-                document.source_map().clone(),
-                diagnostics,
-                analyzed_diagrams,
-            )
-        }
-        SourceKind::Markdown | SourceKind::Mdx => {
-            let mut diagnostics = Vec::new();
-            let mut analyzed_diagrams = Vec::new();
-            for diagram in document.diagrams() {
-                let analyzed = analyzer.analyze_diagram(diagram);
-                diagnostics.extend(
-                    analyzed.diagnostics.iter().cloned().map(|diagnostic| {
-                        document.remap_diagnostic_to_document(diagram, diagnostic)
-                    }),
-                );
-                analyzed_diagrams.push(analyzed);
-            }
-            AnalysisResult::new(
-                source,
-                document.source_map().clone(),
-                diagnostics,
-                analyzed_diagrams,
-            )
-        }
+    let mut diagnostics = Vec::new();
+    let mut analyzed_diagrams = Vec::new();
+    for diagram in document.diagrams() {
+        let analyzed = analyzer.analyze_diagram(diagram);
+        extend_document_diagnostics(
+            &mut diagnostics,
+            &document,
+            diagram,
+            analyzed.diagnostics.iter().cloned(),
+        );
+        analyzed_diagrams.push(analyzed);
+    }
+    AnalysisResult::new(
+        source,
+        document.source_map().clone(),
+        diagnostics,
+        analyzed_diagrams,
+    )
+}
+
+fn analyze_document_diagnostics(
+    document: &DocumentSource,
+    analyzer: &Analyzer,
+) -> Vec<AnalysisDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for diagram in document.diagrams() {
+        let diagram_diagnostics = analyzer.analyze_diagram_diagnostics(diagram);
+        extend_document_diagnostics(&mut diagnostics, document, diagram, diagram_diagnostics);
+    }
+    diagnostics
+}
+
+fn extend_document_diagnostics(
+    diagnostics: &mut Vec<AnalysisDiagnostic>,
+    document: &DocumentSource,
+    diagram: &DocumentDiagram,
+    diagram_diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
+) {
+    match document.source().kind {
+        SourceKind::Diagram => diagnostics.extend(diagram_diagnostics),
+        SourceKind::Markdown | SourceKind::Mdx => diagnostics.extend(
+            diagram_diagnostics
+                .into_iter()
+                .map(|diagnostic| document.remap_diagnostic_to_document(diagram, diagnostic)),
+        ),
     }
 }
 
