@@ -30,8 +30,9 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Client font metrics, rendering, and HTML label behavior are not part of the LSP contract.
 - Completion covers diagram structure, directions, operators, shapes, directives, and local
   identifiers with stable replacement edits.
-- Hover, go to definition, references, prepare-rename, rename, full-document semantic tokens,
-  range/delta semantic tokens, and fix-backed code actions are wired.
+- Hover, selection ranges, Markdown fence folding ranges, go to definition, references,
+  prepare-rename, rename, full-document semantic tokens, range/delta semantic tokens, and
+  fix-backed code actions are wired.
 - That claim applies to the first-class matrix in `CAPABILITIES.md`; `error` remains an internal
   fallback diagram rather than a product-family contract.
 - `textDocument/diagnostic` is wired for pull clients and reports the same shared analysis payloads

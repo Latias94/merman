@@ -136,6 +136,13 @@ label can make the diagram wider than Mermaid would make it in the browser.
 host-document coordinates. Downstream lint tools should use `analyzeDocument()` when they scan
 Markdown files and want Merman as an optional analysis engine without adopting the LSP.
 
+`analysisFacts(source, options)` and `analyzeDocumentFacts(source, options, uri)` return the richer
+analysis facts payload. Use these when an integration needs parser provenance, per-diagram
+document/body spans, semantic items, references, expected syntax, or typed Flowchart facts. The
+diagnostics shape remains compatible with `analyze()` / `analyzeDocument()`; the additional
+`diagrams[].syntax` data is for editor, lint, and preview integrations that want Merman's parser
+facts without speaking LSP.
+
 This web surface is an integration bridge, not a request that external linters copy Merman policy.
 Adapters should preserve `merman.*` rule ids for Merman diagnostics and layer their own style rules
 under their own namespaces.

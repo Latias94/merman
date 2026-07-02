@@ -21,10 +21,14 @@ Diagnostic ownership is intentionally narrow:
 Editor-facing ownership is layered:
 
 - `AnalysisResult` carries document-level diagnostics plus per-diagram syntax facts.
+- `AnalysisFactsPayload` is the serializable facts contract for bindings. It includes the
+  diagnostics summary, document/fence spans, parser fact provenance, semantic items, outline items,
+  expected syntax, references, and the first typed Flowchart projection.
 - `FenceTextIndex` preserves parser-complete, parser-recovered, or text-scan provenance for
   semantic facts and expected syntax.
-- `merman-editor-core` owns protocol-neutral completion, hover, symbols, navigation, rename, and
-  semantic-token queries over snapshots projected from analysis facts.
+- `merman-editor-core` owns protocol-neutral completion, hover, symbols, navigation, rename,
+  selection ranges, folding ranges, and semantic-token queries over snapshots projected from
+  analysis facts.
 - LSP, WASM, and VS Code convert those protocol-neutral results into host surfaces.
 
 See `docs/adr/0070-diagnostics-first-analysis-contract.md` for the accepted architecture decision
