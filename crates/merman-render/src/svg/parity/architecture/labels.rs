@@ -407,7 +407,7 @@ pub(super) fn plain_ascii_words_single_line_width(
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) -> Option<f64> {
-    if !(title_width_px.is_finite() && title_width_px > 0.0) || !plain_ascii_words_title(title) {
+    if !(title_width_px.is_finite() && title_width_px > 0.0 && plain_ascii_words_title(title)) {
         return None;
     }
 

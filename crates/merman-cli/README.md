@@ -40,7 +40,8 @@ merman-cli -i diagram.mmd -o diagram.pdf --pdfFit
 merman-cli -i diagram.mmd -o -
 ```
 
-`-` reads from stdin or writes to stdout:
+`-` reads from stdin or writes to stdout. stdout is reserved for requested payload bytes only;
+warnings, progress, and other diagnostics are written to stderr.
 
 ```sh
 printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli -i - -o -
@@ -64,12 +65,14 @@ provided.
 
 SVG output uses the Mermaid-parity contract. PNG, JPG, and PDF output use the export contract: the
 CLI applies the `resvg-safe` SVG pipeline before raster/PDF conversion so strict headless renderers
-do not have to understand Mermaid HTML labels in `<foreignObject>`.
+do not have to understand Mermaid HTML labels in `<foreignObject>`. If you need SVG bytes with the
+same export-safe cleanup, request it explicitly with `--svg-pipeline resvg-safe`.
 
 Examples:
 
 ```sh
 merman-cli -i diagram.mmd -o diagram.svg
+merman-cli -i diagram.mmd -o diagram.svg --svg-pipeline resvg-safe
 merman-cli -i diagram.mmd -o diagram.png
 merman-cli -i diagram.mmd -o diagram.jpg
 merman-cli -i diagram.mmd -o diagram.pdf
@@ -121,19 +124,21 @@ merman-cli -i diagram.mmd -o diagram.svg --iconPacks @iconify-json/logos
 ```
 
 `merman-cli` first looks for `node_modules/@iconify-json/logos/icons.json` from the current working
-directory upward. If no local package is found, it fetches
-`https://unpkg.com/@iconify-json/logos/icons.json`.
+directory upward. The default is offline-first: if no local package is found, the command fails
+with migration guidance instead of fetching from the network. Pass `--allow-network` when you
+intentionally want the package to be fetched from `https://unpkg.com/@iconify-json/logos/icons.json`.
 
 Load an explicit prefix and source:
 
 ```sh
 merman-cli -i diagram.mmd -o diagram.svg --iconPacksNamesAndUrls logos#icons.json
 merman-cli -i diagram.mmd -o diagram.svg --iconPacksNamesAndUrls logos#file:///tmp/icons.json
-merman-cli -i diagram.mmd -o diagram.svg --iconPacksNamesAndUrls logos#https://example.com/icons.json
+merman-cli -i diagram.mmd -o diagram.svg --allow-network --iconPacksNamesAndUrls logos#https://example.com/icons.json
 ```
 
 The prefix before `#` overrides the JSON prefix, matching the useful part of upstream loader
-registration while keeping rendering browserless.
+registration while keeping rendering browserless. Any HTTP(S) icon pack source requires
+`--allow-network`; local paths and `file://` sources do not.
 
 ## Rust Extensions
 
@@ -243,11 +248,16 @@ rules.
 - `--raster-unbounded` disables the PNG/JPG pixmap budget for trusted oversized exports.
 - `-f, --pdfFit` uses a chart-sized PDF page instead of the top-level default Letter-sized page.
 - `-q, --quiet` suppresses non-error logs.
+- Runtime failures use categorized exit statuses: `1` for render/runtime failures, `2` for
+  invalid input/config/output CLI contracts, and `3` for direct I/O failures. Broken stdout pipes
+  are treated as normal pipeline termination and do not print a generic I/O diagnostic.
 - `--text-measurer deterministic|vendored` controls text measurement.
 - `--math-renderer none|ratex` controls math label rendering.
 - `--flowchart-elk-backend source-ported|compat` selects the Flowchart ELK backend. The default
   source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port; `compat`
   keeps the older lightweight alpha fallback available for diagnostics.
+- `--svg-pipeline parity|readable|resvg-safe` selects the SVG output contract for SVG files.
+  Raster/PDF formats keep the built-in `resvg-safe` export path.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
 - `--fixed-today <YYYY-MM-DD>` fixes the local "today" date for time-dependent diagrams such as
   Gantt.

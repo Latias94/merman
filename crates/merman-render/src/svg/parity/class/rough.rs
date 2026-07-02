@@ -30,6 +30,7 @@ pub(super) fn class_rough_seed(base_seed: u64, _diagram_id: &str, _dom_id: &str)
     base_seed
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn class_rough_hachure_rect_paths(
     left: f64,
     top: f64,
@@ -84,6 +85,7 @@ pub(super) fn class_rough_hachure_rect_paths(
     Some((fill_d?, stroke_d?))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn class_rough_hand_drawn_line_path(
     x1: f64,
     y1: f64,

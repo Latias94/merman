@@ -1,5 +1,5 @@
 use crate::error::CliError;
-use std::io::{Read, Write as _};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -67,13 +67,35 @@ pub(crate) fn read_named_text_file(path: &str, label: &str) -> Result<String, Cl
 pub(crate) fn write_output(target: Option<&OutputTarget>, bytes: &[u8]) -> Result<(), CliError> {
     match target {
         None | Some(OutputTarget::Stdout) => {
-            std::io::stdout().write_all(bytes)?;
+            write_stdout(bytes)?;
         }
         Some(OutputTarget::File(path)) => {
             write_file(path, bytes)?;
         }
     }
     Ok(())
+}
+
+pub(crate) fn write_stdout(bytes: &[u8]) -> Result<(), CliError> {
+    let mut stdout = std::io::stdout();
+    write_stdout_bytes(&mut stdout, bytes)
+}
+
+pub(crate) fn write_stdout_line(line: &str) -> Result<(), CliError> {
+    let mut stdout = std::io::stdout();
+    write_stdout_bytes(&mut stdout, line.as_bytes())?;
+    write_stdout_bytes(&mut stdout, b"\n")?;
+    Ok(())
+}
+
+fn write_stdout_bytes(stdout: &mut impl Write, bytes: &[u8]) -> Result<(), CliError> {
+    stdout.write_all(bytes).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::BrokenPipe {
+            CliError::BrokenStdoutPipe
+        } else {
+            CliError::Io(err)
+        }
+    })
 }
 
 pub(crate) fn write_file(path: &Path, bytes: &[u8]) -> Result<(), CliError> {

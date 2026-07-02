@@ -432,6 +432,7 @@ fn rotate(x: f64, y: f64, angle_rad: f64) -> (f64, f64) {
     (rotated_x, rotated_y)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn arc_to_cubic_curves(
     mut x1: f64,
     mut y1: f64,
@@ -513,7 +514,7 @@ fn arc_to_cubic_curves(
         if sweep_flag && f2 > f1 {
             f2 = f1 + (PI * 120.0 / 180.0);
         } else {
-            f2 = f1 + (PI * 120.0 / 180.0) * (-1.0);
+            f2 = f1 - (PI * 120.0 / 180.0);
         }
 
         x2 = cx + r1 * f2.cos();
@@ -542,7 +543,7 @@ fn arc_to_cubic_curves(
     let hx = 4.0 / 3.0 * r1 * t;
     let hy = 4.0 / 3.0 * r2 * t;
 
-    let m1 = vec![x1, y1];
+    let m1 = [x1, y1];
     let mut m2 = vec![x1 + hx * s1, y1 - hy * c1];
     let m3 = vec![x2 + hx * s2, y2 - hy * c2];
     let m4 = vec![x2, y2];

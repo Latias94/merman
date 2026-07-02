@@ -530,13 +530,8 @@ fn execute_ported_compound_processors_to(
             .map(|stop| !compound_algorithms_reached_stop(&algorithms, root_index, stop))
             .unwrap_or(true)
     {
-        for index in 0..algorithms.len() {
-            execute_compound_algorithm_until_pause(
-                graph,
-                &mut algorithms[index],
-                index == root_index,
-                stop,
-            )?;
+        for (index, algorithm) in algorithms.iter_mut().enumerate() {
+            execute_compound_algorithm_until_pause(graph, algorithm, index == root_index, stop)?;
         }
     }
 

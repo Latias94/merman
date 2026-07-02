@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-06-30
+Last updated: 2026-07-02
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -33,7 +33,8 @@ numeric values return binding errors instead of panicking.
     "output": {
       "pipeline": "resvg-safe",
       "root_background": "canvas",
-      "css_override_policy": "strip-existing-important"
+      "css_override_policy": "strip-existing-important",
+      "drop_native_duplicate_fallbacks": false
     }
   },
   "site_config": {
@@ -243,7 +244,8 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
     "output": {
       "pipeline": "resvg-safe",
       "root_background": "canvas",
-      "css_override_policy": "strip-existing-important"
+      "css_override_policy": "strip-existing-important",
+      "drop_native_duplicate_fallbacks": false
     }
   }
 }
@@ -251,8 +253,10 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
 
 `host_theme.appearance` accepts `light` or `dark`. `host_theme.output.pipeline` accepts `parity`,
 `readable`, `resvg-safe`, or `resvg_safe`. `host_theme.output.root_background` accepts `none`,
-`canvas`, or a single CSS declaration value. An empty `{ "host_theme": {} }` is a no-op and does
-not force Mermaid `theme=base`.
+`canvas`, or a single CSS declaration value. `host_theme.output.drop_native_duplicate_fallbacks`
+opts into removing fallback groups whose text duplicates native `<text>` after readable or
+`resvg-safe` fallback generation. It is off by default because repeated labels can be intentional in
+unrelated nodes. An empty `{ "host_theme": {} }` is a no-op and does not force Mermaid `theme=base`.
 
 `host_theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`,
@@ -353,13 +357,14 @@ not a browser or server default.
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
 | `svg.css_override_policy` | string | `preserve` | `preserve`, `strip-existing-important`, or `strip_existing_important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
-| `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup for non-`resvg-safe` pipelines. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks. |
+| `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
 `readable` keeps a more inspectable SVG structure. `resvg-safe` rewrites SVG output toward stricter
 renderer compatibility, including structural cleanup for labels that already include native SVG
-`<switch>` text fallbacks. `drop_native_duplicate_fallbacks` remains available for hosts composing
-non-`resvg-safe` pipelines, and its generic text matching should be treated as an explicit
-postprocessing choice. HTML label fallback text inherits Mermaid label/root fill colors when
+`<switch>` text fallbacks. `drop_native_duplicate_fallbacks` remains an explicit host choice for
+additional native/fallback duplicate surfaces, including hosts that already request `resvg-safe`.
+Its generic text matching should be treated as an opt-in postprocessing policy. HTML label fallback
+text inherits Mermaid label/root fill colors when
 available, so dark host profiles do not fall back to unreadable legacy text colors.
 
 `svg.pipeline` also selects the output contract. The default `parity` value intentionally preserves

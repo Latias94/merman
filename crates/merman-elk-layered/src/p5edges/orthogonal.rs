@@ -328,7 +328,7 @@ impl HyperEdgeGraph {
         let incoming = self.segments[segment].incoming_segment_dependencies.clone();
         let outgoing = self.segments[segment].outgoing_segment_dependencies.clone();
 
-        for dependency in incoming.into_iter().chain(outgoing.into_iter()) {
+        for dependency in incoming.into_iter().chain(outgoing) {
             self.remove_dependency(dependency);
         }
 

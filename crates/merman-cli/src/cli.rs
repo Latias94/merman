@@ -419,6 +419,14 @@ pub(crate) struct ExportArgs {
     )]
     pub(crate) output_format: Option<RenderFormat>,
 
+    /// SVG output pipeline. Defaults to parity for SVG files; raster/PDF export always starts from resvg-safe.
+    #[arg(
+        long = "svg-pipeline",
+        value_enum,
+        help_heading = "Rust renderer controls"
+    )]
+    pub(crate) svg_pipeline: Option<SvgPipelineKind>,
+
     /// Background color for SVG/PNG/JPG output. Top-level mmdc-compatible mode defaults to white.
     #[arg(
         short = 'b',
@@ -511,6 +519,14 @@ pub(crate) struct RenderExportArgs {
         help_heading = "Render input and output"
     )]
     pub(crate) output_format: Option<RenderFormat>,
+
+    /// SVG output pipeline. Defaults to parity for SVG files; raster/PDF export always starts from resvg-safe.
+    #[arg(
+        long = "svg-pipeline",
+        value_enum,
+        help_heading = "Rust renderer controls"
+    )]
+    pub(crate) svg_pipeline: Option<SvgPipelineKind>,
 
     /// Background color for SVG/PNG/JPG output.
     #[arg(
@@ -614,6 +630,10 @@ pub(crate) struct RasterCliArgs {
 
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct IconCliArgs {
+    /// Allow icon pack loading from HTTP(S) URLs.
+    #[arg(long = "allow-network", help_heading = "Icon packs")]
+    pub(crate) allow_network: bool,
+
     /// Iconify package names.
     #[arg(long = "iconPacks", num_args = 1.., help_heading = "Icon packs")]
     pub(crate) icon_packs: Vec<String>,
@@ -719,6 +739,14 @@ pub(crate) enum FlowchartElkBackend {
     Compat,
     #[default]
     SourcePorted,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum SvgPipelineKind {
+    Parity,
+    Readable,
+    #[value(name = "resvg-safe", alias = "resvg_safe")]
+    ResvgSafe,
 }
 
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]

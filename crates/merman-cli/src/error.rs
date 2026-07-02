@@ -1,67 +1,45 @@
-#[derive(Debug)]
+use std::process::ExitCode;
+
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum CliError {
-    Io(std::io::Error),
-    Mermaid(merman::Error),
-    Headless(merman::render::HeadlessError),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("{0}")]
+    Mermaid(#[from] merman::Error),
+    #[error("{0}")]
+    Headless(#[from] merman::render::HeadlessError),
     #[cfg(feature = "ascii")]
-    Ascii(merman::ascii::HeadlessAsciiError),
-    Raster(merman::render::raster::RasterError),
-    Json(serde_json::Error),
+    #[error("{0}")]
+    Ascii(#[from] merman::ascii::HeadlessAsciiError),
+    #[error("stdout closed before output finished")]
+    BrokenStdoutPipe,
+    #[error("{0}")]
+    Raster(#[from] merman::render::raster::RasterError),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("No Mermaid diagram detected")]
     NoDiagram,
+    #[error("{0}")]
     InvalidInput(String),
+    #[error("{0}")]
     InvalidOutput(String),
 }
 
-impl std::fmt::Display for CliError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl CliError {
+    pub(crate) fn exit_code(&self) -> ExitCode {
         match self {
-            CliError::Io(err) => write!(f, "I/O error: {err}"),
-            CliError::Mermaid(err) => write!(f, "{err}"),
-            CliError::Headless(err) => write!(f, "{err}"),
+            Self::InvalidInput(_) | Self::InvalidOutput(_) | Self::Json(_) => ExitCode::from(2),
+            Self::Io(_) => ExitCode::from(3),
+            Self::BrokenStdoutPipe => ExitCode::SUCCESS,
+            Self::Mermaid(_) | Self::Headless(_) | Self::Raster(_) | Self::NoDiagram => {
+                ExitCode::from(1)
+            }
             #[cfg(feature = "ascii")]
-            CliError::Ascii(err) => write!(f, "{err}"),
-            CliError::Raster(err) => write!(f, "{err}"),
-            CliError::Json(err) => write!(f, "JSON error: {err}"),
-            CliError::NoDiagram => write!(f, "No Mermaid diagram detected"),
-            CliError::InvalidInput(msg) => write!(f, "{msg}"),
-            CliError::InvalidOutput(msg) => write!(f, "{msg}"),
+            Self::Ascii(_) => ExitCode::from(1),
         }
     }
-}
 
-impl From<std::io::Error> for CliError {
-    fn from(value: std::io::Error) -> Self {
-        Self::Io(value)
-    }
-}
-
-impl From<merman::Error> for CliError {
-    fn from(value: merman::Error) -> Self {
-        Self::Mermaid(value)
-    }
-}
-
-impl From<merman::render::HeadlessError> for CliError {
-    fn from(value: merman::render::HeadlessError) -> Self {
-        Self::Headless(value)
-    }
-}
-
-#[cfg(feature = "ascii")]
-impl From<merman::ascii::HeadlessAsciiError> for CliError {
-    fn from(value: merman::ascii::HeadlessAsciiError) -> Self {
-        Self::Ascii(value)
-    }
-}
-
-impl From<merman::render::raster::RasterError> for CliError {
-    fn from(value: merman::render::raster::RasterError) -> Self {
-        Self::Raster(value)
-    }
-}
-
-impl From<serde_json::Error> for CliError {
-    fn from(value: serde_json::Error) -> Self {
-        Self::Json(value)
+    pub(crate) fn is_broken_stdout_pipe(&self) -> bool {
+        matches!(self, Self::BrokenStdoutPipe)
     }
 }

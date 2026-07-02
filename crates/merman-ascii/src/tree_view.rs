@@ -42,9 +42,9 @@ fn render_node(
 ) {
     let branch = if prefix.is_empty() {
         if is_last {
-            format!("\\-- ")
+            "\\-- ".to_string()
         } else {
-            format!("{TREE_BRANCH}")
+            TREE_BRANCH.to_string()
         }
     } else if is_last {
         format!("{prefix}\\-- ")

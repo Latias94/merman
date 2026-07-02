@@ -30,6 +30,10 @@ rasterizers should request the export contract with:
 { "svg": { "pipeline": "resvg-safe" } }
 ```
 
+Editor previews that inject host CSS can also use `host_theme` presets, or enable
+`drop_native_duplicate_fallbacks` when duplicate native/fallback labels are visible in the host
+surface.
+
 Hosts that inline SVG in a browser and want fallback text while retaining the original
 `<foreignObject>` nodes can use `"readable"` instead. Raster byte outputs are intentionally not part
 of the shared low-level binding contract; use this SVG pipeline option or the higher-level Rust/CLI

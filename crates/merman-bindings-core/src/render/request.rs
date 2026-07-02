@@ -149,7 +149,7 @@ impl SvgPipelineOptions {
             );
         }
 
-        if self.drop_native_duplicate_fallbacks && !matches!(self.kind, PipelineKind::ResvgSafe) {
+        if self.drop_native_duplicate_fallbacks {
             pipeline.push_postprocessor(merman::render::DropNativeDuplicateFallbacksPostprocessor);
         }
 

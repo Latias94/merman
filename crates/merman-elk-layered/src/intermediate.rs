@@ -159,7 +159,7 @@ fn first_connected_other_node_center_y(
     dummy_index: usize,
     other_is_target: bool,
 ) -> Option<f64> {
-    for edge_index in graph.node_connected_edges(dummy_index) {
+    if let Some(edge_index) = graph.node_connected_edges(dummy_index).into_iter().next() {
         let edge = &graph.edges[edge_index];
         let other = if other_is_target {
             edge.target.node
@@ -167,9 +167,10 @@ fn first_connected_other_node_center_y(
             edge.source.node
         };
         let node = graph.layerless_nodes.get(other)?;
-        return Some(node.position.y + node.size.height / 2.0);
+        Some(node.position.y + node.size.height / 2.0)
+    } else {
+        None
     }
-    None
 }
 
 fn north_south_external_port_x(graph: &LGraph, dummy_index: usize) -> Option<f64> {
@@ -2382,10 +2383,7 @@ fn swap_label_and_long_edge_dummies(
 
 fn update_long_edge_before_label_dummy_info(graph: &mut LGraph, label_dummy: usize) {
     let mut current = label_dummy;
-    loop {
-        let Some(incoming) = graph.node_incoming_edges(current).into_iter().next() else {
-            break;
-        };
+    while let Some(incoming) = graph.node_incoming_edges(current).into_iter().next() {
         let source = graph.edges[incoming].source.node;
         if graph.layerless_nodes[source].kind != LNodeKind::LongEdge {
             break;

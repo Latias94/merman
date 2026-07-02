@@ -4,7 +4,7 @@ use crate::cli::{
 };
 use crate::config::{engine_for, layout_options, math_renderer, parse_options, site_config_for};
 use crate::error::CliError;
-use crate::io::read_input;
+use crate::io::{read_input, write_stdout, write_stdout_line};
 use crate::render::{render_plan_for_mmdc, render_plan_for_subcommand, run_render};
 use clap::CommandFactory;
 use merman_analysis::document::analyze_document;
@@ -70,7 +70,7 @@ fn run_detect(args: DetectArgs) -> Result<(), CliError> {
     let Some(meta) = engine.parse_metadata_sync(&text, parse_options(&args.parse))? else {
         return Err(CliError::NoDiagram);
     };
-    println!("{}", meta.diagram_type);
+    write_stdout_line(&meta.diagram_type)?;
     Ok(())
 }
 
@@ -145,20 +145,16 @@ fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
 
 fn run_completion(args: CompletionArgs) -> Result<(), CliError> {
     let mut command = Cli::command();
-    clap_complete::generate(
-        args.shell,
-        &mut command,
-        "merman-cli",
-        &mut std::io::stdout(),
-    );
-    Ok(())
+    let mut output = Vec::new();
+    clap_complete::generate(args.shell, &mut command, "merman-cli", &mut output);
+    write_stdout(&output)
 }
 
 fn print_json<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {
     if pretty {
-        println!("{}", serde_json::to_string_pretty(value)?);
+        write_stdout_line(&serde_json::to_string_pretty(value)?)?;
     } else {
-        println!("{}", serde_json::to_string(value)?);
+        write_stdout_line(&serde_json::to_string(value)?)?;
     }
     Ok(())
 }

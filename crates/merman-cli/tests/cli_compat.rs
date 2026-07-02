@@ -4,7 +4,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, ExitStatus, Output, Stdio};
 use std::thread;
 
 fn repo_root() -> PathBuf {
@@ -63,6 +63,34 @@ fn run_with_stdin_in_dir(args: &[&str], input: &str, cwd: Option<&Path>) -> Outp
     child.wait_with_output().expect("wait cli")
 }
 
+fn run_with_closed_stdout(args: &[&str], input: Option<&[u8]>) -> Output {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut command = Command::new(exe);
+    command
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if input.is_some() {
+        command.stdin(Stdio::piped());
+    } else {
+        command.stdin(Stdio::null());
+    }
+
+    let mut child = command.spawn().expect("spawn cli");
+    drop(child.stdout.take().expect("stdout pipe"));
+    if let Some(input) = input {
+        child
+            .stdin
+            .as_mut()
+            .expect("stdin")
+            .write_all(input)
+            .expect("write stdin");
+        drop(child.stdin.take());
+    }
+
+    child.wait_with_output().expect("wait cli")
+}
+
 fn pdf_media_box(bytes: &[u8]) -> Option<String> {
     let text = String::from_utf8_lossy(bytes);
     let marker = text.find("/MediaBox")?;
@@ -94,6 +122,20 @@ fn serve_icon_json_once(body: &'static str) -> String {
         let _ = stream.write_all(response.as_bytes());
     });
     format!("http://{addr}/icons.json")
+}
+
+#[cfg(unix)]
+fn exit_code(status: ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    status
+        .code()
+        .or_else(|| status.signal().map(|signal| 128 + signal))
+        .unwrap_or(-1)
+}
+
+#[cfg(windows)]
+fn exit_code(status: ExitStatus) -> i32 {
+    status.code().unwrap_or(-1)
 }
 
 fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
@@ -879,12 +921,40 @@ fn top_level_missing_input_file_reports_path() {
         .expect("run cli");
 
     assert!(!output.status.success(), "expected missing input failure");
+    assert_eq!(
+        exit_code(output.status),
+        2,
+        "missing input should be usage/input error"
+    );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
         stderr.contains("Input file \"missing.mmd\" doesn't exist"),
         "unexpected stderr:\n{stderr}"
     );
     assert!(!tmp.path().join("out.svg").exists());
+}
+
+#[test]
+fn top_level_missing_output_directory_uses_output_exit_code() {
+    let output = run_with_stdin(
+        &["-i", "-", "-o", "missing-dir/out.svg"],
+        "flowchart LR\nA-->B\n",
+    );
+
+    assert!(
+        !output.status.success(),
+        "expected missing output directory failure"
+    );
+    assert_eq!(
+        exit_code(output.status),
+        2,
+        "invalid output path should use usage/output exit code"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("Output directory") && stderr.contains("missing-dir"),
+        "unexpected stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -905,6 +975,113 @@ fn top_level_output_dash_writes_to_stdout() {
     assert!(
         !dash_file.exists(),
         "stdout output must not create a file named '-'"
+    );
+}
+
+#[test]
+fn stdout_output_does_not_mix_non_error_logs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("input.md");
+    fs::write(&input, "# No diagrams\n\nPlain text.\n").expect("write markdown");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .current_dir(tmp.path())
+        .args(["-i", "input.md", "-o", "out.svg"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stdout.is_empty(),
+        "non-payload logs must not be written to stdout:\n{stdout}"
+    );
+    assert!(
+        stderr.contains("No mermaid charts found in Markdown input"),
+        "diagnostic should be written to stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn stdout_broken_pipe_exits_success_without_diagnostic() {
+    let output = run_with_closed_stdout(&["-i", "-", "-o", "-"], Some(b"flowchart LR\nA-->B\n"));
+    assert!(
+        output.status.success(),
+        "broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("I/O error") && !stderr.contains("Broken pipe"),
+        "broken pipe should not print a generic diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn parse_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(&["parse", "-"], Some(b"flowchart LR\nA-->B\n"));
+    assert!(
+        output.status.success(),
+        "parse broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn completion_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(&["completion", "bash"], None);
+    assert!(
+        output.status.success(),
+        "completion broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn top_level_svg_pipeline_resvg_safe_outputs_export_safe_svg() {
+    let diagram = "flowchart TD
+A[Start] --> B{Is it working?}
+B -->|Yes| C[Ship it]
+B -->|No| D[Debug]
+";
+    let parity = run_with_stdin(&["-i", "-", "-o", "-"], diagram);
+    let resvg_safe = run_with_stdin(
+        &["-i", "-", "-o", "-", "--svg-pipeline", "resvg-safe"],
+        diagram,
+    );
+
+    assert!(parity.status.success(), "stderr: {:?}", parity.stderr);
+    assert!(
+        resvg_safe.status.success(),
+        "stderr: {:?}",
+        resvg_safe.stderr
+    );
+
+    let parity_svg = String::from_utf8(parity.stdout).expect("parity stdout should be utf8");
+    let safe_svg = String::from_utf8(resvg_safe.stdout).expect("resvg-safe stdout should be utf8");
+    assert!(
+        parity_svg.contains("<foreignObject"),
+        "default SVG output should preserve parity HTML labels:\n{parity_svg}"
+    );
+    assert!(
+        !safe_svg.contains("<foreignObject"),
+        "resvg-safe SVG output should not rely on foreignObject:\n{safe_svg}"
+    );
+    assert!(
+        safe_svg.contains(r#"data-merman-foreignobject="fallback""#),
+        "resvg-safe SVG output should keep generated text fallbacks:\n{safe_svg}"
     );
 }
 
@@ -1351,9 +1528,14 @@ fn markdown_without_charts_logs_and_writes_no_artefacts() {
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stdout.contains("No mermaid charts found in Markdown input"),
-        "unexpected stdout:\n{stdout}"
+        stdout.is_empty(),
+        "Markdown diagnostics must not be written to stdout:\n{stdout}"
+    );
+    assert!(
+        stderr.contains("No mermaid charts found in Markdown input"),
+        "unexpected stderr:\n{stderr}"
     );
     assert!(!tmp.path().join("out.svg").exists());
     assert!(!tmp.path().join("out-1.svg").exists());
@@ -1394,6 +1576,11 @@ fn invalid_puppeteer_config_file_fails_before_rendering() {
     );
 
     assert!(!output.status.success(), "expected JSON failure");
+    assert_eq!(
+        exit_code(output.status),
+        2,
+        "invalid config should be usage/config error"
+    );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
         stderr.contains("JSON error"),
@@ -1455,7 +1642,15 @@ fn dynamic_icon_pack_http_url_renders_flowchart_icon() {
 
     let icon_arg = format!("remote#{url}");
     let output = run_with_stdin(
-        &["-i", "-", "-o", "-", "--iconPacksNamesAndUrls", &icon_arg],
+        &[
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--allow-network",
+            "--iconPacksNamesAndUrls",
+            &icon_arg,
+        ],
         "flowchart TD\nA@{ icon: \"remote:cloud\", label: \"Cloud\" }\n",
     );
 
@@ -1464,6 +1659,62 @@ fn dynamic_icon_pack_http_url_renders_flowchart_icon() {
     assert!(
         stdout.contains(r#"data-icon="cloud""#),
         "expected HTTP icon body in SVG:\n{stdout}"
+    );
+}
+
+#[test]
+fn dynamic_icon_pack_http_url_requires_network_opt_in() {
+    let icon_arg = "remote#https://example.invalid/icons.json";
+    let output = run_with_stdin(
+        &["-i", "-", "-o", "-", "--iconPacksNamesAndUrls", icon_arg],
+        "flowchart TD\nA@{ icon: \"remote:cloud\", label: \"Cloud\" }\n",
+    );
+
+    assert!(!output.status.success(), "expected network policy failure");
+    assert_eq!(
+        exit_code(output.status),
+        2,
+        "network policy failure should be usage/config error"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    let normalized = stderr.to_ascii_lowercase();
+    assert!(
+        stderr.contains("--allow-network") && normalized.contains("icon pack"),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn dynamic_icon_pack_package_missing_local_copy_does_not_fetch_by_default() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let output = run_with_stdin_in_dir(
+        &[
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--iconPacks",
+            "@iconify-json/missing-test-pack",
+        ],
+        "flowchart TD\nA@{ icon: \"missing-test-pack:box\", label: \"Box\" }\n",
+        Some(tmp.path()),
+    );
+
+    assert!(
+        !output.status.success(),
+        "expected missing local package failure"
+    );
+    assert_eq!(
+        exit_code(output.status),
+        2,
+        "missing local icon package should be usage/config error"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("@iconify-json/missing-test-pack")
+            && stderr.contains("--allow-network")
+            && stderr.contains("node_modules"),
+        "unexpected stderr:\n{stderr}"
     );
 }
 
