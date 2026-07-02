@@ -11,6 +11,8 @@ pub(crate) enum CliError {
     #[cfg(feature = "ascii")]
     #[error("{0}")]
     Ascii(#[from] merman::ascii::HeadlessAsciiError),
+    #[error("stdout closed before output finished")]
+    BrokenStdoutPipe,
     #[error("{0}")]
     Raster(#[from] merman::render::raster::RasterError),
     #[error("JSON error: {0}")]
@@ -28,6 +30,7 @@ impl CliError {
         match self {
             Self::InvalidInput(_) | Self::InvalidOutput(_) | Self::Json(_) => ExitCode::from(2),
             Self::Io(_) => ExitCode::from(3),
+            Self::BrokenStdoutPipe => ExitCode::SUCCESS,
             Self::Mermaid(_) | Self::Headless(_) | Self::Raster(_) | Self::NoDiagram => {
                 ExitCode::from(1)
             }
@@ -37,6 +40,6 @@ impl CliError {
     }
 
     pub(crate) fn is_broken_stdout_pipe(&self) -> bool {
-        matches!(self, Self::Io(err) if err.kind() == std::io::ErrorKind::BrokenPipe)
+        matches!(self, Self::BrokenStdoutPipe)
     }
 }
