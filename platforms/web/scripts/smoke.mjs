@@ -160,6 +160,16 @@ const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicT
 assert.equal(flowchartFacts.valid, true);
 assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
 assert.equal(
+  flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
+  true
+);
+assert.equal(
+  flowchartFacts.diagrams[0].syntax.flowchart.edges.some(
+    (edge) => edge.from === "A" && edge.to === "B"
+  ),
+  true
+);
+assert.equal(
   flowchartFacts.diagrams[0].syntax.semantic_items.some(
     (item) => item.name === "A" && item.span.document
   ),

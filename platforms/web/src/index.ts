@@ -895,7 +895,6 @@ export interface MermanWasmModule {
   analyze: (source: string, optionsJson?: string | null) => AnalysisResult;
   analyzeJson?: (source: string, optionsJson?: string | null) => AnalysisResult;
   analysisFacts?: (source: string, optionsJson?: string | null) => AnalysisFactsResult;
-  analyzeFacts?: (source: string, optionsJson?: string | null) => AnalysisFactsResult;
   analyzeDocument?: (
     source: string,
     optionsJson?: string | null,
@@ -1267,18 +1266,11 @@ export function analysisFacts(
   options?: SvgBindingOptions | string
 ): AnalysisFactsResult {
   const merman = getMerman();
-  const facts = merman.analysisFacts ?? merman.analyzeFacts;
+  const facts = merman.analysisFacts;
   if (!facts) {
     throw new Error("Merman analysisFacts() is not available in this artifact.");
   }
   return facts(source, encodeOptions(options));
-}
-
-export function analyzeFacts(
-  source: string,
-  options?: SvgBindingOptions | string
-): AnalysisFactsResult {
-  return analysisFacts(source, options);
 }
 
 export function analyzeDocument(

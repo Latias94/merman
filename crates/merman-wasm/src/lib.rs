@@ -391,11 +391,6 @@ pub fn analysis_facts(source: &str, options_json: Option<String>) -> Result<JsVa
     ))
 }
 
-#[wasm_bindgen(js_name = analyzeFacts)]
-pub fn analyze_facts(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
-    analysis_facts(source, options_json)
-}
-
 #[wasm_bindgen(js_name = analyzeDocument)]
 pub fn analyze_document(
     source: &str,

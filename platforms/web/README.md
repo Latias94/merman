@@ -249,7 +249,8 @@ initialization is usually simpler.
 - `renderAscii()`
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
-- `analyze()`, `analyzeJson()`, `analyzeDocument()`, `validate()`
+- `analyze()`, `analyzeJson()`, `analyzeDocument()`, `analysisFacts()`,
+  `analyzeDocumentFacts()`, `validate()`
 - `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
   `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
   `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
