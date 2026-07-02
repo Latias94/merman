@@ -1004,8 +1004,8 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
         .params(
             serde_json::to_value(DidChangeConfigurationParams {
                 settings: serde_json::json!({
-                    "lint": {
-                        "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+                    "parse": {
+                        "suppress_errors": true
                     }
                 }),
             })
@@ -1032,6 +1032,59 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
         .unwrap();
 
     assert_eq!(change_fut.await.unwrap(), None);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_does_not_refresh_semantic_tokens_after_diagnostic_only_configuration_change() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "workspace": {
+                    "semanticTokens": {
+                        "refreshSupport": true
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::json!({
+                    "lint": {
+                        "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+                    }
+                }),
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(change).await.unwrap(),
+        None
+    );
+    assert!(
+        timeout(Duration::from_millis(50), socket.next())
+            .await
+            .is_err(),
+        "diagnostic-only configuration changes should not refresh semantic tokens"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

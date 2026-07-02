@@ -112,7 +112,7 @@ fn generated_default_effective_config() -> MermaidConfig {
 }
 
 /// Parser behavior switches shared by metadata, semantic JSON, and typed render-model parsing.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ParseOptions {
     /// Return an `error` diagram model instead of an error when diagram parsing fails.
     pub suppress_errors: bool,

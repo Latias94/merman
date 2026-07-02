@@ -95,6 +95,25 @@ fn rich_facts_mode_projects_valid_syntax_facts() {
 }
 
 #[test]
+fn disabled_resource_limit_diagnostic_still_stops_rich_facts_projection() {
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some(8))
+            .with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_disabled(crate::rules::RESOURCE_LIMIT_RULE_ID),
+            ),
+    );
+    let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::RichFacts);
+
+    assert!(local.diagnostics.is_empty());
+    assert_eq!(local.syntax.diagram_type, None);
+    assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
+    assert!(local.syntax.text_index.node_ids().next().is_none());
+    assert!(local.syntax.text_index.semantic_items().is_empty());
+}
+
+#[test]
 fn fallback_recovery_merge_uses_structured_location_metadata() {
     let source_map = SourceMap::new("flowchart TD\nA[unterminated");
     let span = source_map.whole_source_span().unwrap();

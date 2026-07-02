@@ -19,7 +19,7 @@ use std::panic::{self, AssertUnwindSafe};
 
 const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AnalysisOptions {
     pub parse: ParseOptions,
     pub source: SourceDescriptor,
@@ -79,6 +79,15 @@ impl AnalysisOptions {
         self.rule_config = rule_config;
         self
     }
+
+    pub fn snapshot_affecting_eq(&self, other: &Self) -> bool {
+        self.parse == other.parse
+            && self.site_config == other.site_config
+            && self.fixed_today == other.fixed_today
+            && self.fixed_local_offset_minutes == other.fixed_local_offset_minutes
+            && self.max_source_bytes == other.max_source_bytes
+            && self.source == other.source
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +114,10 @@ impl Analyzer {
 
     pub fn with_engine_and_options(engine: Engine, options: AnalysisOptions) -> Self {
         Self { engine, options }
+    }
+
+    pub fn options(&self) -> &AnalysisOptions {
+        &self.options
     }
 
     pub fn analyze_result(&self, source: &str) -> AnalysisResult {
@@ -167,10 +180,16 @@ impl Analyzer {
 
         if let Some(limit) = self.options.max_source_bytes
             && source.len() > limit
-            && let Some(diagnostic) =
-                source_limit_diagnostic(source.len(), limit, &source_map, &self.options.rule_config)
         {
-            return LocalAnalysis::empty_syntax(vec![diagnostic]);
+            let diagnostics = source_limit_diagnostic(
+                source.len(),
+                limit,
+                &source_map,
+                &self.options.rule_config,
+            )
+            .into_iter()
+            .collect();
+            return LocalAnalysis::empty_syntax(diagnostics);
         }
 
         let source_lints =

@@ -49,6 +49,23 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnalyzerConfigurationChange {
+    Unchanged,
+    DiagnosticsOnly,
+    SnapshotAffecting,
+}
+
+impl AnalyzerConfigurationChange {
+    fn affects_diagnostics(self) -> bool {
+        !matches!(self, Self::Unchanged)
+    }
+
+    fn affects_snapshots(self) -> bool {
+        matches!(self, Self::SnapshotAffecting)
+    }
+}
+
 #[derive(Debug)]
 pub struct MermanLanguageServer {
     client: Client,
@@ -219,9 +236,24 @@ impl MermanLanguageServer {
         );
     }
 
-    async fn replace_analyzer(&self, options: AnalysisOptions) {
+    async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
         let mut analyzer = self.analyzer.lock().await;
-        *analyzer = Analyzer::with_options(options);
+        let change = analyzer_configuration_change(analyzer.options(), &options);
+        if matches!(change, AnalyzerConfigurationChange::Unchanged) {
+            return change;
+        }
+
+        let next = Analyzer::with_options(options);
+        *analyzer = next.clone();
+        drop(analyzer);
+
+        let mut store = self.store.lock().await;
+        if change.affects_snapshots() {
+            store.replace_analyzer(next);
+        } else {
+            store.set_analyzer(next);
+        }
+        change
     }
 
     fn client_supports_semantic_tokens_refresh(params: &InitializeParams) -> bool {
@@ -281,6 +313,19 @@ impl MermanLanguageServer {
             self.publish_for_uri(&document.uri, Some(document.version))
                 .await;
         }
+    }
+}
+
+fn analyzer_configuration_change(
+    current: &AnalysisOptions,
+    next: &AnalysisOptions,
+) -> AnalyzerConfigurationChange {
+    if current == next {
+        AnalyzerConfigurationChange::Unchanged
+    } else if current.snapshot_affecting_eq(next) {
+        AnalyzerConfigurationChange::DiagnosticsOnly
+    } else {
+        AnalyzerConfigurationChange::SnapshotAffecting
     }
 }
 
@@ -380,15 +425,19 @@ impl LanguageServer for MermanLanguageServer {
             }
         };
 
-        self.replace_analyzer(options).await;
-        self.republish_all().await;
-        if self
-            .semantic_tokens_refresh_supported
-            .load(Ordering::Relaxed)
+        let change = self.replace_analyzer(options).await;
+        if change.affects_diagnostics() {
+            self.republish_all().await;
+        }
+        if change.affects_snapshots()
+            && self
+                .semantic_tokens_refresh_supported
+                .load(Ordering::Relaxed)
         {
             let _ = self.client.semantic_tokens_refresh().await;
         }
-        if self.diagnostic_pull_supported.load(Ordering::Relaxed)
+        if change.affects_diagnostics()
+            && self.diagnostic_pull_supported.load(Ordering::Relaxed)
             && self.diagnostic_refresh_supported.load(Ordering::Relaxed)
         {
             let _ = self.client.workspace_diagnostic_refresh().await;
@@ -631,8 +680,10 @@ mod tests {
         rename, selection_ranges,
     };
     use merman_analysis::{
-        AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, SourceMap,
+        AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
+        DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
     };
+    use merman_core::ParseOptions;
     use tower::{Service, ServiceExt};
     use tower_lsp::LanguageServer;
     use tower_lsp::jsonrpc::Request;
@@ -648,6 +699,46 @@ mod tests {
         TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
+
+    #[test]
+    fn analyzer_configuration_change_classifies_diagnostic_only_rule_changes() {
+        let current = AnalysisOptions::default();
+        let next = AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
+        );
+
+        assert_eq!(
+            super::analyzer_configuration_change(&current, &next),
+            super::AnalyzerConfigurationChange::DiagnosticsOnly
+        );
+    }
+
+    #[test]
+    fn analyzer_configuration_change_classifies_snapshot_affecting_changes() {
+        let current = AnalysisOptions::default();
+        let changed_parse = AnalysisOptions::default().with_parse_options(ParseOptions::lenient());
+        let changed_resource = AnalysisOptions::default().with_max_source_bytes(Some(1));
+        let changed_date =
+            AnalysisOptions::default().with_fixed_today(Some("2026-07-02".parse().unwrap()));
+
+        for next in [changed_parse, changed_resource, changed_date] {
+            assert_eq!(
+                super::analyzer_configuration_change(&current, &next),
+                super::AnalyzerConfigurationChange::SnapshotAffecting
+            );
+        }
+    }
+
+    #[test]
+    fn analyzer_configuration_change_classifies_unchanged_options() {
+        let current = AnalysisOptions::default();
+
+        assert_eq!(
+            super::analyzer_configuration_change(&current, &current),
+            super::AnalyzerConfigurationChange::Unchanged
+        );
+    }
 
     #[test]
     fn capabilities_advertise_completion_and_full_sync() {

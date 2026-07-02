@@ -1,6 +1,9 @@
-use merman_analysis::{FenceSemanticRole, FenceTextIndexSource};
-use merman_lsp::document_store::DocumentStore;
-use tower_lsp::lsp_types::Url;
+use merman_analysis::{
+    AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticSeverity, FenceSemanticRole,
+    FenceTextIndexSource,
+};
+use merman_lsp::document_store::{DocumentStore, SemanticTokensState};
+use tower_lsp::lsp_types::{SemanticToken, Url};
 
 #[test]
 fn plain_mermaid_documents_create_single_snapshot_fence() {
@@ -175,6 +178,93 @@ fn upsert_text_invalidates_cached_snapshot() {
         .expect("expected refreshed lazy snapshot");
     assert_eq!(second.version, 2);
     assert_eq!(second.fences[0].diagram_type.as_deref(), Some("sequence"));
+}
+
+#[test]
+fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot = store
+        .snapshot_cloned(&uri)
+        .expect("expected initial lazy snapshot");
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    store.set_semantic_tokens_state(
+        uri.clone(),
+        SemanticTokensState {
+            version: Some(1),
+            result_id: Some("tokens-1".to_string()),
+            tokens: vec![SemanticToken {
+                delta_line: 0,
+                delta_start: 0,
+                length: 4,
+                token_type: 0,
+                token_modifiers_bitset: 0,
+            }],
+        },
+    );
+
+    let diagnostic_only = Analyzer::with_options(
+        AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
+        ),
+    );
+    store.set_analyzer(diagnostic_only);
+
+    assert!(store.has_snapshot(&uri));
+    assert_eq!(
+        store
+            .semantic_tokens_state(&uri)
+            .and_then(|state| state.result_id.as_deref()),
+        Some("tokens-1")
+    );
+    let cached = store
+        .snapshot_cloned(&uri)
+        .expect("expected cached snapshot after diagnostic-only update");
+    assert_eq!(
+        cached.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+}
+
+#[test]
+fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot = store
+        .snapshot_cloned(&uri)
+        .expect("expected initial lazy snapshot");
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    store.set_semantic_tokens_state(
+        uri.clone(),
+        SemanticTokensState {
+            version: Some(1),
+            result_id: Some("tokens-1".to_string()),
+            tokens: Vec::new(),
+        },
+    );
+
+    let limited = Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some("flowchart TD\nA-->B\n".len() - 1)),
+    );
+    store.replace_analyzer(limited);
+
+    assert!(!store.has_snapshot(&uri));
+    assert!(store.semantic_tokens_state(&uri).is_none());
+    let rebuilt = store
+        .snapshot_cloned(&uri)
+        .expect("expected rebuilt snapshot after analyzer replacement");
+    assert_eq!(rebuilt.fences[0].diagram_type, None);
 }
 
 #[test]

@@ -1,4 +1,5 @@
 use crate::snapshot::DocumentSnapshot;
+use merman_analysis::Analyzer;
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
 use std::collections::HashMap;
 use tower_lsp::lsp_types::{SemanticToken, Url};
@@ -34,6 +35,16 @@ impl DocumentStore {
             snapshots: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
         }
+    }
+
+    pub fn set_analyzer(&mut self, analyzer: Analyzer) {
+        self.workspace.set_analyzer(analyzer);
+    }
+
+    pub fn replace_analyzer(&mut self, analyzer: Analyzer) {
+        self.workspace.replace_analyzer(analyzer);
+        self.snapshots.clear();
+        self.semantic_tokens_state.clear();
     }
 
     pub fn upsert_text(&mut self, uri: Url, version: i32, text: String) -> StoredDocument {

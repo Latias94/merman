@@ -19,10 +19,23 @@ impl Default for DocumentWorkspace {
 
 impl DocumentWorkspace {
     pub fn new() -> Self {
+        Self::with_analyzer(Analyzer::new())
+    }
+
+    pub fn with_analyzer(analyzer: Analyzer) -> Self {
         Self {
             documents: HashMap::new(),
-            analyzer: Analyzer::new(),
+            analyzer,
         }
+    }
+
+    pub fn set_analyzer(&mut self, analyzer: Analyzer) {
+        self.analyzer = analyzer;
+    }
+
+    pub fn replace_analyzer(&mut self, analyzer: Analyzer) {
+        self.set_analyzer(analyzer);
+        self.documents.clear();
     }
 
     pub fn upsert(

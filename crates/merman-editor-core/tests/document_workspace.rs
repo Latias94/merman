@@ -1,4 +1,4 @@
-use merman_analysis::{FenceMarker, FenceTextIndexSource, SourceKind};
+use merman_analysis::{AnalysisOptions, Analyzer, FenceMarker, FenceTextIndexSource, SourceKind};
 use merman_editor_core::{DocumentKind, DocumentUri, DocumentWorkspace, Position};
 
 #[test]
@@ -144,4 +144,37 @@ fn replacing_document_version_drops_stale_fence_state() {
     assert_eq!(stored.fences.len(), 1);
     assert_eq!(stored.fences[0].diagram_type.as_deref(), Some("sequence"));
     assert!(!stored.text.contains("flowchart TD"));
+}
+
+#[test]
+fn replacing_analyzer_drops_cached_snapshots() {
+    let limited_analyzer = Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some("flowchart TD\nA-->B\n".len() - 1)),
+    );
+    let mut workspace = DocumentWorkspace::with_analyzer(limited_analyzer);
+    let uri = DocumentUri::new("file:///tmp/example.mmd");
+
+    let limited = workspace.upsert(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(limited.fences[0].diagram_type, None);
+    assert!(workspace.get(&uri).is_some());
+
+    workspace.replace_analyzer(Analyzer::new());
+
+    assert!(workspace.get(&uri).is_none());
+    let rebuilt = workspace.upsert(
+        uri,
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    assert_eq!(
+        rebuilt.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
 }
