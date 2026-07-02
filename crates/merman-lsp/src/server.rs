@@ -188,13 +188,13 @@ impl MermanLanguageServer {
             store.diagnostic_context(uri)
         };
 
-        let Some((document, analyzer)) = context else {
+        let Some(context) = context else {
             return;
         };
 
-        let diagnostics = Self::diagnostics_for_document(&document, &analyzer);
+        let diagnostics = Self::diagnostics_for_document(&context.document, &context.analyzer);
         self.client
-            .publish_diagnostics(uri.clone(), diagnostics, version)
+            .publish_diagnostics(context.document.uri.clone(), diagnostics, version)
             .await;
     }
 
@@ -411,7 +411,7 @@ impl LanguageServer for MermanLanguageServer {
             let store = self.store.lock().await;
             store.diagnostic_context(&uri)
         };
-        let Some((document, analyzer)) = context else {
+        let Some(context) = context else {
             let diagnostics = Vec::new();
             let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
@@ -421,7 +421,7 @@ impl LanguageServer for MermanLanguageServer {
             ));
         };
 
-        let diagnostics = Self::diagnostics_for_document(&document, &analyzer);
+        let diagnostics = Self::diagnostics_for_document(&context.document, &context.analyzer);
         let result_id = Some(Self::diagnostic_result_id(&diagnostics));
         Ok(Self::document_diagnostic_report(
             diagnostics,

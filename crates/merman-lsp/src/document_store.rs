@@ -8,7 +8,10 @@ use tower_lsp::lsp_types::{SemanticToken, Url};
 pub struct DocumentStore {
     workspace: DocumentWorkspace,
     analyzer: Analyzer,
-    documents: HashMap<Url, StoredDocument>,
+    snapshot_generation: SnapshotGeneration,
+    diagnostic_generation: DiagnosticGeneration,
+    next_document_epoch: u64,
+    documents: HashMap<Url, DocumentRecord>,
     snapshots: HashMap<Url, DocumentSnapshot>,
     semantic_tokens_state: HashMap<Url, SemanticTokensState>,
 }
@@ -40,6 +43,9 @@ impl DocumentStore {
         Self {
             workspace: DocumentWorkspace::with_analyzer(analyzer.clone()),
             analyzer,
+            snapshot_generation: SnapshotGeneration::default(),
+            diagnostic_generation: DiagnosticGeneration::default(),
+            next_document_epoch: 0,
             documents: HashMap::new(),
             snapshots: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
@@ -66,20 +72,49 @@ impl DocumentStore {
 
     fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
         self.analyzer = analyzer;
+        self.advance_diagnostic_generation();
     }
 
     fn replace_analyzer(&mut self, analyzer: Analyzer) {
         self.analyzer = analyzer.clone();
         self.workspace.replace_analyzer(analyzer);
+        self.advance_snapshot_generation();
+        self.advance_diagnostic_generation();
         self.snapshots.clear();
         self.semantic_tokens_state.clear();
     }
 
-    pub(crate) fn diagnostic_context(&self, uri: &Url) -> Option<(StoredDocument, Analyzer)> {
-        self.documents
-            .get(uri)
-            .cloned()
-            .map(|document| (document, self.analyzer.clone()))
+    fn advance_snapshot_generation(&mut self) {
+        self.snapshot_generation = SnapshotGeneration(self.snapshot_generation.0.wrapping_add(1));
+    }
+
+    fn advance_diagnostic_generation(&mut self) {
+        self.diagnostic_generation =
+            DiagnosticGeneration(self.diagnostic_generation.0.wrapping_add(1));
+    }
+
+    fn next_document_epoch(&mut self) -> DocumentEpoch {
+        self.next_document_epoch = self.next_document_epoch.wrapping_add(1);
+        DocumentEpoch(self.next_document_epoch)
+    }
+
+    pub fn diagnostic_context(&self, uri: &Url) -> Option<DiagnosticContext> {
+        self.documents.get(uri).map(|record| {
+            DiagnosticContext::new(
+                record.document.clone(),
+                self.analyzer.clone(),
+                self.diagnostic_generation,
+                record.epoch,
+            )
+        })
+    }
+
+    pub fn is_diagnostic_context_current(&self, context: &DiagnosticContext) -> bool {
+        self.diagnostic_generation == context.generation
+            && self
+                .documents
+                .get(&context.document.uri)
+                .is_some_and(|record| record.epoch == context.document_epoch)
     }
 
     pub fn upsert_text(&mut self, uri: Url, version: i32, text: String) -> StoredDocument {
@@ -92,7 +127,14 @@ impl DocumentStore {
         self.workspace
             .remove(&merman_editor_core::DocumentUri::new(uri.as_str()));
         self.snapshots.remove(&uri);
-        self.documents.insert(uri, document.clone());
+        let epoch = self.next_document_epoch();
+        self.documents.insert(
+            uri,
+            DocumentRecord {
+                document: document.clone(),
+                epoch,
+            },
+        );
         document
     }
 
@@ -103,17 +145,28 @@ impl DocumentStore {
     }
 
     pub fn get(&self, uri: &Url) -> Option<&StoredDocument> {
-        self.documents.get(uri)
+        self.documents.get(uri).map(|record| &record.document)
     }
 
     pub fn snapshot_cloned(&mut self, uri: &Url) -> Option<DocumentSnapshot> {
+        self.snapshot_context(uri).map(|context| context.snapshot)
+    }
+
+    pub fn snapshot_context(&mut self, uri: &Url) -> Option<SnapshotContext> {
         // Request handlers own this snapshot so they can release the store mutex before
         // running editor queries. Projection code should borrow from it instead of cloning it.
+        let record = self.documents.get(uri)?;
+        let document = record.document.clone();
+        let document_epoch = record.epoch;
+
         if let Some(snapshot) = self.snapshots.get(uri) {
-            return Some(snapshot.clone());
+            return Some(SnapshotContext::new(
+                snapshot.clone(),
+                self.snapshot_generation,
+                document_epoch,
+            ));
         }
 
-        let document = self.documents.get(uri)?;
         let snapshot = self.workspace.upsert(
             document.uri.as_str(),
             document.version,
@@ -123,7 +176,19 @@ impl DocumentStore {
         let snapshot = DocumentSnapshot::from_editor(snapshot, document.uri.clone());
         self.snapshots
             .insert(document.uri.clone(), snapshot.clone());
-        Some(snapshot)
+        Some(SnapshotContext::new(
+            snapshot,
+            self.snapshot_generation,
+            document_epoch,
+        ))
+    }
+
+    pub fn is_snapshot_context_current(&self, context: &SnapshotContext) -> bool {
+        self.snapshot_generation == context.generation
+            && self
+                .documents
+                .get(&context.snapshot.uri)
+                .is_some_and(|record| record.epoch == context.document_epoch)
     }
 
     pub fn has_snapshot(&self, uri: &Url) -> bool {
@@ -139,7 +204,10 @@ impl DocumentStore {
     }
 
     pub fn documents(&self) -> Vec<StoredDocument> {
-        self.documents.values().cloned().collect()
+        self.documents
+            .values()
+            .map(|record| record.document.clone())
+            .collect()
     }
 
     pub(crate) fn documents_with_analyzer(&self) -> (Vec<StoredDocument>, Analyzer) {
@@ -163,6 +231,82 @@ impl DocumentStore {
 
     pub fn set_semantic_tokens_state(&mut self, uri: Url, state: SemanticTokensState) {
         self.semantic_tokens_state.insert(uri, state);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DocumentRecord {
+    document: StoredDocument,
+    epoch: DocumentEpoch,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DocumentEpoch(u64);
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SnapshotGeneration(u64);
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiagnosticGeneration(u64);
+
+#[derive(Debug, Clone)]
+pub struct SnapshotContext {
+    pub snapshot: DocumentSnapshot,
+    generation: SnapshotGeneration,
+    document_epoch: DocumentEpoch,
+}
+
+impl SnapshotContext {
+    fn new(
+        snapshot: DocumentSnapshot,
+        generation: SnapshotGeneration,
+        document_epoch: DocumentEpoch,
+    ) -> Self {
+        Self {
+            snapshot,
+            generation,
+            document_epoch,
+        }
+    }
+
+    pub fn generation(&self) -> SnapshotGeneration {
+        self.generation
+    }
+
+    pub fn document_epoch(&self) -> DocumentEpoch {
+        self.document_epoch
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DiagnosticContext {
+    pub document: StoredDocument,
+    pub analyzer: Analyzer,
+    generation: DiagnosticGeneration,
+    document_epoch: DocumentEpoch,
+}
+
+impl DiagnosticContext {
+    fn new(
+        document: StoredDocument,
+        analyzer: Analyzer,
+        generation: DiagnosticGeneration,
+        document_epoch: DocumentEpoch,
+    ) -> Self {
+        Self {
+            document,
+            analyzer,
+            generation,
+            document_epoch,
+        }
+    }
+
+    pub fn generation(&self) -> DiagnosticGeneration {
+        self.generation
+    }
+
+    pub fn document_epoch(&self) -> DocumentEpoch {
+        self.document_epoch
     }
 }
 

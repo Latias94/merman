@@ -181,6 +181,181 @@ fn upsert_text_invalidates_cached_snapshot() {
 }
 
 #[test]
+fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let diagnostic_context = store
+        .diagnostic_context(&uri)
+        .expect("expected initial diagnostic context");
+    store.set_semantic_tokens_state(
+        uri.clone(),
+        SemanticTokensState {
+            version: Some(1),
+            result_id: Some("tokens-1".to_string()),
+            tokens: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        store.apply_analyzer_options(AnalysisOptions::default()),
+        merman_lsp::document_store::AnalyzerConfigurationChange::Unchanged
+    );
+
+    assert!(store.is_snapshot_context_current(&snapshot_context));
+    assert!(store.is_diagnostic_context_current(&diagnostic_context));
+    assert!(store.has_snapshot(&uri));
+    assert_eq!(
+        store
+            .semantic_tokens_state(&uri)
+            .and_then(|state| state.result_id.as_deref()),
+        Some("tokens-1")
+    );
+}
+
+#[test]
+fn diagnostic_only_analyzer_update_stales_diagnostics_but_preserves_snapshots_and_tokens() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let diagnostic_context = store
+        .diagnostic_context(&uri)
+        .expect("expected initial diagnostic context");
+    store.set_semantic_tokens_state(
+        uri.clone(),
+        SemanticTokensState {
+            version: Some(1),
+            result_id: Some("tokens-1".to_string()),
+            tokens: Vec::new(),
+        },
+    );
+
+    store.apply_analyzer_options(
+        AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
+        ),
+    );
+
+    assert!(store.is_snapshot_context_current(&snapshot_context));
+    assert!(!store.is_diagnostic_context_current(&diagnostic_context));
+    assert!(store.has_snapshot(&uri));
+    assert_eq!(
+        store
+            .semantic_tokens_state(&uri)
+            .and_then(|state| state.result_id.as_deref()),
+        Some("tokens-1")
+    );
+}
+
+#[test]
+fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let diagnostic_context = store
+        .diagnostic_context(&uri)
+        .expect("expected initial diagnostic context");
+    store.set_semantic_tokens_state(
+        uri.clone(),
+        SemanticTokensState {
+            version: Some(1),
+            result_id: Some("tokens-1".to_string()),
+            tokens: Vec::new(),
+        },
+    );
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+    );
+
+    assert!(!store.is_snapshot_context_current(&snapshot_context));
+    assert!(!store.is_diagnostic_context_current(&diagnostic_context));
+    assert!(!store.has_snapshot(&uri));
+    assert_eq!(
+        store
+            .semantic_tokens_state(&uri)
+            .and_then(|state| state.result_id.as_deref()),
+        Some("tokens-1")
+    );
+}
+
+#[test]
+fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_state() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let diagnostic_context = store
+        .diagnostic_context(&uri)
+        .expect("expected initial diagnostic context");
+    store.set_semantic_tokens_state(
+        uri.clone(),
+        SemanticTokensState {
+            version: Some(1),
+            result_id: Some("tokens-1".to_string()),
+            tokens: Vec::new(),
+        },
+    );
+
+    store.apply_analyzer_options(
+        AnalysisOptions::default().with_max_source_bytes(Some("flowchart TD\nA-->B\n".len() - 1)),
+    );
+
+    assert!(!store.is_snapshot_context_current(&snapshot_context));
+    assert!(!store.is_diagnostic_context_current(&diagnostic_context));
+    assert!(!store.has_snapshot(&uri));
+    assert!(store.semantic_tokens_state(&uri).is_none());
+}
+
+#[test]
+fn remove_stales_existing_contexts_and_clears_document_state() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let snapshot_context = store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let diagnostic_context = store
+        .diagnostic_context(&uri)
+        .expect("expected initial diagnostic context");
+    store.set_semantic_tokens_state(
+        uri.clone(),
+        SemanticTokensState {
+            version: Some(1),
+            result_id: Some("tokens-1".to_string()),
+            tokens: Vec::new(),
+        },
+    );
+
+    store.remove(&uri);
+
+    assert!(store.get(&uri).is_none());
+    assert!(!store.has_snapshot(&uri));
+    assert!(store.semantic_tokens_state(&uri).is_none());
+    assert!(!store.is_snapshot_context_current(&snapshot_context));
+    assert!(!store.is_diagnostic_context_current(&diagnostic_context));
+}
+
+#[test]
 fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
