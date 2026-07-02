@@ -195,8 +195,9 @@ impl HostThemeOutput {
     /// Returns product-neutral defaults for editor previews and raster-oriented host surfaces.
     ///
     /// The preset selects `resvg-safe` output, strips existing `!important` CSS so host theme rules
-    /// can win predictably, and uses the profile canvas as the root SVG background. Callers can
-    /// still add scoped CSS or override individual fields.
+    /// can win predictably, and uses the profile canvas as the root SVG background. Duplicate
+    /// native/fallback text cleanup stays opt-in because repeated labels can be intentional in
+    /// unrelated nodes. Callers can still add scoped CSS or override individual fields.
     pub fn resvg_safe_editor() -> Self {
         Self {
             pipeline: HostThemePipelinePreset::ResvgSafe,
@@ -708,9 +709,7 @@ impl CompiledHostThemeOutput {
             pipeline.push_postprocessor(CssOverridePostprocessor::strip_existing_important());
         }
 
-        if self.drop_native_duplicate_fallbacks
-            && !matches!(self.preset, SvgPipelinePreset::ResvgSafe)
-        {
+        if self.drop_native_duplicate_fallbacks {
             pipeline.push_postprocessor(DropNativeDuplicateFallbacksPostprocessor);
         }
 
@@ -1430,6 +1429,35 @@ mod tests {
                 "{preset:?}"
             );
         }
+    }
+
+    #[test]
+    fn resvg_safe_host_output_can_drop_native_duplicate_fallbacks() {
+        let mut output = HostThemeOutput::resvg_safe_editor();
+        output.drop_native_duplicate_fallbacks = true;
+
+        let compiled = HostThemeProfile::builder().output(output).build().compile();
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+<text class="task">Make tea</text>
+<g transform="translate(0,0)">
+  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
+</g>
+<g transform="translate(0,40)">
+  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Only fallback</p></div></foreignObject>
+</g>
+</svg>"##;
+
+        let out = compiled.pipeline().process_to_string(svg).unwrap();
+
+        assert_eq!(
+            out.matches(r#"data-merman-foreignobject="fallback""#)
+                .count(),
+            1,
+            "{out}"
+        );
+        assert!(out.contains("Only fallback"));
+        assert!(out.contains(r#"<text class="task">Make tea</text>"#));
+        assert!(!out.contains("<foreignObject"));
     }
 
     #[test]
