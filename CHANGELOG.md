@@ -6,12 +6,22 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `merman-cli` now treats icon pack HTTP(S) loading as opt-in: local `node_modules`, local JSON paths, and `file://` sources still work by default, but unpkg fallback and explicit HTTP(S) icon pack URLs require `--allow-network`.
+- `merman-cli` now uses categorized runtime exit statuses: invalid input/config/output contracts exit with code 2, direct I/O failures exit with code 3, and render/runtime failures keep code 1. Broken stdout pipes are treated as normal pipeline termination.
+- `merman-cli` now writes non-error diagnostics and Markdown batch progress to stderr instead of stdout so stdout remains reserved for requested payload bytes.
+
 ### Added
 
 - Added a shared FFI publish-surface check that verifies C ABI, Python UniFFI ABI, and package-page metadata before CI and release publishing.
 - Improved Python and Flutter package metadata so PyPI and pub.dev expose changelog, documentation, issue tracker, and discovery links.
 - Added Python UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host text-measurement callbacks that can be installed or cleared on reusable engines.
 - Added `merman-cli --svg-pipeline parity|readable|resvg-safe` so users can request export-safe SVG bytes directly without choosing a raster format.
+
+### Changed
+
+- Split the `merman-cli` render implementation into focused plan, executor, Markdown export, raster/PDF, icon loading, and SVG pipeline modules while keeping the public CLI entrypoints unchanged.
 
 ### Fixed
 
