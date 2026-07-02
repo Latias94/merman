@@ -1035,6 +1035,80 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_unchanged_configuration_emits_no_refresh_or_diagnostics() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                },
+                "workspace": {
+                    "diagnostic": {
+                        "refreshSupport": true
+                    },
+                    "semanticTokens": {
+                        "refreshSupport": true
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri,
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "gitGraph\ncommit id:\"dup\"\ncommit id:\"dup\"\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::Value::Null,
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(change).await.unwrap(),
+        None
+    );
+    assert!(
+        timeout(Duration::from_millis(50), socket.next())
+            .await
+            .is_err(),
+        "unchanged configuration should not emit diagnostics or refresh requests"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_does_not_refresh_semantic_tokens_after_diagnostic_only_configuration_change() {
     let (mut service, mut socket) = MermanLanguageServer::service();
 
@@ -1084,6 +1158,82 @@ async fn lsp_service_does_not_refresh_semantic_tokens_after_diagnostic_only_conf
             .await
             .is_err(),
         "diagnostic-only configuration changes should not refresh semantic tokens"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_noop_configuration_change_sends_no_push_or_semantic_refresh() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "workspace": {
+                    "semanticTokens": {
+                        "refreshSupport": true
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri,
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+    let first_diagnostics = timeout(Duration::from_secs(5), socket.next())
+        .await
+        .unwrap()
+        .expect("expected diagnostics after open");
+    assert_eq!(
+        first_diagnostics.method(),
+        "textDocument/publishDiagnostics"
+    );
+
+    let change = Request::build("workspace/didChangeConfiguration")
+        .params(
+            serde_json::to_value(DidChangeConfigurationParams {
+                settings: serde_json::Value::Null,
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(change).await.unwrap(),
+        None
+    );
+    assert!(
+        timeout(Duration::from_millis(50), socket.next())
+            .await
+            .is_err(),
+        "unchanged configuration should not publish diagnostics or refresh semantic tokens"
     );
 }
 
