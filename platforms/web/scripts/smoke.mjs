@@ -156,6 +156,17 @@ assert.equal(
   true
 );
 
+const mdxAnalysis = api.analyzeDocument(
+  "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+  deterministicTime,
+  "file:///tmp/example.mdx?rev=1#fence"
+);
+assert.equal(mdxAnalysis.valid, false);
+assert.equal(mdxAnalysis.source.kind, "mdx");
+assert.equal(mdxAnalysis.source.language, "mdx");
+assert.equal(mdxAnalysis.source.path, "file:///tmp/example.mdx?rev=1#fence");
+assert.equal(mdxAnalysis.diagnostics[0].span.line, 4);
+
 const markdownFixAnalysis = api.analyzeDocument(
   '```mermaid\n%%{ initialize: {"theme":"dark"} }%%\nflowchart TD\nA-->B\n```\n',
   {
@@ -167,7 +178,7 @@ const markdownFixAnalysis = api.analyzeDocument(
 const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
   (diagnostic) =>
     diagnostic.category === "config" &&
-    diagnostic.fixes.some((fix) => fix.edits.length > 0)
+    (diagnostic.fixes ?? []).some((fix) => fix.edits.length > 0)
 );
 assert.ok(configFixDiagnostic);
 assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);

@@ -20,7 +20,8 @@ mod status;
 pub use analyzer::{AnalysisOptions, Analyzer};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceMarker,
-    analyze_document,
+    analyze_document, source_descriptor_for_kind, source_descriptor_for_markdown_path,
+    source_descriptor_for_uri, source_language,
 };
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext,

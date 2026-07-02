@@ -271,7 +271,7 @@ fn lint_input_path<'a>(args: &'a LintArgs) -> Option<&'a str> {
 
 fn lint_source_descriptor(markdown_mode: bool, path: Option<&str>) -> SourceDescriptor {
     if markdown_mode {
-        return merman_analysis::markdown::markdown_source_descriptor(path);
+        return merman_analysis::source_descriptor_for_markdown_path(path);
     }
 
     let mut source = SourceDescriptor::diagram();

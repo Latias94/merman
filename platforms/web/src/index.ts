@@ -527,7 +527,7 @@ export interface AnalysisDiagnostic {
   span?: AnalysisSpan | null;
   related: AnalysisDiagnosticRelated[];
   help?: string | null;
-  fixes: AnalysisDiagnosticFix[];
+  fixes?: AnalysisDiagnosticFix[];
 }
 
 export interface AnalysisResult {

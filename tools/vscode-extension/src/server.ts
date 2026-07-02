@@ -8,6 +8,7 @@ import {
   State,
   Trace,
   TransportKind,
+  vsdiag,
 } from "vscode-languageclient/node";
 
 import {
@@ -18,7 +19,11 @@ import {
   getTraceSetting,
 } from "./config.js";
 import { resolveMermanBinary } from "./binaries.js";
-import { projectOwnedDiagnostics } from "./diagnostic-ownership.js";
+import {
+  emptyDocumentDiagnosticReport,
+  projectOwnedDiagnostics,
+  projectOwnedDocumentDiagnosticReport,
+} from "./diagnostic-ownership.js";
 import { workspaceRoots } from "./workspace.js";
 
 export const RULE_CATALOG_METHOD = "merman/ruleCatalog";
@@ -88,6 +93,26 @@ export async function createLanguageClient(
     middleware: {
       handleDiagnostics(uri, diagnostics, next) {
         next(uri, projectOwnedDiagnostics(diagnostics, getDiagnosticsSettings()));
+      },
+      async provideDiagnostics(document, previousResultId, token, next) {
+        const settings = getDiagnosticsSettings();
+        if (!settings.enabled) {
+          return emptyDocumentDiagnosticReport() as vsdiag.DocumentDiagnosticReport;
+        }
+        const report = await next(document, previousResultId, token);
+        return report
+          ? (projectOwnedDocumentDiagnosticReport(
+              report,
+              settings,
+            ) as vsdiag.DocumentDiagnosticReport)
+          : report;
+      },
+      async provideWorkspaceDiagnostics(resultIds, token, resultReporter, next) {
+        if (!getDiagnosticsSettings().enabled) {
+          resultReporter(null);
+          return { items: [] };
+        }
+        return next(resultIds, token, resultReporter);
       },
     },
   };

@@ -2,6 +2,7 @@ use crate::{
     AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticRelated, DiagnosticSpan,
     SourceDescriptor, SourceKind, SourceMap,
 };
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentDiagramKind {
@@ -124,6 +125,13 @@ impl DocumentSource {
             .and_then(|span| self.remap_span_to_document(diagram, span))
             .or(fence_span.clone());
 
+        for related in &mut diagnostic.related {
+            related.span = related
+                .span
+                .take()
+                .and_then(|span| self.remap_span_to_document(diagram, span));
+        }
+
         for fix in &mut diagnostic.fixes {
             fix.edits = fix
                 .edits
@@ -150,6 +158,48 @@ impl DocumentSource {
 impl DocumentDiagram {
     pub const fn is_fence(&self) -> bool {
         matches!(self.kind, DocumentDiagramKind::MermaidFence)
+    }
+}
+
+pub fn source_descriptor_for_kind(path: Option<&str>, kind: SourceKind) -> SourceDescriptor {
+    SourceDescriptor {
+        kind,
+        path: path.map(ToString::to_string),
+        diagram_index: None,
+        language: source_language(kind).to_string(),
+    }
+}
+
+pub fn source_descriptor_for_uri(uri: &str) -> SourceDescriptor {
+    let path_without_fragment = uri.split(['?', '#']).next().unwrap_or(uri);
+    let kind = match Path::new(path_without_fragment)
+        .extension()
+        .and_then(|ext| ext.to_str())
+    {
+        Some("md") | Some("markdown") => SourceKind::Markdown,
+        Some("mdx") => SourceKind::Mdx,
+        _ => SourceKind::Diagram,
+    };
+    source_descriptor_for_kind(Some(uri), kind)
+}
+
+pub fn source_descriptor_for_markdown_path(path: Option<&str>) -> SourceDescriptor {
+    let path_without_fragment = path.map(|path| path.split(['?', '#']).next().unwrap_or(path));
+    let kind = match path_without_fragment
+        .and_then(|path| Path::new(path).extension())
+        .and_then(|ext| ext.to_str())
+    {
+        Some("mdx") => SourceKind::Mdx,
+        _ => SourceKind::Markdown,
+    };
+    source_descriptor_for_kind(path, kind)
+}
+
+pub const fn source_language(kind: SourceKind) -> &'static str {
+    match kind {
+        SourceKind::Diagram => "mermaid",
+        SourceKind::Markdown => "markdown",
+        SourceKind::Mdx => "mdx",
     }
 }
 
@@ -299,7 +349,7 @@ fn mermaid_fence_delimiter(line: &str) -> Option<FenceDelimiter> {
         return None;
     }
 
-    let rest = &trimmed[len..];
+    let rest = trimmed[len..].trim_start();
     let language = "mermaid";
     let rest = rest.strip_prefix(language)?;
     if rest.chars().all(|ch| ch.is_whitespace()) {
@@ -341,7 +391,7 @@ mod tests {
     use super::*;
     use crate::{
         AnalysisDiagnostic, Analyzer, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
-        markdown::markdown_source_descriptor,
+        DiagnosticRelated,
     };
 
     #[test]
@@ -373,7 +423,7 @@ mod tests {
     #[test]
     fn markdown_documents_use_fence_analysis_path() {
         let analyzer = Analyzer::new();
-        let source = markdown_source_descriptor(Some("file:///tmp/example.md"));
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
         let payload = analyze_document(
             "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n",
             &analyzer,
@@ -387,7 +437,7 @@ mod tests {
 
     #[test]
     fn markdown_document_source_extracts_stable_fence_sources() {
-        let source = markdown_source_descriptor(Some("file:///tmp/example.mdx"));
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.mdx"));
         let document = DocumentSource::new(
             "before\n```mermaid\nflowchart LR\nA-->B\n```\n~~~mermaid\nsequenceDiagram\nA->>B: Hi\n~~~~\n",
             source.clone(),
@@ -408,8 +458,36 @@ mod tests {
     }
 
     #[test]
+    fn source_descriptor_for_uri_preserves_uri_and_uses_extension_before_fragment() {
+        let source = source_descriptor_for_uri("file:///tmp/example.mdx?rev=1#fence");
+
+        assert_eq!(source.kind, SourceKind::Mdx);
+        assert_eq!(
+            source.path.as_deref(),
+            Some("file:///tmp/example.mdx?rev=1#fence")
+        );
+        assert_eq!(source.language, "mdx");
+    }
+
+    #[test]
+    fn markdown_document_source_accepts_commonmark_spaced_info_strings() {
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
+        let document = DocumentSource::new(
+            "before\n```` mermaid\nflowchart LR\nA-->B\n````\n~~~ mermaid\nsequenceDiagram\nA->>B: Hi\n~~~\n",
+            source,
+        );
+
+        assert_eq!(document.diagrams().len(), 2);
+        assert!(document.diagrams()[0].text.contains("flowchart LR"));
+        assert_eq!(
+            document.diagrams()[1].fence_delimiter.unwrap().marker(),
+            FenceMarker::Tilde
+        );
+    }
+
+    #[test]
     fn unclosed_fences_still_create_deterministic_sources() {
-        let source = markdown_source_descriptor(Some("file:///tmp/example.md"));
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
         let document = DocumentSource::new("before\n```mermaid\nflowchart TD\nA-->B\n", source);
 
         assert_eq!(document.diagrams().len(), 1);
@@ -422,7 +500,10 @@ mod tests {
     #[test]
     fn remaps_diagnostics_back_into_host_document_coordinates() {
         let source = "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter";
-        let document = DocumentSource::new(source, markdown_source_descriptor(Some("example.md")));
+        let document = DocumentSource::new(
+            source,
+            source_descriptor_for_markdown_path(Some("example.md")),
+        );
         let diagram = &document.diagrams()[0];
         let local_map = SourceMap::new(&diagram.text);
         let start = local_map.source().find('A').unwrap();
@@ -441,9 +522,40 @@ mod tests {
     }
 
     #[test]
+    fn remaps_existing_related_spans_back_into_host_document_coordinates() {
+        let source = "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter";
+        let document = DocumentSource::new(
+            source,
+            source_descriptor_for_markdown_path(Some("example.md")),
+        );
+        let diagram = &document.diagrams()[0];
+        let local_map = SourceMap::new(&diagram.text);
+        let start = local_map.source().find('B').unwrap();
+        let end = start + 1;
+        let mut diagnostic = AnalysisDiagnostic::error(
+            "merman.parse.diagram_parse",
+            DiagnosticCategory::Parse,
+            "boom",
+        );
+        diagnostic.related.push(DiagnosticRelated {
+            message: "related node".to_string(),
+            span: Some(local_map.span(start, end).unwrap()),
+        });
+
+        let remapped = document.remap_diagnostic_to_document(diagram, diagnostic);
+
+        let related_span = remapped.related[0].span.as_ref().unwrap();
+        assert_eq!(&source[related_span.byte_start..related_span.byte_end], "B");
+        assert_eq!(related_span.line, 4);
+    }
+
+    #[test]
     fn remaps_fix_edits_back_into_host_document_coordinates() {
         let source = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter";
-        let document = DocumentSource::new(source, markdown_source_descriptor(Some("example.md")));
+        let document = DocumentSource::new(
+            source,
+            source_descriptor_for_markdown_path(Some("example.md")),
+        );
         let diagram = &document.diagrams()[0];
         let local_map = SourceMap::new(&diagram.text);
         let start = local_map.source().find("initialize").unwrap();

@@ -108,25 +108,10 @@ impl DocumentWorkspace {
 }
 
 fn source_descriptor_for_document(uri: &DocumentUri, kind: DocumentKind) -> SourceDescriptor {
-    let path = Some(uri.as_str().to_string());
-    match kind {
-        DocumentKind::Diagram => SourceDescriptor {
-            kind: SourceKind::Diagram,
-            path,
-            diagram_index: None,
-            language: "mermaid".to_string(),
-        },
-        DocumentKind::Markdown => SourceDescriptor {
-            kind: SourceKind::Markdown,
-            path,
-            diagram_index: None,
-            language: "markdown".to_string(),
-        },
-        DocumentKind::Mdx => SourceDescriptor {
-            kind: SourceKind::Mdx,
-            path,
-            diagram_index: None,
-            language: "mdx".to_string(),
-        },
-    }
+    let source_kind = match kind {
+        DocumentKind::Diagram => SourceKind::Diagram,
+        DocumentKind::Markdown => SourceKind::Markdown,
+        DocumentKind::Mdx => SourceKind::Mdx,
+    };
+    merman_analysis::source_descriptor_for_kind(Some(uri.as_str()), source_kind)
 }

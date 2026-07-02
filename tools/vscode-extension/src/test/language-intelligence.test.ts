@@ -5,7 +5,10 @@ import { describe, it } from "node:test";
 
 import {
   LANGUAGE_INTELLIGENCE_SETTING,
+  languageClientConfigurationAction,
+  languageClientReconcileAction,
   languageIntelligenceDisabledMessage,
+  serverBackedCommandAction,
   shouldStartLanguageClient,
 } from "../language-intelligence.js";
 
@@ -13,6 +16,35 @@ describe("language intelligence adoption", () => {
   it("starts the language client only when language intelligence is enabled", () => {
     assert.equal(shouldStartLanguageClient({ enabled: true }), true);
     assert.equal(shouldStartLanguageClient({ enabled: false }), false);
+  });
+
+  it("models activation and setting-toggle lifecycle actions", () => {
+    assert.equal(languageClientReconcileAction({ enabled: false }, false), "showDisabledStatus");
+    assert.equal(languageClientReconcileAction({ enabled: false }, true), "stopAndDisable");
+    assert.equal(languageClientReconcileAction({ enabled: true }, false), "start");
+    assert.equal(languageClientReconcileAction({ enabled: true }, true), "pushConfiguration");
+  });
+
+  it("restarts only enabled clients for server-shape configuration changes", () => {
+    assert.equal(languageClientConfigurationAction({
+      affectsMerman: true,
+      affectsLanguageIntelligence: false,
+      serverShapeChanged: true,
+      hasClient: true,
+      settings: { enabled: true },
+    }), "restart");
+    assert.equal(languageClientConfigurationAction({
+      affectsMerman: true,
+      affectsLanguageIntelligence: false,
+      serverShapeChanged: true,
+      hasClient: true,
+      settings: { enabled: false },
+    }), "showDisabledStatus");
+  });
+
+  it("keeps server-backed commands non-invasive when disabled", () => {
+    assert.equal(serverBackedCommandAction({ enabled: true }), "run");
+    assert.equal(serverBackedCommandAction({ enabled: false }), "showDisabledWarning");
   });
 
   it("declares language intelligence as a VS Code setting with a non-invasive default", () => {

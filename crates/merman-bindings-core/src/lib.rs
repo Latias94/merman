@@ -164,6 +164,24 @@ mod tests {
     }
 
     #[test]
+    fn analyze_document_json_reports_mdx_source_with_uri_fragment() {
+        let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
+        let json: Value = serde_json::from_slice(
+            &analyze_document_json(source, b"", b"file:///tmp/example.mdx?rev=1#fence").unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["source"]["kind"], "mdx");
+        assert_eq!(json["source"]["language"], "mdx");
+        assert_eq!(
+            json["source"]["path"],
+            "file:///tmp/example.mdx?rev=1#fence"
+        );
+        assert_eq!(json["diagnostics"][0]["span"]["line"], 4);
+    }
+
+    #[test]
     fn validate_json_reports_legacy_projection_for_empty_source() {
         let json: Value = serde_json::from_slice(&validate_json(b"", b"").unwrap()).unwrap();
         assert_eq!(json["valid"], false);

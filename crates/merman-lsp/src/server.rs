@@ -20,7 +20,7 @@ use crate::structure::{
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
-    AnalysisOptions, Analyzer, document::analyze_document, markdown::markdown_source_descriptor,
+    AnalysisOptions, Analyzer, document::analyze_document,
     options_json::analysis_options_from_json_value,
 };
 use std::hash::{Hash, Hasher};
@@ -131,7 +131,7 @@ impl MermanLanguageServer {
         snapshot: &DocumentSnapshot,
     ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
         let source = if crate::document_store::is_markdown_uri(&snapshot.uri) {
-            markdown_source_descriptor(Some(snapshot.uri.as_str()))
+            merman_analysis::source_descriptor_for_uri(snapshot.uri.as_str())
         } else {
             merman_analysis::SourceDescriptor::diagram().with_path(snapshot.uri.as_str())
         };

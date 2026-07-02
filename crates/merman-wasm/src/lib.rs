@@ -692,12 +692,12 @@ fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions,
 
 #[cfg(feature = "editor-language")]
 fn source_descriptor_for_kind(kind: DocumentKind, uri: &str) -> SourceDescriptor {
-    match kind {
-        DocumentKind::Diagram => SourceDescriptor::diagram().with_path(uri.to_string()),
-        DocumentKind::Markdown | DocumentKind::Mdx => {
-            merman_analysis::markdown::markdown_source_descriptor(Some(uri))
-        }
-    }
+    let source_kind = match kind {
+        DocumentKind::Diagram => merman_analysis::SourceKind::Diagram,
+        DocumentKind::Markdown => merman_analysis::SourceKind::Markdown,
+        DocumentKind::Mdx => merman_analysis::SourceKind::Mdx,
+    };
+    merman_analysis::source_descriptor_for_kind(Some(uri), source_kind)
 }
 
 #[cfg(feature = "editor-language")]

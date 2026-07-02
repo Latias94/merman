@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use serde::Serialize;
-use std::path::Path;
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -308,23 +307,7 @@ pub(crate) fn source_text_utf8(bytes: &[u8]) -> Result<&str, BindingError> {
 }
 
 pub(crate) fn source_descriptor_for_uri(uri: &str) -> merman_analysis::SourceDescriptor {
-    let path = uri.split(['?', '#']).next().unwrap_or(uri);
-    let extension = Path::new(path).extension().and_then(|ext| ext.to_str());
-    match extension {
-        Some("md") | Some("markdown") => merman_analysis::SourceDescriptor {
-            kind: merman_analysis::SourceKind::Markdown,
-            path: Some(uri.to_string()),
-            diagram_index: None,
-            language: "markdown".to_string(),
-        },
-        Some("mdx") => merman_analysis::SourceDescriptor {
-            kind: merman_analysis::SourceKind::Mdx,
-            path: Some(uri.to_string()),
-            diagram_index: None,
-            language: "mdx".to_string(),
-        },
-        _ => merman_analysis::SourceDescriptor::diagram().with_path(uri.to_string()),
-    }
+    merman_analysis::source_descriptor_for_uri(uri)
 }
 
 #[cfg(any(feature = "render", feature = "ascii"))]

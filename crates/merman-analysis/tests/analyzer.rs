@@ -1,7 +1,7 @@
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
     DiagnosticCategory, DiagnosticSeverity, SourceDescriptor, document::analyze_document,
-    markdown::markdown_source_descriptor,
+    source_descriptor_for_markdown_path,
 };
 
 fn analyze(source: &str) -> merman_analysis::AnalysisPayload {
@@ -187,7 +187,7 @@ fn markdown_fence_parse_diagnostic_remaps_to_fence_body_not_whole_document() {
     let payload = analyze_document(
         source,
         &analyzer,
-        markdown_source_descriptor(Some("doc.md")),
+        source_descriptor_for_markdown_path(Some("doc.md")),
     );
 
     assert!(!payload.valid);

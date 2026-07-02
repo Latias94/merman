@@ -133,7 +133,7 @@ mod tests {
     use merman_analysis::{
         AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticCategory,
         DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, Utf16Position,
-        document::analyze_document, markdown::markdown_source_descriptor,
+        document::analyze_document,
     };
     use merman_editor_core::DiagnosticCodeActionData;
     use tower_lsp::lsp_types::{
@@ -530,7 +530,7 @@ mod tests {
         let payload = analyze_document(
             source,
             &analyzer,
-            markdown_source_descriptor(Some(uri.as_str())),
+            merman_analysis::source_descriptor_for_uri(uri.as_str()),
         );
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
         let params = CodeActionParams {
@@ -568,7 +568,7 @@ mod tests {
         let payload = analyze_document(
             source,
             &analyzer,
-            markdown_source_descriptor(Some(uri.as_str())),
+            merman_analysis::source_descriptor_for_uri(uri.as_str()),
         );
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
         let params = CodeActionParams {
@@ -608,7 +608,7 @@ mod tests {
         let payload = analyze_document(
             source,
             &analyzer,
-            markdown_source_descriptor(Some(uri.as_str())),
+            merman_analysis::source_descriptor_for_uri(uri.as_str()),
         );
         let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
 
