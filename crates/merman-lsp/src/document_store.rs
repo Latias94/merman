@@ -224,8 +224,18 @@ impl DocumentStore {
             .collect()
     }
 
-    pub(crate) fn documents_with_analyzer(&self) -> (Vec<StoredDocument>, Analyzer) {
-        (self.documents(), self.analyzer.clone())
+    pub(crate) fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
+        self.documents
+            .values()
+            .map(|record| {
+                DiagnosticContext::new(
+                    record.document.clone(),
+                    self.analyzer.clone(),
+                    self.diagnostic_generation,
+                    record.epoch,
+                )
+            })
+            .collect()
     }
 
     pub fn snapshots(&mut self) -> Vec<DocumentSnapshot> {

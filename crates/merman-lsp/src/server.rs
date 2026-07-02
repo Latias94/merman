@@ -1,7 +1,9 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_diagnostics;
-use crate::document_store::{AnalyzerConfigurationChange, SemanticTokensState, SnapshotContext};
+use crate::document_store::{
+    AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotContext,
+};
 use crate::document_store::{DocumentStore, StoredDocument};
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -187,7 +189,38 @@ impl MermanLanguageServer {
         ))
     }
 
-    async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url, version: Option<i32>) {
+    async fn diagnostics_for_current_context(
+        &self,
+        context: &DiagnosticContext,
+    ) -> Option<Vec<tower_lsp::lsp_types::Diagnostic>> {
+        let diagnostics = Self::diagnostics_for_document(&context.document, &context.analyzer);
+        let store = self.store.lock().await;
+        store
+            .is_diagnostic_context_current(context)
+            .then_some(diagnostics)
+    }
+
+    async fn diagnostics_or_recompute_once(
+        &self,
+        context: DiagnosticContext,
+    ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+        if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
+            return diagnostics;
+        }
+
+        let Some(latest_context) = ({
+            let store = self.store.lock().await;
+            store.diagnostic_context(&context.document.uri)
+        }) else {
+            return Vec::new();
+        };
+
+        self.diagnostics_for_current_context(&latest_context)
+            .await
+            .unwrap_or_default()
+    }
+
+    async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url) {
         if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
             return;
         }
@@ -201,10 +234,15 @@ impl MermanLanguageServer {
             return;
         };
 
-        let diagnostics = Self::diagnostics_for_document(&context.document, &context.analyzer);
-        self.client
-            .publish_diagnostics(context.document.uri.clone(), diagnostics, version)
-            .await;
+        if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
+            self.client
+                .publish_diagnostics(
+                    context.document.uri.clone(),
+                    diagnostics,
+                    Some(context.document.version),
+                )
+                .await;
+        }
     }
 
     async fn record_semantic_tokens_state(
@@ -277,16 +315,21 @@ impl MermanLanguageServer {
             return;
         }
 
-        let (documents, analyzer) = {
+        let contexts = {
             let store = self.store.lock().await;
-            store.documents_with_analyzer()
+            store.diagnostic_contexts()
         };
 
-        for document in documents {
-            let diagnostics = Self::diagnostics_for_document(&document, &analyzer);
-            self.client
-                .publish_diagnostics(document.uri.clone(), diagnostics, Some(document.version))
-                .await;
+        for context in contexts {
+            if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
+                self.client
+                    .publish_diagnostics(
+                        context.document.uri.clone(),
+                        diagnostics,
+                        Some(context.document.version),
+                    )
+                    .await;
+            }
         }
     }
 }
@@ -330,7 +373,7 @@ impl LanguageServer for MermanLanguageServer {
             .lock()
             .await
             .upsert_text(doc.uri.clone(), doc.version, doc.text);
-        self.publish_for_uri(&doc.uri, Some(doc.version)).await;
+        self.publish_for_uri(&doc.uri).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -346,16 +389,12 @@ impl LanguageServer for MermanLanguageServer {
         }
         store.upsert_text(doc.uri.clone(), doc.version, text);
         drop(store);
-        self.publish_for_uri(&doc.uri, Some(doc.version)).await;
+        self.publish_for_uri(&doc.uri).await;
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
-        let version = {
-            let store = self.store.lock().await;
-            store.get(&uri).map(|doc| doc.version)
-        };
-        self.publish_for_uri(&uri, version).await;
+        self.publish_for_uri(&uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -425,7 +464,7 @@ impl LanguageServer for MermanLanguageServer {
             ));
         };
 
-        let diagnostics = Self::diagnostics_for_document(&context.document, &context.analyzer);
+        let diagnostics = self.diagnostics_or_recompute_once(context).await;
         let result_id = Some(Self::diagnostic_result_id(&diagnostics));
         Ok(Self::document_diagnostic_report(
             diagnostics,

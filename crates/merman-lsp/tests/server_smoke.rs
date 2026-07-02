@@ -1296,6 +1296,43 @@ async fn lsp_service_diagnostic_pull_refresh_does_not_push_open_documents() {
             .is_err(),
         "unexpected publishDiagnostics message in diagnostic-pull mode"
     );
+
+    let request = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("document diagnostic result"),
+    )
+    .unwrap();
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) = result
+    else {
+        panic!("expected full diagnostic report");
+    };
+    assert!(
+        full.full_document_diagnostic_report.items.is_empty(),
+        "duplicate-commit diagnostic should be gone after the rule is disabled"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
