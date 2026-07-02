@@ -11,6 +11,25 @@ they appear here.
 Families outside this table can still be parser-backed in the core engine. That is useful for
 rendering and compatibility, but it is not enough to count as a mature editor contract.
 
+## Ownership Boundary
+
+`merman-lsp` is a protocol projection over `merman-analysis` and `merman-editor-core`, not a
+separate lint engine or preview product. Analysis owns diagnostics, rule metadata, source/fence
+mapping, and internal projection failures. Editor-core owns protocol-neutral completion, hover,
+symbols, navigation, rename, folding, and semantic-token facts. LSP owns request lifecycle,
+capability advertising, URI/range conversion, token delta encoding, and client cache state.
+
+The LSP document store keeps lazy editor snapshots, but those snapshots are built from the same
+active analyzer configuration used for diagnostics. Diagnostic-only lint rule changes refresh
+diagnostics without invalidating editor snapshots or semantic-token result state. Snapshot-affecting
+changes such as parse options, site config, fixed date/time, resource limits, or source descriptor
+changes clear snapshot-dependent state.
+
+External lint and preview tools can integrate with Merman analysis, coexist beside it, or ignore it.
+Merman language intelligence does not require a host to replace VS Code built-in Mermaid preview,
+third-party preview extensions, markdownlint/remark/textlint rules, or `mermaid-lint`-style CI
+policy.
+
 ## Family Coverage
 
 | Family | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
@@ -175,9 +194,10 @@ Remaining fallback ledger:
   not projected into completion, outline, or rename surfaces.
 - Semantic tokens: the full-document, range, and delta providers are wired from parser-backed
   entity/outline/payload semantic items. Token types derive from `EditorSymbolKind`; token
-  modifiers preserve role categories. Configuration changes ask the client to refresh semantic
-  tokens when refresh support is advertised, and delta requests reuse cached previous token state
-  when the result id matches.
+  modifiers preserve role categories. The LSP semantic-token legend is derived from the editor-core
+  legend so token ordering stays tied to the protocol-neutral semantic contract. Snapshot-affecting
+  configuration changes ask the client to refresh semantic tokens when refresh support is
+  advertised, and delta requests reuse cached previous token state when the result id matches.
 - Text-scan fallback: may support source-start headers/templates and record directive prefixes for
   unmigrated paths, but must not assert body completion availability. It must not project
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`

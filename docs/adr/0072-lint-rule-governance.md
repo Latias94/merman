@@ -53,6 +53,9 @@ The governance rules are:
 10. External lint rule ids remain in their owning tools. Merman configuration rejects ids that are
     not present in the public `merman.*` rule catalog instead of treating markdownlint, remark,
     textlint, `mermaid-lint`, or project-specific style policy as Merman-governed policy.
+11. Internal diagnostics such as `merman.internal.flowchart_facts_projection` are rule-catalog
+    entries for observability, but they are not public lint policy knobs and must stay out of the
+    configurable rule catalog.
 
 The first breaking rule-id migrations are:
 
@@ -114,4 +117,7 @@ The first breaking rule-id migrations are:
 - Alpha users must update old authoring rule IDs.
 - External linters can consume Merman diagnostics without giving up their own rule namespace,
   discovery policy, Mermaid.js fallback, or CI severity model.
+- LSP diagnostics are one projection of the same rule catalog. LSP does not define extra lint rules,
+  and external lint tools do not need to use Merman's analyzer to coexist with Merman language
+  intelligence.
 - Future rule additions need evidence and origin classification before becoming configurable.

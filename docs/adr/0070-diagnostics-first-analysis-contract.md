@@ -75,6 +75,9 @@ The contract has these rules:
      token span or insertion point. Analysis, not LSP or UI code, decides how to merge recovered
      parser facts and when a fallback or whole-source span is honest. LSP Problems use the string
      diagnostic rule id as `Diagnostic.code`; numeric status codes remain payload metadata.
+   - Internal analysis-projection failures also stay in this boundary. For example, if a parser
+     model can no longer be projected into flowchart rich facts, analysis emits an internal
+     diagnostic instead of silently dropping the facts.
 
 5. Source mapping is part of analysis, not each wrapper.
    - Plain `.mmd` input uses the whole document as diagram source.
@@ -211,6 +214,9 @@ Ship a standalone linter before changing the shared bindings.
 - Documentation and tests must distinguish implemented APIs from reserved protocol extensions:
   `textDocument/diagnostic` pull is implemented, but `workspace/diagnostic` remains unimplemented
   until unopened workspace-file scanning exists.
+- Editor and LSP adapters share analyzer configuration with diagnostics. Rule configuration is
+  diagnostic policy; parse, site, time, resource, and source changes are the snapshot-affecting
+  inputs that can change editor facts.
 
 ## Ongoing Governance
 

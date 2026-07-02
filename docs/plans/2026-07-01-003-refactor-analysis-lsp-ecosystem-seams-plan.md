@@ -20,6 +20,29 @@ execution: "code"
 
 ---
 
+## 2026-07-02 Status Note
+
+This plan remains useful ecosystem context, but its core Rust seam work has been narrowed and
+implemented through `docs/plans/2026-07-02-001-refactor-analysis-editor-snapshot-seams-plan.md`.
+Do not revive this full ecosystem plan as the next refactor by default.
+
+- Completed or already present as boundary evidence: shared document/fence analysis behavior,
+  web document analysis and rule metadata surfaces, VS Code coexistence settings, protocol-neutral
+  editor-core language queries, thin LSP projection, analyzer/snapshot configuration alignment,
+  centralized LSP range/position projection, and explicit internal rich-facts projection failure
+  diagnostics.
+- Deferred product work: polished external integration guides, broader adapter examples, and any
+  public VS Code marketplace posture.
+- Out of scope unless a new product plan says otherwise: replacing `mermaid-lint`, porting broad
+  external style policies into Merman, adding a Mermaid.js runtime fallback inside Merman, or making
+  the LSP/VS Code extension mandatory for lint users.
+
+The current boundary is: external lint and preview tools may integrate with Merman, coexist beside
+it, or ignore it; Merman's core value is parser-backed language intelligence and shared analysis
+contracts, not forcing ecosystem convergence.
+
+---
+
 ## Product Contract
 
 ### Summary

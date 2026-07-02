@@ -35,6 +35,13 @@ As of 2026-07-01, `merman-analysis::FenceTextIndex` is the shared semantic index
 editor-core responses into their host protocols; they do not own separate completion, outline,
 navigation, rename, or semantic-token scans.
 
+As of 2026-07-02, editor snapshots also share the active analyzer configuration instead of creating
+an independent analyzer lifecycle. Diagnostic-only rule changes can refresh diagnostics without
+rebuilding editor snapshots. Parse options, site config, fixed date/time, resource limits, and
+source descriptors are snapshot-affecting because they can change parser facts or editor indexes.
+LSP keeps mechanical protocol projection helpers local to `merman-lsp`, and its semantic-token
+legend is derived from the editor-core legend instead of maintaining a second token order.
+
 Every editor-core result that depends on semantic facts carries `FenceTextIndexSource` provenance:
 `ParserComplete`, `ParserRecovered`, or `TextScan`. Parser-backed and recovered results may be
 first-class editor behavior when covered by tests. Text-scan results remain bounded fallback
@@ -44,6 +51,11 @@ behavior and must stay visible in capability docs and tests.
 every parser-produced span as a graph-node completion id. For example, ER attribute names can be
 outline facts, while attribute types, keys, and comments can be payload facts for lint without
 polluting node-id completion.
+
+Rich-facts projection errors are explicit internal analysis failures. If a flowchart parser model
+matches the flowchart family but cannot be deserialized into the published facts shape, analysis
+surfaces an internal diagnostic and omits only that typed facts projection; it does not silently turn
+the failure into indistinguishable absence.
 
 ## Consequences
 
