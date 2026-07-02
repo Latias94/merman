@@ -712,7 +712,7 @@ fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(
-        stdout.contains("notes.md:3:1"),
+        stdout.contains("notes.md:4:6"),
         "unexpected lint output:\n{stdout}"
     );
     assert!(
