@@ -2,8 +2,10 @@ use super::icons::{NetworkPolicy, load_icon_registry};
 use super::raster::RasterCliOptions;
 use crate::cli::{
     ExportArgs, ParseCliArgs, RenderArgs, RenderCliArgs, RenderFormat, SvgPipelineKind,
-    TextCharset, TextColorMode, TextDirection, TextOutputCliArgs,
+    TextOutputCliArgs,
 };
+#[cfg(feature = "ascii")]
+use crate::cli::{TextCharset, TextColorMode, TextDirection};
 use crate::error::CliError;
 use crate::io::{OutputTarget, read_named_text_file, read_optional_text_file};
 use crate::markdown;

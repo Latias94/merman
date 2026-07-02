@@ -6,29 +6,69 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+This update adds local Mermaid authoring on top of the renderer. Users can lint standalone diagrams
+or Markdown fences, try the VS Code extension, and reuse the same parser-backed diagnostics in CLI,
+browser, native, and LSP integrations.
+
 ### Breaking Changes
 
-- `merman-cli` now treats icon pack HTTP(S) loading as opt-in: local `node_modules`, local JSON paths, and `file://` sources still work by default, but unpkg fallback and explicit HTTP(S) icon pack URLs require `--allow-network`.
-- `merman-cli` now uses categorized runtime exit statuses: invalid input/config/output contracts exit with code 2, direct I/O failures exit with code 3, and render/runtime failures keep code 1. Broken stdout pipes are treated as normal pipeline termination.
-- `merman-cli` now writes non-error diagnostics and Markdown batch progress to stderr instead of stdout so stdout remains reserved for requested payload bytes.
-- Removed the optional `merman` `egui-example` feature and desktop GUI example to avoid retaining an unauditable transitive Wayland XML scanner stack in `Cargo.lock`.
+- `merman-cli` now loads icon packs from the network only when `--allow-network` is set. Local
+  `node_modules`, local JSON files, and `file://` icon packs still work by default.
+- `merman-cli` now reserves stdout for requested output bytes. Progress messages and non-error
+  diagnostics move to stderr.
+- `merman-cli` now returns more specific failure codes: 2 for invalid input/config/output, 3 for
+  direct I/O failures, and 1 for render/runtime failures. Broken stdout pipes now exit successfully.
+- Removed the optional `merman` `egui-example` feature and desktop GUI example.
 
 ### Added
 
-- Added a shared FFI publish-surface check that verifies C ABI, Python UniFFI ABI, and package-page metadata before CI and release publishing.
-- Improved Python and Flutter package metadata so PyPI and pub.dev expose changelog, documentation, issue tracker, and discovery links.
-- Added Python UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host text-measurement callbacks that can be installed or cleared on reusable engines.
-- Added `merman-cli --svg-pipeline parity|readable|resvg-safe` so users can request export-safe SVG bytes directly without choosing a raster format.
+- Added `merman-analysis`, a diagnostics-first analysis engine for standalone Mermaid files,
+  Markdown, and MDX Mermaid fences.
+- Added `merman-cli lint` and `merman-cli lint-rules` for CI, editor adapters, and local checks.
+  Output can be JSON or text, and lint profiles/rules can be configured from the command line.
+- Added `merman-lsp` for diagnostics, completion, hover, symbols, references, rename, selection and
+  folding ranges, semantic tokens, quick fixes, and rule/config metadata.
+- Added a VS Code extension with local diagnostics, language features, preview, SVG/PNG export,
+  copy actions, snippets, and packaged per-platform `merman-lsp` / `merman-cli` runtimes.
+- Added browser APIs for analysis and editor integrations, including `analyzeDocument`,
+  `analyzeDocumentFacts`, editor diagnostics, completions, hover, symbols, navigation, rename, and
+  semantic tokens.
+- Added parser-backed syntax facts and source ranges across more diagram families so diagnostics,
+  completions, symbols, rename, and navigation can work from Mermaid semantics instead of regex-only
+  scans.
+- Added Python UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host
+  text-measurement callbacks.
+- Added `merman-cli --svg-pipeline parity|readable|resvg-safe` so users can request export-safe SVG
+  bytes directly without choosing a raster format.
 
 ### Changed
 
-- Split the `merman-cli` render implementation into focused plan, executor, Markdown export, raster/PDF, icon loading, and SVG pipeline modules while keeping the public CLI entrypoints unchanged.
-- Refreshed workspace dependencies, including `toml` 1.1 and UniFFI 0.32, and pruned the unused GUI example dependency graph from the lockfile.
+- VS Code users can enable preview/export, diagnostics, source actions, and language intelligence
+  independently, making Merman easier to run beside other Mermaid preview or lint extensions.
+- Browser packages now expose build presets and capability metadata so hosts can check whether
+  render, ASCII, ELK, analysis, or editor-language APIs are available in the loaded WASM artifact.
+- Refreshed workspace dependencies, including `toml` 1.1 and UniFFI 0.32, and pruned unused GUI
+  dependencies from the lockfile.
+- Improved Python, Flutter, and package metadata so package pages expose changelog, documentation,
+  issue tracker, and discovery links.
 
 ### Fixed
 
-- Fixed `resvg-safe` SVG output options so hosts that explicitly enable `drop_native_duplicate_fallbacks` can remove duplicate native/fallback labels after raster-safe fallback generation.
-- Cleared the `quick-xml` RustSec audit failures by removing the stale optional GUI example dependency path that pulled in the vulnerable Wayland scanner build dependency.
+- Fixed VS Code preview lifecycle issues around multi-fence Markdown documents, source switching,
+  stale renders, diagnostic overlays, zoom state, and copy/export source targeting.
+- Fixed LSP currentness handling so stale diagnostics and semantic-token results are not republished
+  after newer document changes arrive.
+- Fixed `resvg-safe` SVG output options so hosts can remove duplicate native/fallback labels after
+  raster-safe fallback generation.
+- Cleared the `quick-xml` RustSec audit failures by removing the stale optional GUI example
+  dependency path that pulled in the vulnerable Wayland scanner build dependency.
+
+### Packaging and CI
+
+- Added CI coverage for VS Code extension builds, package smoke checks, and platform-specific VSIX
+  artifacts.
+- Added release preflight checks for C ABI, Python UniFFI ABI, package metadata, and publish-facing
+  surfaces.
 
 ## [0.8.0-alpha.2] - 2026-06-23
 
