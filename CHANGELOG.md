@@ -11,6 +11,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added a shared FFI publish-surface check that verifies C ABI, Python UniFFI ABI, and package-page metadata before CI and release publishing.
 - Improved Python and Flutter package metadata so PyPI and pub.dev expose changelog, documentation, issue tracker, and discovery links.
 - Added Python UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host text-measurement callbacks that can be installed or cleared on reusable engines.
+- Added `merman-cli --svg-pipeline parity|readable|resvg-safe` so users can request export-safe SVG bytes directly without choosing a raster format.
 
 ### Fixed
 

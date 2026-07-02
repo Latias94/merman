@@ -1,6 +1,6 @@
 use crate::cli::{
-    ExportArgs, ParseCliArgs, RasterCliArgs, RenderArgs, RenderCliArgs, RenderFormat, TextCharset,
-    TextColorMode, TextDirection, TextOutputCliArgs,
+    ExportArgs, ParseCliArgs, RasterCliArgs, RenderArgs, RenderCliArgs, RenderFormat,
+    SvgPipelineKind, TextCharset, TextColorMode, TextDirection, TextOutputCliArgs,
 };
 use crate::config::{engine_for, layout_options, math_renderer, parse_options};
 use crate::error::CliError;
@@ -40,6 +40,7 @@ pub(crate) struct RenderPlan {
     raster: RasterCliOptions,
     background: Option<String>,
     css: Option<String>,
+    svg_pipeline: Option<SvgPipelineKind>,
     icon_registry: Option<Arc<IconRegistry>>,
     artefacts: Option<PathBuf>,
     jobs: usize,
@@ -113,6 +114,7 @@ pub(crate) fn render_plan_for_mmdc(
                 .unwrap_or_else(|| "white".to_string()),
         ),
         css: read_optional_text_file(export.css_file.as_deref(), "CSS file")?,
+        svg_pipeline: export.svg_pipeline,
         icon_registry,
         artefacts,
         jobs: export.jobs.unwrap_or_else(default_jobs),
@@ -143,6 +145,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         raster: RasterCliOptions::from_args(&args.export.raster)?,
         background: args.export.background_color.clone(),
         css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
+        svg_pipeline: args.export.svg_pipeline,
         icon_registry,
         artefacts: None,
         jobs: 1,
@@ -324,7 +327,7 @@ impl<'a> RenderRequest<'a> {
         let pipeline = if self.plan.format.is_raster() {
             SvgPipeline::resvg_safe()
         } else {
-            SvgPipeline::parity()
+            svg_pipeline_from_kind(self.plan.svg_pipeline.unwrap_or(SvgPipelineKind::Parity))
         };
         svg_postprocess_pipeline(
             pipeline,
@@ -432,6 +435,14 @@ fn svg_postprocess_pipeline(
         pipeline.push_postprocessor(ScopedCssPostprocessor::new(css));
     }
     pipeline
+}
+
+fn svg_pipeline_from_kind(kind: SvgPipelineKind) -> SvgPipeline {
+    match kind {
+        SvgPipelineKind::Parity => SvgPipeline::parity(),
+        SvgPipelineKind::Readable => SvgPipeline::readable(),
+        SvgPipelineKind::ResvgSafe => SvgPipeline::resvg_safe(),
+    }
 }
 
 impl RenderPlan {
@@ -954,6 +965,7 @@ mod tests {
             raster: RasterCliOptions::default(),
             background: Some("#f8fafc".to_string()),
             css: Some(".node { fill: red; }".to_string()),
+            svg_pipeline: None,
             icon_registry: None,
             artefacts: None,
             jobs: 1,
@@ -966,7 +978,8 @@ mod tests {
 
     #[test]
     fn diagram_raster_pipeline_uses_resvg_safe_before_cli_postprocessors() {
-        let plan = test_plan(RenderFormat::Png);
+        let mut plan = test_plan(RenderFormat::Png);
+        plan.svg_pipeline = Some(SvgPipelineKind::Readable);
         let engine = Engine::new();
         let request = RenderRequest {
             plan: &plan,
@@ -1010,6 +1023,34 @@ mod tests {
             .unwrap();
 
         assert!(out.contains("<foreignObject"));
+        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert_eq!(
+            out.matches(r#"data-merman-postprocess="scoped-css""#)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn diagram_svg_pipeline_can_request_resvg_safe_before_cli_postprocessors() {
+        let mut plan = test_plan(RenderFormat::Svg);
+        plan.svg_pipeline = Some(SvgPipelineKind::ResvgSafe);
+        let engine = Engine::new();
+        let request = RenderRequest {
+            plan: &plan,
+            engine: &engine,
+            parse_options: ParseOptions::default(),
+            math_renderer: None,
+        };
+        let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
+
+        let out = request
+            .postprocess_pipeline()
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(!out.contains("<foreignObject"));
+        assert!(out.contains(r#"data-merman-foreignobject="fallback""#));
         assert!(out.contains(r#"style="background-color: #f8fafc;""#));
         assert_eq!(
             out.matches(r#"data-merman-postprocess="scoped-css""#)

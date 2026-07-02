@@ -500,6 +500,42 @@ fn top_level_output_dash_writes_to_stdout() {
 }
 
 #[test]
+fn top_level_svg_pipeline_resvg_safe_outputs_export_safe_svg() {
+    let diagram = "flowchart TD
+A[Start] --> B{Is it working?}
+B -->|Yes| C[Ship it]
+B -->|No| D[Debug]
+";
+    let parity = run_with_stdin(&["-i", "-", "-o", "-"], diagram);
+    let resvg_safe = run_with_stdin(
+        &["-i", "-", "-o", "-", "--svg-pipeline", "resvg-safe"],
+        diagram,
+    );
+
+    assert!(parity.status.success(), "stderr: {:?}", parity.stderr);
+    assert!(
+        resvg_safe.status.success(),
+        "stderr: {:?}",
+        resvg_safe.stderr
+    );
+
+    let parity_svg = String::from_utf8(parity.stdout).expect("parity stdout should be utf8");
+    let safe_svg = String::from_utf8(resvg_safe.stdout).expect("resvg-safe stdout should be utf8");
+    assert!(
+        parity_svg.contains("<foreignObject"),
+        "default SVG output should preserve parity HTML labels:\n{parity_svg}"
+    );
+    assert!(
+        !safe_svg.contains("<foreignObject"),
+        "resvg-safe SVG output should not rely on foreignObject:\n{safe_svg}"
+    );
+    assert!(
+        safe_svg.contains(r#"data-merman-foreignobject="fallback""#),
+        "resvg-safe SVG output should keep generated text fallbacks:\n{safe_svg}"
+    );
+}
+
+#[test]
 fn top_level_infers_png_from_output_extension() {
     let root = repo_root();
     let fixture = root.join("fixtures").join("flowchart").join("basic.mmd");

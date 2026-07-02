@@ -77,13 +77,18 @@ Bindings accept the same profile through `host_theme`:
     "output": {
       "pipeline": "resvg-safe",
       "root_background": "canvas",
-      "css_override_policy": "strip-existing-important"
+      "css_override_policy": "strip-existing-important",
+      "drop_native_duplicate_fallbacks": false
     }
   }
 }
 ```
 
 `appearance` accepts `light` or `dark`. `output.pipeline` accepts `parity`, `readable`, or `resvg-safe`. `output.root_background` accepts `none`, `canvas`, or a CSS color value. An empty `{ "host_theme": {} }` is a no-op and does not force Mermaid `theme=base`.
+
+`output.drop_native_duplicate_fallbacks` is an explicit cleanup policy for host surfaces where
+native SVG text and generated fallback text are both visible. It is off by default because repeated
+labels can be intentional in unrelated nodes.
 
 `preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`, `themeVariables`, `site_config`, and `output` values override the preset. These host presets are separate from Mermaid core theme names returned by `supported_themes()`. Built-in host presets default to editor-safe `resvg-safe` output; an empty `{ "host_theme": {} }` remains a no-op.
 

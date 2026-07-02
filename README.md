@@ -322,6 +322,8 @@ If your downstream renderer does not support SVG `<foreignObject>` (common for r
 prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use
 `HeadlessRenderer::render_svg_readable_sync()` when you want to keep the original
 `<foreignObject>` nodes and add best-effort `<text>/<tspan>` fallback overlays.
+For CLI output, `merman-cli -i diagram.mmd -o diagram.svg --svg-pipeline resvg-safe` writes the
+same export-oriented SVG contract directly.
 
 When you enable the `raster` feature, PNG/JPG conversion is target-aware and budgeted. A Mermaid
 SVG can legitimately have a very large `viewBox`; browser previews usually draw that vector SVG

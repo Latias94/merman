@@ -64,12 +64,14 @@ provided.
 
 SVG output uses the Mermaid-parity contract. PNG, JPG, and PDF output use the export contract: the
 CLI applies the `resvg-safe` SVG pipeline before raster/PDF conversion so strict headless renderers
-do not have to understand Mermaid HTML labels in `<foreignObject>`.
+do not have to understand Mermaid HTML labels in `<foreignObject>`. If you need SVG bytes with the
+same export-safe cleanup, request it explicitly with `--svg-pipeline resvg-safe`.
 
 Examples:
 
 ```sh
 merman-cli -i diagram.mmd -o diagram.svg
+merman-cli -i diagram.mmd -o diagram.svg --svg-pipeline resvg-safe
 merman-cli -i diagram.mmd -o diagram.png
 merman-cli -i diagram.mmd -o diagram.jpg
 merman-cli -i diagram.mmd -o diagram.pdf
@@ -211,6 +213,8 @@ terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 - `--flowchart-elk-backend source-ported|compat` selects the Flowchart ELK backend. The default
   source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port; `compat`
   keeps the older lightweight alpha fallback available for diagnostics.
+- `--svg-pipeline parity|readable|resvg-safe` selects the SVG output contract for SVG files.
+  Raster/PDF formats keep the built-in `resvg-safe` export path.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
 - `--fixed-today <YYYY-MM-DD>` fixes the local "today" date for time-dependent diagrams such as
   Gantt.
