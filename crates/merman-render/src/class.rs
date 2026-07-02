@@ -2685,6 +2685,7 @@ fn class_graph_to_elk_graph(
 }
 
 #[cfg(feature = "elk-layout")]
+#[allow(clippy::too_many_arguments)]
 fn class_layout_from_elk(
     model: &ClassDiagramModel,
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,

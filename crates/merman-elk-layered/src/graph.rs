@@ -613,10 +613,10 @@ impl LGraph {
             self.layers.push(Layer::new());
         }
 
-        if let Some(old_layer) = self.layerless_nodes[node_index].layer_index {
-            if let Some(layer) = self.layers.get_mut(old_layer) {
-                remove_node(&mut layer.nodes, node_index);
-            }
+        if let Some(old_layer) = self.layerless_nodes[node_index].layer_index
+            && let Some(layer) = self.layers.get_mut(old_layer)
+        {
+            remove_node(&mut layer.nodes, node_index);
         }
 
         self.layerless_nodes[node_index].layer_index = Some(layer_index);
@@ -626,10 +626,10 @@ impl LGraph {
     pub fn insert_layer(&mut self, layer_index: usize) {
         self.layers.insert(layer_index, Layer::new());
         for node in &mut self.layerless_nodes {
-            if let Some(current) = node.layer_index {
-                if current >= layer_index {
-                    node.layer_index = Some(current + 1);
-                }
+            if let Some(current) = node.layer_index
+                && current >= layer_index
+            {
+                node.layer_index = Some(current + 1);
             }
         }
     }
@@ -901,9 +901,7 @@ impl LGraph {
         node_index: usize,
         new_order: impl IntoIterator<Item = usize>,
     ) -> Option<Vec<usize>> {
-        let Some(node) = self.layerless_nodes.get(node_index) else {
-            return None;
-        };
+        let node = self.layerless_nodes.get(node_index)?;
         let port_count = node.ports.len();
         let new_order = new_order.into_iter().collect::<Vec<_>>();
         if new_order.len() != port_count {
@@ -1145,6 +1143,7 @@ fn remove_node(nodes: &mut Vec<usize>, node_index: usize) {
 ///
 /// Source:
 /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph/LGraphUtil.java
+#[allow(clippy::too_many_arguments)]
 pub fn create_external_port_dummy(
     id: impl Into<String>,
     port_id: impl Into<String>,

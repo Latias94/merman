@@ -290,15 +290,9 @@ pub fn validate_svg_pdf_size(svg: &str, options: &RasterOptions) -> Result<Raste
 
 fn svg_to_pdf_unchecked(svg: &str) -> Result<Vec<u8>> {
     use krilla_svg::SurfaceExt;
-    use std::sync::Arc;
 
-    let mut fontdb = usvg::fontdb::Database::new();
-    fontdb.load_system_fonts();
-    let opts = usvg::Options {
-        fontdb: Arc::new(fontdb),
-        font_family: "Arial".to_string(),
-        ..Default::default()
-    };
+    let mut opts = usvg::Options::default();
+    configure_usvg_options_for_pdf(&mut opts);
     let svg_tree = usvg::Tree::from_str(svg, &opts).map_err(|_| RasterError::SvgParse)?;
     let mut document = krilla::Document::new();
     let Some(svg_size) =

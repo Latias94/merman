@@ -974,9 +974,9 @@ fn first_self_loop_lines(
         top_marker,
     ]);
 
-    for row_index in 2..label_start_row {
-        lines[row_index] = concat_relation_lines(vec![
-            lines[row_index].clone(),
+    for line in lines.iter_mut().take(label_start_row).skip(2) {
+        *line = concat_relation_lines(vec![
+            line.clone(),
             RelationGraphLine::plain(
                 " ".repeat(geometry.loop_col.saturating_sub(relation_box.width())),
             ),

@@ -428,12 +428,16 @@ fn is_input_descendant(index: &InputIndex<'_>, node_id: &str, ancestor_id: &str)
 }
 
 fn nested_graph_options(parent_options: &LayeredOptions, node: &ElkInputNode) -> LayeredOptions {
-    let mut options = LayeredOptions::default();
-    options.direction = parent_options.direction;
-    options.hierarchy_handling =
-        resolve_child_hierarchy_handling(node.hierarchy_handling, parent_options);
-    options.port_constraints = node.port_constraints.unwrap_or(PortConstraints::Free);
-    options.inside_self_loops_activate = parent_options.inside_self_loops_activate;
+    let mut options = LayeredOptions {
+        direction: parent_options.direction,
+        hierarchy_handling: resolve_child_hierarchy_handling(
+            node.hierarchy_handling,
+            parent_options,
+        ),
+        port_constraints: node.port_constraints.unwrap_or(PortConstraints::Free),
+        inside_self_loops_activate: parent_options.inside_self_loops_activate,
+        ..LayeredOptions::default()
+    };
     if let Some(spacing_base) = node.nested_spacing_base {
         options.spacing = SpacingOptions::layered_base_value(spacing_base);
     }
@@ -595,6 +599,7 @@ fn transform_edge(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn transform_edge_between(
     edge: &ElkInputEdge,
     graph: &mut LGraph,
@@ -954,13 +959,13 @@ impl<'a> InputIndex<'a> {
 
         let mut children_by_parent: HashMap<Option<&str>, Vec<&ElkInputNode>> = HashMap::new();
         for node in &input.nodes {
-            if let Some(parent) = node.parent.as_deref() {
-                if !nodes.contains_key(parent) {
-                    return Err(ImportError::MissingParent {
-                        node_id: node.id.clone(),
-                        parent_id: parent.to_string(),
-                    });
-                }
+            if let Some(parent) = node.parent.as_deref()
+                && !nodes.contains_key(parent)
+            {
+                return Err(ImportError::MissingParent {
+                    node_id: node.id.clone(),
+                    parent_id: parent.to_string(),
+                });
             }
             children_by_parent
                 .entry(node.parent.as_deref())

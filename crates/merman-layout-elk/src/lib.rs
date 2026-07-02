@@ -710,12 +710,11 @@ fn compound_layout_segments_for_edge(
     let segments = graph
         .cross_hierarchy_edges
         .iter()
-        .filter_map(|segment| {
-            (segment.edge == edge_index).then(|| CompoundLayoutSegment {
-                original_edge_id: segment.original_edge_id.clone(),
-                model_order: segment.original_model_order,
-                segment: segment.segment,
-            })
+        .filter(|segment| segment.edge == edge_index)
+        .map(|segment| CompoundLayoutSegment {
+            original_edge_id: segment.original_edge_id.clone(),
+            model_order: segment.original_model_order,
+            segment: segment.segment,
         })
         .collect::<Vec<_>>();
 
