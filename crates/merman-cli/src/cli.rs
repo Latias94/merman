@@ -490,6 +490,10 @@ pub(crate) struct RasterCliArgs {
 
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct IconCliArgs {
+    /// Allow icon pack loading from HTTP(S) URLs.
+    #[arg(long = "allow-network", help_heading = "Icon packs")]
+    pub(crate) allow_network: bool,
+
     /// Iconify package names.
     #[arg(long = "iconPacks", num_args = 1.., help_heading = "Icon packs")]
     pub(crate) icon_packs: Vec<String>,

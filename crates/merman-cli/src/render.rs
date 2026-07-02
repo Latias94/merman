@@ -83,6 +83,7 @@ pub(crate) fn render_plan_for_mmdc(
     let icon_registry = load_icon_registry(
         &export.icons.icon_packs,
         &export.icons.icon_packs_names_and_urls,
+        NetworkPolicy::from_allow_network(export.icons.allow_network),
     )?;
     let format = infer_output_format(export.output.as_deref(), export.output_format)
         .unwrap_or(RenderFormat::Svg);
@@ -133,6 +134,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
     let icon_registry = load_icon_registry(
         &args.export.icons.icon_packs,
         &args.export.icons.icon_packs_names_and_urls,
+        NetworkPolicy::from_allow_network(args.export.icons.allow_network),
     )?;
 
     Ok(RenderPlan {
@@ -407,7 +409,7 @@ impl<'a> RenderRequest<'a> {
 
     fn info(&self, message: &str) {
         if !self.plan.quiet {
-            println!("{message}");
+            eprintln!("{message}");
         }
     }
 
@@ -619,6 +621,7 @@ fn validate_puppeteer_config_file(path: Option<&str>) -> Result<(), CliError> {
 fn load_icon_registry(
     icon_packs: &[String],
     icon_packs_names_and_urls: &[String],
+    network_policy: NetworkPolicy,
 ) -> Result<Option<Arc<IconRegistry>>, CliError> {
     if icon_packs.is_empty() && icon_packs_names_and_urls.is_empty() {
         return Ok(None);
@@ -629,12 +632,18 @@ fn load_icon_registry(
 
     for icon_pack in icon_packs {
         let prefix = icon_pack_package_prefix(icon_pack)?;
-        let source = local_icon_pack_path(icon_pack, &cwd)
-            .map(IconPackSource::LocalPath)
-            .unwrap_or_else(|| {
+        let source = match local_icon_pack_path(icon_pack, &cwd) {
+            Some(path) => IconPackSource::LocalPath(path),
+            None if network_policy.allows_network() => {
                 IconPackSource::RemoteUrl(format!("https://unpkg.com/{icon_pack}/icons.json"))
-            });
-        let json = read_icon_pack_source(&source)?;
+            }
+            None => {
+                return Err(CliError::InvalidInput(format!(
+                    "Icon pack `{icon_pack}` was not found in node_modules or as a local JSON path. Install it locally or pass --allow-network to fetch it from unpkg."
+                )));
+            }
+        };
+        let json = read_icon_pack_source(&source, network_policy)?;
         register_icon_pack_json(&mut registry, &json, Some(&prefix), icon_pack)?;
     }
 
@@ -653,11 +662,31 @@ fn load_icon_registry(
         }
 
         let source = icon_pack_source_from_cli(source, &cwd);
-        let json = read_icon_pack_source(&source)?;
+        let json = read_icon_pack_source(&source, network_policy)?;
         register_icon_pack_json(&mut registry, &json, Some(prefix), icon_pack_info)?;
     }
 
     Ok((!registry.is_empty()).then(|| Arc::new(registry)))
+}
+
+#[derive(Debug, Clone, Copy)]
+enum NetworkPolicy {
+    Offline,
+    AllowNetwork,
+}
+
+impl NetworkPolicy {
+    const fn from_allow_network(allow_network: bool) -> Self {
+        if allow_network {
+            Self::AllowNetwork
+        } else {
+            Self::Offline
+        }
+    }
+
+    const fn allows_network(self) -> bool {
+        matches!(self, Self::AllowNetwork)
+    }
 }
 
 enum IconPackSource {
@@ -718,7 +747,10 @@ fn icon_pack_source_from_cli(source: &str, cwd: &Path) -> IconPackSource {
     }
 }
 
-fn read_icon_pack_source(source: &IconPackSource) -> Result<String, CliError> {
+fn read_icon_pack_source(
+    source: &IconPackSource,
+    network_policy: NetworkPolicy,
+) -> Result<String, CliError> {
     match source {
         IconPackSource::LocalPath(path) => std::fs::read_to_string(path).map_err(|err| {
             CliError::InvalidInput(format!(
@@ -726,7 +758,12 @@ fn read_icon_pack_source(source: &IconPackSource) -> Result<String, CliError> {
                 path.display()
             ))
         }),
-        IconPackSource::RemoteUrl(url) => fetch_icon_pack_json(url),
+        IconPackSource::RemoteUrl(url) if network_policy.allows_network() => {
+            fetch_icon_pack_json(url)
+        }
+        IconPackSource::RemoteUrl(url) => Err(CliError::InvalidInput(format!(
+            "Icon pack URL `{url}` requires --allow-network before merman-cli will fetch HTTP(S) sources."
+        ))),
     }
 }
 
