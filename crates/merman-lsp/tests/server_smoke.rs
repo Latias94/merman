@@ -13,8 +13,9 @@ use tower_lsp::lsp_types::{
     DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentSymbolParams,
     GotoDefinitionParams, HoverContents, HoverParams, InitializeParams, NumberOrString, Position,
     PrepareRenameResponse, PublishDiagnosticsParams, Range, ReferenceContext, ReferenceParams,
-    RenameParams, SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
-    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
+    RenameParams, SelectionRange, SelectionRangeParams, SemanticTokensDeltaParams,
+    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
@@ -2103,6 +2104,98 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
             .iter()
             .any(|symbol| symbol.location.uri == other_uri)
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_selection_range_mixed_positions_returns_fallbacks() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.md").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({"capabilities":{}}))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "markdown".to_string(),
+                    version: 1,
+                    text: "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let inside_only = Request::build("textDocument/selectionRange")
+        .params(
+            serde_json::to_value(SelectionRangeParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                positions: vec![Position::new(2, 0), Position::new(3, 0)],
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let inside_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(inside_only)
+        .await
+        .unwrap();
+    let inside_value = inside_response
+        .and_then(|response| response.result().cloned())
+        .expect("expected selection ranges result");
+    let ranges: Vec<SelectionRange> = serde_json::from_value(inside_value).unwrap();
+    assert_eq!(ranges.len(), 2);
+
+    let mixed = Request::build("textDocument/selectionRange")
+        .params(
+            serde_json::to_value(SelectionRangeParams {
+                text_document: TextDocumentIdentifier { uri },
+                positions: vec![Position::new(0, 1), Position::new(3, 0)],
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(3)
+        .finish();
+    let mixed_response = service.ready().await.unwrap().call(mixed).await.unwrap();
+    let mixed_value = mixed_response
+        .and_then(|response| response.result().cloned())
+        .expect("expected selection ranges result");
+    let ranges: Vec<SelectionRange> = serde_json::from_value(mixed_value).unwrap();
+    assert_eq!(ranges.len(), 2);
+    assert_eq!(
+        ranges[0].range,
+        tower_lsp::lsp_types::Range::new(Position::new(0, 1), Position::new(0, 1))
+    );
+    assert!(ranges[0].parent.is_none());
+    assert_eq!(ranges[1].range.start, Position::new(3, 0));
+    assert!(ranges[1].parent.is_some());
 }
 
 #[tokio::test(flavor = "current_thread")]

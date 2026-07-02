@@ -39,8 +39,9 @@ impl DocumentSnapshot {
     pub fn fence_at_position(&self, position: Position) -> Option<&FenceSnapshot> {
         let offset = self.byte_offset_for_position(position)?;
 
-        self.fences
-            .iter()
-            .find(|fence| offset >= fence.start && offset <= fence.end)
+        self.fences.iter().find(|fence| {
+            offset >= fence.start
+                && (offset < fence.end || (fence.fence_delimiter.is_none() && offset == fence.end))
+        })
     }
 }

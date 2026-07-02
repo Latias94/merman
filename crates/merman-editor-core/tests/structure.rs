@@ -217,6 +217,7 @@ fn selection_range_ignores_markdown_prose() {
 
     assert!(selection_range(&snapshot, Position::new(0, 1)).is_none());
     assert!(selection_range(&snapshot, Position::new(3, 0)).is_some());
+    assert!(selection_range(&snapshot, Position::new(5, 0)).is_none());
 }
 
 #[test]

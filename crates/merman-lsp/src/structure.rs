@@ -67,15 +67,23 @@ pub fn selection_ranges(
     snapshot: &DocumentSnapshot,
     positions: &[Position],
 ) -> Option<Vec<SelectionRange>> {
-    let positions = positions
+    let core_positions = positions
         .iter()
         .copied()
         .map(position_to_core)
         .collect::<Vec<_>>();
-    core_selection_ranges(&snapshot.to_editor(), &positions)
-        .into_iter()
-        .map(|range| selection_range_to_lsp(range?))
-        .collect()
+
+    Some(
+        core_selection_ranges(&snapshot.to_editor(), &core_positions)
+            .into_iter()
+            .zip(positions.iter().copied())
+            .map(|(range, position)| {
+                range
+                    .and_then(selection_range_to_lsp)
+                    .unwrap_or_else(|| fallback_selection_range(position))
+            })
+            .collect(),
+    )
 }
 
 pub fn folding_ranges(snapshot: &DocumentSnapshot) -> Vec<FoldingRange> {
@@ -150,6 +158,13 @@ fn selection_range_to_lsp(selection_range: EditorSelectionRange) -> Option<Selec
         range: range_to_lsp(selection_range.range),
         parent,
     })
+}
+
+fn fallback_selection_range(position: Position) -> SelectionRange {
+    SelectionRange {
+        range: Range::new(position, position),
+        parent: None,
+    }
 }
 
 fn folding_range_to_lsp(folding_range: EditorFoldingRange) -> FoldingRange {
@@ -268,60 +283,11 @@ fn symbol_kind(kind: EditorSymbolKind) -> SymbolKind {
     }
 }
 
-pub fn outline_hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
-    hover(snapshot, position)
-}
-
-pub fn outline_document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
-    document_symbols(snapshot)
-}
-
-pub fn outline_selection_ranges(
-    snapshot: &DocumentSnapshot,
-    positions: &[Position],
-) -> Option<Vec<SelectionRange>> {
-    selection_ranges(snapshot, positions)
-}
-
-pub fn outline_folding_ranges(snapshot: &DocumentSnapshot) -> Vec<FoldingRange> {
-    folding_ranges(snapshot)
-}
-
-pub fn outline_definition(
-    snapshot: &DocumentSnapshot,
-    position: Position,
-) -> Option<GotoDefinitionResponse> {
-    goto_definition(snapshot, position)
-}
-
-pub fn outline_references(
-    snapshot: &DocumentSnapshot,
-    position: Position,
-    include_declaration: bool,
-) -> Option<Vec<Location>> {
-    references(snapshot, position, include_declaration)
-}
-
-pub fn outline_prepare_rename(
-    snapshot: &DocumentSnapshot,
-    position: Position,
-) -> Option<PrepareRenameResponse> {
-    prepare_rename(snapshot, position)
-}
-
-pub fn outline_rename(
-    snapshot: &DocumentSnapshot,
-    params: RenameParams,
-) -> Result<Option<WorkspaceEdit>> {
-    rename(snapshot, params)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        outline_definition, outline_document_symbols, outline_folding_ranges, outline_hover,
-        outline_prepare_rename, outline_references, outline_rename, outline_selection_ranges,
-        workspace_symbols,
+        document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references,
+        rename, selection_ranges, workspace_symbols,
     };
     use crate::document_store::DocumentStore;
     use tower_lsp::lsp_types::{
@@ -340,7 +306,7 @@ mod tests {
             "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
         );
 
-        let response = outline_document_symbols(&snapshot);
+        let response = document_symbols(&snapshot);
         let nested = match response {
             DocumentSymbolResponse::Nested(symbols) => symbols,
             other => panic!("unexpected symbol response: {other:?}"),
@@ -364,7 +330,7 @@ mod tests {
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\n".to_string());
 
-        let hover = outline_hover(&snapshot, Position::new(1, 0)).unwrap();
+        let hover = hover(&snapshot, Position::new(1, 0)).unwrap();
         let text = match hover.contents {
             HoverContents::Markup(markup) => markup.value,
             other => panic!("unexpected hover contents: {other:?}"),
@@ -384,7 +350,7 @@ mod tests {
             "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
         );
 
-        let ranges = outline_selection_ranges(&snapshot, &[Position::new(2, 0)]).unwrap();
+        let ranges = selection_ranges(&snapshot, &[Position::new(2, 0)]).unwrap();
 
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].range.start, Position::new(2, 0));
@@ -402,7 +368,7 @@ mod tests {
             "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
         );
 
-        let ranges = outline_folding_ranges(&snapshot);
+        let ranges = folding_ranges(&snapshot);
 
         assert!(ranges.iter().any(|range| {
             range.start_line == 1
@@ -418,7 +384,7 @@ mod tests {
         let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
 
         let position = Position::new(1, 0);
-        let prepare = outline_prepare_rename(&snapshot, position).unwrap();
+        let prepare = prepare_rename(&snapshot, position).unwrap();
         match prepare {
             PrepareRenameResponse::RangeWithPlaceholder { placeholder, .. } => {
                 assert_eq!(placeholder, "A");
@@ -426,10 +392,10 @@ mod tests {
             other => panic!("unexpected prepare rename response: {other:?}"),
         }
 
-        let refs = outline_references(&snapshot, position, true).unwrap();
+        let refs = references(&snapshot, position, true).unwrap();
         assert_eq!(refs.len(), 2);
 
-        let rename = outline_rename(
+        let rename = rename(
             &snapshot,
             RenameParams {
                 text_document_position: TextDocumentPositionParams::new(
@@ -454,7 +420,7 @@ mod tests {
             2
         );
 
-        let def = outline_definition(&snapshot, position).unwrap();
+        let def = goto_definition(&snapshot, position).unwrap();
         assert!(matches!(def, GotoDefinitionResponse::Scalar(_)));
     }
 

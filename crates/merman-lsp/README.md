@@ -8,13 +8,15 @@ language behavior.
 
 - Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
   `completionItem/resolve`, `documentSymbol`, `definition`, `references`, `prepareRename`,
-  `rename`, `codeAction`, `semanticTokens/full`, and `semanticTokens/range`.
+  `rename`, `selectionRange`, `foldingRange`, `codeAction`, `semanticTokens/full`, and
+  `semanticTokens/range`.
 - Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
   including `merman/ruleCatalog` and `merman/configSchema`.
 - Publish diagnostics from `merman-analysis`, including document pull diagnostics.
 - Keep document state versioned so stale diagnostics are not republished.
-- Project `merman-editor-core` completion, hover, document symbols, workspace symbols, definition,
-  references, prepare-rename, rename, and semantic-token responses into LSP types.
+- Project `merman-editor-core` completion, hover, document symbols, selection ranges, folding
+  ranges, workspace symbols, definition, references, prepare-rename, rename, and semantic-token
+  responses into LSP types.
 - Provide fix-backed quickfix code actions from shared analysis diagnostics.
 - Reject `workspace/diagnostic` while unopened workspace-file scanning has no owner; tracked
   document snapshots still support workspace symbols.
