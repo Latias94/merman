@@ -57,6 +57,9 @@
     "workspaceContains:**/*.mermaid"
   ],
   "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
   "contributes": {
     "languages": [
       {

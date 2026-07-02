@@ -54,7 +54,7 @@ is required for normal use.
 3. Launch an extension development window:
 
    ```bash
-   code --extensionDevelopmentPath="$PWD/tools/vscode-extension"
+   code --extensionDevelopmentPath="$PWD"
    ```
 
 4. Open a `.mmd`, `.mermaid`, `.md`, `.markdown`, or `.mdx` file and edit a Mermaid diagram.
@@ -160,10 +160,12 @@ cargo build --release -p merman-lsp -p merman-cli
 cd tools/vscode-extension
 npm run build
 npm run prepare:binaries
-npm run package
+target="$(node -p "process.platform + '-' + process.arch")"
+npm run package -- --target "$target" --out "merman-vscode-${target}.vsix"
 ```
 
-`npm run package` expects `npm run prepare:binaries` to have populated `bin/<platform>-<arch>/`.
+`npm run package` expects `npm run prepare:binaries` to have populated `bin/<platform>-<arch>/`,
+and the `--target` argument should match that platform key.
 The development-only Cargo fallbacks are disabled by default so a packaged VSIX does not silently
 depend on a Rust workspace.
 

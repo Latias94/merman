@@ -8,6 +8,7 @@ const args = parseArgs(process.argv.slice(2));
 const vsixPath = args.vsix ?? findDefaultVsix();
 const platformKey = args.platform ?? `${process.platform}-${process.arch}`;
 const executableSuffix = platformKey.startsWith("win32-") ? ".exe" : "";
+const expectedTarget = args.target ?? args.platform ?? null;
 const expectedPublisher = args.publisher ?? "latias94";
 const expectedVersion = args.version ?? null;
 
@@ -19,6 +20,7 @@ const zip = readZip(vsixPath);
 const entries = new Set(zip.entries.map((entry) => entry.name));
 const requiredEntries = [
   "extension/package.json",
+  "extension.vsixmanifest",
   "extension/readme.md",
   "extension/changelog.md",
   "extension/LICENSE.txt",
@@ -68,6 +70,10 @@ if (!manifest.repository?.url?.includes("github.com/Latias94/merman")) {
 if (!manifest.bugs?.url?.includes("github.com/Latias94/merman/issues")) {
   fail("VSIX package.json is missing the expected bugs URL.");
 }
+if (expectedTarget !== null) {
+  const targetPlatform = readVsixTargetPlatform(zip.readText("extension.vsixmanifest"));
+  assertEqual(targetPlatform, expectedTarget, "VSIX target platform");
+}
 
 console.log(
   `verified ${path.basename(vsixPath)}: ${entries.size} entries, platform=${platformKey}, version=${manifest.version}`,
@@ -85,6 +91,10 @@ function parseArgs(argv) {
       parsed.platform = argv[++index];
     } else if (arg.startsWith("--platform=")) {
       parsed.platform = arg.slice("--platform=".length);
+    } else if (arg === "--target") {
+      parsed.target = argv[++index];
+    } else if (arg.startsWith("--target=")) {
+      parsed.target = arg.slice("--target=".length);
     } else if (arg === "--publisher") {
       parsed.publisher = argv[++index];
     } else if (arg.startsWith("--publisher=")) {
@@ -193,8 +203,16 @@ function assertEqual(actual, expected, label) {
   }
 }
 
+function readVsixTargetPlatform(manifestXml) {
+  const match = manifestXml.match(/\bTargetPlatform=(["'])([^"']+)\1/);
+  if (!match) {
+    fail("VSIX manifest is missing TargetPlatform.");
+  }
+  return match[2];
+}
+
 function printUsage() {
-  console.log("usage: node scripts/verify-vsix.mjs --vsix <path> [--platform <platform-arch>]");
+  console.log("usage: node scripts/verify-vsix.mjs --vsix <path> [--platform <platform-arch>] [--target <platform-arch>]");
 }
 
 function fail(message) {

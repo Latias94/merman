@@ -95,6 +95,9 @@ jobs:
       - name: Verify web package
         run: npm run prepack --prefix platforms/web
 
+      - name: Smoke web package
+        run: npm run smoke --prefix platforms/web
+
       - name: Pack dry-run
         working-directory: platforms/web
         run: npm pack --dry-run

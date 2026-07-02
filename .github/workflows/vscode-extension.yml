@@ -89,11 +89,11 @@ jobs:
 
       - name: Package VSIX
         working-directory: tools/vscode-extension
-        run: npm run package -- --out "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix"
+        run: npm run package -- --target "${{ steps.package-platform.outputs.key }}" --out "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix"
 
       - name: Verify VSIX contents
         working-directory: tools/vscode-extension
-        run: npm run verify:vsix -- --vsix "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix" --platform "${{ steps.package-platform.outputs.key }}"
+        run: npm run verify:vsix -- --vsix "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix" --platform "${{ steps.package-platform.outputs.key }}" --target "${{ steps.package-platform.outputs.key }}"
 
       - name: Upload VSIX
         uses: actions/upload-artifact@v6
