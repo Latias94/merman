@@ -1,8 +1,8 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_diagnostics;
-use crate::document_store::DocumentStore;
 use crate::document_store::SemanticTokensState;
+use crate::document_store::{DocumentStore, StoredDocument};
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
     experimental_capabilities,
@@ -127,22 +127,22 @@ impl MermanLanguageServer {
     }
 
     async fn snapshot_for_uri(&self, uri: &tower_lsp::lsp_types::Url) -> Option<DocumentSnapshot> {
-        let store = self.store.lock().await;
-        store.get(uri).cloned()
+        let mut store = self.store.lock().await;
+        store.snapshot_cloned(uri)
     }
 
-    async fn diagnostics_for_snapshot(
+    async fn diagnostics_for_document(
         &self,
-        snapshot: &DocumentSnapshot,
+        document: &StoredDocument,
     ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
-        let source = if crate::document_store::is_markdown_uri(&snapshot.uri) {
-            merman_analysis::source_descriptor_for_uri(snapshot.uri.as_str())
+        let source = if document.kind.is_markdown() {
+            merman_analysis::source_descriptor_for_uri(document.uri.as_str())
         } else {
-            merman_analysis::SourceDescriptor::diagram().with_path(snapshot.uri.as_str())
+            merman_analysis::SourceDescriptor::diagram().with_path(document.uri.as_str())
         };
         let analyzer = self.analyzer.lock().await;
-        let payload = analyze_document(&snapshot.text, &analyzer, source);
-        analysis_payload_to_diagnostics(&payload, &snapshot.uri)
+        let payload = analyze_document(&document.text, &analyzer, source);
+        analysis_payload_to_diagnostics(&payload, &document.uri)
     }
 
     fn diagnostic_result_id(diagnostics: &[tower_lsp::lsp_types::Diagnostic]) -> String {
@@ -186,13 +186,16 @@ impl MermanLanguageServer {
             return;
         }
 
-        let snapshot = self.snapshot_for_uri(uri).await;
+        let document = {
+            let store = self.store.lock().await;
+            store.get(uri).cloned()
+        };
 
-        let Some(snapshot) = snapshot else {
+        let Some(document) = document else {
             return;
         };
 
-        let diagnostics = self.diagnostics_for_snapshot(&snapshot).await;
+        let diagnostics = self.diagnostics_for_document(&document).await;
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, version)
             .await;
@@ -269,13 +272,13 @@ impl MermanLanguageServer {
     }
 
     async fn republish_all(&self) {
-        let snapshots = {
+        let documents = {
             let store = self.store.lock().await;
-            store.snapshots()
+            store.documents()
         };
 
-        for snapshot in snapshots {
-            self.publish_for_uri(&snapshot.uri, Some(snapshot.version))
+        for document in documents {
+            self.publish_for_uri(&document.uri, Some(document.version))
                 .await;
         }
     }
@@ -319,7 +322,7 @@ impl LanguageServer for MermanLanguageServer {
         self.store
             .lock()
             .await
-            .upsert(doc.uri.clone(), doc.version, doc.text);
+            .upsert_text(doc.uri.clone(), doc.version, doc.text);
         self.publish_for_uri(&doc.uri, Some(doc.version)).await;
     }
 
@@ -334,7 +337,7 @@ impl LanguageServer for MermanLanguageServer {
         for change in params.content_changes {
             text = change.text;
         }
-        store.upsert(doc.uri.clone(), doc.version, text);
+        store.upsert_text(doc.uri.clone(), doc.version, text);
         drop(store);
         self.publish_for_uri(&doc.uri, Some(doc.version)).await;
     }
@@ -397,7 +400,11 @@ impl LanguageServer for MermanLanguageServer {
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri;
-        let Some(snapshot) = self.snapshot_for_uri(&uri).await else {
+        let document = {
+            let store = self.store.lock().await;
+            store.get(&uri).cloned()
+        };
+        let Some(document) = document else {
             let diagnostics = Vec::new();
             let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
@@ -407,7 +414,7 @@ impl LanguageServer for MermanLanguageServer {
             ));
         };
 
-        let diagnostics = self.diagnostics_for_snapshot(&snapshot).await;
+        let diagnostics = self.diagnostics_for_document(&document).await;
         let result_id = Some(Self::diagnostic_result_id(&diagnostics));
         Ok(Self::document_diagnostic_report(
             diagnostics,
@@ -600,7 +607,7 @@ impl LanguageServer for MermanLanguageServer {
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
         let snapshots = {
-            let store = self.store.lock().await;
+            let mut store = self.store.lock().await;
             store.snapshots()
         };
 
@@ -632,13 +639,13 @@ mod tests {
     use tower_lsp::lsp_types::SemanticTokensResult;
     use tower_lsp::lsp_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-        CodeActionProviderCapability, DocumentSymbolResponse, FoldingRangeParams,
-        FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
-        InitializeParams, Position, Range, RenameParams, SelectionRangeParams,
+        CodeActionProviderCapability, DidOpenTextDocumentParams, DocumentSymbolResponse,
+        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
+        HoverParams, InitializeParams, Position, Range, RenameParams, SelectionRangeParams,
         SelectionRangeProviderCapability, SemanticTokensFullOptions, SemanticTokensParams,
         SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensServerCapabilities,
-        TextDocumentIdentifier, TextDocumentPositionParams, TextDocumentSyncCapability,
-        TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -820,6 +827,45 @@ mod tests {
         assert!(MermanLanguageServer::client_supports_diagnostic_refresh(
             &params
         ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn did_open_defers_editor_snapshot_until_editor_request() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        server
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
+                },
+            })
+            .await;
+
+        {
+            let store = server.store.lock().await;
+            assert!(store.get(&uri).is_some());
+            assert!(!store.has_snapshot(&uri));
+        }
+
+        let hover = server
+            .hover(HoverParams {
+                text_document_position_params: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier { uri: uri.clone() },
+                    Position::new(1, 0),
+                ),
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .unwrap();
+
+        assert!(hover.is_some());
+        let store = server.store.lock().await;
+        assert!(store.has_snapshot(&uri));
     }
 
     #[test]

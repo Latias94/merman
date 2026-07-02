@@ -122,8 +122,59 @@ fn newer_versions_replace_the_stored_snapshot() {
     assert_eq!(stored.version, 2);
     assert!(stored.text.contains("sequenceDiagram"));
     assert!(!stored.text.contains("flowchart TD"));
+    let stored = store
+        .snapshot_cloned(&uri)
+        .expect("expected stored snapshot after replacement");
     assert_eq!(stored.fences.len(), 1);
     assert_eq!(stored.fences[0].diagram_type.as_deref(), Some("sequence"));
+}
+
+#[test]
+fn upsert_text_defers_snapshot_until_requested() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let document = store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+
+    assert_eq!(document.version, 1);
+    assert_eq!(document.text, "flowchart TD\nA-->B\n");
+    assert!(!store.has_snapshot(&uri));
+
+    let snapshot = store
+        .snapshot_cloned(&uri)
+        .expect("expected lazy snapshot for stored document");
+    assert!(store.has_snapshot(&uri));
+    assert_eq!(snapshot.version, 1);
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+}
+
+#[test]
+fn upsert_text_invalidates_cached_snapshot() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let first = store
+        .snapshot_cloned(&uri)
+        .expect("expected initial lazy snapshot");
+    assert_eq!(first.version, 1);
+    assert!(store.has_snapshot(&uri));
+
+    store.upsert_text(
+        uri.clone(),
+        2,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+    );
+
+    assert!(!store.has_snapshot(&uri));
+    let second = store
+        .snapshot_cloned(&uri)
+        .expect("expected refreshed lazy snapshot");
+    assert_eq!(second.version, 2);
+    assert_eq!(second.fences[0].diagram_type.as_deref(), Some("sequence"));
 }
 
 #[test]

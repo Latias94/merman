@@ -6,8 +6,17 @@ use tower_lsp::lsp_types::{SemanticToken, Url};
 #[derive(Debug, Default)]
 pub struct DocumentStore {
     workspace: DocumentWorkspace,
-    documents: HashMap<Url, DocumentSnapshot>,
+    documents: HashMap<Url, StoredDocument>,
+    snapshots: HashMap<Url, DocumentSnapshot>,
     semantic_tokens_state: HashMap<Url, SemanticTokensState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StoredDocument {
+    pub uri: Url,
+    pub version: i32,
+    pub text: String,
+    pub kind: DocumentKind,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -22,35 +31,74 @@ impl DocumentStore {
         Self {
             workspace: DocumentWorkspace::new(),
             documents: HashMap::new(),
+            snapshots: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
         }
     }
 
-    pub fn upsert(&mut self, uri: Url, version: i32, text: String) -> DocumentSnapshot {
-        let snapshot = self.workspace.upsert(
-            uri.as_str(),
+    pub fn upsert_text(&mut self, uri: Url, version: i32, text: String) -> StoredDocument {
+        let document = StoredDocument {
+            kind: DocumentKind::from_path(uri.path()),
+            uri: uri.clone(),
             version,
             text,
-            DocumentKind::from_path(uri.path()),
-        );
-        let snapshot = DocumentSnapshot::from_editor(snapshot, uri.clone());
-        self.documents.insert(uri, snapshot.clone());
-        snapshot
+        };
+        self.workspace
+            .remove(&merman_editor_core::DocumentUri::new(uri.as_str()));
+        self.snapshots.remove(&uri);
+        self.documents.insert(uri, document.clone());
+        document
     }
 
-    pub fn get(&self, uri: &Url) -> Option<&DocumentSnapshot> {
+    pub fn upsert(&mut self, uri: Url, version: i32, text: String) -> DocumentSnapshot {
+        self.upsert_text(uri.clone(), version, text);
+        self.snapshot_cloned(&uri)
+            .expect("snapshot should exist after inserting document text")
+    }
+
+    pub fn get(&self, uri: &Url) -> Option<&StoredDocument> {
         self.documents.get(uri)
+    }
+
+    pub fn snapshot_cloned(&mut self, uri: &Url) -> Option<DocumentSnapshot> {
+        if let Some(snapshot) = self.snapshots.get(uri) {
+            return Some(snapshot.clone());
+        }
+
+        let document = self.documents.get(uri)?;
+        let snapshot = self.workspace.upsert(
+            document.uri.as_str(),
+            document.version,
+            document.text.clone(),
+            document.kind,
+        );
+        let snapshot = DocumentSnapshot::from_editor(snapshot, document.uri.clone());
+        self.snapshots
+            .insert(document.uri.clone(), snapshot.clone());
+        Some(snapshot)
+    }
+
+    pub fn has_snapshot(&self, uri: &Url) -> bool {
+        self.snapshots.contains_key(uri)
     }
 
     pub fn remove(&mut self, uri: &Url) {
         self.workspace
             .remove(&merman_editor_core::DocumentUri::new(uri.as_str()));
         self.documents.remove(uri);
+        self.snapshots.remove(uri);
         self.semantic_tokens_state.remove(uri);
     }
 
-    pub fn snapshots(&self) -> Vec<DocumentSnapshot> {
+    pub fn documents(&self) -> Vec<StoredDocument> {
         self.documents.values().cloned().collect()
+    }
+
+    pub fn snapshots(&mut self) -> Vec<DocumentSnapshot> {
+        let uris = self.documents.keys().cloned().collect::<Vec<_>>();
+        uris.into_iter()
+            .filter_map(|uri| self.snapshot_cloned(&uri))
+            .collect()
     }
 
     pub fn semantic_tokens_state(&self, uri: &Url) -> Option<&SemanticTokensState> {
@@ -64,8 +112,4 @@ impl DocumentStore {
     pub fn set_semantic_tokens_state(&mut self, uri: Url, state: SemanticTokensState) {
         self.semantic_tokens_state.insert(uri, state);
     }
-}
-
-pub(crate) fn is_markdown_uri(uri: &Url) -> bool {
-    DocumentKind::from_path(uri.path()).is_markdown()
 }
