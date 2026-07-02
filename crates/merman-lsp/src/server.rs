@@ -234,7 +234,11 @@ impl MermanLanguageServer {
             return;
         };
 
-        if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
+        self.publish_current_diagnostics(&context).await;
+    }
+
+    async fn publish_current_diagnostics(&self, context: &DiagnosticContext) {
+        if let Some(diagnostics) = self.diagnostics_for_current_context(context).await {
             self.client
                 .publish_diagnostics(
                     context.document.uri.clone(),
@@ -321,15 +325,7 @@ impl MermanLanguageServer {
         };
 
         for context in contexts {
-            if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
-                self.client
-                    .publish_diagnostics(
-                        context.document.uri.clone(),
-                        diagnostics,
-                        Some(context.document.version),
-                    )
-                    .await;
-            }
+            self.publish_current_diagnostics(&context).await;
         }
     }
 }

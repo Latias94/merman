@@ -125,10 +125,7 @@ impl DocumentStore {
 
     pub fn is_diagnostic_context_current(&self, context: &DiagnosticContext) -> bool {
         self.diagnostic_generation == context.generation
-            && self
-                .documents
-                .get(&context.document.uri)
-                .is_some_and(|record| record.epoch == context.document_epoch)
+            && self.is_document_epoch_current(&context.document.uri, context.document_epoch)
     }
 
     pub fn upsert_text(&mut self, uri: Url, version: i32, text: String) -> StoredDocument {
@@ -199,10 +196,13 @@ impl DocumentStore {
 
     pub fn is_snapshot_context_current(&self, context: &SnapshotContext) -> bool {
         self.snapshot_generation == context.generation
-            && self
-                .documents
-                .get(&context.snapshot.uri)
-                .is_some_and(|record| record.epoch == context.document_epoch)
+            && self.is_document_epoch_current(&context.snapshot.uri, context.document_epoch)
+    }
+
+    fn is_document_epoch_current(&self, uri: &Url, document_epoch: DocumentEpoch) -> bool {
+        self.documents
+            .get(uri)
+            .is_some_and(|record| record.epoch == document_epoch)
     }
 
     pub fn has_snapshot(&self, uri: &Url) -> bool {
