@@ -21,9 +21,11 @@ val svg = MermanEngine.renderSvg(
 )
 val semanticJson = MermanEngine.parseJson(source)
 val layoutJson = MermanEngine.layoutJson(source)
+val analysisJson = MermanEngine.analyzeJson(source)
 val ascii = MermanEngine.renderAscii(source)
 val validationJson = MermanEngine.validateJson(source)
 val diagramsJson = MermanEngine.supportedDiagramsJson()
+val lintRuleCatalogJson = MermanEngine.lintRuleCatalogJson()
 val supportedThemesJson = MermanEngine.supportedThemesJson()
 val hostThemePresetsJson = MermanEngine.supportedHostThemePresetsJson()
 
@@ -39,6 +41,8 @@ Native errors are thrown as `MermanException` with the C ABI JSON error payload 
 package version through `packageVersion`.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
+`lintRuleCatalogJson()` returns the shared analyzer rule catalog, including evidence references, for
+settings, diagnostics, and LSP-related UI; hosts should prefer it over hard-coded rule metadata.
 
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's

@@ -82,6 +82,32 @@ public struct MermanDiagramFamilyCapability: Decodable {
     }
 }
 
+public struct MermanLintRuleCatalogEntry: Decodable {
+    public let id: String
+    public let description: String
+    public let evidence: [String]
+    public let defaultSeverity: String
+    public let category: String
+    public let defaultEnabled: Bool
+    public let defaultProfile: String
+    public let origin: String
+    public let configurable: Bool
+    public let fixable: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case description
+        case evidence
+        case defaultSeverity = "default_severity"
+        case category
+        case defaultEnabled = "default_enabled"
+        case defaultProfile = "default_profile"
+        case origin
+        case configurable
+        case fixable
+    }
+}
+
 public final class MermanEngine {
     public static let abiVersion: UInt32 = 2
     private static let okCode: Int32 = 0
@@ -90,6 +116,7 @@ public final class MermanEngine {
     private var supportedDiagramsCache: [String]?
     private var asciiCapabilitiesCache: [MermanAsciiCapability]?
     private var diagramFamilyCapabilitiesCache: [MermanDiagramFamilyCapability]?
+    private var lintRuleCatalogCache: [MermanLintRuleCatalogEntry]?
     private var themesCache: [String]?
     private var hostThemePresetsCache: [String]?
 
@@ -112,6 +139,10 @@ public final class MermanEngine {
 
     public func layoutJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
         try call(merman_layout_json, source: source, optionsJson: optionsJson)
+    }
+
+    public func analyzeJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
+        try call(merman_analyze_json, source: source, optionsJson: optionsJson)
     }
 
     public func validateJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
@@ -149,6 +180,16 @@ public final class MermanEngine {
         let text = try decode(merman_diagram_family_capabilities_json())
         let values = try decodeJson([MermanDiagramFamilyCapability].self, from: Data(text.utf8))
         diagramFamilyCapabilitiesCache = values
+        return values
+    }
+
+    public func lintRuleCatalog() throws -> [MermanLintRuleCatalogEntry] {
+        if let lintRuleCatalogCache {
+            return lintRuleCatalogCache
+        }
+        let text = try decode(merman_lint_rule_catalog_json())
+        let values = try decodeJson([MermanLintRuleCatalogEntry].self, from: Data(text.utf8))
+        lintRuleCatalogCache = values
         return values
     }
 
@@ -362,6 +403,10 @@ public final class MermanReusableEngine {
 
     public func layoutJsonRaw(_ source: String) throws -> String {
         try call(merman_engine_layout_json, source: source)
+    }
+
+    public func analyzeJsonRaw(_ source: String) throws -> String {
+        try call(merman_engine_analyze_json, source: source)
     }
 
     public func validateJsonRaw(_ source: String) throws -> String {

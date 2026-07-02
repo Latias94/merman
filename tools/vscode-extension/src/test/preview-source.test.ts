@@ -1,0 +1,131 @@
+import * as assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { extractPreviewInputFromText, listPreviewInputsFromText } from "../preview-source.js";
+
+describe("preview source extraction", () => {
+  it("extracts Mermaid files as whole-document sources", () => {
+    const input = extractPreviewInputFromText({
+      text: "flowchart TD\n  A --> B\n",
+      languageId: "mermaid",
+      fileName: "/workspace/diagram.mmd",
+    });
+
+    assert.equal(input?.kind, "mermaid-file");
+    assert.equal(input?.sourceId, "document");
+    assert.equal(input?.source, "flowchart TD\n  A --> B\n");
+    assert.equal(input?.exportBaseName, "diagram");
+    assert.deepEqual(input?.sourceRange, { startLine: 0, endLine: 2 });
+    assert.deepEqual(input?.diagnosticRange, { startLine: 0, endLine: 2 });
+  });
+
+  it("selects the Mermaid fence containing the active Markdown cursor", () => {
+    const input = extractPreviewInputFromText({
+      text: [
+        "# Notes",
+        "",
+        "```mermaid",
+        "flowchart TD",
+        "  A --> B",
+        "```",
+        "",
+        "```mermaid",
+        "sequenceDiagram",
+        "  Alice->>Bob: Hi",
+        "```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+      activeLine: 8,
+    });
+
+    assert.equal(input?.kind, "markdown-fence");
+    assert.equal(input?.sourceId, "fence-2");
+    assert.equal(input?.source, "sequenceDiagram\n  Alice->>Bob: Hi");
+    assert.equal(input?.exportBaseName, "notes-mermaid-2");
+    assert.deepEqual(input?.sourceRange, { startLine: 7, endLine: 10 });
+    assert.deepEqual(input?.diagnosticRange, { startLine: 8, endLine: 9 });
+  });
+
+  it("falls back to the first Mermaid fence when no cursor line is provided", () => {
+    const input = extractPreviewInputFromText({
+      text: [
+        "```mermaid",
+        "flowchart LR",
+        "  A --> B",
+        "```",
+        "",
+        "```mermaid",
+        "pie title Work",
+        "  \"A\" : 1",
+        "```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+    });
+
+    assert.equal(input?.source, "flowchart LR\n  A --> B");
+    assert.equal(input?.exportBaseName, "notes-mermaid-1");
+  });
+
+  it("selects a Markdown Mermaid fence by source id", () => {
+    const input = extractPreviewInputFromText({
+      text: [
+        "```mermaid",
+        "flowchart LR",
+        "```",
+        "",
+        "```mermaid",
+        "pie title Work",
+        "  \"A\" : 1",
+        "```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+      sourceId: "fence-2",
+    });
+
+    assert.equal(input?.source, "pie title Work\n  \"A\" : 1");
+    assert.equal(input?.sourceId, "fence-2");
+  });
+
+  it("lists every Mermaid fence with stable ids", () => {
+    const inputs = listPreviewInputsFromText({
+      text: [
+        "```mermaid",
+        "flowchart LR",
+        "```",
+        "",
+        "```mermaid",
+        "sequenceDiagram",
+        "```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+    });
+
+    assert.deepEqual(
+      inputs.map((input) => input.sourceId),
+      ["fence-1", "fence-2"],
+    );
+  });
+
+  it("treats fence delimiters as part of the selectable source range", () => {
+    const input = extractPreviewInputFromText({
+      text: [
+        "```mermaid",
+        "flowchart LR",
+        "```",
+        "",
+        "```mermaid",
+        "sequenceDiagram",
+        "```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+      activeLine: 4,
+    });
+
+    assert.equal(input?.sourceId, "fence-2");
+  });
+});

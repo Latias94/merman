@@ -1,5 +1,49 @@
-use crate::{Error, MermaidConfig, ParseMetadata, Result, baseline::BaselineRegistryProfile};
+use crate::{
+    Error, MermaidConfig, ParseMetadata, Result, baseline::BaselineRegistryProfile,
+    editor::SourceSpan,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
+pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =
+    "merman.authoring.flowchart.explicit_direction";
+pub const FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID: &str =
+    "merman.semantic.flowchart.unknown_style_target";
+pub const GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
+
+/// Shared warning fact emitted by diagram families for analysis and lint consumers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagramWarningFact {
+    pub rule_id: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<SourceSpan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix_span: Option<SourceSpan>,
+}
+
+impl DiagramWarningFact {
+    pub fn new(rule_id: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            rule_id: rule_id.into(),
+            message: message.into(),
+            span: None,
+            fix_span: None,
+        }
+    }
+
+    pub fn with_span(mut self, span: SourceSpan) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    pub fn with_fix_span(mut self, span: SourceSpan) -> Self {
+        self.fix_span = Some(span);
+        self
+    }
+}
 
 /// Parser used by the semantic JSON path for one Mermaid diagram family.
 pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<Value>;

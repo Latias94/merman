@@ -9,10 +9,10 @@ JSON, compute layout JSON, and render SVG through a headless Rust engine. See th
 [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 for the main library contract.
 
-The package exposes a small Dart API for SVG, ASCII text, semantic JSON, layout JSON, validation,
-and metadata. On Flutter targets, the plugin also carries the native `merman-ffi` library, so
-application code normally opens the engine with `Merman.open()` and does not pass a dynamic library
-path.
+The package exposes a small Dart API for SVG, ASCII text, semantic JSON, layout JSON, diagnostics
+analysis, validation, and metadata. On Flutter targets, the plugin also carries the native
+`merman-ffi` library, so application code normally opens the engine with `Merman.open()` and does
+not pass a dynamic library path.
 
 ## Compatibility And Release Notes
 
@@ -49,9 +49,11 @@ final svg = merman.renderSvg(
 );
 final semantic = merman.parseJson(source);
 final layout = merman.layoutJson(source);
+final analysis = merman.analyzeJson(source);
 final ascii = merman.renderAscii(source);
 final validation = merman.validate(source);
 final diagrams = merman.supportedDiagrams();
+final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
 final hostThemePresets = merman.supportedHostThemePresets();
 
@@ -64,6 +66,8 @@ try {
 
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
+Use `lintRuleCatalog()` to discover analyzer rule ids, evidence references, default severities,
+profiles, origins, configurability, and fixability for editor settings or LSP integrations.
 
 ## Rendering SVG In Flutter
 

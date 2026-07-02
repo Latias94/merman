@@ -453,3 +453,249 @@ click Class1 call functionCall() "A tooltip"
     assert!(c["callback"].get("args").is_none());
     assert_eq!(c["callbackEffective"], json!(true));
 }
+
+#[test]
+fn parse_class_editor_facts_preserve_parser_symbol_spans() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+namespace Company {
+  class User {
+    +login()
+    -password: String
+  }
+}
+User <|-- Admin
+User: email
+class Visible["Visible label"]
+User <|-- Admin : manages
+Class1 "1" *-- "many" Class02 : contains
+<<interface>> User
+note for User "Primary user"
+note "Floating note"
+click User href "https://example.com" "Open user" _blank
+click Admin call open(userId) "Open admin"
+callback User "refreshUser" "Refresh user"
+accTitle: Class chart
+accDescr: Shows class relationships
+classDef service fill:#eee
+class User:::service
+cssClass "User,Admin" service
+style User fill:#fff
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+    let symbol_with_detail = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail}"))
+    };
+
+    let company_start = text.find("Company").unwrap();
+    assert_eq!(
+        symbol_at("Company", company_start).selection.end,
+        company_start + "Company".len()
+    );
+
+    let user_start = text.find("User {").unwrap();
+    assert_eq!(
+        symbol_at("User", user_start).selection.end,
+        user_start + "User".len()
+    );
+
+    let login_start = text.find("+login()").unwrap();
+    let login = symbol_at("+login()", login_start);
+    assert_eq!(login.role, EditorSemanticRole::Outline);
+    assert_eq!(login.detail.as_deref(), Some("class member"));
+
+    let password_start = text.find("-password: String").unwrap();
+    let password = symbol_at("-password: String", password_start);
+    assert_eq!(password.role, EditorSemanticRole::Outline);
+    assert_eq!(password.detail.as_deref(), Some("class member"));
+
+    let admin_start = text.find("Admin").unwrap();
+    assert_eq!(
+        symbol_at("Admin", admin_start).selection.end,
+        admin_start + "Admin".len()
+    );
+
+    let email_start = text.find("email").unwrap();
+    let email = symbol_at("email", email_start);
+    assert_eq!(email.role, EditorSemanticRole::Outline);
+    assert_eq!(email.detail.as_deref(), Some("class member"));
+
+    let display_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Visible label"
+                && symbol.detail.as_deref() == Some("class display label")
+        })
+        .unwrap();
+    assert_eq!(display_label.role, EditorSemanticRole::Payload);
+
+    let annotation_start = text.find("interface").unwrap();
+    let annotation = symbol_at("interface", annotation_start);
+    assert_eq!(annotation.role, EditorSemanticRole::Payload);
+    assert_eq!(annotation.detail.as_deref(), Some("class annotation"));
+
+    let relation_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "manages" && symbol.detail.as_deref() == Some("class relation label")
+        })
+        .unwrap();
+    assert_eq!(relation_label.role, EditorSemanticRole::Payload);
+
+    let left_multiplicity = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "1" && symbol.detail.as_deref() == Some("class relation multiplicity")
+        })
+        .unwrap();
+    assert_eq!(left_multiplicity.role, EditorSemanticRole::Payload);
+
+    let right_multiplicity = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "many" && symbol.detail.as_deref() == Some("class relation multiplicity")
+        })
+        .unwrap();
+    assert_eq!(right_multiplicity.role, EditorSemanticRole::Payload);
+
+    let note_for = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Primary user" && symbol.detail.as_deref() == Some("class note")
+        })
+        .unwrap();
+    assert_eq!(note_for.role, EditorSemanticRole::Payload);
+
+    let floating_note = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Floating note" && symbol.detail.as_deref() == Some("class note")
+        })
+        .unwrap();
+    assert_eq!(floating_note.role, EditorSemanticRole::Payload);
+
+    let acc_title = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Class chart"
+                && symbol.detail.as_deref() == Some("class accessibility title")
+        })
+        .unwrap();
+    assert_eq!(acc_title.role, EditorSemanticRole::Payload);
+
+    let acc_descr = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Shows class relationships"
+                && symbol.detail.as_deref() == Some("class accessibility description")
+        })
+        .unwrap();
+    assert_eq!(acc_descr.role, EditorSemanticRole::Payload);
+
+    let href_start = text.find("https://example.com").unwrap();
+    let href = symbol_at("https://example.com", href_start);
+    assert_eq!(href.role, EditorSemanticRole::Payload);
+    assert_eq!(href.detail.as_deref(), Some("class interaction string"));
+
+    let tooltip_start = text.find("Open user").unwrap();
+    let tooltip = symbol_at("Open user", tooltip_start);
+    assert_eq!(tooltip.role, EditorSemanticRole::Payload);
+    assert_eq!(tooltip.detail.as_deref(), Some("class interaction string"));
+
+    let target_start = text.find("_blank").unwrap();
+    let target = symbol_at("_blank", target_start);
+    assert_eq!(target.role, EditorSemanticRole::Payload);
+    assert_eq!(target.detail.as_deref(), Some("class link target"));
+
+    let service_start = text.find("service").unwrap();
+    let service = symbol_at("service", service_start);
+    assert_eq!(service.selection.end, service_start + "service".len());
+    assert_eq!(service.role, EditorSemanticRole::Outline);
+    assert_eq!(service.detail.as_deref(), Some("class definition"));
+
+    let class_def_style = symbol_with_detail("fill:#eee", "class definition style");
+    assert_eq!(class_def_style.role, EditorSemanticRole::Payload);
+
+    let inline_service_start = text.find(":::service").unwrap() + ":::".len();
+    let inline_service = symbol_at("service", inline_service_start);
+    assert_eq!(inline_service.role, EditorSemanticRole::Payload);
+    assert_eq!(inline_service.detail.as_deref(), Some("class inline class"));
+
+    let css_admin = symbol_with_detail("Admin", "class css target");
+    assert_eq!(css_admin.role, EditorSemanticRole::Entity);
+
+    let css_service = symbol_with_detail("service", "class css reference");
+    assert_eq!(css_service.role, EditorSemanticRole::Payload);
+
+    let class_style = symbol_with_detail("fill:#fff", "class style");
+    assert_eq!(class_style.role, EditorSemanticRole::Payload);
+
+    let callback = symbol_with_detail("open", "class callback");
+    assert_eq!(callback.role, EditorSemanticRole::Payload);
+    assert_eq!(callback.kind, EditorSemanticKind::Function);
+
+    let callback_args = symbol_with_detail("userId", "class callback args");
+    assert_eq!(callback_args.role, EditorSemanticRole::Payload);
+
+    let callback_statement = symbol_with_detail("refreshUser", "class callback");
+    assert_eq!(callback_statement.role, EditorSemanticRole::Payload);
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "click"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "callback"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "cssClass"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
+}
+
+#[test]
+fn parse_class_editor_facts_record_expected_node_identifier_spans() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclassDef service fill:#eee\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span.start == text.find("service").unwrap()
+    }));
+}
+
+#[test]
+fn parse_class_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclass User\nUser <|--";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+}

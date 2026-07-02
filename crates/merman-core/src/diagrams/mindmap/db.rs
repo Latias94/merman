@@ -315,13 +315,13 @@ impl MindmapDb {
             return Ok(());
         }
 
-        Err(Error::DiagramParse {
-            diagram_type: input.diagram_type.to_string(),
-            message: format!(
+        Err(Error::diagram_parse_fallback(
+            input.diagram_type.to_string(),
+            format!(
                 "There can be only one root. No parent could be found for (\"{}\")",
                 node.descr
             ),
-        })
+        ))
     }
 
     pub(super) fn decorate_last(

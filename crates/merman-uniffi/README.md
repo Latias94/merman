@@ -13,6 +13,8 @@ Call `MermanReusableEngine::set_text_measurer` to install a host measurer later,
 `ascii_capabilities()` exposes ASCII support grades and summary fallback metadata.
 `diagram_family_capabilities()` exposes the same parser/render discovery information as the C ABI
 metadata surface.
+`lint_rule_catalog()` and `configurable_lint_rule_catalog()` expose governed analyzer rule metadata,
+including evidence references, for package settings, diagnostics UI, and LSP integrations.
 
 Most applications should start with one of these package-level entry points:
 

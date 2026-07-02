@@ -1939,6 +1939,16 @@ fn parse_diagram_flowchart_style_statement_applies_vertex_styles() {
         .find(|n| n["id"] == json!("Q"))
         .unwrap();
     assert_eq!(q["styles"], json!(["background:#fff"]));
+    assert_eq!(
+        res.model["warningFacts"],
+        json!([
+            {
+                "ruleId": FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+                "message": "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+                "span": { "start": 15, "end": 16 }
+            }
+        ])
+    );
 }
 
 #[test]
@@ -2185,4 +2195,500 @@ fn parse_diagram_flowchart_keyword_flowchart() {
     assert_eq!(res.model["keyword"], json!("flowchart"));
     assert_eq!(res.model["direction"], json!("TB"));
     assert_eq!(res.model["subgraphs"], json!([]));
+    assert!(res.model.get("warningFacts").is_none());
+}
+
+#[test]
+fn parse_diagram_flowchart_without_direction_preserves_source_and_warns() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_diagram("flowchart\nA-->B", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.meta.diagram_type, "flowchart-v2");
+    assert_eq!(res.model["direction"], json!(null));
+    assert_eq!(
+        res.model["warningFacts"],
+        json!([
+            {
+                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+                "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+                "span": { "start": 0, "end": 9 },
+                "fixSpan": { "start": 9, "end": 9 }
+            }
+        ])
+    );
+}
+
+#[test]
+fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync("flowchart\nA-->B", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    match parsed.model {
+        RenderSemanticModel::Flowchart(model) => {
+            assert_eq!(model.direction.as_deref(), Some("TB"));
+            assert_eq!(model.warning_facts.len(), 1);
+            assert_eq!(
+                model.warning_facts[0].rule_id,
+                FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID
+            );
+            assert_eq!(model.warning_facts[0].span, Some(SourceSpan::new(0, 9)));
+            assert_eq!(model.warning_facts[0].fix_span, Some(SourceSpan::new(9, 9)));
+        }
+        other => panic!("flowchart render parse should return typed model, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA-->B\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let symbol = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("missing symbol {name}"))
+    };
+
+    let a_start = text.find("A-->").unwrap();
+    let b_start = text.find("-->B").unwrap() + "-->".len();
+
+    assert_eq!(symbol("A").selection.start, a_start);
+    assert_eq!(symbol("A").selection.end, a_start + "A".len());
+    assert_eq!(symbol("B").selection.start, b_start);
+    assert_eq!(symbol("B").selection.end, b_start + "B".len());
+}
+
+#[test]
+fn parse_flowchart_editor_facts_preserve_hyphenated_node_id_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nwi-fi[\"a node with dashes in its name\"]\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let node = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "wi-fi")
+        .expect("hyphenated flowchart node symbol");
+    let start = text.find("wi-fi").unwrap();
+    assert_eq!(node.selection.start, start);
+    assert_eq!(node.selection.end, start + "wi-fi".len());
+}
+
+#[test]
+fn parse_flowchart_editor_facts_emit_label_payload_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA[\"Start node\"] & C -->|go| B{\"Decision\"} & D\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_with_detail = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail}"))
+    };
+
+    let start_label = symbol_with_detail("Start node", "flowchart node label");
+    let start_label_open = text.find("[\"Start node\"]").unwrap();
+    let start_label_text = text.find("Start node").unwrap();
+    assert_eq!(start_label.role, EditorSemanticRole::Payload);
+    assert_eq!(start_label.kind, EditorSemanticKind::String);
+    assert_eq!(start_label.span.start, start_label_open);
+    assert_eq!(start_label.selection.start, start_label_text);
+    assert_eq!(
+        start_label.selection.end,
+        start_label_text + "Start node".len()
+    );
+
+    let edge_label = symbol_with_detail("go", "flowchart edge label");
+    let edge_label_open = text.find("|go|").unwrap();
+    let edge_label_text = text.find("go").unwrap();
+    assert_eq!(edge_label.role, EditorSemanticRole::Payload);
+    assert_eq!(edge_label.kind, EditorSemanticKind::String);
+    assert_eq!(edge_label.span.start, edge_label_open);
+    assert_eq!(edge_label.selection.start, edge_label_text);
+    assert_eq!(edge_label.selection.end, edge_label_text + "go".len());
+
+    let decision_label = symbol_with_detail("Decision", "flowchart node label");
+    let decision_label_open = text.find("{\"Decision\"}").unwrap();
+    let decision_label_text = text.find("Decision").unwrap();
+    assert_eq!(decision_label.role, EditorSemanticRole::Payload);
+    assert_eq!(decision_label.kind, EditorSemanticKind::String);
+    assert_eq!(decision_label.span.start, decision_label_open);
+    assert_eq!(decision_label.selection.start, decision_label_text);
+    assert_eq!(
+        decision_label.selection.end,
+        decision_label_text + "Decision".len()
+    );
+
+    for payload in ["Start node", "go", "Decision"] {
+        let start = text.find(payload).unwrap();
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span.start <= start
+                    && expected.span.end >= start + payload.len()
+            }),
+            "missing flowchart payload expected syntax for {payload:?}"
+        );
+    }
+
+    assert_eq!(
+        facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.detail.as_deref() == Some("flowchart edge label"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_recover_label_payload_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA[\"Start node\"] -->|go| B{\"Decision\"}\nC-->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let symbol_with_detail = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail}"))
+    };
+
+    let start_label = symbol_with_detail("Start node", "flowchart node label");
+    let start_label_open = text.find("[\"Start node\"]").unwrap();
+    let start_label_text = text.find("Start node").unwrap();
+    assert_eq!(start_label.role, EditorSemanticRole::Payload);
+    assert_eq!(start_label.kind, EditorSemanticKind::String);
+    assert_eq!(start_label.span.start, start_label_open);
+    assert_eq!(start_label.selection.start, start_label_text);
+    assert_eq!(
+        start_label.selection.end,
+        start_label_text + "Start node".len()
+    );
+
+    let edge_label = symbol_with_detail("go", "flowchart edge label");
+    let edge_label_open = text.find("|go|").unwrap();
+    let edge_label_text = text.find("go").unwrap();
+    assert_eq!(edge_label.role, EditorSemanticRole::Payload);
+    assert_eq!(edge_label.kind, EditorSemanticKind::String);
+    assert_eq!(edge_label.span.start, edge_label_open);
+    assert_eq!(edge_label.selection.start, edge_label_text);
+    assert_eq!(edge_label.selection.end, edge_label_text + "go".len());
+
+    let decision_label = symbol_with_detail("Decision", "flowchart node label");
+    let decision_label_open = text.find("{\"Decision\"}").unwrap();
+    let decision_label_text = text.find("Decision").unwrap();
+    assert_eq!(decision_label.role, EditorSemanticRole::Payload);
+    assert_eq!(decision_label.kind, EditorSemanticKind::String);
+    assert_eq!(decision_label.span.start, decision_label_open);
+    assert_eq!(decision_label.selection.start, decision_label_text);
+    assert_eq!(
+        decision_label.selection.end,
+        decision_label_text + "Decision".len()
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nclassDef hot fill:#f00,stroke:#333\nA-->B\nstyle A fill:#fff\nclass A,B hot\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, detail: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.selection.start == start
+            })
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail} at {start}"))
+    };
+
+    let class_def_start = text.find("classDef hot").unwrap() + "classDef ".len();
+    let class_def = symbol_at("hot", "flowchart class definition", class_def_start);
+    assert_eq!(class_def.role, EditorSemanticRole::Outline);
+    assert_eq!(class_def.kind, EditorSemanticKind::Property);
+
+    let class_def_style_start = text.find("fill:#f00,stroke:#333").unwrap();
+    let class_def_style = symbol_at(
+        "fill:#f00,stroke:#333",
+        "flowchart class definition style",
+        class_def_style_start,
+    );
+    assert_eq!(class_def_style.role, EditorSemanticRole::Payload);
+    assert_eq!(class_def_style.kind, EditorSemanticKind::String);
+
+    let style_target_start = text.find("style A").unwrap() + "style ".len();
+    let style_target = symbol_at("A", "flowchart style target", style_target_start);
+    assert_eq!(style_target.role, EditorSemanticRole::Entity);
+    assert_eq!(style_target.kind, EditorSemanticKind::Module);
+
+    let style_payload_start = text.find("fill:#fff").unwrap();
+    let style_payload = symbol_at("fill:#fff", "flowchart style", style_payload_start);
+    assert_eq!(style_payload.role, EditorSemanticRole::Payload);
+    assert_eq!(style_payload.kind, EditorSemanticKind::String);
+
+    let class_target_a_start = text.find("class A,B").unwrap() + "class ".len();
+    let class_target_a = symbol_at("A", "flowchart class target", class_target_a_start);
+    assert_eq!(class_target_a.role, EditorSemanticRole::Entity);
+    assert_eq!(class_target_a.kind, EditorSemanticKind::Module);
+
+    let class_target_b_start = class_target_a_start + "A,".len();
+    let class_target_b = symbol_at("B", "flowchart class target", class_target_b_start);
+    assert_eq!(class_target_b.role, EditorSemanticRole::Entity);
+    assert_eq!(class_target_b.kind, EditorSemanticKind::Module);
+
+    let class_name_start = text.rfind("hot").unwrap();
+    let class_name = symbol_at("hot", "flowchart class name", class_name_start);
+    assert_eq!(class_name.role, EditorSemanticRole::Payload);
+    assert_eq!(class_name.kind, EditorSemanticKind::Property);
+}
+
+#[test]
+fn parse_flowchart_editor_facts_recover_directive_payload_spans() {
+    let engine = Engine::new();
+    let text =
+        "flowchart TD\nclassDef hot fill:#f00,stroke:#333\nstyle A fill:#fff\nclass A,B hot\nC-->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let symbol_at = |name: &str, detail: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.selection.start == start
+            })
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail} at {start}"))
+    };
+
+    let class_def_start = text.find("classDef hot").unwrap() + "classDef ".len();
+    assert_eq!(
+        symbol_at("hot", "flowchart class definition", class_def_start).role,
+        EditorSemanticRole::Outline
+    );
+
+    let class_def_style_start = text.find("fill:#f00,stroke:#333").unwrap();
+    assert_eq!(
+        symbol_at(
+            "fill:#f00,stroke:#333",
+            "flowchart class definition style",
+            class_def_style_start,
+        )
+        .role,
+        EditorSemanticRole::Payload
+    );
+
+    let style_target_start = text.find("style A").unwrap() + "style ".len();
+    assert_eq!(
+        symbol_at("A", "flowchart style target", style_target_start).role,
+        EditorSemanticRole::Entity
+    );
+
+    let style_payload_start = text.find("fill:#fff").unwrap();
+    assert_eq!(
+        symbol_at("fill:#fff", "flowchart style", style_payload_start).role,
+        EditorSemanticRole::Payload
+    );
+
+    let class_target_b_start = text.find("class A,B").unwrap() + "class A,".len();
+    assert_eq!(
+        symbol_at("B", "flowchart class target", class_target_b_start).role,
+        EditorSemanticRole::Entity
+    );
+
+    let class_name_start = text.rfind("hot").unwrap();
+    assert_eq!(
+        symbol_at("hot", "flowchart class name", class_name_start).role,
+        EditorSemanticRole::Payload
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_emit_shape_value_expected_syntax() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA@{\n  shape: rounded\n}\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let shape_start = text.find("rounded").unwrap();
+    assert!(
+        facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::ShapeValue
+                && expected.span == SourceSpan::new(shape_start, shape_start + "rounded".len())
+        }),
+        "missing shape value expected syntax"
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let dir_start = text.find("LR").unwrap();
+    assert!(
+        facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::DirectionValue
+                && expected.span == SourceSpan::new(dir_start, dir_start + "LR".len())
+        }),
+        "missing direction value expected syntax"
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_emit_shape_trigger_expected_syntax() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA((\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let trigger_start = text.find("((").unwrap();
+    assert!(
+        facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::ShapeTrigger
+                && expected.span == SourceSpan::new(trigger_start, trigger_start + 2)
+        }),
+        "missing shape trigger expected syntax"
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_recover_shape_value_expected_syntax() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA@{\n  shape: rounded\n}\nC-->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let shape_start = text.find("rounded").unwrap();
+    assert!(
+        facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::ShapeValue
+                && expected.span == SourceSpan::new(shape_start, shape_start + "rounded".len())
+        }),
+        "missing recovered shape value expected syntax"
+    );
+}
+
+#[test]
+fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
+    let engine = Engine::new();
+    let text = "%%{init: {\"theme\": \"dark\"}}%%\nflowchart TD\nclassDef hot fill:#f00\nA-->B\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "init")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "classDef")
+    );
+
+    let a = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "A")
+        .expect("node A editor symbol");
+    let a_start = text.find("A-->").unwrap();
+    assert_eq!(a.selection.start, a_start);
+    assert_eq!(a.selection.end, a_start + "A".len());
+}
+
+#[test]
+fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nsubgraph group\nA-->B\nC-->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let symbol = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("missing symbol {name}"))
+    };
+
+    let group_start = text.find("group").unwrap();
+    assert_eq!(symbol("group").selection.start, group_start);
+    assert_eq!(symbol("group").selection.end, group_start + "group".len());
+
+    let c_start = text.find("C-->").unwrap();
+    assert_eq!(symbol("C").selection.start, c_start);
+    assert_eq!(symbol("C").selection.end, c_start + "C".len());
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span == SourceSpan::new(text.len(), text.len())
+    }));
 }

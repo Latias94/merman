@@ -5,17 +5,30 @@ status: active
 
 # Current State
 
-- Goal: 完成 merman 的 Flowchart ELK 适配：以 Mermaid 与 Eclipse ELK 源码为依据持续 port 到成熟可默认使用，补齐 source-backed layered/compound 语义、重构适配层边界、收敛 ELK fixture，并保持默认 render 路径稳定。
-- Branch: main
-- Last verified: 2026-06-18
-- Done: Flowchart ELK source-backed probes are green; compound parent-end external dummy net-flow semantics were ported closer to ELK source; inside-self-loop edges now route into the source node nested graph when ELK `insideSelfLoops.activate` is on; targeted compound/importer/layout tests pass.
-- In progress: continue source-backed semantic convergence around compound/self-loop boundary; assess whether any higher-level adapter boundary still needs source-backed rework.
-- Blocked: none
-- Next action: decide whether to port further ELK recursive/compound behavior or stage and continue with the next source-backed gap.
+- Goal: VS Code preview multi-instance parity is implemented on top of the extracted
+  `PreviewInstance` boundary.
+- Branch: `feat/editor-core-language-intelligence`.
+- Last verified: `npm run check`, focused
+  `node --test dist/test/preview-manager.test.js --test-reporter=spec` (13 tests),
+  `npm test -- --test-reporter=spec` (100 tests), `npm run package`, and `git diff --check`.
+- Done: editor diagnostics cleanup is complete; the preview UX follow-up hardens lock/follow,
+  explicit target opening, cross-source render failure clearing, Merman-only preview diagnostic
+  summaries, stale same-source render failure labeling, stale output-action blocking, and the
+  single-preview manager plus per-panel `PreviewInstance` ownership boundary. The next preview
+  parity slice adds a manager-owned instance collection, active preview tracking, one unlocked
+  follow preview, multiple locked previews, manual refresh commands, toolbar Refresh/Source
+  actions, and source-range reveal. Headless smoke-equivalent tests now cover follow preview
+  close/reopen, webview-ready state replay, panel-local source reveal, and panel-local Copy/Export
+  actions; VSIX packaging also passes.
+- In progress: none.
+- Blocked: none.
+- Next action: no required follow-up for this slice. Optional real VS Code Extension Host/manual
+  GUI smoke remains useful for visual confidence; the repo currently has no automated
+  extension-host integration harness.
 
 # Citations
 
-- [compound.rs](../../../../crates/merman-elk-layered/src/compound.rs)
-- [importer.rs](../../../../crates/merman-elk-layered/src/importer.rs)
-- [pipeline.rs](../../../../crates/merman-elk-layered/src/pipeline.rs)
-- [layout.rs](../../../../crates/merman-layout-elk/src/lib.rs)
+- [Editor diagnostics architecture cleanup plan](../../plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md)
+- [VS Code Preview UX Follow-up](progress/2026-07-01-vscode-preview-ux-follow-up.md)
+- [VS Code PreviewInstance Extraction](progress/2026-07-01-vscode-preview-instance-extraction.md)
+- [VS Code Preview Multi-Instance Parity](progress/2026-07-01-vscode-preview-multi-instance-parity.md)

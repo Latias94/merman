@@ -19,6 +19,7 @@ core-full = ["merman/core-full"]
 core-host = ["merman/core-host"]
 ascii = ["merman/ascii"]
 render = ["merman/render"]
+editor-language = []
 cytoscape-layout = ["merman/cytoscape-layout"]
 elk-layout = ["merman/elk-layout"]
 ratex-math = ["render", "dep:merman-render", "merman-render/ratex-math"]
@@ -26,6 +27,7 @@ raster = ["merman/raster"]
 
 [dependencies]
 chrono.workspace = true
+merman-analysis.workspace = true
 merman = { path = "../merman", version = "0.8.0-alpha.2", default-features = false }
 merman-render = { path = "../merman-render", version = "0.8.0-alpha.2", optional = true, default-features = false }
 serde.workspace = true

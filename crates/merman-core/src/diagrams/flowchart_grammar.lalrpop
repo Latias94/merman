@@ -6,6 +6,7 @@ use crate::diagrams::flowchart::{
   ClassAssignStmt, ClassDefStmt, ClickStmt, Edge, FlowchartAst, LabeledText, LinkStyleStmt,
   LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
+use crate::SourceSpan;
 
 extern {
   type Location = usize;
@@ -42,16 +43,16 @@ extern {
 }
 
 pub FlowchartAst: FlowchartAst = {
-  <h:Header> <_s:Seps> <st:Statements> => {
-    let (keyword, direction) = h;
-    FlowchartAst { keyword, direction, statements: st }
+  <_lead:Seps> <h:Header> <_s:Seps> <st:Statements> => {
+    let (keyword, direction, header_span) = h;
+    FlowchartAst { keyword, direction, header_span, statements: st }
   },
 };
 
-Header: (String, Option<String>) = {
-  "graph" <d:Direction?> => ("graph".to_string(), d),
-  "flowchart" <d:Direction?> => ("flowchart".to_string(), d),
-  "flowchart-elk" <d:Direction?> => ("flowchart-elk".to_string(), d),
+Header: (String, Option<String>, SourceSpan) = {
+  <l:@L> "graph" <d:Direction?> <r:@R> => ("graph".to_string(), d, SourceSpan::new(l, r)),
+  <l:@L> "flowchart" <d:Direction?> <r:@R> => ("flowchart".to_string(), d, SourceSpan::new(l, r)),
+  <l:@L> "flowchart-elk" <d:Direction?> <r:@R> => ("flowchart-elk".to_string(), d, SourceSpan::new(l, r)),
 };
 
 Statements: Vec<Stmt> = {
@@ -109,6 +110,8 @@ Chain: (Vec<Node>, Vec<Edge>) = {
           };
           let edge_label = label.as_ref().map(|l| l.text.clone());
           let label_type = label.as_ref().map(|l| l.kind.clone()).unwrap_or(TitleKind::Text);
+          let label_span = label.as_ref().and_then(|l| l.span);
+          let label_selection = label.as_ref().and_then(|l| l.selection);
           edges.push(Edge {
             from: from.id.clone(),
             to: to.id.clone(),
@@ -116,6 +119,8 @@ Chain: (Vec<Node>, Vec<Edge>) = {
             link: link.clone(),
             label: edge_label,
             label_type,
+            label_span,
+            label_selection,
             style: Vec::new(),
             classes: Vec::new(),
             interpolate: None,
@@ -166,29 +171,40 @@ NodeGroupRest: Node = {
 };
 
 NodeRef: Node = {
-  <id:Id> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => Node {
-    id,
-    label: Some(nl.text.text),
-    label_type: nl.text.kind,
-    shape: Some(nl.shape),
-    shape_data: sd,
-    icon: None,
-    form: None,
-    pos: None,
-    img: None,
-    constraint: None,
-    asset_width: None,
-    asset_height: None,
-    styles: Vec::new(),
-    classes: cls,
-    link: None,
-    link_target: None,
-    have_callback: false,
+  <l:@L> <id:Id> <r:@R> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => {
+    let NodeLabelToken { shape, text, .. } = nl;
+    let label_span = text.span;
+    let label_selection = text.selection;
+    Node {
+      id_span: Some(SourceSpan::new(l, r)),
+      id,
+      label: Some(text.text),
+      label_type: text.kind,
+      label_span,
+      label_selection,
+      shape: Some(shape),
+      shape_data: sd,
+      icon: None,
+      form: None,
+      pos: None,
+      img: None,
+      constraint: None,
+      asset_width: None,
+      asset_height: None,
+      styles: Vec::new(),
+      classes: cls,
+      link: None,
+      link_target: None,
+      have_callback: false,
+    }
   },
-  <id:Id> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: None,
     label_type: TitleKind::Text,
+    label_span: None,
+    label_selection: None,
     shape: None,
     shape_data: None,
     icon: None,
@@ -207,29 +223,40 @@ NodeRef: Node = {
 };
 
 NodeRefChain: Node = {
-  <id:Id> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => Node {
-    id,
-    label: Some(nl.text.text),
-    label_type: nl.text.kind,
-    shape: Some(nl.shape),
-    shape_data: sd,
-    icon: None,
-    form: None,
-    pos: None,
-    img: None,
-    constraint: None,
-    asset_width: None,
-    asset_height: None,
-    styles: Vec::new(),
-    classes: cls,
-    link: None,
-    link_target: None,
-    have_callback: false,
+  <l:@L> <id:Id> <r:@R> <nl:NodeLabel> <sd:ShapeData?> <cls:ClassOpt> => {
+    let NodeLabelToken { shape, text, .. } = nl;
+    let label_span = text.span;
+    let label_selection = text.selection;
+    Node {
+      id_span: Some(SourceSpan::new(l, r)),
+      id,
+      label: Some(text.text),
+      label_type: text.kind,
+      label_span,
+      label_selection,
+      shape: Some(shape),
+      shape_data: sd,
+      icon: None,
+      form: None,
+      pos: None,
+      img: None,
+      constraint: None,
+      asset_width: None,
+      asset_height: None,
+      styles: Vec::new(),
+      classes: cls,
+      link: None,
+      link_target: None,
+      have_callback: false,
+    }
   },
-  <id:Id> <sd:ShapeData> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <sd:ShapeData> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: None,
     label_type: TitleKind::Text,
+    label_span: None,
+    label_selection: None,
     shape: None,
     shape_data: Some(sd),
     icon: None,
@@ -245,10 +272,13 @@ NodeRefChain: Node = {
     link_target: None,
     have_callback: false,
   },
-  <id:Id> <cls:ClassOpt> => Node {
+  <l:@L> <id:Id> <r:@R> <cls:ClassOpt> => Node {
+    id_span: Some(SourceSpan::new(l, r)),
     id,
     label: None,
     label_type: TitleKind::Text,
+    label_span: None,
+    label_selection: None,
     shape: None,
     shape_data: None,
     icon: None,

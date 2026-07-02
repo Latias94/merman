@@ -25,7 +25,7 @@ mod parse;
 #[cfg(test)]
 mod tests;
 
-pub use parse::{parse_class, parse_class_typed};
+pub use parse::{parse_class, parse_class_editor_facts, parse_class_typed};
 
 pub(crate) use ast::{Action, Relation, RelationData};
 pub(crate) use lexer::{LexError, Tok};

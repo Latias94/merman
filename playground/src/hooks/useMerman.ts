@@ -10,7 +10,9 @@ import {
   loadWasm,
   SUPPORTED_THEMES,
   type AsciiCapability,
+  type BindingCapabilities,
   type MermanWasm,
+  type RegistryProfile,
   type WasmRenderOptions,
   type ValidationResult,
 } from "@/src/lib/wasm-loader";
@@ -188,6 +190,20 @@ export function useMerman() {
     return wasmRef.current.get_ascii_supported_diagrams();
   }, [ready]);
 
+  const getBindingCapabilities = useCallback((): BindingCapabilities | null => {
+    if (!ready || !wasmRef.current) {
+      return null;
+    }
+    return wasmRef.current.binding_capabilities();
+  }, [ready]);
+
+  const getRegistryProfile = useCallback((): RegistryProfile | null => {
+    if (!ready || !wasmRef.current) {
+      return null;
+    }
+    return wasmRef.current.selected_registry_profile();
+  }, [ready]);
+
   const getAsciiCapabilities = useCallback((): AsciiCapability[] => {
     if (!ready || !wasmRef.current) {
       return FALLBACK_ASCII_CAPABILITIES.map((capability) => ({
@@ -204,6 +220,7 @@ export function useMerman() {
     ready,
     loading,
     loadError,
+    wasm: wasmRef.current,
     render,
     validate,
     getThemes,
@@ -212,6 +229,8 @@ export function useMerman() {
     parseJson,
     layoutJson,
     getAsciiSupportedDiagrams,
+    getBindingCapabilities,
+    getRegistryProfile,
     getAsciiCapabilities,
   };
 }

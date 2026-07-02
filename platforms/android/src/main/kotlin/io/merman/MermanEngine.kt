@@ -23,6 +23,10 @@ object MermanEngine {
         nativeDiagramFamilyCapabilitiesJson()
     }
 
+    private val lintRuleCatalogJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeLintRuleCatalogJson()
+    }
+
     private val supportedThemesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         nativeSupportedThemesJson()
     }
@@ -48,6 +52,10 @@ object MermanEngine {
         nativeLayoutJson(source, optionsJson)
 
     @JvmStatic
+    fun analyzeJson(source: String, optionsJson: String? = null): String =
+        nativeAnalyzeJson(source, optionsJson)
+
+    @JvmStatic
     fun validateJson(source: String, optionsJson: String? = null): String =
         nativeValidateJson(source, optionsJson)
 
@@ -62,6 +70,10 @@ object MermanEngine {
     @JvmStatic
     fun diagramFamilyCapabilitiesJson(): String =
         diagramFamilyCapabilitiesJsonCache
+
+    @JvmStatic
+    fun lintRuleCatalogJson(): String =
+        lintRuleCatalogJsonCache
 
     @JvmStatic
     fun supportedThemesJson(): String =
@@ -106,6 +118,9 @@ object MermanEngine {
     private external fun nativeLayoutJson(source: String, optionsJson: String?): String
 
     @JvmStatic
+    private external fun nativeAnalyzeJson(source: String, optionsJson: String?): String
+
+    @JvmStatic
     private external fun nativeValidateJson(source: String, optionsJson: String?): String
 
     @JvmStatic
@@ -116,6 +131,9 @@ object MermanEngine {
 
     @JvmStatic
     private external fun nativeDiagramFamilyCapabilitiesJson(): String
+
+    @JvmStatic
+    private external fun nativeLintRuleCatalogJson(): String
 
     @JvmStatic
     private external fun nativeSupportedThemesJson(): String

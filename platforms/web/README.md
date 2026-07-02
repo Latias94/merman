@@ -13,26 +13,35 @@ npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 ```
 
-`npm run build` produces the default `browser-full` artifact used for npm publication. Source and
-CI builds can choose a browser WASM preset when a smaller local artifact is useful:
+`npm run build` produces the default `browser-full` artifact used for npm publication. The surface
+includes rendering, parsing, layout, ASCII, validation, diagnostics analysis, and the current
+editor-language APIs. Source and CI builds can choose a browser WASM preset when a smaller local
+artifact is useful:
 
 The WASM build uses the workspace `wasm-size` Cargo profile through `wasm-pack --profile
 wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
 
 | Preset | Command | Capability |
 | --- | --- | --- |
-| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII calls report `MERMAN_UNSUPPORTED_FORMAT`. |
-| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, validation, themes, and metadata over the minimal core profile. |
-| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile. |
-| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/validate, ASCII, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
-| `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Not the npm default. |
-| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. |
+| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport plus metadata, analysis, and validation. Render, parse, layout, ASCII, and editor-language calls are unavailable. |
+| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, metadata, analysis, and validation over the minimal core profile. Editor-language calls are unavailable. |
+| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile, but editor-language calls remain unavailable. |
+| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, editor-language APIs, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
+| `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
+| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
 
 Run `npm run build:ts --prefix platforms/web` after a preset build when producing a complete local
 package.
 
 Each build writes `pkg/merman_wasm_preset.json`. `npm run prepack` expects `browser-full` unless
 `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package.
+
+Call `bindingCapabilities()` after `initMerman()` when you need to branch on optional surfaces.
+`bindingCapabilities().editor_language` is the supported contract for whether the artifact exposes
+`editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
+`editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
+`editorReferences()`, `editorPrepareRename()`, `editorRename()`,
+`editorSemanticTokenLegend()`, and `editorSemanticTokens()`.
 
 ## Usage
 
@@ -121,6 +130,23 @@ main thread through your own worker protocol.
 applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
 label can make the diagram wider than Mermaid would make it in the browser.
 
+`analyze()` returns the diagnostics payload JSON object for a standalone Mermaid diagram.
+`analyzeDocument(source, options, uri)` uses the shared document source model to analyze standalone
+`.mmd`, Markdown, or MDX documents and returns diagnostics, related locations, and fixes in
+host-document coordinates. Downstream lint tools should use `analyzeDocument()` when they scan
+Markdown files and want Merman as an optional analysis engine without adopting the LSP.
+
+`analysisFacts(source, options)` and `analyzeDocumentFacts(source, options, uri)` return the richer
+analysis facts payload. Use these when an integration needs parser provenance, per-diagram
+document/body spans, semantic items, references, expected syntax, or typed Flowchart facts. The
+diagnostics shape remains compatible with `analyze()` / `analyzeDocument()`; the additional
+`diagrams[].syntax` data is for editor, lint, and preview integrations that want Merman's parser
+facts without speaking LSP.
+
+This web surface is an integration bridge, not a request that external linters copy Merman policy.
+Adapters should preserve `merman.*` rule ids for Merman diagnostics and layer their own style rules
+under their own namespaces.
+
 ## Custom wasm loading
 
 By default, `initMerman()` dynamically imports `../pkg/merman_wasm.js`. If a bundler or CDN setup
@@ -158,9 +184,11 @@ The package does not publish separate npm subpaths for render-only or ASCII-only
 the source build presets above when you need to produce a local slim package, and call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
 `core_full`, `core_host`, `elk_layout`, or `ratex_math` capability. `selectedRegistryProfile()`
-reports the active Mermaid registry profile, and `diagramFamilyCapabilities()` reports the diagram
-parser/render facts registered in the current artifact. The ASCII preset currently preserves the
-full core registry for compatibility with the browser ASCII implementation.
+reports the active Mermaid registry profile, `diagramFamilyCapabilities()` reports the diagram
+parser/render facts registered in the current artifact, and `lintRuleCatalog()` reports analyzer
+rule ids, evidence references, default profiles, origins, configurability, and fixability. The ASCII
+preset currently preserves the full core registry for compatibility with the browser ASCII
+implementation.
 
 ## Web Worker integration
 
@@ -221,18 +249,29 @@ initialization is usually simpler.
 - `renderAscii()`
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
-- `validate()`
+- `analyze()`, `analyzeJson()`, `analyzeDocument()`, `analysisFacts()`,
+  `analyzeDocumentFacts()`, `validate()`
+- `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
+  `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
+  `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
+  `editorSemanticTokenLegend()`, `editorSemanticTokens()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
-- `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`
+- `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
-All render, parse, layout, validation, and metadata functions require `initMerman()` first.
+All render, parse, layout, analysis, validation, editor, and metadata functions require
+`initMerman()` first. The editor functions are stateless document queries backed by
+`merman-editor-core`; they return UTF-16 positions/ranges so Monaco and LSP adapters can project the
+same completion, diagnostics, hover, symbol, code-action, rename, and semantic-token semantics.
+Editor query results expose semantic fact provenance where applicable, matching the
+`ParserComplete`, `ParserRecovered`, and `TextScan` boundary used by `merman-editor-core`.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
-`supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
-metadata drifts from the TypeScript surface. ASCII support is typed separately from SVG diagram
-metadata because some terminal-friendly renderers, such as `treeView`, can be exposed through
-`asciiSupportedDiagrams()` even when they are not part of the public SVG `supportedDiagrams()` list.
+`supportedHostThemePresets()`, and `lintRuleCatalog()` return typed metadata and fail fast if the
+generated WebAssembly metadata drifts from the TypeScript surface. ASCII support is typed
+separately from SVG diagram metadata because some terminal-friendly renderers, such as `treeView`,
+can be exposed through `asciiSupportedDiagrams()` even when they are not part of the public SVG
+`supportedDiagrams()` list.
 
 ## Benchmarking against Mermaid JS
 

@@ -8,7 +8,9 @@ import {
   getMermaidHoverDocs,
   MERMAID_LANGUAGE_ID,
   registerMermaidLanguage,
+  setMermaidEditorService,
   setMermaidHoverDocs,
+  updateMermaidEditorMarkers,
   updateMermaidMarkers,
 } from "@/src/lib/mermaid-language";
 import { useAppStore } from "@/src/store";
@@ -22,7 +24,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
   const { code, setCode, uiTheme } = useAppStore();
-  const { ready, validate } = useMerman();
+  const { ready, validate, wasm } = useMerman();
   const hoverDocs = useMemo(
     () => getMermaidHoverDocs((key) => t(key)),
     [t]
@@ -59,6 +61,10 @@ export function CodeEditor({ className }: CodeEditorProps) {
   }, [hoverDocs]);
 
   useEffect(() => {
+    setMermaidEditorService(ready ? wasm : null);
+  }, [ready, wasm]);
+
+  useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     const model = editor?.getModel();
@@ -68,11 +74,23 @@ export function CodeEditor({ className }: CodeEditorProps) {
     if (!ready || !code.trim()) return;
 
     const timeout = window.setTimeout(() => {
+      if (wasm) {
+        try {
+          updateMermaidEditorMarkers(
+            monaco,
+            model,
+            wasm.editor_diagnostics(code)
+          );
+          return;
+        } catch {
+          // Fall back to the legacy validation projection below.
+        }
+      }
       updateMermaidMarkers(monaco, model, validate(code));
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [code, ready, validate]);
+  }, [code, ready, validate, wasm]);
 
   useEffect(() => {
     return () => {
@@ -82,6 +100,7 @@ export function CodeEditor({ className }: CodeEditorProps) {
       if (monaco && model) {
         clearMermaidMarkers(monaco, model);
       }
+      setMermaidEditorService(null);
     };
   }, []);
 

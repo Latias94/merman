@@ -1,5 +1,8 @@
 use super::*;
-use crate::{Engine, ParseOptions, RenderSemanticModel};
+use crate::{
+    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, ParseOptions,
+    RenderSemanticModel, SourceSpan,
+};
 use futures::executor::block_on;
 use serde_json::Value;
 
@@ -259,6 +262,125 @@ fn mindmap_header_can_share_line_with_root_node() {
     assert_eq!(mm["descr"].as_str().unwrap(), "root");
     assert_eq!(mm["children"].as_array().unwrap().len(), 1);
     assert_eq!(mm["children"][0]["descr"].as_str().unwrap(), "child1");
+}
+
+#[test]
+fn mindmap_editor_facts_preserve_parser_node_spans() {
+    let engine = Engine::new();
+    let text = "mindmap root(Root Node)\n  child1(Child 1)\n  :::hot\n  ::icon(bomb)\n  child2\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .unwrap()
+        .expect("mindmap editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+
+    let root_start = text.find("root(Root Node)").unwrap();
+    assert_eq!(
+        symbol_at("root", root_start).selection.end,
+        root_start + "root".len()
+    );
+
+    let child1_start = text.find("child1").unwrap();
+    assert_eq!(
+        symbol_at("child1", child1_start).selection.end,
+        child1_start + "child1".len()
+    );
+
+    let child2_start = text.find("child2").unwrap();
+    assert_eq!(
+        symbol_at("child2", child2_start).selection.end,
+        child2_start + "child2".len()
+    );
+
+    let class_start = text.find("hot").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "hot"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("mindmap class")
+            && symbol.selection.start == class_start
+            && symbol.selection.end == class_start + "hot".len()
+    }));
+
+    let icon_start = text.find("bomb").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "bomb"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("mindmap icon")
+            && symbol.selection.start == icon_start
+            && symbol.selection.end == icon_start + "bomb".len()
+    }));
+
+    let label_start = text.find("Root Node").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Root Node"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("mindmap node label")
+            && symbol.selection.start == label_start
+            && symbol.selection.end == label_start + "Root Node".len()
+    }));
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span.start == root_start
+            && expected.span.end == root_start + "root".len()
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span.start == text.find("Root Node").unwrap()
+            && expected.span.end == text.find("Root Node").unwrap() + "Root Node".len()
+    }));
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == ":::"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "::icon"));
+}
+
+#[test]
+fn mindmap_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "mindmap\nroot\n child[unterminated";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .unwrap()
+        .expect("mindmap editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let child_start = text.find("child").unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains("unterminated node delimiter")
+            && diagnostic.span == Some(SourceSpan::new(child_start, text.len()))
+    }));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+    assert!(!facts.symbols.iter().any(|symbol| symbol.name == "child"));
+}
+
+#[test]
+fn mindmap_editor_facts_preserve_prior_symbols_when_later_node_is_invalid() {
+    let engine = Engine::new();
+    let text = "mindmap\nroot\n child1\n child2[broken]]\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .unwrap()
+        .expect("mindmap editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "child1"));
+    assert!(!facts.symbols.iter().any(|symbol| symbol.name == "child2"));
+    assert!(
+        facts
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("unexpected trailing input"))
+    );
 }
 
 #[test]

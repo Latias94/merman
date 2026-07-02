@@ -1,7 +1,7 @@
 use crate::{
-    Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result, common_db, diagram,
-    diagrams::error_diagram, family, preprocess_diagram, preprocess_diagram_with_known_type,
-    runtime, sanitize, theme,
+    EditorSemanticFacts, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result,
+    common_db, diagram, diagrams::error_diagram, family, preprocess_diagram,
+    preprocess_diagram_with_known_type, runtime, sanitize, theme,
 };
 use diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
 
@@ -82,6 +82,83 @@ impl<'a> ParsePipeline<'a> {
         )
     }
 
+    pub(crate) fn parse_editor_semantic_facts(&self) -> Result<Option<EditorSemanticFacts>> {
+        let mut directive_prefixes = editor_directive_prefixes(self.text);
+        let Some((_code, meta)) = self.preprocess()? else {
+            return Ok(None);
+        };
+
+        let facts = match meta.diagram_type.as_str() {
+            "flowchart-v2" | "flowchart-elk" => {
+                crate::diagrams::flowchart::parse_flowchart_editor_facts(self.text, &meta)?
+            }
+            "sequence" => crate::diagrams::sequence::parse_sequence_editor_facts(self.text, &meta),
+            "state" | "stateDiagram" => {
+                crate::diagrams::state::parse_state_editor_facts(self.text, &meta)
+            }
+            "class" | "classDiagram" => {
+                crate::diagrams::class::parse_class_editor_facts(self.text, &meta)
+            }
+            "er" | "erDiagram" => crate::diagrams::er::parse_er_editor_facts(self.text, &meta),
+            "mindmap" => crate::diagrams::mindmap::parse_mindmap_editor_facts(self.text, &meta),
+            "gantt" => crate::diagrams::gantt::parse_gantt_editor_facts(self.text, &meta),
+            "architecture" => {
+                crate::diagrams::architecture::parse_architecture_editor_facts(self.text, &meta)
+            }
+            "block" => crate::diagrams::block::parse_block_editor_facts(self.text, &meta),
+            "c4" => crate::diagrams::c4::parse_c4_editor_facts(self.text, &meta),
+            "gitGraph" => {
+                crate::diagrams::git_graph::parse_git_graph_editor_facts(self.text, &meta)
+            }
+            "kanban" => crate::diagrams::kanban::parse_kanban_editor_facts(self.text, &meta),
+            "ishikawa" => crate::diagrams::ishikawa::parse_ishikawa_editor_facts(self.text, &meta),
+            "journey" => crate::diagrams::journey::parse_journey_editor_facts(self.text, &meta),
+            "info" => crate::diagrams::info::parse_info_editor_facts(self.text, &meta),
+            "timeline" => crate::diagrams::timeline::parse_timeline_editor_facts(self.text, &meta),
+            "pie" => crate::diagrams::pie::parse_pie_editor_facts(self.text, &meta),
+            "packet" => crate::diagrams::packet::parse_packet_editor_facts(self.text, &meta),
+            "sankey" => crate::diagrams::sankey::parse_sankey_editor_facts(self.text, &meta),
+            "treeView" => {
+                crate::diagrams::tree_view::parse_tree_view_editor_facts(self.text, &meta)
+            }
+            "eventmodeling" => {
+                crate::diagrams::eventmodeling::parse_eventmodeling_editor_facts(self.text, &meta)
+            }
+            "quadrantChart" => {
+                crate::diagrams::quadrant_chart::parse_quadrant_chart_editor_facts(self.text, &meta)
+            }
+            "radar" => crate::diagrams::radar::parse_radar_editor_facts(self.text, &meta),
+            "treemap" => crate::diagrams::treemap::parse_treemap_editor_facts(self.text, &meta),
+            "requirement" => {
+                crate::diagrams::requirement::parse_requirement_editor_facts(self.text, &meta)
+            }
+            "venn" => crate::diagrams::venn::parse_venn_editor_facts(self.text, &meta),
+            "xychart" => crate::diagrams::xychart::parse_xychart_editor_facts(self.text, &meta),
+            "zenuml" => crate::diagrams::zenuml::parse_zenuml_editor_facts(self.text, &meta),
+            _ => return Ok(None),
+        };
+
+        let EditorSemanticFacts {
+            completeness,
+            symbols,
+            directive_prefixes: family_directive_prefixes,
+            diagnostics,
+            expected_syntax,
+        } = facts;
+        directive_prefixes.extend(family_directive_prefixes);
+        let mut facts = EditorSemanticFacts {
+            completeness,
+            symbols,
+            directive_prefixes: Vec::new(),
+            diagnostics,
+            expected_syntax,
+        };
+        for prefix in directive_prefixes {
+            facts.push_directive_prefix(prefix);
+        }
+        Ok(Some(facts))
+    }
+
     fn parse_model<T, O>(
         &self,
         timing: ParseTiming,
@@ -145,13 +222,13 @@ impl<'a> ParsePipeline<'a> {
         let registry_profile = self.engine.render_diagram_registry.profile();
         debug_assert_eq!(self.engine.diagram_registry.profile(), registry_profile);
         if !family::permits_json_render_fallback(registry_profile, &meta.diagram_type) {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!(
                     "built-in diagram type `{}` is missing a typed render parser; JSON render fallback is reserved for error and custom diagram adapters",
                     meta.diagram_type
                 ),
-            });
+            ));
         }
 
         diagram::parse_or_unsupported(
@@ -359,6 +436,43 @@ struct ParseTimingSuccess<'a> {
     parse: Option<runtime::TimingDuration>,
     sanitize: Option<runtime::TimingDuration>,
     input_bytes: usize,
+}
+
+fn editor_directive_prefixes(text: &str) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    for line in text.lines() {
+        if let Some(prefix) = editor_directive_prefix(line) {
+            let prefix = prefix.to_string();
+            if !prefixes.contains(&prefix) {
+                prefixes.push(prefix);
+            }
+        }
+    }
+    prefixes
+}
+
+fn editor_directive_prefix(line: &str) -> Option<&'static str> {
+    let trimmed = line.trim_start();
+
+    if let Some(rest) = trimmed.strip_prefix("%%{") {
+        let name = rest
+            .split(|ch: char| ch.is_whitespace() || matches!(ch, ':' | '}'))
+            .next()
+            .filter(|name| !name.is_empty())?;
+
+        return matches!(name, "init" | "initialize" | "wrap").then_some(match name {
+            "init" => "init",
+            "initialize" => "initialize",
+            "wrap" => "wrap",
+            _ => unreachable!(),
+        });
+    }
+
+    if trimmed.starts_with(":::") {
+        return Some(":::");
+    }
+
+    None
 }
 
 fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Option<String> {

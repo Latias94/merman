@@ -81,6 +81,20 @@ pub struct MermanDiagramFamilyCapability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanLintRuleCatalogEntry {
+    pub id: String,
+    pub description: String,
+    pub evidence: Vec<String>,
+    pub default_severity: String,
+    pub category: String,
+    pub default_enabled: bool,
+    pub default_profile: String,
+    pub origin: String,
+    pub configurable: bool,
+    pub fixable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanAsciiCapabilityEvidence {
     pub kind: String,
     pub source: String,
@@ -317,6 +331,25 @@ fn uniffi_white_space(
     }
 }
 
+fn uniffi_lint_rule(rule: merman_bindings_core::RuleCatalogEntry) -> MermanLintRuleCatalogEntry {
+    MermanLintRuleCatalogEntry {
+        id: rule.id.to_string(),
+        description: rule.description.to_string(),
+        evidence: rule
+            .evidence
+            .iter()
+            .map(|evidence| evidence.to_string())
+            .collect(),
+        default_severity: rule.default_severity.as_str().to_string(),
+        category: rule.category.as_str().to_string(),
+        default_enabled: rule.default_enabled,
+        default_profile: rule.default_profile.as_str().to_string(),
+        origin: rule.origin.as_str().to_string(),
+        configurable: rule.configurable,
+        fixable: rule.fixable,
+    }
+}
+
 #[uniffi::export]
 impl MermanEngine {
     #[uniffi::constructor]
@@ -371,6 +404,17 @@ impl MermanEngine {
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
         string_output(merman_bindings_core::layout_json(
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+        ))
+    }
+
+    pub fn analyze_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_output(merman_bindings_core::analyze_json(
             source.as_bytes(),
             options_bytes(options_json.as_deref()),
         ))
@@ -458,6 +502,20 @@ impl MermanEngine {
             })
             .collect()
     }
+
+    pub fn lint_rule_catalog(&self) -> Vec<MermanLintRuleCatalogEntry> {
+        merman_bindings_core::lint_rule_catalog()
+            .into_iter()
+            .map(uniffi_lint_rule)
+            .collect()
+    }
+
+    pub fn configurable_lint_rule_catalog(&self) -> Vec<MermanLintRuleCatalogEntry> {
+        merman_bindings_core::configurable_lint_rule_catalog()
+            .into_iter()
+            .map(uniffi_lint_rule)
+            .collect()
+    }
 }
 
 #[uniffi::export]
@@ -491,6 +549,11 @@ impl MermanReusableEngine {
     pub fn layout_json(&self, source: String) -> Result<String, MermanError> {
         let inner = self.current_inner()?;
         string_output(inner.layout_json(source.as_bytes()))
+    }
+
+    pub fn analyze_json(&self, source: String) -> Result<String, MermanError> {
+        let inner = self.current_inner()?;
+        string_output(inner.analyze_json(source.as_bytes()))
     }
 
     pub fn validate(&self, source: String) -> Result<MermanValidationResult, MermanError> {
@@ -742,6 +805,19 @@ mod tests {
     }
 
     #[test]
+    fn engine_returns_analysis_json() {
+        let json: Value = serde_json::from_str(
+            &engine()
+                .analyze_json("flowchart TD\nA[Hello]".to_string(), None)
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["valid"], true);
+    }
+
+    #[test]
     fn engine_validates_source() {
         let result = engine()
             .validate("flowchart TD\nA[Hello]".to_string(), None)
@@ -798,6 +874,21 @@ mod tests {
                 .any(|capability| capability.diagram_type == "flowchart"
                     && capability.has_semantic_parser
                     && capability.has_render_parser)
+        );
+        let lint_rules = engine.lint_rule_catalog();
+        assert!(lint_rules.iter().any(|rule| {
+            rule.id == "merman.authoring.flowchart.explicit_direction"
+                && rule.origin == "merman_authoring"
+                && rule.default_profile == "recommended"
+                && rule
+                    .evidence
+                    .contains(&"docs/adr/0072-lint-rule-governance.md".to_string())
+        }));
+        assert!(
+            engine
+                .configurable_lint_rule_catalog()
+                .iter()
+                .all(|rule| rule.configurable && rule.category != "internal")
         );
     }
 

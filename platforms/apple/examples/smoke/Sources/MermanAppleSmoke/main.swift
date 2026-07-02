@@ -67,6 +67,13 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("ASCII capabilities smoke failed")
         }
 
+        guard try engine.lintRuleCatalog().contains(where: {
+            $0.id == "merman.authoring.flowchart.explicit_direction"
+                && $0.evidence.contains("docs/adr/0072-lint-rule-governance.md")
+        }) else {
+            throw SmokeError.failed("lint rule catalog smoke failed")
+        }
+
         guard try engine.supportedThemes().contains("default") else {
             throw SmokeError.failed("themes smoke failed")
         }

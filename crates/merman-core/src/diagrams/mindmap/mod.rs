@@ -6,7 +6,7 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-pub use parse::{parse_mindmap, parse_mindmap_model_for_render};
+pub use parse::{parse_mindmap, parse_mindmap_editor_facts, parse_mindmap_model_for_render};
 pub use render_model::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };

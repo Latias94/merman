@@ -22,11 +22,15 @@ pub(crate) struct MarkdownImage {
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
-        Some("md" | "markdown")
+        Some("md" | "markdown" | "mdx")
     )
 }
 
 pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
+    extract_charts_with_spans(source)
+}
+
+pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
     chart_regex()
         .captures_iter(source)
         .filter_map(|captures| {

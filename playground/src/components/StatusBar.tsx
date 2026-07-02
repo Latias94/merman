@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "@/src/store";
 import { cn } from "@/lib/utils";
+import { useMerman } from "@/src/hooks/useMerman";
 
 export function StatusBar() {
   const { t } = useTranslation();
@@ -13,6 +14,9 @@ export function StatusBar() {
     textMeasurementMode,
     diagramFont,
   } = useAppStore();
+  const { ready, getBindingCapabilities, getRegistryProfile } = useMerman();
+  const capabilities = getBindingCapabilities();
+  const registryProfile = getRegistryProfile();
 
   const lineCount = code.split("\n").length;
   const charCount = code.length;
@@ -39,6 +43,20 @@ export function StatusBar() {
         <span className="hidden sm:inline">{charCount} {t("status.chars")}</span>
       </div>
       <div className="hidden items-center gap-4 sm:flex">
+        <span>
+          {t("status.wasm")}: {ready ? t("status.ready") : t("status.loading")}
+        </span>
+        {capabilities && (
+          <span>
+            {t("status.editorLanguage")}:{" "}
+            {capabilities.editor_language ? t("status.enabled") : t("status.disabled")}
+          </span>
+        )}
+        {registryProfile && (
+          <span className="hidden xl:inline">
+            {t("status.registryProfile")}: {registryProfile}
+          </span>
+        )}
         {lastRenderTime > 0 && (
           <span>{t("status.renderTime")}: {lastRenderTime.toFixed(1)}ms</span>
         )}

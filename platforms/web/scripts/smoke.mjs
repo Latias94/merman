@@ -5,23 +5,32 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
+const args = process.argv.slice(2);
+const entrySubpath = parseArgValue(args, "--entry") ?? ".";
+const pkgDirRel = parseArgValue(args, "--pkg-dir-rel") ?? "pkg";
+const wasmModuleSubpath =
+  parseArgValue(args, "--wasm-module-subpath") ?? "./pkg/merman_wasm.js";
+const wasmBinaryRel =
+  parseArgValue(args, "--wasm-binary-rel") ??
+  normalizePath(path.join(pkgDirRel, "merman_wasm_bg.wasm"));
+const manifestRel =
+  parseArgValue(args, "--manifest-rel") ??
+  normalizePath(path.join(pkgDirRel, "merman_wasm_preset.json"));
 
-const api = await import(pathToFileURL(path.join(packageRoot, "dist", "index.js")).href);
-const exportedWasmModule = await import("@mermanjs/web/pkg/merman_wasm.js");
+const api = await import(resolveEntryModuleHref(entrySubpath));
+const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
 
 assert.equal(typeof exportedWasmModule.default, "function");
 if (typeof import.meta.resolve === "function") {
   assert.match(
-    import.meta.resolve("@mermanjs/web/pkg/merman_wasm_bg.wasm"),
+    import.meta.resolve(toPackageSpecifier(wasmBinaryRel)),
     /merman_wasm_bg\.wasm$/
   );
 }
 
 await api.initMerman({
   wasm: {
-    module_or_path: await readFile(
-      path.join(packageRoot, "pkg", "merman_wasm_bg.wasm")
-    ),
+    module_or_path: await readFile(path.join(packageRoot, wasmBinaryRel)),
   },
 });
 
@@ -35,6 +44,9 @@ const options = {
   svg: { pipeline: "readable" },
   layout: { text_measurer: "deterministic" },
 };
+const presetManifest = JSON.parse(
+  await readFile(path.join(packageRoot, manifestRel), "utf8")
+);
 
 class FakeMeasureElement {
   style = {};
@@ -94,6 +106,8 @@ assert.equal(typeof capabilities.ascii, "boolean");
 assert.equal(typeof capabilities.core_full, "boolean");
 assert.equal(typeof capabilities.core_host, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
+assert.equal(typeof capabilities.editor_language, "boolean");
+assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
 
 const registryProfile = api.selectedRegistryProfile();
 assert.match(registryProfile, /^(full|tiny)$/);
@@ -111,6 +125,101 @@ assert.equal(
   ),
   true
 );
+
+const lintRules = api.lintRuleCatalog();
+assert.equal(Array.isArray(lintRules), true);
+assert.equal(
+  lintRules.some(
+    (rule) =>
+      rule.id === "merman.authoring.flowchart.explicit_direction" &&
+      rule.default_severity === "hint" &&
+      rule.origin === "merman_authoring" &&
+      rule.evidence.includes("docs/adr/0072-lint-rule-governance.md") &&
+      rule.configurable &&
+      rule.fixable
+  ),
+  true
+);
+
+const markdownAnalysis = api.analyzeDocument(
+  "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+  deterministicTime,
+  "file:///tmp/example.md"
+);
+assert.equal(markdownAnalysis.valid, false);
+assert.equal(markdownAnalysis.source.kind, "markdown");
+assert.equal(markdownAnalysis.diagnostics[0].span.line, 4);
+assert.equal(
+  markdownAnalysis.diagnostics[0].related.some(
+    (related) => related.message === "Mermaid fence 1"
+  ),
+  true
+);
+
+const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
+assert.equal(flowchartFacts.valid, true);
+assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
+assert.equal(
+  flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
+  true
+);
+assert.equal(
+  flowchartFacts.diagrams[0].syntax.flowchart.edges.some(
+    (edge) => edge.from === "A" && edge.to === "B"
+  ),
+  true
+);
+assert.equal(
+  flowchartFacts.diagrams[0].syntax.semantic_items.some(
+    (item) => item.name === "A" && item.span.document
+  ),
+  true
+);
+
+const markdownFacts = api.analyzeDocumentFacts(
+  "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+  deterministicTime,
+  "file:///tmp/example.md"
+);
+assert.equal(markdownFacts.valid, false);
+assert.equal(markdownFacts.source.kind, "markdown");
+assert.equal(markdownFacts.diagrams[0].source_id, "mermaid-fence-1");
+assert.equal(markdownFacts.diagrams[0].syntax.parser_backed, true);
+assert.equal(
+  markdownFacts.diagrams[0].syntax.expected_syntax.some(
+    (expected) => expected.kind === "shape" && expected.span.document
+  ),
+  true
+);
+
+const mdxAnalysis = api.analyzeDocument(
+  "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+  deterministicTime,
+  "file:///tmp/example.mdx?rev=1#fence"
+);
+assert.equal(mdxAnalysis.valid, false);
+assert.equal(mdxAnalysis.source.kind, "mdx");
+assert.equal(mdxAnalysis.source.language, "mdx");
+assert.equal(mdxAnalysis.source.path, "file:///tmp/example.mdx?rev=1#fence");
+assert.equal(mdxAnalysis.diagnostics[0].span.line, 4);
+
+const markdownFixAnalysis = api.analyzeDocument(
+  '```mermaid\n%%{ initialize: {"theme":"dark"} }%%\nflowchart TD\nA-->B\n```\n',
+  {
+    ...deterministicTime,
+    lint: { profile: "recommended" },
+  },
+  "file:///tmp/example.md"
+);
+const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
+  (diagnostic) =>
+    diagnostic.category === "config" &&
+    (diagnostic.fixes ?? []).some((fix) => fix.edits.length > 0)
+);
+assert.ok(configFixDiagnostic);
+assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);
+
+assertEditorLanguageSurface(capabilities.editor_language);
 
 if (capabilities.render) {
   const rawGantt = `gantt
@@ -164,9 +273,13 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(invalid.valid, false);
   assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
 } else {
-  const unsupported = api.validate(source, deterministicTime);
-  assert.equal(unsupported.valid, false);
-  assert.equal(unsupported.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+  const valid = api.validate(source, deterministicTime);
+  assert.equal(valid.valid, true);
+  assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
+
+  assertUnsupportedFormat(() => api.renderSvg(source, options));
+  assertUnsupportedFormat(() => api.parseJson(source, deterministicTime));
+  assertUnsupportedFormat(() => api.layoutJson(source, options));
 }
 
 if (capabilities.ascii) {
@@ -301,10 +414,97 @@ if (capabilities.render) {
 console.log(
   [
     "@mermanjs/web smoke passed",
+    `entry=${entrySubpath}`,
     `diagrams=${api.supportedDiagrams().length}`,
     `render=${capabilities.render}`,
     `ascii=${capabilities.ascii}`,
     `core_full=${capabilities.core_full}`,
     `ratex_math=${capabilities.ratex_math}`,
+    `editor_language=${capabilities.editor_language}`,
   ].join(" ")
 );
+
+function assertEditorLanguageSurface(enabled) {
+  const editorSource = "flowchart TD\nA-->B\nB-->\n";
+  const editorUri = "file:///tmp/example.mmd";
+
+  if (!enabled) {
+    assert.throws(
+      () => api.editorCompletions(editorSource, { line: 2, character: 4 }, editorUri),
+      /editorCompletions\(\) is not available/
+    );
+    assert.throws(
+      () => api.editorDiagnostics(editorSource, deterministicTime, editorUri),
+      /editorDiagnostics\(\) is not available/
+    );
+    assert.equal(typeof exportedWasmModule.editorCompletions, "undefined");
+    assert.equal(typeof exportedWasmModule.editorDiagnostics, "undefined");
+    return;
+  }
+
+  const completions = api.editorCompletions(
+    "flowchart TD\nA-->B\nC-->\n",
+    { line: 2, character: 4 },
+    editorUri
+  );
+  assert.ok(completions.items.some((item) => item.label === "B"));
+
+  const diagnostics = api.editorDiagnostics(editorSource, deterministicTime, editorUri);
+  assert.equal(Array.isArray(diagnostics.diagnostics), true);
+
+  const references = api.editorReferences(
+    "flowchart TD\nA-->B\nA-->C\n",
+    { line: 1, character: 0 },
+    true,
+    editorUri
+  );
+  assert.equal(references.length, 2);
+
+  const legend = api.editorSemanticTokenLegend();
+  assert.ok(legend.tokenTypes.length > 0);
+  assert.equal(typeof exportedWasmModule.editorCompletions, "function");
+  assert.equal(typeof exportedWasmModule.editorDiagnostics, "function");
+}
+
+function assertUnsupportedFormat(run) {
+  let error = null;
+  try {
+    run();
+  } catch (caught) {
+    error = caught;
+  }
+  assert.ok(error, "expected MERMAN_UNSUPPORTED_FORMAT error");
+  assert.equal(error.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+}
+
+function parseArgValue(inputArgs, name) {
+  for (let index = 0; index < inputArgs.length; index += 1) {
+    const arg = inputArgs[index];
+    if (arg === name) {
+      return inputArgs[index + 1];
+    }
+    if (arg.startsWith(`${name}=`)) {
+      return arg.slice(name.length + 1);
+    }
+  }
+  return null;
+}
+
+function resolveEntryModuleHref(subpath) {
+  if (subpath === "." || subpath === "./index") {
+    return pathToFileURL(path.join(packageRoot, "dist", "index.js")).href;
+  }
+  const trimmed = subpath.replace(/^\.\//, "").replace(/^\//, "");
+  return pathToFileURL(path.join(packageRoot, "dist", `${trimmed}.js`)).href;
+}
+
+function toPackageSpecifier(subpath) {
+  if (subpath.startsWith("./")) {
+    return `@mermanjs/web/${subpath.slice(2)}`;
+  }
+  return `@mermanjs/web/${subpath.replace(/^\//, "")}`;
+}
+
+function normalizePath(value) {
+  return value.split(path.sep).join("/");
+}

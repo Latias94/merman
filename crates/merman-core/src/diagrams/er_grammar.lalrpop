@@ -2,7 +2,7 @@
 
 grammar;
 
-use crate::diagrams::er::{Action, Attribute, RelSpec, Tok};
+use crate::diagrams::er::{Action, Attribute, RelSpec, SpannedIdList, Tok};
 
 extern {
   type Location = usize;
@@ -15,7 +15,7 @@ extern {
 
     Name => Tok::Name(<String>),
     Str => Tok::Str(<String>),
-    IdList => Tok::IdList(<Vec<String>>),
+    IdList => Tok::IdList(<SpannedIdList>),
     RestOfLine => Tok::RestOfLine(<String>),
 
     AccTitle => Tok::AccTitle(<String>),
@@ -93,15 +93,15 @@ DirectionStatement: Action = {
 };
 
 StyleStatement: Action = {
-  "style" <ids:IdList> <raw:RestOfLine> => Action::AddCssStyles { entities: ids, raw },
+  "style" <ids:IdNames> <raw:RestOfLine> => Action::AddCssStyles { entities: ids, raw },
 };
 
 ClassDefStatement: Action = {
-  "classDef" <ids:IdList> <raw:RestOfLine> => Action::AddClassDef { classes: ids, raw },
+  "classDef" <ids:IdNames> <raw:RestOfLine> => Action::AddClassDef { classes: ids, raw },
 };
 
 ClassStatement: Action = {
-  "class" <entities:IdList> <classes:IdList> => Action::SetClass { entities, classes },
+  "class" <entities:IdNames> <classes:IdNames> => Action::SetClass { entities, classes },
 };
 
 RelationshipStatement: Vec<Action> = {
@@ -111,7 +111,7 @@ RelationshipStatement: Vec<Action> = {
     Action::AddRelationship { a, role, b, spec },
   ],
 
-  <a:Name> StyleSeparator <classes_a:IdList> <spec:RelSpec> <b:Name> StyleSeparator <classes_b:IdList> Colon <role:Role> => vec![
+  <a:Name> StyleSeparator <classes_a:IdNames> <spec:RelSpec> <b:Name> StyleSeparator <classes_b:IdNames> Colon <role:Role> => vec![
     Action::AddEntity { name: a.clone(), alias: None },
     Action::AddEntity { name: b.clone(), alias: None },
     Action::AddRelationship { a: a.clone(), role, b: b.clone(), spec },
@@ -119,14 +119,14 @@ RelationshipStatement: Vec<Action> = {
     Action::SetClass { entities: vec![b], classes: classes_b },
   ],
 
-  <a:Name> StyleSeparator <classes_a:IdList> <spec:RelSpec> <b:Name> Colon <role:Role> => vec![
+  <a:Name> StyleSeparator <classes_a:IdNames> <spec:RelSpec> <b:Name> Colon <role:Role> => vec![
     Action::AddEntity { name: a.clone(), alias: None },
     Action::AddEntity { name: b.clone(), alias: None },
     Action::AddRelationship { a: a.clone(), role, b: b.clone(), spec },
     Action::SetClass { entities: vec![a], classes: classes_a },
   ],
 
-  <a:Name> <spec:RelSpec> <b:Name> StyleSeparator <classes_b:IdList> Colon <role:Role> => vec![
+  <a:Name> <spec:RelSpec> <b:Name> StyleSeparator <classes_b:IdNames> Colon <role:Role> => vec![
     Action::AddEntity { name: a.clone(), alias: None },
     Action::AddEntity { name: b.clone(), alias: None },
     Action::AddRelationship { a: a.clone(), role, b: b.clone(), spec },
@@ -139,12 +139,12 @@ EntityStatement: Vec<Action> = {
     Action::AddEntity { name: name.clone(), alias: None },
     Action::AddAttributes { entity: name, attributes: attrs },
   ],
-  <name:Name> StyleSeparator <classes:IdList> BlockStart <attrs:Attributes> BlockStop => vec![
+  <name:Name> StyleSeparator <classes:IdNames> BlockStart <attrs:Attributes> BlockStop => vec![
     Action::AddEntity { name: name.clone(), alias: None },
     Action::AddAttributes { entity: name.clone(), attributes: attrs },
     Action::SetClass { entities: vec![name], classes },
   ],
-  <name:Name> StyleSeparator <classes:IdList> => vec![
+  <name:Name> StyleSeparator <classes:IdNames> => vec![
     Action::AddEntity { name: name.clone(), alias: None },
     Action::SetClass { entities: vec![name], classes },
   ],
@@ -161,15 +161,19 @@ EntityStatement: Vec<Action> = {
     Action::AddEntity { name, alias: Some(alias) },
   ],
 
-  <name:Name> SquareStart <alias:Name> SquareStop StyleSeparator <classes:IdList> BlockStart <attrs:Attributes> BlockStop => vec![
+  <name:Name> SquareStart <alias:Name> SquareStop StyleSeparator <classes:IdNames> BlockStart <attrs:Attributes> BlockStop => vec![
     Action::AddEntity { name: name.clone(), alias: Some(alias) },
     Action::AddAttributes { entity: name.clone(), attributes: attrs },
     Action::SetClass { entities: vec![name], classes },
   ],
-  <name:Name> SquareStart <alias:Name> SquareStop StyleSeparator <classes:IdList> => vec![
+  <name:Name> SquareStart <alias:Name> SquareStop StyleSeparator <classes:IdNames> => vec![
     Action::AddEntity { name: name.clone(), alias: Some(alias) },
     Action::SetClass { entities: vec![name], classes },
   ],
+};
+
+IdNames: Vec<String> = {
+  <ids:IdList> => ids.into_names(),
 };
 
 Role: String = {

@@ -1,7 +1,19 @@
 import {
   asciiCapabilities,
   asciiSupportedDiagrams,
+  bindingCapabilities,
   createBrowserTextMeasurer,
+  editorCodeActions,
+  editorCompletions,
+  editorDefinition,
+  editorDiagnostics,
+  editorDocumentSymbols,
+  editorHover,
+  editorPrepareRename,
+  editorReferences,
+  editorRename,
+  editorSemanticTokenLegend,
+  editorSemanticTokens,
   initMerman,
   layoutJson,
   layoutJsonWithTextMeasurer,
@@ -12,13 +24,27 @@ import {
   renderSvgWithTextMeasurer,
   supportedDiagrams,
   supportedThemes,
+  selectedRegistryProfile,
   validate as validateDiagram,
   type AsciiBindingOptions,
   type AsciiCapability,
+  type BindingCapabilities,
   type HostTextMeasurer,
   type HostThemePresetName,
   type MermanWasmModule,
+  type RegistryProfile,
   type SvgBindingOptions,
+  type EditorCodeAction,
+  type EditorCompletionList,
+  type EditorDiagnosticsResult,
+  type EditorDocumentSymbol,
+  type EditorHover,
+  type EditorLocation,
+  type EditorPosition,
+  type EditorPrepareRename,
+  type EditorSemanticToken,
+  type EditorSemanticTokenLegend,
+  type EditorWorkspaceEdit,
 } from "@mermanjs/web";
 import mermanWasmUrl from "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";
 import {
@@ -31,7 +57,7 @@ import {
 } from "@/src/lib/diagram-font";
 
 export { SUPPORTED_THEMES };
-export type { AsciiCapability };
+export type { AsciiCapability, BindingCapabilities, RegistryProfile };
 
 export interface ValidationResult {
   valid: boolean;
@@ -52,6 +78,8 @@ export interface WasmRenderOptions {
 
 export interface MermanWasm {
   init(): Promise<void>;
+  binding_capabilities(): BindingCapabilities;
+  selected_registry_profile(): RegistryProfile;
   render_svg(
     code: string,
     theme: string,
@@ -81,6 +109,28 @@ export interface MermanWasm {
   get_ascii_supported_diagrams(): string[];
   get_ascii_capabilities(): AsciiCapability[];
   validate(code: string): ValidationResult;
+  editor_diagnostics(code: string): EditorDiagnosticsResult;
+  editor_code_actions(code: string): EditorCodeAction[];
+  editor_completions(code: string, position: EditorPosition): EditorCompletionList;
+  editor_hover(code: string, position: EditorPosition): EditorHover | null;
+  editor_document_symbols(code: string): EditorDocumentSymbol[];
+  editor_definition(code: string, position: EditorPosition): EditorLocation | null;
+  editor_references(
+    code: string,
+    position: EditorPosition,
+    includeDeclaration: boolean
+  ): EditorLocation[];
+  editor_prepare_rename(
+    code: string,
+    position: EditorPosition
+  ): EditorPrepareRename | null;
+  editor_rename(
+    code: string,
+    position: EditorPosition,
+    newName: string
+  ): EditorWorkspaceEdit | null;
+  editor_semantic_token_legend(): EditorSemanticTokenLegend;
+  editor_semantic_tokens(code: string): EditorSemanticToken[];
 }
 
 let wasmModule: MermanWasm | null = null;
@@ -91,6 +141,7 @@ let browserTextMeasurer: HostTextMeasurer | null = null;
 
 const WARMUP_SOURCE = "flowchart TD\n  warmupA[Warmup] --> warmupB[Ready]";
 const WASM_CACHE_NAME = "merman-playground-wasm-v1";
+const PLAYGROUND_DOCUMENT_URI = "file:///merman/playground.mmd";
 
 export async function loadWasm(): Promise<MermanWasm> {
   if (wasmModule) {
@@ -209,6 +260,14 @@ function createWasmAdapter(): MermanWasm {
   return {
     async init() {},
 
+    binding_capabilities(): BindingCapabilities {
+      return bindingCapabilities();
+    },
+
+    selected_registry_profile(): RegistryProfile {
+      return selectedRegistryProfile();
+    },
+
     render_svg(
       code: string,
       theme: string,
@@ -298,6 +357,72 @@ function createWasmAdapter(): MermanWasm {
         valid: result.valid,
         error: result.error,
       };
+    },
+
+    editor_diagnostics(code: string): EditorDiagnosticsResult {
+      return editorDiagnostics(code, undefined, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_code_actions(code: string): EditorCodeAction[] {
+      return editorCodeActions(code, undefined, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_completions(
+      code: string,
+      position: EditorPosition
+    ): EditorCompletionList {
+      return editorCompletions(code, position, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_hover(code: string, position: EditorPosition): EditorHover | null {
+      return editorHover(code, position, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_document_symbols(code: string): EditorDocumentSymbol[] {
+      return editorDocumentSymbols(code, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_definition(
+      code: string,
+      position: EditorPosition
+    ): EditorLocation | null {
+      return editorDefinition(code, position, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_references(
+      code: string,
+      position: EditorPosition,
+      includeDeclaration: boolean
+    ): EditorLocation[] {
+      return editorReferences(
+        code,
+        position,
+        includeDeclaration,
+        PLAYGROUND_DOCUMENT_URI
+      );
+    },
+
+    editor_prepare_rename(
+      code: string,
+      position: EditorPosition
+    ): EditorPrepareRename | null {
+      return editorPrepareRename(code, position, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_rename(
+      code: string,
+      position: EditorPosition,
+      newName: string
+    ): EditorWorkspaceEdit | null {
+      return editorRename(code, position, newName, PLAYGROUND_DOCUMENT_URI);
+    },
+
+    editor_semantic_token_legend(): EditorSemanticTokenLegend {
+      return editorSemanticTokenLegend();
+    },
+
+    editor_semantic_tokens(code: string): EditorSemanticToken[] {
+      return editorSemanticTokens(code, PLAYGROUND_DOCUMENT_URI);
     },
   };
 }

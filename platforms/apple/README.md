@@ -36,9 +36,11 @@ let svg = try engine.renderSvg(
 )
 let semanticJson = try engine.parseJsonRaw(source)
 let layoutJson = try engine.layoutJsonRaw(source)
+let analysisJson = try engine.analyzeJsonRaw(source)
 let ascii = try engine.renderAscii(source)
 let validation = try engine.validate(source)
 let diagrams = try engine.supportedDiagrams()
+let lintRules = try engine.lintRuleCatalog()
 let themes = try engine.supportedThemes()
 let hostThemePresets = try engine.supportedHostThemePresets()
 
@@ -53,6 +55,9 @@ do {
 version is read from the linked native library.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
+Use `lintRuleCatalog()` to discover analyzer rule ids, evidence references, default severities,
+profiles, origins, configurability, and fixability without hard-coding the rule table in Swift
+hosts.
 
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall

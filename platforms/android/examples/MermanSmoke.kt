@@ -27,6 +27,11 @@ fun runMermanSmoke() {
         "layout JSON smoke failed"
     }
 
+    val analysisJson = MermanEngine.analyzeJson(source)
+    check(analysisJson.contains("\"version\":1") && analysisJson.contains("\"valid\":true")) {
+        "analysis JSON smoke failed"
+    }
+
     val validationJson = MermanEngine.validateJson(source)
     check(validationJson.contains("\"valid\":true")) {
         "validation JSON smoke failed"
@@ -40,6 +45,12 @@ fun runMermanSmoke() {
     }
     check(MermanEngine.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
         "diagram family capabilities smoke failed"
+    }
+    check(MermanEngine.lintRuleCatalogJson().contains("merman.authoring.flowchart.explicit_direction")) {
+        "lint rule catalog smoke failed"
+    }
+    check(MermanEngine.lintRuleCatalogJson().contains("docs/adr/0072-lint-rule-governance.md")) {
+        "lint rule catalog evidence smoke failed"
     }
     check(MermanEngine.supportedThemesJson().contains("default")) {
         "themes smoke failed"

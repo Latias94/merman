@@ -1,7 +1,7 @@
 # Web WASM Playground - Evidence And Gates
 
-Status: Active
-Last updated: 2026-06-01
+Status: Closed
+Last updated: 2026-06-29
 
 ## Smallest Current Repro
 
@@ -328,3 +328,70 @@ Results:
 - Headless Chrome smoke passed with Merman and Mermaid JS timing rows, no console errors, and
   `previewHasWillChange=false`, `previewHasTranslate3d=false`.
 - Vite still reports the existing large chunk warning.
+
+### 2026-06-29 - Editor Core Browser Language API
+
+Changes:
+
+- Added stateless `@mermanjs/web` editor APIs backed by `merman-editor-core` for diagnostics,
+  code actions, completion, hover, document symbols, workspace symbols, definition, references,
+  prepare-rename, rename, semantic-token legend, and semantic tokens.
+- Wired the playground Monaco language service to the browser editor APIs for diagnostics,
+  completion, hover, code actions, document symbols, definition, references, rename, and semantic
+  tokens. Static snippets and lexical tokenization remain loading/fallback behavior.
+- Updated the published browser-full WASM package budget as a regression guard for the intentional
+  default editor API expansion.
+
+Commands:
+
+```bash
+npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
+npm run prepack --prefix platforms/web
+npm run build --prefix playground
+npm run verify:dist --prefix playground
+```
+
+Results:
+
+- `npm run build --prefix platforms/web` passed and rebuilt the default `browser-full` package.
+- `npm run smoke --prefix platforms/web` passed with `diagrams=25`, `render=true`, `ascii=true`,
+  `core_full=true`, and `ratex_math=false`.
+- `npm run prepack --prefix platforms/web` passed against `docs/release/WASM_SIZE_BUDGETS.json`.
+- `npm run build --prefix playground` passed, including the postbuild WASM verifier.
+- `npm run verify:dist --prefix playground` passed and found the generated WASM binary and JS shim.
+
+### 2026-06-29 - WWP-060 Closeout
+
+Changes:
+
+- Closed the web/WASM/playground lane in the workstream metadata and handoff docs.
+- Marked WWP-060 done and split residual npm publishing, raster/PDF export, and broader browser QA
+  into explicit follow-on work instead of keeping them inside the lane.
+
+Commands:
+
+```bash
+git diff --check
+```
+
+Results:
+
+- Closeout docs are internally consistent.
+- Remaining work is documented as follow-on scope, not as active lane debt.
+
+## Review And Verification Closeout - 2026-06-29
+
+Closeout review result:
+
+- Workstream compliance: no blocking findings. The lane stayed within browser WASM, TypeScript
+  package, playground integration, Pages workflow, and shared editor-core browser API scope.
+- Code quality: no blocking findings. The editor-core extraction kept protocol adapters thin and
+  the browser API remained JSON-based and browser-only.
+- Missing gates: none for this closeout. The fresh focused web/package gates are already recorded
+  above.
+
+Verification claim:
+
+- Verified claim: the lane is closed; residual npm publishing, raster/PDF export, and broader
+  browser QA are explicit follow-on candidates rather than active lane debt.

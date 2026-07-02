@@ -448,6 +448,22 @@ pub unsafe extern "C" fn merman_engine_layout_json(
     })
 }
 
+/// Analyze Mermaid source to diagnostics JSON bytes using a reusable engine.
+///
+/// # Safety
+///
+/// Safety rules are identical to `merman_engine_render_svg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_analyze_json(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        ffi_engine_source_call(engine, source, source_len, BindingEngine::analyze_json)
+    })
+}
+
 /// Validate Mermaid source using a reusable engine.
 ///
 /// # Safety
@@ -461,6 +477,32 @@ pub unsafe extern "C" fn merman_engine_validate_json(
 ) -> MermanResult {
     ffi_result(|| unsafe {
         ffi_engine_source_call(engine, source, source_len, BindingEngine::validate_json)
+    })
+}
+
+/// Analyze Mermaid source to diagnostics JSON bytes.
+///
+/// # Safety
+///
+/// - `source` may be null only when `source_len == 0`.
+/// - `options_json` may be null only when `options_len == 0`.
+/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_analyze_json(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        ffi_source_options_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            merman_bindings_core::analyze_json,
+        )
     })
 }
 
@@ -610,6 +652,12 @@ pub extern "C" fn merman_ascii_capabilities_json() -> MermanResult {
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_diagram_family_capabilities_json() -> MermanResult {
     ffi_result(merman_bindings_core::diagram_family_capabilities_json)
+}
+
+/// Return lint rule catalog metadata as a JSON array.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_lint_rule_catalog_json() -> MermanResult {
+    ffi_result(merman_bindings_core::lint_rule_catalog_json)
 }
 
 /// Return supported theme metadata as a JSON string array.
@@ -886,6 +934,17 @@ mod tests {
         }
     }
 
+    fn call_analyze(source: &[u8], options: &[u8]) -> MermanResult {
+        unsafe {
+            merman_analyze_json(
+                source.as_ptr(),
+                source.len(),
+                options.as_ptr(),
+                options.len(),
+            )
+        }
+    }
+
     fn call_layout(source: &[u8], options: &[u8]) -> MermanResult {
         unsafe {
             merman_layout_json(
@@ -1068,29 +1127,31 @@ mod tests {
         let valid = call_validate(b"flowchart TD\nA[Hello]", b"");
         assert_eq!(valid.code, BindingStatus::Ok.code());
         let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
-        if cfg!(feature = "render") {
-            assert_eq!(json["valid"], true);
-            assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
-        } else {
-            assert_eq!(json["valid"], false);
-            assert_eq!(
-                json["code_name"],
-                BindingStatus::UnsupportedFormat.code_name()
-            );
-        }
+        assert_eq!(json["valid"], true);
+        assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
 
         let invalid = call_validate(b"", b"");
         assert_eq!(invalid.code, BindingStatus::Ok.code());
         let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
         assert_eq!(json["valid"], false);
-        if cfg!(feature = "render") {
-            assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
-        } else {
-            assert_eq!(
-                json["code_name"],
-                BindingStatus::UnsupportedFormat.code_name()
-            );
-        }
+        assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
+    }
+
+    #[test]
+    fn analyze_json_returns_diagnostics_payload() {
+        let valid = call_analyze(b"flowchart TD\nA[Hello]", b"");
+        assert_eq!(valid.code, BindingStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["valid"], true);
+        assert_eq!(json["summary"]["errors"], 0);
+
+        let invalid = call_analyze(b"", b"");
+        assert_eq!(invalid.code, BindingStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
     }
 
     #[test]
@@ -1098,12 +1159,14 @@ mod tests {
         let diagrams = merman_supported_diagrams_json();
         let ascii_capabilities = merman_ascii_capabilities_json();
         let family_capabilities = merman_diagram_family_capabilities_json();
+        let lint_rules = merman_lint_rule_catalog_json();
         let themes = merman_supported_themes_json();
         let host_theme_presets = merman_supported_host_theme_presets_json();
 
         assert_eq!(diagrams.code, BindingStatus::Ok.code());
         assert_eq!(ascii_capabilities.code, BindingStatus::Ok.code());
         assert_eq!(family_capabilities.code, BindingStatus::Ok.code());
+        assert_eq!(lint_rules.code, BindingStatus::Ok.code());
         assert_eq!(themes.code, BindingStatus::Ok.code());
         assert_eq!(host_theme_presets.code, BindingStatus::Ok.code());
 
@@ -1112,6 +1175,7 @@ mod tests {
             serde_json::from_str(&take_text(ascii_capabilities.data)).unwrap();
         let family_capabilities: Value =
             serde_json::from_str(&take_text(family_capabilities.data)).unwrap();
+        let lint_rules: Value = serde_json::from_str(&take_text(lint_rules.data)).unwrap();
         let themes: Value = serde_json::from_str(&take_text(themes.data)).unwrap();
         let host_theme_presets: Value =
             serde_json::from_str(&take_text(host_theme_presets.data)).unwrap();
@@ -1150,6 +1214,15 @@ mod tests {
                 && capability["has_semantic_parser"] == true
                 && capability["has_render_parser"] == true
         ));
+        assert!(lint_rules.as_array().unwrap().iter().any(|rule| {
+            rule["id"] == "merman.authoring.config.prefer_init_directive"
+                && rule["origin"] == "merman_authoring"
+                && rule["evidence"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+        }));
         assert!(
             themes
                 .as_array()

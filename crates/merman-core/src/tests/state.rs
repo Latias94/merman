@@ -436,3 +436,355 @@ fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
         .expect("diagram detected");
     assert_eq!(parsed.meta.diagram_type, "stateDiagram");
 }
+
+#[test]
+fn parse_state_editor_facts_preserve_parser_state_spans() {
+    let engine = Engine::new();
+    let text = r#"stateDiagram-v2
+[*] --> Idle
+Idle --> Running
+Idle: Waiting state
+Idle --> Running: starts
+state Running {
+  [*] --> Active
+}
+state "Paused State" as Paused
+note right of Running : Running details
+note "Floating note" as note1
+classDef activeStyle fill:#0f0,border:#333
+class Idle, Running activeStyle
+style Running fill:#f00
+accTitle: Lifecycle chart
+accDescr: Shows state transitions
+click Running "https://example.com/run" "Run details""#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("state editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+
+    let idle_start = text.find("Idle").unwrap();
+    assert_eq!(
+        symbol_at("Idle", idle_start).selection.end,
+        idle_start + "Idle".len()
+    );
+
+    let running_start = text.find("Running").unwrap();
+    assert_eq!(
+        symbol_at("Running", running_start).selection.end,
+        running_start + "Running".len()
+    );
+
+    let idle_relation_source_start = text.find("Idle --> Running").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Idle"
+            && symbol.detail.as_deref() == Some("state reference")
+            && symbol.selection.start == idle_relation_source_start
+    }));
+
+    let running_relation_target_start = text.find("Idle --> Running").unwrap() + "Idle --> ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Running"
+            && symbol.detail.as_deref() == Some("state reference")
+            && symbol.selection.start == running_relation_target_start
+    }));
+
+    let active_start = text.find("Active").unwrap();
+    assert_eq!(
+        symbol_at("Active", active_start).selection.end,
+        active_start + "Active".len()
+    );
+
+    let paused_start = text.rfind("Paused").unwrap();
+    assert_eq!(
+        symbol_at("Paused", paused_start).selection.end,
+        paused_start + "Paused".len()
+    );
+
+    let display_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Paused State" && symbol.detail.as_deref() == Some("state display label")
+        })
+        .unwrap();
+    assert_eq!(display_label.role, EditorSemanticRole::Payload);
+
+    let state_description = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Waiting state" && symbol.detail.as_deref() == Some("state description")
+        })
+        .unwrap();
+    assert_eq!(state_description.role, EditorSemanticRole::Payload);
+
+    let relation_label = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "starts" && symbol.detail.as_deref() == Some("state relation label")
+        })
+        .unwrap();
+    assert_eq!(relation_label.role, EditorSemanticRole::Payload);
+
+    let positioned_note = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Running details" && symbol.detail.as_deref() == Some("state note")
+        })
+        .unwrap();
+    assert_eq!(positioned_note.role, EditorSemanticRole::Payload);
+
+    let floating_note = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Floating note" && symbol.detail.as_deref() == Some("state note")
+        })
+        .unwrap();
+    assert_eq!(floating_note.role, EditorSemanticRole::Payload);
+    assert!(!facts.symbols.iter().any(|symbol| symbol.name == "note1"));
+
+    let active_style_start = text.find("activeStyle").unwrap();
+    let active_style = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "activeStyle"
+                && symbol.detail.as_deref() == Some("state class definition")
+        })
+        .unwrap();
+    assert_eq!(active_style.role, EditorSemanticRole::Outline);
+    assert_eq!(active_style.selection.start, active_style_start);
+
+    let idle_class_target = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Idle" && symbol.detail.as_deref() == Some("state class target")
+        })
+        .unwrap();
+    assert_eq!(idle_class_target.role, EditorSemanticRole::Entity);
+
+    let running_style = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "fill:#f00" && symbol.detail.as_deref() == Some("state style")
+        })
+        .unwrap();
+    assert_eq!(running_style.role, EditorSemanticRole::Payload);
+    assert!(running_style.selection.start > running_style.span.start);
+
+    let acc_title = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Lifecycle chart")
+        .unwrap();
+    assert_eq!(acc_title.role, EditorSemanticRole::Payload);
+    assert_eq!(
+        acc_title.detail.as_deref(),
+        Some("state accessibility title")
+    );
+
+    let acc_descr = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Shows state transitions")
+        .unwrap();
+    assert_eq!(acc_descr.role, EditorSemanticRole::Payload);
+    assert_eq!(
+        acc_descr.detail.as_deref(),
+        Some("state accessibility description")
+    );
+
+    let click_url = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "https://example.com/run")
+        .unwrap();
+    assert_eq!(click_url.role, EditorSemanticRole::Payload);
+    assert_eq!(click_url.detail.as_deref(), Some("state click url"));
+
+    let click_tooltip = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Run details")
+        .unwrap();
+    assert_eq!(click_tooltip.role, EditorSemanticRole::Payload);
+    assert_eq!(click_tooltip.detail.as_deref(), Some("state click tooltip"));
+}
+
+#[test]
+fn parse_state_editor_facts_record_expected_syntax_spans() {
+    let engine = Engine::new();
+    let text = concat!(
+        "stateDiagram-v2\n",
+        "state \"Small State\" as namedState\n",
+        "namedState: Waiting state\n",
+        "classDef exampleStyleClass background:#bbb,border:1px solid red\n",
+        "a --> b:::exampleStyleClass\n",
+        "class namedState exampleStyleClass\n",
+        "style namedState fill:#f00\n",
+        "click namedState \"https://example.com/run\" \"Run details\"",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("state editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "state \"Small State\" as namedState",
+        "Small State",
+        "state display label payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text,
+        "state \"Small State\" as namedState",
+        "namedState",
+        "state alias node identifier",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "namedState: Waiting state",
+        "Waiting state",
+        "state description payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "classDef exampleStyleClass background:#bbb,border:1px solid red",
+        "exampleStyleClass",
+        "state class definition payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text,
+        "a --> b:::exampleStyleClass",
+        "b",
+        "state inline class node identifier",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "a --> b:::exampleStyleClass",
+        "exampleStyleClass",
+        "state inline class payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::IdList,
+        text,
+        "class namedState exampleStyleClass",
+        "namedState",
+        "state class target list",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::IdList,
+        text,
+        "style namedState fill:#f00",
+        "namedState",
+        "state style target list",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "style namedState fill:#f00",
+        "fill:#f00",
+        "state style payload",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text,
+        "click namedState \"https://example.com/run\" \"Run details\"",
+        "namedState",
+        "state click target",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "click namedState \"https://example.com/run\" \"Run details\"",
+        "https://example.com/run",
+        "state click url",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::Payload,
+        text,
+        "click namedState \"https://example.com/run\" \"Run details\"",
+        "Run details",
+        "state click tooltip",
+    );
+}
+
+#[test]
+fn parse_state_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "stateDiagram-v2\nIdle --> Running\nRunning -->";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("state editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(facts.diagnostics.len(), 1);
+    let diagnostic = &facts.diagnostics[0];
+    assert!(diagnostic.message.contains("state parser recovered"));
+    assert_eq!(
+        diagnostic.span,
+        Some(SourceSpan::new(text.len(), text.len()))
+    );
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Idle"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Running"));
+}
+
+fn assert_expected_syntax_covers(
+    facts: &EditorSemanticFacts,
+    kind: EditorExpectedSyntaxKind,
+    text: &str,
+    marker: &str,
+    target: &str,
+    label: &str,
+) {
+    let marker_start = text
+        .find(marker)
+        .unwrap_or_else(|| panic!("missing {label} source text"));
+    let target_start = text[marker_start..]
+        .find(target)
+        .map(|offset| marker_start + offset)
+        .unwrap_or_else(|| panic!("missing {label} target"));
+    let end = target_start + target.len();
+    assert!(
+        facts.expected_syntax.iter().any(|expected| {
+            expected.kind == kind && expected.span.start <= target_start && expected.span.end >= end
+        }),
+        "missing {label}"
+    );
+}

@@ -53,6 +53,11 @@ void main(List<String> args) {
   if (!flowchartCapability) {
     throw StateError('diagramFamilyCapabilities smoke failed');
   }
+  if (!merman.lintRuleCatalog().any((rule) =>
+      rule.id == 'merman.authoring.flowchart.explicit_direction' &&
+      rule.evidence.contains('docs/adr/0072-lint-rule-governance.md'))) {
+    throw StateError('lintRuleCatalog smoke failed');
+  }
   if (!merman.supportedThemes().contains('default')) {
     throw StateError('themes smoke failed');
   }

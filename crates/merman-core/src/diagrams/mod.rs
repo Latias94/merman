@@ -19,6 +19,7 @@ pub mod quadrant_chart;
 pub mod radar;
 pub mod requirement;
 pub mod sankey;
+pub(crate) mod scan;
 pub mod sequence;
 pub mod state;
 pub mod timeline;

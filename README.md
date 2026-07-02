@@ -40,7 +40,7 @@ Mermaid license and provenance notes.
 | Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) / [Homebrew](https://formulae.brew.sh/formula/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
 | Render diagrams in Rust API docs | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rustdoc that turns Mermaid fences into inline headless SVG. |
-| Embed in a browser or TypeScript app | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. Source: [`platforms/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme). |
+| Embed in a browser or TypeScript app | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. Diagnostics-first analysis is the planned validation/lint successor during alpha. Source: [`platforms/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme). |
 | Build a Typst plugin/package | [`merman-typst-plugin`](https://github.com/Latias94/merman/tree/main/crates/merman-typst-plugin#readme) | Experimental wasm-minimal-protocol transport for Typst-compatible WASM hosts. |
 | Parse Mermaid or produce semantic JSON | [`merman-core`](https://crates.io/crates/merman-core) | Parser, metadata, semantic JSON, and typed render models without layout/render dependencies. |
 | Embed from C or C++ | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI, header, and dynamic/static library artifacts. Source: [`crates/merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi). |
@@ -51,6 +51,8 @@ Mermaid license and provenance notes.
 
 - Semantic JSON for Mermaid diagrams.
 - Layout JSON with computed geometry and routes.
+- Diagnostics-first analysis JSON is the alpha roadmap for validation, linting, Markdown scanning,
+  and future LSP adapters.
 - Mermaid-like SVG from a fully headless Rust renderer.
 - ASCII/Unicode diagrams for terminals, logs, and documentation snippets.
 - PNG, JPG, and PDF via SVG rasterization/conversion.
@@ -389,6 +391,11 @@ FFI surface supports SVG rendering, ASCII text rendering, semantic JSON, layout 
 JSON, binding metadata, host text-measurement callbacks for reusable engines, and explicit
 Rust-owned buffer release.
 
+Validation JSON is the current compatibility surface. ADR 0070 defines diagnostics-first analysis
+JSON as the planned canonical payload for lint, CI, editor integrations, and future LSP adapters;
+new alpha integrations should track that contract instead of building long-term behavior around the
+coarse validation result.
+
 Start with the surface that matches your host:
 
 | Host | Package or source | Notes |
@@ -413,7 +420,7 @@ merman_buffer_free(result.data);
 
 Every non-empty `MermanResult.data` buffer must be released with `merman_buffer_free`. See
 [`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md) for result codes, options JSON,
-threading, and compatibility rules.
+analysis/validation migration notes, threading, and compatibility rules.
 
 Headless rendering cannot know the exact browser or native UI font fallback that will display the
 final SVG. If precise label geometry matters, native hosts should install the FFI text-measurement
@@ -836,6 +843,14 @@ sanitization.
   owned semantic/layout JSON between steps.
 - Parity renderers live under `svg/parity/*`; large renderers are split by diagram responsibility
   and generated overrides are treated as compatibility data, not as default model fixes.
+- `merman-editor-core` owns protocol-neutral language intelligence for editor surfaces: document
+  snapshots, UTF-16 ranges, completion, diagnostics, symbols, navigation, rename, code-action
+  metadata, and semantic-token selection. `merman-lsp` and the browser WASM package project those
+  shared results into LSP and Monaco-facing shapes instead of carrying separate semantic
+  implementations.
+- The VS Code extension keeps source actions local and source-scoped: Mermaid files and
+  Markdown/MDX Mermaid fences expose preview, export, and copy CodeLens actions that target stable
+  source ids rather than the current cursor position.
 
 ## Workspace crates
 
@@ -845,6 +860,8 @@ sanitization.
 | [`merman-cli`](https://crates.io/crates/merman-cli) | Command-line interface for detect/parse/layout/render workflows. |
 | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rendering Mermaid fences in rustdoc as inline headless SVG. |
 | [`merman-core`](https://crates.io/crates/merman-core) | Detection, parsing, metadata, semantic JSON, and typed render models. |
+| [`merman-analysis`](https://crates.io/crates/merman-analysis) | Diagnostics-first payload and source-map contracts for validation, linting, and future LSP adapters. |
+| [`merman-editor-core`](https://crates.io/crates/merman-editor-core) | Protocol-neutral editor language intelligence shared by LSP and browser integrations. |
 | [`merman-render`](https://crates.io/crates/merman-render) | Headless layout, SVG rendering, SVG pipelines, and raster-friendly postprocessing. |
 | [`merman-ascii`](https://crates.io/crates/merman-ascii) | ASCII/Unicode terminal rendering for typed models. |
 | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI for native hosts and platform wrappers. |

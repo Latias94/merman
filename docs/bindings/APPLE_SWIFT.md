@@ -46,12 +46,15 @@ let validation = try engine.validate("flowchart TD\nA[Hello] --> B[World]")
 let diagrams = try engine.supportedDiagrams()
 let asciiCapabilities = try engine.asciiCapabilities()
 let familyCapabilities = try engine.diagramFamilyCapabilities()
+let lintRules = try engine.lintRuleCatalog()
 ```
 
 The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are
 mapped to `MermanError.binding`. `MermanReusableEngine` exposes repeated
 render/parse/layout/validation calls and `MermanTextMeasureCallback` aliases for hosts that need
 font-aware text measurement.
+`MermanEngine.lintRuleCatalog()` returns governed analyzer rule metadata, including evidence
+references, for editor settings, diagnostic explanations, and LSP rule configuration UI.
 
 ## Text Measurement Guidance
 

@@ -57,18 +57,19 @@ WFS-090 decision: keep `@mermanjs/web` as one npm package and one published arti
 now. The published package uses the `browser-full` preset. Source, CI, and local package builds can
 choose a different browser preset through `platforms/web/scripts/build-wasm.mjs`; the TypeScript
 wrapper exposes `bindingCapabilities()` so callers can discover the active artifact's compiled
-capabilities after initialization. It also exposes `selectedRegistryProfile()` and
+capabilities after initialization, including whether `editor_language` is compiled. It also exposes `selectedRegistryProfile()` and
 `diagramFamilyCapabilities()` so local slim builds can report the actual full/tiny diagram
-parser/render matrix they contain.
+parser/render matrix they contain, plus `lintRuleCatalog()` so editor integrations can discover the
+governed analyzer rule table and its evidence references without hard-coding them.
 
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
-| `browser-core` | no | none | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII entry points report unsupported capability errors. |
-| `browser-render` | no | `render` | SVG/parse/layout/validation artifact over the minimal core profile. |
-| `browser-ascii` | no | `ascii` | ASCII/Unicode artifact. It still carries the full core registry because the browser ASCII crate depends on the full core/host profile. |
-| `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
-| `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii` | Evidence preset for the same browser surface without ELK. Not the npm default. |
-| `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Includes EPL-backed `merman-elk-layered`. |
+| `browser-core` | no | none | Browser wasm-bindgen transport plus metadata, analysis, and validation. Render, parse, layout, ASCII, and editor-language entry points are unavailable. |
+| `browser-render` | no | `render` | SVG/parse/layout artifact with metadata, analysis, and validation over the minimal core profile. Editor-language entry points are unavailable. |
+| `browser-ascii` | no | `ascii` | ASCII/Unicode artifact. It still carries the full core registry because the browser ASCII crate depends on the full core/host profile, but editor-language entry points are unavailable. |
+| `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
+| `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
+| `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
 
 `npm run prepack --prefix platforms/web` requires `browser-full` unless
 `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package. This protects
@@ -86,10 +87,14 @@ Current release semantics are intentionally explicit:
   that want ELK must enable `elk-layout` or publish a distinct full artifact.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full`. Slim browser
   presets are source-build presets only; they are not npm subpackages or package export paths.
-- `bindingCapabilities()` reports the active browser artifact's compiled capabilities.
+- `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
+  whether `editor_language` is available.
   `selectedRegistryProfile()` and `diagramFamilyCapabilities()` report the selected diagram registry
-  profile and registered parser/render family facts. Consumers that load an older artifact without
-  these exports should treat it as the historical full browser artifact.
+  profile and registered parser/render family facts. `lintRuleCatalog()` reports analyzer rule ids,
+  evidence references, default profiles, origins, configurability, and fixability. Consumers that
+  load an older artifact without the registry-profile exports should treat it as the historical full
+  browser artifact, but editor settings that depend on lint metadata should fail fast if the lint
+  catalog export is absent.
 - `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
   artifact is Typst-compatible or pure-WASM compatible.
 - `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render
@@ -128,7 +133,7 @@ current default `browser-full` package artifact is:
 
 | Package artifact | Raw bytes | gzip bytes | brotli bytes | Budget source |
 | --- | ---: | ---: | ---: | --- |
-| `platforms/web/pkg/merman_wasm_bg.wasm` | 5,580,151 | 2,135,543 | 1,589,052 | `docs/release/WASM_SIZE_BUDGETS.json` |
+| `platforms/web/pkg/merman_wasm_bg.wasm` | 6,649,826 | 2,532,845 | 1,874,082 | `docs/release/WASM_SIZE_BUDGETS.json` |
 
 For the current Typst render artifact, also run:
 

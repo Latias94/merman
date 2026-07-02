@@ -180,6 +180,11 @@ MermanResult merman_engine_render_ascii(
     const uint8_t* source,
     size_t source_len
 );
+MermanResult merman_engine_analyze_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
 MermanResult merman_engine_parse_json(
     const MermanEngine* engine,
     const uint8_t* source,
@@ -230,6 +235,12 @@ MermanResult merman_render_svg(
  * If the library was built without ASCII support, this returns MERMAN_UNSUPPORTED_FORMAT.
  */
 MermanResult merman_render_ascii(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+MermanResult merman_analyze_json(
     const uint8_t* source,
     size_t source_len,
     const uint8_t* options_json,
@@ -287,6 +298,7 @@ MermanResult merman_validate_json(
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_capabilities_json(void);
 MermanResult merman_diagram_family_capabilities_json(void);
+MermanResult merman_lint_rule_catalog_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);
 

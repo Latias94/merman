@@ -643,6 +643,96 @@ class MermanDiagramFamilyCapability {
   }
 }
 
+/// Public metadata for one lint rule exposed by the active native artifact.
+class MermanLintRuleCatalogEntry {
+  /// Creates a lint rule catalog entry.
+  const MermanLintRuleCatalogEntry({
+    required this.id,
+    required this.description,
+    required this.evidence,
+    required this.defaultSeverity,
+    required this.category,
+    required this.defaultEnabled,
+    required this.defaultProfile,
+    required this.origin,
+    required this.configurable,
+    required this.fixable,
+  });
+
+  /// Stable rule id used by diagnostics and rule configuration.
+  final String id;
+
+  /// Short human-readable explanation of the rule.
+  final String description;
+
+  /// Source, ADR, fixture, or local implementation references backing the rule.
+  final List<String> evidence;
+
+  /// Default diagnostic severity for the rule.
+  final String defaultSeverity;
+
+  /// Diagnostic category, such as `parse`, `semantic`, or `config`.
+  final String category;
+
+  /// Whether the rule is enabled before profile or explicit-rule overrides.
+  final bool defaultEnabled;
+
+  /// Minimum profile that includes this rule by default.
+  final String defaultProfile;
+
+  /// Governance origin for the rule.
+  final String origin;
+
+  /// Whether callers may configure this rule directly.
+  final bool configurable;
+
+  /// Whether diagnostics from this rule can expose quick fixes.
+  final bool fixable;
+
+  /// Decodes a lint rule catalog entry produced by the native ABI.
+  factory MermanLintRuleCatalogEntry.fromJson(Map<String, Object?> json) {
+    final id = json['id'];
+    final description = json['description'];
+    final evidence = json['evidence'];
+    final defaultSeverity = json['default_severity'];
+    final category = json['category'];
+    final defaultEnabled = json['default_enabled'];
+    final defaultProfile = json['default_profile'];
+    final origin = json['origin'];
+    final configurable = json['configurable'];
+    final fixable = json['fixable'];
+    if (id is! String ||
+        description is! String ||
+        evidence is! List ||
+        !evidence.every((item) => item is String) ||
+        defaultSeverity is! String ||
+        category is! String ||
+        defaultEnabled is! bool ||
+        defaultProfile is! String ||
+        origin is! String ||
+        configurable is! bool ||
+        fixable is! bool) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_JSON_TYPE_ERROR',
+        message: 'expected lint rule catalog JSON object',
+      );
+    }
+    return MermanLintRuleCatalogEntry(
+      id: id,
+      description: description,
+      evidence: List.unmodifiable(evidence.cast<String>()),
+      defaultSeverity: defaultSeverity,
+      category: category,
+      defaultEnabled: defaultEnabled,
+      defaultProfile: defaultProfile,
+      origin: origin,
+      configurable: configurable,
+      fixable: fixable,
+    );
+  }
+}
+
 /// Reusable engine wrapper around the native `merman_engine_*` ABI.
 class MermanReusableEngine {
   MermanReusableEngine._(this._bindings, this._engine);
@@ -749,6 +839,17 @@ class MermanReusableEngine {
     return Merman._decodeJsonMap(layoutJsonRaw(source));
   }
 
+  /// Analyzes Mermaid [source] and returns raw diagnostics JSON text.
+  String analyzeJsonRaw(String source) {
+    return _decodeText(
+        _bindings.engineCall(_bindings.engineAnalyzeJson, _engine, source));
+  }
+
+  /// Analyzes Mermaid [source] and returns the diagnostics JSON object.
+  Map<String, Object?> analyzeJson(String source) {
+    return Merman._decodeJsonMap(analyzeJsonRaw(source));
+  }
+
   /// Validates Mermaid [source] and returns raw validation JSON text.
   String validateJsonRaw(String source) {
     return _decodeText(
@@ -842,6 +943,7 @@ class Merman {
   List<String>? _supportedDiagramsCache;
   List<MermanAsciiCapability>? _asciiCapabilitiesCache;
   List<MermanDiagramFamilyCapability>? _diagramFamilyCapabilitiesCache;
+  List<MermanLintRuleCatalogEntry>? _lintRuleCatalogCache;
   List<String>? _themesCache;
   List<String>? _hostThemePresetsCache;
 
@@ -893,6 +995,18 @@ class Merman {
     return _decodeJsonMap(layoutJsonRaw(source, optionsJson: optionsJson));
   }
 
+  /// Analyzes Mermaid [source] and returns raw diagnostics JSON text.
+  String analyzeJsonRaw(String source, {String? optionsJson}) {
+    return _decodeText(
+      _bindings.call(_bindings.analyzeJson, source, optionsJson),
+    );
+  }
+
+  /// Analyzes Mermaid [source] and returns the diagnostics JSON object.
+  Map<String, Object?> analyzeJson(String source, {String? optionsJson}) {
+    return _decodeJsonMap(analyzeJsonRaw(source, optionsJson: optionsJson));
+  }
+
   /// Validates Mermaid [source] and returns raw validation JSON text.
   String validateJsonRaw(String source, {String? optionsJson}) {
     return _decodeText(
@@ -932,6 +1046,15 @@ class Merman {
         _decodeText(
           _bindings.metadata(_bindings.diagramFamilyCapabilitiesJson),
         ),
+      ),
+    );
+  }
+
+  /// Returns governed lint rule metadata for the active native artifact.
+  List<MermanLintRuleCatalogEntry> lintRuleCatalog() {
+    return _lintRuleCatalogCache ??= List.unmodifiable(
+      _decodeJsonRuleCatalog(
+        _decodeText(_bindings.metadata(_bindings.lintRuleCatalogJson)),
       ),
     );
   }
@@ -1002,6 +1125,29 @@ class Merman {
       code: -1,
       codeName: 'DART_JSON_TYPE_ERROR',
       message: 'expected diagram family capability JSON array',
+    );
+  }
+
+  static List<MermanLintRuleCatalogEntry> _decodeJsonRuleCatalog(
+    String text,
+  ) {
+    final decoded = jsonDecode(text);
+    if (decoded is List) {
+      return decoded.map((item) {
+        if (item is Map<String, Object?>) {
+          return MermanLintRuleCatalogEntry.fromJson(item);
+        }
+        throw const MermanException(
+          code: -1,
+          codeName: 'DART_JSON_TYPE_ERROR',
+          message: 'expected lint rule catalog JSON object',
+        );
+      }).toList(growable: false);
+    }
+    throw const MermanException(
+      code: -1,
+      codeName: 'DART_JSON_TYPE_ERROR',
+      message: 'expected lint rule catalog JSON array',
     );
   }
 
@@ -1082,6 +1228,10 @@ class _MermanBindings {
             library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_layout_json',
         ),
+        engineAnalyzeJson =
+            library.lookupFunction<_EngineCallC, _EngineCallDart>(
+          'merman_engine_analyze_json',
+        ),
         engineValidateJson =
             library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_validate_json',
@@ -1098,6 +1248,9 @@ class _MermanBindings {
         layoutJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_layout_json',
         ),
+        analyzeJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
+          'merman_analyze_json',
+        ),
         validateJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_validate_json',
         ),
@@ -1112,6 +1265,10 @@ class _MermanBindings {
         diagramFamilyCapabilitiesJson =
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_diagram_family_capabilities_json',
+        ),
+        lintRuleCatalogJson =
+            library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
+          'merman_lint_rule_catalog_json',
         ),
         supportedThemesJson =
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
@@ -1139,16 +1296,19 @@ class _MermanBindings {
   final _EngineCallDart engineRenderAscii;
   final _EngineCallDart engineParseJson;
   final _EngineCallDart engineLayoutJson;
+  final _EngineCallDart engineAnalyzeJson;
   final _EngineCallDart engineValidateJson;
   final _BufferFreeDart _bufferFree;
   final _MermanCallDart renderSvg;
   final _MermanCallDart renderAscii;
   final _MermanCallDart parseJson;
   final _MermanCallDart layoutJson;
+  final _MermanCallDart analyzeJson;
   final _MermanCallDart validateJson;
   final _MermanMetadataDart supportedDiagramsJson;
   final _MermanMetadataDart asciiCapabilitiesJson;
   final _MermanMetadataDart diagramFamilyCapabilitiesJson;
+  final _MermanMetadataDart lintRuleCatalogJson;
   final _MermanMetadataDart supportedThemesJson;
   final _MermanMetadataDart supportedHostThemePresetsJson;
 

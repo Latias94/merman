@@ -12,6 +12,7 @@ use merman_core::diagrams::mindmap::{
 use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
+use merman_core::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 
 fn render(model: RenderSemanticModel) -> String {
     render_model(&model, &AsciiRenderOptions::ascii()).unwrap()
@@ -494,7 +495,10 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
         direction: "TB".to_string(),
         acc_title: Some("Git title".to_string()),
         acc_descr: Some("Git description".to_string()),
-        warnings: vec!["duplicate head".to_string()],
+        warning_facts: vec![DiagramWarningFact::new(
+            GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+            "duplicate head",
+        )],
     };
 
     let rendered = render(RenderSemanticModel::GitGraph(model));

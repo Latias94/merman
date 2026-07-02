@@ -17,7 +17,7 @@ pub(crate) fn engine_for(parse: &ParseCliArgs, render: &RenderCliArgs) -> Result
         .with_site_config(site_config))
 }
 
-fn site_config_for(
+pub(crate) fn site_config_for(
     parse: &ParseCliArgs,
     render: &RenderCliArgs,
 ) -> Result<MermaidConfig, CliError> {

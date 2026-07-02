@@ -276,12 +276,18 @@
     "diagramType": "Type",
     "lines": "Lines",
     "chars": "Chars",
+    "wasm": "WASM",
+    "editorLanguage": "Editor",
+    "registryProfile": "Registry",
     "renderTime": "Render",
     "theme": "Theme",
     "measurement": "Measure",
     "font": "Font",
     "ready": "Ready",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
     "rendering": "Rendering...",
+    "loading": "Loading...",
     "error": "Error"
   },
   "themes": {

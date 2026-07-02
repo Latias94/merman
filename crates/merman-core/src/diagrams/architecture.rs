@@ -1,7 +1,17 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::diagrams::scan::strip_line_ending;
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+struct ArchitectureIdentifier {
+    text: String,
+    span: SourceSpan,
+}
 
 #[derive(Debug, Clone)]
 struct ArchitectureGroup {
@@ -14,10 +24,12 @@ struct ArchitectureGroup {
 #[derive(Debug, Clone)]
 struct ArchitectureEdge {
     lhs_id: String,
+    lhs_span: SourceSpan,
     lhs_dir: char,
     lhs_into: Option<bool>,
     lhs_group: Option<bool>,
     rhs_id: String,
+    rhs_span: SourceSpan,
     rhs_dir: char,
     rhs_into: Option<bool>,
     rhs_group: Option<bool>,
@@ -150,51 +162,58 @@ impl ArchitectureDb {
 
     fn add_service(
         &mut self,
-        id: String,
+        id: ArchitectureIdentifier,
         icon: Option<String>,
         icon_text: Option<String>,
         title: Option<String>,
-        in_group: Option<String>,
+        in_group: Option<ArchitectureIdentifier>,
     ) -> Result<()> {
-        if let Some(existing) = self.registered_ids.get(&id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!("The service id [{id}] is already in use by another {existing}"),
-            });
+        let id_text = id.text;
+        let id_span = id.span;
+        if let Some(existing) = self.registered_ids.get(&id_text) {
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!("The service id [{id_text}] is already in use by another {existing}"),
+                id_span,
+            ));
         }
 
         if let Some(parent) = &in_group {
-            if id == *parent {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The service [{id}] cannot be placed within itself"),
-                });
+            if id_text == parent.text {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The service [{id_text}] cannot be placed within itself"),
+                    parent.span,
+                ));
             }
-            let Some(parent_type) = self.registered_ids.get(parent).copied() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!(
-                        "The service [{id}]'s parent does not exist. Please make sure the parent is created before this service"
+            let Some(parent_type) = self.registered_ids.get(&parent.text).copied() else {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!(
+                        "The service [{id_text}]'s parent does not exist. Please make sure the parent is created before this service"
                     ),
-                });
+                    parent.span,
+                ));
             };
             if parent_type == RegisteredIdType::Node {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The service [{id}]'s parent is not a group"),
-                });
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The service [{id_text}]'s parent is not a group"),
+                    parent.span,
+                ));
             }
         }
 
+        let in_group = in_group.map(|parent| parent.text);
         self.registered_ids
-            .insert(id.clone(), RegisteredIdType::Node);
-        if !self.nodes.contains_key(&id) {
-            self.node_order.push(id.clone());
+            .insert(id_text.clone(), RegisteredIdType::Node);
+        if !self.nodes.contains_key(&id_text) {
+            self.node_order.push(id_text.clone());
         }
         self.nodes.insert(
-            id.clone(),
+            id_text.clone(),
             ArchitectureNode {
-                id,
+                id: id_text,
                 ty: ArchitectureNodeType::Service,
                 edges: Vec::new(),
                 icon,
@@ -206,7 +225,8 @@ impl ArchitectureDb {
         Ok(())
     }
 
-    fn add_junction(&mut self, id: String, in_group: Option<String>) {
+    fn add_junction(&mut self, id: ArchitectureIdentifier, in_group: Option<String>) {
+        let id = id.text;
         self.registered_ids
             .insert(id.clone(), RegisteredIdType::Node);
         if !self.nodes.contains_key(&id) {
@@ -228,50 +248,57 @@ impl ArchitectureDb {
 
     fn add_group(
         &mut self,
-        id: String,
+        id: ArchitectureIdentifier,
         icon: Option<String>,
         title: Option<String>,
-        in_group: Option<String>,
+        in_group: Option<ArchitectureIdentifier>,
     ) -> Result<()> {
-        if let Some(existing) = self.registered_ids.get(&id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!("The group id [{id}] is already in use by another {existing}"),
-            });
+        let id_text = id.text;
+        let id_span = id.span;
+        if let Some(existing) = self.registered_ids.get(&id_text) {
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!("The group id [{id_text}] is already in use by another {existing}"),
+                id_span,
+            ));
         }
 
         if let Some(parent) = &in_group {
-            if id == *parent {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The group [{id}] cannot be placed within itself"),
-                });
+            if id_text == parent.text {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The group [{id_text}] cannot be placed within itself"),
+                    parent.span,
+                ));
             }
-            let Some(parent_type) = self.registered_ids.get(parent).copied() else {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!(
-                        "The group [{id}]'s parent does not exist. Please make sure the parent is created before this group"
+            let Some(parent_type) = self.registered_ids.get(&parent.text).copied() else {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!(
+                        "The group [{id_text}]'s parent does not exist. Please make sure the parent is created before this group"
                     ),
-                });
+                    parent.span,
+                ));
             };
             if parent_type == RegisteredIdType::Node {
-                return Err(Error::DiagramParse {
-                    diagram_type: "architecture".to_string(),
-                    message: format!("The group [{id}]'s parent is not a group"),
-                });
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!("The group [{id_text}]'s parent is not a group"),
+                    parent.span,
+                ));
             }
         }
 
+        let in_group = in_group.map(|parent| parent.text);
         self.registered_ids
-            .insert(id.clone(), RegisteredIdType::Group);
-        if !self.groups.contains_key(&id) {
-            self.group_order.push(id.clone());
+            .insert(id_text.clone(), RegisteredIdType::Group);
+        if !self.groups.contains_key(&id_text) {
+            self.group_order.push(id_text.clone());
         }
         self.groups.insert(
-            id.clone(),
+            id_text.clone(),
             ArchitectureGroup {
-                id,
+                id: id_text,
                 icon,
                 title,
                 in_group,
@@ -282,41 +309,43 @@ impl ArchitectureDb {
 
     fn add_edge(&mut self, edge: ArchitectureEdge) -> Result<()> {
         if !is_dir(edge.lhs_dir) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "Invalid direction given for left hand side of edge {}--{}. Expected (L,R,T,B) got {}",
                     edge.lhs_id, edge.rhs_id, edge.lhs_dir
                 ),
-            });
+            ));
         }
         if !is_dir(edge.rhs_dir) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
                     "Invalid direction given for right hand side of edge {}--{}. Expected (L,R,T,B) got {}",
                     edge.lhs_id, edge.rhs_id, edge.rhs_dir
                 ),
-            });
+            ));
         }
 
         if !self.nodes.contains_key(&edge.lhs_id) && !self.groups.contains_key(&edge.lhs_id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!(
                     "The left-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
                     edge.lhs_id
                 ),
-            });
+                edge.lhs_span,
+            ));
         }
         if !self.nodes.contains_key(&edge.rhs_id) && !self.groups.contains_key(&edge.rhs_id) {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!(
                     "The right-hand id [{}] does not yet exist. Please create the service/group before declaring an edge to it.",
                     edge.rhs_id
                 ),
-            });
+                edge.rhs_span,
+            ));
         }
 
         if edge.lhs_group == Some(true)
@@ -325,13 +354,14 @@ impl ArchitectureDb {
             && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
             && lhs_parent == rhs_parent
         {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!(
                     "The left-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
                     edge.lhs_id
                 ),
-            });
+                edge.lhs_span,
+            ));
         }
         if edge.rhs_group == Some(true)
             && let (Some(lhs), Some(rhs)) =
@@ -339,13 +369,14 @@ impl ArchitectureDb {
             && let (Some(lhs_parent), Some(rhs_parent)) = (&lhs.in_group, &rhs.in_group)
             && lhs_parent == rhs_parent
         {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: format!(
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                format!(
                     "The right-hand id [{}] is modified to traverse the group boundary, but the edge does not pass through two groups.",
                     edge.rhs_id
                 ),
-            });
+                edge.rhs_span,
+            ));
         }
 
         let edge_idx = self.edges.len();
@@ -527,7 +558,54 @@ fn parse_acc_descr_stmt_single(line: &str) -> Option<String> {
     Some(rest.trim().to_string())
 }
 
-fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {
+#[derive(Debug, Clone, Copy)]
+struct ArchitectureSourceLine<'a> {
+    text: &'a str,
+    start: usize,
+}
+
+#[derive(Debug)]
+struct ArchitectureLineCursor<'a> {
+    source: &'a str,
+    offset: usize,
+}
+
+impl<'a> ArchitectureLineCursor<'a> {
+    fn new(source: &'a str) -> Self {
+        Self { source, offset: 0 }
+    }
+
+    fn next(&mut self) -> Option<ArchitectureSourceLine<'a>> {
+        if self.offset >= self.source.len() {
+            return None;
+        }
+
+        let start = self.offset;
+        let rest = &self.source[start..];
+        let end = if let Some(newline) = rest.find('\n') {
+            start + newline + 1
+        } else {
+            self.source.len()
+        };
+        self.offset = end;
+
+        Some(ArchitectureSourceLine {
+            text: strip_line_ending(&self.source[start..end]),
+            start,
+        })
+    }
+}
+
+fn trimmed_statement_with_offset(raw: &str, raw_start: usize) -> (&str, usize) {
+    let line = strip_inline_comment(raw);
+    let leading = line.len() - line.trim_start().len();
+    (line.trim(), raw_start + leading)
+}
+
+fn parse_acc_descr_block(
+    lines: &mut ArchitectureLineCursor<'_>,
+    first_line: &str,
+) -> Option<String> {
     let t = first_line.trim_start();
     if !t.starts_with("accDescr") {
         return None;
@@ -543,15 +621,539 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
     buf.push_str(rest);
     buf.push('\n');
 
-    for line in lines {
-        if let Some(end) = line.find('}') {
-            buf.push_str(&line[..end]);
+    while let Some(line) = lines.next() {
+        if let Some(end) = line.text.find('}') {
+            buf.push_str(&line.text[..end]);
             break;
         }
-        buf.push_str(line);
+        buf.push_str(line.text);
         buf.push('\n');
     }
     Some(buf.trim().to_string())
+}
+
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+}
+
+struct SpanParser<'a> {
+    input: &'a str,
+    pos: usize,
+    base_offset: usize,
+}
+
+impl<'a> SpanParser<'a> {
+    fn new(input: &'a str, base_offset: usize) -> Self {
+        Self {
+            input,
+            pos: 0,
+            base_offset,
+        }
+    }
+
+    fn is_eof(&self) -> bool {
+        self.pos >= self.input.len()
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.input[self.pos..].chars().next()
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let ch = self.peek_char()?;
+        self.pos += ch.len_utf8();
+        Some(ch)
+    }
+
+    fn skip_ws(&mut self) {
+        while self.peek_char().is_some_and(char::is_whitespace) {
+            self.bump();
+        }
+    }
+
+    fn consume_literal(&mut self, literal: &str) -> bool {
+        self.skip_ws();
+        if !self.input[self.pos..].starts_with(literal) {
+            return false;
+        }
+        self.pos += literal.len();
+        true
+    }
+
+    fn consume_keyword(&mut self, kw: &str) -> bool {
+        self.skip_ws();
+        if !self.input[self.pos..].starts_with(kw) {
+            return false;
+        }
+        let after = &self.input[self.pos + kw.len()..];
+        if !after
+            .chars()
+            .next()
+            .is_none_or(|ch| ch.is_whitespace() || ch == ':' || ch == '[' || ch == '(')
+        {
+            return false;
+        }
+        self.pos += kw.len();
+        true
+    }
+
+    fn parse_id(&mut self) -> Option<SpannedText> {
+        self.skip_ws();
+        let start = self.pos;
+        let mut last_word_end: Option<usize> = None;
+        let mut seen_any = false;
+        while let Some(ch) = self.peek_char() {
+            let is_word = ch.is_ascii_alphanumeric() || ch == '_';
+            let is_allowed = is_word || ch == '-';
+            if !seen_any {
+                if !is_word {
+                    return None;
+                }
+                seen_any = true;
+                self.bump();
+                last_word_end = Some(self.pos);
+                continue;
+            }
+            if !is_allowed {
+                break;
+            }
+            self.bump();
+            if is_word {
+                last_word_end = Some(self.pos);
+            }
+        }
+        let end = last_word_end?;
+        self.pos = end;
+        Some(SpannedText {
+            text: self.input[start..end].to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + end),
+        })
+    }
+
+    fn parse_bracketed(&mut self, open: char, close: char) -> Option<SpannedText> {
+        self.skip_ws();
+        if self.peek_char()? != open {
+            return None;
+        }
+        self.bump();
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch == close {
+                break;
+            }
+            self.bump();
+        }
+        if self.peek_char()? != close {
+            return None;
+        }
+        let end = self.pos;
+        self.bump();
+
+        let raw = &self.input[start..end];
+        let leading = raw.len() - raw.trim_start().len();
+        let trailing = raw.len() - raw.trim_end().len();
+        let inner_start = start + leading;
+        let inner_end = end.saturating_sub(trailing);
+        Some(SpannedText {
+            text: raw.trim().to_string(),
+            span: SourceSpan::new(self.base_offset + inner_start, self.base_offset + inner_end),
+        })
+    }
+
+    fn parse_quoted(&mut self) -> Option<SpannedText> {
+        self.skip_ws();
+        let quote = self.peek_char()?;
+        if quote != '"' && quote != '\'' {
+            return None;
+        }
+        self.bump();
+        let start = self.pos;
+        let mut escaped = false;
+        while let Some(ch) = self.peek_char() {
+            if escaped {
+                escaped = false;
+                self.bump();
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                self.bump();
+                continue;
+            }
+            if ch == quote {
+                break;
+            }
+            self.bump();
+        }
+        if self.peek_char()? != quote {
+            return None;
+        }
+        let end = self.pos;
+        self.bump();
+        Some(SpannedText {
+            text: self.input[start..end].to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + end),
+        })
+    }
+
+    fn consume_group_modifier(&mut self) {
+        self.skip_ws();
+        if self.input[self.pos..].starts_with("{group}") {
+            self.pos += "{group}".len();
+        }
+    }
+}
+
+fn push_architecture_entity(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::new(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_architecture_payload(
+    facts: &mut EditorSemanticFacts,
+    text: SpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn value_after_keyword_span(line: &str, keyword: &str, base_offset: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with(keyword) {
+        return None;
+    }
+    let rest = &trimmed[keyword.len()..];
+    let rest = rest.strip_prefix(|ch: char| ch.is_whitespace())?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(base_offset + rel, base_offset + rel + value.len()),
+    })
+}
+
+fn value_after_colon_span(line: &str, keyword: &str, base_offset: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with(keyword) {
+        return None;
+    }
+    let rest = &trimmed[keyword.len()..];
+    let rest = rest.trim_start().strip_prefix(':')?;
+    let value = rest.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(base_offset + rel, base_offset + rel + value.len()),
+    })
+}
+
+fn parse_architecture_stmt_facts(
+    stmt: &str,
+    stmt_start: usize,
+    facts: &mut EditorSemanticFacts,
+) -> std::result::Result<(), ()> {
+    if let Some(title) = value_after_keyword_span(stmt, "title", stmt_start) {
+        facts.push_directive_prefix("title");
+        push_architecture_payload(
+            facts,
+            title,
+            "architecture title",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if let Some(title) = value_after_colon_span(stmt, "accTitle", stmt_start) {
+        facts.push_directive_prefix("accTitle");
+        push_architecture_payload(
+            facts,
+            title,
+            "architecture accessibility title",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if let Some(descr) = value_after_colon_span(stmt, "accDescr", stmt_start) {
+        facts.push_directive_prefix("accDescr");
+        push_architecture_payload(
+            facts,
+            descr,
+            "architecture accessibility description",
+            EditorSemanticKind::String,
+        );
+        return Ok(());
+    }
+    if stmt.trim_start().starts_with("accDescr") {
+        facts.push_directive_prefix("accDescr");
+        return Ok(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    if parser.consume_keyword("group") {
+        let Some(id) = parser.parse_id() else {
+            return Err(());
+        };
+        push_architecture_entity(
+            facts,
+            id,
+            "architecture group",
+            EditorSemanticKind::Namespace,
+        );
+        if let Some(icon) = parser.parse_bracketed('(', ')') {
+            push_architecture_payload(
+                facts,
+                icon,
+                "architecture group icon",
+                EditorSemanticKind::String,
+            );
+        }
+        if let Some(title) = parser.parse_bracketed('[', ']') {
+            push_architecture_payload(
+                facts,
+                title,
+                "architecture group title",
+                EditorSemanticKind::String,
+            );
+        }
+        if parser.consume_keyword("in") {
+            let Some(parent) = parser.parse_id() else {
+                return Err(());
+            };
+            push_architecture_entity(
+                facts,
+                parent,
+                "architecture group parent",
+                EditorSemanticKind::Namespace,
+            );
+        }
+        return parser.is_eof().then_some(()).ok_or(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    if parser.consume_keyword("service") {
+        let Some(id) = parser.parse_id() else {
+            return Err(());
+        };
+        push_architecture_entity(
+            facts,
+            id,
+            "architecture service",
+            EditorSemanticKind::Variable,
+        );
+        if let Some(icon) = parser.parse_bracketed('(', ')') {
+            push_architecture_payload(
+                facts,
+                icon,
+                "architecture service icon",
+                EditorSemanticKind::String,
+            );
+        } else if let Some(icon_text) = parser.parse_quoted() {
+            push_architecture_payload(
+                facts,
+                icon_text,
+                "architecture service icon text",
+                EditorSemanticKind::String,
+            );
+        }
+        if let Some(title) = parser.parse_bracketed('[', ']') {
+            push_architecture_payload(
+                facts,
+                title,
+                "architecture service title",
+                EditorSemanticKind::String,
+            );
+        }
+        if parser.consume_keyword("in") {
+            let Some(parent) = parser.parse_id() else {
+                return Err(());
+            };
+            push_architecture_entity(
+                facts,
+                parent,
+                "architecture service parent",
+                EditorSemanticKind::Namespace,
+            );
+        }
+        return parser.is_eof().then_some(()).ok_or(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    if parser.consume_keyword("junction") {
+        let Some(id) = parser.parse_id() else {
+            return Err(());
+        };
+        push_architecture_entity(
+            facts,
+            id,
+            "architecture junction",
+            EditorSemanticKind::Object,
+        );
+        if parser.consume_keyword("in") {
+            let Some(parent) = parser.parse_id() else {
+                return Err(());
+            };
+            push_architecture_entity(
+                facts,
+                parent,
+                "architecture junction parent",
+                EditorSemanticKind::Namespace,
+            );
+        }
+        return parser.is_eof().then_some(()).ok_or(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
+    let Some(lhs) = parser.parse_id() else {
+        return Err(());
+    };
+    push_architecture_entity(
+        facts,
+        lhs,
+        "architecture edge endpoint",
+        EditorSemanticKind::Variable,
+    );
+    parser.consume_group_modifier();
+    if !parser.consume_literal(":") {
+        return Err(());
+    }
+    parser.skip_ws();
+    if !parser.peek_char().is_some_and(is_arch_dir) {
+        return Err(());
+    }
+    parser.bump();
+    parser.skip_ws();
+    if parser.peek_char().is_some_and(|ch| ch == '<' || ch == '>') {
+        parser.bump();
+    }
+    parser.skip_ws();
+    if parser.input[parser.pos..].starts_with("--") {
+        parser.pos += 2;
+    } else if parser.input[parser.pos..].starts_with('-') {
+        parser.pos += 1;
+        let Some(title) = parser.parse_bracketed('[', ']') else {
+            return Err(());
+        };
+        push_architecture_payload(
+            facts,
+            title,
+            "architecture edge title",
+            EditorSemanticKind::String,
+        );
+        if !parser.consume_literal("-") {
+            return Err(());
+        }
+    } else {
+        return Err(());
+    }
+    parser.skip_ws();
+    if parser.peek_char().is_some_and(|ch| ch == '<' || ch == '>') {
+        parser.bump();
+    }
+    parser.skip_ws();
+    if !parser.peek_char().is_some_and(is_arch_dir) {
+        return Err(());
+    }
+    parser.bump();
+    if !parser.consume_literal(":") {
+        return Err(());
+    }
+    parser.skip_ws();
+    if parser.peek_char() == Some(':') {
+        parser.bump();
+    }
+    let Some(rhs) = parser.parse_id() else {
+        return Err(());
+    };
+    push_architecture_entity(
+        facts,
+        rhs,
+        "architecture edge endpoint",
+        EditorSemanticKind::Variable,
+    );
+    parser.consume_group_modifier();
+    parser.is_eof().then_some(()).ok_or(())
+}
+
+pub fn parse_architecture_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut offset = 0usize;
+    let mut header_seen = false;
+
+    for segment in code.split_inclusive('\n') {
+        let line_start = offset;
+        offset += segment.len();
+        let raw_line = strip_line_ending(segment);
+        let line = strip_inline_comment(raw_line);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
+                header_seen = true;
+                let rest = rest.trim_start();
+                if !rest.is_empty() {
+                    let rel = line.find(rest).unwrap_or(0);
+                    if parse_architecture_stmt_facts(rest, line_start + rel, &mut facts).is_err() {
+                        facts.mark_recovered();
+                    }
+                }
+                continue;
+            }
+            return facts;
+        }
+
+        if parse_architecture_stmt_facts(
+            trimmed,
+            line_start + line.find(trimmed).unwrap_or(0),
+            &mut facts,
+        )
+        .is_err()
+        {
+            facts.mark_recovered();
+        }
+    }
+
+    facts
 }
 
 fn take_id_prefix(input: &str) -> Option<(&str, &str)> {
@@ -594,19 +1196,79 @@ fn take_bracketed(input: &str, open: char, close: char) -> Option<(String, &str)
     None
 }
 
-fn parse_group_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn architecture_suffix_start(line: &str, line_start: usize, suffix: &str) -> usize {
+    debug_assert!(line.len() >= suffix.len());
+    line_start + line.len().saturating_sub(suffix.len())
+}
+
+fn architecture_insertion_at_suffix(
+    message: impl Into<String>,
+    line: &str,
+    line_start: usize,
+    suffix: &str,
+) -> Error {
+    let suffix = suffix.trim_start();
+    Error::diagram_parse_insertion_point(
+        "architecture",
+        message,
+        architecture_suffix_start(line, line_start, suffix),
+    )
+}
+
+fn architecture_exact_token(
+    message: impl Into<String>,
+    line: &str,
+    line_start: usize,
+    token_suffix: &str,
+    token_len: usize,
+) -> Error {
+    let start = architecture_suffix_start(line, line_start, token_suffix);
+    Error::diagram_parse_exact(
+        "architecture",
+        message,
+        SourceSpan::new(start, start + token_len),
+    )
+}
+
+fn architecture_trailing_input(line: &str, line_start: usize, rest: &str) -> Error {
+    let trailing = rest.trim_start();
+    let unexpected = trailing.trim_end();
+    let start = architecture_suffix_start(line, line_start, trailing);
+    Error::diagram_parse_exact(
+        "architecture",
+        "unexpected trailing input",
+        SourceSpan::new(start, start + unexpected.len()),
+    )
+}
+
+fn architecture_id_from_suffix(
+    line: &str,
+    line_start: usize,
+    id: &str,
+    suffix: &str,
+) -> ArchitectureIdentifier {
+    let suffix_start = architecture_suffix_start(line, line_start, suffix);
+    ArchitectureIdentifier {
+        text: id.to_string(),
+        span: SourceSpan::new(suffix_start, suffix_start + id.len()),
+    }
+}
+
+fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     if !starts_with_kw(line, "group") {
         return Ok(false);
     }
     let t = line.trim_start();
     let mut rest = t["group".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid group id".to_string(),
-        });
+        return Err(architecture_insertion_at_suffix(
+            "invalid group id",
+            line,
+            line_start,
+            rest,
+        ));
     };
-    let id = id.to_string();
+    let id = architecture_id_from_suffix(line, line_start, id, rest);
     rest = tail.trim_start();
 
     let mut icon = None;
@@ -625,20 +1287,19 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "invalid group parent id".to_string(),
-            });
+            return Err(architecture_insertion_at_suffix(
+                "invalid group parent id",
+                line,
+                line_start,
+                rest,
+            ));
         };
-        in_group = Some(parent.to_string());
-        rest = tail.trim();
+        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest));
+        rest = tail.trim_start();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_group(id, icon, title, in_group)?;
@@ -669,19 +1330,21 @@ fn take_quoted(input: &str) -> Option<(String, &str)> {
     None
 }
 
-fn parse_service_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn parse_service_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     if !starts_with_kw(line, "service") {
         return Ok(false);
     }
     let t = line.trim_start();
     let mut rest = t["service".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid service id".to_string(),
-        });
+        return Err(architecture_insertion_at_suffix(
+            "invalid service id",
+            line,
+            line_start,
+            rest,
+        ));
     };
-    let id = id.to_string();
+    let id = architecture_id_from_suffix(line, line_start, id, rest);
     rest = tail.trim_start();
 
     let mut icon = None;
@@ -704,71 +1367,78 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "invalid service parent id".to_string(),
-            });
+            return Err(architecture_insertion_at_suffix(
+                "invalid service parent id",
+                line,
+                line_start,
+                rest,
+            ));
         };
-        in_group = Some(parent.to_string());
-        rest = tail.trim();
+        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest));
+        rest = tail.trim_start();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_service(id, icon, icon_text, title, in_group)?;
     Ok(true)
 }
 
-fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     if !starts_with_kw(line, "junction") {
         return Ok(false);
     }
     let t = line.trim_start();
     let mut rest = t["junction".len()..].trim_start();
     let Some((id, tail)) = take_id_prefix(rest) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid junction id".to_string(),
-        });
+        return Err(architecture_insertion_at_suffix(
+            "invalid junction id",
+            line,
+            line_start,
+            rest,
+        ));
     };
-    let id = id.to_string();
+    let id = architecture_id_from_suffix(line, line_start, id, rest);
     rest = tail.trim_start();
 
     let mut in_group = None;
     if starts_with_kw(rest, "in") {
         rest = rest.trim_start()["in".len()..].trim_start();
         let Some((parent, tail)) = take_id_prefix(rest) else {
-            return Err(Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "invalid junction parent id".to_string(),
-            });
+            return Err(architecture_insertion_at_suffix(
+                "invalid junction parent id",
+                line,
+                line_start,
+                rest,
+            ));
         };
         in_group = Some(parent.to_string());
-        rest = tail.trim();
+        rest = tail.trim_start();
     }
 
     if !rest.trim().is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_junction(id, in_group);
     Ok(true)
 }
 
-fn parse_id_with_optional_group_modifier(input: &str) -> Result<(String, Option<bool>, &str)> {
+fn parse_id_with_optional_group_modifier<'a>(
+    line: &str,
+    line_start: usize,
+    input: &'a str,
+) -> Result<(ArchitectureIdentifier, Option<bool>, &'a str)> {
+    let input = input.trim_start();
     let Some((id, rest)) = take_id_prefix(input) else {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid id".to_string(),
-        });
+        return Err(architecture_insertion_at_suffix(
+            "invalid id",
+            line,
+            line_start,
+            input,
+        ));
     };
     let mut rest = rest;
     let mut group = None;
@@ -776,14 +1446,18 @@ fn parse_id_with_optional_group_modifier(input: &str) -> Result<(String, Option<
         group = Some(true);
         rest = &rest["{group}".len()..];
     }
-    Ok((id.to_string(), group, rest))
+    Ok((
+        architecture_id_from_suffix(line, line_start, id, input),
+        group,
+        rest,
+    ))
 }
 
 fn is_arch_dir(ch: char) -> bool {
     matches!(ch, 'L' | 'R' | 'T' | 'B')
 }
 
-fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
+fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
     let mut rest = line.trim_start();
     if rest.is_empty() {
         return Ok(false);
@@ -798,27 +1472,28 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
         return Ok(false);
     }
 
-    let (lhs_id, lhs_group, tail) = parse_id_with_optional_group_modifier(rest)?;
+    let (lhs_id, lhs_group, tail) = parse_id_with_optional_group_modifier(line, line_start, rest)?;
     rest = tail.trim_start();
 
     let mut lhs_into = None;
     let mut rhs_into = None;
     let mut title = None;
 
-    rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected ':' for lhs port".to_string(),
+    rest = rest.strip_prefix(':').ok_or_else(|| {
+        architecture_insertion_at_suffix("expected ':' for lhs port", line, line_start, rest)
     })?;
     rest = rest.trim_start();
-    let lhs_dir: char = rest.chars().next().ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected lhs direction".to_string(),
+    let lhs_dir: char = rest.chars().next().ok_or_else(|| {
+        architecture_insertion_at_suffix("expected lhs direction", line, line_start, rest)
     })?;
     if !is_arch_dir(lhs_dir) {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid lhs direction".to_string(),
-        });
+        return Err(architecture_exact_token(
+            "invalid lhs direction",
+            line,
+            line_start,
+            rest,
+            lhs_dir.len_utf8(),
+        ));
     }
     rest = &rest[lhs_dir.len_utf8()..];
 
@@ -836,15 +1511,18 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     } else if rest.starts_with('-') {
         rest = &rest[1..];
         rest = rest.trim_start();
-        let (t, tail) = take_bracketed(rest, '[', ']').ok_or_else(|| Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "expected edge title".to_string(),
+        let (t, tail) = take_bracketed(rest, '[', ']').ok_or_else(|| {
+            architecture_insertion_at_suffix("expected edge title", line, line_start, rest)
         })?;
         title = Some(t.trim().to_string());
         rest = tail.trim_start();
-        rest = rest.strip_prefix('-').ok_or_else(|| Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "expected '-' after edge title".to_string(),
+        rest = rest.strip_prefix('-').ok_or_else(|| {
+            architecture_insertion_at_suffix(
+                "expected '-' after edge title",
+                line,
+                line_start,
+                rest,
+            )
         })?;
     } else {
         return Ok(false);
@@ -859,22 +1537,23 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     }
 
     rest = rest.trim_start();
-    let rhs_dir: char = rest.chars().next().ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected rhs direction".to_string(),
+    let rhs_dir: char = rest.chars().next().ok_or_else(|| {
+        architecture_insertion_at_suffix("expected rhs direction", line, line_start, rest)
     })?;
     if !is_arch_dir(rhs_dir) {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "invalid rhs direction".to_string(),
-        });
+        return Err(architecture_exact_token(
+            "invalid rhs direction",
+            line,
+            line_start,
+            rest,
+            rhs_dir.len_utf8(),
+        ));
     }
     rest = &rest[rhs_dir.len_utf8()..];
 
     rest = rest.trim_start();
-    rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
-        diagram_type: "architecture".to_string(),
-        message: "expected ':' for rhs port".to_string(),
+    rest = rest.strip_prefix(':').ok_or_else(|| {
+        architecture_insertion_at_suffix("expected ':' for rhs port", line, line_start, rest)
     })?;
 
     rest = rest.trim_start();
@@ -882,22 +1561,21 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
         rest = &rest[1..];
         rest = rest.trim_start();
     }
-    let (rhs_id, rhs_group, tail) = parse_id_with_optional_group_modifier(rest)?;
-    rest = tail.trim();
+    let (rhs_id, rhs_group, tail) = parse_id_with_optional_group_modifier(line, line_start, rest)?;
+    rest = tail.trim_start();
 
     if !rest.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "unexpected trailing input".to_string(),
-        });
+        return Err(architecture_trailing_input(line, line_start, rest));
     }
 
     db.add_edge(ArchitectureEdge {
-        lhs_id,
+        lhs_id: lhs_id.text,
+        lhs_span: lhs_id.span,
         lhs_dir,
         lhs_into,
         lhs_group,
-        rhs_id,
+        rhs_id: rhs_id.text,
+        rhs_span: rhs_id.span,
         rhs_dir,
         rhs_into,
         rhs_group,
@@ -911,19 +1589,22 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut db = ArchitectureDb::default();
     db.clear();
 
-    let mut lines = code.lines();
+    let mut lines = ArchitectureLineCursor::new(code);
     let mut found_header = false;
-    let mut header_tail: Option<String> = None;
-    for line in lines.by_ref() {
-        let t = strip_inline_comment(line);
-        let trimmed = t.trim();
+    let mut header_tail: Option<(String, usize)> = None;
+    while let Some(line) = lines.next() {
+        let (trimmed, trimmed_start) = trimmed_statement_with_offset(line.text, line.start);
         if trimmed.is_empty() {
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
-            let rest = rest.trim_start();
+        if let Some(rest_with_ws) = trimmed.strip_prefix("architecture-beta") {
+            let rest = rest_with_ws.trim_start();
             if !rest.is_empty() {
-                header_tail = Some(rest.to_string());
+                let leading = rest_with_ws.len() - rest_with_ws.trim_start().len();
+                header_tail = Some((
+                    rest.to_string(),
+                    trimmed_start + "architecture-beta".len() + leading,
+                ));
             }
             found_header = true;
             break;
@@ -932,61 +1613,61 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     if !found_header {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected architecture-beta header".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected architecture-beta header".to_string(),
+        ));
     }
 
-    let mut process_line = |raw: &str, lines: &mut std::str::Lines<'_>| -> Result<()> {
-        let line = strip_inline_comment(raw);
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            return Ok(());
-        }
+    let mut process_line =
+        |raw: &str, raw_start: usize, lines: &mut ArchitectureLineCursor<'_>| -> Result<()> {
+            let (trimmed, trimmed_start) = trimmed_statement_with_offset(raw, raw_start);
+            if trimmed.is_empty() {
+                return Ok(());
+            }
 
-        if let Some(v) = parse_title_stmt(trimmed) {
-            db.set_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_title_stmt(trimmed) {
-            db.set_acc_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_block(lines, trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
+            if let Some(v) = parse_title_stmt(trimmed) {
+                db.set_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_title_stmt(trimmed) {
+                db.set_acc_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_block(lines, trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
 
-        if parse_group_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_service_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_junction_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_edge_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
+            if parse_group_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_service_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_junction_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_edge_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
 
-        Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unrecognized statement: {trimmed}"),
-        })
-    };
+            Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unrecognized statement: {trimmed}"),
+            ))
+        };
 
-    if let Some(tail) = &header_tail {
-        process_line(tail, &mut lines)?;
+    if let Some((tail, tail_start)) = &header_tail {
+        process_line(tail, *tail_start, &mut lines)?;
     }
 
     while let Some(line) = lines.next() {
-        process_line(line, &mut lines)?;
+        process_line(line.text, line.start, &mut lines)?;
     }
 
     let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
@@ -1129,19 +1810,22 @@ pub fn parse_architecture_model_for_render(
     let mut db = ArchitectureDb::default();
     db.clear();
 
-    let mut lines = code.lines();
+    let mut lines = ArchitectureLineCursor::new(code);
     let mut found_header = false;
-    let mut header_tail: Option<String> = None;
-    for line in lines.by_ref() {
-        let t = strip_inline_comment(line);
-        let trimmed = t.trim();
+    let mut header_tail: Option<(String, usize)> = None;
+    while let Some(line) = lines.next() {
+        let (trimmed, trimmed_start) = trimmed_statement_with_offset(line.text, line.start);
         if trimmed.is_empty() {
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
-            let rest = rest.trim_start();
+        if let Some(rest_with_ws) = trimmed.strip_prefix("architecture-beta") {
+            let rest = rest_with_ws.trim_start();
             if !rest.is_empty() {
-                header_tail = Some(rest.to_string());
+                let leading = rest_with_ws.len() - rest_with_ws.trim_start().len();
+                header_tail = Some((
+                    rest.to_string(),
+                    trimmed_start + "architecture-beta".len() + leading,
+                ));
             }
             found_header = true;
             break;
@@ -1150,61 +1834,61 @@ pub fn parse_architecture_model_for_render(
     }
 
     if !found_header {
-        return Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: "expected architecture-beta header".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "expected architecture-beta header".to_string(),
+        ));
     }
 
-    let mut process_line = |raw: &str, lines: &mut std::str::Lines<'_>| -> Result<()> {
-        let line = strip_inline_comment(raw);
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            return Ok(());
-        }
+    let mut process_line =
+        |raw: &str, raw_start: usize, lines: &mut ArchitectureLineCursor<'_>| -> Result<()> {
+            let (trimmed, trimmed_start) = trimmed_statement_with_offset(raw, raw_start);
+            if trimmed.is_empty() {
+                return Ok(());
+            }
 
-        if let Some(v) = parse_title_stmt(trimmed) {
-            db.set_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_title_stmt(trimmed) {
-            db.set_acc_title(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
-        if let Some(v) = parse_acc_descr_block(lines, trimmed) {
-            db.set_acc_descr(v);
-            return Ok(());
-        }
+            if let Some(v) = parse_title_stmt(trimmed) {
+                db.set_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_title_stmt(trimmed) {
+                db.set_acc_title(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
+            if let Some(v) = parse_acc_descr_block(lines, trimmed) {
+                db.set_acc_descr(v);
+                return Ok(());
+            }
 
-        if parse_group_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_service_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_junction_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
-        if parse_edge_stmt(&mut db, trimmed)? {
-            return Ok(());
-        }
+            if parse_group_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_service_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_junction_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_edge_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
 
-        Err(Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("unrecognized statement: {trimmed}"),
-        })
-    };
+            Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unrecognized statement: {trimmed}"),
+            ))
+        };
 
-    if let Some(tail) = &header_tail {
-        process_line(tail, &mut lines)?;
+    if let Some((tail, tail_start)) = &header_tail {
+        process_line(tail, *tail_start, &mut lines)?;
     }
 
     while let Some(line) = lines.next() {
-        process_line(line, &mut lines)?;
+        process_line(line.text, line.start, &mut lines)?;
     }
 
     Ok(db.render_model())
@@ -1213,7 +1897,7 @@ pub fn parse_architecture_model_for_render(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1222,6 +1906,14 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    fn parse_err(text: &str) -> crate::ParseDiagnostic {
+        let engine = Engine::new();
+        match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
+            Error::DiagramParse { diagnostic, .. } => diagnostic,
+            other => panic!("expected architecture parse error, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1307,5 +1999,86 @@ mod tests {
         .unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("expected ':' for lhs port") || msg.contains("unrecognized"));
+    }
+
+    #[test]
+    fn architecture_invalid_service_id_reports_insertion_point() {
+        let text = "architecture-beta\n  service -bad\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("-bad").unwrap();
+
+        assert_eq!(diagnostic.message(), "invalid service id");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+    }
+
+    #[test]
+    fn architecture_invalid_edge_direction_reports_exact_token_span() {
+        let text = "architecture-beta\n  service a\n  service b\n  a:X -- R:b\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find('X').unwrap();
+
+        assert_eq!(diagnostic.message(), "invalid lhs direction");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset + 1)));
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_trailing_group_input_reports_exact_token_span() {
+        let text = "architecture-beta\n  group core extra\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("extra").unwrap();
+
+        assert_eq!(diagnostic.message(), "unexpected trailing input");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "extra".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_duplicate_service_reports_exact_id_span() {
+        let text = "architecture-beta\n  service api\n  service api\n";
+        let diagnostic = parse_err(text);
+        let offset = text.rfind("api").unwrap();
+
+        assert!(diagnostic.message().contains("already in use"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "api".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_unknown_parent_reports_exact_reference_span() {
+        let text = "architecture-beta\n  service api in missing\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("missing").unwrap();
+
+        assert!(diagnostic.message().contains("parent does not exist"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "missing".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_unknown_edge_endpoint_reports_exact_reference_span() {
+        let text = "architecture-beta\n  service api\n  api:L -- R:missing\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("missing").unwrap();
+
+        assert!(diagnostic.message().contains("right-hand id"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "missing".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
     }
 }

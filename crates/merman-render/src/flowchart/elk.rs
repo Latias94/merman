@@ -1222,6 +1222,7 @@ mod tests {
             edges,
             subgraphs: Vec::new(),
             tooltips: Default::default(),
+            warning_facts: Vec::new(),
         }
     }
 

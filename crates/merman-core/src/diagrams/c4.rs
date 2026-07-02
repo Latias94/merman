@@ -1,5 +1,10 @@
+use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticRole, EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result,
+    SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -205,12 +210,826 @@ struct C4Db {
     c4_boundary_in_row: i64,
 }
 
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedKvArg {
+    key: String,
+    value: SpannedText,
+}
+
+#[derive(Debug, Clone)]
+enum SpannedArgValue {
+    Text(SpannedText),
+    KeyValue(SpannedKvArg),
+}
+
+#[derive(Debug, Clone)]
+struct SpannedArg {
+    value: SpannedArgValue,
+}
+
+impl SpannedArg {
+    fn text(&self) -> &str {
+        match &self.value {
+            SpannedArgValue::Text(value) => value.text.as_str(),
+            SpannedArgValue::KeyValue(value) => value.value.text.as_str(),
+        }
+    }
+
+    fn span(&self) -> SourceSpan {
+        match &self.value {
+            SpannedArgValue::Text(value) => value.span,
+            SpannedArgValue::KeyValue(value) => value.value.span,
+        }
+    }
+
+    fn key(&self) -> Option<&str> {
+        match &self.value {
+            SpannedArgValue::Text(_) => None,
+            SpannedArgValue::KeyValue(value) => Some(value.key.as_str()),
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        match &self.value {
+            SpannedArgValue::Text(value) => json!(value.text),
+            SpannedArgValue::KeyValue(value) => {
+                let mut map = Map::new();
+                map.insert(value.key.clone(), json!(value.value.text));
+                Value::Object(map)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SpannedMacroStmt {
+    name: String,
+    args: Vec<SpannedArg>,
+    span: SourceSpan,
+    args_span: SourceSpan,
+    has_lbrace: bool,
+}
+
 pub fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse_c4_db(code, meta)?.to_model(meta))
 }
 
 pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4DiagramRenderModel> {
     parse_c4_db(code, meta)?.to_render_model()
+}
+
+pub fn parse_c4_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut header_seen = false;
+    let mut offset = 0usize;
+    let mut lines = code.split_inclusive('\n').peekable();
+
+    while let Some(segment) = lines.next() {
+        let line_start = offset;
+        offset += segment.len();
+        let raw_line = strip_line_ending(segment);
+        let line = strip_inline_comment(raw_line);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !header_seen {
+            if trimmed.starts_with("%%") {
+                continue;
+            }
+            if is_c4_header(trimmed) {
+                header_seen = true;
+                continue;
+            }
+            return facts;
+        }
+
+        if trimmed.starts_with("%%") || trimmed == "{" || trimmed == "}" {
+            continue;
+        }
+
+        if let Some(value) = parse_title_spanned_c4(&line, line_start) {
+            facts.push_directive_prefix("title");
+            push_c4_payload_fact(&mut facts, &value, "c4 title");
+            continue;
+        }
+
+        if let Some(value) = parse_acc_title_spanned_c4(&line, line_start) {
+            facts.push_directive_prefix("accTitle");
+            push_c4_payload_fact(&mut facts, &value, "c4 accessibility title");
+            continue;
+        }
+
+        if let Some(value) = parse_acc_description_stmt_spanned_c4(&line, line_start) {
+            facts.push_directive_prefix("accDescription");
+            push_c4_payload_fact(&mut facts, &value, "c4 accessibility description");
+            continue;
+        }
+
+        if let Some((value, closed)) =
+            parse_acc_descr_spanned_c4(&mut lines, &line, line_start, &mut offset)
+        {
+            facts.push_directive_prefix("accDescr");
+            push_c4_payload_fact(&mut facts, &value, "c4 accessibility description");
+            if !closed {
+                facts.mark_recovered_with_diagnostic(
+                    "unterminated C4 accDescr block",
+                    Some(value.span),
+                );
+            }
+            continue;
+        }
+
+        if parse_direction_stmt_facts_c4(&line, line_start, &mut facts) {
+            continue;
+        }
+
+        let stmt_start = line_start + line.find(trimmed).unwrap_or(0);
+        match parse_macro_stmt_spanned(trimmed, stmt_start) {
+            Ok(Some(stmt)) => {
+                if parse_macro_stmt_facts_c4(&stmt, &mut facts).is_err() {
+                    facts.mark_recovered_with_diagnostic(
+                        "unable to recover C4 statement semantics",
+                        Some(stmt.span),
+                    );
+                }
+            }
+            Ok(None) => {
+                let span = SourceSpan::new(stmt_start, stmt_start + trimmed.len());
+                facts.mark_recovered_with_diagnostic("unsupported C4 statement", Some(span));
+            }
+            Err(_) => {
+                let span = SourceSpan::new(stmt_start, stmt_start + trimmed.len());
+                facts.mark_recovered_with_diagnostic("unable to parse C4 statement", Some(span));
+            }
+        }
+    }
+
+    facts
+}
+
+fn is_c4_header(line: &str) -> bool {
+    matches!(
+        line.trim(),
+        "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment"
+    )
+}
+
+fn push_c4_entity_fact(
+    facts: &mut EditorSemanticFacts,
+    value: &SpannedText,
+    detail: impl Into<String>,
+) {
+    if value.text.is_empty() {
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            value.span,
+        ));
+        return;
+    }
+
+    facts.push_symbol(EditorSemanticSymbol::with_role(
+        value.text.clone(),
+        Some(detail.into()),
+        EditorSemanticKind::Object,
+        EditorSemanticRole::Entity,
+        value.span,
+        value.span,
+    ));
+}
+
+fn push_c4_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    value: &SpannedText,
+    detail: impl Into<String>,
+) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        value.span,
+    ));
+    if value.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        value.text.clone(),
+        Some(detail.into()),
+        EditorSemanticKind::String,
+        value.span,
+        value.span,
+    ));
+}
+
+fn push_c4_payload_arg(facts: &mut EditorSemanticFacts, arg: &SpannedArg, fallback_detail: &str) {
+    let detail = arg
+        .key()
+        .map(|key| format!("c4 {key}"))
+        .unwrap_or_else(|| fallback_detail.to_string());
+    let value = SpannedText {
+        text: arg.text().to_string(),
+        span: arg.span(),
+    };
+    push_c4_payload_fact(facts, &value, detail);
+}
+
+fn push_c4_entity_arg(facts: &mut EditorSemanticFacts, arg: &SpannedArg, detail: &str) {
+    let value = SpannedText {
+        text: arg.text().to_string(),
+        span: arg.span(),
+    };
+    push_c4_entity_fact(facts, &value, detail.to_string());
+}
+
+fn parse_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("title")?;
+    let ws = rest.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let value = rest.trim_start();
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+    })
+}
+
+fn parse_acc_title_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("accTitle")?.trim_start();
+    let value = rest.strip_prefix(':')?.trim();
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+    })
+}
+
+fn parse_acc_description_stmt_spanned_c4(line: &str, line_start: usize) -> Option<SpannedText> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("accDescription")?;
+    let ws = rest.chars().next()?;
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let value = rest.trim_start();
+    let value_rel = line.find(value)?;
+    Some(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+    })
+}
+
+fn parse_acc_descr_spanned_c4<'a>(
+    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
+    line: &str,
+    line_start: usize,
+    offset: &mut usize,
+) -> Option<(SpannedText, bool)> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix("accDescr")?.trim_start();
+    if let Some(after) = rest.strip_prefix(':') {
+        let value = after.trim();
+        let value_rel = line.find(value)?;
+        return Some((
+            SpannedText {
+                text: value.to_string(),
+                span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+            },
+            true,
+        ));
+    }
+
+    let rest = rest.strip_prefix('{')?;
+    if let Some(end) = rest.find('}') {
+        let value = rest[..end].trim();
+        let value_rel = line.find(value)?;
+        return Some((
+            SpannedText {
+                text: value.to_string(),
+                span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
+            },
+            true,
+        ));
+    }
+
+    let mut parts = Vec::new();
+    let mut span_start = None;
+    let mut span_end = None;
+
+    let first = rest.trim();
+    if !first.is_empty() {
+        let rel = line.find(first)?;
+        parts.push(first.to_string());
+        span_start = Some(line_start + rel);
+        span_end = Some(line_start + rel + first.len());
+    }
+
+    let mut closed = false;
+    while let Some(segment) = lines.next() {
+        let segment_start = *offset;
+        *offset += segment.len();
+        let next_line = strip_line_ending(segment);
+        if let Some(close_pos) = next_line.find('}') {
+            let before = next_line[..close_pos].trim();
+            if !before.is_empty() {
+                let rel = next_line.find(before)?;
+                parts.push(before.to_string());
+                span_start.get_or_insert(segment_start + rel);
+                span_end = Some(segment_start + rel + before.len());
+            }
+            closed = true;
+            break;
+        }
+
+        let text = next_line.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let rel = next_line.find(text)?;
+        parts.push(text.to_string());
+        span_start.get_or_insert(segment_start + rel);
+        span_end = Some(segment_start + rel + text.len());
+    }
+
+    let start = span_start.unwrap_or_else(|| line_start + line.find('{').unwrap_or(line.len()));
+    let end = span_end.unwrap_or(start);
+    Some((
+        SpannedText {
+            text: parts.join("\n"),
+            span: SourceSpan::new(start, end),
+        },
+        closed,
+    ))
+}
+
+fn parse_direction_stmt_facts_c4(
+    line: &str,
+    line_start: usize,
+    facts: &mut EditorSemanticFacts,
+) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix("direction") else {
+        return false;
+    };
+    if rest.chars().next().is_some_and(|ch| !ch.is_whitespace()) {
+        return false;
+    }
+
+    let value = rest.trim_start();
+    if value.is_empty() {
+        let span_start = line_start + line.find("direction").unwrap_or(0) + "direction".len();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::DirectionValue,
+            SourceSpan::new(span_start, span_start),
+        ));
+        return true;
+    }
+
+    let token = value.split_whitespace().next().unwrap_or(value);
+    let value_rel = line.find(token).unwrap_or(0);
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::DirectionValue,
+        SourceSpan::new(line_start + value_rel, line_start + value_rel + token.len()),
+    ));
+    true
+}
+
+fn parse_macro_stmt_facts_c4(
+    stmt: &SpannedMacroStmt,
+    facts: &mut EditorSemanticFacts,
+) -> Result<()> {
+    match stmt.name.as_str() {
+        "Person" | "Person_Ext" | "System" | "SystemDb" | "SystemQueue" | "System_Ext"
+        | "SystemDb_Ext" | "SystemQueue_Ext" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, c4_shape_detail(&stmt.name));
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(descr) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(3) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Container" | "ContainerDb" | "ContainerQueue" | "Container_Ext" | "ContainerDb_Ext"
+        | "ContainerQueue_Ext" | "Component" | "ComponentDb" | "ComponentQueue"
+        | "Component_Ext" | "ComponentDb_Ext" | "ComponentQueue_Ext" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, c4_shape_detail(&stmt.name));
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(techn) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, techn, "c4 technology");
+            }
+            if let Some(descr) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(4) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Boundary" | "Enterprise_Boundary" | "System_Boundary" | "Container_Boundary" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, "c4 boundary");
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(boundary_type) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, boundary_type, "c4 boundary type");
+            }
+            for arg in stmt.args.iter().skip(3) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Node" | "Deployment_Node" | "Node_L" | "Node_R" => {
+            if let Some(alias) = stmt.args.first() {
+                push_c4_entity_arg(facts, alias, "c4 deployment node");
+            }
+            if let Some(label) = stmt.args.get(1) {
+                push_c4_payload_arg(facts, label, "c4 label");
+            }
+            if let Some(node_type) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, node_type, "c4 node type");
+            }
+            if let Some(descr) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(4) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
+        | "Rel_R" | "Rel_Right" | "Rel_Back" => {
+            let Some(from) = stmt.args.first() else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation source".to_string(),
+                ));
+            };
+            push_c4_entity_arg(facts, from, "c4 relation source");
+            let Some(to) = stmt.args.get(1) else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation target".to_string(),
+                ));
+            };
+            push_c4_entity_arg(facts, to, "c4 relation target");
+            if let Some(label) = stmt.args.get(2) {
+                push_c4_payload_arg(facts, label, "c4 relation label");
+            } else {
+                return Ok(());
+            }
+            if let Some(techn) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, techn, "c4 technology");
+            }
+            if let Some(descr) = stmt.args.get(4) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(5) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "RelIndex" => {
+            let Some(index) = stmt.args.first() else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation index".to_string(),
+                ));
+            };
+            push_c4_payload_arg(facts, index, "c4 relation index");
+            let Some(from) = stmt.args.get(1) else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation source".to_string(),
+                ));
+            };
+            push_c4_entity_arg(facts, from, "c4 relation source");
+            let Some(to) = stmt.args.get(2) else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation target".to_string(),
+                ));
+            };
+            push_c4_entity_arg(facts, to, "c4 relation target");
+            if let Some(label) = stmt.args.get(3) {
+                push_c4_payload_arg(facts, label, "c4 relation label");
+            } else {
+                return Ok(());
+            }
+            if let Some(techn) = stmt.args.get(4) {
+                push_c4_payload_arg(facts, techn, "c4 technology");
+            }
+            if let Some(descr) = stmt.args.get(5) {
+                push_c4_payload_arg(facts, descr, "c4 description");
+            }
+            for arg in stmt.args.iter().skip(6) {
+                push_c4_payload_arg(facts, arg, "c4 value");
+            }
+            Ok(())
+        }
+        "UpdateElementStyle" => {
+            let Some(target) = stmt.args.first() else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing style target".to_string(),
+                ));
+            };
+            push_c4_entity_arg(facts, target, "c4 style target");
+            for arg in stmt.args.iter().skip(1) {
+                push_c4_payload_arg(facts, arg, "c4 style value");
+            }
+            Ok(())
+        }
+        "UpdateRelStyle" => {
+            let Some(from) = stmt.args.first() else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation style source".to_string(),
+                ));
+            };
+            push_c4_entity_arg(facts, from, "c4 relation style source");
+            let Some(to) = stmt.args.get(1) else {
+                return Err(Error::diagram_parse_fallback(
+                    "c4".to_string(),
+                    "missing relation style target".to_string(),
+                ));
+            };
+            push_c4_entity_arg(facts, to, "c4 relation style target");
+            for arg in stmt.args.iter().skip(2) {
+                push_c4_payload_arg(facts, arg, "c4 relation style value");
+            }
+            Ok(())
+        }
+        "UpdateLayoutConfig" => {
+            for arg in &stmt.args {
+                push_c4_payload_arg(facts, arg, "c4 layout value");
+            }
+            Ok(())
+        }
+        other => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unsupported C4 macro: {other}"),
+        )),
+    }
+}
+
+fn spanned_args_to_values(args: &[SpannedArg]) -> Vec<Value> {
+    args.iter().map(SpannedArg::to_value).collect()
+}
+
+fn c4_missing_arg(stmt: &SpannedMacroStmt, message: &'static str) -> Error {
+    let offset = stmt
+        .args
+        .last()
+        .map(|arg| arg.span().end)
+        .unwrap_or(stmt.args_span.start);
+    Error::diagram_parse_insertion_point("c4".to_string(), message.to_string(), offset)
+}
+
+fn validate_c4_macro_args(stmt: &SpannedMacroStmt) -> Result<()> {
+    match stmt.name.as_str() {
+        "Rel" | "BiRel" | "Rel_U" | "Rel_Up" | "Rel_D" | "Rel_Down" | "Rel_L" | "Rel_Left"
+        | "Rel_R" | "Rel_Right" | "Rel_Back" => {
+            if stmt.args.is_empty() {
+                return Err(c4_missing_arg(stmt, "missing relation source"));
+            }
+            if stmt.args.len() < 2 {
+                return Err(c4_missing_arg(stmt, "missing relation target"));
+            }
+        }
+        "RelIndex" => {
+            if stmt.args.is_empty() {
+                return Err(c4_missing_arg(stmt, "missing relation index"));
+            }
+            if stmt.args.len() < 2 {
+                return Err(c4_missing_arg(stmt, "missing relation source"));
+            }
+            if stmt.args.len() < 3 {
+                return Err(c4_missing_arg(stmt, "missing relation target"));
+            }
+        }
+        "UpdateElementStyle" => {
+            if stmt.args.is_empty() {
+                return Err(c4_missing_arg(stmt, "missing style target"));
+            }
+        }
+        "UpdateRelStyle" => {
+            if stmt.args.is_empty() {
+                return Err(c4_missing_arg(stmt, "missing relation style source"));
+            }
+            if stmt.args.len() < 2 {
+                return Err(c4_missing_arg(stmt, "missing relation style target"));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn c4_shape_detail(name: &str) -> &'static str {
+    match name {
+        "Person" | "Person_Ext" => "c4 person",
+        "System" | "SystemDb" | "SystemQueue" | "System_Ext" | "SystemDb_Ext"
+        | "SystemQueue_Ext" => "c4 system",
+        "Container" | "ContainerDb" | "ContainerQueue" | "Container_Ext" | "ContainerDb_Ext"
+        | "ContainerQueue_Ext" => "c4 container",
+        "Component" | "ComponentDb" | "ComponentQueue" | "Component_Ext" | "ComponentDb_Ext"
+        | "ComponentQueue_Ext" => "c4 component",
+        _ => "c4 element",
+    }
+}
+
+fn parse_macro_stmt_spanned(t: &str, stmt_start: usize) -> Result<Option<SpannedMacroStmt>> {
+    let t = t.trim_end();
+    let Some(paren) = t.find('(') else {
+        return Ok(None);
+    };
+    let name = t[..paren].trim().to_string();
+    if name.is_empty() {
+        return Ok(None);
+    }
+
+    let after = &t[paren + 1..];
+    let Some(end_paren) = after.rfind(')') else {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unterminated macro call: {t}"),
+        ));
+    };
+
+    let args_raw = &after[..end_paren];
+    let rest = after[end_paren + 1..].trim();
+    let mut has_lbrace = false;
+    if let Some(after) = rest.strip_prefix('{') {
+        if after.trim().is_empty() {
+            has_lbrace = true;
+        } else {
+            return Err(Error::diagram_parse_fallback(
+                "c4".to_string(),
+                format!("unexpected tokens after '{{' in macro: {t}"),
+            ));
+        }
+    } else if !rest.is_empty() {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unexpected trailing tokens in macro: {t}"),
+        ));
+    }
+
+    let args = parse_args_csv_spanned(args_raw, stmt_start + paren + 1)?;
+    let _ = has_lbrace;
+    Ok(Some(SpannedMacroStmt {
+        name,
+        args,
+        span: SourceSpan::new(stmt_start, stmt_start + t.len()),
+        args_span: SourceSpan::new(
+            stmt_start + paren + 1,
+            stmt_start + paren + 1 + args_raw.len(),
+        ),
+        has_lbrace,
+    }))
+}
+
+fn parse_args_csv_spanned(input: &str, base_offset: usize) -> Result<Vec<SpannedArg>> {
+    let mut out = Vec::new();
+    let mut cur = input;
+    let mut cursor = base_offset;
+    loop {
+        if cur.trim().is_empty() {
+            break;
+        }
+        let (seg, rest) = split_next_arg(cur);
+        out.push(parse_arg_spanned(seg, cursor)?);
+        let Some(rest) = rest else {
+            break;
+        };
+        cursor += seg.len() + 1;
+        cur = rest;
+    }
+    Ok(out)
+}
+
+fn parse_arg_spanned(seg: &str, seg_base: usize) -> Result<SpannedArg> {
+    let trimmed_start = seg
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, _)| idx)
+        .unwrap_or(seg.len());
+    let trimmed_end = seg
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, ch)| idx + ch.len_utf8())
+        .unwrap_or(trimmed_start);
+    let trimmed = &seg[trimmed_start..trimmed_end];
+    let value_base = seg_base + trimmed_start;
+
+    if trimmed.is_empty() {
+        return Ok(SpannedArg {
+            value: SpannedArgValue::Text(SpannedText {
+                text: String::new(),
+                span: SourceSpan::new(value_base, seg_base + trimmed_end),
+            }),
+        });
+    }
+
+    if let Some(value) = try_parse_kv_spanned(trimmed, value_base)? {
+        return Ok(value);
+    }
+
+    if trimmed.starts_with('"') {
+        return Ok(SpannedArg {
+            value: SpannedArgValue::Text(parse_quoted_spanned(trimmed, value_base)?),
+        });
+    }
+
+    Ok(SpannedArg {
+        value: SpannedArgValue::Text(SpannedText {
+            text: trimmed.to_string(),
+            span: SourceSpan::new(value_base, value_base + trimmed.len()),
+        }),
+    })
+}
+
+fn try_parse_kv_spanned(seg: &str, seg_base: usize) -> Result<Option<SpannedArg>> {
+    if !seg.starts_with('$') {
+        return Ok(None);
+    }
+    let rest = &seg[1..];
+    let Some(eq) = rest.find('=') else {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid attribute kv: {seg}"),
+        ));
+    };
+    let key = rest[..eq].trim();
+    if key.is_empty() {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid attribute kv key: {seg}"),
+        ));
+    }
+
+    let val_raw = rest[eq + 1..].trim_start();
+    let leading_ws = rest[eq + 1..]
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, _)| idx)
+        .unwrap_or(rest[eq + 1..].len());
+    let value = parse_quoted_spanned(val_raw, seg_base + 1 + eq + 1 + leading_ws)?;
+    Ok(Some(SpannedArg {
+        value: SpannedArgValue::KeyValue(SpannedKvArg {
+            key: key.to_string(),
+            value,
+        }),
+    }))
+}
+
+fn parse_quoted_spanned(input: &str, input_base: usize) -> Result<SpannedText> {
+    let input = input.trim();
+    let Some(rest) = input.strip_prefix('"') else {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected quoted string, got: {input}"),
+        ));
+    };
+    let Some(end) = rest.find('"') else {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            "unterminated string".to_string(),
+        ));
+    };
+    let value = &rest[..end];
+    let trailing = rest[end + 1..].trim();
+    if !trailing.is_empty() {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("unexpected trailing tokens after string: {trailing}"),
+        ));
+    }
+    Ok(SpannedText {
+        text: value.to_string(),
+        span: SourceSpan::new(input_base + 1, input_base + 1 + value.len()),
+    })
 }
 
 impl C4Db {
@@ -620,14 +1439,14 @@ fn wrap_text(v: Value) -> Value {
 fn c4_required_string(obj: &Map<String, Value>, key: &str) -> Result<String> {
     match obj.get(key) {
         Some(Value::String(s)) => Ok(s.clone()),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected string field `{key}`, got {other:?}"),
-        }),
-        None => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("missing required field `{key}`"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected string field `{key}`, got {other:?}"),
+        )),
+        None => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("missing required field `{key}`"),
+        )),
     }
 }
 
@@ -635,10 +1454,10 @@ fn c4_optional_string(obj: &Map<String, Value>, key: &str) -> Result<Option<Stri
     match obj.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected optional string field `{key}`, got {other:?}"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected optional string field `{key}`, got {other:?}"),
+        )),
     }
 }
 
@@ -646,10 +1465,10 @@ fn c4_optional_bool(obj: &Map<String, Value>, key: &str) -> Result<Option<bool>>
     match obj.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Bool(v)) => Ok(Some(*v)),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected optional bool field `{key}`, got {other:?}"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected optional bool field `{key}`, got {other:?}"),
+        )),
     }
 }
 
@@ -754,10 +1573,10 @@ fn arg_to_string(v: Option<&Value>) -> Result<String> {
     match v {
         None => Ok(String::new()),
         Some(Value::String(s)) => Ok(s.clone()),
-        Some(other) => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected string argument, got {other:?}"),
-        }),
+        Some(other) => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("expected string argument, got {other:?}"),
+        )),
     }
 }
 
@@ -772,10 +1591,10 @@ fn apply_text_field_or_kv(obj: &mut Map<String, Value>, default_key: &str, v: Va
             let s = match vv {
                 Value::String(s) => s,
                 other => {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "c4".to_string(),
-                        message: format!("expected string in attribute kv, got {other:?}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "c4".to_string(),
+                        format!("expected string in attribute kv, got {other:?}"),
+                    ));
                 }
             };
             obj.insert(k, wrap_text(json!(s)));
@@ -785,10 +1604,10 @@ fn apply_text_field_or_kv(obj: &mut Map<String, Value>, default_key: &str, v: Va
             obj.insert(default_key.to_string(), wrap_text(json!(s)));
             Ok(())
         }
-        other => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid text field value: {other:?}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid text field value: {other:?}"),
+        )),
     }
 }
 
@@ -814,10 +1633,10 @@ fn apply_kv_value(
             obj.insert(default_key.to_string(), json!(s));
             Ok(())
         }
-        other => Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid kv value: {other:?}"),
-        }),
+        other => Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            format!("invalid kv value: {other:?}"),
+        )),
     }
 }
 
@@ -841,25 +1660,24 @@ fn value_as_i64(v: &Value) -> Option<i64> {
 fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
     let mut db = C4Db::new(&meta.effective_config);
 
-    let mut lines = code.lines().peekable();
-    let header = next_non_empty_line(&mut lines).ok_or_else(|| Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: "expected C4 header".to_string(),
+    let mut lines = C4LineCursor::new(code);
+    let (header, _header_start) = next_non_empty_c4_line(&mut lines).ok_or_else(|| {
+        Error::diagram_parse_fallback(meta.diagram_type.clone(), "expected C4 header".to_string())
     })?;
     let header = header.trim();
 
     match header {
         "C4Context" | "C4Container" | "C4Component" | "C4Dynamic" | "C4Deployment" => {}
         _ => {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!("unexpected C4 header: {header}"),
-            });
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unexpected C4 header: {header}"),
+            ));
         }
     }
     db.set_c4_type(header, &meta.effective_config);
 
-    while let Some(raw) = lines.next() {
+    while let Some((raw, line_start)) = lines.next_line() {
         let raw = strip_inline_comment(raw);
         let t = raw.trim();
         if t.is_empty() {
@@ -894,12 +1712,17 @@ fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
             continue;
         }
 
-        let Some((name, args, has_lbrace)) = parse_macro_stmt(t)? else {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!("unsupported C4 statement: {t}"),
-            });
+        let stmt_start = line_start + raw.len().saturating_sub(raw.trim_start().len());
+        let Some(stmt) = parse_macro_stmt_spanned(t, stmt_start)? else {
+            return Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                format!("unsupported C4 statement: {t}"),
+            ));
         };
+        validate_c4_macro_args(&stmt)?;
+        let name = stmt.name.clone();
+        let args = spanned_args_to_values(&stmt.args);
+        let has_lbrace = stmt.has_lbrace;
 
         if is_boundary_macro(&name) {
             let mut args = args;
@@ -927,10 +1750,10 @@ fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
                     db.add_deployment_node("nodeR", args)?;
                 }
                 other => {
-                    return Err(Error::DiagramParse {
-                        diagram_type: meta.diagram_type.clone(),
-                        message: format!("unsupported boundary macro: {other}"),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unsupported boundary macro: {other}"),
+                    ));
                 }
             }
 
@@ -981,10 +1804,10 @@ fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
             "UpdateLayoutConfig" => db.update_layout_config(args)?,
 
             other => {
-                return Err(Error::DiagramParse {
-                    diagram_type: meta.diagram_type.clone(),
-                    message: format!("unsupported C4 macro: {other}"),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    meta.diagram_type.clone(),
+                    format!("unsupported C4 macro: {other}"),
+                ));
             }
         }
     }
@@ -1022,13 +1845,37 @@ fn is_direction_stmt(t: &str) -> bool {
     matches!(it.next(), Some("TB" | "BT" | "LR" | "RL"))
 }
 
-fn next_non_empty_line<'a>(
-    lines: &mut std::iter::Peekable<std::str::Lines<'a>>,
-) -> Option<&'a str> {
-    lines
-        .by_ref()
-        .find(|&l| !l.trim().is_empty())
-        .map(|v| v as _)
+struct C4LineCursor<'a> {
+    segments: std::str::SplitInclusive<'a, char>,
+    offset: usize,
+}
+
+impl<'a> C4LineCursor<'a> {
+    fn new(code: &'a str) -> Self {
+        Self {
+            segments: code.split_inclusive('\n'),
+            offset: 0,
+        }
+    }
+
+    fn next_line(&mut self) -> Option<(&'a str, usize)> {
+        let segment = self.segments.next()?;
+        let line_start = self.offset;
+        self.offset += segment.len();
+        Some((
+            crate::diagrams::scan::strip_line_ending(segment),
+            line_start,
+        ))
+    }
+}
+
+fn next_non_empty_c4_line<'a>(lines: &mut C4LineCursor<'a>) -> Option<(&'a str, usize)> {
+    while let Some((line, line_start)) = lines.next_line() {
+        if !line.trim().is_empty() {
+            return Some((line, line_start));
+        }
+    }
+    None
 }
 
 fn try_parse_title(t: &str) -> Option<String> {
@@ -1060,10 +1907,7 @@ fn try_parse_acc_title_as_title(t: &str, db: &mut C4Db, config: &MermaidConfig) 
     true
 }
 
-fn try_parse_acc_descr<'a>(
-    t: &str,
-    lines: &mut std::iter::Peekable<std::str::Lines<'a>>,
-) -> Result<Option<String>> {
+fn try_parse_acc_descr<'a>(t: &str, lines: &mut C4LineCursor<'a>) -> Result<Option<String>> {
     let t = t.trim_start();
     if !t.starts_with("accDescr") {
         return Ok(None);
@@ -1091,7 +1935,7 @@ fn try_parse_acc_descr<'a>(
             buf.push_str(after);
         }
 
-        for raw in lines.by_ref() {
+        while let Some((raw, _line_start)) = lines.next_line() {
             if let Some(pos) = raw.find('}') {
                 let part = &raw[..pos];
                 if !buf.is_empty() {
@@ -1127,83 +1971,24 @@ fn is_boundary_macro(name: &str) -> bool {
     )
 }
 
-fn consume_required_lbrace(lines: &mut std::iter::Peekable<std::str::Lines<'_>>) -> Result<()> {
-    while let Some(peek) = lines.peek().copied() {
-        if peek.trim().is_empty() {
-            lines.next();
+fn consume_required_lbrace(lines: &mut C4LineCursor<'_>) -> Result<()> {
+    while let Some((line, _line_start)) = lines.next_line() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
             continue;
         }
-        if peek.trim() == "{" {
-            lines.next();
+        if trimmed == "{" {
             return Ok(());
         }
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: "expected '{' after boundary".to_string(),
-        });
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            "expected '{' after boundary".to_string(),
+        ));
     }
-    Err(Error::DiagramParse {
-        diagram_type: "c4".to_string(),
-        message: "expected '{' after boundary".to_string(),
-    })
-}
-
-fn parse_macro_stmt(t: &str) -> Result<Option<(String, Vec<Value>, bool)>> {
-    let t = t.trim_end();
-    let Some(paren) = t.find('(') else {
-        return Ok(None);
-    };
-    let name = t[..paren].trim().to_string();
-    if name.is_empty() {
-        return Ok(None);
-    }
-
-    let after = &t[paren + 1..];
-    let Some(end_paren) = after.rfind(')') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unterminated macro call: {t}"),
-        });
-    };
-
-    let args_raw = &after[..end_paren];
-    let rest = after[end_paren + 1..].trim();
-    let mut has_lbrace = false;
-    if let Some(after) = rest.strip_prefix('{') {
-        if after.trim().is_empty() {
-            has_lbrace = true;
-        } else {
-            return Err(Error::DiagramParse {
-                diagram_type: "c4".to_string(),
-                message: format!("unexpected tokens after '{{' in macro: {t}"),
-            });
-        }
-    } else if !rest.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unexpected trailing tokens in macro: {t}"),
-        });
-    }
-
-    let args = parse_args_csv(args_raw)?;
-    Ok(Some((name, args, has_lbrace)))
-}
-
-fn parse_args_csv(input: &str) -> Result<Vec<Value>> {
-    let mut out = Vec::new();
-    let mut cur = input;
-    loop {
-        if cur.trim().is_empty() {
-            break;
-        }
-        let (seg, rest) = split_next_arg(cur);
-        out.push(parse_arg(seg.trim())?);
-        let Some(rest) = rest else {
-            break;
-        };
-        cur = rest;
-    }
-    Ok(out)
+    Err(Error::diagram_parse_fallback(
+        "c4".to_string(),
+        "expected '{' after boundary".to_string(),
+    ))
 }
 
 fn split_next_arg(input: &str) -> (&str, Option<&str>) {
@@ -1220,78 +2005,10 @@ fn split_next_arg(input: &str) -> (&str, Option<&str>) {
     (input, None)
 }
 
-fn parse_arg(seg: &str) -> Result<Value> {
-    if seg.is_empty() {
-        return Ok(json!(""));
-    }
-
-    if let Some(v) = try_parse_kv(seg)? {
-        return Ok(v);
-    }
-
-    if seg.starts_with('"') {
-        let s = parse_quoted(seg)?;
-        return Ok(json!(s));
-    }
-
-    Ok(json!(seg.trim()))
-}
-
-fn try_parse_kv(seg: &str) -> Result<Option<Value>> {
-    let seg = seg.trim_start();
-    if !seg.starts_with('$') {
-        return Ok(None);
-    }
-    let rest = &seg[1..];
-    let Some(eq) = rest.find('=') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid attribute kv: {seg}"),
-        });
-    };
-    let key = rest[..eq].trim();
-    let val_raw = rest[eq + 1..].trim_start();
-    if key.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("invalid attribute kv key: {seg}"),
-        });
-    }
-    let val = parse_quoted(val_raw)?;
-    let mut map = Map::new();
-    map.insert(key.to_string(), json!(val));
-    Ok(Some(Value::Object(map)))
-}
-
-fn parse_quoted(input: &str) -> Result<String> {
-    let input = input.trim();
-    let Some(rest) = input.strip_prefix('"') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("expected quoted string, got: {input}"),
-        });
-    };
-    let Some(end) = rest.find('"') else {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: "unterminated string".to_string(),
-        });
-    };
-    let val = &rest[..end];
-    let trailing = rest[end + 1..].trim();
-    if !trailing.is_empty() {
-        return Err(Error::DiagramParse {
-            diagram_type: "c4".to_string(),
-            message: format!("unexpected trailing tokens after string: {trailing}"),
-        });
-    }
-    Ok(val.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions, RenderSemanticModel};
+    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -1301,6 +2018,14 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    fn parse_err(text: &str) -> crate::ParseDiagnostic {
+        let engine = Engine::new();
+        match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
+            Error::DiagramParse { diagnostic, .. } => diagnostic,
+            other => panic!("expected C4 parse error, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1742,6 +2467,32 @@ Rel(a, b, )
     }
 
     #[test]
+    fn c4_missing_relation_target_reports_local_insertion_point() {
+        let text = "C4Context\nRel(a)\n";
+        let diagnostic = parse_err(text);
+        let insert = text.find(')').unwrap();
+        assert_eq!(diagnostic.message(), "missing relation target");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(insert, insert)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+    }
+
+    #[test]
+    fn c4_missing_relation_style_target_reports_local_insertion_point() {
+        let text = "C4Context\nUpdateRelStyle(a)\n";
+        let diagnostic = parse_err(text);
+        let insert = text.find(')').unwrap();
+        assert_eq!(diagnostic.message(), "missing relation style target");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(insert, insert)));
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+    }
+
+    #[test]
     fn c4_rel_inline_comment_is_ignored_but_not_inside_quotes() {
         let model = parse(
             r#"C4Context
@@ -1905,5 +2656,98 @@ Rel(customer, system, "Uses", "HTTPS")
             json!("Customer")
         );
         assert_eq!(parsed_json.model["rels"][0]["label"]["text"], json!("Uses"));
+    }
+
+    #[test]
+    fn c4_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let input = r#"C4Context
+title Banking Context
+accTitle: Banking accessibility title
+accDescr: Banking accessibility description
+Boundary(bank, "Bank") {
+  Person(customer, "Customer", "Uses the system")
+  System(system, "Internet Banking", "Core system")
+}
+Rel(customer, system, "Uses", "HTTPS")
+UpdateElementStyle(system, $bgColor="red")
+UpdateRelStyle(customer, system, $lineColor="blue")
+"#;
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("c4", input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+        assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+        for entity in ["bank", "customer", "system"] {
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == entity
+                        && symbol.kind == EditorSemanticKind::Object
+                        && symbol.role == EditorSemanticRole::Entity
+                }),
+                "missing C4 entity fact for {entity}"
+            );
+        }
+        for payload in [
+            "Banking Context",
+            "Banking accessibility title",
+            "Banking accessibility description",
+            "Customer",
+            "Core system",
+            "Uses",
+            "HTTPS",
+            "red",
+            "blue",
+        ] {
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == payload
+                        && symbol.kind == EditorSemanticKind::String
+                        && symbol.role == EditorSemanticRole::Payload
+                }),
+                "missing C4 payload fact for {payload}"
+            );
+        }
+
+        let system_refs = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "system" && symbol.role == EditorSemanticRole::Entity)
+            .count();
+        assert_eq!(
+            system_refs, 4,
+            "system should appear in definition, relation target, element style, and relation style"
+        );
+
+        let title_start = input.find("Banking Context").unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span
+                    == SourceSpan::new(title_start, title_start + "Banking Context".len())
+        }));
+    }
+
+    #[test]
+    fn c4_editor_facts_recover_unsupported_statements_without_losing_prior_facts() {
+        let engine = Engine::new();
+        let input = "C4Context\nPerson(customer, \"Customer\")\nNotAMacro customer\n";
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("c4", input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "customer" && symbol.role == EditorSemanticRole::Entity
+        }));
+        assert!(!facts.diagnostics.is_empty());
     }
 }
