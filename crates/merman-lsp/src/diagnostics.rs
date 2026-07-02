@@ -1,11 +1,12 @@
+use crate::protocol::range_to_lsp;
 use merman_analysis::{AnalysisDiagnostic, AnalysisPayload, DiagnosticSeverity};
 use merman_editor_core::{
-    EditorDiagnostic, EditorDiagnosticRelated, Range as CoreRange, analysis_diagnostic_to_editor,
+    EditorDiagnostic, EditorDiagnosticRelated, analysis_diagnostic_to_editor,
     analysis_payload_to_diagnostics as analysis_payload_to_editor_diagnostics,
 };
 use tower_lsp::lsp_types::{
     CodeDescription, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity as LspSeverity,
-    DiagnosticTag, Location, NumberOrString, Position, Range, Url,
+    DiagnosticTag, Location, NumberOrString, Url,
 };
 
 pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload, uri: &Url) -> Vec<Diagnostic> {
@@ -84,19 +85,6 @@ fn related_information(
         .collect::<Vec<_>>();
 
     if infos.is_empty() { None } else { Some(infos) }
-}
-
-fn range_to_lsp(range: CoreRange) -> Range {
-    Range {
-        start: Position {
-            line: range.start.line as u32,
-            character: range.start.character as u32,
-        },
-        end: Position {
-            line: range.end.line as u32,
-            character: range.end.character as u32,
-        },
-    }
 }
 
 #[cfg(test)]

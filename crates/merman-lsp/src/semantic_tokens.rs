@@ -1,7 +1,8 @@
 use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
     SemanticTokenKind, SemanticTokenModifier as CoreSemanticTokenModifier,
-    semantic_tokens::token_modifier_index, semantic_tokens::token_type_index,
+    semantic_token_legend as core_semantic_token_legend, semantic_tokens::token_modifier_index,
+    semantic_tokens::token_type_index,
     semantic_tokens_for_snapshot as core_semantic_tokens_for_snapshot,
 };
 use std::collections::hash_map::DefaultHasher;
@@ -31,22 +32,18 @@ pub fn semantic_tokens_options() -> SemanticTokensOptions {
 }
 
 pub fn semantic_tokens_legend() -> SemanticTokensLegend {
+    let legend = core_semantic_token_legend();
     SemanticTokensLegend {
-        token_types: vec![
-            SemanticTokenType::NAMESPACE,
-            SemanticTokenType::CLASS,
-            SemanticTokenType::STRUCT,
-            SemanticTokenType::VARIABLE,
-            SemanticTokenType::PROPERTY,
-            SemanticTokenType::EVENT,
-            SemanticTokenType::FUNCTION,
-            SemanticTokenType::STRING,
-        ],
-        token_modifiers: vec![
-            SemanticTokenModifier::new("mermanEntity"),
-            SemanticTokenModifier::new("mermanOutline"),
-            SemanticTokenModifier::new("mermanPayload"),
-        ],
+        token_types: legend
+            .token_types
+            .into_iter()
+            .map(semantic_token_type_to_lsp)
+            .collect(),
+        token_modifiers: legend
+            .token_modifiers
+            .into_iter()
+            .map(semantic_token_modifier_to_lsp)
+            .collect(),
     }
 }
 
@@ -228,6 +225,27 @@ fn semantic_tokens_delta_edit(
     })
 }
 
+fn semantic_token_type_to_lsp(kind: SemanticTokenKind) -> SemanticTokenType {
+    match kind {
+        SemanticTokenKind::Namespace => SemanticTokenType::NAMESPACE,
+        SemanticTokenKind::Class => SemanticTokenType::CLASS,
+        SemanticTokenKind::Struct => SemanticTokenType::STRUCT,
+        SemanticTokenKind::Variable => SemanticTokenType::VARIABLE,
+        SemanticTokenKind::Property => SemanticTokenType::PROPERTY,
+        SemanticTokenKind::Event => SemanticTokenType::EVENT,
+        SemanticTokenKind::Function => SemanticTokenType::FUNCTION,
+        SemanticTokenKind::String => SemanticTokenType::STRING,
+    }
+}
+
+fn semantic_token_modifier_to_lsp(modifier: CoreSemanticTokenModifier) -> SemanticTokenModifier {
+    match modifier {
+        CoreSemanticTokenModifier::Entity => SemanticTokenModifier::new("mermanEntity"),
+        CoreSemanticTokenModifier::Outline => SemanticTokenModifier::new("mermanOutline"),
+        CoreSemanticTokenModifier::Payload => SemanticTokenModifier::new("mermanPayload"),
+    }
+}
+
 fn token_type(kind: SemanticTokenKind) -> u32 {
     token_type_index(kind)
 }
@@ -241,6 +259,37 @@ mod tests {
     use super::*;
     use crate::document_store::DocumentStore;
     use tower_lsp::lsp_types::Url;
+
+    #[test]
+    fn semantic_tokens_legend_and_encoding_follow_editor_core_order() {
+        let core_legend = core_semantic_token_legend();
+        let lsp_legend = semantic_tokens_legend();
+
+        assert_eq!(
+            lsp_legend.token_types,
+            core_legend
+                .token_types
+                .iter()
+                .copied()
+                .map(semantic_token_type_to_lsp)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            lsp_legend.token_modifiers,
+            core_legend
+                .token_modifiers
+                .iter()
+                .copied()
+                .map(semantic_token_modifier_to_lsp)
+                .collect::<Vec<_>>()
+        );
+        for (index, kind) in core_legend.token_types.iter().copied().enumerate() {
+            assert_eq!(token_type(kind), index as u32);
+        }
+        for (index, modifier) in core_legend.token_modifiers.iter().copied().enumerate() {
+            assert_eq!(token_modifier_index(modifier), index as u32);
+        }
+    }
 
     #[test]
     fn semantic_tokens_project_entity_outline_and_payload_roles() {

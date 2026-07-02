@@ -1,20 +1,21 @@
+use crate::protocol::{core_position_from_lsp, range_to_lsp};
 use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
     CompletionDataKind, CompletionInsertTextFormat, CompletionItemKind,
-    CompletionList as CoreCompletionList, CompletionResolveData, Range as CoreRange,
-    completion_documentation, completion_for_snapshot as core_completion_for_snapshot,
+    CompletionList as CoreCompletionList, CompletionResolveData, completion_documentation,
+    completion_for_snapshot as core_completion_for_snapshot,
 };
 use serde_json::json;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind as LspCompletionItemKind, CompletionItemLabelDetails,
     CompletionList, CompletionTextEdit, Documentation, InsertTextFormat, MarkupContent, MarkupKind,
-    Position, Range, TextEdit,
+    Position, TextEdit,
 };
 
 pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) -> CompletionList {
     core_completion_to_lsp(core_completion_for_snapshot(
         snapshot.as_editor(),
-        merman_editor_core::Position::new(position.line as usize, position.character as usize),
+        core_position_from_lsp(position),
     ))
 }
 
@@ -56,19 +57,6 @@ fn core_item_to_lsp(item: merman_editor_core::CompletionItem) -> CompletionItem 
                 detail: details.detail,
             }),
         ..CompletionItem::default()
-    }
-}
-
-fn range_to_lsp(range: CoreRange) -> Range {
-    Range {
-        start: Position {
-            line: range.start.line as u32,
-            character: range.start.character as u32,
-        },
-        end: Position {
-            line: range.end.line as u32,
-            character: range.end.character as u32,
-        },
     }
 }
 

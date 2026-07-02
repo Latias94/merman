@@ -1,7 +1,8 @@
+use crate::protocol::utf16_position_to_lsp;
 use merman_editor_core::DiagnosticCodeActionData;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
-    Diagnostic, Position, Range, TextEdit, Url, WorkspaceEdit,
+    Diagnostic, Range, TextEdit, Url, WorkspaceEdit,
 };
 
 pub fn code_actions_for_params(params: &CodeActionParams) -> Option<CodeActionResponse> {
@@ -72,8 +73,8 @@ fn workspace_edit_for_fix(
         .iter()
         .map(|edit| {
             let range = Range {
-                start: position_from_lsp(edit.span.lsp_range.start),
-                end: position_from_lsp(edit.span.lsp_range.end),
+                start: utf16_position_to_lsp(edit.span.lsp_range.start),
+                end: utf16_position_to_lsp(edit.span.lsp_range.end),
             };
             TextEdit::new(range, edit.replacement.clone())
         })
@@ -117,13 +118,6 @@ fn has_overlapping_edits(edits: &[TextEdit]) -> bool {
         (left.range.end.line, left.range.end.character)
             > (right.range.start.line, right.range.start.character)
     })
-}
-
-fn position_from_lsp(value: merman_analysis::Utf16Position) -> Position {
-    Position {
-        line: value.line as u32,
-        character: value.character as u32,
-    }
 }
 
 #[cfg(test)]

@@ -1,13 +1,13 @@
+use crate::protocol::{core_position_from_lsp, document_uri_to_lsp, location_to_lsp, range_to_lsp};
 use crate::snapshot::DocumentSnapshot;
 use merman_analysis::EditorSymbolKind;
 use merman_editor_core::{
-    EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover, EditorLocation,
+    EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover,
     EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation, EditorWorkspaceEdit,
-    Range as CoreRange, RenameError, document_symbols as core_document_symbols,
-    folding_ranges as core_folding_ranges, goto_definition as core_goto_definition,
-    hover as core_hover, prepare_rename as core_prepare_rename, references as core_references,
-    rename as core_rename, selection_ranges as core_selection_ranges,
-    workspace_symbols as core_workspace_symbols,
+    RenameError, document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
+    goto_definition as core_goto_definition, hover as core_hover,
+    prepare_rename as core_prepare_rename, references as core_references, rename as core_rename,
+    selection_ranges as core_selection_ranges, workspace_symbols as core_workspace_symbols,
     workspace_symbols_for_snapshots as core_workspace_symbols_for_snapshots,
 };
 use std::collections::HashMap;
@@ -56,7 +56,7 @@ pub fn workspace_symbols_for_snapshots(
 }
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
-    core_hover(snapshot.as_editor(), position_to_core(position)).map(hover_to_lsp)
+    core_hover(snapshot.as_editor(), core_position_from_lsp(position)).map(hover_to_lsp)
 }
 
 pub fn selection_ranges(
@@ -66,7 +66,7 @@ pub fn selection_ranges(
     let core_positions = positions
         .iter()
         .copied()
-        .map(position_to_core)
+        .map(core_position_from_lsp)
         .collect::<Vec<_>>();
 
     Some(
@@ -93,8 +93,8 @@ pub fn goto_definition(
     snapshot: &DocumentSnapshot,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
-    core_goto_definition(snapshot.as_editor(), position_to_core(position))
-        .and_then(|location| location_to_lsp(location, &snapshot.uri))
+    core_goto_definition(snapshot.as_editor(), core_position_from_lsp(position))
+        .map(|location| location_to_lsp(location, &snapshot.uri))
         .map(Into::into)
 }
 
@@ -105,13 +105,13 @@ pub fn references(
 ) -> Option<Vec<Location>> {
     core_references(
         snapshot.as_editor(),
-        position_to_core(position),
+        core_position_from_lsp(position),
         include_declaration,
     )
     .map(|locations| {
         locations
             .into_iter()
-            .filter_map(|location| location_to_lsp(location, &snapshot.uri))
+            .map(|location| location_to_lsp(location, &snapshot.uri))
             .collect()
     })
 }
@@ -120,14 +120,14 @@ pub fn prepare_rename(
     snapshot: &DocumentSnapshot,
     position: Position,
 ) -> Option<PrepareRenameResponse> {
-    core_prepare_rename(snapshot.as_editor(), position_to_core(position)).map(prepare_to_lsp)
+    core_prepare_rename(snapshot.as_editor(), core_position_from_lsp(position)).map(prepare_to_lsp)
 }
 
 pub fn rename(snapshot: &DocumentSnapshot, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
     let position = params.text_document_position.position;
     core_rename(
         snapshot.as_editor(),
-        position_to_core(position),
+        core_position_from_lsp(position),
         &params.new_name,
     )
     .map(|edit| edit.and_then(|edit| workspace_edit_to_lsp(edit, &snapshot.uri)))
@@ -207,7 +207,7 @@ fn symbol_information_to_lsp(
     symbol: EditorSymbolInformation,
     fallback_uri: Option<&Url>,
 ) -> Option<SymbolInformation> {
-    let location = location_to_lsp(symbol.location, fallback_uri?)?;
+    let location = location_to_lsp(symbol.location, fallback_uri?);
     Some(SymbolInformation {
         name: symbol.name,
         kind: symbol_kind(symbol.kind),
@@ -216,11 +216,6 @@ fn symbol_information_to_lsp(
         location,
         container_name: symbol.container_name,
     })
-}
-
-fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Option<Location> {
-    let uri = Url::parse(location.uri.as_str()).unwrap_or_else(|_| fallback_uri.clone());
-    Some(Location::new(uri, range_to_lsp(location.range)))
 }
 
 fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
@@ -233,7 +228,7 @@ fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
 fn workspace_edit_to_lsp(edit: EditorWorkspaceEdit, fallback_uri: &Url) -> Option<WorkspaceEdit> {
     let mut changes = HashMap::new();
     for (uri, edits) in edit.changes {
-        let uri = Url::parse(uri.as_str()).unwrap_or_else(|_| fallback_uri.clone());
+        let uri = document_uri_to_lsp(&uri, fallback_uri);
         let edits = edits
             .into_iter()
             .map(|edit| TextEdit::new(range_to_lsp(edit.range), edit.new_text))
@@ -250,17 +245,6 @@ fn workspace_edit_to_lsp(edit: EditorWorkspaceEdit, fallback_uri: &Url) -> Optio
 
 fn rename_error_to_lsp(error: RenameError) -> Error {
     Error::invalid_params(error.to_string())
-}
-
-fn position_to_core(position: Position) -> merman_editor_core::Position {
-    merman_editor_core::Position::new(position.line as usize, position.character as usize)
-}
-
-fn range_to_lsp(range: CoreRange) -> Range {
-    Range::new(
-        Position::new(range.start.line as u32, range.start.character as u32),
-        Position::new(range.end.line as u32, range.end.character as u32),
-    )
 }
 
 fn symbol_kind(kind: EditorSymbolKind) -> SymbolKind {

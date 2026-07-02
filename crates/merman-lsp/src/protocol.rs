@@ -1,6 +1,12 @@
-use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, RuleCatalogEntry, RuleOrigin};
+use merman_analysis::{
+    AnalysisRuleProfile, DiagnosticSeverity, RuleCatalogEntry, RuleOrigin, Utf16Position,
+};
+use merman_editor_core::{
+    DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
 pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
 pub const RULE_CATALOG_RESPONSE_VERSION: u32 = 1;
@@ -103,6 +109,30 @@ pub fn experimental_capabilities() -> serde_json::Value {
             }
         }
     })
+}
+
+pub fn core_position_from_lsp(position: Position) -> CorePosition {
+    CorePosition::new(position.line as usize, position.character as usize)
+}
+
+pub fn range_to_lsp(range: CoreRange) -> Range {
+    Range::new(
+        Position::new(range.start.line as u32, range.start.character as u32),
+        Position::new(range.end.line as u32, range.end.character as u32),
+    )
+}
+
+pub fn utf16_position_to_lsp(value: Utf16Position) -> Position {
+    Position::new(value.line as u32, value.character as u32)
+}
+
+pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Url) -> Url {
+    Url::parse(uri.as_str()).unwrap_or_else(|_| fallback_uri.clone())
+}
+
+pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Location {
+    let uri = document_uri_to_lsp(&location.uri, fallback_uri);
+    Location::new(uri, range_to_lsp(location.range))
 }
 
 fn profile_name(profile: AnalysisRuleProfile) -> &'static str {
