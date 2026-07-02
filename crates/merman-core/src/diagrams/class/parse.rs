@@ -481,7 +481,6 @@ impl<'a> ClassEditorFactCollector<'a> {
             | ExpectedClassName::StyleTarget
             | ExpectedClassName::CssClassReference
             | ExpectedClassName::InlineClassReference => EditorSemanticKind::Property,
-            ExpectedClassName::ClickTarget => EditorSemanticKind::Function,
             _ => EditorSemanticKind::Class,
         };
         let selection = selection_span_for_class_name(&symbol.name, symbol.span);

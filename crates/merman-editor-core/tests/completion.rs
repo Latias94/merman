@@ -152,6 +152,57 @@ fn completion_stays_fence_local_in_markdown_documents() {
 }
 
 #[test]
+fn completion_ignores_markdown_fence_delimiter_lines() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.markdown",
+        1,
+        concat!(
+            "before\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "A-->B\n",
+            "```\n",
+            "after\n",
+        )
+        .to_string(),
+        DocumentKind::Markdown,
+    );
+
+    assert!(CompletionContext::from_snapshot(&snapshot, Position::new(1, 3)).is_none());
+    assert!(
+        completion_for_snapshot(&snapshot, Position::new(1, 3))
+            .items
+            .is_empty()
+    );
+    assert!(CompletionContext::from_snapshot(&snapshot, Position::new(4, 0)).is_none());
+    assert!(
+        completion_for_snapshot(&snapshot, Position::new(4, 0))
+            .items
+            .is_empty()
+    );
+}
+
+#[test]
+fn completion_allows_unclosed_markdown_fence_body() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.markdown",
+        1,
+        concat!("```mermaid\n", "flowchart TD\n", "A-->\n").to_string(),
+        DocumentKind::Markdown,
+    );
+
+    assert!(CompletionContext::from_snapshot(&snapshot, Position::new(2, 4)).is_some());
+    assert!(
+        completion_for_snapshot(&snapshot, Position::new(2, 4))
+            .items
+            .iter()
+            .any(|item| item.label == "A")
+    );
+}
+
+#[test]
 fn completion_uses_parser_identifier_context_after_operator() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

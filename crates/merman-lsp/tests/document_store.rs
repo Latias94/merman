@@ -2,6 +2,7 @@ use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
     FenceTextIndexSource,
 };
+use merman_editor_core::DocumentKind;
 use merman_lsp::document_store::{DocumentStore, SemanticTokensState};
 use tower_lsp::lsp_types::{SemanticToken, Url};
 
@@ -126,7 +127,7 @@ fn newer_versions_replace_the_stored_snapshot() {
     assert!(stored.text.contains("sequenceDiagram"));
     assert!(!stored.text.contains("flowchart TD"));
     let stored = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected stored snapshot after replacement");
     assert_eq!(stored.fences.len(), 1);
     assert_eq!(stored.fences[0].diagram_type.as_deref(), Some("sequence"));
@@ -137,14 +138,19 @@ fn upsert_text_defers_snapshot_until_requested() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    let document = store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    let document = store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
 
     assert_eq!(document.version, 1);
     assert_eq!(document.text, "flowchart TD\nA-->B\n");
     assert!(!store.has_snapshot(&uri));
 
     let snapshot = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected lazy snapshot for stored document");
     assert!(store.has_snapshot(&uri));
     assert_eq!(snapshot.version, 1);
@@ -159,9 +165,14 @@ fn upsert_text_invalidates_cached_snapshot() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let first = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected initial lazy snapshot");
     assert_eq!(first.version, 1);
     assert!(store.has_snapshot(&uri));
@@ -170,11 +181,12 @@ fn upsert_text_invalidates_cached_snapshot() {
         uri.clone(),
         2,
         "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
     );
 
     assert!(!store.has_snapshot(&uri));
     let second = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected refreshed lazy snapshot");
     assert_eq!(second.version, 2);
     assert_eq!(second.fences[0].diagram_type.as_deref(), Some("sequence"));
@@ -185,7 +197,12 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -218,7 +235,12 @@ fn diagnostic_only_analyzer_update_stales_diagnostics_but_preserves_snapshots_an
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -253,7 +275,12 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -269,6 +296,7 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
         uri.clone(),
         1,
         "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
     );
 
     assert!(!store.is_snapshot_context_current(&snapshot_context));
@@ -287,7 +315,12 @@ fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_st
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -314,7 +347,12 @@ fn remove_stales_existing_contexts_and_clears_document_state() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -340,7 +378,12 @@ fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacem
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -349,6 +392,7 @@ fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacem
         uri.clone(),
         1,
         "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
     );
 
     assert!(!store.set_semantic_tokens_state_if_current(
@@ -363,7 +407,12 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -382,7 +431,12 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
         ),
     ));
 
-    store.upsert_text(uri.clone(), 2, "flowchart TD\nAlpha-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        2,
+        "flowchart TD\nAlpha-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
 
     assert!(
         store
@@ -408,9 +462,14 @@ fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected initial lazy snapshot");
     assert_eq!(
         snapshot.fences[0].diagram_type.as_deref(),
@@ -449,7 +508,7 @@ fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
         Some("tokens-1")
     );
     let cached = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected cached snapshot after diagnostic-only update");
     assert_eq!(
         cached.fences[0].diagram_type.as_deref(),
@@ -462,9 +521,14 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
-    store.upsert_text(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
     let snapshot = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected initial lazy snapshot");
     assert_eq!(
         snapshot.fences[0].diagram_type.as_deref(),
@@ -485,7 +549,7 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
     assert!(!store.has_snapshot(&uri));
     assert!(store.semantic_tokens_state(&uri).is_none());
     let rebuilt = store
-        .snapshot_cloned(&uri)
+        .snapshot(&uri)
         .expect("expected rebuilt snapshot after analyzer replacement");
     assert_eq!(rebuilt.fences[0].diagram_type, None);
 }

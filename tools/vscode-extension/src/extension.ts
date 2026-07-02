@@ -24,6 +24,8 @@ import { registerPreview } from "./preview.js";
 
 let client: LanguageClient | undefined;
 let statusItem: vscode.StatusBarItem | undefined;
+let lifecycleGeneration = 0;
+let lifecycleQueue: Promise<void> = Promise.resolve();
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   ensureStatusItem(context);
@@ -45,7 +47,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
-      await restartClient(context);
+      await runLanguageClientAction(context, "restart");
       void vscode.window.showInformationMessage("Merman language server restarted.");
     }),
   );
@@ -99,7 +101,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         client?.diagnostics?.clear();
       }
 
-      await applyLanguageClientAction(
+      await runLanguageClientAction(
         context,
         languageClientConfigurationAction({
           affectsMerman: true,
@@ -116,39 +118,89 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
+  lifecycleGeneration += 1;
+  await lifecycleQueue.catch(() => undefined);
+  await deactivateClient();
+}
+
+async function deactivateClient(): Promise<void> {
   if (!client) {
     return;
   }
   const activeClient = client;
-  client = undefined;
+  await stopClient(activeClient);
+}
+
+async function stopClient(activeClient: LanguageClient): Promise<void> {
+  if (client === activeClient) {
+    client = undefined;
+  }
   await activeClient.stop();
 }
 
-async function restartClient(context: vscode.ExtensionContext): Promise<void> {
-  await deactivate();
-  await startClient(context, "Restarting language server");
+function runLanguageClientAction(
+  context: vscode.ExtensionContext,
+  action: LanguageClientLifecycleAction,
+): Promise<void> {
+  const generation = ++lifecycleGeneration;
+  const run = lifecycleQueue
+    .catch(() => undefined)
+    .then(() => applyLanguageClientAction(context, action, generation));
+  lifecycleQueue = run.catch(() => undefined);
+  return run;
+}
+
+function isCurrentLifecycleGeneration(generation: number): boolean {
+  return generation === lifecycleGeneration;
+}
+
+async function restartClient(context: vscode.ExtensionContext, generation: number): Promise<void> {
+  await deactivateClient();
+  if (!isCurrentLifecycleGeneration(generation)) {
+    return;
+  }
+  await startClient(context, "Restarting language server", generation);
 }
 
 async function reconcileLanguageClient(context: vscode.ExtensionContext): Promise<void> {
-  await applyLanguageClientAction(
+  await runLanguageClientAction(
     context,
     languageClientReconcileAction(getLanguageIntelligenceSettings(), Boolean(client)),
   );
 }
 
-async function startClient(context: vscode.ExtensionContext, tooltip: string): Promise<void> {
+async function startClient(
+  context: vscode.ExtensionContext,
+  tooltip: string,
+  generation: number,
+): Promise<void> {
+  if (!isCurrentLifecycleGeneration(generation)) {
+    return;
+  }
   ensureStatusItem(context);
-  client = await createLanguageClient(context);
-  wireClientStatus(client);
+  const nextClient = await createLanguageClient(context);
+  if (!isCurrentLifecycleGeneration(generation)) {
+    return;
+  }
+  client = nextClient;
+  wireClientStatus(nextClient);
   updateStatusBar("Starting", tooltip);
-  await client.start();
-  await pushConfiguration(client);
+  await nextClient.start();
+  if (!isCurrentLifecycleGeneration(generation)) {
+    await stopClient(nextClient);
+    return;
+  }
+  await pushConfiguration(nextClient);
 }
 
 async function applyLanguageClientAction(
   context: vscode.ExtensionContext,
   action: LanguageClientLifecycleAction,
+  generation: number,
 ): Promise<void> {
+  if (!isCurrentLifecycleGeneration(generation)) {
+    return;
+  }
   switch (action) {
     case "ignore":
       return;
@@ -156,20 +208,24 @@ async function applyLanguageClientAction(
       updateDisabledStatus();
       return;
     case "stopAndDisable":
-      await deactivate();
-      updateDisabledStatus();
-      return;
-    case "start":
-      await startClient(context, "Starting language server");
-      return;
-    case "restart":
-      await restartClient(context);
-      return;
-    case "pushConfiguration":
-      if (client) {
-        await pushConfiguration(client);
+      await deactivateClient();
+      if (isCurrentLifecycleGeneration(generation)) {
+        updateDisabledStatus();
       }
       return;
+    case "start":
+      await startClient(context, "Starting language server", generation);
+      return;
+    case "restart":
+      await restartClient(context, generation);
+      return;
+    case "pushConfiguration": {
+      const activeClient = client;
+      if (activeClient && isCurrentLifecycleGeneration(generation)) {
+        await pushConfiguration(activeClient);
+      }
+      return;
+    }
   }
 }
 

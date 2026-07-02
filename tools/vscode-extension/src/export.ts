@@ -20,6 +20,7 @@ import {
   extractPreviewInputFromDocument,
   type PreviewInput,
 } from "./preview-source.js";
+import { assertSafePreviewSvg } from "./preview-svg-safety.js";
 import {
   mermaidSourceCommandSourceId,
   mermaidSourceCommandUri,
@@ -101,14 +102,19 @@ async function exportDiagram(
     },
     async () => {
       try {
-        await renderMermanSource({
-          context,
-          source: source.input.source,
-          format: preset.format,
-          outputPath: outputUri.fsPath,
-          outputChannel,
-          signalLabel: `export-${preset.format}`,
-        });
+        if (preset.format === "svg") {
+          const svg = await renderSafeSvg(context, outputChannel, source.input.source, "export-svg");
+          await fs.writeFile(outputUri.fsPath, svg, "utf8");
+        } else {
+          await renderMermanSource({
+            context,
+            source: source.input.source,
+            format: preset.format,
+            outputPath: outputUri.fsPath,
+            outputChannel,
+            signalLabel: `export-${preset.format}`,
+          });
+        }
         if (preset.openAfterExport) {
           await vscode.commands.executeCommand("vscode.open", outputUri);
         }
@@ -136,20 +142,32 @@ async function copySvg(
   }
 
   try {
-    const result = await renderMermanSource({
-      context,
-      source: source.input.source,
-      format: "svg",
-      outputChannel,
-      signalLabel: "copy-svg",
-    });
-    await vscode.env.clipboard.writeText(result.stdout.toString("utf8"));
+    const svg = await renderSafeSvg(context, outputChannel, source.input.source, "copy-svg");
+    await vscode.env.clipboard.writeText(svg);
     void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     outputChannel.error(message);
     void vscode.window.showErrorMessage(`Merman SVG copy failed: ${message}`);
   }
+}
+
+async function renderSafeSvg(
+  context: vscode.ExtensionContext,
+  outputChannel: vscode.LogOutputChannel,
+  source: string,
+  signalLabel: string,
+): Promise<string> {
+  const result = await renderMermanSource({
+    context,
+    source,
+    format: "svg",
+    outputChannel,
+    signalLabel,
+  });
+  const svg = result.stdout.toString("utf8");
+  assertSafePreviewSvg(svg);
+  return svg;
 }
 
 async function copyPng(

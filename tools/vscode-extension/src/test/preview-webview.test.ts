@@ -62,6 +62,18 @@ describe("preview webview app", () => {
       reason: "document-change",
       snapshot: snapshot({ sourceHash: "hash-b" }),
     });
+
+    assert.equal(app.document.frame.dataset.renderState, "loading");
+    assert.equal(app.document.copySvg.disabled, true);
+    assert.equal(app.document.exportSvg.disabled, true);
+    assert.equal(app.document.exportPng.disabled, true);
+
+    const postedBeforeLoadingClicks = app.postedMessages.length;
+    app.click(app.document.copySvg);
+    app.click(app.document.exportSvg);
+    app.click(app.document.exportPng);
+    assert.equal(app.postedMessages.length, postedBeforeLoadingClicks);
+
     app.dispatch({
       type: "renderFailed",
       requestId: 2,

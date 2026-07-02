@@ -28,6 +28,11 @@ interface MermaidFence {
   ordinal: number;
 }
 
+interface MermaidFenceDelimiter {
+  marker: "`" | "~" | ":";
+  length: number;
+}
+
 export interface PreviewSourceSummary {
   sourceId: string;
   title: string;
@@ -208,19 +213,17 @@ function collectMermaidFences(
 
   for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
     const line = lineAt(lineIndex);
-    const openMatch = line.match(/^\s*([`~]{3,})\s*mermaid(?:\s+.*)?$/i);
-    if (!openMatch) {
+    const delimiter = mermaidFenceDelimiter(line);
+    if (!delimiter) {
       continue;
     }
 
-    const openFence = openMatch[1] ?? "```";
-    const closePattern = new RegExp(`^\\s*\\${openFence[0]}{${openFence.length},}\\s*$`);
     const sourceLines: string[] = [];
     let closeLine = lineIndex;
 
     for (let cursor = lineIndex + 1; cursor < lineCount; cursor += 1) {
       const nextLine = lineAt(cursor);
-      if (closePattern.test(nextLine)) {
+      if (isMatchingClosingFence(nextLine, delimiter)) {
         closeLine = cursor;
         break;
       }
@@ -243,6 +246,45 @@ function collectMermaidFences(
   }
 
   return fences;
+}
+
+function mermaidFenceDelimiter(line: string): MermaidFenceDelimiter | null {
+  const trimmed = line.trimStart();
+  const marker = trimmed[0];
+  if (marker !== "`" && marker !== "~" && marker !== ":") {
+    return null;
+  }
+
+  const length = repeatedMarkerLength(trimmed, marker);
+  if (length < 3) {
+    return null;
+  }
+
+  const rest = trimmed.slice(length).trimStart();
+  const language = rest.slice(0, "mermaid".length);
+  const tail = rest.slice("mermaid".length);
+  if (language.toLowerCase() !== "mermaid") {
+    return null;
+  }
+  if (tail.length > 0 && !/\s/.test(tail[0] ?? "")) {
+    return null;
+  }
+
+  return { marker, length };
+}
+
+function isMatchingClosingFence(line: string, delimiter: MermaidFenceDelimiter): boolean {
+  const trimmed = line.trimStart();
+  const length = repeatedMarkerLength(trimmed, delimiter.marker);
+  return length >= delimiter.length && trimmed.slice(length).trim().length === 0;
+}
+
+function repeatedMarkerLength(line: string, marker: string): number {
+  let length = 0;
+  while (line[length] === marker) {
+    length += 1;
+  }
+  return length;
 }
 
 function splitLines(text: string): string[] {

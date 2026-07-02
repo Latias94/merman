@@ -11,8 +11,7 @@ use crate::protocol::{
 };
 use crate::semantic_tokens::{
     semantic_tokens_delta_result, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
-    semantic_tokens_for_snapshot_with_result_id, semantic_tokens_options,
-    semantic_tokens_result_id,
+    semantic_tokens_options, semantic_tokens_result_id,
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
@@ -26,6 +25,7 @@ use merman_analysis::{
     AnalysisOptions, Analyzer, document::analyze_document,
     options_json::analysis_options_from_json_value,
 };
+use merman_editor_core::DocumentKind;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,8 +41,8 @@ use tower_lsp::lsp_types::{
     FoldingRangeProviderCapability, FullDocumentDiagnosticReport, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
     InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
-    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, RenameParams,
-    SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, RenameOptions,
+    RenameParams, SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
     SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
@@ -89,7 +89,10 @@ impl MermanLanguageServer {
             }),
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
-            rename_provider: Some(OneOf::Left(true)),
+            rename_provider: Some(OneOf::Right(RenameOptions {
+                prepare_provider: Some(true),
+                work_done_progress_options: Default::default(),
+            })),
             document_symbol_provider: Some(OneOf::Left(true)),
             workspace_symbol_provider: Some(OneOf::Left(true)),
             diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
@@ -126,7 +129,10 @@ impl MermanLanguageServer {
         }
     }
 
-    async fn snapshot_for_uri(&self, uri: &tower_lsp::lsp_types::Url) -> Option<DocumentSnapshot> {
+    async fn snapshot_for_uri(
+        &self,
+        uri: &tower_lsp::lsp_types::Url,
+    ) -> Option<Arc<DocumentSnapshot>> {
         self.snapshot_context_for_uri(uri)
             .await
             .map(|context| context.snapshot)
@@ -136,8 +142,17 @@ impl MermanLanguageServer {
         &self,
         uri: &tower_lsp::lsp_types::Url,
     ) -> Option<SnapshotContext> {
+        let request = {
+            let mut store = self.store.lock().await;
+            if store.has_snapshot(uri) {
+                return store.snapshot_context(uri);
+            }
+            store.snapshot_build_request(uri)
+        }?;
+
+        let snapshot = request.build();
         let mut store = self.store.lock().await;
-        store.snapshot_context(uri)
+        store.insert_built_snapshot(&request, snapshot)
     }
 
     fn diagnostics_for_document(
@@ -365,10 +380,11 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let doc = params.text_document;
+        let kind = document_kind_for_language_id(&doc.language_id, &doc.uri);
         self.store
             .lock()
             .await
-            .upsert_text(doc.uri.clone(), doc.version, doc.text);
+            .upsert_text(doc.uri.clone(), doc.version, doc.text, kind);
         self.publish_for_uri(&doc.uri).await;
     }
 
@@ -383,7 +399,7 @@ impl LanguageServer for MermanLanguageServer {
         for change in params.content_changes {
             text = change.text;
         }
-        store.upsert_text(doc.uri.clone(), doc.version, text);
+        store.upsert_text(doc.uri.clone(), doc.version, text, current.kind);
         drop(store);
         self.publish_for_uri(&doc.uri).await;
     }
@@ -498,9 +514,9 @@ impl LanguageServer for MermanLanguageServer {
         };
         let snapshot = &snapshot_context.snapshot;
 
-        let tokens = semantic_tokens_for_snapshot(snapshot);
+        let mut tokens = semantic_tokens_for_snapshot(snapshot);
         let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
-        let tokens = semantic_tokens_for_snapshot_with_result_id(snapshot, result_id.clone());
+        tokens.result_id = Some(result_id.clone());
         self.record_semantic_tokens_state(&snapshot_context, tokens.data.clone(), Some(result_id))
             .await;
 
@@ -530,12 +546,11 @@ impl LanguageServer for MermanLanguageServer {
                     &current_tokens.data,
                     current_result_id.clone(),
                 ),
-                _ => SemanticTokensFullDeltaResult::Tokens(
-                    semantic_tokens_for_snapshot_with_result_id(
-                        snapshot,
-                        current_result_id.clone(),
-                    ),
-                ),
+                _ => {
+                    let mut tokens = current_tokens.clone();
+                    tokens.result_id = Some(current_result_id.clone());
+                    SemanticTokensFullDeltaResult::Tokens(tokens)
+                }
             }
         };
 
@@ -656,6 +671,18 @@ impl LanguageServer for MermanLanguageServer {
     }
 }
 
+fn document_kind_for_language_id(
+    language_id: &str,
+    uri: &tower_lsp::lsp_types::Url,
+) -> DocumentKind {
+    match language_id {
+        "markdown" => DocumentKind::Markdown,
+        "mdx" => DocumentKind::Mdx,
+        "mermaid" => DocumentKind::Diagram,
+        _ => DocumentKind::from_path(uri.path()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::MermanLanguageServer;
@@ -673,19 +700,22 @@ mod tests {
         DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
     };
     use merman_core::ParseOptions;
+    use merman_editor_core::DocumentKind;
     use tower::{Service, ServiceExt};
     use tower_lsp::LanguageServer;
     use tower_lsp::jsonrpc::Request;
     use tower_lsp::lsp_types::SemanticTokensResult;
     use tower_lsp::lsp_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-        CodeActionProviderCapability, DidOpenTextDocumentParams, DocumentSymbolResponse,
-        FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
-        HoverParams, InitializeParams, Position, Range, RenameParams, SelectionRangeParams,
-        SelectionRangeProviderCapability, SemanticTokensFullOptions, SemanticTokensParams,
-        SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensServerCapabilities,
-        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-        TextDocumentSyncCapability, TextDocumentSyncKind, Url, WorkspaceSymbolParams,
+        CodeActionProviderCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+        DocumentSymbolResponse, FoldingRangeParams, FoldingRangeProviderCapability,
+        GotoDefinitionResponse, HoverContents, HoverParams, InitializeParams, Position, Range,
+        RenameParams, SelectionRangeParams, SelectionRangeProviderCapability,
+        SemanticTokensFullOptions, SemanticTokensParams, SemanticTokensRangeParams,
+        SemanticTokensRangeResult, SemanticTokensServerCapabilities,
+        TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+        TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+        VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -763,7 +793,7 @@ mod tests {
         ));
         assert!(matches!(
             capabilities.rename_provider,
-            Some(OneOf::Left(true))
+            Some(OneOf::Right(options)) if options.prepare_provider == Some(true)
         ));
         assert!(matches!(
             capabilities.workspace_symbol_provider,
@@ -946,6 +976,57 @@ mod tests {
         assert!(hover.is_some());
         let store = server.store.lock().await;
         assert!(store.has_snapshot(&uri));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn did_open_uses_language_id_and_change_preserves_document_kind() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("untitled:notes").unwrap();
+
+        server
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "markdown".to_string(),
+                    version: 1,
+                    text: "```mermaid\nflowchart TD\nA-->B\n```\n".to_string(),
+                },
+            })
+            .await;
+
+        let snapshot = server
+            .snapshot_for_uri(&uri)
+            .await
+            .expect("expected markdown snapshot");
+        assert_eq!(snapshot.kind, DocumentKind::Markdown);
+        assert_eq!(snapshot.fences.len(), 1);
+        assert_eq!(
+            snapshot.fences[0].diagram_type.as_deref(),
+            Some("flowchart-v2")
+        );
+
+        server
+            .did_change(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "```mermaid\nsequenceDiagram\nAlice->>Bob: Hi\n```\n".to_string(),
+                }],
+            })
+            .await;
+
+        let snapshot = server
+            .snapshot_for_uri(&uri)
+            .await
+            .expect("expected changed markdown snapshot");
+        assert_eq!(snapshot.kind, DocumentKind::Markdown);
+        assert_eq!(snapshot.fences.len(), 1);
+        assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
     }
 
     #[test]

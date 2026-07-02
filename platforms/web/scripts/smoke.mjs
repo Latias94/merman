@@ -107,6 +107,11 @@ assert.equal(typeof capabilities.core_full, "boolean");
 assert.equal(typeof capabilities.core_host, "boolean");
 assert.equal(typeof capabilities.ratex_math, "boolean");
 assert.equal(typeof capabilities.editor_language, "boolean");
+assert.equal(typeof capabilities.text_measurement, "object");
+assert.equal(typeof capabilities.text_measurement.vendored, "boolean");
+assert.equal(typeof capabilities.text_measurement.deterministic, "boolean");
+assert.equal(typeof capabilities.text_measurement.host_callback, "boolean");
+assert.equal(typeof capabilities.text_measurement.font_assets, "boolean");
 assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
 
 const registryProfile = api.selectedRegistryProfile();
@@ -421,6 +426,7 @@ console.log(
     `core_full=${capabilities.core_full}`,
     `ratex_math=${capabilities.ratex_math}`,
     `editor_language=${capabilities.editor_language}`,
+    `text_measurement=${JSON.stringify(capabilities.text_measurement)}`,
   ].join(" ")
 );
 

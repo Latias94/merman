@@ -622,6 +622,15 @@ style User fill:#fff
     assert_eq!(href.role, EditorSemanticRole::Payload);
     assert_eq!(href.detail.as_deref(), Some("class interaction string"));
 
+    let href_target_start = text.find("click User href").unwrap() + "click ".len();
+    let href_target = symbol_at("User", href_target_start);
+    assert_eq!(href_target.role, EditorSemanticRole::Entity);
+    assert_eq!(href_target.kind, EditorSemanticKind::Class);
+    assert_eq!(
+        href_target.detail.as_deref(),
+        Some("class interaction target")
+    );
+
     let tooltip_start = text.find("Open user").unwrap();
     let tooltip = symbol_at("Open user", tooltip_start);
     assert_eq!(tooltip.role, EditorSemanticRole::Payload);
@@ -659,11 +668,20 @@ style User fill:#fff
     assert_eq!(callback.role, EditorSemanticRole::Payload);
     assert_eq!(callback.kind, EditorSemanticKind::Function);
 
+    let call_target_start = text.find("click Admin call").unwrap() + "click ".len();
+    let call_target = symbol_at("Admin", call_target_start);
+    assert_eq!(call_target.kind, EditorSemanticKind::Class);
+
     let callback_args = symbol_with_detail("userId", "class callback args");
     assert_eq!(callback_args.role, EditorSemanticRole::Payload);
 
+    let callback_target_start = text.find("callback User").unwrap() + "callback ".len();
+    let callback_target = symbol_at("User", callback_target_start);
+    assert_eq!(callback_target.kind, EditorSemanticKind::Class);
+
     let callback_statement = symbol_with_detail("refreshUser", "class callback");
     assert_eq!(callback_statement.role, EditorSemanticRole::Payload);
+    assert_eq!(callback_statement.kind, EditorSemanticKind::Function);
 
     assert!(facts.directive_prefixes.iter().any(|p| p == "click"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "callback"));

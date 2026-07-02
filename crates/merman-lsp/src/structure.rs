@@ -11,6 +11,7 @@ use merman_editor_core::{
     workspace_symbols_for_snapshots as core_workspace_symbols_for_snapshots,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolResponse, FoldingRange, FoldingRangeKind, GotoDefinitionResponse,
@@ -38,7 +39,7 @@ pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<Symbol
 }
 
 pub fn workspace_symbols_for_snapshots(
-    snapshots: &[DocumentSnapshot],
+    snapshots: &[Arc<DocumentSnapshot>],
     query: &str,
 ) -> Vec<SymbolInformation> {
     let uri_lookup = snapshots
@@ -46,13 +47,18 @@ pub fn workspace_symbols_for_snapshots(
         .map(|snapshot| (snapshot.uri.as_str().to_string(), snapshot.uri.clone()))
         .collect::<HashMap<_, _>>();
 
-    core_workspace_symbols_for_snapshots(snapshots.iter().map(DocumentSnapshot::as_editor), query)
-        .into_iter()
-        .filter_map(|symbol| {
-            let uri = uri_lookup.get(symbol.location.uri.as_str());
-            symbol_information_to_lsp(symbol, uri)
-        })
-        .collect()
+    core_workspace_symbols_for_snapshots(
+        snapshots
+            .iter()
+            .map(|snapshot| snapshot.as_ref().as_editor()),
+        query,
+    )
+    .into_iter()
+    .filter_map(|symbol| {
+        let uri = uri_lookup.get(symbol.location.uri.as_str());
+        symbol_information_to_lsp(symbol, uri)
+    })
+    .collect()
 }
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {

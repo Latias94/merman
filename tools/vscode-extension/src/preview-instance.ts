@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as vscode from "vscode";
 
 import { previewCliBackground } from "./preview-background.js";
@@ -392,6 +393,7 @@ export class PreviewInstance implements vscode.Disposable {
         await this.showSource();
         return;
       case "copySvg":
+        assertSafePreviewSvg(message.svg);
         await vscode.env.clipboard.writeText(message.svg);
         void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
         return;
@@ -477,16 +479,31 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     try {
-      await renderMermanSource({
-        context: this.context,
-        source: snapshot.input.source,
-        format,
-        theme: snapshot.diagramTheme,
-        background: previewCliBackground(snapshot.background),
-        outputPath: target.fsPath,
-        outputChannel: this.outputChannel,
-        signalLabel: `preview-export-${format}`,
-      });
+      if (format === "svg") {
+        const result = await renderMermanSource({
+          context: this.context,
+          source: snapshot.input.source,
+          format,
+          theme: snapshot.diagramTheme,
+          background: previewCliBackground(snapshot.background),
+          outputChannel: this.outputChannel,
+          signalLabel: "preview-export-svg",
+        });
+        const svg = result.stdout.toString("utf8");
+        assertSafePreviewSvg(svg);
+        await fs.writeFile(target.fsPath, svg, "utf8");
+      } else {
+        await renderMermanSource({
+          context: this.context,
+          source: snapshot.input.source,
+          format,
+          theme: snapshot.diagramTheme,
+          background: previewCliBackground(snapshot.background),
+          outputPath: target.fsPath,
+          outputChannel: this.outputChannel,
+          signalLabel: `preview-export-${format}`,
+        });
+      }
       void vscode.window.showInformationMessage(`Exported ${vscode.workspace.asRelativePath(target, false)}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

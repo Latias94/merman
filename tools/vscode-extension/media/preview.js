@@ -473,7 +473,7 @@
   }
 
   function updateOutputActions(renderState) {
-    const disabled = renderState === "stale";
+    const disabled = renderState !== "ready";
     for (const { element, readyTitle, staleTitle } of outputActionElements) {
       if (!(element instanceof HTMLButtonElement)) {
         continue;

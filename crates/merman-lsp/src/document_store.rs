@@ -2,17 +2,17 @@ use crate::snapshot::DocumentSnapshot;
 use merman_analysis::{AnalysisOptions, Analyzer};
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tower_lsp::lsp_types::{SemanticToken, Url};
 
 #[derive(Debug)]
 pub struct DocumentStore {
-    workspace: DocumentWorkspace,
     analyzer: Analyzer,
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
     next_document_epoch: u64,
     documents: HashMap<Url, DocumentRecord>,
-    snapshots: HashMap<Url, DocumentSnapshot>,
+    snapshots: HashMap<Url, Arc<DocumentSnapshot>>,
     semantic_tokens_state: HashMap<Url, StoredSemanticTokensState>,
 }
 
@@ -55,7 +55,6 @@ impl DocumentStore {
     pub fn new() -> Self {
         let analyzer = Analyzer::new();
         Self {
-            workspace: DocumentWorkspace::with_analyzer(analyzer.clone()),
             analyzer,
             snapshot_generation: SnapshotGeneration::default(),
             diagnostic_generation: DiagnosticGeneration::default(),
@@ -90,8 +89,7 @@ impl DocumentStore {
     }
 
     fn replace_analyzer(&mut self, analyzer: Analyzer) {
-        self.analyzer = analyzer.clone();
-        self.workspace.replace_analyzer(analyzer);
+        self.analyzer = analyzer;
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
         self.snapshots.clear();
@@ -128,15 +126,19 @@ impl DocumentStore {
             && self.is_document_epoch_current(&context.document.uri, context.document_epoch)
     }
 
-    pub fn upsert_text(&mut self, uri: Url, version: i32, text: String) -> StoredDocument {
+    pub fn upsert_text(
+        &mut self,
+        uri: Url,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> StoredDocument {
         let document = StoredDocument {
-            kind: DocumentKind::from_path(uri.path()),
             uri: uri.clone(),
             version,
             text,
+            kind,
         };
-        self.workspace
-            .remove(&merman_editor_core::DocumentUri::new(uri.as_str()));
         self.snapshots.remove(&uri);
         let epoch = self.next_document_epoch();
         self.documents.insert(
@@ -149,9 +151,10 @@ impl DocumentStore {
         document
     }
 
-    pub fn upsert(&mut self, uri: Url, version: i32, text: String) -> DocumentSnapshot {
-        self.upsert_text(uri.clone(), version, text);
-        self.snapshot_cloned(&uri)
+    pub fn upsert(&mut self, uri: Url, version: i32, text: String) -> Arc<DocumentSnapshot> {
+        let kind = DocumentKind::from_path(uri.path());
+        self.upsert_text(uri.clone(), version, text, kind);
+        self.snapshot(&uri)
             .expect("snapshot should exist after inserting document text")
     }
 
@@ -159,38 +162,59 @@ impl DocumentStore {
         self.documents.get(uri).map(|record| &record.document)
     }
 
-    pub fn snapshot_cloned(&mut self, uri: &Url) -> Option<DocumentSnapshot> {
+    pub fn snapshot(&mut self, uri: &Url) -> Option<Arc<DocumentSnapshot>> {
         self.snapshot_context(uri).map(|context| context.snapshot)
     }
 
     pub fn snapshot_context(&mut self, uri: &Url) -> Option<SnapshotContext> {
-        // Request handlers own this snapshot so they can release the store mutex before
-        // running editor queries. Projection code should borrow from it instead of cloning it.
-        let record = self.documents.get(uri)?;
-        let document = record.document.clone();
-        let document_epoch = record.epoch;
-
         if let Some(snapshot) = self.snapshots.get(uri) {
             return Some(SnapshotContext::new(
-                snapshot.clone(),
+                Arc::clone(snapshot),
                 self.snapshot_generation,
-                document_epoch,
+                self.documents.get(uri)?.epoch,
             ));
         }
 
-        let snapshot = self.workspace.upsert(
-            document.uri.as_str(),
-            document.version,
-            document.text.clone(),
-            document.kind,
-        );
-        let snapshot = DocumentSnapshot::from_editor(snapshot, document.uri.clone());
+        let request = self.snapshot_build_request(uri)?;
+        let snapshot = request.build();
+        self.insert_built_snapshot(&request, snapshot)
+    }
+
+    pub fn snapshot_build_request(&self, uri: &Url) -> Option<SnapshotBuildRequest> {
+        let record = self.documents.get(uri)?;
+        Some(SnapshotBuildRequest {
+            document: record.document.clone(),
+            analyzer: self.analyzer.clone(),
+            generation: self.snapshot_generation,
+            document_epoch: record.epoch,
+        })
+    }
+
+    pub fn insert_built_snapshot(
+        &mut self,
+        request: &SnapshotBuildRequest,
+        snapshot: Arc<DocumentSnapshot>,
+    ) -> Option<SnapshotContext> {
+        if self.snapshot_generation != request.generation
+            || !self.is_document_epoch_current(&request.document.uri, request.document_epoch)
+        {
+            return None;
+        }
+
+        if let Some(cached) = self.snapshots.get(&request.document.uri) {
+            return Some(SnapshotContext::new(
+                Arc::clone(cached),
+                request.generation,
+                request.document_epoch,
+            ));
+        }
+
         self.snapshots
-            .insert(document.uri.clone(), snapshot.clone());
+            .insert(request.document.uri.clone(), Arc::clone(&snapshot));
         Some(SnapshotContext::new(
             snapshot,
-            self.snapshot_generation,
-            document_epoch,
+            request.generation,
+            request.document_epoch,
         ))
     }
 
@@ -210,8 +234,6 @@ impl DocumentStore {
     }
 
     pub fn remove(&mut self, uri: &Url) {
-        self.workspace
-            .remove(&merman_editor_core::DocumentUri::new(uri.as_str()));
         self.documents.remove(uri);
         self.snapshots.remove(uri);
         self.semantic_tokens_state.remove(uri);
@@ -238,10 +260,10 @@ impl DocumentStore {
             .collect()
     }
 
-    pub fn snapshots(&mut self) -> Vec<DocumentSnapshot> {
+    pub fn snapshots(&mut self) -> Vec<Arc<DocumentSnapshot>> {
         let uris = self.documents.keys().cloned().collect::<Vec<_>>();
         uris.into_iter()
-            .filter_map(|uri| self.snapshot_cloned(&uri))
+            .filter_map(|uri| self.snapshot(&uri))
             .collect()
     }
 
@@ -306,14 +328,14 @@ pub struct DiagnosticGeneration(u64);
 
 #[derive(Debug, Clone)]
 pub struct SnapshotContext {
-    pub snapshot: DocumentSnapshot,
+    pub snapshot: Arc<DocumentSnapshot>,
     generation: SnapshotGeneration,
     document_epoch: DocumentEpoch,
 }
 
 impl SnapshotContext {
     fn new(
-        snapshot: DocumentSnapshot,
+        snapshot: Arc<DocumentSnapshot>,
         generation: SnapshotGeneration,
         document_epoch: DocumentEpoch,
     ) -> Self {
@@ -330,6 +352,30 @@ impl SnapshotContext {
 
     pub fn document_epoch(&self) -> DocumentEpoch {
         self.document_epoch
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SnapshotBuildRequest {
+    document: StoredDocument,
+    analyzer: Analyzer,
+    generation: SnapshotGeneration,
+    document_epoch: DocumentEpoch,
+}
+
+impl SnapshotBuildRequest {
+    pub fn build(&self) -> Arc<DocumentSnapshot> {
+        let mut workspace = DocumentWorkspace::with_analyzer(self.analyzer.clone());
+        let snapshot = workspace.upsert(
+            self.document.uri.as_str(),
+            self.document.version,
+            self.document.text.clone(),
+            self.document.kind,
+        );
+        Arc::new(DocumentSnapshot::from_editor(
+            snapshot,
+            self.document.uri.clone(),
+        ))
     }
 }
 

@@ -314,6 +314,14 @@ export interface BindingCapabilities {
   elk_layout: boolean;
   ratex_math: boolean;
   editor_language: boolean;
+  text_measurement: TextMeasurementCapabilities;
+}
+
+export interface TextMeasurementCapabilities {
+  vendored: boolean;
+  deterministic: boolean;
+  host_callback: boolean;
+  font_assets: boolean;
 }
 
 export type RegistryProfile = "full" | "tiny";
@@ -405,6 +413,12 @@ export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
   elk_layout: true,
   ratex_math: false,
   editor_language: true,
+  text_measurement: {
+    vendored: true,
+    deterministic: true,
+    host_callback: false,
+    font_assets: false,
+  },
 };
 
 export function isThemeName(theme: string): theme is ThemeName {
@@ -1708,6 +1722,28 @@ function normalizeBindingCapabilities(
       capabilities.editor_language === undefined
         ? hasEditorLanguageBindings(merman)
         : Boolean(capabilities.editor_language),
+    text_measurement: normalizeTextMeasurementCapabilities(
+      capabilities.text_measurement,
+      Boolean(capabilities.render)
+    ),
+  };
+}
+
+function normalizeTextMeasurementCapabilities(
+  capabilities: Partial<TextMeasurementCapabilities> | undefined,
+  renderEnabled: boolean
+): TextMeasurementCapabilities {
+  return {
+    vendored:
+      capabilities?.vendored === undefined
+        ? renderEnabled
+        : Boolean(capabilities.vendored),
+    deterministic:
+      capabilities?.deterministic === undefined
+        ? renderEnabled
+        : Boolean(capabilities.deterministic),
+    host_callback: Boolean(capabilities?.host_callback),
+    font_assets: Boolean(capabilities?.font_assets),
   };
 }
 

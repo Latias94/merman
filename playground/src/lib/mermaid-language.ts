@@ -339,16 +339,16 @@ export function registerMermaidLanguage(
         return { actions: [], dispose() {} };
       }
       try {
-        const actions = service
-          .editor_code_actions(model.getValue())
-          .filter((action) =>
-            action.diagnostics.some((diagnostic) =>
-              context.markers.some(
-                (marker) => marker.message === diagnostic.message
+          const actions = service
+            .editor_code_actions(model.getValue())
+            .filter((action) =>
+              action.diagnostics.some((diagnostic) =>
+                context.markers.some((marker) =>
+                  markerMatchesDiagnostic(monaco, model, marker, diagnostic)
+                )
               )
             )
-          )
-          .map((action) => toMonacoCodeAction(monaco, model, action));
+            .map((action) => toMonacoCodeAction(monaco, model, action));
         return { actions, dispose() {} };
       } catch {
         return { actions: [], dispose() {} };
@@ -622,7 +622,10 @@ function toEditorCompletionItem(
         ? monaco.languages.CompletionItemKind.Variable
         : monaco.languages.CompletionItemKind.Keyword,
     insertText: item.text_edit?.new_text ?? item.insert_text ?? item.label,
-    insertTextRules: undefined,
+    insertTextRules:
+      item.insert_text_format === "snippet"
+        ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+        : undefined,
     detail: item.detail ?? undefined,
     documentation: item.data
       ? {
@@ -630,7 +633,7 @@ function toEditorCompletionItem(
         }
       : undefined,
     range: item.text_edit?.range
-      ? toMonacoRange(monaco, item.text_edit.range)
+      ? toMonacoEditRange(monaco, item.text_edit.range)
       : fallbackRange,
   };
 }
@@ -671,7 +674,7 @@ function toMonacoCodeAction(
           resource: model.uri,
           versionId: model.getVersionId(),
           textEdit: {
-            range: toMonacoRange(monaco, edit.range),
+            range: toMonacoEditRange(monaco, edit.range),
             text: edit.newText,
           },
         }))
@@ -692,7 +695,7 @@ function toMonacoWorkspaceEdit(
         resource: model.uri,
         versionId: model.getVersionId(),
         textEdit: {
-          range: toMonacoRange(monaco, textEdit.range),
+          range: toMonacoEditRange(monaco, textEdit.range),
           text: textEdit.newText,
         },
       }))
@@ -762,7 +765,11 @@ function toMarkerData(
   model: editor.ITextModel,
   diagnostic: EditorDiagnostic
 ): editor.IMarkerData {
-  const range = toMonacoRange(monaco, diagnostic.range);
+  const range = toMonacoDisplayRange(monaco, diagnostic.range);
+  const relatedRanges = diagnostic.related.map((related) => ({
+    related,
+    range: toMonacoDisplayRange(monaco, related.range),
+  }));
   return {
     startLineNumber: range.startLineNumber,
     startColumn: range.startColumn,
@@ -775,15 +782,43 @@ function toMarkerData(
       typeof diagnostic.code === "number"
         ? String(diagnostic.code)
         : diagnostic.code,
-    relatedInformation: diagnostic.related.map((related) => ({
+    relatedInformation: relatedRanges.map(({ related, range }) => ({
       resource: model.uri,
       message: related.message,
-      startLineNumber: toMonacoRange(monaco, related.range).startLineNumber,
-      startColumn: toMonacoRange(monaco, related.range).startColumn,
-      endLineNumber: toMonacoRange(monaco, related.range).endLineNumber,
-      endColumn: toMonacoRange(monaco, related.range).endColumn,
+      startLineNumber: range.startLineNumber,
+      startColumn: range.startColumn,
+      endLineNumber: range.endLineNumber,
+      endColumn: range.endColumn,
     })),
   };
+}
+
+function markerMatchesDiagnostic(
+  monaco: typeof import("monaco-editor"),
+  model: editor.ITextModel,
+  marker: editor.IMarkerData,
+  diagnostic: EditorDiagnostic
+): boolean {
+  const expected = toMarkerData(monaco, model, diagnostic);
+  return (
+    marker.message === expected.message &&
+    marker.source === expected.source &&
+    normalizeMarkerCode(marker.code) === normalizeMarkerCode(expected.code) &&
+    marker.startLineNumber === expected.startLineNumber &&
+    marker.startColumn === expected.startColumn &&
+    marker.endLineNumber === expected.endLineNumber &&
+    marker.endColumn === expected.endColumn
+  );
+}
+
+function normalizeMarkerCode(code: editor.IMarkerData["code"]): string {
+  if (code === undefined) {
+    return "";
+  }
+  if (typeof code === "object") {
+    return String(code.value);
+  }
+  return String(code);
 }
 
 function toMonacoRange(
@@ -793,16 +828,39 @@ function toMonacoRange(
   const startLineNumber = range.start.line + 1;
   const startColumn = range.start.character + 1;
   const endLineNumber = range.end.line + 1;
-  const endColumn =
-    endLineNumber === startLineNumber
-      ? Math.max(range.end.character + 1, startColumn + 1)
-      : Math.max(range.end.character + 1, 1);
+  const endColumn = Math.max(range.end.character + 1, 1);
   return new monaco.Range(
     startLineNumber,
     startColumn,
     endLineNumber,
     endColumn
   );
+}
+
+function toMonacoEditRange(
+  monaco: typeof import("monaco-editor"),
+  range: EditorRange
+): InstanceType<typeof monaco.Range> {
+  return toMonacoRange(monaco, range);
+}
+
+function toMonacoDisplayRange(
+  monaco: typeof import("monaco-editor"),
+  range: EditorRange
+): InstanceType<typeof monaco.Range> {
+  const monacoRange = toMonacoRange(monaco, range);
+  if (
+    monacoRange.startLineNumber === monacoRange.endLineNumber &&
+    monacoRange.startColumn === monacoRange.endColumn
+  ) {
+    return new monaco.Range(
+      monacoRange.startLineNumber,
+      monacoRange.startColumn,
+      monacoRange.endLineNumber,
+      monacoRange.endColumn + 1
+    );
+  }
+  return monacoRange;
 }
 
 function diagnosticSeverity(

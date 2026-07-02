@@ -401,9 +401,15 @@ fn mermaid_fence_delimiter(line: &str) -> Option<FenceDelimiter> {
     }
 
     let rest = trimmed[len..].trim_start();
-    let language = "mermaid";
-    let rest = rest.strip_prefix(language)?;
-    if rest.chars().all(|ch| ch.is_whitespace()) {
+    let language_len = "mermaid".len();
+    if rest.len() < language_len {
+        return None;
+    }
+    let (language, tail) = rest.split_at(language_len);
+    if !language.eq_ignore_ascii_case("mermaid") {
+        return None;
+    }
+    if tail.is_empty() || tail.starts_with(char::is_whitespace) {
         Some(FenceDelimiter::new(marker, len))
     } else {
         None
@@ -524,16 +530,29 @@ mod tests {
     fn markdown_document_source_accepts_commonmark_spaced_info_strings() {
         let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
         let document = DocumentSource::new(
-            "before\n```` mermaid\nflowchart LR\nA-->B\n````\n~~~ mermaid\nsequenceDiagram\nA->>B: Hi\n~~~\n",
+            "before\n```` mermaid title=Main\nflowchart LR\nA-->B\n````\n~~~ Mermaid\nsequenceDiagram\nA->>B: Hi\n~~~\n:::MERMAID extra info\npie title Work\n:::\n",
             source,
         );
 
-        assert_eq!(document.diagrams().len(), 2);
+        assert_eq!(document.diagrams().len(), 3);
         assert!(document.diagrams()[0].text.contains("flowchart LR"));
         assert_eq!(
             document.diagrams()[1].fence_delimiter.unwrap().marker(),
             FenceMarker::Tilde
         );
+        assert_eq!(
+            document.diagrams()[2].fence_delimiter.unwrap().marker(),
+            FenceMarker::Colon
+        );
+        assert!(document.diagrams()[2].text.contains("pie title Work"));
+    }
+
+    #[test]
+    fn markdown_document_source_rejects_mermaid_prefix_without_language_boundary() {
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
+        let document = DocumentSource::new("```mermaidx\nflowchart LR\n```\n", source);
+
+        assert!(document.diagrams().is_empty());
     }
 
     #[test]

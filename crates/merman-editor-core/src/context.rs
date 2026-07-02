@@ -22,6 +22,12 @@ impl<'a> CompletionContext<'a> {
     pub fn from_snapshot(snapshot: &'a DocumentSnapshot, position: Position) -> Option<Self> {
         let fence = snapshot.fence_at_position(position)?;
         let cursor_offset = snapshot.byte_offset_for_position(position)?;
+        if cursor_offset < fence.body_start
+            || cursor_offset > fence.body_end
+            || (cursor_offset == fence.body_end && fence.end > fence.body_end)
+        {
+            return None;
+        }
         let relative_cursor = cursor_offset
             .saturating_sub(fence.body_start)
             .min(fence.text.len());

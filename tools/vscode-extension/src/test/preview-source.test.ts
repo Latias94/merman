@@ -110,6 +110,41 @@ describe("preview source extraction", () => {
     );
   });
 
+  it("accepts the same Markdown Mermaid fence forms as analysis", () => {
+    const inputs = listPreviewInputsFromText({
+      text: [
+        "```` mermaid title=Main",
+        "flowchart LR",
+        "````",
+        "",
+        "~~~ Mermaid",
+        "sequenceDiagram",
+        "~~~",
+        "",
+        ":::MERMAID extra info",
+        "pie title Work",
+        ":::",
+      ].join("\n"),
+      languageId: "mdx",
+      fileName: "/workspace/notes.mdx",
+    });
+
+    assert.deepEqual(
+      inputs.map((input) => input.source),
+      ["flowchart LR", "sequenceDiagram", "pie title Work"],
+    );
+  });
+
+  it("does not treat mermaid-prefixed languages as Mermaid fences", () => {
+    const inputs = listPreviewInputsFromText({
+      text: ["```mermaidx", "flowchart LR", "```"].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+    });
+
+    assert.equal(inputs.length, 0);
+  });
+
   it("treats fence delimiters as part of the selectable source range", () => {
     const input = extractPreviewInputFromText({
       text: [
