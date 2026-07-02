@@ -197,7 +197,9 @@ Remaining fallback ledger:
   modifiers preserve role categories. The LSP semantic-token legend is derived from the editor-core
   legend so token ordering stays tied to the protocol-neutral semantic contract. Snapshot-affecting
   configuration changes ask the client to refresh semantic tokens when refresh support is
-  advertised, and delta requests reuse cached previous token state when the result id matches.
+  advertised and clear cached token state. Diagnostic-only lint configuration changes refresh
+  diagnostics without invalidating semantic-token state. Delta requests reuse cached previous token
+  state when the result id matches.
 - Text-scan fallback: may support source-start headers/templates and record directive prefixes for
   unmigrated paths, but must not assert body completion availability. It must not project
   payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`

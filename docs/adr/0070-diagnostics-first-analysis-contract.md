@@ -228,3 +228,5 @@ Ship a standalone linter before changing the shared bindings.
    owner, cache model, and test coverage.
 4. Add new quick fixes only through deterministic `DiagnosticFix` metadata emitted by analysis
    rules, with LSP rejecting unsafe or overlapping edit sets before projection.
+5. Keep internal projection diagnostics in the complete rule catalog for observability, but out of
+   public configurable rule metadata unless a future ADR deliberately exposes host policy for them.
