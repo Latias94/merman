@@ -396,8 +396,8 @@ function assertEditorLanguageSurface(enabled) {
   }
 
   const completions = api.editorCompletions(
-    "flowchart TD\nA-->B\nB-->C\n",
-    { line: 1, character: 1 },
+    "flowchart TD\nA-->B\nC-->\n",
+    { line: 2, character: 4 },
     editorUri
   );
   assert.ok(completions.items.some((item) => item.label === "B"));

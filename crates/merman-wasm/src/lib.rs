@@ -1189,19 +1189,24 @@ mod tests {
     #[cfg(feature = "editor-language")]
     #[test]
     fn editor_language_helpers_cover_browser_editor_surface() {
-        let snapshot = editor_snapshot(
+        let completion_snapshot = editor_snapshot(
+            "flowchart TD\nA-->B\nC-->\n",
+            Some("file:///tmp/example.mmd".to_string()),
+        );
+        let completions = completion_for_snapshot(&completion_snapshot, Position::new(2, 4));
+        assert!(completions.items.iter().any(|item| item.label == "B"));
+
+        let reference_snapshot = editor_snapshot(
             "flowchart TD\nA-->B\nA-->C\n",
             Some("file:///tmp/example.mmd".to_string()),
         );
-        let completions = completion_for_snapshot(&snapshot, Position::new(1, 1));
-        assert!(completions.items.iter().any(|item| item.label == "B"));
         assert_eq!(
-            references(&snapshot, Position::new(1, 0), true)
+            references(&reference_snapshot, Position::new(1, 0), true)
                 .unwrap()
                 .len(),
             2
         );
-        assert!(!semantic_tokens_for_snapshot(&snapshot).is_empty());
+        assert!(!semantic_tokens_for_snapshot(&reference_snapshot).is_empty());
 
         let payload =
             editor_analysis_payload("flowchart TD\nA-->\n", None, "file:///tmp/example.mmd")
