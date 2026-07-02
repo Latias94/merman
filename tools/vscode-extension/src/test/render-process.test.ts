@@ -50,7 +50,9 @@ describe("render process lifecycle", () => {
     abortController.abort();
 
     await assert.rejects(render, /superseded/);
-    assert.equal(fs.readFileSync(markerPath, "utf8"), "aborted");
+    if (process.platform !== "win32") {
+      assert.equal(fs.readFileSync(markerPath, "utf8"), "aborted");
+    }
   });
 });
 

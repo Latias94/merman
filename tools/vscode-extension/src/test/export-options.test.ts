@@ -1,4 +1,5 @@
 import * as assert from "node:assert/strict";
+import * as path from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -14,7 +15,7 @@ describe("export options", () => {
   it("builds predictable export paths beside the source file", () => {
     assert.equal(
       defaultExportPath("/workspace/docs/notes.md", "notes-mermaid-2", "svg"),
-      "/workspace/docs/notes-mermaid-2.svg",
+      path.join("/workspace/docs", "notes-mermaid-2.svg"),
     );
   });
 
