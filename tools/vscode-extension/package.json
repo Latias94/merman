@@ -87,7 +87,8 @@
         "merman.server.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to use the packaged binary. Paths inside the current workspace require workspace trust."
+          "restricted": true,
+          "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to use the packaged binary. Configured executables require workspace trust."
         },
         "merman.server.args": {
           "type": "array",
@@ -100,6 +101,7 @@
         "merman.server.useCargoRun": {
           "type": "boolean",
           "default": false,
+          "restricted": true,
           "markdownDescription": "Development only: launch `merman-lsp` through `cargo run -p merman-lsp --` instead of the packaged binary. Requires workspace trust."
         },
         "merman.server.cargoArgs": {
@@ -108,16 +110,19 @@
             "type": "string"
           },
           "default": [],
+          "restricted": true,
           "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-lsp` through Cargo."
         },
         "merman.cli.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Optional absolute path to a prebuilt `merman-cli` executable used for local preview and export. Leave empty to use the packaged binary. Paths inside the current workspace require workspace trust."
+          "restricted": true,
+          "markdownDescription": "Optional absolute path to a prebuilt `merman-cli` executable used for local preview and export. Leave empty to use the packaged binary. Configured executables require workspace trust."
         },
         "merman.cli.useCargoRun": {
           "type": "boolean",
           "default": false,
+          "restricted": true,
           "markdownDescription": "Development only: launch `merman-cli` through `cargo run -p merman-cli --` instead of the packaged binary. Requires workspace trust."
         },
         "merman.cli.cargoArgs": {
@@ -126,6 +131,7 @@
             "type": "string"
           },
           "default": [],
+          "restricted": true,
           "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-cli` through Cargo."
         },
         "merman.trace.server": {

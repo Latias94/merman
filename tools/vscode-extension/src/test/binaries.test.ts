@@ -35,7 +35,7 @@ describe("Merman binary resolution", () => {
       workspaceRoots: [root],
       explicitPath: explicit,
       directArgs: ["--stdio"],
-      workspaceTrusted: false,
+      workspaceTrusted: true,
       platform: "linux",
       arch: "x64",
     });
@@ -107,7 +107,28 @@ describe("Merman binary resolution", () => {
           platform: "linux",
           arch: "x64",
         }),
-      /requires a trusted workspace/,
+      /configured executable path requires a trusted workspace/,
+    );
+  });
+
+  it("rejects configured executables outside the workspace in untrusted workspaces", () => {
+    const root = tempDir();
+    const explicitRoot = tempDir();
+    const explicit = touchExecutable(path.join(explicitRoot, "merman-lsp"));
+
+    assert.throws(
+      () =>
+        resolveMermanBinary({
+          binaryName: "merman-lsp",
+          packageName: "merman-lsp",
+          extensionPath: path.join(root, "extension"),
+          workspaceRoots: [root],
+          explicitPath: explicit,
+          workspaceTrusted: false,
+          platform: "linux",
+          arch: "x64",
+        }),
+      /configured executable path requires a trusted workspace/,
     );
   });
 

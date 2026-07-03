@@ -139,14 +139,11 @@ function assertTrustedWorkspaceExecutable(
   filePath: string,
   request: Pick<BinaryResolutionRequest, "binaryName" | "workspaceRoots" | "workspaceTrusted">,
 ): void {
-  if (!isWorkspaceLocalPath(filePath, request.workspaceRoots)) {
-    return;
-  }
-  if (request.workspaceTrusted === true) {
+  if (request.workspaceRoots.length === 0 || request.workspaceTrusted === true) {
     return;
   }
   throw new Error(
-    `${request.binaryName} configured path points inside the current workspace and requires a trusted workspace.`,
+    `${request.binaryName} configured executable path requires a trusted workspace.`,
   );
 }
 
@@ -159,17 +156,6 @@ function assertTrustedCargoFallback(
   throw new Error(
     `${request.binaryName} Cargo development fallback requires a trusted workspace.`,
   );
-}
-
-function isWorkspaceLocalPath(filePath: string, workspaceRoots: readonly string[]): boolean {
-  const resolvedFilePath = path.resolve(filePath);
-  return workspaceRoots.some((root) => isPathInside(resolvedFilePath, root));
-}
-
-function isPathInside(filePath: string, root: string): boolean {
-  const resolvedRoot = path.resolve(root);
-  const relative = path.relative(resolvedRoot, filePath);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function isExecutableFile(filePath: string): boolean {
