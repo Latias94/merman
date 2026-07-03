@@ -379,10 +379,10 @@ fn collect_gantt_editor_line(
     }
 
     if let Some(block) = acc_descr_block.as_mut() {
-        if block.accept_continuation_line(line, line_start) {
-            if let Some(block) = acc_descr_block.take() {
-                block.emit_symbol(facts);
-            }
+        if block.accept_continuation_line(line, line_start)
+            && let Some(block) = acc_descr_block.take()
+        {
+            block.emit_symbol(facts);
         }
         return;
     }
@@ -1431,13 +1431,13 @@ fn parse_gantt_statement(
         Ok(Some(click)) => {
             if let Some(call) = click.call {
                 db.set_click_event(
-                    &click.ids.text,
+                    click.ids.text,
                     call.name.text.trim(),
                     call.args.map(|args| args.text),
                 );
             }
             if let Some(href) = click.href {
-                db.set_link(&click.ids.text, href.text);
+                db.set_link(click.ids.text, href.text);
             }
             return Ok(());
         }

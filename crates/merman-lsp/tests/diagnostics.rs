@@ -26,7 +26,15 @@ fn diagnostics_projection_preserves_uri_and_message() {
             "merman.parse.no_diagram".to_string()
         ))
     );
-    assert!(diagnostics[0].code_description.is_some());
+    assert_eq!(
+        diagnostics[0]
+            .code_description
+            .as_ref()
+            .expect("code description")
+            .href
+            .as_str(),
+        "https://github.com/Latias94/merman/rules/merman.parse.no_diagram"
+    );
 }
 
 #[test]

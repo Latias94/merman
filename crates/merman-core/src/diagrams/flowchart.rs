@@ -394,12 +394,8 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
 
-    let mut lexer = Lexer::recovering(code);
-    while let Some(result) = lexer.next() {
-        match result {
-            Ok((start, token, end)) => collector.accept(code, token, start, end, &mut facts),
-            Err(_) => {}
-        }
+    for (start, token, end) in Lexer::recovering(code).flatten() {
+        collector.accept(code, token, start, end, &mut facts);
     }
     collector.finish(code.len(), &mut facts);
 
@@ -407,8 +403,7 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
 }
 
 fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFacts) {
-    let mut lexer = Lexer::new(code);
-    while let Some(result) = lexer.next() {
+    for result in Lexer::new(code) {
         let Ok((start, token, end)) = result else {
             continue;
         };

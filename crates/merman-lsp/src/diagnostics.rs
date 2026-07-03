@@ -43,7 +43,7 @@ fn code_description(code: &str) -> Option<CodeDescription> {
     if !code.starts_with("merman.") {
         return None;
     }
-    Url::parse(&format!("https://github.com/frankorz/merman/rules/{code}"))
+    Url::parse(&format!("https://github.com/Latias94/merman/rules/{code}"))
         .ok()
         .map(|href| CodeDescription { href })
 }
