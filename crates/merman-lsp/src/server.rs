@@ -1,10 +1,11 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
-use crate::diagnostics::analysis_payload_to_diagnostics;
+use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
+use crate::document_store::DocumentStore;
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotContext,
+    StoredDocument,
 };
-use crate::document_store::{DocumentStore, StoredDocument};
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
     experimental_capabilities,
@@ -172,7 +173,7 @@ impl MermanLanguageServer {
             merman_analysis::SourceDescriptor::diagram().with_path(document.uri.as_str())
         };
         let payload = analyze_document(&document.text, analyzer, source);
-        analysis_payload_to_diagnostics(&payload, &document.uri)
+        analysis_payload_to_versioned_diagnostics(&payload, &document.uri, document.version)
     }
 
     fn diagnostic_result_id(diagnostics: &[tower_lsp::lsp_types::Diagnostic]) -> String {
@@ -514,7 +515,13 @@ impl LanguageServer for MermanLanguageServer {
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        Ok(code_actions_for_params(&params))
+        let current_document_version = {
+            let store = self.store.lock().await;
+            store
+                .get(&params.text_document.uri)
+                .map(|document| document.version)
+        };
+        Ok(code_actions_for_params(&params, current_document_version))
     }
 
     async fn semantic_tokens_full(
@@ -715,7 +722,7 @@ fn document_kind_for_language_id(
 #[cfg(test)]
 mod tests {
     use super::MermanLanguageServer;
-    use crate::diagnostics::analysis_diagnostic_to_lsp;
+    use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
     use crate::document_store::DocumentStore;
     use crate::protocol::{
         CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
@@ -1105,6 +1112,79 @@ mod tests {
         assert!(error.message.contains("diagnostic document changed"));
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        server
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "bad".to_string(),
+                },
+            })
+            .await;
+
+        let map = SourceMap::new("bad");
+        let stale_diagnostic = AnalysisDiagnostic::error(
+            "merman.test.fix",
+            DiagnosticCategory::Semantic,
+            "test diagnostic",
+        )
+        .with_fix(
+            DiagnosticFix::new(
+                "Replace invalid text",
+                vec![DiagnosticFixEdit::new(
+                    map.whole_source_span().unwrap(),
+                    "fixed",
+                )],
+            )
+            .preferred(),
+        );
+
+        server
+            .did_change(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                }],
+            })
+            .await;
+
+        let actions = server
+            .code_action(CodeActionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 3),
+                },
+                context: CodeActionContext {
+                    diagnostics: vec![analysis_diagnostic_to_versioned_lsp(
+                        &stale_diagnostic,
+                        &uri,
+                        1,
+                    )],
+                    only: Some(vec![CodeActionKind::QUICKFIX]),
+                    trigger_kind: None,
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .await
+            .unwrap();
+
+        assert!(actions.is_none());
+    }
+
     #[test]
     fn structure_helpers_produce_hover_and_nested_symbols() {
         let mut store = DocumentStore::new();
@@ -1306,7 +1386,7 @@ mod tests {
                     end: Position::new(0, 3),
                 },
                 context: CodeActionContext {
-                    diagnostics: vec![analysis_diagnostic_to_lsp(&diagnostic, &uri)],
+                    diagnostics: vec![analysis_diagnostic_to_versioned_lsp(&diagnostic, &uri, 1)],
                     only: Some(vec![CodeActionKind::QUICKFIX]),
                     trigger_kind: None,
                 },

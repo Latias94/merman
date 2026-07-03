@@ -127,6 +127,10 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [],
+    "warnings": [
+      "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+      "Style applied to unknown node \"R\". This may indicate a typo. The node will be created automatically."
+    ]
   }
 }

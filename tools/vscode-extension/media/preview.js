@@ -628,6 +628,9 @@
     if (!(actionElement instanceof HTMLElement)) {
       return;
     }
+    if (canvas?.contains(actionElement)) {
+      return;
+    }
     if (actionElement instanceof HTMLButtonElement && actionElement.disabled) {
       return;
     }
@@ -674,6 +677,9 @@
   document.addEventListener("change", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+    if (canvas?.contains(target)) {
       return;
     }
 

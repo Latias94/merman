@@ -668,7 +668,9 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
 
 #[cfg(feature = "editor-language")]
 fn js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(value).map_err(|err| JsValue::from_str(&err.to_string()))
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 fn document_uri(uri: Option<String>) -> String {

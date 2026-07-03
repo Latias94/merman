@@ -163,6 +163,7 @@ assert.equal(typeof capabilities.text_measurement.vendored, "boolean");
 assert.equal(typeof capabilities.text_measurement.deterministic, "boolean");
 assert.equal(typeof capabilities.text_measurement.host_callback, "boolean");
 assert.equal(typeof capabilities.text_measurement.font_assets, "boolean");
+assert.equal(capabilities.text_measurement.host_callback, capabilities.render);
 assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
 
 const registryProfile = api.selectedRegistryProfile();
@@ -278,6 +279,8 @@ assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);
 assertEditorLanguageSurface(capabilities.editor_language);
 
 if (capabilities.render) {
+  assert.equal(capabilities.text_measurement.host_callback, true);
+
   const rawGantt = `gantt
 title Project Development Plan
 dateFormat YYYY-MM-DD
@@ -336,6 +339,7 @@ User Testing    :c2, after c1, 5d`;
   assertUnsupportedFormat(() => api.renderSvg(source, options));
   assertUnsupportedFormat(() => api.parseJson(source, deterministicTime));
   assertUnsupportedFormat(() => api.layoutJson(source, options));
+  assert.equal(capabilities.text_measurement.host_callback, false);
 }
 
 if (capabilities.ascii) {
@@ -486,16 +490,52 @@ function assertEditorLanguageSurface(enabled) {
   const editorUri = "file:///tmp/example.mmd";
 
   if (!enabled) {
-    assert.throws(
-      () => api.editorCompletions(editorSource, { line: 2, character: 4 }, editorUri),
-      /editorCompletions\(\) is not available/
-    );
-    assert.throws(
-      () => api.editorDiagnostics(editorSource, deterministicTime, editorUri),
-      /editorDiagnostics\(\) is not available/
-    );
-    assert.equal(typeof exportedWasmModule.editorCompletions, "undefined");
-    assert.equal(typeof exportedWasmModule.editorDiagnostics, "undefined");
+    const disabledCalls = [
+      [
+        "editorDiagnostics",
+        () => api.editorDiagnostics(editorSource, deterministicTime, editorUri),
+      ],
+      [
+        "editorCodeActions",
+        () => api.editorCodeActions(editorSource, deterministicTime, editorUri),
+      ],
+      [
+        "editorCompletions",
+        () => api.editorCompletions(editorSource, { line: 2, character: 4 }, editorUri),
+      ],
+      [
+        "editorHover",
+        () => api.editorHover(editorSource, { line: 1, character: 0 }, editorUri),
+      ],
+      ["editorDocumentSymbols", () => api.editorDocumentSymbols(editorSource, editorUri)],
+      [
+        "editorWorkspaceSymbols",
+        () => api.editorWorkspaceSymbols(editorSource, "A", editorUri),
+      ],
+      [
+        "editorDefinition",
+        () => api.editorDefinition(editorSource, { line: 1, character: 0 }, editorUri),
+      ],
+      [
+        "editorReferences",
+        () => api.editorReferences(editorSource, { line: 1, character: 0 }, true, editorUri),
+      ],
+      [
+        "editorPrepareRename",
+        () => api.editorPrepareRename(editorSource, { line: 1, character: 0 }, editorUri),
+      ],
+      [
+        "editorRename",
+        () => api.editorRename(editorSource, { line: 1, character: 0 }, "Next", editorUri),
+      ],
+      ["editorSemanticTokenLegend", () => api.editorSemanticTokenLegend()],
+      ["editorSemanticTokens", () => api.editorSemanticTokens(editorSource, editorUri)],
+    ];
+
+    for (const [apiName, run] of disabledCalls) {
+      assert.throws(run, new RegExp(`${apiName}\\(\\) is not available`));
+      assert.equal(typeof exportedWasmModule[apiName], "undefined");
+    }
     return;
   }
 
@@ -509,6 +549,38 @@ function assertEditorLanguageSurface(enabled) {
   const diagnostics = api.editorDiagnostics(editorSource, deterministicTime, editorUri);
   assert.equal(Array.isArray(diagnostics.diagnostics), true);
 
+  const editorLintOptions = {
+    ...deterministicTime,
+    lint: { profile: "recommended" },
+  };
+  const codeActions = api.editorCodeActions(
+    "flowchart\nA-->B\n",
+    editorLintOptions,
+    editorUri
+  );
+  const directionAction = codeActions.find((action) =>
+    action.title.includes("flowchart header")
+  );
+  assert.ok(directionAction);
+  assert.equal(directionAction.edit.changes instanceof Map, false);
+  assert.equal(directionAction.edit.changes[editorUri][0].newText, " TB");
+
+  const hover = api.editorHover(
+    "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
+    { line: 1, character: 0 },
+    editorUri
+  );
+  assert.ok(hover);
+  assert.match(JSON.stringify(hover.contents), /Alpha/);
+
+  const definition = api.editorDefinition(
+    "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
+    { line: 2, character: 0 },
+    editorUri
+  );
+  assert.equal(definition.uri, editorUri);
+  assert.equal(definition.range.start.line, 1);
+
   const references = api.editorReferences(
     "flowchart TD\nA-->B\nA-->C\n",
     { line: 1, character: 0 },
@@ -517,10 +589,47 @@ function assertEditorLanguageSurface(enabled) {
   );
   assert.equal(references.length, 2);
 
+  const prepareRename = api.editorPrepareRename(
+    "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
+    { line: 1, character: 0 },
+    editorUri
+  );
+  assert.equal(prepareRename.placeholder, "Alpha");
+
+  const rename = api.editorRename(
+    "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
+    { line: 1, character: 0 },
+    "Delta",
+    editorUri
+  );
+  assert.equal(rename.changes instanceof Map, false);
+  assert.ok(rename.changes[editorUri].some((edit) => edit.newText === "Delta"));
+
   const legend = api.editorSemanticTokenLegend();
   assert.ok(legend.tokenTypes.length > 0);
-  assert.equal(typeof exportedWasmModule.editorCompletions, "function");
-  assert.equal(typeof exportedWasmModule.editorDiagnostics, "function");
+  const semanticTokens = api.editorSemanticTokens(
+    "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
+    editorUri
+  );
+  assert.ok(semanticTokens.length > 0);
+  assert.ok(semanticTokens.every((token) => legend.tokenTypes.includes(token.tokenType)));
+
+  for (const apiName of [
+    "editorDiagnostics",
+    "editorCodeActions",
+    "editorCompletions",
+    "editorHover",
+    "editorDocumentSymbols",
+    "editorWorkspaceSymbols",
+    "editorDefinition",
+    "editorReferences",
+    "editorPrepareRename",
+    "editorRename",
+    "editorSemanticTokenLegend",
+    "editorSemanticTokens",
+  ]) {
+    assert.equal(typeof exportedWasmModule[apiName], "function");
+  }
 }
 
 function assertUnsupportedFormat(run) {

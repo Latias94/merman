@@ -2,6 +2,8 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { EventEmitter } from "node:events";
+import { Readable, Writable } from "node:stream";
 import { afterEach, describe, it } from "node:test";
 
 import { runRenderProcess } from "../render-process.js";
@@ -149,6 +151,42 @@ describe("render process lifecycle", () => {
         maxStderrBytes: 16,
       }),
       /output exceeded the size limit/,
+    );
+  });
+
+  it("rejects stdin pipe errors through the render promise", async () => {
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: Writable;
+      stdout: Readable;
+      stderr: Readable;
+      exitCode: number | null;
+      signalCode: NodeJS.Signals | null;
+      kill: () => boolean;
+    };
+    child.stdin = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(new Error("render stdin closed"));
+      },
+    });
+    child.stdout = new Readable({ read() {} });
+    child.stderr = new Readable({ read() {} });
+    child.exitCode = null;
+    child.signalCode = null;
+    child.kill = () => true;
+
+    await assert.rejects(
+      runRenderProcess({
+        invocation: {
+          command: "merman-cli",
+          args: [],
+          source: "explicit",
+          label: "test cli",
+        },
+        source: "flowchart TD\nA --> B\n",
+        spawnProcess: () =>
+          child as unknown as import("node:child_process").ChildProcessWithoutNullStreams,
+      }),
+      /render stdin closed/,
     );
   });
 });

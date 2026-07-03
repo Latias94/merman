@@ -100,10 +100,11 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
 
     obj.remove("config");
 
-    if matches!(diagram_type, "block" | "gitGraph") {
+    if matches!(
+        diagram_type,
+        "block" | "gitGraph" | "flowchart-v2" | "flowchart-elk"
+    ) {
         normalize_warning_facts_to_warnings(obj);
-    } else if matches!(diagram_type, "flowchart-v2" | "flowchart-elk") {
-        obj.remove("warningFacts");
     }
 
     // Mermaid mindmap includes a random UUID v4-based diagram id.

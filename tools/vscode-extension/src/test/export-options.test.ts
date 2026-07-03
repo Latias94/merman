@@ -49,4 +49,15 @@ describe("export options", () => {
     assert.ok(darwinArgs[1]?.includes("PNGf"));
     assert.ok(pngClipboardArgs("win32", "C:\\chart.png").join(" ").includes("SetImage"));
   });
+
+  it("passes Windows clipboard paths as arguments instead of PowerShell source", () => {
+    const dangerousPath = "C:\\tmp\\diagram$(Write-Output injected)'`().png";
+    const args = pngClipboardArgs("win32", dangerousPath);
+    const script = args[3] ?? "";
+
+    assert.equal(args.at(-1), dangerousPath);
+    assert.match(script, /\$args\[0\]/);
+    assert.doesNotMatch(script, /\$\(Write-Output injected\)/);
+    assert.doesNotMatch(script, /diagram/);
+  });
 });

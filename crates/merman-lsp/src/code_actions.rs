@@ -2,21 +2,33 @@ use merman_editor_core::{
     DiagnosticCodeActionData, EditorCodeActionEdit, Position as EditorPosition,
     code_actions_from_fixes,
 };
+use serde::Deserialize;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
-    Diagnostic, TextEdit, Url, WorkspaceEdit,
+    Diagnostic, DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
+    TextEdit, Url, WorkspaceEdit,
 };
 
-pub fn code_actions_for_params(params: &CodeActionParams) -> Option<CodeActionResponse> {
+pub fn code_actions_for_params(
+    params: &CodeActionParams,
+    current_document_version: Option<i32>,
+) -> Option<CodeActionResponse> {
     if !allows_quickfix(&params.context) {
         return None;
     }
+    let current_document_version = current_document_version?;
 
     let actions = params
         .context
         .diagnostics
         .iter()
-        .flat_map(|diagnostic| code_actions_for_diagnostic(diagnostic, &params.text_document.uri))
+        .flat_map(|diagnostic| {
+            code_actions_for_diagnostic(
+                diagnostic,
+                &params.text_document.uri,
+                current_document_version,
+            )
+        })
         .collect::<Vec<_>>();
 
     if actions.is_empty() {
@@ -33,21 +45,28 @@ fn allows_quickfix(context: &CodeActionContext) -> bool {
         .is_none_or(|only| only.iter().any(|kind| kind == &CodeActionKind::QUICKFIX))
 }
 
-fn code_actions_for_diagnostic(diagnostic: &Diagnostic, uri: &Url) -> Vec<CodeActionOrCommand> {
+fn code_actions_for_diagnostic(
+    diagnostic: &Diagnostic,
+    uri: &Url,
+    current_document_version: i32,
+) -> Vec<CodeActionOrCommand> {
     if diagnostic.source.as_deref() != Some("merman") {
         return Vec::new();
     }
     let Some(data) = diagnostic.data.as_ref() else {
         return Vec::new();
     };
-    let Ok(data) = serde_json::from_value::<DiagnosticCodeActionData>(data.clone()) else {
+    let Ok(data) = serde_json::from_value::<LspDiagnosticCodeActionData>(data.clone()) else {
         return Vec::new();
     };
+    if data.document_version != Some(current_document_version) {
+        return Vec::new();
+    }
 
-    code_actions_from_fixes(&data.fixes)
+    code_actions_from_fixes(&data.inner.fixes)
         .into_iter()
         .filter_map(|action| {
-            let edit = workspace_edit_for_edits(&action.edits, uri)?;
+            let edit = workspace_edit_for_edits(&action.edits, uri, current_document_version)?;
             Some(tower_lsp::lsp_types::CodeAction {
                 title: action.title,
                 kind: Some(CodeActionKind::QUICKFIX),
@@ -63,9 +82,18 @@ fn code_actions_for_diagnostic(diagnostic: &Diagnostic, uri: &Url) -> Vec<CodeAc
         .collect::<Vec<_>>()
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LspDiagnosticCodeActionData {
+    #[serde(flatten)]
+    inner: DiagnosticCodeActionData,
+    document_version: Option<i32>,
+}
+
 fn workspace_edit_for_edits(
     planned_edits: &[EditorCodeActionEdit],
     uri: &Url,
+    current_document_version: i32,
 ) -> Option<WorkspaceEdit> {
     let edits = planned_edits
         .iter()
@@ -74,19 +102,22 @@ fn workspace_edit_for_edits(
                 editor_position_to_lsp(edit.range.start),
                 editor_position_to_lsp(edit.range.end),
             );
-            TextEdit::new(range, edit.new_text.clone())
+            OneOf::Left(TextEdit::new(range, edit.new_text.clone()))
         })
         .collect::<Vec<_>>();
     if edits.is_empty() {
         return None;
     }
 
-    let mut changes = std::collections::HashMap::new();
-    changes.insert(uri.clone(), edits);
-
     Some(WorkspaceEdit {
-        changes: Some(changes),
-        document_changes: None,
+        changes: None,
+        document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit {
+            text_document: OptionalVersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: Some(current_document_version),
+            },
+            edits,
+        }])),
         change_annotations: None,
     })
 }
@@ -98,19 +129,31 @@ fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp::lsp_types::Pos
 #[cfg(test)]
 mod tests {
     use super::code_actions_for_params;
-    use crate::diagnostics::analysis_payload_to_diagnostics;
+    use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
     use merman_analysis::{
         AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticCategory,
         DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, SourceMap, Utf16Position,
         document::analyze_document,
     };
     use merman_editor_core::DiagnosticCodeActionData;
+    use serde_json::{Value, json};
     use tower_lsp::lsp_types::{
-        CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, Diagnostic,
-        DiagnosticSeverity, NumberOrString, Position, Range, TextDocumentIdentifier, Url,
+        CodeAction, CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+        Diagnostic, DiagnosticSeverity, DocumentChanges, NumberOrString, OneOf, Position, Range,
+        TextDocumentIdentifier, TextEdit, Url,
     };
 
+    const DOC_VERSION: i32 = 1;
+
     fn diagnostic_with_fix() -> Diagnostic {
+        diagnostic_with_fix_for_version(Some(DOC_VERSION))
+    }
+
+    fn unversioned_diagnostic_with_fix() -> Diagnostic {
+        diagnostic_with_fix_for_version(None)
+    }
+
+    fn diagnostic_with_fix_for_version(document_version: Option<i32>) -> Diagnostic {
         Diagnostic {
             range: Range {
                 start: Position::new(0, 0),
@@ -123,8 +166,8 @@ mod tests {
             message: "test".to_string(),
             related_information: None,
             tags: None,
-            data: Some(
-                serde_json::to_value(DiagnosticCodeActionData {
+            data: Some(diagnostic_data_value(
+                DiagnosticCodeActionData {
                     id: "merman.test".to_string(),
                     code: None,
                     code_name: None,
@@ -154,10 +197,24 @@ mod tests {
                         )],
                         is_preferred: true,
                     }],
-                })
-                .unwrap(),
-            ),
+                },
+                document_version,
+            )),
         }
+    }
+
+    fn diagnostic_data_value(
+        data: DiagnosticCodeActionData,
+        document_version: Option<i32>,
+    ) -> Value {
+        let mut value = serde_json::to_value(data).unwrap();
+        if let Some(document_version) = document_version {
+            value
+                .as_object_mut()
+                .unwrap()
+                .insert("documentVersion".to_string(), json!(document_version));
+        }
+        value
     }
 
     #[test]
@@ -179,7 +236,8 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected quickfix actions");
+        let actions =
+            code_actions_for_params(&params, Some(DOC_VERSION)).expect("expected quickfix actions");
         assert_eq!(actions.len(), 1);
         let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
             panic!("expected code action")
@@ -187,10 +245,11 @@ mod tests {
         assert_eq!(action.title, "Replace text");
         assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
         assert_eq!(action.is_preferred, Some(true));
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes
-            .get(&Url::parse("file:///tmp/example.mmd").unwrap())
-            .unwrap();
+        let edits = text_edits_for_action(
+            action,
+            &Url::parse("file:///tmp/example.mmd").unwrap(),
+            DOC_VERSION,
+        );
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].new_text, "fixed");
     }
@@ -228,7 +287,29 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        assert!(code_actions_for_params(&params).is_none());
+        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
+    }
+
+    #[test]
+    fn quickfixes_without_document_version_are_rejected() {
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::parse("file:///tmp/example.mmd").unwrap(),
+            },
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 5),
+            },
+            context: CodeActionContext {
+                diagnostics: vec![unversioned_diagnostic_with_fix()],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
     }
 
     #[test]
@@ -286,7 +367,7 @@ mod tests {
                 is_preferred: true,
             }],
         };
-        diagnostic.data = Some(serde_json::to_value(data).unwrap());
+        diagnostic.data = Some(diagnostic_data_value(data, Some(DOC_VERSION)));
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier {
                 uri: Url::parse("file:///tmp/example.mmd").unwrap(),
@@ -304,7 +385,7 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        assert!(code_actions_for_params(&params).is_none());
+        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
     }
 
     #[test]
@@ -326,7 +407,7 @@ mod tests {
                 ],
             )],
         };
-        diagnostic.data = Some(serde_json::to_value(data).unwrap());
+        diagnostic.data = Some(diagnostic_data_value(data, Some(DOC_VERSION)));
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -343,19 +424,12 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected quickfix action");
+        let actions =
+            code_actions_for_params(&params, Some(DOC_VERSION)).expect("expected quickfix action");
         let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
             panic!("expected code action")
         };
-        let edits = action
-            .edit
-            .as_ref()
-            .unwrap()
-            .changes
-            .as_ref()
-            .unwrap()
-            .get(&uri)
-            .unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
         assert_eq!(edits[0].range.start, Position::new(0, 1));
         assert_eq!(edits[0].new_text, "early");
         assert_eq!(edits[1].range.start, Position::new(0, 5));
@@ -381,7 +455,7 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        assert!(code_actions_for_params(&params).is_none());
+        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
     }
 
     #[test]
@@ -390,7 +464,7 @@ mod tests {
         let analyzer = alias_analyzer();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = analyzer.analyze(source);
-        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
 
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -407,14 +481,14 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected analyzer quickfix");
+        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
+            .expect("expected analyzer quickfix");
         assert_eq!(actions.len(), 1);
         let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
             panic!("expected code action")
         };
         assert_eq!(action.title, "Replace `initialize` with `init`");
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes.get(&uri).unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].new_text, "init");
         assert_eq!(edits[0].range.start, Position::new(0, 4));
@@ -427,7 +501,7 @@ mod tests {
         let analyzer = authoring_analyzer();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = analyzer.analyze(source);
-        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
 
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -444,15 +518,15 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected frontmatter quickfix");
+        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
+            .expect("expected frontmatter quickfix");
         assert_eq!(actions.len(), 1);
         let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
             panic!("expected code action")
         };
         assert_eq!(action.title, "Move init directive config into frontmatter");
         assert_eq!(action.is_preferred, Some(true));
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes.get(&uri).unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
         assert_eq!(edits.len(), 1);
         assert!(edits[0].new_text.starts_with("---\nconfig:\n"));
         assert!(edits[0].new_text.contains("theme: dark\n"));
@@ -465,7 +539,7 @@ mod tests {
         let source = "%%{init: { \"flowchart\": { \"htmlLabels\": false, \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n";
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = Analyzer::new().analyze(source);
-        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
 
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -482,8 +556,8 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions =
-            code_actions_for_params(&params).expect("expected deprecated htmlLabels quickfix");
+        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
+            .expect("expected deprecated htmlLabels quickfix");
         let action = actions
             .iter()
             .filter_map(|action| match action {
@@ -497,8 +571,7 @@ mod tests {
 
         assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
         assert_eq!(action.is_preferred, Some(true));
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes.get(&uri).unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
         assert!(!edits.is_empty());
         assert!(edits[0].new_text.contains("htmlLabels: false"));
     }
@@ -509,7 +582,7 @@ mod tests {
         let analyzer = authoring_analyzer();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = analyzer.analyze(source);
-        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
 
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -526,7 +599,8 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected flowchart quickfix");
+        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
+            .expect("expected flowchart quickfix");
         let action = actions
             .iter()
             .filter_map(|action| match action {
@@ -538,8 +612,7 @@ mod tests {
 
         assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
         assert_eq!(action.is_preferred, Some(true));
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes.get(&uri).unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].new_text, " TB");
         assert_eq!(edits[0].range.start, Position::new(0, 9));
@@ -556,7 +629,7 @@ mod tests {
             &analyzer,
             merman_analysis::source_descriptor_for_uri(uri.as_str()),
         );
-        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             range: Range {
@@ -572,12 +645,12 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected markdown quickfix");
+        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
+            .expect("expected markdown quickfix");
         let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
             panic!("expected code action")
         };
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes.get(&uri).unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
 
         assert_eq!(edits[0].new_text, "init");
         assert_eq!(edits[0].range.start, Position::new(2, 4));
@@ -594,7 +667,7 @@ mod tests {
             &analyzer,
             merman_analysis::source_descriptor_for_uri(uri.as_str()),
         );
-        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             range: Range {
@@ -610,12 +683,12 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected markdown quickfix");
+        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
+            .expect("expected markdown quickfix");
         let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
             panic!("expected code action")
         };
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes.get(&uri).unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
 
         assert_eq!(action.title, "Move init directive config into frontmatter");
         assert_eq!(edits.len(), 1);
@@ -634,7 +707,7 @@ mod tests {
             &analyzer,
             merman_analysis::source_descriptor_for_uri(uri.as_str()),
         );
-        let diagnostics = analysis_payload_to_diagnostics(&payload, &uri);
+        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
 
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -651,7 +724,8 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params).expect("expected markdown quickfix");
+        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
+            .expect("expected markdown quickfix");
         let action = actions
             .iter()
             .filter_map(|action| match action {
@@ -660,13 +734,38 @@ mod tests {
             })
             .find(|action| action.title == "Insert `TB` into the flowchart header")
             .expect("missing flowchart direction quickfix");
-        let changes = action.edit.as_ref().unwrap().changes.as_ref().unwrap();
-        let edits = changes.get(&uri).unwrap();
+        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
 
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].new_text, " TB");
         assert_eq!(edits[0].range.start, Position::new(2, 9));
         assert_eq!(edits[0].range.end, Position::new(2, 9));
+    }
+
+    fn text_edits_for_action(
+        action: &CodeAction,
+        uri: &Url,
+        document_version: i32,
+    ) -> Vec<TextEdit> {
+        let Some(DocumentChanges::Edits(document_edits)) =
+            action.edit.as_ref().unwrap().document_changes.as_ref()
+        else {
+            panic!("expected versioned document changes");
+        };
+        assert_eq!(document_edits.len(), 1);
+        assert_eq!(document_edits[0].text_document.uri, *uri);
+        assert_eq!(
+            document_edits[0].text_document.version,
+            Some(document_version)
+        );
+        document_edits[0]
+            .edits
+            .iter()
+            .map(|edit| match edit {
+                OneOf::Left(edit) => edit.clone(),
+                OneOf::Right(_) => panic!("expected plain text edit"),
+            })
+            .collect()
     }
 
     fn authoring_analyzer() -> Analyzer {

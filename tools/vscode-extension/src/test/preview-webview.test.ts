@@ -506,6 +506,18 @@ describe("preview webview app", () => {
       "showSource",
     ]);
   });
+
+  it("ignores data-action elements inside rendered preview content", () => {
+    const app = loadPreviewApp();
+    const renderedButton = new FakeButtonElement({ dataset: { action: "copy-svg" } });
+    app.document.canvas.appendChild(renderedButton);
+
+    app.click(renderedButton);
+
+    assert.deepEqual(app.postedMessages.map((message) => (message as { type?: string }).type), [
+      "ready",
+    ]);
+  });
 });
 
 interface PreviewAppHarness {
@@ -784,6 +796,7 @@ class FakeElement {
   selected = false;
   clientWidth = 1;
   clientHeight = 1;
+  parentElement: FakeElement | null = null;
   private attributes = new Map<string, string>();
   private html = "";
   private readonly listeners = new Map<string, Array<(event: unknown) => void>>();
@@ -805,6 +818,7 @@ class FakeElement {
   }
 
   appendChild<T extends FakeElement>(child: T): T {
+    child.parentElement = this;
     this.children.push(child);
     return child;
   }
@@ -833,6 +847,12 @@ class FakeElement {
   }
 
   replaceChildren(...children: FakeElement[]): void {
+    for (const child of this.children) {
+      child.parentElement = null;
+    }
+    for (const child of children) {
+      child.parentElement = this;
+    }
     this.children.splice(0, this.children.length, ...children);
     this.html = "";
   }
@@ -851,15 +871,23 @@ class FakeElement {
   }
 
   closest(selector: string): FakeElement | null {
-    if (selector === "[data-action]" && this.dataset.action !== undefined) {
-      return this;
-    }
-    for (const part of selector.split(",").map((item) => item.trim())) {
-      if (this.matchesClassSelector(part)) {
-        return this;
+    let current: FakeElement | null = this;
+    while (current) {
+      if (selector === "[data-action]" && current.dataset.action !== undefined) {
+        return current;
       }
+      for (const part of selector.split(",").map((item) => item.trim())) {
+        if (current.matchesClassSelector(part)) {
+          return current;
+        }
+      }
+      current = current.parentElement;
     }
     return null;
+  }
+
+  contains(target: FakeElement): boolean {
+    return this === target || this.children.some((child) => child.contains(target));
   }
 
   private matchesClassSelector(selector: string): boolean {
@@ -887,6 +915,7 @@ class FakeElement {
     this.children.splice(0, this.children.length);
     const svg = parseSvg(value);
     if (svg) {
+      svg.parentElement = this;
       this.children.push(svg);
     }
   }

@@ -119,6 +119,9 @@
         "dir": null,
         "labelType": "text"
       }
+    ],
+    "warnings": [
+      "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`"
     ]
   }
 }

@@ -69,6 +69,22 @@ fn layout_snapshot_site_config() -> merman::MermaidConfig {
     }))
 }
 
+fn normalize_warning_facts_to_warnings(obj: &mut Map<String, JsonValue>) {
+    let Some(JsonValue::Array(facts)) = obj.remove("warningFacts") else {
+        return;
+    };
+
+    let warnings = facts
+        .into_iter()
+        .filter_map(|fact| {
+            fact.get("message")
+                .and_then(JsonValue::as_str)
+                .map(|message| JsonValue::String(message.to_string()))
+        })
+        .collect::<Vec<_>>();
+    obj.insert("warnings".to_string(), JsonValue::Array(warnings));
+}
+
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -780,6 +796,13 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         let mut model = parsed.model;
         if let JsonValue::Object(obj) = &mut model {
             obj.remove("config");
+            if matches!(
+                parsed.meta.diagram_type.as_str(),
+                "block" | "gitGraph" | "flowchart-v2" | "flowchart-elk"
+            ) {
+                normalize_warning_facts_to_warnings(obj);
+            }
+
             if parsed.meta.diagram_type == "mindmap" && obj.get("diagramId").is_some() {
                 obj.insert(
                     "diagramId".to_string(),

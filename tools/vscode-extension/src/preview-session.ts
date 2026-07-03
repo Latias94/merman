@@ -24,6 +24,7 @@ export class PreviewSession {
   private lastPreviewEditorUri: string | undefined;
   private preferredEditorUri: string | undefined;
   private selectedSource: PreviewSourceSelection | undefined;
+  private lockedSourceSelection: PreviewSourceSelection | undefined;
   private theme: PreviewDiagramTheme = "source";
   private displayMode: PreviewDisplayMode = "svg";
   private background: PreviewBackground = "paper";
@@ -54,6 +55,7 @@ export class PreviewSession {
     this.lastPreviewEditorUri = undefined;
     this.preferredEditorUri = undefined;
     this.selectedSource = undefined;
+    this.lockedSourceSelection = undefined;
     this.theme = "source";
     this.displayMode = "svg";
     this.background = "paper";
@@ -64,6 +66,7 @@ export class PreviewSession {
     this.currentSnapshot = undefined;
     this.preferredEditorUri = undefined;
     this.selectedSource = undefined;
+    this.lockedSourceSelection = undefined;
   }
 
   rememberResource(uri: vscode.Uri, options: { preferOnce?: boolean } = {}): void {
@@ -75,6 +78,7 @@ export class PreviewSession {
 
   clearSelectedSource(): void {
     this.selectedSource = undefined;
+    this.lockedSourceSelection = undefined;
   }
 
   setLocked(locked: boolean): boolean {
@@ -82,6 +86,12 @@ export class PreviewSession {
       return false;
     }
     this.locked = locked;
+    if (locked) {
+      this.lockCurrentSnapshotSource();
+    } else if (this.lockedSourceSelection && sameSelection(this.selectedSource, this.lockedSourceSelection)) {
+      this.selectedSource = undefined;
+      this.lockedSourceSelection = undefined;
+    }
     return true;
   }
 
@@ -168,6 +178,7 @@ export class PreviewSession {
       uri: editor.document.uri.toString(),
       sourceId: input.sourceId,
     };
+    this.lockedSourceSelection = undefined;
     return true;
   }
 
@@ -252,9 +263,30 @@ export class PreviewSession {
       locked: this.locked,
     });
   }
+
+  private lockCurrentSnapshotSource(): void {
+    if (!this.currentSnapshot || this.selectedSource) {
+      return;
+    }
+
+    const selection = {
+      uri: this.currentSnapshot.documentUri,
+      sourceId: this.currentSnapshot.input.sourceId,
+    };
+    this.selectedSource = selection;
+    this.lockedSourceSelection = selection;
+    this.lastPreviewEditorUri = selection.uri;
+  }
 }
 
 interface PreviewSourceSelection {
   uri: string;
   sourceId: string;
+}
+
+function sameSelection(
+  first: PreviewSourceSelection | undefined,
+  second: PreviewSourceSelection | undefined,
+): boolean {
+  return !!first && !!second && first.uri === second.uri && first.sourceId === second.sourceId;
 }

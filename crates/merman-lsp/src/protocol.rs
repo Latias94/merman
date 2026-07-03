@@ -282,7 +282,15 @@ fn analysis_options_schema(
             }
         },
         "allOf": [
-            { "$ref": "#/$defs/analysisOptions" }
+            { "$ref": "#/$defs/analysisOptions" },
+            {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                    "merman": { "$ref": "#/$defs/analysisOptions" },
+                    "analysis": { "$ref": "#/$defs/analysisOptions" }
+                }
+            }
         ]
     })
 }
@@ -402,6 +410,18 @@ mod tests {
         assert_eq!(
             response.schema["$defs"]["severity"]["enum"],
             json!(["error", "warning", "info", "hint"])
+        );
+        assert_eq!(
+            response.schema["allOf"][0],
+            json!({ "$ref": "#/$defs/analysisOptions" })
+        );
+        assert_eq!(
+            response.schema["allOf"][1]["properties"]["merman"],
+            json!({ "$ref": "#/$defs/analysisOptions" })
+        );
+        assert_eq!(
+            response.schema["allOf"][1]["properties"]["analysis"],
+            json!({ "$ref": "#/$defs/analysisOptions" })
         );
     }
 }

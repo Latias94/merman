@@ -15,6 +15,9 @@
     "vertexCalls": [],
     "nodes": [],
     "edges": [],
-    "subgraphs": []
+    "subgraphs": [],
+    "warnings": [
+      "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`"
+    ]
   }
 }

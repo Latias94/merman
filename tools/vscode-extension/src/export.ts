@@ -1,5 +1,4 @@
 import * as path from "node:path";
-import * as cp from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as vscode from "vscode";
@@ -14,6 +13,7 @@ import {
   type ExportFormat,
   type ExportPreset,
 } from "./export-options.js";
+import { runClipboardCommand } from "./clipboard-command.js";
 import { renderMermanSource } from "./renderer.js";
 import {
   extractPreviewInput,
@@ -217,70 +217,6 @@ async function copyPng(
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
-}
-
-export function runClipboardCommand(
-  command: string,
-  args: readonly string[],
-  stdin?: Buffer,
-  timeoutMs = 30000,
-  killGraceMs = 1000,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let timedOut = false;
-    let killTimer: NodeJS.Timeout | undefined;
-    const timeoutTimer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      killTimer = setTimeout(() => {
-        if (!settled && child.exitCode === null && child.signalCode === null) {
-          child.kill("SIGKILL");
-        }
-      }, killGraceMs);
-    }, timeoutMs);
-    const child = cp.spawn(command, args, {
-      stdio: stdin ? "pipe" : "ignore",
-      windowsHide: true,
-    });
-    const clearTimers = (): void => {
-      clearTimeout(timeoutTimer);
-      if (killTimer) {
-        clearTimeout(killTimer);
-      }
-    };
-    const rejectOnce = (error: Error): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimers();
-      reject(error);
-    };
-    const resolveOnce = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimers();
-      resolve();
-    };
-    child.on("error", rejectOnce);
-    child.on("close", (code) => {
-      if (timedOut) {
-        rejectOnce(new Error(`${command} timed out.`));
-        return;
-      }
-      if (code === 0) {
-        resolveOnce();
-      } else {
-        rejectOnce(new Error(`${command} exited with status ${code ?? "unknown"}`));
-      }
-    });
-    if (stdin) {
-      child.stdin?.end(stdin);
-    }
-  });
 }
 
 async function resolveExportSource(

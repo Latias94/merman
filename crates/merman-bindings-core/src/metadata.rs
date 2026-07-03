@@ -70,7 +70,7 @@ pub const fn binding_capabilities() -> BindingCapabilities {
         text_measurement: TextMeasurementCapabilities {
             vendored: cfg!(feature = "render"),
             deterministic: cfg!(feature = "render"),
-            host_callback: false,
+            host_callback: cfg!(feature = "render"),
             font_assets: false,
         },
     }
@@ -296,7 +296,10 @@ mod tests {
             capabilities.text_measurement.deterministic,
             cfg!(feature = "render")
         );
-        assert!(!capabilities.text_measurement.host_callback);
+        assert_eq!(
+            capabilities.text_measurement.host_callback,
+            cfg!(feature = "render")
+        );
         assert!(!capabilities.text_measurement.font_assets);
     }
 
@@ -318,7 +321,10 @@ mod tests {
             capabilities["editor_language"],
             cfg!(feature = "editor-language")
         );
-        assert_eq!(capabilities["text_measurement"]["host_callback"], false);
+        assert_eq!(
+            capabilities["text_measurement"]["host_callback"],
+            cfg!(feature = "render")
+        );
         assert_eq!(capabilities["text_measurement"]["font_assets"], false);
     }
 

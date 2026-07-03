@@ -16,11 +16,60 @@ pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload, uri: &Url) -> 
         .collect()
 }
 
+pub fn analysis_payload_to_versioned_diagnostics(
+    payload: &AnalysisPayload,
+    uri: &Url,
+    document_version: i32,
+) -> Vec<Diagnostic> {
+    analysis_payload_to_editor_diagnostics(payload)
+        .into_iter()
+        .map(|diagnostic| editor_diagnostic_to_versioned_lsp(diagnostic, uri, document_version))
+        .collect()
+}
+
 pub fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) -> Diagnostic {
     editor_diagnostic_to_lsp(analysis_diagnostic_to_editor(diagnostic), uri)
 }
 
+#[cfg(test)]
+pub fn analysis_diagnostic_to_versioned_lsp(
+    diagnostic: &AnalysisDiagnostic,
+    uri: &Url,
+    document_version: i32,
+) -> Diagnostic {
+    editor_diagnostic_to_versioned_lsp(
+        analysis_diagnostic_to_editor(diagnostic),
+        uri,
+        document_version,
+    )
+}
+
 pub fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diagnostic {
+    let data = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| serde_json::to_value(data).ok());
+    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data)
+}
+
+pub fn editor_diagnostic_to_versioned_lsp(
+    diagnostic: EditorDiagnostic,
+    uri: &Url,
+    document_version: i32,
+) -> Diagnostic {
+    let mut data = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| serde_json::to_value(data).ok());
+    attach_document_version(&mut data, document_version);
+    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data)
+}
+
+fn editor_diagnostic_to_lsp_with_data(
+    diagnostic: EditorDiagnostic,
+    uri: &Url,
+    data: Option<serde_json::Value>,
+) -> Diagnostic {
     let code = NumberOrString::String(diagnostic.code.clone());
     let code_description = code_description(&diagnostic.code);
     let tags = diagnostic_tags(diagnostic.data.as_ref());
@@ -33,9 +82,16 @@ pub fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diag
         related_information: related_information(diagnostic.related, uri),
         tags,
         code_description,
-        data: diagnostic
-            .data
-            .and_then(|data| serde_json::to_value(data).ok()),
+        data,
+    }
+}
+
+fn attach_document_version(data: &mut Option<serde_json::Value>, document_version: i32) {
+    if let Some(serde_json::Value::Object(object)) = data {
+        object.insert(
+            "documentVersion".to_string(),
+            serde_json::Value::from(document_version),
+        );
     }
 }
 

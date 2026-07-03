@@ -770,7 +770,16 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfi
                 == Some("Move deprecated `flowchart.htmlLabels` to root `htmlLabels`")
         })
         .expect("missing deprecated htmlLabels quickfix");
-    let edits = action["edit"]["changes"][uri.as_str()]
+    let document_change = action["edit"]["documentChanges"]
+        .as_array()
+        .and_then(|changes| changes.first())
+        .expect("expected versioned document change");
+    assert_eq!(
+        document_change["textDocument"]["uri"].as_str(),
+        Some(uri.as_str())
+    );
+    assert_eq!(document_change["textDocument"]["version"].as_i64(), Some(1));
+    let edits = document_change["edits"]
         .as_array()
         .expect("expected text edits");
     assert!(edits.iter().any(|edit| {

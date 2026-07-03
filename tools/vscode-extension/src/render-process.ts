@@ -10,6 +10,7 @@ export interface RenderProcessRequest {
   killGraceMs?: number;
   maxStdoutBytes?: number;
   maxStderrBytes?: number;
+  spawnProcess?: RenderProcessSpawner;
 }
 
 export interface RenderProcessResult {
@@ -21,6 +22,12 @@ export interface RenderProcessResult {
 const DEFAULT_MAX_STDOUT_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_STDERR_BYTES = 1024 * 1024;
 
+export type RenderProcessSpawner = (
+  command: string,
+  args: readonly string[],
+  options: cp.SpawnOptionsWithoutStdio,
+) => cp.ChildProcessWithoutNullStreams;
+
 export function runRenderProcess(request: RenderProcessRequest): Promise<RenderProcessResult> {
   return new Promise<RenderProcessResult>((resolve, reject) => {
     let settled = false;
@@ -31,11 +38,15 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
     let stderrBytes = 0;
     const maxStdoutBytes = request.maxStdoutBytes ?? DEFAULT_MAX_STDOUT_BYTES;
     const maxStderrBytes = request.maxStderrBytes ?? DEFAULT_MAX_STDERR_BYTES;
-    const child = cp.spawn(request.invocation.command, request.invocation.args, {
-      cwd: request.invocation.cwd,
-      env: process.env,
-      stdio: "pipe",
-    });
+    const child = (request.spawnProcess ?? spawnRenderProcess)(
+      request.invocation.command,
+      request.invocation.args,
+      {
+        cwd: request.invocation.cwd,
+        env: process.env,
+        stdio: "pipe",
+      },
+    );
     const clearTimers = (): void => {
       if (timeoutTimer) {
         clearTimeout(timeoutTimer);
@@ -109,6 +120,7 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       request.signal?.removeEventListener("abort", abort);
       rejectOnce(error);
     });
+    child.stdin.on("error", rejectOnce);
     child.on("close", (code, signal) => {
       request.signal?.removeEventListener("abort", abort);
       clearTimers();
@@ -134,6 +146,14 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
         invocation: request.invocation,
       });
     });
-    child.stdin?.end(request.source, "utf8");
+    child.stdin.end(request.source, "utf8");
   });
+}
+
+function spawnRenderProcess(
+  command: string,
+  args: readonly string[],
+  options: cp.SpawnOptionsWithoutStdio,
+): cp.ChildProcessWithoutNullStreams {
+  return cp.spawn(command, [...args], options);
 }

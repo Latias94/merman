@@ -165,7 +165,7 @@ impl SourceMap {
 fn line_starts(source: &str) -> Vec<usize> {
     let mut starts = vec![0];
     for (idx, byte) in source.bytes().enumerate() {
-        if byte == b'\n' && idx + 1 < source.len() {
+        if byte == b'\n' {
             starts.push(idx + 1);
         }
     }
@@ -182,7 +182,7 @@ mod tests {
 
         assert_eq!(map.line_col(0).unwrap(), LineCol::new(1, 1));
         assert_eq!(map.line_col(13).unwrap(), LineCol::new(2, 1));
-        assert_eq!(map.line_col(map.source_len()).unwrap(), LineCol::new(2, 7));
+        assert_eq!(map.line_col(map.source_len()).unwrap(), LineCol::new(3, 1));
     }
 
     #[test]

@@ -160,6 +160,32 @@ describe("preview session", () => {
     assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi");
     assert.equal(snapshot?.locked, true);
   });
+
+  it("locks the current Markdown fence even when it was selected by cursor position", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 6);
+    const editedOnOtherFence = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 1);
+
+    session.rememberResource(original.document.uri);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    let snapshot = session.createSnapshot(editedOnOtherFence, [editedOnOtherFence], emptyDiagnostics);
+
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.locked, true);
+    assert.equal(snapshot?.selected, true);
+
+    assert.equal(session.setLocked(false), true);
+    snapshot = session.createSnapshot(editedOnOtherFence, [editedOnOtherFence], emptyDiagnostics);
+
+    assert.equal(snapshot?.input.sourceId, "fence-1");
+    assert.equal(snapshot?.locked, false);
+    assert.equal(snapshot?.selected, false);
+  });
 });
 
 function emptyDiagnostics() {

@@ -62,6 +62,10 @@
       }
     ],
     "edges": [],
-    "subgraphs": []
+    "subgraphs": [],
+    "warnings": [
+      "Style applied to unknown node \"S\". This may indicate a typo. The node will be created automatically.",
+      "Style applied to unknown node \"T\". This may indicate a typo. The node will be created automatically."
+    ]
   }
 }

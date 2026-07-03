@@ -102,6 +102,9 @@
       }
     ],
     "edges": [],
-    "subgraphs": []
+    "subgraphs": [],
+    "warnings": [
+      "Style applied to unknown node \"D\". This may indicate a typo. The node will be created automatically."
+    ]
   }
 }
