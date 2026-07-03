@@ -18,9 +18,9 @@ use merman_editor_core::{
     DocumentKind, DocumentSnapshot, DocumentWorkspace, EditorDiagnostic, EditorDocumentSymbol,
     EditorHover, EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit,
     Position, Range, SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
-    analysis_payload_to_diagnostics, completion_for_snapshot, document_symbols, goto_definition,
-    hover, prepare_rename, references, rename, semantic_token_legend, semantic_tokens_for_snapshot,
-    workspace_symbols,
+    analysis_payload_to_diagnostics, code_actions_from_fixes, completion_for_snapshot,
+    document_symbols, goto_definition, hover, prepare_rename, references, rename,
+    semantic_token_legend, semantic_tokens_for_snapshot, workspace_symbols,
 };
 use serde::Serialize;
 #[cfg(feature = "editor-language")]
@@ -753,41 +753,29 @@ fn code_actions_for_diagnostics(
             let Some(data) = diagnostic.data.as_ref() else {
                 return Vec::new();
             };
-            data.fixes
-                .iter()
-                .filter_map(|fix| {
-                    let edits = fix
+            code_actions_from_fixes(&data.fixes)
+                .into_iter()
+                .map(|action| {
+                    let edits = action
                         .edits
-                        .iter()
+                        .into_iter()
                         .map(|edit| WasmTextEdit {
                             fact_source: None,
-                            range: Range::new(
-                                Position::new(
-                                    edit.span.lsp_range.start.line,
-                                    edit.span.lsp_range.start.character,
-                                ),
-                                Position::new(
-                                    edit.span.lsp_range.end.line,
-                                    edit.span.lsp_range.end.character,
-                                ),
-                            ),
-                            new_text: edit.replacement.clone(),
+                            range: edit.range,
+                            new_text: edit.new_text,
                         })
                         .collect::<Vec<_>>();
-                    if edits.is_empty() {
-                        return None;
-                    }
 
-                    Some(WasmCodeAction {
-                        title: fix.title.clone(),
+                    WasmCodeAction {
+                        title: action.title,
                         kind: "quickfix",
                         diagnostics: vec![diagnostic.clone()],
                         edit: WasmWorkspaceEdit {
                             fact_source: None,
                             changes: HashMap::from([(uri.to_string(), edits)]),
                         },
-                        is_preferred: fix.is_preferred,
-                    })
+                        is_preferred: action.is_preferred,
+                    }
                 })
                 .collect::<Vec<_>>()
         })
@@ -1342,6 +1330,63 @@ mod tests {
 
         let actions = code_actions_for_diagnostics(&diagnostics, "file:///tmp/example.mmd");
         assert!(actions.iter().all(|action| action.kind == "quickfix"));
+    }
+
+    #[cfg(feature = "editor-language")]
+    #[test]
+    fn wasm_code_actions_share_sorted_overlap_policy() {
+        let map = merman_analysis::SourceMap::new("0123456789");
+        let valid_later = map.span(5, 6).unwrap();
+        let valid_earlier = map.span(1, 2).unwrap();
+        let overlap_left = map.span(0, 4).unwrap();
+        let overlap_right = map.span(2, 5).unwrap();
+        let diagnostic = EditorDiagnostic {
+            range: Range::default(),
+            severity: merman_analysis::DiagnosticSeverity::Warning,
+            code: "merman.test".to_string(),
+            source: "merman".to_string(),
+            message: "test".to_string(),
+            related: Vec::new(),
+            data: Some(merman_editor_core::DiagnosticCodeActionData {
+                id: "merman.test".to_string(),
+                code: None,
+                code_name: None,
+                category: merman_analysis::DiagnosticCategory::Semantic,
+                diagram_type: None,
+                help: None,
+                fixes: vec![
+                    merman_analysis::DiagnosticFix::new(
+                        "Sort edits",
+                        vec![
+                            merman_analysis::DiagnosticFixEdit::new(valid_later, "late"),
+                            merman_analysis::DiagnosticFixEdit::new(valid_earlier, "early"),
+                        ],
+                    ),
+                    merman_analysis::DiagnosticFix::new(
+                        "Reject overlaps",
+                        vec![
+                            merman_analysis::DiagnosticFixEdit::new(overlap_right, "right"),
+                            merman_analysis::DiagnosticFixEdit::new(overlap_left, "left"),
+                        ],
+                    ),
+                ],
+            }),
+        };
+
+        let actions = code_actions_for_diagnostics(&[diagnostic], "file:///tmp/example.mmd");
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].title, "Sort edits");
+        let edits = actions[0]
+            .edit
+            .changes
+            .get("file:///tmp/example.mmd")
+            .expect("uri edits");
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].range.start, Position::new(0, 1));
+        assert_eq!(edits[0].new_text, "early");
+        assert_eq!(edits[1].range.start, Position::new(0, 5));
+        assert_eq!(edits[1].new_text, "late");
     }
 
     #[test]

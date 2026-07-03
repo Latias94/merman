@@ -5,6 +5,7 @@
 //! This crate owns editor-facing document state and query semantics without depending on LSP,
 //! WASM, Monaco, or TypeScript protocol types.
 
+pub mod code_actions;
 pub mod completion;
 pub mod context;
 pub mod diagnostics;
@@ -14,6 +15,9 @@ pub mod structure;
 pub mod types;
 pub mod workspace;
 
+pub use code_actions::{
+    EditorCodeAction, EditorCodeActionEdit, code_action_from_fix, code_actions_from_fixes,
+};
 pub use completion::{
     CompletionDataKind, CompletionInsertTextFormat, CompletionItem, CompletionItemKind,
     CompletionItemLabelDetails, CompletionList, CompletionResolveData, CompletionTextEdit,

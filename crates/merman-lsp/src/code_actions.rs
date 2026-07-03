@@ -1,8 +1,10 @@
-use crate::protocol::utf16_position_to_lsp;
-use merman_editor_core::DiagnosticCodeActionData;
+use merman_editor_core::{
+    DiagnosticCodeActionData, EditorCodeActionEdit, Position as EditorPosition,
+    code_actions_from_fixes,
+};
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
-    Diagnostic, Range, TextEdit, Url, WorkspaceEdit,
+    Diagnostic, TextEdit, Url, WorkspaceEdit,
 };
 
 pub fn code_actions_for_params(params: &CodeActionParams) -> Option<CodeActionResponse> {
@@ -42,17 +44,17 @@ fn code_actions_for_diagnostic(diagnostic: &Diagnostic, uri: &Url) -> Vec<CodeAc
         return Vec::new();
     };
 
-    data.fixes
+    code_actions_from_fixes(&data.fixes)
         .into_iter()
-        .filter_map(|fix| {
-            let edit = workspace_edit_for_fix(&fix, uri)?;
+        .filter_map(|action| {
+            let edit = workspace_edit_for_edits(&action.edits, uri)?;
             Some(tower_lsp::lsp_types::CodeAction {
-                title: fix.title,
+                title: action.title,
                 kind: Some(CodeActionKind::QUICKFIX),
                 diagnostics: Some(vec![diagnostic.clone()]),
                 edit: Some(edit),
                 command: None,
-                is_preferred: fix.is_preferred.then_some(true),
+                is_preferred: action.is_preferred.then_some(true),
                 disabled: None,
                 data: None,
             })
@@ -61,39 +63,21 @@ fn code_actions_for_diagnostic(diagnostic: &Diagnostic, uri: &Url) -> Vec<CodeAc
         .collect::<Vec<_>>()
 }
 
-fn workspace_edit_for_fix(
-    fix: &merman_analysis::DiagnosticFix,
+fn workspace_edit_for_edits(
+    planned_edits: &[EditorCodeActionEdit],
     uri: &Url,
 ) -> Option<WorkspaceEdit> {
-    let mut edits = fix
-        .edits
+    let edits = planned_edits
         .iter()
         .map(|edit| {
-            let range = Range {
-                start: utf16_position_to_lsp(edit.span.lsp_range.start),
-                end: utf16_position_to_lsp(edit.span.lsp_range.end),
-            };
-            TextEdit::new(range, edit.replacement.clone())
+            let range = tower_lsp::lsp_types::Range::new(
+                editor_position_to_lsp(edit.range.start),
+                editor_position_to_lsp(edit.range.end),
+            );
+            TextEdit::new(range, edit.new_text.clone())
         })
         .collect::<Vec<_>>();
     if edits.is_empty() {
-        return None;
-    }
-    edits.sort_by(|left, right| {
-        (
-            left.range.start.line,
-            left.range.start.character,
-            left.range.end.line,
-            left.range.end.character,
-        )
-            .cmp(&(
-                right.range.start.line,
-                right.range.start.character,
-                right.range.end.line,
-                right.range.end.character,
-            ))
-    });
-    if has_overlapping_edits(&edits) {
         return None;
     }
 
@@ -107,14 +91,8 @@ fn workspace_edit_for_fix(
     })
 }
 
-fn has_overlapping_edits(edits: &[TextEdit]) -> bool {
-    edits.windows(2).any(|window| {
-        let [left, right] = window else {
-            return false;
-        };
-        (left.range.end.line, left.range.end.character)
-            > (right.range.start.line, right.range.start.character)
-    })
+fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp::lsp_types::Position {
+    tower_lsp::lsp_types::Position::new(position.line as u32, position.character as u32)
 }
 
 #[cfg(test)]
@@ -123,7 +101,7 @@ mod tests {
     use crate::diagnostics::analysis_payload_to_diagnostics;
     use merman_analysis::{
         AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticCategory,
-        DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, Utf16Position,
+        DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, SourceMap, Utf16Position,
         document::analyze_document,
     };
     use merman_editor_core::DiagnosticCodeActionData;
@@ -327,6 +305,61 @@ mod tests {
         };
 
         assert!(code_actions_for_params(&params).is_none());
+    }
+
+    #[test]
+    fn non_overlapping_fix_edits_are_sorted() {
+        let mut diagnostic = diagnostic_with_fix();
+        let map = SourceMap::new("0123456789");
+        let data = DiagnosticCodeActionData {
+            id: "merman.test".to_string(),
+            code: None,
+            code_name: None,
+            category: DiagnosticCategory::Semantic,
+            diagram_type: None,
+            help: None,
+            fixes: vec![DiagnosticFix::new(
+                "Sorted replacement",
+                vec![
+                    DiagnosticFixEdit::new(map.span(5, 6).unwrap(), "late"),
+                    DiagnosticFixEdit::new(map.span(1, 2).unwrap(), "early"),
+                ],
+            )],
+        };
+        diagnostic.data = Some(serde_json::to_value(data).unwrap());
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 9),
+            },
+            context: CodeActionContext {
+                diagnostics: vec![diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_params(&params).expect("expected quickfix action");
+        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+            panic!("expected code action")
+        };
+        let edits = action
+            .edit
+            .as_ref()
+            .unwrap()
+            .changes
+            .as_ref()
+            .unwrap()
+            .get(&uri)
+            .unwrap();
+        assert_eq!(edits[0].range.start, Position::new(0, 1));
+        assert_eq!(edits[0].new_text, "early");
+        assert_eq!(edits[1].range.start, Position::new(0, 5));
+        assert_eq!(edits[1].new_text, "late");
     }
 
     #[test]
