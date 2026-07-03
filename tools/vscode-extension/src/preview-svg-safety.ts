@@ -8,6 +8,9 @@ const ACTIVE_SVG_ELEMENTS = new Set([
   "canvas",
 ]);
 
+const SAFE_RASTER_DATA_IMAGE_URL = /^data:image\/(?:png|gif|jpe?g|webp);base64,[a-z0-9+/=]*$/;
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/;
+
 interface SvgTag {
   kind: "start" | "end";
   name: string;
@@ -190,20 +193,26 @@ function assertSafeAttributes(attributes: SvgAttribute[]): void {
 function assertSafeUrl(value: string, source: "attribute" | "css"): void {
   const compact = removeAsciiWhitespaceAndControl(value).toLowerCase();
   const trimmed = value.trim().toLowerCase();
-  if (compact.startsWith("javascript:") || compact.startsWith("data:text/html")) {
-    throw new Error(
-      source === "css"
-        ? "Preview renderer returned SVG with unsafe CSS URL references."
-        : "Preview renderer returned SVG with unsafe URL attributes.",
-    );
+  if (compact.startsWith("#") || SAFE_RASTER_DATA_IMAGE_URL.test(compact)) {
+    return;
   }
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("//")) {
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("//") ||
+    !URL_SCHEME.test(compact)
+  ) {
     throw new Error(
       source === "css"
         ? "Preview renderer returned SVG with external CSS resource references."
         : "Preview renderer returned SVG with external resource references.",
     );
   }
+  throw new Error(
+    source === "css"
+      ? "Preview renderer returned SVG with unsafe CSS URL references."
+      : "Preview renderer returned SVG with unsafe URL attributes.",
+  );
 }
 
 function assertSafeCss(css: string): void {

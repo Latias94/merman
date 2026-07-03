@@ -20,6 +20,14 @@ describe("preview SVG safety", () => {
     );
   });
 
+  it("accepts local fragment and raster data URL references", () => {
+    assert.doesNotThrow(() =>
+      assertSafePreviewSvg(
+        '<svg><defs><linearGradient id="fill"></linearGradient></defs><rect fill="url(#fill)"/><a href="#node">x</a><image href="data:image/png;base64,iVBORw0KGgo="/></svg>',
+      ),
+    );
+  });
+
   it("rejects non-SVG renderer output", () => {
     assert.throws(() => assertSafePreviewSvg("<html></html>"), /non-SVG/);
   });
@@ -39,16 +47,30 @@ describe("preview SVG safety", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><a href="java&#115;cript:alert(1)">x</a></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><a xlink:href="JavaScript:alert(1)">x</a></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><image href="data:text/html,hello"/></svg>'), /unsafe URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><image href="file:///etc/passwd"/></svg>'), /unsafe URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><a href="command:workbench.action.openSettings">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><a href="vscode://file/path">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><a href="foo:bar">x</a></svg>'), /unsafe URL/);
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><image href="data:image/svg+xml,%3Csvg%20onload%3Dalert(1)%3E"/></svg>'),
+      /unsafe URL/,
+    );
   });
 
   it("rejects external resource references", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><image href="https://example.com/a.png"/></svg>'), /external/);
     assert.throws(() => assertSafePreviewSvg('<svg><use href="//example.com/sprite.svg#x"/></svg>'), /external/);
+    assert.throws(() => assertSafePreviewSvg('<svg><image href="images/a.png"/></svg>'), /external/);
   });
 
   it("rejects unsafe CSS references", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(javascript:alert(1))">x</text></svg>'), /CSS URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(jav\\61script:alert(1))">x</text></svg>'), /CSS URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(file:///tmp/a.svg)">x</text></svg>'), /CSS URL/);
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><text style="fill:url(data:image/svg+xml,%3Csvg%3E)">x</text></svg>'),
+      /CSS URL/,
+    );
     assert.throws(() => assertSafePreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: url(//example.com/a.svg#x); }</style></svg>'), /CSS resource/);
   });
