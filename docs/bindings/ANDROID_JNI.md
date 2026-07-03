@@ -39,7 +39,8 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 
 The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
 initialization. `MermanReusableEngine` exposes repeated render/parse/layout/analysis/validation
-calls and a `MermanTextMeasurer` callback for hosts that need font-aware text measurement.
+calls, including `MermanReusableEngine.analyzeJson(source)`, and a `MermanTextMeasurer` callback for
+hosts that need font-aware text measurement.
 `MermanEngine.lintRuleCatalogJson()` exposes the shared analyzer rule catalog as JSON, including
 evidence references, so Android hosts can build settings or LSP-related UI from the same rule
 metadata as CLI and other bindings.
@@ -69,6 +70,7 @@ semantic JSON, layout JSON, validation JSON, and metadata from Android/Kotlin.
 kotlinc platforms/android/src/main/kotlin/io/merman/*.kt -d target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
+cargo check -p merman-ffi --target aarch64-linux-android --no-default-features
 cargo clippy -p merman-ffi --target aarch64-linux-android -- -D warnings
 python3 platforms/android/build-android.py --targets aarch64-linux-android
 ```

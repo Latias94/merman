@@ -73,11 +73,13 @@ governed analyzer rule table and its evidence references without hard-coding the
 | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
 | `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
 
-`npm run prepack --prefix platforms/web` requires `browser-full` unless
-`MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package. This protects
-the public npm package from accidentally publishing a slim artifact under the default import path.
-It also checks that every package subpath has matching TypeScript, wasm-bindgen, WASM, and preset
-manifest artifacts.
+`npm run check:contracts --prefix platforms/web` compares the wasm-bindgen full declarations with
+the hand-written TypeScript wrapper, `MermanWasmModule`, `bindSurfaceRuntime()`, and the generated
+subpath entry templates. `npm run prepack --prefix platforms/web` runs that contract check and
+requires `browser-full` unless `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional
+local slim package. This protects the public npm package from accidentally publishing a slim artifact
+under the default import path. It also checks that every package subpath has matching TypeScript,
+wasm-bindgen, WASM, and preset manifest artifacts.
 
 There is intentionally no `@mermanjs/web/analysis` subpath. `@mermanjs/web/core` is already the
 smallest analysis-capable browser artifact because analysis, validation, registry metadata, and
@@ -117,7 +119,7 @@ Current release semantics are intentionally explicit:
 
 | Surface | Required local gate before release changes |
 | --- | --- |
-| Browser npm package | `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
+| Browser npm package | `npm run check:contracts --prefix platforms/web`; `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
 | Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
 | Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
 | Typst transport | `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`; `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; `cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; PR CI compiles Typst package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs `wasm-size-matrix` plus `typst-package-smoke --skip-wasm-build --tests-only` on Typst 0.15.0. |

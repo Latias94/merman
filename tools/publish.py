@@ -30,17 +30,29 @@ from typing import Iterable, Optional
 
 
 PUBLISH_ORDER = [
-    # Forked dependency used for Mermaid roughjs parity.
-    "roughr-merman",
     # Layout stack.
     "dugong-graphlib",
-    "dugong",
     "manatee",
-    # Mermaid pipeline.
     "merman-core",
+    "merman-elk-layered",
+    # Forked dependency used for Mermaid roughjs parity.
+    "roughr-merman",
+    "dugong",
+    # Mermaid pipeline.
+    "merman-analysis",
+    "merman-ascii",
+    "merman-layout-elk",
+    "merman-editor-core",
     "merman-render",
     "merman",
+    "merman-lsp",
+    "merman-bindings-core",
     "merman-cli",
+    "merman-rustdoc",
+    "merman-ffi",
+    "merman-typst-plugin",
+    "merman-uniffi",
+    "merman-wasm",
 ]
 
 

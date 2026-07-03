@@ -28,6 +28,9 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all --check
 
+      - name: Verify release crate order docs
+        run: python3 scripts/verify-release-crate-order.py
+
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
         run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.sha }}"

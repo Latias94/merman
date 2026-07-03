@@ -31,10 +31,13 @@ wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
 | `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
 
 Run `npm run build:ts --prefix platforms/web` after a preset build when producing a complete local
-package.
+package. The TypeScript build first runs `npm run check:contracts --prefix platforms/web`, which
+checks the wasm-bindgen declarations against the public wrapper, `MermanWasmModule`, and the subpath
+runtime bindings.
 
 Each build writes `pkg/merman_wasm_preset.json`. `npm run prepack` expects `browser-full` unless
-`MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package.
+`MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package, and it also
+runs the wrapper/subpath contract check.
 
 Call `bindingCapabilities()` after `initMerman()` when you need to branch on optional surfaces.
 `bindingCapabilities().editor_language` is the supported contract for whether the artifact exposes
@@ -204,6 +207,10 @@ The package publishes subpaths for the core, render, ASCII, and full browser art
 artifact, and `lintRuleCatalog()` reports analyzer rule ids, evidence references, default profiles,
 origins, configurability, and fixability. The ASCII preset currently preserves the full core
 registry for compatibility with the browser ASCII implementation.
+
+Each published subpath has its own runtime state. Initializing `@mermanjs/web/core` in the same
+process as `@mermanjs/web/full` does not reuse or contaminate the default full module's capability
+cache.
 
 ## Web Worker integration
 
