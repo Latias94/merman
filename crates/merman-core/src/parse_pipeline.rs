@@ -27,7 +27,16 @@ pub(crate) struct ParsePipeline<'a> {
 
 struct EditorParseSourceMap<'a> {
     parser_input: &'a str,
-    offset: Option<usize>,
+    remap: EditorSourceRemap,
+}
+
+enum EditorSourceRemap {
+    None,
+    Offset(usize),
+    Normalized {
+        normalized_offset: usize,
+        normalized_to_original: Vec<usize>,
+    },
 }
 
 impl<'a> EditorParseSourceMap<'a> {
@@ -35,27 +44,40 @@ impl<'a> EditorParseSourceMap<'a> {
         if preprocessed == original {
             return Self {
                 parser_input: original,
-                offset: Some(0),
+                remap: EditorSourceRemap::None,
             };
         }
 
         if preprocessed.is_empty() {
             return Self {
                 parser_input: preprocessed,
-                offset: original.len().checked_sub(preprocessed.len()),
+                remap: EditorSourceRemap::Offset(original.len()),
             };
         }
 
         if let Some(offset) = original.rfind(preprocessed) {
             return Self {
                 parser_input: preprocessed,
-                offset: Some(offset),
+                remap: EditorSourceRemap::Offset(offset),
             };
+        }
+
+        if original.contains('\r') {
+            let (normalized, normalized_to_original) = normalize_original_with_offsets(original);
+            if let Some(normalized_offset) = normalized.rfind(preprocessed) {
+                return Self {
+                    parser_input: preprocessed,
+                    remap: EditorSourceRemap::Normalized {
+                        normalized_offset,
+                        normalized_to_original,
+                    },
+                };
+            }
         }
 
         Self {
             parser_input: original,
-            offset: None,
+            remap: EditorSourceRemap::None,
         }
     }
 
@@ -64,25 +86,78 @@ impl<'a> EditorParseSourceMap<'a> {
     }
 
     fn remap_facts(&self, facts: &mut EditorSemanticFacts) {
-        let Some(offset) = self.offset.filter(|offset| *offset != 0) else {
+        if matches!(
+            self.remap,
+            EditorSourceRemap::None | EditorSourceRemap::Offset(0)
+        ) {
             return;
-        };
+        }
 
         for symbol in &mut facts.symbols {
-            symbol.span = remap_source_span(symbol.span, offset);
-            symbol.selection = remap_source_span(symbol.selection, offset);
+            symbol.span = self.remap_source_span(symbol.span);
+            symbol.selection = self.remap_source_span(symbol.selection);
         }
         for diagnostic in &mut facts.diagnostics {
-            diagnostic.span = diagnostic.span.map(|span| remap_source_span(span, offset));
+            diagnostic.span = diagnostic.span.map(|span| self.remap_source_span(span));
         }
         for expected in &mut facts.expected_syntax {
-            expected.span = remap_source_span(expected.span, offset);
+            expected.span = self.remap_source_span(expected.span);
+        }
+    }
+
+    fn remap_source_span(&self, span: SourceSpan) -> SourceSpan {
+        SourceSpan::new(self.remap_offset(span.start), self.remap_offset(span.end))
+    }
+
+    fn remap_offset(&self, offset: usize) -> usize {
+        match &self.remap {
+            EditorSourceRemap::None => offset,
+            EditorSourceRemap::Offset(base) => offset + base,
+            EditorSourceRemap::Normalized {
+                normalized_offset,
+                normalized_to_original,
+            } => {
+                let normalized_index = normalized_offset + offset;
+                normalized_to_original
+                    .get(normalized_index)
+                    .copied()
+                    .unwrap_or_else(|| normalized_to_original.last().copied().unwrap_or(offset))
+            }
         }
     }
 }
 
-fn remap_source_span(span: SourceSpan, offset: usize) -> SourceSpan {
-    SourceSpan::new(span.start + offset, span.end + offset)
+fn normalize_original_with_offsets(original: &str) -> (String, Vec<usize>) {
+    let mut normalized = String::with_capacity(original.len());
+    let mut normalized_to_original = Vec::with_capacity(original.len() + 1);
+    let bytes = original.as_bytes();
+    let mut offset = 0;
+
+    while offset < bytes.len() {
+        normalized_to_original.push(offset);
+        if bytes[offset] == b'\r' {
+            normalized.push('\n');
+            offset += if bytes.get(offset + 1) == Some(&b'\n') {
+                2
+            } else {
+                1
+            };
+            continue;
+        }
+
+        let ch = original[offset..]
+            .chars()
+            .next()
+            .expect("offset should be at a UTF-8 character boundary");
+        normalized.push(ch);
+        for byte_offset in 1..ch.len_utf8() {
+            normalized_to_original.push(offset + byte_offset);
+        }
+        offset += ch.len_utf8();
+    }
+
+    normalized_to_original.push(original.len());
+    (normalized, normalized_to_original)
 }
 
 impl<'a> ParsePipeline<'a> {

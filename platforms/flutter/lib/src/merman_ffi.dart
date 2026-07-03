@@ -771,7 +771,8 @@ class MermanReusableEngine {
   ///
   /// Pass `null` to restore the native fallback measurer configured by the
   /// engine options. The callback must be fast and must not call back into the
-  /// same [MermanReusableEngine].
+  /// same [MermanReusableEngine]. If the callback throws, the native engine
+  /// falls back to its configured text measurer for that request.
   void setTextMeasurer(MermanTextMeasurer? measurer) {
     _ensureOpen();
     _closeTextMeasureCallback();
@@ -884,7 +885,12 @@ class MermanReusableEngine {
       return nativeResult;
     }
 
-    final result = measurer(MermanTextMeasureRequest._(request));
+    final MermanTextMeasureResult? result;
+    try {
+      result = measurer(MermanTextMeasureRequest._(request));
+    } catch (_) {
+      return nativeResult;
+    }
     if (result == null ||
         !result.width.isFinite ||
         !result.height.isFinite ||

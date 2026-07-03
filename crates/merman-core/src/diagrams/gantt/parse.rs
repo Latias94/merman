@@ -151,7 +151,7 @@ fn parse_click_statement(
     line_start: usize,
 ) -> std::result::Result<Option<ClickStatementParts<'_>>, String> {
     let trimmed = line.trim_start();
-    if !starts_with_case_insensitive(trimmed, "click") {
+    if !starts_with_click_keyword(trimmed, "click") {
         return Ok(None);
     }
     let leading = line.len().saturating_sub(trimmed.len());
@@ -168,6 +168,9 @@ fn parse_click_statement(
         start: line_start + leading + rest_start,
         end: line_start + leading + rest_start + ids_len,
     };
+    if ids.text.is_empty() {
+        return Err("invalid click statement: missing task id".to_string());
+    }
 
     let mut tail_offset = rest_start + ids_len;
     tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
@@ -177,6 +180,9 @@ fn parse_click_statement(
     while tail_offset < trimmed.len() {
         let tail = &trimmed[tail_offset..];
         if starts_with_click_keyword(tail, "href") {
+            if href.is_some() {
+                return Err("invalid click statement: duplicate href".to_string());
+            }
             let href_keyword_end = tail_offset + "href".len();
             let after_href = &trimmed[href_keyword_end..];
             let href_ws = leading_whitespace_len(after_href);
@@ -201,6 +207,9 @@ fn parse_click_statement(
         }
 
         if starts_with_click_keyword(tail, "call") {
+            if call.is_some() {
+                return Err("invalid click statement: duplicate callback".to_string());
+            }
             let call_keyword_end = tail_offset + "call".len();
             let after_call = &trimmed[call_keyword_end..];
             let call_ws = leading_whitespace_len(after_call);
@@ -229,6 +238,10 @@ fn parse_click_statement(
         }
 
         return Err(format!("invalid click statement tail: {tail:?}"));
+    }
+
+    if href.is_none() && call.is_none() {
+        return Err("invalid click statement: missing href or callback".to_string());
     }
 
     Ok(Some(ClickStatementParts { ids, href, call }))

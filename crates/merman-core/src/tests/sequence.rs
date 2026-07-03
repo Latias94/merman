@@ -193,6 +193,37 @@ Alice->>Bob: Hello"#;
 }
 
 #[test]
+fn parse_sequence_editor_facts_crlf_frontmatter_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "sequenceDiagram\r\n",
+        "participant Alice\r\n",
+        "Alice->>Bob: Hello",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let alice = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Alice participant symbol");
+    let alice_start = text.find("Alice").unwrap();
+    assert_eq!(alice.selection.start, alice_start);
+    assert_eq!(alice.selection.end, alice_start + "Alice".len());
+}
+
+#[test]
 fn parse_sequence_editor_facts_init_directive_spans_use_original_source() {
     let engine = Engine::new();
     let text = r#"%%{init: {"theme": "dark"}}%%
@@ -217,6 +248,67 @@ Alice->>Bob: Hello"#;
     let bob_start = text.find("Bob").unwrap();
     assert_eq!(bob.selection.start, bob_start);
     assert_eq!(bob.selection.end, bob_start + "Bob".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_crlf_init_directive_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "%%{init: {\"theme\": \"dark\"}}%%\r\n",
+        "sequenceDiagram\r\n",
+        "participant Alice\r\n",
+        "Alice->>Bob: Hello",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let bob = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Bob"
+                && symbol.detail.as_deref() == Some("sequence participant reference")
+        })
+        .expect("Bob participant reference");
+    let bob_start = text.find("Bob").unwrap();
+    assert_eq!(bob.selection.start, bob_start);
+    assert_eq!(bob.selection.end, bob_start + "Bob".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "sequenceDiagram\r\n",
+        "participant 顧客\r\n",
+        "顧客->>サーバー: こんにちは",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let customer = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "顧客" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Unicode participant symbol");
+    let customer_start = text.find("顧客").unwrap();
+    assert_eq!(customer.selection.start, customer_start);
+    assert_eq!(customer.selection.end, customer_start + "顧客".len());
 }
 
 #[test]

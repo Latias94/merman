@@ -1053,6 +1053,74 @@ click id1 href "https://example.com/" "open details"
 }
 
 #[test]
+fn gantt_task_text_starting_with_click_is_not_a_click_statement() {
+    let model = parse(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+Clickable task: id1, 2026-01-01, 1d
+clickhouse migration: id2, 2026-01-02, 1d
+"#,
+    );
+
+    let tasks = model["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks[0]["task"].as_str().unwrap(), "Clickable task");
+    assert_eq!(tasks[1]["task"].as_str().unwrap(), "clickhouse migration");
+    assert!(model["clickEvents"].as_object().unwrap().is_empty());
+    assert!(model["links"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn gantt_click_rejects_missing_action() {
+    let err = block_on(Engine::new().parse_diagram(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("invalid click statement"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn gantt_click_rejects_duplicate_href_or_call() {
+    for source in [
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "https://example.com/1" href "https://example.com/2"
+"#,
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 call first() call second()
+"#,
+    ] {
+        let err =
+            block_on(Engine::new().parse_diagram(source, ParseOptions::default())).unwrap_err();
+
+        assert!(
+            err.to_string().contains("invalid click statement"),
+            "unexpected error: {err}"
+        );
+    }
+}
+
+#[test]
 fn gantt_click_rejects_unrecognized_tail() {
     let err = block_on(Engine::new().parse_diagram(
         r#"
