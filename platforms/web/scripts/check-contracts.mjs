@@ -51,6 +51,24 @@ const requiredRuntimeBindings = [
   ...requiredRawWrappers,
   ...runtimeWrapperOnlyExports,
 ];
+const requiredTypeProperties = new Map([
+  [
+    "ResourceOptions",
+    ["max_class_nodes", "max_class_edges", "max_class_namespaces"],
+  ],
+  [
+    "AsciiRenderOptions",
+    ["relation_summary_diagnostics", "relationSummaryDiagnostics"],
+  ],
+  [
+    "CommonBindingOptions",
+    ["analysis", "merman"],
+  ],
+  [
+    "AnalysisBindingOptions",
+    ["resources"],
+  ],
+]);
 
 let failed = false;
 failed ||= reportMissing(
@@ -73,6 +91,14 @@ failed ||= reportMissing(
   "check-contracts: build-surface-packages.mjs will not regenerate runtime-bound wrappers",
   requiredRuntimeBindings.filter((name) => !generatedSurfaceBindings.has(name)),
 );
+
+for (const [interfaceName, requiredProperties] of requiredTypeProperties) {
+  const properties = extractInterfaceProperties(publicApi, interfaceName);
+  failed ||= reportMissing(
+    `check-contracts: ${interfaceName} is missing required option properties`,
+    requiredProperties.filter((name) => !properties.has(name)),
+  );
+}
 
 for (const entry of surfaceEntries) {
   const surfaceSource = path.join(root, "src", "surfaces", `${entry}.ts`);
@@ -110,7 +136,9 @@ function extractExportedFunctionNames(source) {
 
 function extractInterfaceProperties(source, interfaceName) {
   const escapedName = interfaceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = source.match(new RegExp(`export interface ${escapedName}\\s*\\{([\\s\\S]*?)\\n\\}`));
+  const match = source.match(
+    new RegExp(`export interface ${escapedName}(?:\\s+extends\\s+[^\\{]+)?\\s*\\{([\\s\\S]*?)\\n\\}`),
+  );
   if (!match) {
     throw new Error(`check-contracts: missing ${interfaceName} interface`);
   }

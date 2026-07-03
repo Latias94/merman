@@ -80,12 +80,16 @@ impl StdError for AnalysisOptionsJsonError {}
 pub fn analysis_options_from_json_value(
     value: &Value,
 ) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
+    analysis_options_json_from_json_value(value)?.to_analysis_options()
+}
+
+pub fn analysis_options_json_from_json_value(
+    value: &Value,
+) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
     let options_value = analysis_options_root_value(value);
-    let options: AnalysisOptionsJson =
-        serde_json::from_value(options_value.clone()).map_err(|err| {
-            AnalysisOptionsJsonError::new(format!("invalid analysis options JSON: {err}"))
-        })?;
-    options.to_analysis_options()
+    serde_json::from_value(options_value.clone()).map_err(|err| {
+        AnalysisOptionsJsonError::new(format!("invalid analysis options JSON: {err}"))
+    })
 }
 
 fn analysis_options_root_value(value: &Value) -> &Value {

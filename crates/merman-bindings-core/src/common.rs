@@ -288,12 +288,26 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
             format!("invalid options_json UTF-8: {err}"),
         )
     })?;
-    serde_json::from_str(text).map_err(|err| {
+    let value: serde_json::Value = serde_json::from_str(text).map_err(|err| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
             format!("invalid options_json: {err}"),
         )
-    })
+    })?;
+    let mut options: BindingOptions = serde_json::from_value(value.clone()).map_err(|err| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid options_json: {err}"),
+        )
+    })?;
+    options.analysis =
+        merman_analysis::analysis_options_json_from_json_value(&value).map_err(|err| {
+            BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!("invalid options_json: {err}"),
+            )
+        })?;
+    Ok(options)
 }
 
 pub(crate) fn source_text_utf8(bytes: &[u8]) -> Result<&str, BindingError> {
@@ -481,5 +495,66 @@ mod tests {
         assert_eq!(json["code_name"], BindingStatus::RenderError.code_name());
         assert_eq!(json["message"], "render failed");
         assert!(json["svg"].is_null());
+    }
+
+    #[test]
+    fn parse_options_accepts_analysis_wrapper_without_dropping_binding_options() {
+        let options = parse_options(
+            br#"{
+                "analysis": {
+                    "parse": { "suppress_errors": true },
+                    "resources": { "max_source_bytes": 4 }
+                },
+                "version": 1,
+                "svg": { "pipeline": "resvg-safe" }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(options.version, Some(1));
+        assert_eq!(
+            options
+                .analysis
+                .parse
+                .as_ref()
+                .and_then(|parse| parse.suppress_errors),
+            Some(true)
+        );
+        assert_eq!(
+            options
+                .analysis
+                .resources
+                .as_ref()
+                .and_then(|resources| resources.max_source_bytes),
+            Some(4)
+        );
+        #[cfg(feature = "render")]
+        assert_eq!(
+            options.svg.as_ref().and_then(|svg| svg.pipeline.as_deref()),
+            Some("resvg-safe")
+        );
+    }
+
+    #[test]
+    fn parse_options_accepts_merman_wrapper() {
+        let options = parse_options(
+            br#"{
+                "merman": {
+                    "lint": {
+                        "profile": "recommended"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            options
+                .analysis
+                .lint
+                .as_ref()
+                .and_then(|lint| lint.profile.as_deref()),
+            Some("recommended")
+        );
     }
 }

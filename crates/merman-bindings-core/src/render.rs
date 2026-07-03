@@ -758,6 +758,18 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
+    fn resource_limit_error_accepts_analysis_wrapper_options() {
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "analysis": { "resources": { "max_source_bytes": 4 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(err.message().contains("max_source_bytes"), "{err:?}");
+    }
+
+    #[test]
     fn invalid_resource_options_return_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",

@@ -33,6 +33,9 @@ export interface ResourceOptions {
   max_flowchart_nodes?: number;
   max_flowchart_edges?: number;
   max_flowchart_subgraphs?: number;
+  max_class_nodes?: number;
+  max_class_edges?: number;
+  max_class_namespaces?: number;
   max_label_bytes?: number;
 }
 
@@ -95,13 +98,19 @@ export interface HostThemeOptions {
 
 export type MermaidSiteConfig = Record<string, unknown>;
 
-export interface CommonBindingOptions {
-  version?: number;
+export interface AnalysisBindingOptions {
   fixed_today?: string;
   fixed_local_offset_minutes?: number;
   site_config?: MermaidSiteConfig;
   parse?: ParseOptions;
+  resources?: ResourceOptions;
   lint?: LintBindingOptions;
+}
+
+export interface CommonBindingOptions extends AnalysisBindingOptions {
+  version?: number;
+  analysis?: AnalysisBindingOptions;
+  merman?: AnalysisBindingOptions;
 }
 
 export type AsciiCharsetOption = "ascii" | "unicode";
@@ -157,6 +166,8 @@ export interface AsciiRenderOptions {
   xychartHorizontalPlotWidth?: number;
   max_grid_cells?: number;
   maxGridCells?: number;
+  relation_summary_diagnostics?: boolean;
+  relationSummaryDiagnostics?: boolean;
 }
 
 export interface AsciiBindingOptions extends CommonBindingOptions {
@@ -166,7 +177,6 @@ export interface AsciiBindingOptions extends CommonBindingOptions {
 export interface SvgBindingOptions extends CommonBindingOptions {
   host_theme?: HostThemeOptions;
   layout?: LayoutOptions;
-  resources?: ResourceOptions;
   svg?: SvgOptions;
 }
 
