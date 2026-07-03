@@ -70,7 +70,7 @@
   },
   "scripts": {
     "build": "npm run build:wasm && npm run build:surfaces && npm run build:ts",
-    "build:ts": "tsc -p tsconfig.build.json",
+    "build:ts": "npm run check:contracts && tsc -p tsconfig.build.json",
     "build:wasm": "node scripts/build-wasm.mjs",
     "build:surfaces": "node scripts/build-surface-packages.mjs",
     "build:wasm:core": "node scripts/build-wasm.mjs --preset browser-core",
@@ -78,8 +78,9 @@
     "build:wasm:ascii": "node scripts/build-wasm.mjs --preset browser-ascii",
     "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
     "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
+    "check:contracts": "node scripts/check-contracts.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "prepack": "node scripts/prepack-check.mjs",
+    "prepack": "npm run check:contracts && node scripts/prepack-check.mjs",
     "prepublishOnly": "npm run build && npm run smoke"
   },
   "files": [

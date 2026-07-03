@@ -1,9 +1,9 @@
 use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
     SemanticTokenKind, SemanticTokenModifier as CoreSemanticTokenModifier,
-    semantic_token_legend as core_semantic_token_legend, semantic_tokens::token_modifier_index,
-    semantic_tokens::token_type_index,
-    semantic_tokens_for_snapshot as core_semantic_tokens_for_snapshot,
+    semantic_token_legend as core_semantic_token_legend,
+    semantic_tokens_for_snapshot as core_semantic_tokens_for_snapshot, token_modifier_index,
+    token_type_index,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

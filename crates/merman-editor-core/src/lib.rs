@@ -5,15 +5,15 @@
 //! This crate owns editor-facing document state and query semantics without depending on LSP,
 //! WASM, Monaco, or TypeScript protocol types.
 
-pub mod code_actions;
-pub mod completion;
-pub mod context;
-pub mod diagnostics;
-pub mod semantic_tokens;
-pub mod snapshot;
-pub mod structure;
-pub mod types;
-pub mod workspace;
+mod code_actions;
+mod completion;
+mod context;
+mod diagnostics;
+mod semantic_tokens;
+mod snapshot;
+mod structure;
+mod types;
+mod workspace;
 
 pub use code_actions::{
     EditorCodeAction, EditorCodeActionEdit, code_action_from_fix, code_actions_from_fixes,
@@ -31,7 +31,7 @@ pub use diagnostics::{
 pub use merman_analysis::FenceTextIndexSource;
 pub use semantic_tokens::{
     SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
-    semantic_token_legend, semantic_tokens_for_snapshot,
+    semantic_token_legend, semantic_tokens_for_snapshot, token_modifier_index, token_type_index,
 };
 pub use snapshot::{DocumentSnapshot, FenceSnapshot};
 pub use structure::{
