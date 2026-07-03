@@ -367,8 +367,8 @@ pub struct SnapshotBuildRequest {
 
 impl SnapshotBuildRequest {
     pub fn build(&self) -> Arc<DocumentSnapshot> {
-        let mut workspace = DocumentWorkspace::with_analyzer(self.analyzer.clone());
-        let snapshot = workspace.upsert(
+        let snapshot = DocumentWorkspace::build_snapshot_with_analyzer(
+            &self.analyzer,
             self.document.uri.as_str(),
             self.document.version,
             self.document.text.to_string(),

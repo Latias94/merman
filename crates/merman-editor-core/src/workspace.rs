@@ -42,24 +42,45 @@ impl DocumentWorkspace {
         kind: DocumentKind,
     ) -> DocumentSnapshot {
         let uri = uri.into();
+        let snapshot = self.build_snapshot(uri.clone(), version, text, kind);
+        self.documents.insert(uri, snapshot.clone());
+        snapshot
+    }
+
+    pub fn build_snapshot(
+        &self,
+        uri: impl Into<DocumentUri>,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> DocumentSnapshot {
+        Self::build_snapshot_with_analyzer(&self.analyzer, uri, version, text, kind)
+    }
+
+    pub fn build_snapshot_with_analyzer(
+        analyzer: &Analyzer,
+        uri: impl Into<DocumentUri>,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> DocumentSnapshot {
+        let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
-        let analysis = analyze_document_result(&text, &self.analyzer, source.clone());
+        let analysis = analyze_document_result(&text, analyzer, source.clone());
         let fences = analysis
             .diagrams()
             .iter()
             .map(Self::fence_snapshot)
             .collect::<Vec<_>>();
-        let snapshot = DocumentSnapshot {
-            uri: uri.clone(),
+        DocumentSnapshot {
+            uri,
             version,
             kind,
             source,
             text,
             source_map: analysis.source_map().clone(),
             fences,
-        };
-        self.documents.insert(uri, snapshot.clone());
-        snapshot
+        }
     }
 
     pub fn get(&self, uri: &DocumentUri) -> Option<&DocumentSnapshot> {

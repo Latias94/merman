@@ -119,6 +119,25 @@ fn cursor_lookup_distinguishes_prose_from_mermaid_fences() {
 }
 
 #[test]
+fn build_snapshot_does_not_cache_document() {
+    let workspace = DocumentWorkspace::new();
+    let uri = DocumentUri::new("file:///tmp/example.mmd");
+    let snapshot = workspace.build_snapshot(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(snapshot.uri, uri);
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert!(workspace.get(&uri).is_none());
+}
+
+#[test]
 fn replacing_document_version_drops_stale_fence_state() {
     let mut workspace = DocumentWorkspace::new();
     let uri = DocumentUri::new("file:///tmp/example.mmd");
