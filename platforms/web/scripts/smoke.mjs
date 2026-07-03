@@ -48,6 +48,7 @@ if (args.length === 0) {
       process.exit(result.status ?? 1);
     }
   }
+  await runSameProcessSurfaceSmoke();
   console.log(
     `@mermanjs/web smoke matrix passed surfaces=${surfaceSmokeCases
       .map((smokeCase) => smokeCase.name)
@@ -531,6 +532,40 @@ function assertUnsupportedFormat(run) {
   }
   assert.ok(error, "expected MERMAN_UNSUPPORTED_FORMAT error");
   assert.equal(error.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+}
+
+async function runSameProcessSurfaceSmoke() {
+  const source = "flowchart TD\nA[Hello] --> B[World]";
+  const options = {
+    fixed_today: "2026-06-10",
+    fixed_local_offset_minutes: 0,
+    svg: { pipeline: "readable" },
+    layout: { text_measurer: "deterministic" },
+  };
+  const core = await import(resolveEntryModuleHref("./core"));
+  const full = await import(resolveEntryModuleHref("./full"));
+
+  await core.initMerman({
+    wasm: {
+      module_or_path: await readFile(
+        path.join(packageRoot, "pkg/core/merman_wasm_bg.wasm")
+      ),
+    },
+  });
+  assert.equal(core.bindingCapabilities().render, false);
+  assertUnsupportedFormat(() => core.renderSvg(source, options));
+
+  await full.initMerman({
+    wasm: {
+      module_or_path: await readFile(
+        path.join(packageRoot, "pkg/full/merman_wasm_bg.wasm")
+      ),
+    },
+  });
+  assert.equal(full.bindingCapabilities().render, true);
+  assert.match(full.renderSvg(source, options), /<svg/);
+  assert.equal(core.bindingCapabilities().render, false);
+  assertUnsupportedFormat(() => core.renderSvg(source, options));
 }
 
 function parseArgValue(inputArgs, name) {

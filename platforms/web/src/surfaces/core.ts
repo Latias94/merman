@@ -1,9 +1,5 @@
-import {
-  initMerman as initRootMerman,
-  type MermanInitOptions,
-  type MermanInitInput,
-  type MermanWasmModule,
-} from "../index.js";
+import { bindSurfaceRuntime } from "../surface-runtime.js";
+import type { MermanWasmModule } from "../index.js";
 export * from "../index.js";
 
 function surfaceLoader(): Promise<MermanWasmModule> {
@@ -11,13 +7,49 @@ function surfaceLoader(): Promise<MermanWasmModule> {
   return import("../../pkg/core/merman_wasm.js");
 }
 
-export function initMerman(init?: MermanInitInput) {
-  if (typeof init === "function") {
-    return initRootMerman(init);
-  }
-  const options: MermanInitOptions = init ?? {};
-  return initRootMerman({
-    loader: surfaceLoader,
-    ...options,
-  });
-}
+const runtime = bindSurfaceRuntime(surfaceLoader);
+
+export const {
+  initMerman,
+  getMerman,
+  isMermanInitialized,
+  renderSvg,
+  renderSvgWithTextMeasurer,
+  layoutJsonWithTextMeasurer,
+  renderSvgElement,
+  renderSvgToElement,
+  renderAscii,
+  parseJson,
+  parseObject,
+  layoutJson,
+  layoutObject,
+  analyze,
+  analyzeJson,
+  analysisFacts,
+  analyzeDocument,
+  analyzeDocumentFacts,
+  validate,
+  editorDiagnostics,
+  editorCodeActions,
+  editorCompletions,
+  editorHover,
+  editorDocumentSymbols,
+  editorWorkspaceSymbols,
+  editorDefinition,
+  editorReferences,
+  editorPrepareRename,
+  editorRename,
+  editorSemanticTokenLegend,
+  editorSemanticTokens,
+  bindingCapabilities,
+  selectedRegistryProfile,
+  supportedDiagrams,
+  diagramFamilyCapabilities,
+  lintRuleCatalog,
+  asciiSupportedDiagrams,
+  asciiCapabilities,
+  supportedThemes,
+  supportedHostThemePresets,
+  abiVersion,
+  packageVersion,
+} = runtime;

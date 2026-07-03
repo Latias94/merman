@@ -1,3 +1,9 @@
+import {
+  createMermanRuntimeState,
+  currentMermanRuntimeState,
+  type MermanRuntimeState,
+} from "./runtime-state.js";
+
 export interface ParseOptions {
   suppress_errors?: boolean;
 }
@@ -1012,36 +1018,32 @@ export interface MermanInitOptions {
 
 export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
 
-let wasmModule: MermanWasmModule | null = null;
-let initPromise: Promise<MermanWasmModule> | null = null;
-let supportedDiagramsCache: DiagramType[] | null = null;
-let asciiSupportedDiagramsCache: AsciiDiagramType[] | null = null;
-let asciiCapabilitiesCache: AsciiCapability[] | null = null;
-let diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null = null;
-let lintRuleCatalogCache: LintRuleCatalogEntry[] | null = null;
-let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
-let supportedThemesCache: ThemeName[] | null = null;
+const defaultRuntimeState = createMermanRuntimeState(defaultLoader);
 
 export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {
-  if (wasmModule) {
-    return Promise.resolve(wasmModule);
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  if (state.wasmModule) {
+    return Promise.resolve(state.wasmModule);
   }
-  if (initPromise) {
-    return initPromise;
+  if (state.initPromise) {
+    return state.initPromise;
   }
-  initPromise = doInit(init).catch((error) => {
-    initPromise = null;
+  state.initPromise = doInit(state, init).catch((error) => {
+    state.initPromise = null;
     throw error;
   });
-  return initPromise;
+  return state.initPromise;
 }
 
-async function doInit(init?: MermanInitInput): Promise<MermanWasmModule> {
+async function doInit(
+  state: MermanRuntimeState,
+  init?: MermanInitInput
+): Promise<MermanWasmModule> {
   const loader = typeof init === "function" ? init : init?.loader;
   const wasm = typeof init === "function" ? undefined : init?.wasm;
-  const module = loader ? await loader() : await defaultLoader();
+  const module = loader ? await loader() : await state.defaultLoader();
   await module.default(wasm);
-  wasmModule = module;
+  state.wasmModule = module;
   return module;
 }
 
@@ -1050,14 +1052,15 @@ async function defaultLoader(): Promise<MermanWasmModule> {
 }
 
 export function getMerman(): MermanWasmModule {
-  if (!wasmModule) {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  if (!state.wasmModule) {
     throw new Error("Merman WASM is not initialized. Call initMerman() first.");
   }
-  return wasmModule;
+  return state.wasmModule;
 }
 
 export function isMermanInitialized(): boolean {
-  return wasmModule !== null;
+  return currentMermanRuntimeState(defaultRuntimeState).wasmModule !== null;
 }
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
@@ -1466,41 +1469,46 @@ export function selectedRegistryProfile(): RegistryProfile {
 }
 
 export function supportedDiagrams(): DiagramType[] {
-  supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
-  return [...supportedDiagramsCache];
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
+  return [...state.supportedDiagramsCache];
 }
 
 export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
-  diagramFamilyCapabilitiesCache ??= (
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.diagramFamilyCapabilitiesCache ??= (
     getMerman().diagramFamilyCapabilities?.() ?? []
   ).map(normalizeDiagramFamilyCapability);
-  return diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
+  return state.diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
 }
 
 export function lintRuleCatalog(): LintRuleCatalogEntry[] {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
   const rules = getMerman().lintRuleCatalog?.();
   if (!rules) {
     throw new Error("Merman lintRuleCatalog() is not available in this artifact.");
   }
-  lintRuleCatalogCache ??= rules.map(normalizeLintRuleCatalogEntry);
-  return lintRuleCatalogCache.map((rule) => ({
+  state.lintRuleCatalogCache ??= rules.map(normalizeLintRuleCatalogEntry);
+  return state.lintRuleCatalogCache.map((rule) => ({
     ...rule,
     evidence: [...rule.evidence],
   }));
 }
 
 export function asciiSupportedDiagrams(): AsciiDiagramType[] {
-  asciiSupportedDiagramsCache ??= getMerman()
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.asciiSupportedDiagramsCache ??= getMerman()
     .asciiSupportedDiagrams()
     .map(assertAsciiDiagramType);
-  return [...asciiSupportedDiagramsCache];
+  return [...state.asciiSupportedDiagramsCache];
 }
 
 export function asciiCapabilities(): AsciiCapability[] {
-  asciiCapabilitiesCache ??= (
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.asciiCapabilitiesCache ??= (
     getMerman().asciiCapabilities?.() ?? fallbackAsciiCapabilities()
   ).map(normalizeAsciiCapability);
-  return asciiCapabilitiesCache.map((capability) => ({
+  return state.asciiCapabilitiesCache.map((capability) => ({
     ...capability,
     supported_semantics: [...capability.supported_semantics],
     limits: [...capability.limits],
@@ -1509,20 +1517,22 @@ export function asciiCapabilities(): AsciiCapability[] {
 }
 
 export function supportedThemes(): ThemeName[] {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
   const merman = getMerman();
-  supportedThemesCache ??= (
+  state.supportedThemesCache ??= (
     merman.supportedThemes?.() ??
     merman.themes?.() ??
     SUPPORTED_THEMES
   ).map(assertThemeName);
-  return [...supportedThemesCache];
+  return [...state.supportedThemesCache];
 }
 
 export function supportedHostThemePresets(): HostThemePresetName[] {
-  supportedHostThemePresetsCache ??= (
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.supportedHostThemePresetsCache ??= (
     getMerman().supportedHostThemePresets?.() ?? SUPPORTED_HOST_THEME_PRESETS
   ).map(assertHostThemePresetName);
-  return [...supportedHostThemePresetsCache];
+  return [...state.supportedHostThemePresetsCache];
 }
 
 export function abiVersion(): number {
