@@ -560,10 +560,12 @@ fn collect_editor_fact_from_token(
 
 fn collect_editor_facts_from_statements(statements: &[Stmt], facts: &mut EditorSemanticFacts) {
     let mut emitted_edge_label_spans = HashSet::new();
+    let mut seen_edge_ids = HashSet::new();
     collect_editor_facts_from_statements_with_seen_edges(
         statements,
         facts,
         &mut emitted_edge_label_spans,
+        &mut seen_edge_ids,
     );
 }
 
@@ -571,6 +573,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
     statements: &[Stmt],
     facts: &mut EditorSemanticFacts,
     emitted_edge_label_spans: &mut HashSet<(usize, usize)>,
+    seen_edge_ids: &mut HashSet<String>,
 ) {
     for stmt in statements {
         match stmt {
@@ -580,6 +583,9 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                 }
                 for edge in edges {
                     push_flowchart_edge_label_symbol(facts, edge, emitted_edge_label_spans);
+                    if let Some(id) = edge.id.as_deref() {
+                        seen_edge_ids.insert(id.to_string());
+                    }
                 }
             }
             Stmt::Node(node) => push_flowchart_node_symbol(facts, node),
@@ -589,6 +595,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                     &subgraph.statements,
                     facts,
                     emitted_edge_label_spans,
+                    seen_edge_ids,
                 );
             }
             Stmt::Style(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
@@ -600,14 +607,18 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                 target,
                 target_span,
                 ..
-            } => push_flowchart_span_symbol(
-                facts,
-                target,
-                "flowchart node",
-                EditorSemanticKind::Module,
-                *target_span,
-                EditorSemanticRole::Entity,
-            ),
+            } => {
+                if !seen_edge_ids.contains(target) {
+                    push_flowchart_span_symbol(
+                        facts,
+                        target,
+                        "flowchart node",
+                        EditorSemanticKind::Module,
+                        *target_span,
+                        EditorSemanticRole::Entity,
+                    );
+                }
+            }
             Stmt::Direction(_) => {}
         }
     }

@@ -2592,6 +2592,27 @@ fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_do_not_emit_edge_shape_data_as_node_symbol() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA e1@--> B\ne1@{ curve: basis }\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let edge_shape_data_start = text.rfind("e1@{").unwrap();
+    assert!(
+        !facts.symbols.iter().any(|symbol| {
+            symbol.name == "e1"
+                && symbol.detail.as_deref() == Some("flowchart node")
+                && symbol.selection
+                    == SourceSpan::new(edge_shape_data_start, edge_shape_data_start + 2)
+        }),
+        "edge shapeData target must not be projected as a node symbol"
+    );
+}
+
+#[test]
 fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
     let engine = Engine::new();
     let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";

@@ -108,6 +108,29 @@ fn navigation_ignores_payload_spans_and_tracks_entities() {
 }
 
 #[test]
+fn shape_data_nodes_are_navigation_targets_but_edge_shape_data_is_not() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nD@{ shape: rounded }\nD --> E\nA e1@--> B\ne1@{ curve: basis }\n"
+            .to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let symbols = document_symbols(&snapshot);
+    assert!(symbols[0].children.iter().any(|symbol| symbol.name == "D"));
+
+    let refs = references(&snapshot, Position::new(1, 0), true).unwrap();
+    assert_eq!(refs.len(), 2);
+    let prepare = prepare_rename(&snapshot, Position::new(1, 0)).unwrap();
+    assert_eq!(prepare.placeholder, "D");
+
+    assert!(prepare_rename(&snapshot, Position::new(4, 0)).is_none());
+    assert!(references(&snapshot, Position::new(4, 0), true).is_none());
+}
+
+#[test]
 fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(
