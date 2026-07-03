@@ -193,6 +193,40 @@ fn upsert_text_invalidates_cached_snapshot() {
 }
 
 #[test]
+fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let mut requests = store.snapshot_build_requests();
+    assert_eq!(requests.len(), 1);
+    let stale_request = requests.pop().unwrap();
+    let stale_snapshot = stale_request.build();
+
+    store.upsert_text(
+        uri.clone(),
+        2,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let committed = store.snapshots_for_requests(vec![(stale_request, stale_snapshot)]);
+    assert!(committed.is_empty());
+    assert!(!store.has_snapshot(&uri));
+
+    let current = store
+        .snapshot(&uri)
+        .expect("current snapshot should build after rejecting stale request");
+    assert_eq!(current.version, 2);
+    assert_eq!(current.fences[0].diagram_type.as_deref(), Some("sequence"));
+}
+
+#[test]
 fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

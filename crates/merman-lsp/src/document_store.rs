@@ -267,6 +267,26 @@ impl DocumentStore {
             .collect()
     }
 
+    pub fn snapshot_build_requests(&self) -> Vec<SnapshotBuildRequest> {
+        self.documents
+            .keys()
+            .filter_map(|uri| self.snapshot_build_request(uri))
+            .collect()
+    }
+
+    pub fn snapshots_for_requests(
+        &mut self,
+        requests: Vec<(SnapshotBuildRequest, Arc<DocumentSnapshot>)>,
+    ) -> Vec<Arc<DocumentSnapshot>> {
+        requests
+            .into_iter()
+            .filter_map(|(request, snapshot)| {
+                self.insert_built_snapshot(&request, snapshot)
+                    .map(|context| context.snapshot)
+            })
+            .collect()
+    }
+
     pub fn semantic_tokens_state(&self, uri: &Url) -> Option<&SemanticTokensState> {
         self.semantic_tokens_state
             .get(uri)

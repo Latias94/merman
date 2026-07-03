@@ -215,24 +215,32 @@ impl MermanLanguageServer {
             .then_some(diagnostics)
     }
 
+    async fn diagnostics_for_current_context_or_stale_error(
+        &self,
+        context: &DiagnosticContext,
+    ) -> Result<Vec<tower_lsp::lsp_types::Diagnostic>> {
+        self.diagnostics_for_current_context(context)
+            .await
+            .ok_or_else(stale_diagnostic_recompute_error)
+    }
+
     async fn diagnostics_or_recompute_once(
         &self,
         context: DiagnosticContext,
-    ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    ) -> Result<Vec<tower_lsp::lsp_types::Diagnostic>> {
         if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
-            return diagnostics;
+            return Ok(diagnostics);
         }
 
         let Some(latest_context) = ({
             let store = self.store.lock().await;
             store.diagnostic_context(&context.document.uri)
         }) else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
 
-        self.diagnostics_for_current_context(&latest_context)
+        self.diagnostics_for_current_context_or_stale_error(&latest_context)
             .await
-            .unwrap_or_default()
     }
 
     async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url) {
@@ -476,7 +484,7 @@ impl LanguageServer for MermanLanguageServer {
             ));
         };
 
-        let diagnostics = self.diagnostics_or_recompute_once(context).await;
+        let diagnostics = self.diagnostics_or_recompute_once(context).await?;
         let result_id = Some(Self::diagnostic_result_id(&diagnostics));
         Ok(Self::document_diagnostic_report(
             diagnostics,
@@ -659,16 +667,30 @@ impl LanguageServer for MermanLanguageServer {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
-        let snapshots = {
-            let mut store = self.store.lock().await;
-            store.snapshots()
+        let requests = {
+            let store = self.store.lock().await;
+            store.snapshot_build_requests()
         };
+        let built = requests
+            .into_iter()
+            .map(|request| {
+                let snapshot = request.build();
+                (request, snapshot)
+            })
+            .collect();
+        let snapshots = self.store.lock().await.snapshots_for_requests(built);
 
         Ok(Some(structure_workspace_symbols_for_snapshots(
             &snapshots,
             &params.query,
         )))
     }
+}
+
+fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
+    let mut error = tower_lsp::jsonrpc::Error::internal_error();
+    error.message = "diagnostic document changed while recomputing".into();
+    error
 }
 
 fn document_kind_for_language_id(
@@ -1027,6 +1049,46 @@ mod tests {
         assert_eq!(snapshot.kind, DocumentKind::Markdown);
         assert_eq!(snapshot.fences.len(), 1);
         assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_latest_diagnostic_context_returns_error_instead_of_empty_list() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+        let context = {
+            let store = server.store.lock().await;
+            store
+                .diagnostic_context(&uri)
+                .expect("expected diagnostic context")
+        };
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                2,
+                "flowchart TD\nA-->C\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let error = server
+            .diagnostics_for_current_context_or_stale_error(&context)
+            .await
+            .expect_err("stale context should fail");
+
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::InternalError);
+        assert!(error.message.contains("diagnostic document changed"));
     }
 
     #[test]
