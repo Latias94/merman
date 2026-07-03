@@ -41,6 +41,9 @@ The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` durin
 initialization. `MermanReusableEngine` exposes repeated render/parse/layout/analysis/validation
 calls, including `MermanReusableEngine.analyzeJson(source)`, and a `MermanTextMeasurer` callback for
 hosts that need font-aware text measurement.
+Reusable engine calls are serialized around the native handle. Text-measurement callbacks should not
+re-enter the same `MermanReusableEngine`; `close()` is allowed from a callback and defers release
+until the current native call finishes.
 `MermanEngine.lintRuleCatalogJson()` exposes the shared analyzer rule catalog as JSON, including
 evidence references, so Android hosts can build settings or LSP-related UI from the same rule
 metadata as CLI and other bindings.
@@ -54,9 +57,9 @@ measurement cache from that WebView when practical, because the synchronous JNI 
 block an arbitrary render thread on WebView UI work.
 
 Return `null` for requests the host cannot measure faithfully; merman falls back per request. Keep
-the measurer thread-safe if the reusable engine is rendered concurrently. Measure natural HTML-like
-label width before constraining to `maxWidth`; otherwise short labels can be overestimated and make
-the diagram wider than the final Android/WebView surface. See
+the measurer thread-safe if it is shared across host threads or multiple reusable engines. Measure
+natural HTML-like label width before constraining to `maxWidth`; otherwise short labels can be
+overestimated and make the diagram wider than the final Android/WebView surface. See
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#android-jni) for the full platform checklist.
 
 ## Example

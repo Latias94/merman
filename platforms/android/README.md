@@ -47,6 +47,9 @@ settings, diagnostics, and LSP-related UI; hosts should prefer it over hard-code
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
 vendored metrics for that request.
+Reusable engine methods are serialized around the native handle. A text-measurement callback should
+not call back into the same `MermanReusableEngine`; calling `close()` from a callback is safe and
+releases the engine after the current native call returns.
 
 For accurate Android preview geometry, measure with the same text stack that will display the SVG:
 `TextPaint`/`StaticLayout` for native Android UI, or a cached DOM/canvas measurement path for
