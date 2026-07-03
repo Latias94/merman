@@ -164,6 +164,62 @@ Alice->>Bob: Alice"#;
 }
 
 #[test]
+fn parse_sequence_editor_facts_frontmatter_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = r#"---
+config:
+  theme: dark
+---
+sequenceDiagram
+participant Alice
+Alice->>Bob: Hello"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let alice = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Alice participant symbol");
+    let alice_start = text.find("Alice").unwrap();
+    assert_eq!(alice.selection.start, alice_start);
+    assert_eq!(alice.selection.end, alice_start + "Alice".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_init_directive_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = r#"%%{init: {"theme": "dark"}}%%
+sequenceDiagram
+participant Alice
+Alice->>Bob: Hello"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let bob = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Bob"
+                && symbol.detail.as_deref() == Some("sequence participant reference")
+        })
+        .expect("Bob participant reference");
+    let bob_start = text.find("Bob").unwrap();
+    assert_eq!(bob.selection.start, bob_start);
+    assert_eq!(bob.selection.end, bob_start + "Bob".len());
+}
+
+#[test]
 fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";

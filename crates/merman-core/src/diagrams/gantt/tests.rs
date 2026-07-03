@@ -1005,6 +1005,28 @@ click id1 href "javascript:alert(1)" myFn
 }
 
 #[test]
+fn gantt_click_href_accepts_quoted_tooltip_without_callback() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "https://example.com/" "open details"
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))),
+    );
+
+    assert_eq!(
+        model["links"]["id1"].as_str().unwrap(),
+        "https://example.com/"
+    );
+    assert!(model["clickEvents"].as_object().unwrap().is_empty());
+}
+
+#[test]
 fn gantt_click_rejects_unrecognized_tail() {
     let err = block_on(Engine::new().parse_diagram(
         r#"

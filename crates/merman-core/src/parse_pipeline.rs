@@ -1,6 +1,6 @@
 use crate::{
     EditorSemanticFacts, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result,
-    common_db, diagram, diagrams::error_diagram, family, preprocess_diagram,
+    SourceSpan, common_db, diagram, diagrams::error_diagram, family, preprocess_diagram,
     preprocess_diagram_with_known_type, runtime, sanitize, theme,
 };
 use diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
@@ -23,6 +23,66 @@ pub(crate) struct ParsePipeline<'a> {
     text: &'a str,
     options: ParseOptions,
     source: ParseSource<'a>,
+}
+
+struct EditorParseSourceMap<'a> {
+    parser_input: &'a str,
+    offset: Option<usize>,
+}
+
+impl<'a> EditorParseSourceMap<'a> {
+    fn new(original: &'a str, preprocessed: &'a str) -> Self {
+        if preprocessed == original {
+            return Self {
+                parser_input: original,
+                offset: Some(0),
+            };
+        }
+
+        if preprocessed.is_empty() {
+            return Self {
+                parser_input: preprocessed,
+                offset: original.len().checked_sub(preprocessed.len()),
+            };
+        }
+
+        if let Some(offset) = original.rfind(preprocessed) {
+            return Self {
+                parser_input: preprocessed,
+                offset: Some(offset),
+            };
+        }
+
+        Self {
+            parser_input: original,
+            offset: None,
+        }
+    }
+
+    fn parser_input(&self) -> &'a str {
+        self.parser_input
+    }
+
+    fn remap_facts(&self, facts: &mut EditorSemanticFacts) {
+        let Some(offset) = self.offset.filter(|offset| *offset != 0) else {
+            return;
+        };
+
+        for symbol in &mut facts.symbols {
+            symbol.span = remap_source_span(symbol.span, offset);
+            symbol.selection = remap_source_span(symbol.selection, offset);
+        }
+        for diagnostic in &mut facts.diagnostics {
+            diagnostic.span = diagnostic.span.map(|span| remap_source_span(span, offset));
+        }
+        for expected in &mut facts.expected_syntax {
+            expected.span = remap_source_span(expected.span, offset);
+        }
+    }
+}
+
+fn remap_source_span(span: SourceSpan, offset: usize) -> SourceSpan {
+    SourceSpan::new(span.start + offset, span.end + offset)
 }
 
 impl<'a> ParsePipeline<'a> {
@@ -84,57 +144,67 @@ impl<'a> ParsePipeline<'a> {
 
     pub(crate) fn parse_editor_semantic_facts(&self) -> Result<Option<EditorSemanticFacts>> {
         let mut directive_prefixes = editor_directive_prefixes(self.text);
-        let Some((_code, meta)) = self.preprocess()? else {
+        let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
+        let source_map = EditorParseSourceMap::new(self.text, &code);
+        let editor_input = source_map.parser_input();
 
         let facts = match meta.diagram_type.as_str() {
             "flowchart-v2" | "flowchart-elk" => {
-                crate::diagrams::flowchart::parse_flowchart_editor_facts(self.text, &meta)?
+                crate::diagrams::flowchart::parse_flowchart_editor_facts(editor_input, &meta)?
             }
-            "sequence" => crate::diagrams::sequence::parse_sequence_editor_facts(self.text, &meta),
+            "sequence" => {
+                crate::diagrams::sequence::parse_sequence_editor_facts(editor_input, &meta)
+            }
             "state" | "stateDiagram" => {
-                crate::diagrams::state::parse_state_editor_facts(self.text, &meta)
+                crate::diagrams::state::parse_state_editor_facts(editor_input, &meta)
             }
             "class" | "classDiagram" => {
-                crate::diagrams::class::parse_class_editor_facts(self.text, &meta)
+                crate::diagrams::class::parse_class_editor_facts(editor_input, &meta)
             }
-            "er" | "erDiagram" => crate::diagrams::er::parse_er_editor_facts(self.text, &meta),
-            "mindmap" => crate::diagrams::mindmap::parse_mindmap_editor_facts(self.text, &meta),
-            "gantt" => crate::diagrams::gantt::parse_gantt_editor_facts(self.text, &meta),
+            "er" | "erDiagram" => crate::diagrams::er::parse_er_editor_facts(editor_input, &meta),
+            "mindmap" => crate::diagrams::mindmap::parse_mindmap_editor_facts(editor_input, &meta),
+            "gantt" => crate::diagrams::gantt::parse_gantt_editor_facts(editor_input, &meta),
             "architecture" => {
-                crate::diagrams::architecture::parse_architecture_editor_facts(self.text, &meta)
+                crate::diagrams::architecture::parse_architecture_editor_facts(editor_input, &meta)
             }
-            "block" => crate::diagrams::block::parse_block_editor_facts(self.text, &meta),
-            "c4" => crate::diagrams::c4::parse_c4_editor_facts(self.text, &meta),
+            "block" => crate::diagrams::block::parse_block_editor_facts(editor_input, &meta),
+            "c4" => crate::diagrams::c4::parse_c4_editor_facts(editor_input, &meta),
             "gitGraph" => {
-                crate::diagrams::git_graph::parse_git_graph_editor_facts(self.text, &meta)
+                crate::diagrams::git_graph::parse_git_graph_editor_facts(editor_input, &meta)
             }
-            "kanban" => crate::diagrams::kanban::parse_kanban_editor_facts(self.text, &meta),
-            "ishikawa" => crate::diagrams::ishikawa::parse_ishikawa_editor_facts(self.text, &meta),
-            "journey" => crate::diagrams::journey::parse_journey_editor_facts(self.text, &meta),
-            "info" => crate::diagrams::info::parse_info_editor_facts(self.text, &meta),
-            "timeline" => crate::diagrams::timeline::parse_timeline_editor_facts(self.text, &meta),
-            "pie" => crate::diagrams::pie::parse_pie_editor_facts(self.text, &meta),
-            "packet" => crate::diagrams::packet::parse_packet_editor_facts(self.text, &meta),
-            "sankey" => crate::diagrams::sankey::parse_sankey_editor_facts(self.text, &meta),
+            "kanban" => crate::diagrams::kanban::parse_kanban_editor_facts(editor_input, &meta),
+            "ishikawa" => {
+                crate::diagrams::ishikawa::parse_ishikawa_editor_facts(editor_input, &meta)
+            }
+            "journey" => crate::diagrams::journey::parse_journey_editor_facts(editor_input, &meta),
+            "info" => crate::diagrams::info::parse_info_editor_facts(editor_input, &meta),
+            "timeline" => {
+                crate::diagrams::timeline::parse_timeline_editor_facts(editor_input, &meta)
+            }
+            "pie" => crate::diagrams::pie::parse_pie_editor_facts(editor_input, &meta),
+            "packet" => crate::diagrams::packet::parse_packet_editor_facts(editor_input, &meta),
+            "sankey" => crate::diagrams::sankey::parse_sankey_editor_facts(editor_input, &meta),
             "treeView" => {
-                crate::diagrams::tree_view::parse_tree_view_editor_facts(self.text, &meta)
+                crate::diagrams::tree_view::parse_tree_view_editor_facts(editor_input, &meta)
             }
-            "eventmodeling" => {
-                crate::diagrams::eventmodeling::parse_eventmodeling_editor_facts(self.text, &meta)
-            }
-            "quadrantChart" => {
-                crate::diagrams::quadrant_chart::parse_quadrant_chart_editor_facts(self.text, &meta)
-            }
-            "radar" => crate::diagrams::radar::parse_radar_editor_facts(self.text, &meta),
-            "treemap" => crate::diagrams::treemap::parse_treemap_editor_facts(self.text, &meta),
+            "eventmodeling" => crate::diagrams::eventmodeling::parse_eventmodeling_editor_facts(
+                editor_input,
+                &meta,
+            ),
+            "quadrantChart" => crate::diagrams::quadrant_chart::parse_quadrant_chart_editor_facts(
+                editor_input,
+                &meta,
+            ),
+            "radar" => crate::diagrams::radar::parse_radar_editor_facts(editor_input, &meta),
+            "treemap" => crate::diagrams::treemap::parse_treemap_editor_facts(editor_input, &meta),
             "requirement" => {
-                crate::diagrams::requirement::parse_requirement_editor_facts(self.text, &meta)
+                crate::diagrams::requirement::parse_requirement_editor_facts(editor_input, &meta)
             }
-            "venn" => crate::diagrams::venn::parse_venn_editor_facts(self.text, &meta),
-            "xychart" => crate::diagrams::xychart::parse_xychart_editor_facts(self.text, &meta),
-            "zenuml" => crate::diagrams::zenuml::parse_zenuml_editor_facts(self.text, &meta),
+            "venn" => crate::diagrams::venn::parse_venn_editor_facts(editor_input, &meta),
+            "xychart" => crate::diagrams::xychart::parse_xychart_editor_facts(editor_input, &meta),
+            "zenuml" => crate::diagrams::zenuml::parse_zenuml_editor_facts(editor_input, &meta),
             _ => return Ok(None),
         };
 
@@ -153,6 +223,7 @@ impl<'a> ParsePipeline<'a> {
             diagnostics,
             expected_syntax,
         };
+        source_map.remap_facts(&mut facts);
         for prefix in directive_prefixes {
             facts.push_directive_prefix(prefix);
         }

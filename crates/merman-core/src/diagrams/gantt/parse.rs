@@ -213,6 +213,12 @@ fn parse_click_statement(
             continue;
         }
 
+        if tail.starts_with('"') {
+            tail_offset = skip_quoted_click_tail(trimmed, tail_offset)?;
+            tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
+            continue;
+        }
+
         if call.is_none() {
             let (parsed_call, next_offset) =
                 parse_callback_tail(trimmed, tail_offset, line_start + leading)?;
@@ -226,6 +232,14 @@ fn parse_click_statement(
     }
 
     Ok(Some(ClickStatementParts { ids, href, call }))
+}
+
+fn skip_quoted_click_tail(trimmed: &str, quote_start: usize) -> std::result::Result<usize, String> {
+    let value_start = quote_start + '"'.len_utf8();
+    let Some(end) = trimmed[value_start..].find('"') else {
+        return Err("invalid click statement: unterminated quoted tail".to_string());
+    };
+    Ok(value_start + end + '"'.len_utf8())
 }
 
 fn parse_callback_tail<'a>(
