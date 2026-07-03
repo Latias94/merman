@@ -23,8 +23,8 @@ use crate::structure::{
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
-    AnalysisOptions, Analyzer, document::analyze_document,
-    options_json::analysis_options_from_json_value,
+    AnalysisOptions, Analyzer, SourceKind, document::analyze_document,
+    options_json::analysis_options_from_json_value, source_descriptor_for_kind,
 };
 use merman_editor_core::DocumentKind;
 use std::hash::{Hash, Hasher};
@@ -167,11 +167,7 @@ impl MermanLanguageServer {
         document: &StoredDocument,
         analyzer: &Analyzer,
     ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
-        let source = if document.kind.is_markdown() {
-            merman_analysis::source_descriptor_for_uri(document.uri.as_str())
-        } else {
-            merman_analysis::SourceDescriptor::diagram().with_path(document.uri.as_str())
-        };
+        let source = source_descriptor_for_document(&document.uri, document.kind);
         let payload = analyze_document(&document.text, analyzer, source);
         analysis_payload_to_versioned_diagnostics(&payload, &document.uri, document.version)
     }
@@ -707,6 +703,18 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
     error
 }
 
+fn source_descriptor_for_document(
+    uri: &tower_lsp::lsp_types::Url,
+    kind: DocumentKind,
+) -> merman_analysis::SourceDescriptor {
+    let source_kind = match kind {
+        DocumentKind::Diagram => SourceKind::Diagram,
+        DocumentKind::Markdown => SourceKind::Markdown,
+        DocumentKind::Mdx => SourceKind::Mdx,
+    };
+    source_descriptor_for_kind(Some(uri.as_str()), source_kind)
+}
+
 fn document_kind_for_language_id(
     language_id: &str,
     uri: &tower_lsp::lsp_types::Url,
@@ -723,7 +731,7 @@ fn document_kind_for_language_id(
 mod tests {
     use super::MermanLanguageServer;
     use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
-    use crate::document_store::DocumentStore;
+    use crate::document_store::{DocumentStore, StoredDocument};
     use crate::protocol::{
         CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
     };
@@ -745,8 +753,8 @@ mod tests {
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
         CodeActionProviderCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
         DocumentSymbolResponse, FoldingRangeParams, FoldingRangeProviderCapability,
-        GotoDefinitionResponse, HoverContents, HoverParams, InitializeParams, Position, Range,
-        RenameParams, SelectionRangeParams, SelectionRangeProviderCapability,
+        GotoDefinitionResponse, HoverContents, HoverParams, InitializeParams, NumberOrString,
+        Position, Range, RenameParams, SelectionRangeParams, SelectionRangeProviderCapability,
         SemanticTokensFullOptions, SemanticTokensParams, SemanticTokensRangeParams,
         SemanticTokensRangeResult, SemanticTokensServerCapabilities,
         TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
@@ -870,6 +878,52 @@ mod tests {
         assert_eq!(
             capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
             CONFIG_SCHEMA_METHOD
+        );
+    }
+
+    #[test]
+    fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
+        let uri = Url::parse("untitled:notes").unwrap();
+        let document = StoredDocument {
+            uri: uri.clone(),
+            version: 7,
+            text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".to_string(),
+            kind: DocumentKind::Markdown,
+        };
+        let diagnostics = MermanLanguageServer::diagnostics_for_document(
+            &document,
+            &merman_analysis::Analyzer::new(),
+        );
+
+        assert!(
+            diagnostics.iter().all(|diagnostic| {
+                diagnostic.code
+                    != Some(NumberOrString::String(
+                        "merman.parse.no_diagram".to_string(),
+                    ))
+            }),
+            "expected markdown document analysis, got {diagnostics:?}"
+        );
+        let parse_diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| {
+                diagnostic.code
+                    == Some(NumberOrString::String(
+                        "merman.parse.diagram_parse".to_string(),
+                    ))
+            })
+            .expect("expected diagram parse diagnostic from markdown fence");
+        assert!(
+            parse_diagnostic.range.start.line >= 2,
+            "expected markdown fence body range, got {:?}",
+            parse_diagnostic.range
+        );
+        assert_eq!(
+            parse_diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("documentVersion")),
+            Some(&serde_json::json!(7))
         );
     }
 
