@@ -55,7 +55,10 @@ use build::FlowchartBuildState;
 use lexer::Lexer;
 use link::{destruct_end_link, destruct_start_link};
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
-use shape_data::{apply_shape_data_to_node, parse_shape_data, value_to_bool, value_to_string};
+use shape_data::{
+    apply_shape_data_to_node, parse_shape_data, public_shape_names_11_12_2, value_to_bool,
+    value_to_string,
+};
 use subgraph::SubgraphBuilder;
 
 #[derive(Debug, Clone)]
@@ -95,6 +98,10 @@ pub fn parse_flowchart_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<FlowchartV2Model> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
+}
+
+pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
+    public_shape_names_11_12_2()
 }
 
 pub fn parse_flowchart_editor_facts(

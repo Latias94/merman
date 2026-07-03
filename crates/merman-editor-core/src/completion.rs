@@ -240,18 +240,9 @@ fn direction_items(range: Option<Range>) -> Vec<CompletionItem> {
 }
 
 fn shape_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
-    vec![
-        shape_completion("circle", "circle shape", context),
-        shape_completion("rounded", "rounded shape", context),
-        shape_completion("diamond", "diamond shape", context),
-        shape_completion("hexagon", "hexagon shape", context),
-        shape_completion("stadium", "stadium shape", context),
-        shape_completion("subroutine", "subroutine shape", context),
-        shape_completion("cylinder", "cylinder shape", context),
-        shape_completion("trapezoid", "trapezoid shape", context),
-        shape_completion("inv_trapezoid", "inverse trapezoid shape", context),
-        shape_completion("doublecircle", "double circle shape", context),
-    ]
+    merman_core::diagrams::flowchart::flowchart_public_shape_names()
+        .map(|shape| shape_completion(shape, &format!("{shape} shape"), context))
+        .collect()
 }
 
 fn node_items(

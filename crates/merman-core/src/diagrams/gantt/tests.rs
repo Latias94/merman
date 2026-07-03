@@ -956,6 +956,75 @@ click id1 call myFn2()
 }
 
 #[test]
+fn gantt_click_bare_callback_parses_like_mermaid() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+task2: id2, 2013-01-02, 1d
+click id1 myFn
+click id2 href "https://example.com/" myOtherFn
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))),
+    );
+
+    let ev1 = &model["clickEvents"]["id1"];
+    assert_eq!(ev1["function_name"].as_str().unwrap(), "myFn");
+    assert_eq!(ev1["function_args"][0].as_str().unwrap(), "id1");
+
+    let ev2 = &model["clickEvents"]["id2"];
+    assert_eq!(ev2["function_name"].as_str().unwrap(), "myOtherFn");
+    assert_eq!(ev2["function_args"][0].as_str().unwrap(), "id2");
+    assert_eq!(
+        model["links"]["id2"].as_str().unwrap(),
+        "https://example.com/"
+    );
+}
+
+#[test]
+fn gantt_click_href_sanitizes_unsafe_urls_for_new_callback_forms() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "javascript:alert(1)" myFn
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "strict"
+        }))),
+    );
+
+    assert_eq!(model["links"]["id1"].as_str().unwrap(), "about:blank");
+    assert!(model["clickEvents"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn gantt_click_rejects_unrecognized_tail() {
+    let err = block_on(Engine::new().parse_diagram(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "https://example.com/" garbage tail
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("invalid click statement"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn gantt_common_db_sanitizes_title_and_accessibility_fields() {
     let model = parse(
         r#"

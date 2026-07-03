@@ -350,6 +350,36 @@ fn context_uses_parser_expected_syntax_for_shape_values() {
 }
 
 #[test]
+fn completion_offers_parser_accepted_flowchart_shapes() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 11));
+    let labels = list
+        .items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        labels.contains(&"@{ shape: inv-trapezoid }"),
+        "labels: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"@{ shape: notched-rectangle }"),
+        "labels: {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"@{ shape: inv_trapezoid }"),
+        "labels: {labels:?}"
+    );
+}
+
+#[test]
 fn completion_resolve_documentation_is_protocol_neutral() {
     let documentation = completion_documentation(&merman_editor_core::CompletionResolveData {
         kind: CompletionDataKind::DiagramHeader,

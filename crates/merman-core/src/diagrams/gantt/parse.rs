@@ -146,10 +146,13 @@ impl<'a> GanttLineCursor<'a> {
     }
 }
 
-fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatementParts<'_>> {
+fn parse_click_statement(
+    line: &str,
+    line_start: usize,
+) -> std::result::Result<Option<ClickStatementParts<'_>>, String> {
     let trimmed = line.trim_start();
     if !starts_with_case_insensitive(trimmed, "click") {
-        return None;
+        return Ok(None);
     }
     let leading = line.len().saturating_sub(trimmed.len());
     let after_click = &trimmed["click".len()..];
@@ -180,11 +183,11 @@ fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatement
             let quote_start = href_keyword_end + href_ws;
             let value_start = quote_start + '"'.len_utf8();
             if !trimmed[quote_start..].starts_with('"') {
-                break;
+                return Err("invalid click statement: href requires a quoted URL".to_string());
             }
             let value_tail = &trimmed[value_start..];
             let Some(end) = value_tail.find('"') else {
-                break;
+                return Err("invalid click statement: unterminated href URL".to_string());
             };
             let value_end = value_start + end;
             href = Some(SpannedText {
@@ -202,44 +205,94 @@ fn parse_click_statement(line: &str, line_start: usize) -> Option<ClickStatement
             let after_call = &trimmed[call_keyword_end..];
             let call_ws = leading_whitespace_len(after_call);
             let name_start = call_keyword_end + call_ws;
-            let name_tail = &trimmed[name_start..];
-            let Some(paren_rel) = name_tail.find('(') else {
-                break;
-            };
-            let paren = name_start + paren_rel;
-            let args_start = paren + '('.len_utf8();
-            let args_tail = &trimmed[args_start..];
-            let Some(end_rel) = args_tail.find(')') else {
-                break;
-            };
-            let args_end = args_start + end_rel;
-            let args_text = &trimmed[args_start..args_end];
-            let args = if args_text.trim().is_empty() {
-                None
-            } else {
-                Some(SpannedText {
-                    text: args_text,
-                    start: line_start + leading + args_start,
-                    end: line_start + leading + args_end,
-                })
-            };
-            call = Some(ClickCallParts {
-                name: SpannedText {
-                    text: &trimmed[name_start..paren],
-                    start: line_start + leading + name_start,
-                    end: line_start + leading + paren,
-                },
-                args,
-            });
-            tail_offset = args_end + ')'.len_utf8();
+            let (parsed_call, next_offset) =
+                parse_callback_tail(trimmed, name_start, line_start + leading)?;
+            call = Some(parsed_call);
+            tail_offset = next_offset;
             tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
             continue;
         }
 
-        break;
+        if call.is_none() {
+            let (parsed_call, next_offset) =
+                parse_callback_tail(trimmed, tail_offset, line_start + leading)?;
+            call = Some(parsed_call);
+            tail_offset = next_offset;
+            tail_offset += leading_whitespace_len(&trimmed[tail_offset..]);
+            continue;
+        }
+
+        return Err(format!("invalid click statement tail: {tail:?}"));
     }
 
-    Some(ClickStatementParts { ids, href, call })
+    Ok(Some(ClickStatementParts { ids, href, call }))
+}
+
+fn parse_callback_tail<'a>(
+    trimmed: &'a str,
+    name_start: usize,
+    absolute_offset: usize,
+) -> std::result::Result<(ClickCallParts<'a>, usize), String> {
+    let name_tail = &trimmed[name_start..];
+    let Some(name_len) = callback_name_len(name_tail) else {
+        return Err("invalid click statement: missing callback name".to_string());
+    };
+    let name_end = name_start + name_len;
+    let mut next_offset = name_end;
+    let args = if trimmed[next_offset..].starts_with('(') {
+        let args_start = next_offset + '('.len_utf8();
+        let args_tail = &trimmed[args_start..];
+        let Some(end_rel) = args_tail.find(')') else {
+            return Err("invalid click statement: unterminated callback args".to_string());
+        };
+        let args_end = args_start + end_rel;
+        next_offset = args_end + ')'.len_utf8();
+        let args_text = &trimmed[args_start..args_end];
+        if args_text.trim().is_empty() {
+            None
+        } else {
+            Some(SpannedText {
+                text: args_text,
+                start: absolute_offset + args_start,
+                end: absolute_offset + args_end,
+            })
+        }
+    } else {
+        None
+    };
+    Ok((
+        ClickCallParts {
+            name: SpannedText {
+                text: &trimmed[name_start..name_end],
+                start: absolute_offset + name_start,
+                end: absolute_offset + name_end,
+            },
+            args,
+        },
+        next_offset,
+    ))
+}
+
+fn callback_name_len(input: &str) -> Option<usize> {
+    let mut chars = input.char_indices();
+    let (_, first) = chars.next()?;
+    if !is_callback_name_start(first) {
+        return None;
+    }
+    for (idx, ch) in chars {
+        if !is_callback_name_continue(ch) {
+            return Some(idx);
+        }
+    }
+    Some(input.len())
+}
+
+fn is_callback_name_start(ch: char) -> bool {
+    ch == '_' || ch == '$' || ch.is_ascii_alphabetic()
+}
+
+fn is_callback_name_continue(ch: char) -> bool {
+    is_callback_name_start(ch) || ch.is_ascii_digit() || ch == '.'
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -596,10 +649,21 @@ fn collect_gantt_statement_editor_facts(
         }
         return true;
     }
-    if let Some(click) = parse_click_statement(stripped, line_start) {
-        facts.push_directive_prefix("click");
-        collect_gantt_click_symbols(stripped, line_start, click, facts);
-        return true;
+    match parse_click_statement(stripped, line_start) {
+        Ok(Some(click)) => {
+            facts.push_directive_prefix("click");
+            collect_gantt_click_symbols(stripped, line_start, click, facts);
+            return true;
+        }
+        Ok(None) => {}
+        Err(message) => {
+            facts.push_directive_prefix("click");
+            facts.mark_recovered_with_diagnostic(
+                format!("gantt parser recovered from {message}"),
+                Some(gantt_statement_span(stripped, line_start)),
+            );
+            return true;
+        }
     }
 
     collect_gantt_task_symbols(stripped, line_start, facts)
@@ -1349,18 +1413,28 @@ fn parse_gantt_statement(
         db.set_acc_descr(&v);
         return Ok(());
     }
-    if let Some(click) = parse_click_statement(stripped, 0) {
-        if let Some(call) = click.call {
-            db.set_click_event(
-                &click.ids.text,
-                call.name.text.trim(),
-                call.args.map(|args| args.text),
-            );
+    match parse_click_statement(stripped, 0) {
+        Ok(Some(click)) => {
+            if let Some(call) = click.call {
+                db.set_click_event(
+                    &click.ids.text,
+                    call.name.text.trim(),
+                    call.args.map(|args| args.text),
+                );
+            }
+            if let Some(href) = click.href {
+                db.set_link(&click.ids.text, href.text);
+            }
+            return Ok(());
         }
-        if let Some(href) = click.href {
-            db.set_link(&click.ids.text, href.text);
+        Ok(None) => {}
+        Err(message) => {
+            return Err(Error::diagram_parse_exact(
+                "gantt".to_string(),
+                message,
+                gantt_statement_span(stripped, 0),
+            ));
         }
-        return Ok(());
     }
 
     let task_stmt = stripped.trim_start();
