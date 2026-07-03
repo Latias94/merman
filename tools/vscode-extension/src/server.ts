@@ -82,11 +82,6 @@ export async function createLanguageClient(
     initializationOptions: {
       analysis: getAnalysisSettings(),
     },
-    synchronize: {
-      fileEvents: [
-        vscode.workspace.createFileSystemWatcher("**/*.{mmd,mermaid,md,markdown,mdx}"),
-      ],
-    },
     markdown: {
       isTrusted: false,
       supportHtml: false,

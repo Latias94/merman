@@ -23,7 +23,6 @@ remote AI.
 - Local runtime launch through one shared resolver:
   - packaged `bin/<platform>-<arch>/merman-lsp` and `merman-cli`
   - user-configured absolute executable paths
-  - workspace `target/debug` binaries for extension development
   - explicit Cargo development fallback when enabled in settings
 - Runtime analysis settings forwarded through `initialize` and `workspace/didChangeConfiguration`
 - Rule catalog and config schema inspection commands backed by the custom LSP requests
@@ -37,13 +36,7 @@ is required for normal use.
 
 ### Extension development
 
-1. Build local debug binaries once:
-
-   ```bash
-   cargo build -p merman-lsp -p merman-cli
-   ```
-
-2. Install extension dependencies and build:
+1. Install extension dependencies and build:
 
    ```bash
    cd tools/vscode-extension
@@ -51,11 +44,25 @@ is required for normal use.
    npm run build
    ```
 
-3. Launch an extension development window:
+2. Launch an extension development window:
 
    ```bash
    code --extensionDevelopmentPath="$PWD"
    ```
+
+3. For workspace development, either prepare packaged binaries under `bin/<platform>-<arch>/`
+   or enable the Cargo fallbacks in the extension development window:
+
+   ```json
+   {
+     "merman.server.useCargoRun": true,
+     "merman.cli.useCargoRun": true
+   }
+   ```
+
+   Cargo fallback runs `cargo run -p merman-lsp --` and `cargo run -p merman-cli --` from a
+   trusted workspace. Use `merman.server.cargoArgs` and `merman.cli.cargoArgs` for extra Cargo
+   flags such as `--profile` or `--features`.
 
 4. Open a `.mmd`, `.mermaid`, `.md`, `.markdown`, or `.mdx` file and edit a Mermaid diagram.
 
