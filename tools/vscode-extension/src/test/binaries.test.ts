@@ -7,7 +7,6 @@ import { afterEach, describe, it } from "node:test";
 import {
   binaryFileName,
   findPackagedBinary,
-  findWorkspaceDebugBinary,
   platformKey,
   resolveMermanBinary,
 } from "../binaries.js";
@@ -21,9 +20,10 @@ afterEach(() => {
 });
 
 describe("Merman binary resolution", () => {
-  it("uses the configured executable path first", () => {
+  it("uses a trusted configured executable path first", () => {
     const root = tempDir();
-    const explicit = touchExecutable(path.join(root, "custom-lsp"));
+    const explicitRoot = tempDir();
+    const explicit = touchExecutable(path.join(explicitRoot, "custom-lsp"));
     const packaged = touchExecutable(
       path.join(root, "extension", "bin", "linux-x64", "merman-lsp"),
     );
@@ -35,6 +35,7 @@ describe("Merman binary resolution", () => {
       workspaceRoots: [root],
       explicitPath: explicit,
       directArgs: ["--stdio"],
+      workspaceTrusted: false,
       platform: "linux",
       arch: "x64",
     });
@@ -50,7 +51,7 @@ describe("Merman binary resolution", () => {
     }), packaged);
   });
 
-  it("prefers packaged binaries over workspace debug binaries", () => {
+  it("uses packaged binaries without scanning workspace debug binaries", () => {
     const root = tempDir();
     const extensionPath = path.join(root, "extension");
     const packaged = touchExecutable(
@@ -72,23 +73,61 @@ describe("Merman binary resolution", () => {
     assert.equal(invocation.source, "packaged");
   });
 
-  it("falls back to workspace debug binaries for development", () => {
+  it("does not fall back to workspace debug binaries by default", () => {
     const root = tempDir();
-    const workspaceBinary = touchExecutable(path.join(root, "target", "debug", "merman-lsp"));
+    touchExecutable(path.join(root, "target", "debug", "merman-lsp"));
+
+    assert.throws(
+      () =>
+        resolveMermanBinary({
+          binaryName: "merman-lsp",
+          packageName: "merman-lsp",
+          extensionPath: path.join(root, "extension"),
+          workspaceRoots: [root],
+          platform: "linux",
+          arch: "x64",
+        }),
+      /Unable to find merman-lsp/,
+    );
+  });
+
+  it("rejects configured workspace-local executables in untrusted workspaces", () => {
+    const root = tempDir();
+    const explicit = touchExecutable(path.join(root, "tools", "merman-lsp"));
+
+    assert.throws(
+      () =>
+        resolveMermanBinary({
+          binaryName: "merman-lsp",
+          packageName: "merman-lsp",
+          extensionPath: path.join(root, "extension"),
+          workspaceRoots: [root],
+          explicitPath: explicit,
+          workspaceTrusted: false,
+          platform: "linux",
+          arch: "x64",
+        }),
+      /requires a trusted workspace/,
+    );
+  });
+
+  it("allows configured workspace-local executables in trusted workspaces", () => {
+    const root = tempDir();
+    const explicit = touchExecutable(path.join(root, "tools", "merman-lsp"));
 
     const invocation = resolveMermanBinary({
       binaryName: "merman-lsp",
       packageName: "merman-lsp",
       extensionPath: path.join(root, "extension"),
       workspaceRoots: [root],
+      explicitPath: explicit,
+      workspaceTrusted: true,
       platform: "linux",
       arch: "x64",
     });
 
-    assert.equal(invocation.command, workspaceBinary);
-    assert.equal(invocation.cwd, root);
-    assert.equal(invocation.source, "workspace-debug");
-    assert.equal(findWorkspaceDebugBinary("merman-lsp", [root], "linux"), workspaceBinary);
+    assert.equal(invocation.command, explicit);
+    assert.equal(invocation.source, "explicit");
   });
 
   it("uses Cargo only when explicitly enabled", () => {
@@ -102,6 +141,7 @@ describe("Merman binary resolution", () => {
       directArgs: ["-i", "-"],
       useCargoRun: true,
       cargoArgs: ["--release"],
+      workspaceTrusted: true,
     });
 
     assert.equal(invocation.command, "cargo");
@@ -116,6 +156,23 @@ describe("Merman binary resolution", () => {
     ]);
     assert.equal(invocation.cwd, root);
     assert.equal(invocation.source, "cargo");
+  });
+
+  it("rejects Cargo fallback in untrusted workspaces", () => {
+    const root = tempDir();
+
+    assert.throws(
+      () =>
+        resolveMermanBinary({
+          binaryName: "merman-cli",
+          packageName: "merman-cli",
+          extensionPath: path.join(root, "extension"),
+          workspaceRoots: [root],
+          useCargoRun: true,
+          workspaceTrusted: false,
+        }),
+      /Cargo development fallback requires a trusted workspace/,
+    );
   });
 
   it("throws a setup error when no runtime binary is available", () => {

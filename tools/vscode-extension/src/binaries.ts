@@ -6,8 +6,7 @@ export type MermanBinaryName = "merman-lsp" | "merman-cli";
 export type BinaryResolutionSource =
   | "explicit"
   | "cargo"
-  | "packaged"
-  | "workspace-debug";
+  | "packaged";
 
 export interface BinaryInvocation {
   command: string;
@@ -26,6 +25,7 @@ export interface BinaryResolutionRequest {
   explicitPath?: string;
   useCargoRun?: boolean;
   cargoArgs?: readonly string[];
+  workspaceTrusted?: boolean;
   platform?: NodeJS.Platform;
   arch?: NodeJS.Architecture;
 }
@@ -35,6 +35,7 @@ export function resolveMermanBinary(request: BinaryResolutionRequest): BinaryInv
   const explicitPath = normalizePath(request.explicitPath);
   if (explicitPath) {
     assertExecutable(explicitPath, request.binaryName, "configured path");
+    assertTrustedWorkspaceExecutable(explicitPath, request);
     return {
       command: explicitPath,
       args: directArgs,
@@ -44,6 +45,7 @@ export function resolveMermanBinary(request: BinaryResolutionRequest): BinaryInv
   }
 
   if (request.useCargoRun === true) {
+    assertTrustedCargoFallback(request);
     return resolveCargoInvocation(request, directArgs);
   }
 
@@ -57,25 +59,10 @@ export function resolveMermanBinary(request: BinaryResolutionRequest): BinaryInv
     };
   }
 
-  const workspaceBinary = findWorkspaceDebugBinary(
-    request.binaryName,
-    request.workspaceRoots,
-    request.platform,
-  );
-  if (workspaceBinary) {
-    return {
-      command: workspaceBinary,
-      args: directArgs,
-      cwd: request.workspaceRoots[0],
-      source: "workspace-debug",
-      label: `${request.binaryName} from workspace target/debug`,
-    };
-  }
-
   throw new Error(
     [
       `Unable to find ${request.binaryName}.`,
-      `Install a packaged Merman extension that includes ${request.binaryName}, configure its absolute path, or enable the Cargo development fallback.`,
+      `Install a packaged Merman extension that includes ${request.binaryName}, configure its absolute path, or enable the trusted Cargo development fallback.`,
     ].join(" "),
   );
 }
@@ -108,21 +95,6 @@ export function findPackagedBinary(
     path.join(request.extensionPath, "bin", fileName),
   ];
   return candidates.find(isExecutableFile);
-}
-
-export function findWorkspaceDebugBinary(
-  binaryName: MermanBinaryName,
-  workspaceRoots: readonly string[],
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  const fileName = binaryFileName(binaryName, platform);
-  for (const root of workspaceRoots) {
-    const binaryPath = path.join(root, "target", "debug", fileName);
-    if (isExecutableFile(binaryPath)) {
-      return binaryPath;
-    }
-  }
-  return undefined;
 }
 
 function resolveCargoInvocation(
@@ -161,6 +133,43 @@ function assertExecutable(filePath: string, binaryName: MermanBinaryName, source
   if (!isExecutableFile(filePath)) {
     throw new Error(`${binaryName} ${source} does not exist or is not a file: ${filePath}`);
   }
+}
+
+function assertTrustedWorkspaceExecutable(
+  filePath: string,
+  request: Pick<BinaryResolutionRequest, "binaryName" | "workspaceRoots" | "workspaceTrusted">,
+): void {
+  if (!isWorkspaceLocalPath(filePath, request.workspaceRoots)) {
+    return;
+  }
+  if (request.workspaceTrusted === true) {
+    return;
+  }
+  throw new Error(
+    `${request.binaryName} configured path points inside the current workspace and requires a trusted workspace.`,
+  );
+}
+
+function assertTrustedCargoFallback(
+  request: Pick<BinaryResolutionRequest, "binaryName" | "workspaceRoots" | "workspaceTrusted">,
+): void {
+  if (request.workspaceRoots.length === 0 || request.workspaceTrusted === true) {
+    return;
+  }
+  throw new Error(
+    `${request.binaryName} Cargo development fallback requires a trusted workspace.`,
+  );
+}
+
+function isWorkspaceLocalPath(filePath: string, workspaceRoots: readonly string[]): boolean {
+  const resolvedFilePath = path.resolve(filePath);
+  return workspaceRoots.some((root) => isPathInside(resolvedFilePath, root));
+}
+
+function isPathInside(filePath: string, root: string): boolean {
+  const resolvedRoot = path.resolve(root);
+  const relative = path.relative(resolvedRoot, filePath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function isExecutableFile(filePath: string): boolean {

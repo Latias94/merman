@@ -87,7 +87,7 @@ export async function createLanguageClient(
       ],
     },
     markdown: {
-      isTrusted: true,
+      isTrusted: false,
       supportHtml: false,
     },
     middleware: {
@@ -174,6 +174,7 @@ async function resolveServerOptions(
     explicitPath: settings.path,
     useCargoRun: settings.useCargoRun,
     cargoArgs: settings.cargoArgs,
+    workspaceTrusted: vscode.workspace.isTrusted,
   });
   outputChannel.appendLine(
     `[server] ${invocation.label}: ${invocation.command} ${invocation.args.join(" ")}`.trim(),

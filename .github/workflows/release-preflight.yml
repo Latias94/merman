@@ -364,7 +364,7 @@ jobs:
 
       - name: Verify VSIX contents
         working-directory: tools/vscode-extension
-        run: npm run verify:vsix -- --vsix "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix" --platform "${{ steps.package-platform.outputs.key }}" --target "${{ steps.package-platform.outputs.key }}"
+        run: npm run verify:vsix -- --vsix "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix" --platform "${{ steps.package-platform.outputs.key }}" --target "${{ steps.package-platform.outputs.key }}" --version "${{ inputs.version }}"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v6

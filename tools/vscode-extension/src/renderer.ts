@@ -40,6 +40,7 @@ export function resolveCliInvocation(
     explicitPath: settings.path,
     useCargoRun: settings.useCargoRun,
     cargoArgs: settings.cargoArgs,
+    workspaceTrusted: vscode.workspace.isTrusted,
   });
 }
 

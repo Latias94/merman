@@ -54,6 +54,11 @@ def web_version() -> str:
     return str(data["version"])
 
 
+def vscode_extension_version() -> str:
+    data = json.loads((ROOT / "tools/vscode-extension/package.json").read_text())
+    return str(data["version"])
+
+
 def android_version() -> str:
     text = (ROOT / "platforms/android/build.gradle.kts").read_text()
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, flags=re.MULTILINE)
@@ -67,6 +72,7 @@ def check_versions(version: str) -> int:
         "Cargo workspace": version,
         "Flutter pubspec": version,
         "Web package": version,
+        "VS Code extension": version,
         "Android package": version,
         "Python package": semver_to_pep440(version),
     }
@@ -74,6 +80,7 @@ def check_versions(version: str) -> int:
         "Cargo workspace": cargo_workspace_version(),
         "Flutter pubspec": flutter_version(),
         "Web package": web_version(),
+        "VS Code extension": vscode_extension_version(),
         "Android package": android_version(),
         "Python package": python_project_version(),
     }
