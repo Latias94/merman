@@ -146,7 +146,7 @@ fn upsert_text_defers_snapshot_until_requested() {
     );
 
     assert_eq!(document.version, 1);
-    assert_eq!(document.text, "flowchart TD\nA-->B\n");
+    assert_eq!(document.text.as_ref(), "flowchart TD\nA-->B\n");
     assert!(!store.has_snapshot(&uri));
 
     let snapshot = store

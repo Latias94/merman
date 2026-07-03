@@ -26,7 +26,7 @@ impl Default for DocumentStore {
 pub struct StoredDocument {
     pub uri: Url,
     pub version: i32,
-    pub text: String,
+    pub text: Arc<str>,
     pub kind: DocumentKind,
 }
 
@@ -127,7 +127,7 @@ impl DocumentStore {
         let document = StoredDocument {
             uri: uri.clone(),
             version,
-            text,
+            text: Arc::<str>::from(text),
             kind,
         };
         self.snapshots.remove(&uri);
@@ -371,7 +371,7 @@ impl SnapshotBuildRequest {
         let snapshot = workspace.upsert(
             self.document.uri.as_str(),
             self.document.version,
-            self.document.text.clone(),
+            self.document.text.to_string(),
             self.document.kind,
         );
         Arc::new(DocumentSnapshot::from_editor(

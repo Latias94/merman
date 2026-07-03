@@ -170,7 +170,7 @@ impl MermanLanguageServer {
         analyzer: &Analyzer,
     ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
         let source = source_descriptor_for_document(&document.uri, document.kind);
-        let payload = analyze_document(&document.text, analyzer, source);
+        let payload = analyze_document(document.text.as_ref(), analyzer, source);
         analysis_payload_to_versioned_diagnostics(&payload, &document.uri, document.version)
     }
 
@@ -402,7 +402,7 @@ impl LanguageServer for MermanLanguageServer {
             return;
         };
 
-        let mut text = current.text.clone();
+        let mut text = current.text.to_string();
         for change in params.content_changes {
             text = change.text;
         }
@@ -883,7 +883,7 @@ mod tests {
         let document = StoredDocument {
             uri: uri.clone(),
             version: 7,
-            text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".to_string(),
+            text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".into(),
             kind: DocumentKind::Markdown,
         };
         let diagnostics = MermanLanguageServer::diagnostics_for_document(
