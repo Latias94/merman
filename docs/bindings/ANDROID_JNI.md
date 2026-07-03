@@ -26,6 +26,7 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanEngine.renderAscii(source, optionsJson = null)`
 - `MermanEngine.parseJson(source, optionsJson = null)`
 - `MermanEngine.layoutJson(source, optionsJson = null)`
+- `MermanEngine.analyzeJson(source, optionsJson = null)`
 - `MermanEngine.validateJson(source, optionsJson = null)`
 - `MermanEngine.supportedDiagramsJson()`
 - `MermanEngine.asciiCapabilitiesJson()`
@@ -37,8 +38,8 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanException`
 
 The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
-initialization. `MermanReusableEngine` exposes repeated render/parse/layout/validation calls and a
-`MermanTextMeasurer` callback for hosts that need font-aware text measurement.
+initialization. `MermanReusableEngine` exposes repeated render/parse/layout/analysis/validation
+calls and a `MermanTextMeasurer` callback for hosts that need font-aware text measurement.
 `MermanEngine.lintRuleCatalogJson()` exposes the shared analyzer rule catalog as JSON, including
 evidence references, so Android hosts can build settings or LSP-related UI from the same rule
 metadata as CLI and other bindings.

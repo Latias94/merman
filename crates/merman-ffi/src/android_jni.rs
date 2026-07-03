@@ -1,9 +1,14 @@
 use jni::{
-    Env, EnvUnowned, JavaVM,
+    Env, EnvUnowned,
     errors::{Result as JniResult, ThrowRuntimeExAndDefault},
-    objects::{Global, JClass, JObject, JString, JValue},
+    objects::{JClass, JObject, JString},
     strings::JNIString,
     sys::{jint, jlong, jstring},
+};
+#[cfg(feature = "render")]
+use jni::{
+    JavaVM,
+    objects::{Global, JValue},
 };
 #[cfg(feature = "render")]
 use merman_bindings_core::TextMeasurer;
@@ -12,8 +17,8 @@ use std::ptr;
 #[cfg(feature = "render")]
 use std::sync::Arc;
 
-#[cfg(feature = "render")]
 struct JniReusableEngine {
+    #[cfg(feature = "render")]
     base: merman_bindings_core::BindingEngine,
     inner: merman_bindings_core::BindingEngine,
 }
@@ -201,6 +206,7 @@ pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeNew(
         match merman_bindings_core::BindingEngine::new(options_json.as_bytes()) {
             Ok(engine) => {
                 let handle = Box::new(JniReusableEngine {
+                    #[cfg(feature = "render")]
                     base: engine.clone(),
                     inner: engine,
                 });

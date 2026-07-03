@@ -257,8 +257,10 @@ MermanResult merman_engine_validate_json(
 );
 ```
 
-Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render
-calls, but callers must not free an engine while another thread is using it.
+Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render,
+parse, layout, analysis, or validation calls when the host treats the handle as borrowed for the
+duration of each call. Callers must externally synchronize `merman_engine_free` and
+`merman_engine_set_text_measure_callback` with any concurrent use of the same engine handle.
 
 ### Host Text Measurement
 
@@ -282,8 +284,8 @@ the callback. The callback must not store them. `max_width` is meaningful only w
 `MERMAN_*` constants. `line_height`, `letter_spacing`, and `word_spacing` are CSS-pixel values.
 
 Return `handled=0` for measurement requests the host does not support. `merman` then falls back
-to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently,
-the callback and `user_data` must be thread-safe.
+to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently for
+render/layout calls, the callback and `user_data` must be thread-safe.
 
 The callback is synchronous and runs on the render/layout call path. Do not block it on UI-thread
 work, font loading, WebView JavaScript, platform channels, or another isolate. If the host cannot
@@ -636,5 +638,10 @@ id when the family contributes one.
 
 ## Threading
 
-The first ABI is stateless. Calls may be made concurrently as long as callers obey buffer ownership
-rules.
+One-shot ABI calls are stateless. They may be made concurrently as long as callers obey buffer
+ownership rules.
+
+Reusable-engine calls borrow the engine handle for the duration of each call. Hosts may issue
+concurrent read-style calls through the same handle only when any installed text-measure callback and
+its `user_data` are thread-safe. Hosts must not call `merman_engine_free` or
+`merman_engine_set_text_measure_callback` concurrently with another call using the same handle.
