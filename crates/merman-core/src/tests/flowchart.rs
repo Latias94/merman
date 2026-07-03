@@ -2270,6 +2270,25 @@ fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_accept_legacy_flowchart_type() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA-->B\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart", text, ParseOptions::strict())
+        .unwrap()
+        .expect("legacy flowchart editor facts");
+
+    let symbol = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "A")
+        .expect("flowchart node symbol");
+    let a_start = text.find("A-->").unwrap();
+    assert_eq!(symbol.selection.start, a_start);
+    assert_eq!(symbol.selection.end, a_start + "A".len());
+}
+
+#[test]
 fn parse_flowchart_editor_facts_preserve_hyphenated_node_id_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nwi-fi[\"a node with dashes in its name\"]\n";

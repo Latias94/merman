@@ -226,7 +226,7 @@ impl<'a> ParsePipeline<'a> {
         let editor_input = source_map.parser_input();
 
         let facts = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart-elk" => {
+            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
                 crate::diagrams::flowchart::parse_flowchart_editor_facts(editor_input, &meta)?
             }
             "sequence" => {
