@@ -46,6 +46,51 @@ typedef struct MermanApi {
     MermanFree buffer_free;
 } MermanApi;
 
+typedef struct MermanMeasureProbe {
+    size_t calls;
+    size_t handled;
+    size_t html_like;
+    size_t break_spaces;
+    size_t reset_calls;
+} MermanMeasureProbe;
+
+static MermanHostTextMeasureResult smoke_measure_text(
+    MermanHostTextMeasureRequest request,
+    void* user_data
+) {
+    if (user_data == NULL) {
+        MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
+        return fallback;
+    }
+
+    MermanMeasureProbe* probe = (MermanMeasureProbe*)user_data;
+    probe->calls += 1;
+    if (request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE) {
+        probe->html_like += 1;
+    }
+    if (request.white_space == MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES) {
+        probe->break_spaces += 1;
+    }
+    if (request.text != NULL && request.text_len > 0) {
+        probe->handled += 1;
+        double natural_width = (double)request.text_len * 8.0;
+        double width = natural_width;
+        if (request.has_max_width && request.max_width > 0.0 && natural_width > request.max_width) {
+            width = request.max_width;
+        }
+        MermanHostTextMeasureResult measured = {
+            1,
+            width,
+            request.line_height > 0.0 ? request.line_height : request.font_size,
+            1
+        };
+        return measured;
+    }
+
+    MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
+    return fallback;
+}
+
 static int buffer_contains(MermanBuffer buffer, const char* needle) {
     size_t needle_len = strlen(needle);
     if (needle_len == 0) {
@@ -74,6 +119,20 @@ static int expect_ok_with(MermanResult result, MermanFree free_buffer, const cha
         return 20;
     }
     free_buffer(result.data);
+    return 0;
+}
+
+static int expect_empty_ok(MermanResult result, MermanFree free_buffer) {
+    if (result.code != MERMAN_OK) {
+        if (result.data.data != NULL || result.data.len != 0) {
+            free_buffer(result.data);
+        }
+        return 60 + result.code;
+    }
+    if (result.data.data != NULL || result.data.len != 0) {
+        free_buffer(result.data);
+        return 70;
+    }
     return 0;
 }
 
@@ -322,6 +381,67 @@ int merman_c_consumer_smoke(MermanApi api) {
     if (rc != 0) {
         api.engine_free(engine.engine);
         return rc;
+    }
+
+    if (api.render_enabled) {
+        MermanMeasureProbe probe = {0, 0, 0, 0, 0};
+        rc = expect_empty_ok(
+            api.engine_set_text_measure_callback(engine.engine, smoke_measure_text, &probe),
+            api.buffer_free
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+
+        rc = expect_ok_with(
+            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            "<svg"
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+        if (probe.calls == 0 || probe.handled == 0 || probe.html_like == 0) {
+            api.engine_free(engine.engine);
+            return 80;
+        }
+
+        rc = expect_empty_ok(
+            api.engine_set_text_measure_callback(engine.engine, NULL, NULL),
+            api.buffer_free
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+        probe.reset_calls = probe.calls;
+
+        rc = expect_ok_with(
+            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            "<svg"
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+        if (probe.calls != probe.reset_calls) {
+            api.engine_free(engine.engine);
+            return 81;
+        }
+    } else {
+        rc = expect_error_with(
+            api.engine_set_text_measure_callback(engine.engine, smoke_measure_text, NULL),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
     }
 
     rc = expect_ok_with(
