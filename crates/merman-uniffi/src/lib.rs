@@ -420,6 +420,32 @@ impl MermanEngine {
         ))
     }
 
+    pub fn analyze_document_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+        uri: String,
+    ) -> Result<String, MermanError> {
+        string_output(merman_bindings_core::analyze_document_json(
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            uri.as_bytes(),
+        ))
+    }
+
+    pub fn analyze_document_facts_json(
+        &self,
+        source: String,
+        options_json: Option<String>,
+        uri: String,
+    ) -> Result<String, MermanError> {
+        string_output(merman_bindings_core::analyze_document_facts_json(
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            uri.as_bytes(),
+        ))
+    }
+
     pub fn validate(
         &self,
         source: String,
@@ -554,6 +580,24 @@ impl MermanReusableEngine {
     pub fn analyze_json(&self, source: String) -> Result<String, MermanError> {
         let inner = self.current_inner()?;
         string_output(inner.analyze_json(source.as_bytes()))
+    }
+
+    pub fn analyze_document_json(
+        &self,
+        source: String,
+        uri: String,
+    ) -> Result<String, MermanError> {
+        let inner = self.current_inner()?;
+        string_output(inner.analyze_document_json(source.as_bytes(), uri.as_bytes()))
+    }
+
+    pub fn analyze_document_facts_json(
+        &self,
+        source: String,
+        uri: String,
+    ) -> Result<String, MermanError> {
+        let inner = self.current_inner()?;
+        string_output(inner.analyze_document_facts_json(source.as_bytes(), uri.as_bytes()))
     }
 
     pub fn validate(&self, source: String) -> Result<MermanValidationResult, MermanError> {
@@ -818,6 +862,44 @@ mod tests {
     }
 
     #[test]
+    fn engine_returns_document_analysis_json() {
+        let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
+        let json: Value = serde_json::from_str(
+            &engine()
+                .analyze_document_json(
+                    source.to_string(),
+                    None,
+                    "file:///tmp/example.md".to_string(),
+                )
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["source"]["kind"], "markdown");
+        assert_eq!(json["valid"], true);
+    }
+
+    #[test]
+    fn engine_returns_document_facts_json() {
+        let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
+        let json: Value = serde_json::from_str(
+            &engine()
+                .analyze_document_facts_json(
+                    source.to_string(),
+                    None,
+                    "file:///tmp/example.md".to_string(),
+                )
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["source"]["kind"], "markdown");
+        assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
+    }
+
+    #[test]
     fn engine_validates_source() {
         let result = engine()
             .validate("flowchart TD\nA[Hello]".to_string(), None)
@@ -908,6 +990,24 @@ mod tests {
             .unwrap();
         assert!(svg.contains("id=\"uniffi-reusable\""));
         assert!(svg.contains("data-merman-foreignobject"));
+    }
+
+    #[test]
+    fn reusable_engine_returns_document_analysis_json() {
+        let reusable = MermanReusableEngine::new(Some(
+            r#"{ "analysis": { "profile": "strict" } }"#.to_string(),
+        ))
+        .unwrap();
+        let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
+        let json: Value = serde_json::from_str(
+            &reusable
+                .analyze_document_json(source.to_string(), "file:///tmp/example.md".to_string())
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["source"]["kind"], "markdown");
+        assert_eq!(json["valid"], true);
     }
 
     #[cfg(feature = "render")]

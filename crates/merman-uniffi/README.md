@@ -13,6 +13,8 @@ Call `MermanReusableEngine::set_text_measurer` to install a host measurer later,
 `ascii_capabilities()` exposes ASCII support grades and summary fallback metadata.
 `diagram_family_capabilities()` exposes the same parser/render discovery information as the C ABI
 metadata surface.
+`analyze_document_json()` and `analyze_document_facts_json()` expose Markdown/MDX-aware diagnostics
+and syntax facts for hosts that need editor, lint, or LSP-style document ranges.
 `lint_rule_catalog()` and `configurable_lint_rule_catalog()` expose governed analyzer rule metadata,
 including evidence references, for package settings, diagnostics UI, and LSP integrations.
 

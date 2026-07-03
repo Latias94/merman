@@ -48,9 +48,9 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, binding metadata,
-and an optional host text-measurement callback for reusable engines. Native raster byte outputs are
-intentionally split into a later ABI lane.
+The C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, single-diagram and
+document-level analysis JSON, binding metadata, and an optional host text-measurement callback for
+reusable engines. Native raster byte outputs are intentionally split into a later ABI lane.
 
 Hosts that need SVG for strict renderers can still request the export-safe SVG pipeline through
 `options_json`, for example `{ "svg": { "pipeline": "resvg-safe" } }`. `NULL/0` options keep the
@@ -178,11 +178,17 @@ same command.
 - `merman_engine_set_text_measure_callback`
 - `merman_engine_render_svg`
 - `merman_engine_render_ascii`
+- `merman_engine_analyze_json`
+- `merman_engine_analyze_document_json`
+- `merman_engine_analyze_document_facts_json`
 - `merman_engine_parse_json`
 - `merman_engine_layout_json`
 - `merman_engine_validate_json`
 - `merman_render_svg`
 - `merman_render_ascii`
+- `merman_analyze_json`
+- `merman_analyze_document_json`
+- `merman_analyze_document_facts_json`
 - `merman_parse_json`
 - `merman_layout_json`
 - `merman_validate_json`

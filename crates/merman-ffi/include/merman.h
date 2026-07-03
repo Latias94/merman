@@ -101,6 +101,23 @@ typedef MermanHostTextMeasureResult (*MermanHostTextMeasureCallback)(
     void* user_data
 );
 
+typedef MermanResult (*MermanDocumentCall)(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
+typedef MermanResult (*MermanEngineDocumentCall)(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
 /*
  * Return the C ABI protocol version implemented by this library.
  *
@@ -185,6 +202,20 @@ MermanResult merman_engine_analyze_json(
     const uint8_t* source,
     size_t source_len
 );
+MermanResult merman_engine_analyze_document_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+MermanResult merman_engine_analyze_document_facts_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
 MermanResult merman_engine_parse_json(
     const MermanEngine* engine,
     const uint8_t* source,
@@ -245,6 +276,22 @@ MermanResult merman_analyze_json(
     size_t source_len,
     const uint8_t* options_json,
     size_t options_len
+);
+MermanResult merman_analyze_document_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+MermanResult merman_analyze_document_facts_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len,
+    const uint8_t* uri,
+    size_t uri_len
 );
 
 /*

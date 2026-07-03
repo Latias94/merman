@@ -520,8 +520,9 @@ pub fn editor_completions(
     line: usize,
     character: usize,
     uri: Option<String>,
+    options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     js_value(&completion_for_snapshot(
         &snapshot,
         Position::new(line, character),
@@ -535,15 +536,20 @@ pub fn editor_hover(
     line: usize,
     character: usize,
     uri: Option<String>,
+    options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     js_value(&hover(&snapshot, Position::new(line, character)).map(WasmHover::from))
 }
 
 #[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorDocumentSymbols)]
-pub fn editor_document_symbols(source: &str, uri: Option<String>) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+pub fn editor_document_symbols(
+    source: &str,
+    uri: Option<String>,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     let symbols = document_symbols(&snapshot)
         .into_iter()
         .map(WasmDocumentSymbol::from)
@@ -557,8 +563,9 @@ pub fn editor_workspace_symbols(
     source: &str,
     query: &str,
     uri: Option<String>,
+    options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     let symbols = workspace_symbols(&snapshot, query)
         .into_iter()
         .map(WasmSymbolInformation::from)
@@ -573,8 +580,9 @@ pub fn editor_definition(
     line: usize,
     character: usize,
     uri: Option<String>,
+    options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     js_value(&goto_definition(&snapshot, Position::new(line, character)).map(WasmLocation::from))
 }
 
@@ -586,8 +594,9 @@ pub fn editor_references(
     character: usize,
     include_declaration: bool,
     uri: Option<String>,
+    options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     let locations = references(
         &snapshot,
         Position::new(line, character),
@@ -607,8 +616,9 @@ pub fn editor_prepare_rename(
     line: usize,
     character: usize,
     uri: Option<String>,
+    options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     js_value(
         &prepare_rename(&snapshot, Position::new(line, character)).map(WasmPrepareRename::from),
     )
@@ -622,8 +632,9 @@ pub fn editor_rename(
     character: usize,
     new_name: &str,
     uri: Option<String>,
+    options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     match rename(&snapshot, Position::new(line, character), new_name) {
         Ok(edit) => js_value(&edit.map(WasmWorkspaceEdit::from)),
         Err(err) => Err(JsValue::from_str(&err.to_string())),
@@ -638,8 +649,12 @@ pub fn editor_semantic_token_legend() -> Result<JsValue, JsValue> {
 
 #[cfg(feature = "editor-language")]
 #[wasm_bindgen(js_name = editorSemanticTokens)]
-pub fn editor_semantic_tokens(source: &str, uri: Option<String>) -> Result<JsValue, JsValue> {
-    let snapshot = editor_snapshot(source, uri);
+pub fn editor_semantic_tokens(
+    source: &str,
+    uri: Option<String>,
+    options_json: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     let tokens = semantic_tokens_for_snapshot(&snapshot)
         .into_iter()
         .map(WasmSemanticToken::from)
@@ -667,11 +682,16 @@ fn editor_uri(uri: Option<String>) -> String {
 }
 
 #[cfg(feature = "editor-language")]
-fn editor_snapshot(source: &str, uri: Option<String>) -> DocumentSnapshot {
+fn editor_snapshot(
+    source: &str,
+    uri: Option<String>,
+    options_json: Option<&str>,
+) -> Result<DocumentSnapshot, JsValue> {
     let uri = editor_uri(uri);
     let kind = document_kind_for_uri(&uri);
-    let mut workspace = DocumentWorkspace::new();
-    workspace.upsert(uri, 1, source.to_string(), kind)
+    let options = parse_analysis_options(options_json).map_err(binding_error_to_js)?;
+    let mut workspace = DocumentWorkspace::with_analyzer(Analyzer::with_options(options));
+    Ok(workspace.upsert(uri, 1, source.to_string(), kind))
 }
 
 #[cfg(feature = "editor-language")]
@@ -1294,14 +1314,18 @@ mod tests {
         let completion_snapshot = editor_snapshot(
             "flowchart TD\nA-->B\nC-->\n",
             Some("file:///tmp/example.mmd".to_string()),
-        );
+            None,
+        )
+        .unwrap();
         let completions = completion_for_snapshot(&completion_snapshot, Position::new(2, 4));
         assert!(completions.items.iter().any(|item| item.label == "B"));
 
         let reference_snapshot = editor_snapshot(
             "flowchart TD\nA-->B\nA-->C\n",
             Some("file:///tmp/example.mmd".to_string()),
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(
             references(&reference_snapshot, Position::new(1, 0), true)
                 .unwrap()

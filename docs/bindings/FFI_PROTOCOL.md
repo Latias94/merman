@@ -34,12 +34,11 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, binding
-metadata, and optional host text measurement for reusable engines. Raster byte outputs are not part
-of this protocol version even though the Rust crate has a reserved `raster` feature gate. The next
-protocol extension reserves diagnostics-first analysis JSON as the canonical validation/lint
-payload. All source-processing functions accept the shared `options_json` contract documented in
-`docs/bindings/OPTIONS_JSON.md`.
+The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON,
+diagnostics-first analysis JSON, binding metadata, and optional host text measurement for reusable
+engines. Raster byte outputs are not part of this protocol version even though the Rust crate has a
+reserved `raster` feature gate. All source-processing functions accept the shared `options_json`
+contract documented in `docs/bindings/OPTIONS_JSON.md`.
 
 That shared options contract now also carries a `lint` section for rule profiles, explicit
 enable/disable, and severity overrides. Hosts that consume analysis or validation diagnostics
@@ -232,6 +231,25 @@ MermanResult merman_engine_layout_json(
     const uint8_t* source,
     size_t source_len
 );
+MermanResult merman_engine_analyze_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_analyze_document_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+MermanResult merman_engine_analyze_document_facts_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
 MermanResult merman_engine_validate_json(
     const MermanEngine* engine,
     const uint8_t* source,
@@ -386,8 +404,8 @@ returns `MERMAN_UNSUPPORTED_FORMAT`.
 
 ## Diagnostics-First Analysis JSON
 
-ADR 0070 reserves analysis JSON as the canonical diagnostics payload for validation, lint, Markdown
-scanning, and future LSP adapters. These symbols are the protocol extension for the active ABI:
+ADR 0070 defines analysis JSON as the canonical diagnostics payload for validation, lint, Markdown
+scanning, and LSP adapters. These symbols are part of the active ABI:
 
 ```c
 MermanResult merman_analyze_json(
@@ -402,12 +420,46 @@ MermanResult merman_engine_analyze_json(
     const uint8_t* source,
     size_t source_len
 );
+
+MermanResult merman_analyze_document_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
+MermanResult merman_analyze_document_facts_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
+MermanResult merman_engine_analyze_document_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
+MermanResult merman_engine_analyze_document_facts_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
 ```
 
-When implemented, these functions should return `MERMAN_OK` when the analysis payload was produced.
-Diagram errors are represented inside `data` as diagnostics. Transport errors such as invalid
-pointers, invalid UTF-8, invalid options JSON, panics, and internal serialization failures remain
-non-zero `MermanResult.code` values.
+These functions return `MERMAN_OK` when the analysis payload was produced. Diagram errors are
+represented inside `data` as diagnostics. Transport errors such as invalid pointers, invalid UTF-8,
+invalid options JSON, panics, and internal serialization failures remain non-zero
+`MermanResult.code` values.
 
 The default analyzer is expected to be render-free. Optional layout or render checks may be added
 later behind feature/profile controls, but must use the same payload shape and report disabled

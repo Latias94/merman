@@ -13,6 +13,8 @@ Status: experimental generated-binding surface.
 - `MermanEngine::layout_json(source, options_json)`
 - `MermanEngine::validate(source, options_json)`
 - `MermanEngine::analyze_json(source, options_json)`
+- `MermanEngine::analyze_document_json(source, options_json, uri)`
+- `MermanEngine::analyze_document_facts_json(source, options_json, uri)`
 - `MermanEngine::reusable_engine(options_json)`
 - `MermanEngine::reusable_engine_with_text_measurer(options_json, measurer)`
 - `MermanEngine::supported_diagrams()`
@@ -23,7 +25,7 @@ Status: experimental generated-binding surface.
 - `MermanEngine::lint_rule_catalog()`
 - `MermanEngine::configurable_lint_rule_catalog()`
 - `MermanReusableEngine` render/parse/layout/validation methods
-- `MermanReusableEngine` analysis methods
+- `MermanReusableEngine` analysis and document-analysis methods
 - `MermanReusableEngine::set_text_measurer(measurer)`
 - `MermanReusableEngine::clear_text_measurer()`
 - `MermanTextMeasurer` callback interface
@@ -54,7 +56,8 @@ record model. Generated bindings may add typed helpers later, but the JSON paylo
 byte-for-byte compatible with the C ABI and WASM surfaces.
 
 `validate` is implemented as a projection over analysis diagnostics so existing package users keep
-working while new integrations can consume `analyze_json`.
+working while new integrations can consume `analyze_json`, `analyze_document_json`, or
+`analyze_document_facts_json`.
 
 Generated bindings use Merman's built-in headless measurer by default. Hosts that need DOM,
 WebView, Core Text, Android, Flutter, or another platform font stack can use
@@ -77,10 +80,12 @@ metadata into a temporary package, copies the native library beside the generate
 the package with Python, and calls `MermanEngine.abi_version`, `MermanEngine.package_version`,
 `MermanEngine.render_svg`, `MermanEngine.render_ascii`, `MermanEngine.parse_json`,
 `MermanEngine.layout_json`, `MermanEngine.validate`, metadata methods,
+`MermanEngine.analyze_document_json`, `MermanEngine.analyze_document_facts_json`,
 `MermanEngine.ascii_capabilities`, `MermanEngine.diagram_family_capabilities`,
 `MermanEngine.reusable_engine_with_text_measurer`,
-`MermanReusableEngine.set_text_measurer`, `MermanReusableEngine.clear_text_measurer`, plus a
-`MermanError.Binding` error-path check.
+`MermanReusableEngine.analyze_document_json`,
+`MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
+`MermanReusableEngine.clear_text_measurer`, plus a `MermanError.Binding` error-path check.
 
 Generated Swift, Kotlin, Python, or Ruby files are not committed by this lane. Platform-specific
 package layouts should be split into follow-on lanes.

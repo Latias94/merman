@@ -28,12 +28,16 @@ typedef struct MermanApi {
     MermanEngineCall engine_render_svg;
     MermanEngineCall engine_render_ascii;
     MermanEngineCall engine_analyze_json;
+    MermanEngineDocumentCall engine_analyze_document_json;
+    MermanEngineDocumentCall engine_analyze_document_facts_json;
     MermanEngineCall engine_parse_json;
     MermanEngineCall engine_layout_json;
     MermanEngineCall engine_validate_json;
     MermanCall render_svg;
     MermanCall render_ascii;
     MermanCall analyze_json;
+    MermanDocumentCall analyze_document_json;
+    MermanDocumentCall analyze_document_facts_json;
     MermanCall parse_json;
     MermanCall layout_json;
     MermanCall validate_json;
@@ -179,12 +183,16 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.engine_render_svg == NULL ||
         api.engine_render_ascii == NULL ||
         api.engine_analyze_json == NULL ||
+        api.engine_analyze_document_json == NULL ||
+        api.engine_analyze_document_facts_json == NULL ||
         api.engine_parse_json == NULL ||
         api.engine_layout_json == NULL ||
         api.engine_validate_json == NULL ||
         api.render_svg == NULL ||
         api.render_ascii == NULL ||
         api.analyze_json == NULL ||
+        api.analyze_document_json == NULL ||
+        api.analyze_document_facts_json == NULL ||
         api.parse_json == NULL ||
         api.layout_json == NULL ||
         api.validate_json == NULL ||
@@ -273,6 +281,42 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.analyze_json(source, sizeof(source) - 1, NULL, 0),
         api.buffer_free,
         "\"version\":1"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    static const uint8_t markdown_source[] =
+        "# Example\n\n```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```\n";
+    static const uint8_t markdown_uri[] = "file:///tmp/example.md";
+
+    rc = expect_ok_with(
+        api.analyze_document_json(
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            NULL,
+            0,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.analyze_document_facts_json(
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            NULL,
+            0,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
     );
     if (rc != 0) {
         return rc;
@@ -448,6 +492,38 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.engine_analyze_json(engine.engine, source, sizeof(source) - 1),
         api.buffer_free,
         "\"version\":1"
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.engine_analyze_document_json(
+            engine.engine,
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.engine_analyze_document_facts_json(
+            engine.engine,
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
     );
     if (rc != 0) {
         api.engine_free(engine.engine);

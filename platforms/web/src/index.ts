@@ -934,53 +934,62 @@ export interface MermanWasmModule {
     source: string,
     line: number,
     character: number,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorCompletionList;
   editorHover?: (
     source: string,
     line: number,
     character: number,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorHover | null;
   editorDocumentSymbols?: (
     source: string,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorDocumentSymbol[];
   editorWorkspaceSymbols?: (
     source: string,
     query: string,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorSymbolInformation[];
   editorDefinition?: (
     source: string,
     line: number,
     character: number,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorLocation | null;
   editorReferences?: (
     source: string,
     line: number,
     character: number,
     includeDeclaration: boolean,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorLocation[];
   editorPrepareRename?: (
     source: string,
     line: number,
     character: number,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorPrepareRename | null;
   editorRename?: (
     source: string,
     line: number,
     character: number,
     newName: string,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorWorkspaceEdit | null;
   editorSemanticTokenLegend?: () => EditorSemanticTokenLegend;
   editorSemanticTokens?: (
     source: string,
-    uri?: string | null
+    uri?: string | null,
+    optionsJson?: string | null
   ) => EditorSemanticToken[];
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities?: () => AsciiCapability[];
@@ -1336,80 +1345,88 @@ export function editorCodeActions(
 export function editorCompletions(
   source: string,
   position: EditorPosition,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorCompletionList {
   const completions = requireEditorLanguage("editorCompletions", getMerman().editorCompletions);
-  return completions(source, position.line, position.character, uri);
+  return completions(source, position.line, position.character, uri, encodeOptions(options));
 }
 
 export function editorHover(
   source: string,
   position: EditorPosition,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorHover | null {
   const hover = requireEditorLanguage("editorHover", getMerman().editorHover);
-  return hover(source, position.line, position.character, uri);
+  return hover(source, position.line, position.character, uri, encodeOptions(options));
 }
 
 export function editorDocumentSymbols(
   source: string,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorDocumentSymbol[] {
   const documentSymbols = requireEditorLanguage(
     "editorDocumentSymbols",
     getMerman().editorDocumentSymbols
   );
-  return documentSymbols(source, uri);
+  return documentSymbols(source, uri, encodeOptions(options));
 }
 
 export function editorWorkspaceSymbols(
   source: string,
   query: string,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorSymbolInformation[] {
   const workspaceSymbols = requireEditorLanguage(
     "editorWorkspaceSymbols",
     getMerman().editorWorkspaceSymbols
   );
-  return workspaceSymbols(source, query, uri);
+  return workspaceSymbols(source, query, uri, encodeOptions(options));
 }
 
 export function editorDefinition(
   source: string,
   position: EditorPosition,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorLocation | null {
   const definition = requireEditorLanguage("editorDefinition", getMerman().editorDefinition);
-  return definition(source, position.line, position.character, uri);
+  return definition(source, position.line, position.character, uri, encodeOptions(options));
 }
 
 export function editorReferences(
   source: string,
   position: EditorPosition,
   includeDeclaration = true,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorLocation[] {
   const refs = requireEditorLanguage("editorReferences", getMerman().editorReferences);
-  return refs(source, position.line, position.character, includeDeclaration, uri);
+  return refs(source, position.line, position.character, includeDeclaration, uri, encodeOptions(options));
 }
 
 export function editorPrepareRename(
   source: string,
   position: EditorPosition,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorPrepareRename | null {
   const prepare = requireEditorLanguage("editorPrepareRename", getMerman().editorPrepareRename);
-  return prepare(source, position.line, position.character, uri);
+  return prepare(source, position.line, position.character, uri, encodeOptions(options));
 }
 
 export function editorRename(
   source: string,
   position: EditorPosition,
   newName: string,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorWorkspaceEdit | null {
   const rename = requireEditorLanguage("editorRename", getMerman().editorRename);
-  return rename(source, position.line, position.character, newName, uri);
+  return rename(source, position.line, position.character, newName, uri, encodeOptions(options));
 }
 
 export function editorSemanticTokenLegend(): EditorSemanticTokenLegend {
@@ -1422,10 +1439,11 @@ export function editorSemanticTokenLegend(): EditorSemanticTokenLegend {
 
 export function editorSemanticTokens(
   source: string,
-  uri?: string
+  uri?: string,
+  options?: SvgBindingOptions | string
 ): EditorSemanticToken[] {
   const tokens = requireEditorLanguage("editorSemanticTokens", getMerman().editorSemanticTokens);
-  return tokens(source, uri);
+  return tokens(source, uri, encodeOptions(options));
 }
 
 export function bindingCapabilities(): BindingCapabilities {

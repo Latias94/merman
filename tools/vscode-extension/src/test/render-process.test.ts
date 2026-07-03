@@ -96,6 +96,61 @@ describe("render process lifecycle", () => {
     await rejected;
     assert.equal(fs.readFileSync(termPath, "utf8"), "ignored");
   });
+
+  it("terminates renders that exceed the stdout size limit", async () => {
+    const tempDir = tempDirPath();
+    const cliPath = path.join(tempDir, "merman-cli");
+    fs.writeFileSync(
+      cliPath,
+      [
+        "#!/usr/bin/env node",
+        "process.stdout.write('x'.repeat(64));",
+      ].join("\n"),
+    );
+    fs.chmodSync(cliPath, 0o755);
+
+    await assert.rejects(
+      runRenderProcess({
+        invocation: {
+          command: process.execPath,
+          args: [cliPath],
+          source: "explicit",
+          label: "test cli",
+        },
+        source: "flowchart TD\nA --> B\n",
+        maxStdoutBytes: 16,
+      }),
+      /output exceeded the size limit/,
+    );
+  });
+
+  it("terminates renders that exceed the stderr size limit", async () => {
+    const tempDir = tempDirPath();
+    const cliPath = path.join(tempDir, "merman-cli");
+    fs.writeFileSync(
+      cliPath,
+      [
+        "#!/usr/bin/env node",
+        "process.stderr.write('x'.repeat(64));",
+        "setTimeout(() => process.exit(1), 20);",
+      ].join("\n"),
+    );
+    fs.chmodSync(cliPath, 0o755);
+
+    await assert.rejects(
+      runRenderProcess({
+        invocation: {
+          command: process.execPath,
+          args: [cliPath],
+          source: "explicit",
+          label: "test cli",
+        },
+        source: "flowchart TD\nA --> B\n",
+        maxStderrBytes: 16,
+      }),
+      /output exceeded the size limit/,
+    );
+  });
 });
 
 function tempDirPath(): string {

@@ -8,6 +8,8 @@ export interface RenderProcessRequest {
   signal?: AbortSignal;
   timeoutMs?: number;
   killGraceMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
 }
 
 export interface RenderProcessResult {
@@ -16,12 +18,19 @@ export interface RenderProcessResult {
   invocation: BinaryInvocation;
 }
 
+const DEFAULT_MAX_STDOUT_BYTES = 32 * 1024 * 1024;
+const DEFAULT_MAX_STDERR_BYTES = 1024 * 1024;
+
 export function runRenderProcess(request: RenderProcessRequest): Promise<RenderProcessResult> {
   return new Promise<RenderProcessResult>((resolve, reject) => {
     let settled = false;
-    let terminationReason: "abort" | "timeout" | undefined;
+    let terminationReason: "abort" | "timeout" | "output-limit" | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
     let killTimer: NodeJS.Timeout | undefined;
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    const maxStdoutBytes = request.maxStdoutBytes ?? DEFAULT_MAX_STDOUT_BYTES;
+    const maxStderrBytes = request.maxStderrBytes ?? DEFAULT_MAX_STDERR_BYTES;
     const child = cp.spawn(request.invocation.command, request.invocation.args, {
       cwd: request.invocation.cwd,
       env: process.env,
@@ -53,7 +62,7 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       clearTimers();
       resolve(result);
     };
-    const terminate = (reason: "abort" | "timeout"): void => {
+    const terminate = (reason: "abort" | "timeout" | "output-limit"): void => {
       if (terminationReason) {
         return;
       }
@@ -79,10 +88,22 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     child.stdout?.on("data", (chunk: Buffer | string) => {
-      stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stdoutBytes += buffer.byteLength;
+      if (stdoutBytes > maxStdoutBytes) {
+        terminate("output-limit");
+        return;
+      }
+      stdoutChunks.push(buffer);
     });
     child.stderr?.on("data", (chunk: Buffer | string) => {
-      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stderrBytes += buffer.byteLength;
+      if (stderrBytes > maxStderrBytes) {
+        terminate("output-limit");
+        return;
+      }
+      stderrChunks.push(buffer);
     });
     child.on("error", (error) => {
       request.signal?.removeEventListener("abort", abort);
@@ -95,6 +116,9 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
       if (terminationReason === "timeout") {
         return rejectOnce(new Error("Merman render timed out."));
+      }
+      if (terminationReason === "output-limit") {
+        return rejectOnce(new Error("Merman render output exceeded the size limit."));
       }
       if (terminationReason === "abort" || request.signal?.aborted || signal === "SIGTERM") {
         return rejectOnce(new Error("Render was superseded by a newer update."));

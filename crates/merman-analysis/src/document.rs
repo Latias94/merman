@@ -305,7 +305,13 @@ fn extract_markdown_diagrams(text: &str, source: &SourceDescriptor) -> Vec<Docum
         let line_end = next_line_end(text, cursor);
         let line = trim_line_ending(&text[cursor..line_end]);
 
-        if let Some(delimiter) = mermaid_fence_delimiter(line) {
+        if let Some(opening) = markdown_fence_opening(line) {
+            if !opening.is_mermaid {
+                cursor = skip_markdown_fence(text, line_end, opening.delimiter);
+                continue;
+            }
+
+            let delimiter = opening.delimiter;
             let body_start = line_end;
             let mut body_end = text.len();
             let mut search_start = body_start;
@@ -386,8 +392,14 @@ fn push_markdown_diagram(
     });
 }
 
-fn mermaid_fence_delimiter(line: &str) -> Option<FenceDelimiter> {
-    let trimmed = line.trim_start();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MarkdownFenceOpening {
+    delimiter: FenceDelimiter,
+    is_mermaid: bool,
+}
+
+fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
+    let trimmed = trim_fence_indent(line)?;
     let first = trimmed.as_bytes().first().copied()?;
     let marker = match first {
         b'`' => FenceMarker::Backtick,
@@ -401,29 +413,64 @@ fn mermaid_fence_delimiter(line: &str) -> Option<FenceDelimiter> {
     }
 
     let rest = trimmed[len..].trim_start();
+    if rest.is_empty() {
+        return Some(MarkdownFenceOpening {
+            delimiter: FenceDelimiter::new(marker, len),
+            is_mermaid: false,
+        });
+    }
+
     let language_len = "mermaid".len();
     if rest.len() < language_len {
-        return None;
+        return Some(MarkdownFenceOpening {
+            delimiter: FenceDelimiter::new(marker, len),
+            is_mermaid: false,
+        });
     }
     let (language, tail) = rest.split_at(language_len);
-    if !language.eq_ignore_ascii_case("mermaid") {
-        return None;
-    }
-    if tail.is_empty() || tail.starts_with(char::is_whitespace) {
-        Some(FenceDelimiter::new(marker, len))
-    } else {
-        None
-    }
+    let is_mermaid = language.eq_ignore_ascii_case("mermaid")
+        && (tail.is_empty() || tail.starts_with(char::is_whitespace));
+    Some(MarkdownFenceOpening {
+        delimiter: FenceDelimiter::new(marker, len),
+        is_mermaid,
+    })
 }
 
 fn is_matching_closing_fence(line: &str, delimiter: FenceDelimiter) -> bool {
-    let trimmed = line.trim_start();
+    let Some(trimmed) = trim_fence_indent(line) else {
+        return false;
+    };
     let marker = delimiter.marker_byte();
     let len = repeated_marker_len(trimmed.as_bytes(), marker);
     if len < delimiter.len() {
         return false;
     }
     trimmed[len..].chars().all(|ch| ch.is_whitespace())
+}
+
+fn skip_markdown_fence(text: &str, mut cursor: usize, delimiter: FenceDelimiter) -> usize {
+    while cursor < text.len() {
+        let line_end = next_line_end(text, cursor);
+        let line = trim_line_ending(&text[cursor..line_end]);
+        if is_matching_closing_fence(line, delimiter) {
+            return line_end;
+        }
+        cursor = line_end;
+    }
+    text.len()
+}
+
+fn trim_fence_indent(line: &str) -> Option<&str> {
+    let mut spaces = 0usize;
+    for (index, byte) in line.bytes().enumerate() {
+        match byte {
+            b' ' if spaces < 3 => spaces += 1,
+            b' ' => return None,
+            b'\t' => return None,
+            _ => return Some(&line[index..]),
+        }
+    }
+    Some("")
 }
 
 fn repeated_marker_len(bytes: &[u8], marker: u8) -> usize {
@@ -553,6 +600,31 @@ mod tests {
         let document = DocumentSource::new("```mermaidx\nflowchart LR\n```\n", source);
 
         assert!(document.diagrams().is_empty());
+    }
+
+    #[test]
+    fn markdown_document_source_ignores_mermaid_examples_inside_other_fences() {
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
+        let document = DocumentSource::new(
+            "````text\n```mermaid\nflowchart LR\nA-->B\n```\n````\n```mermaid\nflowchart TD\nC-->D\n```\n",
+            source,
+        );
+
+        assert_eq!(document.diagrams().len(), 1);
+        assert!(document.diagrams()[0].text.contains("flowchart TD"));
+        assert!(!document.diagrams()[0].text.contains("flowchart LR"));
+    }
+
+    #[test]
+    fn markdown_document_source_rejects_indented_mermaid_fences() {
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
+        let document = DocumentSource::new(
+            "    ```mermaid\n    flowchart LR\n    ```\n   ```mermaid\nflowchart TD\n```\n",
+            source,
+        );
+
+        assert_eq!(document.diagrams().len(), 1);
+        assert!(document.diagrams()[0].text.contains("flowchart TD"));
     }
 
     #[test]

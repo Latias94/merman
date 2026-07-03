@@ -55,6 +55,16 @@ svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
 ascii_text = engine.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = engine.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
+document_json = engine.analyze_document_json(
+    "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+    None,
+    "file:///tmp/example.md",
+)
+document_facts_json = engine.analyze_document_facts_json(
+    "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+    None,
+    "file:///tmp/example.md",
+)
 validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = engine.supported_diagrams()
 ascii_capabilities = engine.ascii_capabilities()
@@ -75,6 +85,10 @@ reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
 svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
 
 reusable = engine.reusable_engine(None)
+reusable_document_json = reusable.analyze_document_json(
+    "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+    "file:///tmp/example.md",
+)
 reusable.set_text_measurer(Measurer())
 svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
 reusable.clear_text_measurer()
@@ -112,12 +126,15 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
 it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
 `MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
+`MermanEngine.analyze_document_json`, `MermanEngine.analyze_document_facts_json`,
 `MermanEngine.validate`, metadata methods, `MermanEngine.ascii_capabilities`,
 `MermanEngine.diagram_family_capabilities`,
 `MermanEngine.lint_rule_catalog`, `MermanEngine.configurable_lint_rule_catalog`,
-`MermanEngine.reusable_engine_with_text_measurer`, `MermanReusableEngine.set_text_measurer`,
-`MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`,
-`MermanEngine.package_version`, and checks `MermanError.Binding` fields for invalid options JSON.
+`MermanEngine.reusable_engine_with_text_measurer`,
+`MermanReusableEngine.analyze_document_json`,
+`MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
+`MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`, `MermanEngine.package_version`,
+and checks `MermanError.Binding` fields for invalid options JSON.
 
 ## Build A Local Wheel
 

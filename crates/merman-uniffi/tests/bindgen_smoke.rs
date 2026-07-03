@@ -103,6 +103,14 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose validate"
     );
     assert!(
+        generated.contains("def analyze_document_json"),
+        "generated binding should expose analyze_document_json"
+    );
+    assert!(
+        generated.contains("def analyze_document_facts_json"),
+        "generated binding should expose analyze_document_facts_json"
+    );
+    assert!(
         generated.contains("def supported_diagrams"),
         "generated binding should expose supported_diagrams"
     );
@@ -250,6 +258,19 @@ layout = json.loads(engine.layout_json(source, None))
 assert "meta" in layout
 assert "layout" in layout
 
+document_source = '# Example\n\n```mermaid\n' + source + '\n```\n'
+document_analysis = json.loads(
+    engine.analyze_document_json(document_source, None, "file:///tmp/example.md")
+)
+assert document_analysis["source"]["kind"] == "markdown"
+assert document_analysis["valid"]
+
+document_facts = json.loads(
+    engine.analyze_document_facts_json(document_source, None, "file:///tmp/example.md")
+)
+assert document_facts["source"]["kind"] == "markdown"
+assert document_facts["diagrams"][0]["source_id"] == "mermaid-fence-1"
+
 validation = engine.validate(source, None)
 assert validation.valid
 assert validation.code_name == "MERMAN_OK"
@@ -311,6 +332,14 @@ assert measurer.calls > 0
 
 setter_measurer = Measurer()
 reusable = engine.reusable_engine(None)
+reusable_document_analysis = json.loads(
+    reusable.analyze_document_json(document_source, "file:///tmp/example.md")
+)
+assert reusable_document_analysis["source"]["kind"] == "markdown"
+reusable_document_facts = json.loads(
+    reusable.analyze_document_facts_json(document_source, "file:///tmp/example.md")
+)
+assert reusable_document_facts["source"]["kind"] == "markdown"
 reusable.set_text_measurer(setter_measurer)
 assert "Hello" in reusable.render_svg(source)
 calls_after_set = setter_measurer.calls

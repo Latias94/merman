@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   package:
-    name: package (${{ matrix.os }})
+    name: package (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
     env:
@@ -43,8 +43,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            target: linux-x64
           - os: macos-15
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
           - os: windows-2025-vs2026
+            target: win32-x64
 
     steps:
       - uses: actions/checkout@v6
@@ -68,10 +73,6 @@ jobs:
         working-directory: tools/vscode-extension
         run: npm ci
 
-      - name: Detect package platform
-        id: package-platform
-        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'key=' + process.platform + '-' + process.arch + '\n')"
-
       - name: Build release runtime binaries
         run: cargo build --release --locked -p merman-lsp -p merman-cli
 
@@ -89,15 +90,15 @@ jobs:
 
       - name: Package VSIX
         working-directory: tools/vscode-extension
-        run: npm run package -- --target "${{ steps.package-platform.outputs.key }}" --out "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix"
+        run: npm run package -- --target "${{ matrix.target }}" --out "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Verify VSIX contents
         working-directory: tools/vscode-extension
-        run: npm run verify:vsix -- --vsix "merman-vscode-${{ steps.package-platform.outputs.key }}.vsix" --platform "${{ steps.package-platform.outputs.key }}" --target "${{ steps.package-platform.outputs.key }}"
+        run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
 
       - name: Upload VSIX
         uses: actions/upload-artifact@v6
         with:
-          name: merman-vscode-${{ steps.package-platform.outputs.key }}
-          path: tools/vscode-extension/merman-vscode-${{ steps.package-platform.outputs.key }}.vsix
+          name: merman-vscode-${{ matrix.target }}
+          path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix
           if-no-files-found: error

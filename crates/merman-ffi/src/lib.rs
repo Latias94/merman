@@ -464,6 +464,59 @@ pub unsafe extern "C" fn merman_engine_analyze_json(
     })
 }
 
+/// Analyze a host document to diagnostics JSON bytes using a reusable engine.
+///
+/// # Safety
+///
+/// - `engine` must be a live pointer returned by `merman_engine_new`.
+/// - `source` and `uri` may be null only when their paired length is zero.
+/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_analyze_document_json(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+    uri: *const u8,
+    uri_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        ffi_engine_source_uri_call(
+            engine,
+            source,
+            source_len,
+            uri,
+            uri_len,
+            BindingEngine::analyze_document_json,
+        )
+    })
+}
+
+/// Analyze a host document to syntax/facts JSON bytes using a reusable engine.
+///
+/// # Safety
+///
+/// Safety rules are identical to `merman_engine_analyze_document_json`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_analyze_document_facts_json(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+    uri: *const u8,
+    uri_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        ffi_engine_source_uri_call(
+            engine,
+            source,
+            source_len,
+            uri,
+            uri_len,
+            BindingEngine::analyze_document_facts_json,
+        )
+    })
+}
+
 /// Validate Mermaid source using a reusable engine.
 ///
 /// # Safety
@@ -502,6 +555,63 @@ pub unsafe extern "C" fn merman_analyze_json(
             options_json,
             options_len,
             merman_bindings_core::analyze_json,
+        )
+    })
+}
+
+/// Analyze a host document to diagnostics JSON bytes.
+///
+/// # Safety
+///
+/// - `source` and `uri` may be null only when their paired length is zero.
+/// - `options_json` may be null only when `options_len == 0`.
+/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_analyze_document_json(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+    uri: *const u8,
+    uri_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        ffi_source_options_uri_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            uri,
+            uri_len,
+            merman_bindings_core::analyze_document_json,
+        )
+    })
+}
+
+/// Analyze a host document to syntax/facts JSON bytes.
+///
+/// # Safety
+///
+/// Safety rules are identical to `merman_analyze_document_json`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_analyze_document_facts_json(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+    uri: *const u8,
+    uri_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        ffi_source_options_uri_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            uri,
+            uri_len,
+            merman_bindings_core::analyze_document_facts_json,
         )
     })
 }
@@ -805,6 +915,23 @@ where
     f(&engine.inner, source_bytes)
 }
 
+unsafe fn ffi_engine_source_uri_call<F>(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+    uri: *const u8,
+    uri_len: usize,
+    f: F,
+) -> Result<Vec<u8>, BindingError>
+where
+    F: FnOnce(&BindingEngine, &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let engine = unsafe { engine_ref(engine)? };
+    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
+    let uri_bytes = unsafe { raw_bytes(uri, uri_len, "uri")? };
+    f(&engine.inner, source_bytes, uri_bytes)
+}
+
 unsafe fn ffi_source_options_call<F>(
     source: *const u8,
     source_len: usize,
@@ -819,6 +946,31 @@ where
         FfiSourceOptionsRequest::from_raw(source, source_len, options_json, options_len)?
     };
     f(request.source, request.options_json)
+}
+
+unsafe fn ffi_source_options_uri_call<F>(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+    uri: *const u8,
+    uri_len: usize,
+    f: F,
+) -> Result<Vec<u8>, BindingError>
+where
+    F: FnOnce(&[u8], &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let request = unsafe {
+        FfiSourceOptionsUriRequest::from_raw(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            uri,
+            uri_len,
+        )?
+    };
+    f(request.source, request.options_json, request.uri)
 }
 
 struct FfiSourceOptionsRequest<'a> {
@@ -838,6 +990,32 @@ impl<'a> FfiSourceOptionsRequest<'a> {
         Ok(Self {
             source,
             options_json,
+        })
+    }
+}
+
+struct FfiSourceOptionsUriRequest<'a> {
+    source: &'a [u8],
+    options_json: &'a [u8],
+    uri: &'a [u8],
+}
+
+impl<'a> FfiSourceOptionsUriRequest<'a> {
+    unsafe fn from_raw(
+        source: *const u8,
+        source_len: usize,
+        options_json: *const u8,
+        options_len: usize,
+        uri: *const u8,
+        uri_len: usize,
+    ) -> Result<Self, BindingError> {
+        let source = unsafe { raw_bytes(source, source_len, "source")? };
+        let options_json = unsafe { raw_bytes(options_json, options_len, "options_json")? };
+        let uri = unsafe { raw_bytes(uri, uri_len, "uri")? };
+        Ok(Self {
+            source,
+            options_json,
+            uri,
         })
     }
 }
@@ -945,6 +1123,32 @@ mod tests {
         }
     }
 
+    fn call_analyze_document(source: &[u8], options: &[u8], uri: &[u8]) -> MermanResult {
+        unsafe {
+            merman_analyze_document_json(
+                source.as_ptr(),
+                source.len(),
+                options.as_ptr(),
+                options.len(),
+                uri.as_ptr(),
+                uri.len(),
+            )
+        }
+    }
+
+    fn call_analyze_document_facts(source: &[u8], options: &[u8], uri: &[u8]) -> MermanResult {
+        unsafe {
+            merman_analyze_document_facts_json(
+                source.as_ptr(),
+                source.len(),
+                options.as_ptr(),
+                options.len(),
+                uri.as_ptr(),
+                uri.len(),
+            )
+        }
+    }
+
     fn call_layout(source: &[u8], options: &[u8]) -> MermanResult {
         unsafe {
             merman_layout_json(
@@ -962,6 +1166,22 @@ mod tests {
 
     fn call_engine_render(engine: *const MermanEngine, source: &[u8]) -> MermanResult {
         unsafe { merman_engine_render_svg(engine, source.as_ptr(), source.len()) }
+    }
+
+    fn call_engine_analyze_document(
+        engine: *const MermanEngine,
+        source: &[u8],
+        uri: &[u8],
+    ) -> MermanResult {
+        unsafe {
+            merman_engine_analyze_document_json(
+                engine,
+                source.as_ptr(),
+                source.len(),
+                uri.as_ptr(),
+                uri.len(),
+            )
+        }
     }
 
     fn take_buffer(buffer: MermanBuffer) -> Vec<u8> {
@@ -1152,6 +1372,30 @@ mod tests {
         assert_eq!(json["version"], 1);
         assert_eq!(json["valid"], false);
         assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
+    }
+
+    #[test]
+    fn analyze_document_json_returns_markdown_document_payload() {
+        let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
+        let result = call_analyze_document(source, b"", b"file:///tmp/example.md");
+
+        assert_eq!(result.code, BindingStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["source"]["kind"], "markdown");
+        assert_eq!(json["valid"], true);
+    }
+
+    #[test]
+    fn analyze_document_facts_json_returns_host_ranges() {
+        let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
+        let result = call_analyze_document_facts(source, b"", b"file:///tmp/example.md");
+
+        assert_eq!(result.code, BindingStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["source"]["kind"], "markdown");
+        assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
     }
 
     #[test]
@@ -1379,6 +1623,27 @@ mod tests {
     }
 
     #[test]
+    fn ffi_source_options_uri_request_decodes_uri() {
+        let source = b"flowchart TD\nA[Hello]";
+        let uri = b"file:///tmp/example.mmd";
+        let request = unsafe {
+            FfiSourceOptionsUriRequest::from_raw(
+                source.as_ptr(),
+                source.len(),
+                ptr::null(),
+                0,
+                uri.as_ptr(),
+                uri.len(),
+            )
+        }
+        .unwrap();
+
+        assert_eq!(request.source, source);
+        assert!(request.options_json.is_empty());
+        assert_eq!(request.uri, uri);
+    }
+
+    #[test]
     fn ffi_engine_source_call_decodes_engine_and_source() {
         let base = BindingEngine::new(b"").unwrap();
         let engine = MermanEngine {
@@ -1395,6 +1660,36 @@ mod tests {
         .unwrap();
 
         assert_eq!(output, source);
+    }
+
+    #[test]
+    fn ffi_engine_source_uri_call_decodes_engine_source_and_uri() {
+        let base = BindingEngine::new(b"").unwrap();
+        let engine = MermanEngine {
+            #[cfg(feature = "render")]
+            base: base.clone(),
+            inner: base,
+        };
+        let source = b"flowchart TD\nA[Hello]";
+        let uri = b"file:///tmp/example.mmd";
+        let output = unsafe {
+            ffi_engine_source_uri_call(
+                &engine,
+                source.as_ptr(),
+                source.len(),
+                uri.as_ptr(),
+                uri.len(),
+                |_engine, source, uri| {
+                    let mut output = source.to_vec();
+                    output.push(b'\n');
+                    output.extend_from_slice(uri);
+                    Ok(output)
+                },
+            )
+        }
+        .unwrap();
+
+        assert_eq!(output, b"flowchart TD\nA[Hello]\nfile:///tmp/example.mmd");
     }
 
     #[test]
@@ -1417,6 +1712,22 @@ mod tests {
         } else {
             expect_render_feature_error(result);
         }
+
+        unsafe { merman_engine_free(engine.engine) };
+    }
+
+    #[test]
+    fn reusable_engine_analyzes_documents_with_cached_options() {
+        let engine = call_engine(br#"{ "analysis": { "profile": "strict" } }"#);
+        assert_eq!(engine.code, BindingStatus::Ok.code());
+        assert!(!engine.engine.is_null());
+
+        let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
+        let result = call_engine_analyze_document(engine.engine, source, b"file:///tmp/example.md");
+
+        assert_eq!(result.code, BindingStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+        assert_eq!(json["source"]["kind"], "markdown");
 
         unsafe { merman_engine_free(engine.engine) };
     }
