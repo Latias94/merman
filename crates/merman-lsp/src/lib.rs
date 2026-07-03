@@ -1,13 +1,25 @@
 #![forbid(unsafe_code)]
 
-pub mod code_actions;
-pub mod completion;
-pub mod diagnostics;
-pub mod document_store;
-pub mod protocol;
-pub mod semantic_tokens;
-pub mod server;
-pub mod snapshot;
-pub mod structure;
+mod code_actions;
+mod completion;
+mod diagnostics;
+mod document_store;
+mod protocol;
+mod semantic_tokens;
+mod server;
+mod snapshot;
+mod structure;
 
+pub use protocol::{
+    CONFIG_SCHEMA_METHOD, CONFIG_SCHEMA_RESPONSE_VERSION, ConfigSchemaResponse,
+    EXPERIMENTAL_SCHEMA_VERSION, LspRuleCatalogEntry, RULE_CATALOG_METHOD,
+    RULE_CATALOG_RESPONSE_VERSION, RuleCatalogResponse,
+};
 pub use server::MermanLanguageServer;
+
+#[cfg(test)]
+mod completion_tests;
+#[cfg(test)]
+mod diagnostics_tests;
+#[cfg(test)]
+mod document_store_tests;

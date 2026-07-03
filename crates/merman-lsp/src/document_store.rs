@@ -32,22 +32,13 @@ pub struct StoredDocument {
 
 #[derive(Debug, Clone, Default)]
 pub struct SemanticTokensState {
-    pub version: Option<i32>,
     pub result_id: Option<String>,
     pub tokens: Vec<SemanticToken>,
 }
 
 impl SemanticTokensState {
-    pub fn new(
-        version: Option<i32>,
-        result_id: Option<String>,
-        tokens: Vec<SemanticToken>,
-    ) -> Self {
-        Self {
-            version,
-            result_id,
-            tokens,
-        }
+    pub fn new(result_id: Option<String>, tokens: Vec<SemanticToken>) -> Self {
+        Self { result_id, tokens }
     }
 }
 
@@ -151,6 +142,7 @@ impl DocumentStore {
         document
     }
 
+    #[cfg(test)]
     pub fn upsert(&mut self, uri: Url, version: i32, text: String) -> Arc<DocumentSnapshot> {
         let kind = DocumentKind::from_path(uri.path());
         self.upsert_text(uri.clone(), version, text, kind);
@@ -162,6 +154,7 @@ impl DocumentStore {
         self.documents.get(uri).map(|record| &record.document)
     }
 
+    #[cfg(test)]
     pub fn snapshot(&mut self, uri: &Url) -> Option<Arc<DocumentSnapshot>> {
         self.snapshot_context(uri).map(|context| context.snapshot)
     }
@@ -239,13 +232,6 @@ impl DocumentStore {
         self.semantic_tokens_state.remove(uri);
     }
 
-    pub fn documents(&self) -> Vec<StoredDocument> {
-        self.documents
-            .values()
-            .map(|record| record.document.clone())
-            .collect()
-    }
-
     pub(crate) fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
         self.documents
             .values()
@@ -257,13 +243,6 @@ impl DocumentStore {
                     record.epoch,
                 )
             })
-            .collect()
-    }
-
-    pub fn snapshots(&mut self) -> Vec<Arc<DocumentSnapshot>> {
-        let uris = self.documents.keys().cloned().collect::<Vec<_>>();
-        uris.into_iter()
-            .filter_map(|uri| self.snapshot(&uri))
             .collect()
     }
 
@@ -297,6 +276,7 @@ impl DocumentStore {
             .collect()
     }
 
+    #[cfg(test)]
     pub fn semantic_tokens_state(&self, uri: &Url) -> Option<&SemanticTokensState> {
         self.semantic_tokens_state
             .get(uri)
@@ -375,14 +355,6 @@ impl SnapshotContext {
             document_epoch,
         }
     }
-
-    pub fn generation(&self) -> SnapshotGeneration {
-        self.generation
-    }
-
-    pub fn document_epoch(&self) -> DocumentEpoch {
-        self.document_epoch
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -430,14 +402,6 @@ impl DiagnosticContext {
             generation,
             document_epoch,
         }
-    }
-
-    pub fn generation(&self) -> DiagnosticGeneration {
-        self.generation
-    }
-
-    pub fn document_epoch(&self) -> DocumentEpoch {
-        self.document_epoch
     }
 }
 

@@ -1,7 +1,11 @@
 use crate::protocol::range_to_lsp;
-use merman_analysis::{AnalysisDiagnostic, AnalysisPayload, DiagnosticSeverity};
+#[cfg(test)]
+use merman_analysis::AnalysisDiagnostic;
+use merman_analysis::{AnalysisPayload, DiagnosticSeverity};
+#[cfg(test)]
+use merman_editor_core::analysis_diagnostic_to_editor;
 use merman_editor_core::{
-    EditorDiagnostic, EditorDiagnosticRelated, analysis_diagnostic_to_editor,
+    EditorDiagnostic, EditorDiagnosticRelated,
     analysis_payload_to_diagnostics as analysis_payload_to_editor_diagnostics,
 };
 use tower_lsp::lsp_types::{
@@ -9,14 +13,18 @@ use tower_lsp::lsp_types::{
     DiagnosticTag, Location, NumberOrString, Url,
 };
 
-pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload, uri: &Url) -> Vec<Diagnostic> {
+#[cfg(test)]
+pub(crate) fn analysis_payload_to_diagnostics(
+    payload: &AnalysisPayload,
+    uri: &Url,
+) -> Vec<Diagnostic> {
     analysis_payload_to_editor_diagnostics(payload)
         .into_iter()
         .map(|diagnostic| editor_diagnostic_to_lsp(diagnostic, uri))
         .collect()
 }
 
-pub fn analysis_payload_to_versioned_diagnostics(
+pub(crate) fn analysis_payload_to_versioned_diagnostics(
     payload: &AnalysisPayload,
     uri: &Url,
     document_version: i32,
@@ -27,12 +35,13 @@ pub fn analysis_payload_to_versioned_diagnostics(
         .collect()
 }
 
-pub fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) -> Diagnostic {
+#[cfg(test)]
+fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) -> Diagnostic {
     editor_diagnostic_to_lsp(analysis_diagnostic_to_editor(diagnostic), uri)
 }
 
 #[cfg(test)]
-pub fn analysis_diagnostic_to_versioned_lsp(
+pub(crate) fn analysis_diagnostic_to_versioned_lsp(
     diagnostic: &AnalysisDiagnostic,
     uri: &Url,
     document_version: i32,
@@ -44,7 +53,8 @@ pub fn analysis_diagnostic_to_versioned_lsp(
     )
 }
 
-pub fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diagnostic {
+#[cfg(test)]
+fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diagnostic {
     let data = diagnostic
         .data
         .as_ref()
@@ -52,7 +62,7 @@ pub fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diag
     editor_diagnostic_to_lsp_with_data(diagnostic, uri, data)
 }
 
-pub fn editor_diagnostic_to_versioned_lsp(
+fn editor_diagnostic_to_versioned_lsp(
     diagnostic: EditorDiagnostic,
     uri: &Url,
     document_version: i32,

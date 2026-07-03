@@ -1,7 +1,6 @@
 use futures::SinkExt;
 use futures::StreamExt;
-use merman_lsp::MermanLanguageServer;
-use merman_lsp::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD};
+use merman_lsp::{CONFIG_SCHEMA_METHOD, MermanLanguageServer, RULE_CATALOG_METHOD};
 use serde_json::from_value;
 use tokio::time::{Duration, timeout};
 use tower::{Service, ServiceExt};

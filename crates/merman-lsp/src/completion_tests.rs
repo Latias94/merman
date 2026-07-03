@@ -1,5 +1,5 @@
-use merman_lsp::completion::{completion_for_snapshot, resolve_completion_item};
-use merman_lsp::document_store::DocumentStore;
+use crate::completion::{completion_for_snapshot, resolve_completion_item};
+use crate::document_store::DocumentStore;
 use tower_lsp::lsp_types::{
     CompletionTextEdit, Documentation, InsertTextFormat, MarkupKind, Position, Url,
 };

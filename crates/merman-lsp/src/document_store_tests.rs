@@ -1,9 +1,9 @@
+use crate::document_store::{DocumentStore, SemanticTokensState};
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
     FenceTextIndexSource,
 };
 use merman_editor_core::DocumentKind;
-use merman_lsp::document_store::{DocumentStore, SemanticTokensState};
 use tower_lsp::lsp_types::{SemanticToken, Url};
 
 #[test]
@@ -281,12 +281,12 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
     assert_eq!(
         store.apply_analyzer_options(AnalysisOptions::default()),
-        merman_lsp::document_store::AnalyzerConfigurationChange::Unchanged
+        crate::document_store::AnalyzerConfigurationChange::Unchanged
     );
 
     assert!(store.is_snapshot_context_current(&snapshot_context));
@@ -319,7 +319,7 @@ fn diagnostic_only_analyzer_update_stales_diagnostics_but_preserves_snapshots_an
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
     store.apply_analyzer_options(
@@ -359,7 +359,7 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
     store.upsert_text(
@@ -399,7 +399,7 @@ fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_st
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
     store.apply_analyzer_options(
@@ -431,7 +431,7 @@ fn remove_stales_existing_contexts_and_clears_document_state() {
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
     store.remove(&uri);
@@ -467,7 +467,7 @@ fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacem
 
     assert!(!store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some(1), Some("tokens-stale".to_string()), Vec::new()),
+        SemanticTokensState::new(Some("tokens-stale".to_string()), Vec::new()),
     ));
     assert!(store.semantic_tokens_state(&uri).is_none());
 }
@@ -489,7 +489,6 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
         SemanticTokensState::new(
-            Some(1),
             Some("tokens-1".to_string()),
             vec![SemanticToken {
                 delta_line: 0,
@@ -551,7 +550,6 @@ fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
     assert!(store.set_semantic_tokens_state_if_current(
         &token_context,
         SemanticTokensState::new(
-            Some(1),
             Some("tokens-1".to_string()),
             vec![SemanticToken {
                 delta_line: 0,
@@ -609,7 +607,7 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
         .expect("expected initial snapshot context");
     assert!(store.set_semantic_tokens_state_if_current(
         &token_context,
-        SemanticTokensState::new(Some(1), Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
     store.apply_analyzer_options(

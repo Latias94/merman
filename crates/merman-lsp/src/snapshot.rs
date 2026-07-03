@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use tower_lsp::lsp_types::{Position, Url};
+use tower_lsp::lsp_types::Url;
 
 #[derive(Debug, Clone)]
 pub struct DocumentSnapshot {
@@ -20,14 +20,10 @@ impl DocumentSnapshot {
         &self.editor
     }
 
-    pub fn byte_offset_for_position(&self, position: Position) -> Option<usize> {
-        self.editor
-            .byte_offset_for_position(position_to_editor(position))
-    }
-
+    #[cfg(test)]
     pub fn fence_at_position(
         &self,
-        position: Position,
+        position: tower_lsp::lsp_types::Position,
     ) -> Option<&merman_editor_core::FenceSnapshot> {
         self.editor.fence_at_position(position_to_editor(position))
     }
@@ -41,7 +37,8 @@ impl Deref for DocumentSnapshot {
     }
 }
 
-fn position_to_editor(position: Position) -> merman_editor_core::Position {
+#[cfg(test)]
+fn position_to_editor(position: tower_lsp::lsp_types::Position) -> merman_editor_core::Position {
     merman_editor_core::Position::new(position.line as usize, position.character as usize)
 }
 

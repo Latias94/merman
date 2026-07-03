@@ -1,8 +1,8 @@
+use crate::diagnostics::analysis_payload_to_diagnostics;
 use merman_analysis::{
     AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticSeverity,
     SourceDescriptor,
 };
-use merman_lsp::diagnostics::analysis_payload_to_diagnostics;
 use tower_lsp::lsp_types::{DiagnosticTag, NumberOrString, Url};
 
 #[test]

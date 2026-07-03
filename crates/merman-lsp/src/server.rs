@@ -280,7 +280,7 @@ impl MermanLanguageServer {
         let mut store = self.store.lock().await;
         store.set_semantic_tokens_state_if_current(
             context,
-            SemanticTokensState::new(Some(context.snapshot.version), result_id, tokens),
+            SemanticTokensState::new(result_id, tokens),
         );
     }
 

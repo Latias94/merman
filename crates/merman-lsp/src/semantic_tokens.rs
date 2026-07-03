@@ -54,16 +54,6 @@ pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> SemanticToke
     )
 }
 
-pub fn semantic_tokens_for_snapshot_with_result_id(
-    snapshot: &DocumentSnapshot,
-    result_id: String,
-) -> SemanticTokens {
-    semantic_tokens_from_absolute_tokens_with_result_id(
-        absolute_tokens_for_snapshot(snapshot),
-        Some(result_id),
-    )
-}
-
 pub fn semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,

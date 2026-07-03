@@ -1,13 +1,15 @@
 use crate::protocol::{core_position_from_lsp, document_uri_to_lsp, location_to_lsp, range_to_lsp};
 use crate::snapshot::DocumentSnapshot;
 use merman_analysis::EditorSymbolKind;
+#[cfg(test)]
+use merman_editor_core::workspace_symbols as core_workspace_symbols;
 use merman_editor_core::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover,
     EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation, EditorWorkspaceEdit,
     RenameError, document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
     goto_definition as core_goto_definition, hover as core_hover,
     prepare_rename as core_prepare_rename, references as core_references, rename as core_rename,
-    selection_ranges as core_selection_ranges, workspace_symbols as core_workspace_symbols,
+    selection_ranges as core_selection_ranges,
     workspace_symbols_for_snapshots as core_workspace_symbols_for_snapshots,
 };
 use std::collections::HashMap;
@@ -31,6 +33,7 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
 }
 
 #[allow(deprecated)]
+#[cfg(test)]
 pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<SymbolInformation> {
     core_workspace_symbols(snapshot.as_editor(), query)
         .into_iter()
