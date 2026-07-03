@@ -1,7 +1,7 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticRole, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -667,33 +667,33 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
         }
 
         if let Some((ids, styles)) = parse_style_stmt(trimmed).ok().flatten() {
-            if let Some(first) = ids.first() {
-                if let Some(rel) = line.find(first) {
-                    facts.push_symbol(EditorSemanticSymbol::payload(
-                        first.clone(),
-                        Some("requirement style target".to_string()),
-                        EditorSemanticKind::Property,
-                        SourceSpan::new(line_start, line_start + line.len()),
-                        SourceSpan::new(line_start + rel, line_start + rel + first.len()),
-                    ));
-                }
-            }
+            let directive_start = line.len() - trimmed.len();
+            push_requirement_id_symbols(
+                &mut facts,
+                line,
+                line_start,
+                directive_start + "style".len(),
+                &ids,
+                "requirement style target",
+                EditorSemanticKind::Property,
+                EditorSemanticRole::Payload,
+            );
             push_requirement_style_refs(&mut facts, line, line_start, &styles, "requirement style");
             continue;
         }
 
         if let Some((ids, styles)) = parse_classdef_stmt(trimmed).ok().flatten() {
-            if let Some(first) = ids.first() {
-                if let Some(rel) = line.find(first) {
-                    facts.push_symbol(EditorSemanticSymbol::outline(
-                        first.clone(),
-                        Some("requirement class definition".to_string()),
-                        EditorSemanticKind::Property,
-                        SourceSpan::new(line_start, line_start + line.len()),
-                        SourceSpan::new(line_start + rel, line_start + rel + first.len()),
-                    ));
-                }
-            }
+            let directive_start = line.len() - trimmed.len();
+            push_requirement_id_symbols(
+                &mut facts,
+                line,
+                line_start,
+                directive_start + "classDef".len(),
+                &ids,
+                "requirement class definition",
+                EditorSemanticKind::Property,
+                EditorSemanticRole::Outline,
+            );
             push_requirement_style_refs(
                 &mut facts,
                 line,
@@ -712,17 +712,17 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
                 &classes,
                 "requirement class",
             );
-            if let Some(first) = ids.first()
-                && let Some(rel) = line.find(first)
-            {
-                facts.push_symbol(EditorSemanticSymbol::new(
-                    first.clone(),
-                    Some("requirement class target".to_string()),
-                    EditorSemanticKind::Namespace,
-                    SourceSpan::new(line_start, line_start + line.len()),
-                    SourceSpan::new(line_start + rel, line_start + rel + first.len()),
-                ));
-            }
+            let directive_start = line.len() - trimmed.len();
+            push_requirement_id_symbols(
+                &mut facts,
+                line,
+                line_start,
+                directive_start + "class".len(),
+                &ids,
+                "requirement class target",
+                EditorSemanticKind::Namespace,
+                EditorSemanticRole::Entity,
+            );
             continue;
         }
 
@@ -811,6 +811,55 @@ fn push_requirement_class_refs(
                 span,
             ));
         }
+    }
+}
+
+fn push_requirement_id_symbols(
+    facts: &mut EditorSemanticFacts,
+    line: &str,
+    line_start: usize,
+    search_start: usize,
+    ids: &[String],
+    detail: &'static str,
+    kind: EditorSemanticKind,
+    role: EditorSemanticRole,
+) {
+    let mut cursor = search_start.min(line.len());
+    for id in ids {
+        if id.is_empty() {
+            continue;
+        }
+        let Some(rel_from_cursor) = line.get(cursor..).and_then(|suffix| suffix.find(id)) else {
+            continue;
+        };
+        let rel = cursor + rel_from_cursor;
+        cursor = rel + id.len();
+        let span = SourceSpan::new(line_start + rel, line_start + rel + id.len());
+        let whole_line_span = SourceSpan::new(line_start, line_start + line.len());
+        let symbol = match role {
+            EditorSemanticRole::Entity => EditorSemanticSymbol::new(
+                id.clone(),
+                Some(detail.to_string()),
+                kind,
+                whole_line_span,
+                span,
+            ),
+            EditorSemanticRole::Outline => EditorSemanticSymbol::outline(
+                id.clone(),
+                Some(detail.to_string()),
+                kind,
+                whole_line_span,
+                span,
+            ),
+            EditorSemanticRole::Payload => EditorSemanticSymbol::payload(
+                id.clone(),
+                Some(detail.to_string()),
+                kind,
+                whole_line_span,
+                span,
+            ),
+        };
+        facts.push_symbol(symbol);
     }
 }
 

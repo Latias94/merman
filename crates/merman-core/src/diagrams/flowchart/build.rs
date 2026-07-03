@@ -78,7 +78,11 @@ impl FlowchartBuildState {
                     }
                     self.upsert_node(n);
                 }
-                Stmt::ShapeData { target, .. } => {
+                Stmt::ShapeData {
+                    target,
+                    target_span,
+                    ..
+                } => {
                     // Mermaid applies shapeData to edges if (and only if) an edge with that ID exists.
                     // For ordering parity we only insert a placeholder node when this currently refers to a node.
                     if !self.used_edge_ids.contains(target) {
@@ -92,7 +96,7 @@ impl FlowchartBuildState {
                         let idx = self.nodes.len();
                         self.nodes.push(Node {
                             id: target.clone(),
-                            id_span: None,
+                            id_span: *target_span,
                             label: None,
                             label_type: TitleKind::Text,
                             label_span: None,

@@ -139,7 +139,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                         }
                     }
                 }
-                Stmt::ShapeData { target, yaml } => {
+                Stmt::ShapeData { target, yaml, .. } => {
                     // Mermaid syntax uses the same `@{...}` form for both nodes and edges:
                     // - if an edge with the given ID exists, it updates the edge metadata
                     // - otherwise it updates (and may create) a node

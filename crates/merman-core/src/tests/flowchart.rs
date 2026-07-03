@@ -2566,6 +2566,32 @@ fn parse_flowchart_editor_facts_emit_shape_value_expected_syntax() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nD@{ shape: rounded }\nD --> E\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let standalone_d_start = text.find("D@{").unwrap();
+    let standalone_d = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "D"
+                && symbol.detail.as_deref() == Some("flowchart node")
+                && symbol.selection == SourceSpan::new(standalone_d_start, standalone_d_start + 1)
+        })
+        .expect("standalone shapeData node symbol");
+
+    assert_eq!(standalone_d.role, EditorSemanticRole::Entity);
+    assert_eq!(standalone_d.kind, EditorSemanticKind::Module);
+}
+
+#[test]
 fn parse_flowchart_editor_facts_emit_direction_value_expected_syntax() {
     let engine = Engine::new();
     let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";

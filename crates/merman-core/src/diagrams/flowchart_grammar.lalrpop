@@ -80,7 +80,11 @@ Seps: () = {
 
 Statement: Stmt = {
   <c:Chain> => Stmt::Chain { nodes: c.0, edges: c.1 },
-  <id:Id> <sd:ShapeData> => Stmt::ShapeData { target: id, yaml: sd },
+  <l:@L> <id:Id> <r:@R> <sd:ShapeData> => Stmt::ShapeData {
+    target: id,
+    target_span: Some(SourceSpan::new(l, r)),
+    yaml: sd,
+  },
   <g:NodeGroupOnly> => Stmt::Chain { nodes: g, edges: Vec::new() },
   <n:NodeRef> => Stmt::Node(Box::new(n)),
   <sg:SubgraphBlock> => Stmt::Subgraph(sg),

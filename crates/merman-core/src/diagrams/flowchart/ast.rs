@@ -72,7 +72,10 @@ pub(crate) struct SubgraphBlock {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Stmt {
-    Chain { nodes: Vec<Node>, edges: Vec<Edge> },
+    Chain {
+        nodes: Vec<Node>,
+        edges: Vec<Edge>,
+    },
     Node(Box<Node>),
     Subgraph(SubgraphBlock),
     Direction(String),
@@ -81,5 +84,9 @@ pub(crate) enum Stmt {
     ClassAssign(ClassAssignStmt),
     Click(ClickStmt),
     LinkStyle(LinkStyleStmt),
-    ShapeData { target: String, yaml: String },
+    ShapeData {
+        target: String,
+        target_span: Option<SourceSpan>,
+        yaml: String,
+    },
 }

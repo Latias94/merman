@@ -1814,6 +1814,99 @@ a - contains -> b
 }
 
 #[test]
+fn parse_requirement_editor_facts_emit_multi_id_style_class_and_classdef_symbols() {
+    let engine = Engine::new();
+    let text = r#"
+requirementDiagram
+requirement req {
+  id: REQ-1
+  text: demo
+  risk: low
+  verifymethod: test
+}
+element elem {
+  type: service
+}
+classDef firstClass,secondClass fill:#f9f,stroke:#333
+class req,elem firstClass,secondClass
+style req,elem fill:#ffa,stroke:#000
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .unwrap()
+        .expect("requirement editor facts");
+
+    let symbol_at = |name: &str, detail: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.selection.start == start
+            })
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail} at {start}"))
+    };
+
+    let class_def_start = text.find("classDef firstClass,secondClass").unwrap();
+    let first_class_def_start = class_def_start + "classDef ".len();
+    let second_class_def_start = first_class_def_start + "firstClass,".len();
+    assert_eq!(
+        symbol_at(
+            "firstClass",
+            "requirement class definition",
+            first_class_def_start,
+        )
+        .role,
+        EditorSemanticRole::Outline
+    );
+    assert_eq!(
+        symbol_at(
+            "secondClass",
+            "requirement class definition",
+            second_class_def_start,
+        )
+        .role,
+        EditorSemanticRole::Outline
+    );
+
+    let class_stmt_start = text.find("class req,elem").unwrap();
+    let req_class_target_start = class_stmt_start + "class ".len();
+    let elem_class_target_start = req_class_target_start + "req,".len();
+    assert_eq!(
+        symbol_at("req", "requirement class target", req_class_target_start).role,
+        EditorSemanticRole::Entity
+    );
+    assert_eq!(
+        symbol_at("elem", "requirement class target", elem_class_target_start).role,
+        EditorSemanticRole::Entity
+    );
+
+    let first_class_ref_start = class_stmt_start + "class req,elem ".len();
+    let second_class_ref_start = first_class_ref_start + "firstClass,".len();
+    assert_eq!(
+        symbol_at("firstClass", "requirement class", first_class_ref_start).role,
+        EditorSemanticRole::Payload
+    );
+    assert_eq!(
+        symbol_at("secondClass", "requirement class", second_class_ref_start).role,
+        EditorSemanticRole::Payload
+    );
+
+    let style_stmt_start = text.find("style req,elem").unwrap();
+    let req_style_target_start = style_stmt_start + "style ".len();
+    let elem_style_target_start = req_style_target_start + "req,".len();
+    assert_eq!(
+        symbol_at("req", "requirement style target", req_style_target_start).role,
+        EditorSemanticRole::Payload
+    );
+    assert_eq!(
+        symbol_at("elem", "requirement style target", elem_style_target_start).role,
+        EditorSemanticRole::Payload
+    );
+}
+
+#[test]
 fn parse_packet_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"

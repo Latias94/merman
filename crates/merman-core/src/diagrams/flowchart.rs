@@ -596,7 +596,19 @@ fn collect_editor_facts_from_statements_with_seen_edges(
             Stmt::ClassAssign(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
             Stmt::Click(_) => facts.push_directive_prefix("click"),
             Stmt::LinkStyle(_) => facts.push_directive_prefix("linkStyle"),
-            Stmt::Direction(_) | Stmt::ShapeData { .. } => {}
+            Stmt::ShapeData {
+                target,
+                target_span,
+                ..
+            } => push_flowchart_span_symbol(
+                facts,
+                target,
+                "flowchart node",
+                EditorSemanticKind::Module,
+                *target_span,
+                EditorSemanticRole::Entity,
+            ),
+            Stmt::Direction(_) => {}
         }
     }
 }
