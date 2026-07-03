@@ -1,4 +1,3 @@
-
 use super::text_scan::is_candidate_node_id;
 use super::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceExpectedSyntaxKind,
