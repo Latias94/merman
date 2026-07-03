@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -6,6 +7,55 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
 const args = process.argv.slice(2);
+
+const surfaceSmokeCases = [
+  surfaceSmokeCase("default", ".", "pkg"),
+  surfaceSmokeCase("core", "./core", "pkg/core"),
+  surfaceSmokeCase("render", "./render", "pkg/render"),
+  surfaceSmokeCase("ascii", "./ascii", "pkg/ascii"),
+  surfaceSmokeCase("full", "./full", "pkg/full"),
+];
+
+if (args.length === 0) {
+  for (const smokeCase of surfaceSmokeCases) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(import.meta.url),
+        "--entry",
+        smokeCase.entry,
+        "--pkg-dir-rel",
+        smokeCase.pkgDirRel,
+        "--wasm-module-subpath",
+        smokeCase.wasmModuleSubpath,
+        "--wasm-binary-rel",
+        smokeCase.wasmBinaryRel,
+        "--manifest-rel",
+        smokeCase.manifestRel,
+      ],
+      {
+        cwd: packageRoot,
+        stdio: "inherit",
+      }
+    );
+    if (result.error) {
+      console.error(
+        `@mermanjs/web smoke failed to spawn ${smokeCase.name}: ${result.error.message}`
+      );
+      process.exit(1);
+    }
+    if (result.status !== 0) {
+      process.exit(result.status ?? 1);
+    }
+  }
+  console.log(
+    `@mermanjs/web smoke matrix passed surfaces=${surfaceSmokeCases
+      .map((smokeCase) => smokeCase.name)
+      .join(",")}`
+  );
+  process.exit(0);
+}
+
 const entrySubpath = parseArgValue(args, "--entry") ?? ".";
 const pkgDirRel = parseArgValue(args, "--pkg-dir-rel") ?? "pkg";
 const wasmModuleSubpath =
@@ -501,6 +551,11 @@ function resolveEntryModuleHref(subpath) {
     return pathToFileURL(path.join(packageRoot, "dist", "index.js")).href;
   }
   const trimmed = subpath.replace(/^\.\//, "").replace(/^\//, "");
+  if (["core", "render", "ascii", "full"].includes(trimmed)) {
+    return pathToFileURL(
+      path.join(packageRoot, "dist", "surfaces", `${trimmed}.js`)
+    ).href;
+  }
   return pathToFileURL(path.join(packageRoot, "dist", `${trimmed}.js`)).href;
 }
 
@@ -513,4 +568,15 @@ function toPackageSpecifier(subpath) {
 
 function normalizePath(value) {
   return value.split(path.sep).join("/");
+}
+
+function surfaceSmokeCase(name, entry, pkgDirRel) {
+  return {
+    name,
+    entry,
+    pkgDirRel,
+    wasmModuleSubpath: `./${pkgDirRel}/merman_wasm.js`,
+    wasmBinaryRel: `${pkgDirRel}/merman_wasm_bg.wasm`,
+    manifestRel: `${pkgDirRel}/merman_wasm_preset.json`,
+  };
 }

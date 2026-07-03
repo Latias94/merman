@@ -17,7 +17,7 @@ protect them before any registry publication is enabled.
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
 | Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
-| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. The default package artifact is full and ELK-bearing; slim/no-ELK presets are source-build evidence only. This is not the Typst/pure-wasm surface. |
+| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. The default entry point is full and ELK-bearing; `./core`, `./render`, `./ascii`, and `./full` are opt-in package subpaths. This is not the Typst/pure-wasm surface. |
 | Typst WASM | `merman` Typst package backed by `merman-typst-plugin` | manual `typst/packages` PR | Typst package registry | Uses wasm-minimal-protocol and must stay separate from wasm-bindgen browser glue. The publishable package wasm is artifact-owned and ELK-bearing because Typst users import the wasm rather than enabling Cargo features. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
 | JVM | none | none | none | Add only if a JVM-specific wrapper is built. |
@@ -53,11 +53,13 @@ configured per surface before the corresponding workflow can publish.
 
 ## Browser WASM Presets
 
-WFS-090 decision: keep `@mermanjs/web` as one npm package and one published artifact per version for
-now. The published package uses the `browser-full` preset. Source, CI, and local package builds can
-choose a different browser preset through `platforms/web/scripts/build-wasm.mjs`; the TypeScript
-wrapper exposes `bindingCapabilities()` so callers can discover the active artifact's compiled
-capabilities after initialization, including whether `editor_language` is compiled. It also exposes `selectedRegistryProfile()` and
+WFS-090 decision, updated by PR20 hardening: keep `@mermanjs/web` as one npm package. The default
+entry point uses the `browser-full` preset. The package also publishes opt-in subpaths for
+`browser-core`, `browser-render`, `browser-ascii`, and explicit `browser-full` artifacts. Source,
+CI, and local package builds can still choose a different browser preset through
+`platforms/web/scripts/build-wasm.mjs`; the TypeScript wrapper exposes `bindingCapabilities()` so
+callers can discover the active artifact's compiled capabilities after initialization, including
+whether `editor_language` is compiled. It also exposes `selectedRegistryProfile()` and
 `diagramFamilyCapabilities()` so local slim builds can report the actual full/tiny diagram
 parser/render matrix they contain, plus `lintRuleCatalog()` so editor integrations can discover the
 governed analyzer rule table and its evidence references without hard-coding them.
@@ -74,6 +76,13 @@ governed analyzer rule table and its evidence references without hard-coding the
 `npm run prepack --prefix platforms/web` requires `browser-full` unless
 `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package. This protects
 the public npm package from accidentally publishing a slim artifact under the default import path.
+It also checks that every package subpath has matching TypeScript, wasm-bindgen, WASM, and preset
+manifest artifacts.
+
+There is intentionally no `@mermanjs/web/analysis` subpath. `@mermanjs/web/core` is already the
+smallest analysis-capable browser artifact because analysis, validation, registry metadata, and
+document facts all share the same minimal core bindings. A separate analysis alias would expand the
+public API without reducing the WASM payload.
 
 ## Compatibility And Migration Notes
 
@@ -85,8 +94,9 @@ Current release semantics are intentionally explicit:
   default feature set.
 - Native FFI defaults stay conservative: `render` does not imply ELK. Downstream native artifacts
   that want ELK must enable `elk-layout` or publish a distinct full artifact.
-- `@mermanjs/web` keeps the existing default import path and publishes `browser-full`. Slim browser
-  presets are source-build presets only; they are not npm subpackages or package export paths.
+- `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
+  browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`, and
+  `@mermanjs/web/ascii`; `@mermanjs/web/full` is the explicit full-preset subpath.
 - `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
   whether `editor_language` is available.
   `selectedRegistryProfile()` and `diagramFamilyCapabilities()` report the selected diagram registry
@@ -100,14 +110,14 @@ Current release semantics are intentionally explicit:
 - `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render
   and ELK. `--no-default-features` builds the protocol bridge only. The Typst plugin injects the
   `typst-package` resource profile when callers omit `resources`.
-- A future public slim browser package, npm export path, or changed default artifact needs a new
-  migration note and release decision.
+- A future public browser package, additional npm export path, or changed default artifact needs a
+  new migration note and release decision.
 
 ## Release Gates By Surface
 
 | Surface | Required local gate before release changes |
 | --- | --- |
-| Browser full npm default | `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
+| Browser npm package | `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
 | Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
 | Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
 | Typst transport | `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`; `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; `cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; PR CI compiles Typst package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs `wasm-size-matrix` plus `typst-package-smoke --skip-wasm-build --tests-only` on Typst 0.15.0. |
@@ -128,12 +138,16 @@ budget file is intentionally a regression guard with headroom, not a product tar
 browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes do
 not accidentally compare unlike surfaces.
 
-The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. The
-current default `browser-full` package artifact is:
+The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. Current
+package artifacts measured on 2026-07-03 are:
 
-| Package artifact | Raw bytes | gzip bytes | brotli bytes | Budget source |
-| --- | ---: | ---: | ---: | --- |
-| `platforms/web/pkg/merman_wasm_bg.wasm` | 6,649,826 | 2,532,845 | 1,874,082 | `docs/release/WASM_SIZE_BUDGETS.json` |
+| Package artifact | Preset | Raw bytes | gzip bytes | brotli bytes | Budget source |
+| --- | --- | ---: | ---: | ---: | --- |
+| `platforms/web/pkg/merman_wasm_bg.wasm` | `browser-full` | 6,936,158 | 2,649,766 | 1,958,841 | `docs/release/WASM_SIZE_BUDGETS.json` |
+| `platforms/web/pkg/core/merman_wasm_bg.wasm` | `browser-core` | 1,974,289 | 741,530 | 565,420 | measured |
+| `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 4,914,321 | 1,813,940 | 1,340,229 | measured |
+| `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,974,716 | 1,213,252 | 931,113 | measured |
+| `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 6,936,158 | 2,649,766 | 1,958,841 | measured |
 
 For the current Typst render artifact, also run:
 

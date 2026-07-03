@@ -9,6 +9,7 @@ const wasmSizeBudgets = path.join(workspaceRoot, "docs", "release", "WASM_SIZE_B
 const generatedPackageJson = path.join(root, "pkg", "package.json");
 const presetManifest = path.join(root, "pkg", "merman_wasm_preset.json");
 const wasmBinary = path.join(root, "pkg", "merman_wasm_bg.wasm");
+const surfaceEntries = ["core", "render", "ascii", "full"];
 const required = [
   path.join(root, "dist", "index.js"),
   path.join(root, "dist", "index.d.ts"),
@@ -16,6 +17,15 @@ const required = [
   presetManifest,
   path.join(root, "pkg", "merman_wasm.js"),
   wasmBinary,
+  ...surfaceEntries.flatMap((entry) => [
+    path.join(root, "dist", "surfaces", `${entry}.js`),
+    path.join(root, "dist", "surfaces", `${entry}.d.ts`),
+    path.join(root, "pkg", entry, "package.json"),
+    path.join(root, "pkg", entry, "merman_wasm.js"),
+    path.join(root, "pkg", entry, "merman_wasm.d.ts"),
+    path.join(root, "pkg", entry, "merman_wasm_bg.wasm"),
+    path.join(root, "pkg", entry, "merman_wasm_preset.json"),
+  ]),
 ];
 
 const missing = required.filter((file) => {
@@ -71,6 +81,10 @@ try {
   process.exit(1);
 }
 
+for (const entry of surfaceEntries) {
+  checkSurfaceManifest(entry);
+}
+
 function loadDefaultBrowserFullWasmBudget() {
   let budgets;
   try {
@@ -91,6 +105,28 @@ function loadDefaultBrowserFullWasmBudget() {
     gzip: budget.max_gzip_bytes,
     brotli: budget.max_brotli_bytes,
   };
+}
+
+function checkSurfaceManifest(entry) {
+  const manifestPath = path.join(root, "pkg", entry, "merman_wasm_preset.json");
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    console.error(`prepack: failed to read pkg/${entry}/merman_wasm_preset.json: ${error.message}`);
+    process.exit(1);
+  }
+
+  const expectedPreset = `browser-${entry}`;
+  if (manifest.preset !== expectedPreset) {
+    console.error(
+      [
+        `prepack: generated WASM preset for ./${entry} is '${manifest.preset}', expected '${expectedPreset}'.`,
+        "Run `npm run build --prefix platforms/web` before pack/publish.",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
 }
 
 function checkDefaultBrowserFullWasmBudget(defaultBrowserFullWasmBudget) {

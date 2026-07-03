@@ -43,6 +43,22 @@ Call `bindingCapabilities()` after `initMerman()` when you need to branch on opt
 `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
 `editorSemanticTokenLegend()`, and `editorSemanticTokens()`.
 
+## Published entry points
+
+The package publishes one default full artifact plus opt-in subpath entry points:
+
+| Entry point | WASM preset | Intended use |
+| --- | --- | --- |
+| `@mermanjs/web` | `browser-full` | Default playground/editor package with render, layout, parse, ASCII, analysis, validation, editor APIs, and ELK. |
+| `@mermanjs/web/core` | `browser-core` | Smallest browser artifact for metadata, analysis, facts, and validation. Render, layout, parse JSON, ASCII, and editor APIs are unavailable. |
+| `@mermanjs/web/render` | `browser-render` | SVG/layout/parse plus metadata, analysis, facts, and validation over the minimal core registry. |
+| `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering plus metadata, analysis, facts, and validation. |
+| `@mermanjs/web/full` | `browser-full` | Explicit full preset import; equivalent capabilities to the default package. |
+
+There is no separate `@mermanjs/web/analysis` entry point. `@mermanjs/web/core` is already the
+smallest analysis-capable artifact, so an analysis alias would add API surface without reducing the
+download size.
+
 ## Usage
 
 ```ts
@@ -180,15 +196,14 @@ rendering in the browser. Treat it as a feature module, not as first-paint UI co
   framework path. Use `renderSvgElement()` / `renderSvgToElement()` only on the main thread because
   they require `DOMParser` and `document`.
 
-The package does not publish separate npm subpaths for render-only or ASCII-only artifacts yet. Use
-the source build presets above when you need to produce a local slim package, and call
+The package publishes subpaths for the core, render, ASCII, and full browser artifacts. Call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`core_full`, `core_host`, `elk_layout`, or `ratex_math` capability. `selectedRegistryProfile()`
-reports the active Mermaid registry profile, `diagramFamilyCapabilities()` reports the diagram
-parser/render facts registered in the current artifact, and `lintRuleCatalog()` reports analyzer
-rule ids, evidence references, default profiles, origins, configurability, and fixability. The ASCII
-preset currently preserves the full core registry for compatibility with the browser ASCII
-implementation.
+`core_full`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language` capabilities.
+`selectedRegistryProfile()` reports the active Mermaid registry profile,
+`diagramFamilyCapabilities()` reports the diagram parser/render facts registered in the current
+artifact, and `lintRuleCatalog()` reports analyzer rule ids, evidence references, default profiles,
+origins, configurability, and fixability. The ASCII preset currently preserves the full core
+registry for compatibility with the browser ASCII implementation.
 
 ## Web Worker integration
 
