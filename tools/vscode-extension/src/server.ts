@@ -75,6 +75,7 @@ export async function createLanguageClient(
       { scheme: "untitled", language: "markdown" },
       { scheme: "file", language: "mdx" },
       { scheme: "untitled", language: "mdx" },
+      { scheme: "file", pattern: "**/*.mdx" },
     ],
     outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Never,

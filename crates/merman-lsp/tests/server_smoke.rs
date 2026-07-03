@@ -46,6 +46,21 @@ async fn lsp_service_smoke_handles_initialize() {
             .and_then(|options| options.resolve_provider),
         Some(true)
     );
+    assert_eq!(
+        response
+            .capabilities
+            .completion_provider
+            .as_ref()
+            .and_then(|options| options.trigger_characters.as_ref())
+            .cloned(),
+        Some(vec![
+            " ".to_string(),
+            "\n".to_string(),
+            "-".to_string(),
+            "@".to_string(),
+            ":".to_string(),
+        ])
+    );
     assert!(response.capabilities.code_action_provider.is_some());
     assert!(response.capabilities.semantic_tokens_provider.is_some());
     assert_eq!(

@@ -43,9 +43,11 @@ fn code_description(code: &str) -> Option<CodeDescription> {
     if !code.starts_with("merman.") {
         return None;
     }
-    Url::parse(&format!("https://github.com/Latias94/merman/rules/{code}"))
-        .ok()
-        .map(|href| CodeDescription { href })
+    Url::parse(
+        "https://github.com/Latias94/merman/blob/main/docs/lsp/DIAGNOSTIC_PROTOCOL.md#canonical-rules",
+    )
+    .ok()
+    .map(|href| CodeDescription { href })
 }
 
 fn diagnostic_tags(

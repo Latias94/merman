@@ -16,6 +16,7 @@ const SOURCE_ACTION_SELECTOR: vscode.DocumentSelector = [
   { language: "mermaid" },
   { language: "markdown" },
   { language: "mdx" },
+  { scheme: "file", pattern: "**/*.mdx" },
 ];
 
 export function registerSourceCodeLens(context: vscode.ExtensionContext): void {

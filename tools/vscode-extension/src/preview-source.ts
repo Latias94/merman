@@ -31,6 +31,7 @@ interface MermaidFence {
 interface MermaidFenceDelimiter {
   marker: "`" | "~" | ":";
   length: number;
+  isMermaid: boolean;
 }
 
 export interface PreviewSourceSummary {
@@ -133,7 +134,7 @@ export function listPreviewInputsFromText(sourceDocument: PreviewInputTextSource
     ];
   }
 
-  if (!isMarkdownLikeSource(sourceDocument.languageId)) {
+  if (!isMarkdownLikeSource(sourceDocument.languageId, sourceDocument.fileName)) {
     return [];
   }
 
@@ -202,8 +203,15 @@ function isMermaidSource(languageId: string, fileName: string): boolean {
   );
 }
 
-function isMarkdownLikeSource(languageId: string): boolean {
-  return languageId === "markdown" || languageId === "mdx";
+function isMarkdownLikeSource(languageId: string, fileName: string): boolean {
+  const lowerFileName = fileName.toLowerCase();
+  return (
+    languageId === "markdown" ||
+    languageId === "mdx" ||
+    lowerFileName.endsWith(".md") ||
+    lowerFileName.endsWith(".markdown") ||
+    lowerFileName.endsWith(".mdx")
+  );
 }
 
 function collectMermaidFences(
@@ -215,8 +223,12 @@ function collectMermaidFences(
 
   for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
     const line = lineAt(lineIndex);
-    const delimiter = mermaidFenceDelimiter(line);
+    const delimiter = markdownFenceDelimiter(line);
     if (!delimiter) {
+      continue;
+    }
+    if (!delimiter.isMermaid) {
+      lineIndex = skipMarkdownFence(lineCount, lineAt, lineIndex, delimiter);
       continue;
     }
 
@@ -250,8 +262,11 @@ function collectMermaidFences(
   return fences;
 }
 
-function mermaidFenceDelimiter(line: string): MermaidFenceDelimiter | null {
-  const trimmed = line.trimStart();
+function markdownFenceDelimiter(line: string): MermaidFenceDelimiter | null {
+  const trimmed = trimFenceIndent(line);
+  if (trimmed === null) {
+    return null;
+  }
   const marker = trimmed[0];
   if (marker !== "`" && marker !== "~" && marker !== ":") {
     return null;
@@ -263,22 +278,55 @@ function mermaidFenceDelimiter(line: string): MermaidFenceDelimiter | null {
   }
 
   const rest = trimmed.slice(length).trimStart();
+  if (rest.length === 0) {
+    return { marker, length, isMermaid: false };
+  }
   const language = rest.slice(0, "mermaid".length);
   const tail = rest.slice("mermaid".length);
-  if (language.toLowerCase() !== "mermaid") {
-    return null;
-  }
-  if (tail.length > 0 && !/\s/.test(tail[0] ?? "")) {
-    return null;
-  }
+  const isMermaid =
+    language.toLowerCase() === "mermaid" &&
+    (tail.length === 0 || /\s/.test(tail[0] ?? ""));
 
-  return { marker, length };
+  return { marker, length, isMermaid };
 }
 
 function isMatchingClosingFence(line: string, delimiter: MermaidFenceDelimiter): boolean {
-  const trimmed = line.trimStart();
+  const trimmed = trimFenceIndent(line);
+  if (trimmed === null) {
+    return false;
+  }
   const length = repeatedMarkerLength(trimmed, delimiter.marker);
   return length >= delimiter.length && trimmed.slice(length).trim().length === 0;
+}
+
+function skipMarkdownFence(
+  lineCount: number,
+  lineAt: (lineIndex: number) => string,
+  openingLine: number,
+  delimiter: MermaidFenceDelimiter,
+): number {
+  for (let cursor = openingLine + 1; cursor < lineCount; cursor += 1) {
+    if (isMatchingClosingFence(lineAt(cursor), delimiter)) {
+      return cursor;
+    }
+  }
+  return Math.max(lineCount - 1, openingLine);
+}
+
+function trimFenceIndent(line: string): string | null {
+  let spaces = 0;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === " " && spaces < 3) {
+      spaces += 1;
+      continue;
+    }
+    if (char === " " || char === "\t") {
+      return null;
+    }
+    return line.slice(index);
+  }
+  return "";
 }
 
 function repeatedMarkerLength(line: string, marker: string): number {

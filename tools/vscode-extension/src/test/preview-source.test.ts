@@ -162,6 +162,67 @@ describe("preview source extraction", () => {
     );
   });
 
+  it("skips non-Mermaid fences before looking for Mermaid fences", () => {
+    const inputs = listPreviewInputsFromText({
+      text: [
+        "````js",
+        "```mermaid",
+        "flowchart LR",
+        "```",
+        "````",
+        "",
+        "```mermaid",
+        "sequenceDiagram",
+        "```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+    });
+
+    assert.deepEqual(
+      inputs.map((input) => input.source),
+      ["sequenceDiagram"],
+    );
+  });
+
+  it("matches analysis fence indentation rules", () => {
+    const inputs = listPreviewInputsFromText({
+      text: [
+        "   ```mermaid",
+        "flowchart LR",
+        "   ```",
+        "",
+        "    ```mermaid",
+        "sequenceDiagram",
+        "    ```",
+        "",
+        "\t```mermaid",
+        "pie title Work",
+        "\t```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+    });
+
+    assert.deepEqual(
+      inputs.map((input) => input.source),
+      ["flowchart LR"],
+    );
+  });
+
+  it("treats .mdx filenames as Markdown-like sources without an mdx language id", () => {
+    const inputs = listPreviewInputsFromText({
+      text: ["```mermaid", "flowchart LR", "```"].join("\n"),
+      languageId: "plaintext",
+      fileName: "/workspace/notes.mdx",
+    });
+
+    assert.deepEqual(
+      inputs.map((input) => input.source),
+      ["flowchart LR"],
+    );
+  });
+
   it("does not treat mermaid-prefixed languages as Mermaid fences", () => {
     const inputs = listPreviewInputsFromText({
       text: ["```mermaidx", "flowchart LR", "```"].join("\n"),

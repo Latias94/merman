@@ -33,7 +33,7 @@ fn diagnostics_projection_preserves_uri_and_message() {
             .expect("code description")
             .href
             .as_str(),
-        "https://github.com/Latias94/merman/rules/merman.parse.no_diagram"
+        "https://github.com/Latias94/merman/blob/main/docs/lsp/DIAGNOSTIC_PROTOCOL.md#canonical-rules"
     );
 }
 

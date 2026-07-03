@@ -85,6 +85,13 @@ impl MermanLanguageServer {
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions {
                 resolve_provider: Some(true),
+                trigger_characters: Some(vec![
+                    " ".to_string(),
+                    "\n".to_string(),
+                    "-".to_string(),
+                    "@".to_string(),
+                    ":".to_string(),
+                ]),
                 ..CompletionOptions::default()
             }),
             definition_provider: Some(OneOf::Left(true)),
@@ -824,6 +831,13 @@ mod tests {
         assert!(matches!(
             capabilities.completion_provider,
             Some(ref options) if options.resolve_provider == Some(true)
+                && options.trigger_characters.as_deref() == Some(&[
+                    " ".to_string(),
+                    "\n".to_string(),
+                    "-".to_string(),
+                    "@".to_string(),
+                    ":".to_string(),
+                ])
         ));
         assert!(matches!(
             capabilities.semantic_tokens_provider,
