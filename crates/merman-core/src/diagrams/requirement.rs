@@ -705,19 +705,22 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
         }
 
         if let Some((ids, classes)) = parse_class_stmt(trimmed).ok().flatten() {
-            push_requirement_class_refs(
+            let directive_start = line.len() - trimmed.len();
+            let targets_start = directive_start + "class".len();
+            let class_refs_start = line_id_list_end(line, targets_start, &ids);
+            push_requirement_class_refs_from(
                 &mut facts,
                 line,
                 line_start,
+                class_refs_start,
                 &classes,
                 "requirement class",
             );
-            let directive_start = line.len() - trimmed.len();
             push_requirement_id_symbols(
                 &mut facts,
                 line,
                 line_start,
-                directive_start + "class".len(),
+                targets_start,
                 &ids,
                 "requirement class target",
                 EditorSemanticKind::Namespace,
@@ -800,17 +803,38 @@ fn push_requirement_class_refs(
     classes: &[String],
     detail: &'static str,
 ) {
+    push_requirement_class_refs_from(facts, line, line_start, 0, classes, detail);
+}
+
+fn push_requirement_class_refs_from(
+    facts: &mut EditorSemanticFacts,
+    line: &str,
+    line_start: usize,
+    search_start: usize,
+    classes: &[String],
+    detail: &'static str,
+) {
+    let mut cursor = search_start.min(line.len());
     for class_name in classes {
-        if let Some(rel) = line.find(class_name) {
-            let span = SourceSpan::new(line_start + rel, line_start + rel + class_name.len());
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                class_name.clone(),
-                Some(detail.to_string()),
-                EditorSemanticKind::Property,
-                span,
-                span,
-            ));
+        if class_name.is_empty() {
+            continue;
         }
+        let Some(rel_from_cursor) = line
+            .get(cursor..)
+            .and_then(|suffix| suffix.find(class_name))
+        else {
+            continue;
+        };
+        let rel = cursor + rel_from_cursor;
+        cursor = rel + class_name.len();
+        let span = SourceSpan::new(line_start + rel, line_start + rel + class_name.len());
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            class_name.clone(),
+            Some(detail.to_string()),
+            EditorSemanticKind::Property,
+            span,
+            span,
+        ));
     }
 }
 
@@ -861,6 +885,20 @@ fn push_requirement_id_symbols(
         };
         facts.push_symbol(symbol);
     }
+}
+
+fn line_id_list_end(line: &str, search_start: usize, ids: &[String]) -> usize {
+    let mut cursor = search_start.min(line.len());
+    for id in ids {
+        if id.is_empty() {
+            continue;
+        }
+        let Some(rel_from_cursor) = line.get(cursor..).and_then(|suffix| suffix.find(id)) else {
+            continue;
+        };
+        cursor += rel_from_cursor + id.len();
+    }
+    cursor
 }
 
 fn push_requirement_style_refs(

@@ -1907,6 +1907,40 @@ style req,elem fill:#ffa,stroke:#000
 }
 
 #[test]
+fn parse_requirement_editor_facts_class_refs_use_class_list_spans_for_short_names() {
+    let engine = Engine::new();
+    let text = r#"
+requirementDiagram
+requirement req {
+}
+element elem {
+}
+class req,elem a,aa
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .unwrap()
+        .expect("requirement editor facts");
+
+    let class_stmt_start = text.find("class req,elem").unwrap();
+    let a_start = class_stmt_start + "class req,elem ".len();
+    let aa_start = a_start + "a,".len();
+
+    for (name, start) in [("a", a_start), ("aa", aa_start)] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some("requirement class")
+                    && symbol.selection.start == start
+            })
+            .unwrap_or_else(|| panic!("missing class ref {name} at {start}"));
+        assert_eq!(symbol.role, EditorSemanticRole::Payload);
+    }
+}
+
+#[test]
 fn parse_packet_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
