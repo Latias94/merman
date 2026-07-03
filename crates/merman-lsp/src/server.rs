@@ -52,6 +52,8 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
+const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
+
 #[derive(Debug)]
 pub struct MermanLanguageServer {
     client: Client,
@@ -219,32 +221,25 @@ impl MermanLanguageServer {
             .then_some(diagnostics)
     }
 
-    async fn diagnostics_for_current_context_or_stale_error(
+    async fn diagnostics_or_recompute_latest(
         &self,
-        context: &DiagnosticContext,
+        mut context: DiagnosticContext,
     ) -> Result<Vec<tower_lsp::lsp_types::Diagnostic>> {
-        self.diagnostics_for_current_context(context)
-            .await
-            .ok_or_else(stale_diagnostic_recompute_error)
-    }
+        for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
+            if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
+                return Ok(diagnostics);
+            }
 
-    async fn diagnostics_or_recompute_once(
-        &self,
-        context: DiagnosticContext,
-    ) -> Result<Vec<tower_lsp::lsp_types::Diagnostic>> {
-        if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
-            return Ok(diagnostics);
+            let Some(latest_context) = ({
+                let store = self.store.lock().await;
+                store.diagnostic_context(&context.document.uri)
+            }) else {
+                return Ok(Vec::new());
+            };
+            context = latest_context;
         }
 
-        let Some(latest_context) = ({
-            let store = self.store.lock().await;
-            store.diagnostic_context(&context.document.uri)
-        }) else {
-            return Ok(Vec::new());
-        };
-
-        self.diagnostics_for_current_context_or_stale_error(&latest_context)
-            .await
+        Err(stale_diagnostic_recompute_error())
     }
 
     async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url) {
@@ -488,7 +483,7 @@ impl LanguageServer for MermanLanguageServer {
             ));
         };
 
-        let diagnostics = self.diagnostics_or_recompute_once(context).await?;
+        let diagnostics = self.diagnostics_or_recompute_latest(context).await?;
         let result_id = Some(Self::diagnostic_result_id(&diagnostics));
         Ok(Self::document_diagnostic_report(
             diagnostics,
@@ -698,7 +693,7 @@ impl LanguageServer for MermanLanguageServer {
 }
 
 fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
-    let mut error = tower_lsp::jsonrpc::Error::internal_error();
+    let mut error = tower_lsp::jsonrpc::Error::content_modified();
     error.message = "diagnostic document changed while recomputing".into();
     error
 }
@@ -730,6 +725,7 @@ fn document_kind_for_language_id(
 #[cfg(test)]
 mod tests {
     use super::MermanLanguageServer;
+    use super::stale_diagnostic_recompute_error;
     use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
     use crate::document_store::{DocumentStore, StoredDocument};
     use crate::protocol::{
@@ -1127,7 +1123,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn stale_latest_diagnostic_context_returns_error_instead_of_empty_list() {
+    async fn stale_diagnostic_context_returns_content_modified_error() {
         let (service, _socket) = MermanLanguageServer::service();
         let server = service.inner();
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
@@ -1158,12 +1154,64 @@ mod tests {
         }
 
         let error = server
-            .diagnostics_for_current_context_or_stale_error(&context)
+            .diagnostics_for_current_context(&context)
             .await
+            .ok_or_else(stale_diagnostic_recompute_error)
             .expect_err("stale context should fail");
 
-        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::InternalError);
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
         assert!(error.message.contains("diagnostic document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_initial_diagnostic_context_recomputes_latest_document() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+        let context = {
+            let store = server.store.lock().await;
+            store
+                .diagnostic_context(&uri)
+                .expect("expected diagnostic context")
+        };
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                2,
+                "flowchart TD\nA[unterminated\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let diagnostics = server
+            .diagnostics_or_recompute_latest(context)
+            .await
+            .expect("latest diagnostic context should recompute");
+        let parse_diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| {
+                diagnostic.code
+                    == Some(NumberOrString::String(
+                        "merman.parse.diagram_parse".to_string(),
+                    ))
+            })
+            .expect("expected latest parse diagnostic");
+        let data = parse_diagnostic
+            .data
+            .as_ref()
+            .expect("expected diagnostic data");
+        assert_eq!(data["documentVersion"], 2);
     }
 
     #[tokio::test(flavor = "current_thread")]
