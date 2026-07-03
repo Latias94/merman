@@ -176,7 +176,7 @@ fn parse_click_statement(
 
     while tail_offset < trimmed.len() {
         let tail = &trimmed[tail_offset..];
-        if starts_with_case_insensitive(tail, "href") {
+        if starts_with_click_keyword(tail, "href") {
             let href_keyword_end = tail_offset + "href".len();
             let after_href = &trimmed[href_keyword_end..];
             let href_ws = leading_whitespace_len(after_href);
@@ -200,7 +200,7 @@ fn parse_click_statement(
             continue;
         }
 
-        if starts_with_case_insensitive(tail, "call") {
+        if starts_with_click_keyword(tail, "call") {
             let call_keyword_end = tail_offset + "call".len();
             let after_call = &trimmed[call_keyword_end..];
             let call_ws = leading_whitespace_len(after_call);
@@ -240,6 +240,16 @@ fn skip_quoted_click_tail(trimmed: &str, quote_start: usize) -> std::result::Res
         return Err("invalid click statement: unterminated quoted tail".to_string());
     };
     Ok(value_start + end + '"'.len_utf8())
+}
+
+fn starts_with_click_keyword(input: &str, keyword: &str) -> bool {
+    if !starts_with_case_insensitive(input, keyword) {
+        return false;
+    }
+    input[keyword.len()..]
+        .chars()
+        .next()
+        .is_some_and(char::is_whitespace)
 }
 
 fn parse_callback_tail<'a>(

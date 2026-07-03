@@ -203,7 +203,8 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let mut requests = store.snapshot_build_requests();
+    let (snapshots, mut requests) = store.snapshot_build_requests();
+    assert!(snapshots.is_empty());
     assert_eq!(requests.len(), 1);
     let stale_request = requests.pop().unwrap();
     let stale_snapshot = stale_request.build();
@@ -224,6 +225,41 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
         .expect("current snapshot should build after rejecting stale request");
     assert_eq!(current.version, 2);
     assert_eq!(current.fences[0].diagram_type.as_deref(), Some("sequence"));
+}
+
+#[test]
+fn snapshot_build_requests_reuse_current_cached_snapshots() {
+    let mut store = DocumentStore::new();
+    let cached_uri = Url::parse("file:///tmp/cached.mmd").unwrap();
+    let missing_uri = Url::parse("file:///tmp/missing.mmd").unwrap();
+
+    store.upsert_text(
+        cached_uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let cached_snapshot = store
+        .snapshot(&cached_uri)
+        .expect("expected cached snapshot");
+    store.upsert_text(
+        missing_uri.clone(),
+        1,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let (snapshots, mut requests) = store.snapshot_build_requests();
+
+    assert_eq!(snapshots.len(), 1);
+    assert_eq!(snapshots[0].uri, cached_uri);
+    assert!(std::sync::Arc::ptr_eq(&snapshots[0], &cached_snapshot));
+    assert_eq!(requests.len(), 1);
+    let request = requests.pop().unwrap();
+    let built = request.build();
+    let committed = store.snapshots_for_requests(vec![(request, built)]);
+    assert_eq!(committed.len(), 1);
+    assert_eq!(committed[0].uri, missing_uri);
 }
 
 #[test]

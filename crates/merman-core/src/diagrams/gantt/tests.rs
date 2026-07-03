@@ -986,6 +986,32 @@ click id2 href "https://example.com/" myOtherFn
 }
 
 #[test]
+fn gantt_click_bare_callback_can_start_with_keyword_prefix() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+task2: id2, 2013-01-02, 1d
+click id1 hrefHandler
+click id2 callHandler
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))),
+    );
+
+    let ev1 = &model["clickEvents"]["id1"];
+    assert_eq!(ev1["function_name"].as_str().unwrap(), "hrefHandler");
+    assert_eq!(ev1["function_args"][0].as_str().unwrap(), "id1");
+
+    let ev2 = &model["clickEvents"]["id2"];
+    assert_eq!(ev2["function_name"].as_str().unwrap(), "callHandler");
+    assert_eq!(ev2["function_args"][0].as_str().unwrap(), "id2");
+}
+
+#[test]
 fn gantt_click_href_sanitizes_unsafe_urls_for_new_callback_forms() {
     let model = parse_with_site_config(
         r#"

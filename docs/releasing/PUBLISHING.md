@@ -27,15 +27,28 @@ Notes:
 When running `cargo publish`, Cargo resolves workspace `path` dependencies as registry dependencies,
 so dependency crates must be published first.
 
-Recommended order (Mermaid renderer stack):
+Recommended order:
 
 1. `dugong-graphlib`
-2. `dugong`
-3. `manatee`
-4. `merman-core`
-5. `merman-render`
-6. `merman`
-7. `merman-cli`
+2. `manatee`
+3. `merman-core`
+4. `merman-elk-layered`
+5. `roughr-merman`
+6. `dugong`
+7. `merman-analysis`
+8. `merman-ascii`
+9. `merman-layout-elk`
+10. `merman-editor-core`
+11. `merman-render`
+12. `merman`
+13. `merman-lsp`
+14. `merman-bindings-core`
+15. `merman-cli`
+16. `merman-rustdoc`
+17. `merman-ffi`
+18. `merman-typst-plugin`
+19. `merman-uniffi`
+20. `merman-wasm`
 
 ## Dry runs
 
@@ -45,4 +58,3 @@ Recommended order (Mermaid renderer stack):
 
 Important: dry runs for crates that depend on unpublished workspace crates will fail until those
 dependencies exist on crates.io. Use the publish order above for end-to-end dry-run verification.
-

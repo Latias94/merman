@@ -151,31 +151,29 @@ jobs:
             done
           }
 
-          independent_crates=(
-            roughr-merman
-          )
-
-          for crate in "${independent_crates[@]}"; do
-            publish_crate_version "$crate" "$(workspace_crate_version "$crate")"
-          done
-
           crates=(
             dugong-graphlib
-            dugong
             manatee
             merman-core
             merman-elk-layered
-            merman-layout-elk
-            merman-render
+            roughr-merman
+            dugong
+            merman-analysis
             merman-ascii
+            merman-layout-elk
+            merman-editor-core
+            merman-render
             merman
-            merman-rustdoc
+            merman-lsp
             merman-bindings-core
-            merman-ffi
-            merman-uniffi
             merman-cli
+            merman-rustdoc
+            merman-ffi
+            merman-typst-plugin
+            merman-uniffi
+            merman-wasm
           )
 
           for crate in "${crates[@]}"; do
-            publish_crate_version "$crate" "$version"
+            publish_crate_version "$crate" "$(workspace_crate_version "$crate")"
           done

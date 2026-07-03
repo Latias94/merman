@@ -667,7 +667,7 @@ impl LanguageServer for MermanLanguageServer {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
-        let requests = {
+        let (mut snapshots, requests) = {
             let store = self.store.lock().await;
             store.snapshot_build_requests()
         };
@@ -678,7 +678,7 @@ impl LanguageServer for MermanLanguageServer {
                 (request, snapshot)
             })
             .collect();
-        let snapshots = self.store.lock().await.snapshots_for_requests(built);
+        snapshots.extend(self.store.lock().await.snapshots_for_requests(built));
 
         Ok(Some(structure_workspace_symbols_for_snapshots(
             &snapshots,

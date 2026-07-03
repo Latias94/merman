@@ -267,11 +267,21 @@ impl DocumentStore {
             .collect()
     }
 
-    pub fn snapshot_build_requests(&self) -> Vec<SnapshotBuildRequest> {
-        self.documents
-            .keys()
-            .filter_map(|uri| self.snapshot_build_request(uri))
-            .collect()
+    pub fn snapshot_build_requests(
+        &self,
+    ) -> (Vec<Arc<DocumentSnapshot>>, Vec<SnapshotBuildRequest>) {
+        let mut snapshots = Vec::new();
+        let mut requests = Vec::new();
+
+        for uri in self.documents.keys() {
+            if let Some(snapshot) = self.snapshots.get(uri) {
+                snapshots.push(Arc::clone(snapshot));
+            } else if let Some(request) = self.snapshot_build_request(uri) {
+                requests.push(request);
+            }
+        }
+
+        (snapshots, requests)
     }
 
     pub fn snapshots_for_requests(
