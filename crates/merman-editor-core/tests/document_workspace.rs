@@ -1,5 +1,6 @@
 use merman_analysis::{AnalysisOptions, Analyzer, FenceMarker, FenceTextIndexSource, SourceKind};
 use merman_editor_core::{DocumentKind, DocumentUri, DocumentWorkspace, Position};
+use std::sync::Arc;
 
 #[test]
 fn plain_mermaid_documents_create_single_snapshot_fence() {
@@ -27,6 +28,24 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
             .text_index
             .has_directive_prefix("classDef")
     );
+}
+
+#[test]
+fn cloned_snapshots_share_immutable_text_buffers() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let cloned = snapshot.clone();
+
+    assert!(Arc::ptr_eq(&snapshot.text, &cloned.text));
+    assert!(Arc::ptr_eq(
+        &snapshot.fences[0].text,
+        &cloned.fences[0].text
+    ));
 }
 
 #[test]

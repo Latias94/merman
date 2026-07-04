@@ -753,7 +753,7 @@ mod tests {
             kind: DocumentKind::Diagram,
             source: merman_analysis::SourceDescriptor::diagram()
                 .with_path("file:///tmp/example.mmd"),
-            text: text.to_string(),
+            text: text.to_string().into(),
             source_map: SourceMap::new(text.to_string()),
             fences: vec![FenceSnapshot {
                 source_id: "document".to_string(),
@@ -764,7 +764,7 @@ mod tests {
                 body_start: 0,
                 body_end: text.len(),
                 end: text.len(),
-                text: text.to_string(),
+                text: text.to_string().into(),
                 fence_delimiter: None,
                 diagram_type: diagram_type.map(str::to_string),
                 text_index: FenceTextIndex::from_core_facts(facts),

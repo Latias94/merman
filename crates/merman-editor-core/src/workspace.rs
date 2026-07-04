@@ -4,6 +4,7 @@ use merman_analysis::{
     AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind, analyze_document_result,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct DocumentWorkspace {
@@ -64,21 +65,32 @@ impl DocumentWorkspace {
         text: String,
         kind: DocumentKind,
     ) -> DocumentSnapshot {
+        Self::build_snapshot_with_shared_text(analyzer, uri, version, Arc::from(text), kind)
+    }
+
+    pub fn build_snapshot_with_shared_text(
+        analyzer: &Analyzer,
+        uri: impl Into<DocumentUri>,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+    ) -> DocumentSnapshot {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
-        let analysis = analyze_document_result(&text, analyzer, source.clone());
+        let analysis = analyze_document_result(text.as_ref(), analyzer, source.clone());
         let fences = analysis
             .diagrams()
             .iter()
             .map(Self::fence_snapshot)
             .collect::<Vec<_>>();
+        let source_map = analysis.source_map().clone();
         DocumentSnapshot {
             uri,
             version,
             kind,
             source,
             text,
-            source_map: analysis.source_map().clone(),
+            source_map,
             fences,
         }
     }
@@ -104,7 +116,7 @@ impl DocumentWorkspace {
             body_start: diagram.body_start,
             body_end: diagram.body_end,
             end: diagram.end,
-            text: diagram.text.clone(),
+            text: Arc::from(diagram.text.as_str()),
             fence_delimiter: diagram.fence_delimiter,
             diagram_type: diagram.syntax.diagram_type.clone(),
             text_index: diagram.syntax.text_index.clone(),

@@ -655,7 +655,7 @@ mod tests {
             source_descriptor_for_markdown_path(Some("example.md")),
         );
         let diagram = &document.diagrams()[0];
-        let local_map = SourceMap::new(&diagram.text);
+        let local_map = SourceMap::new(diagram.text.as_str());
         let start = local_map.source().find('A').unwrap();
         let end = local_map.source().find("-->").unwrap();
         let diagnostic = AnalysisDiagnostic::error(
@@ -679,7 +679,7 @@ mod tests {
             source_descriptor_for_markdown_path(Some("example.md")),
         );
         let diagram = &document.diagrams()[0];
-        let local_map = SourceMap::new(&diagram.text);
+        let local_map = SourceMap::new(diagram.text.as_str());
         let start = local_map.source().find('B').unwrap();
         let end = start + 1;
         let mut diagnostic = AnalysisDiagnostic::error(
@@ -707,7 +707,7 @@ mod tests {
             source_descriptor_for_markdown_path(Some("example.md")),
         );
         let diagram = &document.diagrams()[0];
-        let local_map = SourceMap::new(&diagram.text);
+        let local_map = SourceMap::new(diagram.text.as_str());
         let start = local_map.source().find("initialize").unwrap();
         let end = start + "initialize".len();
         let local_span = local_map.span(start, end).unwrap();

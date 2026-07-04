@@ -91,12 +91,12 @@ fn hover_escapes_markdown_control_text_from_semantic_facts() {
             body_start: 0,
             body_end: text.len(),
             end: text.len(),
-            text: text.clone(),
+            text: text.clone().into(),
             fence_delimiter: None,
             diagram_type: Some("flowchart-v2".to_string()),
             text_index,
         }],
-        text,
+        text: text.into(),
     };
 
     let hover = hover(&snapshot, Position::new(0, 1)).unwrap();
@@ -350,12 +350,12 @@ fn typed_reference_snapshot() -> DocumentSnapshot {
             body_start: 0,
             body_end: text.len(),
             end: text.len(),
-            text: text.clone(),
+            text: text.clone().into(),
             fence_delimiter: None,
             diagram_type: Some("flowchart-v2".to_string()),
             text_index,
         }],
-        text,
+        text: text.into(),
     }
 }
 

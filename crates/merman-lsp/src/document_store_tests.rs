@@ -1,4 +1,4 @@
-use crate::document_store::{DocumentStore, SemanticTokensState};
+use crate::document_store::{DocumentStore, SemanticTokensState, WorkspaceSnapshotRefreshBudget};
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
     FenceTextIndexSource,
@@ -19,7 +19,7 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
     assert_eq!(snapshot.fences.len(), 1);
     assert_eq!(snapshot.fences[0].body_start, 0);
     assert_eq!(
-        snapshot.fences[0].text,
+        snapshot.fences[0].text.as_ref(),
         "flowchart TD\nclassDef highlight fill:#f00\nA-->B\n"
     );
     assert_eq!(
@@ -266,6 +266,64 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
     assert_eq!(committed.contexts.len(), 1);
     assert_eq!(committed.contexts[0].snapshot.uri, missing_uri);
     assert!(!committed.stale_open_documents);
+}
+
+#[test]
+fn workspace_symbol_build_plan_batches_and_caps_missing_snapshots() {
+    let mut store = DocumentStore::new();
+    for index in 0..40 {
+        let uri = Url::parse(&format!("file:///tmp/workspace-{index}.mmd")).unwrap();
+        store.upsert_text(
+            uri,
+            1,
+            format!("flowchart TD\nN{index}-->B\n"),
+            DocumentKind::Diagram,
+        );
+    }
+
+    let plan =
+        store.workspace_symbol_snapshot_build_plan(WorkspaceSnapshotRefreshBudget::new(32, 8));
+
+    assert!(plan.contexts.is_empty());
+    assert_eq!(plan.batches.len(), 4);
+    assert!(plan.batches.iter().all(|batch| batch.len() <= 8));
+    assert_eq!(plan.new_snapshot_request_count(), 32);
+    assert_eq!(plan.skipped_missing_snapshots, 8);
+}
+
+#[test]
+fn workspace_symbol_build_plan_keeps_cached_contexts_with_missing_budget() {
+    let mut store = DocumentStore::new();
+    let cached_uri = Url::parse("file:///tmp/cached.mmd").unwrap();
+    let cached_snapshot = store.upsert(
+        cached_uri.clone(),
+        1,
+        "flowchart TD\nCached-->B\n".to_string(),
+    );
+    for index in 0..5 {
+        let uri = Url::parse(&format!("file:///tmp/missing-{index}.mmd")).unwrap();
+        store.upsert_text(
+            uri,
+            1,
+            format!("flowchart TD\nMissing{index}-->B\n"),
+            DocumentKind::Diagram,
+        );
+    }
+
+    let plan =
+        store.workspace_symbol_snapshot_build_plan(WorkspaceSnapshotRefreshBudget::new(3, 2));
+
+    assert_eq!(plan.contexts.len(), 1);
+    assert!(std::sync::Arc::ptr_eq(
+        &plan.contexts[0].snapshot,
+        &cached_snapshot
+    ));
+    assert_eq!(plan.batches.len(), 2);
+    assert_eq!(plan.batches[0].len(), 2);
+    assert_eq!(plan.batches[1].len(), 1);
+    assert_eq!(plan.new_snapshot_request_count(), 3);
+    assert_eq!(plan.skipped_missing_snapshots, 2);
+    assert!(store.is_snapshot_contexts_current(&plan.contexts));
 }
 
 #[test]

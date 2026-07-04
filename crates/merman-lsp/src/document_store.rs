@@ -5,6 +5,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{SemanticToken, Url};
 
+pub const WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE: usize = 8;
+pub const WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET: usize = 32;
+
 #[derive(Debug)]
 pub struct DocumentStore {
     analyzer: Analyzer,
@@ -252,6 +255,7 @@ impl DocumentStore {
             .collect()
     }
 
+    #[cfg(test)]
     pub fn snapshot_build_requests(&self) -> (Vec<SnapshotContext>, Vec<SnapshotBuildRequest>) {
         let mut contexts = Vec::new();
         let mut requests = Vec::new();
@@ -269,6 +273,44 @@ impl DocumentStore {
         }
 
         (contexts, requests)
+    }
+
+    pub fn workspace_symbol_snapshot_build_plan(
+        &self,
+        budget: WorkspaceSnapshotRefreshBudget,
+    ) -> WorkspaceSnapshotBuildPlan {
+        let mut contexts = Vec::new();
+        let mut requests = Vec::new();
+        let mut documents = self.documents.iter().collect::<Vec<_>>();
+        documents.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
+
+        for (uri, record) in documents {
+            if let Some(snapshot) = self.snapshots.get(uri) {
+                contexts.push(SnapshotContext::new(
+                    Arc::clone(snapshot),
+                    self.snapshot_generation,
+                    record.epoch,
+                ));
+            } else if requests.len() < budget.max_new_snapshots
+                && let Some(request) = self.snapshot_build_request(uri)
+            {
+                requests.push(request);
+            }
+        }
+
+        let missing_count = self.documents.len().saturating_sub(contexts.len());
+        let skipped_missing_snapshots = missing_count.saturating_sub(requests.len());
+        let batch_size = budget.batch_size.max(1);
+        let batches = requests
+            .chunks(batch_size)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
+        WorkspaceSnapshotBuildPlan {
+            contexts,
+            batches,
+            skipped_missing_snapshots,
+        }
     }
 
     pub fn snapshot_contexts_for_requests(
@@ -379,6 +421,42 @@ pub struct SnapshotBatchCommit {
     pub stale_open_documents: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkspaceSnapshotRefreshBudget {
+    max_new_snapshots: usize,
+    batch_size: usize,
+}
+
+impl WorkspaceSnapshotRefreshBudget {
+    pub const fn new(max_new_snapshots: usize, batch_size: usize) -> Self {
+        Self {
+            max_new_snapshots,
+            batch_size,
+        }
+    }
+
+    pub const fn workspace_symbols() -> Self {
+        Self::new(
+            WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET,
+            WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkspaceSnapshotBuildPlan {
+    pub contexts: Vec<SnapshotContext>,
+    pub batches: Vec<Vec<SnapshotBuildRequest>>,
+    pub skipped_missing_snapshots: usize,
+}
+
+impl WorkspaceSnapshotBuildPlan {
+    #[cfg(test)]
+    pub fn new_snapshot_request_count(&self) -> usize {
+        self.batches.iter().map(Vec::len).sum()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SnapshotBuildRequest {
     document: StoredDocument,
@@ -393,11 +471,11 @@ impl SnapshotBuildRequest {
     }
 
     pub fn build(&self) -> Arc<DocumentSnapshot> {
-        let snapshot = DocumentWorkspace::build_snapshot_with_analyzer(
+        let snapshot = DocumentWorkspace::build_snapshot_with_shared_text(
             &self.analyzer,
             self.document.uri.as_str(),
             self.document.version,
-            self.document.text.to_string(),
+            self.document.text.clone(),
             self.document.kind,
         );
         Arc::new(DocumentSnapshot::from_editor(

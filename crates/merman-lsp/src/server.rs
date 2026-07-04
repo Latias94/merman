@@ -4,7 +4,7 @@ use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::DocumentStore;
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotContext,
-    StoredDocument,
+    StoredDocument, WorkspaceSnapshotRefreshBudget,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -720,26 +720,35 @@ impl LanguageServer for MermanLanguageServer {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
-        let (mut contexts, requests) = {
+        let plan = {
             let store = self.store.lock().await;
-            store.snapshot_build_requests()
+            store.workspace_symbol_snapshot_build_plan(
+                WorkspaceSnapshotRefreshBudget::workspace_symbols(),
+            )
         };
-        let built = requests
-            .into_iter()
-            .map(|request| {
-                let snapshot = request.build();
-                (request, snapshot)
-            })
-            .collect();
-        let commit = self
-            .store
-            .lock()
-            .await
-            .snapshot_contexts_for_requests(built);
-        if commit.stale_open_documents {
-            return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
+        let _skipped_missing_snapshots = plan.skipped_missing_snapshots;
+        let mut contexts = plan.contexts;
+
+        for batch in plan.batches {
+            let built = batch
+                .into_iter()
+                .map(|request| {
+                    let snapshot = request.build();
+                    (request, snapshot)
+                })
+                .collect();
+            let commit = self
+                .store
+                .lock()
+                .await
+                .snapshot_contexts_for_requests(built);
+            if commit.stale_open_documents {
+                return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
+            }
+            contexts.extend(commit.contexts);
+            // The current tower-lsp handler path exposes no explicit cancel token here.
+            tokio::task::yield_now().await;
         }
-        contexts.extend(commit.contexts);
 
         let snapshots = contexts
             .iter()

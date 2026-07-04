@@ -1,4 +1,5 @@
 use crate::payload::{DiagnosticSpan, Utf16Position};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LineCol {
@@ -24,22 +25,29 @@ pub enum SourceMapError {
 
 #[derive(Debug, Clone)]
 pub struct SourceMap {
-    source: String,
+    source: Arc<str>,
     line_starts: Vec<usize>,
+    line_metrics: Vec<LineMetric>,
 }
 
 impl SourceMap {
-    pub fn new(source: impl Into<String>) -> Self {
+    pub fn new(source: impl Into<Arc<str>>) -> Self {
         let source = source.into();
-        let line_starts = line_starts(&source);
+        let line_starts = line_starts(source.as_ref());
+        let line_metrics = line_metrics(source.as_ref(), &line_starts);
         Self {
             source,
             line_starts,
+            line_metrics,
         }
     }
 
     pub fn source(&self) -> &str {
-        &self.source
+        self.source.as_ref()
+    }
+
+    pub fn source_arc(&self) -> Arc<str> {
+        Arc::clone(&self.source)
     }
 
     pub fn source_len(&self) -> usize {
@@ -51,24 +59,18 @@ impl SourceMap {
     }
 
     pub fn line_col(&self, offset: usize) -> Result<LineCol, SourceMapError> {
-        self.validate_offset(offset)?;
-        let line_index = self.line_index_for_offset(offset);
-        let line_start = self.line_starts[line_index];
-        let line_prefix = &self.source[line_start..offset];
+        let metrics = self.offset_metrics(offset)?;
         Ok(LineCol::new(
-            line_index + 1,
-            line_prefix.chars().count() + 1,
+            metrics.line_index + 1,
+            metrics.char_column + 1,
         ))
     }
 
     pub fn utf16_position(&self, offset: usize) -> Result<Utf16Position, SourceMapError> {
-        self.validate_offset(offset)?;
-        let line_index = self.line_index_for_offset(offset);
-        let line_start = self.line_starts[line_index];
-        let line_prefix = &self.source[line_start..offset];
+        let metrics = self.offset_metrics(offset)?;
         Ok(Utf16Position {
-            line: line_index,
-            character: line_prefix.encode_utf16().count(),
+            line: metrics.line_index,
+            character: metrics.utf16_column,
         })
     }
 
@@ -99,45 +101,14 @@ impl SourceMap {
     }
 
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
-        let start = *self.line_starts.get(line_index)?;
-        let end = self
-            .line_starts
-            .get(line_index + 1)
-            .copied()
-            .unwrap_or_else(|| self.source.len());
-        let end = if end > start && self.source.as_bytes().get(end - 1) == Some(&b'\n') {
-            end - 1
-        } else {
-            end
-        };
-        Some((start, end))
+        let line = self.line_metrics.get(line_index)?;
+        Some((line.start, line.content_end))
     }
 
     pub fn byte_offset_for_utf16_position(&self, position: Utf16Position) -> Option<usize> {
-        let (line_start, line_end) = self.line_bounds(position.line)?;
-        let line = &self.source[line_start..line_end];
-        let mut utf16 = 0usize;
-
-        if position.character == 0 {
-            return Some(line_start);
-        }
-
-        for (relative, ch) in line.char_indices() {
-            if utf16 == position.character {
-                return Some(line_start + relative);
-            }
-
-            utf16 += ch.len_utf16();
-            if utf16 == position.character {
-                return Some(line_start + relative + ch.len_utf8());
-            }
-        }
-
-        if utf16 == position.character {
-            Some(line_end)
-        } else {
-            None
-        }
+        let line = self.line_metrics.get(position.line)?;
+        let boundary_index = line.utf16_columns.binary_search(&position.character).ok()?;
+        Some(line.start + line.byte_boundaries[boundary_index])
     }
 
     fn validate_offset(&self, offset: usize) -> Result<(), SourceMapError> {
@@ -160,6 +131,51 @@ impl SourceMap {
             Err(index) => index - 1,
         }
     }
+
+    fn offset_metrics(&self, offset: usize) -> Result<OffsetMetrics, SourceMapError> {
+        self.validate_offset(offset)?;
+        let line_index = self.line_index_for_offset(offset);
+        let line = &self.line_metrics[line_index];
+        let clamped = offset.clamp(line.start, line.content_end);
+        let relative = clamped - line.start;
+        let boundary_index = line
+            .byte_boundaries
+            .binary_search(&relative)
+            .expect("validated source offset should map to a cached line boundary");
+
+        Ok(OffsetMetrics {
+            line_index,
+            char_column: boundary_index,
+            utf16_column: line.utf16_columns[boundary_index],
+        })
+    }
+
+    #[cfg(test)]
+    fn cached_line_metric_count(&self) -> usize {
+        self.line_metrics.len()
+    }
+
+    #[cfg(test)]
+    fn cached_line_boundary_count(&self, line_index: usize) -> Option<usize> {
+        self.line_metrics
+            .get(line_index)
+            .map(|line| line.byte_boundaries.len())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LineMetric {
+    start: usize,
+    content_end: usize,
+    byte_boundaries: Vec<usize>,
+    utf16_columns: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OffsetMetrics {
+    line_index: usize,
+    char_column: usize,
+    utf16_column: usize,
 }
 
 pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
@@ -208,6 +224,49 @@ fn line_starts(source: &str) -> Vec<usize> {
     starts
 }
 
+fn line_metrics(source: &str, starts: &[usize]) -> Vec<LineMetric> {
+    starts
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(index, start)| {
+            let next_start = starts.get(index + 1).copied().unwrap_or(source.len());
+            let content_end = line_content_end(source.as_bytes(), start, next_start);
+            let line = &source[start..content_end];
+            let mut byte_boundaries = Vec::with_capacity(line.chars().count() + 1);
+            let mut utf16_columns = Vec::with_capacity(byte_boundaries.capacity());
+            let mut utf16 = 0usize;
+
+            byte_boundaries.push(0);
+            utf16_columns.push(0);
+
+            for (relative, ch) in line.char_indices() {
+                utf16 += ch.len_utf16();
+                byte_boundaries.push(relative + ch.len_utf8());
+                utf16_columns.push(utf16);
+            }
+
+            LineMetric {
+                start,
+                content_end,
+                byte_boundaries,
+                utf16_columns,
+            }
+        })
+        .collect()
+}
+
+fn line_content_end(bytes: &[u8], start: usize, next_start: usize) -> usize {
+    let mut end = next_start;
+    if end > start && bytes.get(end - 1) == Some(&b'\n') {
+        end -= 1;
+    }
+    if end > start && bytes.get(end - 1) == Some(&b'\r') {
+        end -= 1;
+    }
+    end
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,6 +301,60 @@ mod tests {
                 character: 5
             }
         );
+    }
+
+    #[test]
+    fn crlf_line_bounds_and_positions_ignore_carriage_return() {
+        let source = "flowchart TD\r\nA[🤓]-->B\r\n";
+        let map = SourceMap::new(source);
+        let first_cr = source.find('\r').unwrap();
+        let first_lf = source.find('\n').unwrap();
+
+        assert_eq!(map.line_bounds(0), Some((0, first_cr)));
+        assert_eq!(
+            map.utf16_position(first_cr).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: "flowchart TD".len(),
+            }
+        );
+        assert_eq!(
+            map.utf16_position(first_lf).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: "flowchart TD".len(),
+            }
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: "flowchart TD".len(),
+            }),
+            Some(first_cr)
+        );
+    }
+
+    #[test]
+    fn dense_span_conversion_uses_cached_line_metrics() {
+        let nodes = (0..512)
+            .map(|index| format!("N{index}[🤓]"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let source = format!("flowchart TD {nodes}");
+        let map = SourceMap::new(source.clone());
+
+        assert_eq!(map.cached_line_metric_count(), 1);
+        assert_eq!(
+            map.cached_line_boundary_count(0),
+            Some(source.chars().count() + 1)
+        );
+
+        for offset in source.match_indices('N').map(|(offset, _)| offset) {
+            let end = source[offset..].find('[').map(|len| offset + len).unwrap();
+            let span = map.span(offset, end).unwrap();
+            assert_eq!(span.lsp_range.start.line, 0);
+            assert!(span.lsp_range.end.character > span.lsp_range.start.character);
+        }
     }
 
     #[test]
