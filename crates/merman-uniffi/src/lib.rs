@@ -9,7 +9,7 @@ use merman_bindings_core::{BindingEngine, BindingError, BindingStatus};
 #[cfg(feature = "render")]
 use merman_bindings_core::{TextMeasurer as CoreTextMeasurer, VendoredFontMetricsTextMeasurer};
 use serde_json::Value;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
 
@@ -61,6 +61,8 @@ pub struct MermanEngine;
 pub struct MermanReusableEngine {
     #[cfg(feature = "render")]
     base: BindingEngine,
+    #[cfg(feature = "render")]
+    render_lock: Mutex<()>,
     #[cfg(feature = "render")]
     host_text_measurer: RwLock<Option<Arc<UniffiHostTextMeasurer>>>,
     inner: RwLock<BindingEngine>,
@@ -197,6 +199,15 @@ impl UniffiHostTextMeasurer {
         self.callback_error
             .write()
             .map(|mut callback_error| callback_error.take())
+            .map_err(|_| MermanError::internal("host text measurer error lock poisoned"))
+    }
+
+    fn clear_callback_error(&self) -> Result<(), MermanError> {
+        self.callback_error
+            .write()
+            .map(|mut callback_error| {
+                *callback_error = None;
+            })
             .map_err(|_| MermanError::internal("host text measurer error lock poisoned"))
     }
 
@@ -576,17 +587,23 @@ impl MermanReusableEngine {
             #[cfg(feature = "render")]
             base: inner.clone(),
             #[cfg(feature = "render")]
+            render_lock: Mutex::new(()),
+            #[cfg(feature = "render")]
             host_text_measurer: RwLock::new(None),
             inner: RwLock::new(inner),
         }))
     }
 
     pub fn render_svg(&self, source: String) -> Result<String, MermanError> {
-        let inner = self.current_inner()?;
-        let output = string_output(inner.render_svg(source.as_bytes()));
         #[cfg(feature = "render")]
-        self.check_host_text_measurer_error()?;
-        output
+        {
+            return self.render_svg_with_render_lock(source);
+        }
+        #[cfg(not(feature = "render"))]
+        {
+            let inner = self.current_inner()?;
+            string_output(inner.render_svg(source.as_bytes()))
+        }
     }
 
     pub fn render_ascii(&self, source: String) -> Result<String, MermanError> {
@@ -600,11 +617,15 @@ impl MermanReusableEngine {
     }
 
     pub fn layout_json(&self, source: String) -> Result<String, MermanError> {
-        let inner = self.current_inner()?;
-        let output = string_output(inner.layout_json(source.as_bytes()));
         #[cfg(feature = "render")]
-        self.check_host_text_measurer_error()?;
-        output
+        {
+            return self.layout_json_with_render_lock(source);
+        }
+        #[cfg(not(feature = "render"))]
+        {
+            let inner = self.current_inner()?;
+            string_output(inner.layout_json(source.as_bytes()))
+        }
     }
 
     pub fn analyze_json(&self, source: String) -> Result<String, MermanError> {
@@ -662,6 +683,7 @@ impl MermanReusableEngine {
         let inner = base.with_text_measurer(host_text_measurer.clone());
         Ok(Arc::new(Self {
             base,
+            render_lock: Mutex::new(()),
             host_text_measurer: RwLock::new(Some(host_text_measurer)),
             inner: RwLock::new(inner),
         }))
@@ -697,6 +719,10 @@ impl MermanReusableEngine {
         next_inner: BindingEngine,
         next_host_text_measurer: Option<Arc<UniffiHostTextMeasurer>>,
     ) -> Result<(), MermanError> {
+        let _guard = self
+            .render_lock
+            .lock()
+            .map_err(|_| MermanError::internal("reusable engine render lock poisoned"))?;
         let mut inner = self
             .inner
             .write()
@@ -710,18 +736,48 @@ impl MermanReusableEngine {
     }
 
     #[cfg(feature = "render")]
-    fn check_host_text_measurer_error(&self) -> Result<(), MermanError> {
-        let host_text_measurer = self
-            .host_text_measurer
+    fn current_host_text_measurer(
+        &self,
+    ) -> Result<Option<Arc<UniffiHostTextMeasurer>>, MermanError> {
+        self.host_text_measurer
             .read()
-            .map_err(|_| MermanError::internal("reusable engine host text measurer lock poisoned"))?
-            .clone();
-        if let Some(host_text_measurer) = host_text_measurer
+            .map(|host_text_measurer| host_text_measurer.clone())
+            .map_err(|_| MermanError::internal("reusable engine host text measurer lock poisoned"))
+    }
+
+    #[cfg(feature = "render")]
+    fn render_svg_with_render_lock(&self, source: String) -> Result<String, MermanError> {
+        self.with_render_call_host(|inner| string_output(inner.render_svg(source.as_bytes())))
+    }
+
+    #[cfg(feature = "render")]
+    fn layout_json_with_render_lock(&self, source: String) -> Result<String, MermanError> {
+        self.with_render_call_host(|inner| string_output(inner.layout_json(source.as_bytes())))
+    }
+
+    #[cfg(feature = "render")]
+    fn with_render_call_host<T>(
+        &self,
+        run: impl FnOnce(BindingEngine) -> Result<T, MermanError>,
+    ) -> Result<T, MermanError> {
+        let _guard = self
+            .render_lock
+            .lock()
+            .map_err(|_| MermanError::internal("reusable engine render lock poisoned"))?;
+        let inner = self.current_inner()?;
+        let host_text_measurer = self.current_host_text_measurer()?;
+        if let Some(host_text_measurer) = &host_text_measurer {
+            host_text_measurer.clear_callback_error()?;
+        }
+
+        let output = run(inner);
+
+        if let Some(host_text_measurer) = &host_text_measurer
             && let Some(error) = host_text_measurer.take_callback_error()?
         {
             return Err(error);
         }
-        Ok(())
+        output
     }
 }
 
@@ -788,6 +844,12 @@ mod tests {
     use serde_json::Value;
     #[cfg(feature = "render")]
     use std::sync::atomic::{AtomicUsize, Ordering};
+    #[cfg(feature = "render")]
+    use std::sync::{Condvar, Mutex as StdMutex, mpsc};
+    #[cfg(feature = "render")]
+    use std::thread;
+    #[cfg(feature = "render")]
+    use std::time::Duration;
 
     fn engine() -> Arc<MermanEngine> {
         MermanEngine::new()
@@ -806,6 +868,17 @@ mod tests {
     #[cfg(feature = "render")]
     struct MissingTextMeasurer {
         calls: AtomicUsize,
+    }
+
+    #[cfg(feature = "render")]
+    struct BlockingFailingTextMeasurer {
+        state: (StdMutex<BlockingFailingTextMeasurerState>, Condvar),
+    }
+
+    #[cfg(feature = "render")]
+    struct BlockingFailingTextMeasurerState {
+        entered: bool,
+        released: bool,
     }
 
     #[cfg(feature = "render")]
@@ -848,6 +921,36 @@ mod tests {
     }
 
     #[cfg(feature = "render")]
+    impl BlockingFailingTextMeasurer {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                state: (
+                    StdMutex::new(BlockingFailingTextMeasurerState {
+                        entered: false,
+                        released: false,
+                    }),
+                    Condvar::new(),
+                ),
+            })
+        }
+
+        fn wait_until_entered(&self) {
+            let (lock, cvar) = &self.state;
+            let mut state = lock.lock().unwrap();
+            while !state.entered {
+                state = cvar.wait(state).unwrap();
+            }
+        }
+
+        fn release(&self) {
+            let (lock, cvar) = &self.state;
+            let mut state = lock.lock().unwrap();
+            state.released = true;
+            cvar.notify_all();
+        }
+    }
+
+    #[cfg(feature = "render")]
     impl MermanTextMeasurer for CountingTextMeasurer {
         fn measure(
             &self,
@@ -883,6 +986,23 @@ mod tests {
         ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(None)
+        }
+    }
+
+    #[cfg(feature = "render")]
+    impl MermanTextMeasurer for BlockingFailingTextMeasurer {
+        fn measure(
+            &self,
+            _request: MermanTextMeasureRequest,
+        ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
+            let (lock, cvar) = &self.state;
+            let mut state = lock.lock().unwrap();
+            state.entered = true;
+            cvar.notify_all();
+            while !state.released {
+                state = cvar.wait(state).unwrap();
+            }
+            Err(MermanError::internal("blocked host measurer failed"))
         }
     }
 
@@ -1183,6 +1303,49 @@ mod tests {
 
         assert!(svg.contains("<svg"));
         assert!(measurer.calls() > 0);
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn reusable_engine_keeps_host_text_measurer_errors_scoped_to_inflight_render() {
+        let failing_measurer = BlockingFailingTextMeasurer::new();
+        let reusable =
+            MermanReusableEngine::with_text_measurer(None, failing_measurer.clone()).unwrap();
+        let render_engine = reusable.clone();
+        let render_handle = thread::spawn(move || {
+            render_engine.render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+        });
+
+        failing_measurer.wait_until_entered();
+
+        let replacement = MissingTextMeasurer::new();
+        let set_engine = reusable.clone();
+        let (set_done_tx, set_done_rx) = mpsc::channel();
+        let set_handle = thread::spawn(move || {
+            set_engine.set_text_measurer(replacement).unwrap();
+            set_done_tx.send(()).unwrap();
+        });
+
+        assert!(matches!(
+            set_done_rx.recv_timeout(Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+
+        failing_measurer.release();
+
+        let err = render_handle.join().unwrap().unwrap_err();
+        let message = match err {
+            MermanError::Binding { message, .. } => message,
+        };
+        assert!(message.contains("blocked host measurer failed"));
+
+        set_handle.join().unwrap();
+        set_done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+
+        let svg = reusable
+            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .unwrap();
+        assert!(svg.contains("<svg"));
     }
 
     #[cfg(feature = "render")]
