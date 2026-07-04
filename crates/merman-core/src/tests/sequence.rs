@@ -312,6 +312,28 @@ fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_
 }
 
 #[test]
+fn parse_sequence_editor_facts_falls_back_when_preprocessed_body_cannot_remap() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\n",
+        "title: quoted\n",
+        "---\n",
+        "sequenceDiagram\n",
+        "participant Alice\n",
+        "Alice->>Bob: #quot;\n",
+    );
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap();
+
+    assert!(
+        facts.is_none(),
+        "editor facts must not parse original frontmatter-bearing source when preprocessing cannot be remapped"
+    );
+}
+
+#[test]
 fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";

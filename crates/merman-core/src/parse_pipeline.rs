@@ -37,6 +37,7 @@ enum EditorSourceRemap {
         normalized_offset: usize,
         normalized_to_original: Vec<usize>,
     },
+    Unmapped,
 }
 
 impl<'a> EditorParseSourceMap<'a> {
@@ -76,13 +77,17 @@ impl<'a> EditorParseSourceMap<'a> {
         }
 
         Self {
-            parser_input: original,
-            remap: EditorSourceRemap::None,
+            parser_input: preprocessed,
+            remap: EditorSourceRemap::Unmapped,
         }
     }
 
     fn parser_input(&self) -> &'a str {
         self.parser_input
+    }
+
+    fn can_remap_facts(&self) -> bool {
+        !matches!(self.remap, EditorSourceRemap::Unmapped)
     }
 
     fn remap_facts(&self, facts: &mut EditorSemanticFacts) {
@@ -113,6 +118,7 @@ impl<'a> EditorParseSourceMap<'a> {
         match &self.remap {
             EditorSourceRemap::None => offset,
             EditorSourceRemap::Offset(base) => offset + base,
+            EditorSourceRemap::Unmapped => offset,
             EditorSourceRemap::Normalized {
                 normalized_offset,
                 normalized_to_original,
@@ -223,6 +229,9 @@ impl<'a> ParsePipeline<'a> {
             return Ok(None);
         };
         let source_map = EditorParseSourceMap::new(self.text, &code);
+        if !source_map.can_remap_facts() {
+            return Ok(None);
+        }
         let editor_input = source_map.parser_input();
 
         let facts = match meta.diagram_type.as_str() {
