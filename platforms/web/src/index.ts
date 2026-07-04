@@ -5,6 +5,8 @@ import {
 } from "./runtime-state.js";
 import { assertSafeSvgForDom } from "./svg-safety.js";
 
+export { assertSafeSvgForDom } from "./svg-safety.js";
+
 export interface ParseOptions {
   suppress_errors?: boolean;
 }

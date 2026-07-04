@@ -30,5 +30,17 @@ assert.throws(
   () => assertSafeSvgForDom('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
   /event/,
 );
+assert.throws(
+  () => assertSafeSvgForDom('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
+  /srcset/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),
+  /external/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'),
+  /active/,
+);
 
 console.log("@mermanjs/web DOM safety smoke passed");

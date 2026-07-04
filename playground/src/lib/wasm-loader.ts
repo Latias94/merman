@@ -18,6 +18,7 @@ import {
   layoutJson,
   layoutJsonWithTextMeasurer,
   parseJson,
+  assertSafeSvgForDom,
   SUPPORTED_THEMES,
   renderAscii,
   renderSvg,
@@ -277,14 +278,18 @@ function createWasmAdapter(): MermanWasm {
       const sourceTheme = options?.hostThemePreset ? "default" : theme;
       const source = sourceWithConfig(code, sourceTheme, configJson);
       const bindingOptions = bindingOptionsForRender(options);
+      let svg: string;
       if (options?.textMeasurementMode === "browser") {
-        return renderSvgWithTextMeasurer(
+        svg = renderSvgWithTextMeasurer(
           source,
           getBrowserTextMeasurer(),
           bindingOptions
         );
+      } else {
+        svg = renderSvg(source, bindingOptions);
       }
-      return renderSvg(source, bindingOptions);
+      assertSafeSvgForDom(svg);
+      return svg;
     },
 
     render_ascii(

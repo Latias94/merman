@@ -35,6 +35,8 @@ describe("preview SVG safety", () => {
   it("rejects active embedded SVG content", () => {
     assert.throws(() => assertSafePreviewSvg("<svg><script>alert(1)</script></svg>"), /active/);
     assert.throws(() => assertSafePreviewSvg("<svg><iframe></iframe></svg>"), /active/);
+    assert.throws(() => assertSafePreviewSvg('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'), /active/);
+    assert.throws(() => assertSafePreviewSvg("<svg><set attributeName=\"fill\" to=\"url(https://example.com/x)\"/></svg>"), /active/);
   });
 
   it("rejects event handlers and unsafe URL attributes", () => {
@@ -51,6 +53,18 @@ describe("preview SVG safety", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><a href="command:workbench.action.openSettings">x</a></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><a href="vscode://file/path">x</a></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><a href="foo:bar">x</a></svg>'), /unsafe URL/);
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
+      /srcset/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><foreignObject><button formaction="https://example.com/post">x</button></foreignObject></svg>'),
+      /external/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),
+      /external/,
+    );
     assert.throws(
       () => assertSafePreviewSvg('<svg><image href="data:image/svg+xml,%3Csvg%20onload%3Dalert(1)%3E"/></svg>'),
       /unsafe URL/,

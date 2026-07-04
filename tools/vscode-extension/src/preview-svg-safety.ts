@@ -3,14 +3,37 @@ const ACTIVE_SVG_ELEMENTS = new Set([
   "iframe",
   "object",
   "embed",
+  "applet",
+  "form",
+  "link",
   "audio",
   "video",
   "canvas",
+  "animate",
+  "animatemotion",
+  "animatetransform",
+  "discard",
+  "mpath",
+  "set",
 ]);
 
 const SAFE_RASTER_DATA_IMAGE_URL = /^data:image\/(?:png|gif|jpe?g|webp);base64,[a-z0-9+/=]*$/;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/;
-const RAW_URL_ATTRIBUTES = new Set(["href", "src", "poster", "background"]);
+const RAW_URL_ATTRIBUTES = new Set([
+  "action",
+  "background",
+  "cite",
+  "data",
+  "formaction",
+  "href",
+  "longdesc",
+  "manifest",
+  "ping",
+  "poster",
+  "profile",
+  "src",
+  "usemap",
+]);
 const SVG_URL_REFERENCE_ATTRIBUTES = new Set([
   "clip-path",
   "color-profile",
@@ -195,6 +218,9 @@ function assertSafeAttributes(attributes: SvgAttribute[]): void {
     if (nameWithoutNamespace.startsWith("on")) {
       throw new Error("Preview renderer returned SVG with event handler attributes.");
     }
+    if (nameWithoutNamespace === "srcset") {
+      assertSafeSrcset(value);
+    }
     if (RAW_URL_ATTRIBUTES.has(nameWithoutNamespace)) {
       assertSafeUrl(value, "attribute");
     }
@@ -230,6 +256,13 @@ function assertSafeUrl(value: string, source: "attribute" | "css"): void {
       ? "Preview renderer returned SVG with unsafe CSS URL references."
       : "Preview renderer returned SVG with unsafe URL attributes.",
   );
+}
+
+function assertSafeSrcset(value: string): void {
+  if (value.trim().length === 0) {
+    return;
+  }
+  throw new Error("Preview renderer returned SVG with srcset resource references.");
 }
 
 function assertSafeCss(css: string): void {

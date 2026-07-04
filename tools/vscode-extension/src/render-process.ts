@@ -34,7 +34,6 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
     let terminationReason: "abort" | "timeout" | "output-limit" | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
     let killTimer: NodeJS.Timeout | undefined;
-    let stdinErrorTimer: NodeJS.Timeout | undefined;
     let stdinError: Error | undefined;
     let sawClose = false;
     let stdoutBytes = 0;
@@ -59,10 +58,6 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       if (killTimer) {
         clearTimeout(killTimer);
         killTimer = undefined;
-      }
-      if (stdinErrorTimer) {
-        clearTimeout(stdinErrorTimer);
-        stdinErrorTimer = undefined;
       }
     };
     const rejectOnce = (error: Error): void => {
@@ -130,14 +125,6 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
     });
     child.stdin.on("error", (error) => {
       stdinError = error;
-      if (terminationReason || sawClose) {
-        return;
-      }
-      stdinErrorTimer ??= setTimeout(() => {
-        if (!settled && !sawClose && stdinError) {
-          rejectOnce(stdinError);
-        }
-      }, 50);
     });
     child.on("close", (code, signal) => {
       sawClose = true;

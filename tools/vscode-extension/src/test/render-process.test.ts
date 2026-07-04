@@ -208,6 +208,7 @@ describe("render process lifecycle", () => {
     child.stdin = new Writable({
       write(_chunk, _encoding, callback) {
         callback(new Error("render stdin closed"));
+        setImmediate(() => child.emit("close", 0, null));
       },
     });
     child.stdout = new Readable({ read() {} });
@@ -246,10 +247,10 @@ describe("render process lifecycle", () => {
     child.stdin = new Writable({
       write(_chunk, _encoding, callback) {
         callback(new Error("render stdin closed"));
-        queueMicrotask(() => {
+        setTimeout(() => {
           child.stderr.emit("data", Buffer.from("real renderer failure"));
           child.emit("close", 1, null);
-        });
+        }, 75);
       },
     });
     child.exitCode = null;
