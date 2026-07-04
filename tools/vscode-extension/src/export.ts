@@ -5,15 +5,12 @@ import * as vscode from "vscode";
 
 import {
   EXPORT_PRESETS,
-  defaultExportPath,
-  displayExportBasename,
-  exportFilters,
   exportPresetForFormat,
   pngClipboardArgs,
   pngClipboardCommand,
-  type ExportFormat,
   type ExportPreset,
 } from "./export-options.js";
+import { exportRenderedDiagram, renderSafeSvg } from "./export-workflow.js";
 import { runClipboardCommand } from "./clipboard-command.js";
 import { renderMermanSource } from "./renderer.js";
 import {
@@ -21,7 +18,6 @@ import {
   extractPreviewInputFromDocument,
   type PreviewInput,
 } from "./preview-source.js";
-import { assertSafePreviewSvg } from "./preview-svg-safety.js";
 import {
   mermaidSourceCommandSourceId,
   mermaidSourceCommandUri,
@@ -86,47 +82,18 @@ async function exportDiagram(
     return;
   }
 
-  const outputUri = await vscode.window.showSaveDialog({
-    defaultUri: defaultExportUri(source.document.uri, source.input, preset.format),
-    filters: exportFilters(preset.format),
-    saveLabel: `Export ${preset.format.toUpperCase()}`,
+  await exportRenderedDiagram({
+    context,
+    outputChannel,
+    sourceUri: source.document.uri,
+    exportBaseName: source.input.exportBaseName,
+    source: source.input.source,
+    format: preset.format,
+    openAfterExport: preset.openAfterExport,
+    signalLabel: `export-${preset.format}`,
+    progressTitle: `Exporting Mermaid ${preset.format.toUpperCase()}`,
+    failureMessagePrefix: "Merman export failed",
   });
-  if (!outputUri) {
-    return;
-  }
-
-  await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: `Exporting Mermaid ${preset.format.toUpperCase()}`,
-      cancellable: false,
-    },
-    async () => {
-      try {
-        if (preset.format === "svg") {
-          const svg = await renderSafeSvg(context, outputChannel, source.input.source, "export-svg");
-          await vscode.workspace.fs.writeFile(outputUri, Buffer.from(svg, "utf8"));
-        } else {
-          await renderMermanSource({
-            context,
-            source: source.input.source,
-            format: preset.format,
-            outputPath: outputUri.fsPath,
-            outputChannel,
-            signalLabel: `export-${preset.format}`,
-          });
-        }
-        if (preset.openAfterExport) {
-          await vscode.commands.executeCommand("vscode.open", outputUri);
-        }
-        void vscode.window.showInformationMessage(`Exported ${displayExportBasename(outputUri)}.`);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        outputChannel.error(message);
-        void vscode.window.showErrorMessage(`Merman export failed: ${message}`);
-      }
-    },
-  );
 }
 
 async function copySvg(
@@ -151,24 +118,6 @@ async function copySvg(
     outputChannel.error(message);
     void vscode.window.showErrorMessage(`Merman SVG copy failed: ${message}`);
   }
-}
-
-async function renderSafeSvg(
-  context: vscode.ExtensionContext,
-  outputChannel: vscode.LogOutputChannel,
-  source: string,
-  signalLabel: string,
-): Promise<string> {
-  const result = await renderMermanSource({
-    context,
-    source,
-    format: "svg",
-    outputChannel,
-    signalLabel,
-  });
-  const svg = result.stdout.toString("utf8");
-  assertSafePreviewSvg(svg);
-  return svg;
 }
 
 async function copyPng(
@@ -241,17 +190,6 @@ async function resolveExportSource(
   }
   const input = extractPreviewInput(activeEditor);
   return input ? { document: activeEditor.document, input } : undefined;
-}
-
-function defaultExportUri(
-  sourceUri: vscode.Uri,
-  input: PreviewInput,
-  format: ExportFormat,
-): vscode.Uri | undefined {
-  if (sourceUri.scheme !== "file") {
-    return undefined;
-  }
-  return vscode.Uri.file(defaultExportPath(sourceUri.fsPath, input.exportBaseName, format));
 }
 
 export async function pickExportPreset(): Promise<ExportPreset | undefined> {

@@ -700,6 +700,7 @@ function loadPreviewModule(host: FakePreviewHost): typeof import("../preview.js"
     delete require.cache[require.resolve("../preview.js")];
     delete require.cache[require.resolve("../preview-instance.js")];
     delete require.cache[require.resolve("../preview-webview-client.js")];
+    delete require.cache[require.resolve("../export-workflow.js")];
     delete require.cache[require.resolve("../renderer.js")];
     return require("../preview.js") as typeof import("../preview.js");
   } finally {

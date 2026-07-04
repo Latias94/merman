@@ -2,62 +2,11 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { surfaces, surfaceRuntimeExportNames } from "./surface-manifest.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(packageRoot, "src");
 const surfacesDir = path.join(srcDir, "surfaces");
-
-const surfaces = [
-  { entry: "core", preset: "browser-core", pkgDirRel: "pkg/core" },
-  { entry: "render", preset: "browser-render", pkgDirRel: "pkg/render" },
-  { entry: "ascii", preset: "browser-ascii", pkgDirRel: "pkg/ascii" },
-  { entry: "full", preset: "browser-full", pkgDirRel: "pkg/full" },
-];
-
-const surfaceRuntimeExportNames = [
-  "initMerman",
-  "getMerman",
-  "isMermanInitialized",
-  "renderSvg",
-  "renderSvgWithTextMeasurer",
-  "layoutJsonWithTextMeasurer",
-  "renderSvgElement",
-  "renderSvgToElement",
-  "renderAscii",
-  "parseJson",
-  "parseObject",
-  "layoutJson",
-  "layoutObject",
-  "analyze",
-  "analyzeJson",
-  "analysisFacts",
-  "analyzeDocument",
-  "analyzeDocumentFacts",
-  "validate",
-  "editorDiagnostics",
-  "editorCodeActions",
-  "editorCompletions",
-  "editorHover",
-  "editorDocumentSymbols",
-  "editorWorkspaceSymbols",
-  "editorDefinition",
-  "editorReferences",
-  "editorPrepareRename",
-  "editorRename",
-  "editorSemanticTokenLegend",
-  "editorSemanticTokens",
-  "bindingCapabilities",
-  "selectedRegistryProfile",
-  "supportedDiagrams",
-  "diagramFamilyCapabilities",
-  "lintRuleCatalog",
-  "asciiSupportedDiagrams",
-  "asciiCapabilities",
-  "supportedThemes",
-  "supportedHostThemePresets",
-  "abiVersion",
-  "packageVersion",
-];
 
 rmSync(surfacesDir, { recursive: true, force: true });
 mkdirSync(surfacesDir, { recursive: true });

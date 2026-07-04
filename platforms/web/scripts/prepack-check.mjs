@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
+import { surfaces } from "./surface-manifest.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = path.join(root, "..", "..");
@@ -9,7 +10,6 @@ const wasmSizeBudgets = path.join(workspaceRoot, "docs", "release", "WASM_SIZE_B
 const generatedPackageJson = path.join(root, "pkg", "package.json");
 const presetManifest = path.join(root, "pkg", "merman_wasm_preset.json");
 const wasmBinary = path.join(root, "pkg", "merman_wasm_bg.wasm");
-const surfaceEntries = ["core", "render", "ascii", "full"];
 const required = [
   path.join(root, "dist", "index.js"),
   path.join(root, "dist", "index.d.ts"),
@@ -17,14 +17,14 @@ const required = [
   presetManifest,
   path.join(root, "pkg", "merman_wasm.js"),
   wasmBinary,
-  ...surfaceEntries.flatMap((entry) => [
-    path.join(root, "dist", "surfaces", `${entry}.js`),
-    path.join(root, "dist", "surfaces", `${entry}.d.ts`),
-    path.join(root, "pkg", entry, "package.json"),
-    path.join(root, "pkg", entry, "merman_wasm.js"),
-    path.join(root, "pkg", entry, "merman_wasm.d.ts"),
-    path.join(root, "pkg", entry, "merman_wasm_bg.wasm"),
-    path.join(root, "pkg", entry, "merman_wasm_preset.json"),
+  ...surfaces.flatMap((surface) => [
+    path.join(root, "dist", "surfaces", `${surface.entry}.js`),
+    path.join(root, "dist", "surfaces", `${surface.entry}.d.ts`),
+    path.join(root, "pkg", surface.entry, "package.json"),
+    path.join(root, "pkg", surface.entry, "merman_wasm.js"),
+    path.join(root, "pkg", surface.entry, "merman_wasm.d.ts"),
+    path.join(root, "pkg", surface.entry, "merman_wasm_bg.wasm"),
+    path.join(root, "pkg", surface.entry, "merman_wasm_preset.json"),
   ]),
 ];
 
@@ -81,8 +81,8 @@ try {
   process.exit(1);
 }
 
-for (const entry of surfaceEntries) {
-  checkSurfaceManifest(entry);
+for (const surface of surfaces) {
+  checkSurfaceManifest(surface);
 }
 
 function loadDefaultBrowserFullWasmBudget() {
@@ -107,7 +107,8 @@ function loadDefaultBrowserFullWasmBudget() {
   };
 }
 
-function checkSurfaceManifest(entry) {
+function checkSurfaceManifest(surface) {
+  const entry = surface.entry;
   const manifestPath = path.join(root, "pkg", entry, "merman_wasm_preset.json");
   let manifest;
   try {
@@ -117,11 +118,10 @@ function checkSurfaceManifest(entry) {
     process.exit(1);
   }
 
-  const expectedPreset = `browser-${entry}`;
-  if (manifest.preset !== expectedPreset) {
+  if (manifest.preset !== surface.preset) {
     console.error(
       [
-        `prepack: generated WASM preset for ./${entry} is '${manifest.preset}', expected '${expectedPreset}'.`,
+        `prepack: generated WASM preset for ./${entry} is '${manifest.preset}', expected '${surface.preset}'.`,
         "Run `npm run build --prefix platforms/web` before pack/publish.",
       ].join("\n"),
     );

@@ -364,6 +364,7 @@ function loadExportModule(host: FakeExportHost): typeof import("../export.js") {
   };
   try {
     delete require.cache[require.resolve("../export.js")];
+    delete require.cache[require.resolve("../export-workflow.js")];
     delete require.cache[require.resolve("../renderer.js")];
     return require("../export.js") as typeof import("../export.js");
   } finally {

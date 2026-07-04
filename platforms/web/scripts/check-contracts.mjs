@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { surfaces, surfaceRuntimeExportNames } from "./surface-manifest.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fullWasmTypes = path.join(root, "pkg", "full", "merman_wasm.d.ts");
 const publicApiSource = path.join(root, "src", "index.ts");
 const surfaceRuntimeSource = path.join(root, "src", "surface-runtime.ts");
-const surfaceGeneratorSource = path.join(root, "scripts", "build-surface-packages.mjs");
-const surfaceEntries = ["core", "render", "ascii", "full"];
+const surfaceEntries = surfaces.map((surface) => surface.entry);
 
 const wasmGlueExports = new Set(["initSync", "start"]);
 const runtimeWrapperOnlyExports = new Set([
@@ -37,10 +37,7 @@ const publicApi = read(publicApiSource);
 const publicWrappers = extractExportedFunctionNames(publicApi);
 const wasmModuleProperties = extractInterfaceProperties(publicApi, "MermanWasmModule");
 const runtimeBindings = extractSurfaceRuntimeBindings(read(surfaceRuntimeSource));
-const generatedSurfaceBindings = extractStringArray(
-  read(surfaceGeneratorSource),
-  "surfaceRuntimeExportNames",
-);
+const generatedSurfaceBindings = new Set(surfaceRuntimeExportNames);
 const requiredRawWrappers = rawWasmExports.filter((name) => !wasmGlueExports.has(name));
 const requiredPublicWrappers = [
   ...requiredRawWrappers,
@@ -165,15 +162,6 @@ function extractRuntimeDestructure(source, file) {
       .map((entry) => entry.trim())
       .filter(Boolean),
   );
-}
-
-function extractStringArray(source, constantName) {
-  const escapedName = constantName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = source.match(new RegExp(`const ${escapedName} = \\[([\\s\\S]*?)\\];`));
-  if (!match) {
-    throw new Error(`check-contracts: missing ${constantName} array`);
-  }
-  return new Set(matches(match[1], /^\s+"([A-Za-z_$][\w$]*)",?$/gm));
 }
 
 function matches(source, pattern) {

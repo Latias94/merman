@@ -2,12 +2,8 @@ import * as vscode from "vscode";
 
 import { previewCliBackground } from "./preview-background.js";
 import { collectMermanPreviewDiagnostics } from "./preview-diagnostics.js";
-import {
-  defaultExportPath,
-  displayExportBasename,
-  exportFilters,
-  type ExportFormat,
-} from "./export-options.js";
+import type { ExportFormat } from "./export-options.js";
+import { exportRenderedDiagram } from "./export-workflow.js";
 import {
   type PreviewBackground,
   type PreviewDiagramTheme,
@@ -473,51 +469,18 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     const documentUri = vscode.Uri.parse(snapshot.documentUri);
-    const defaultUri =
-      documentUri.scheme === "file"
-        ? vscode.Uri.file(defaultExportPath(documentUri.fsPath, snapshot.input.exportBaseName, format))
-        : undefined;
-    const target = await vscode.window.showSaveDialog({
-      defaultUri,
-      filters: exportFilters(format),
-      saveLabel: `Export ${format.toUpperCase()}`,
+    await exportRenderedDiagram({
+      context: this.context,
+      outputChannel: this.outputChannel,
+      sourceUri: documentUri,
+      exportBaseName: snapshot.input.exportBaseName,
+      source: snapshot.input.source,
+      format,
+      theme: snapshot.diagramTheme,
+      background: previewCliBackground(snapshot.background),
+      signalLabel: `preview-export-${format}`,
+      failureMessagePrefix: "Merman preview export failed",
     });
-    if (!target) {
-      return;
-    }
-
-    try {
-      if (format === "svg") {
-        const result = await renderMermanSource({
-          context: this.context,
-          source: snapshot.input.source,
-          format,
-          theme: snapshot.diagramTheme,
-          background: previewCliBackground(snapshot.background),
-          outputChannel: this.outputChannel,
-          signalLabel: "preview-export-svg",
-        });
-        const svg = result.stdout.toString("utf8");
-        assertSafePreviewSvg(svg);
-        await vscode.workspace.fs.writeFile(target, Buffer.from(svg, "utf8"));
-      } else {
-        await renderMermanSource({
-          context: this.context,
-          source: snapshot.input.source,
-          format,
-          theme: snapshot.diagramTheme,
-          background: previewCliBackground(snapshot.background),
-          outputPath: target.fsPath,
-          outputChannel: this.outputChannel,
-          signalLabel: `preview-export-${format}`,
-        });
-      }
-      void vscode.window.showInformationMessage(`Exported ${displayExportBasename(target)}.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.outputChannel.error(message);
-      void vscode.window.showErrorMessage(`Merman preview export failed: ${message}`);
-    }
   }
 }
 
