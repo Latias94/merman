@@ -5,6 +5,10 @@ void main() {
   clearFailureKeepsPreviousCallbackAlive();
   replaceSuccessClosesPreviousCallback();
   takeCallbackClearsStateWithoutClosing();
+  lifecycleReentrantCallThrowsStableError();
+  lifecycleMutationDuringNativeCallThrowsStableError();
+  lifecycleCloseDuringNativeCallDefersFreeUntilFinish();
+  lifecycleCallsAfterCloseThrowStableError();
 
   print('callback transaction tests passed');
 }
@@ -102,11 +106,87 @@ void takeCallbackClearsStateWithoutClosing() {
   expectTrue(first.closed, 'detached callback should close explicitly');
 }
 
+void lifecycleReentrantCallThrowsStableError() {
+  final lifecycle = testLifecycle();
+
+  final result = lifecycle.withNativeCall((handle) {
+    expectEquals(handle, 'engine', 'active native call should use handle');
+    expectMermanException('DART_ENGINE_REENTERED', () {
+      lifecycle.withNativeCall((_) {});
+    });
+    return 42;
+  });
+
+  expectEquals(result, 42, 'outer native call should complete');
+  expectFalse(lifecycle.isClosed, 'reentrant failure must not close engine');
+}
+
+void lifecycleMutationDuringNativeCallThrowsStableError() {
+  final lifecycle = testLifecycle();
+
+  lifecycle.withNativeCall((_) {
+    expectMermanException('DART_ENGINE_REENTERED', () {
+      lifecycle.openHandle;
+    });
+  });
+
+  expectFalse(lifecycle.isClosed, 'mutation failure must not close engine');
+}
+
+void lifecycleCloseDuringNativeCallDefersFreeUntilFinish() {
+  final closedHandles = <String>[];
+  final lifecycle = testLifecycle(onClose: closedHandles.add);
+
+  final result = lifecycle.withNativeCall((handle) {
+    expectEquals(handle, 'engine', 'native call should receive live handle');
+    lifecycle.close();
+    expectTrue(lifecycle.closeRequested,
+        'close inside a native callback should be deferred');
+    expectFalse(lifecycle.isClosed,
+        'engine must stay open until the outer native call exits');
+    expectEquals(closedHandles.length, 0, 'native handle freed too early');
+    return 'rendered';
+  });
+
+  expectEquals(result, 'rendered', 'outer native call result should survive');
+  expectTrue(lifecycle.isClosed, 'engine should close after native call exit');
+  expectListEquals(
+      closedHandles, ['engine'], 'native handle should be freed exactly once');
+}
+
+void lifecycleCallsAfterCloseThrowStableError() {
+  final closedHandles = <String>[];
+  final lifecycle = testLifecycle(onClose: closedHandles.add);
+
+  lifecycle.close();
+  lifecycle.close();
+
+  expectTrue(lifecycle.isClosed, 'close should mark engine closed');
+  expectListEquals(closedHandles, ['engine'], 'close should be idempotent');
+  expectMermanException('DART_ENGINE_CLOSED', () {
+    lifecycle.withNativeCall((_) {});
+  });
+  expectMermanException('DART_ENGINE_CLOSED', () {
+    lifecycle.openHandle;
+  });
+}
+
 MermanTextMeasureCallbackRegistration<FakeCallback> testRegistration() {
   return MermanTextMeasureCallbackRegistration(
     closeCallback: (callback) {
       callback.closed = true;
     },
+  );
+}
+
+MermanReusableEngineLifecycle<String> testLifecycle({
+  void Function(String handle)? onClose,
+}) {
+  return MermanReusableEngineLifecycle(
+    initialHandle: 'engine',
+    closedHandle: 'closed',
+    isClosed: (handle) => handle == 'closed',
+    closeHandle: onClose ?? (_) {},
   );
 }
 
@@ -148,6 +228,23 @@ void expectSame(Object? actual, Object? expected, String message) {
   }
 }
 
+void expectEquals(Object? actual, Object? expected, String message) {
+  if (actual != expected) {
+    throw StateError('$message: got $actual, expected $expected');
+  }
+}
+
+void expectListEquals<T>(List<T> actual, List<T> expected, String message) {
+  if (actual.length != expected.length) {
+    throw StateError('$message: got $actual, expected $expected');
+  }
+  for (var index = 0; index < actual.length; index += 1) {
+    if (actual[index] != expected[index]) {
+      throw StateError('$message: got $actual, expected $expected');
+    }
+  }
+}
+
 void expectThrows<T extends Object>(void Function() body) {
   try {
     body();
@@ -158,4 +255,16 @@ void expectThrows<T extends Object>(void Function() body) {
     throw StateError('expected $T, got $error');
   }
   throw StateError('expected $T to be thrown');
+}
+
+void expectMermanException(String codeName, void Function() body) {
+  try {
+    body();
+  } catch (error) {
+    if (error is MermanException && error.codeName == codeName) {
+      return;
+    }
+    throw StateError('expected $codeName, got $error');
+  }
+  throw StateError('expected $codeName to be thrown');
 }

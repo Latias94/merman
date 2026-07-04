@@ -161,6 +161,7 @@ def main() -> int:
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasurer.kt"),
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanEngine.kt"),
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanReusableEngine.kt"),
+                str(ANDROID_ROOT / "examples" / "MermanSmoke.kt"),
                 "-d",
                 str(ANDROID_JAR_OUT),
             ]

@@ -386,6 +386,98 @@ class MermanTextMeasureCallbackRegistration<TCallback extends Object> {
   }
 }
 
+/// Lifecycle guard for a reusable native engine.
+class MermanReusableEngineLifecycle<THandle> {
+  MermanReusableEngineLifecycle({
+    required THandle initialHandle,
+    required THandle closedHandle,
+    required bool Function(THandle handle) isClosed,
+    required void Function(THandle handle) closeHandle,
+  })  : _handle = initialHandle,
+        _closedHandle = closedHandle,
+        _isClosedHandle = isClosed,
+        _closeHandle = closeHandle;
+
+  final THandle _closedHandle;
+  final bool Function(THandle handle) _isClosedHandle;
+  final void Function(THandle handle) _closeHandle;
+
+  THandle _handle;
+  int _activeNativeCalls = 0;
+  bool _closeRequested = false;
+
+  bool get isClosed => _isClosedHandle(_handle);
+
+  bool get closeRequested => _closeRequested;
+
+  THandle get openHandle {
+    _ensureCallable();
+    return _handle;
+  }
+
+  T withNativeCall<T>(T Function(THandle handle) body) {
+    final handle = _beginNativeCall();
+    try {
+      return body(handle);
+    } finally {
+      _finishNativeCall();
+    }
+  }
+
+  void close() {
+    if (isClosed) {
+      return;
+    }
+    if (_activeNativeCalls > 0) {
+      _closeRequested = true;
+      return;
+    }
+    _freeNow();
+  }
+
+  THandle _beginNativeCall() {
+    _ensureCallable();
+    _activeNativeCalls += 1;
+    return _handle;
+  }
+
+  void _finishNativeCall() {
+    _activeNativeCalls -= 1;
+    if (_activeNativeCalls == 0 && _closeRequested) {
+      _freeNow();
+    }
+  }
+
+  void _ensureCallable() {
+    if (_activeNativeCalls > 0) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_ENGINE_REENTERED',
+        message:
+            'Merman reusable engine cannot be re-entered from a native callback',
+      );
+    }
+    if (_closeRequested || isClosed) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_ENGINE_CLOSED',
+        message: 'Merman reusable engine is closed',
+      );
+    }
+  }
+
+  void _freeNow() {
+    if (isClosed) {
+      _closeRequested = false;
+      return;
+    }
+    final handle = _handle;
+    _handle = _closedHandle;
+    _closeRequested = false;
+    _closeHandle(handle);
+  }
+}
+
 typedef _AbiVersionC = Uint32 Function();
 typedef _AbiVersionDart = int Function();
 
@@ -823,7 +915,18 @@ class MermanLintRuleCatalogEntry {
 
 /// Reusable engine wrapper around the native `merman_engine_*` ABI.
 class MermanReusableEngine {
-  MermanReusableEngine._(this._bindings, this._engine);
+  MermanReusableEngine._(this._bindings, Pointer<NativeMermanEngine> engine) {
+    _lifecycle = MermanReusableEngineLifecycle<Pointer<NativeMermanEngine>>(
+      initialHandle: engine,
+      closedHandle: nullptr,
+      isClosed: (handle) => handle.address == 0,
+      closeHandle: (handle) {
+        final callback = _textMeasureCallbacks.takeCallback();
+        _bindings.engineFree(handle);
+        _textMeasureCallbacks.closeDetached(callback);
+      },
+    );
+  }
 
   /// Creates a reusable engine from an already-opened [DynamicLibrary].
   factory MermanReusableEngine.fromDynamicLibrary(
@@ -854,9 +957,8 @@ class MermanReusableEngine {
       MermanTextMeasureCallbackRegistration(closeCallback: (callback) {
     callback.close();
   });
-  Pointer<NativeMermanEngine> _engine;
-
-  bool get _isClosed => _engine.address == 0;
+  late final MermanReusableEngineLifecycle<Pointer<NativeMermanEngine>>
+      _lifecycle;
 
   /// Installs or clears a host text-measurement callback.
   ///
@@ -865,12 +967,12 @@ class MermanReusableEngine {
   /// same [MermanReusableEngine]. If the callback throws, the native engine
   /// falls back to its configured text measurer for that request.
   void setTextMeasurer(MermanTextMeasurer? measurer) {
-    _ensureOpen();
+    final engine = _lifecycle.openHandle;
 
     if (measurer == null) {
       _textMeasureCallbacks.clear(clearNative: () {
         _bindings.checkResult(
-          _bindings.engineSetTextMeasureCallback(_engine, nullptr, nullptr),
+          _bindings.engineSetTextMeasureCallback(engine, nullptr, nullptr),
         );
       });
       return;
@@ -884,7 +986,7 @@ class MermanReusableEngine {
       installNative: (callback) {
         _bindings.checkResult(
           _bindings.engineSetTextMeasureCallback(
-            _engine,
+            engine,
             callback.nativeFunction,
             nullptr,
           ),
@@ -895,22 +997,28 @@ class MermanReusableEngine {
 
   /// Renders Mermaid [source] to SVG text.
   String renderSvg(String source) {
-    return _decodeText(
-      _bindings.engineCall(_bindings.engineRenderSvg, _engine, source),
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineCall(_bindings.engineRenderSvg, engine, source),
+      ),
     );
   }
 
   /// Renders Mermaid [source] to Unicode ASCII-art text.
   String renderAscii(String source) {
-    return _decodeText(
-      _bindings.engineCall(_bindings.engineRenderAscii, _engine, source),
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineCall(_bindings.engineRenderAscii, engine, source),
+      ),
     );
   }
 
   /// Parses Mermaid [source] and returns raw semantic JSON text.
   String parseJsonRaw(String source) {
-    return _decodeText(
-      _bindings.engineCall(_bindings.engineParseJson, _engine, source),
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineCall(_bindings.engineParseJson, engine, source),
+      ),
     );
   }
 
@@ -921,8 +1029,10 @@ class MermanReusableEngine {
 
   /// Lays out Mermaid [source] and returns raw layout JSON text.
   String layoutJsonRaw(String source) {
-    return _decodeText(
-      _bindings.engineCall(_bindings.engineLayoutJson, _engine, source),
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineCall(_bindings.engineLayoutJson, engine, source),
+      ),
     );
   }
 
@@ -933,8 +1043,11 @@ class MermanReusableEngine {
 
   /// Analyzes Mermaid [source] and returns raw diagnostics JSON text.
   String analyzeJsonRaw(String source) {
-    return _decodeText(
-        _bindings.engineCall(_bindings.engineAnalyzeJson, _engine, source));
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineCall(_bindings.engineAnalyzeJson, engine, source),
+      ),
+    );
   }
 
   /// Analyzes Mermaid [source] and returns the diagnostics JSON object.
@@ -944,12 +1057,14 @@ class MermanReusableEngine {
 
   /// Analyzes Markdown or MDX [source] and returns raw document diagnostics JSON text.
   String analyzeDocumentJsonRaw(String source, {required String uri}) {
-    return _decodeText(
-      _bindings.engineDocumentCall(
-        _bindings.engineAnalyzeDocumentJson,
-        _engine,
-        source,
-        uri,
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineDocumentCall(
+          _bindings.engineAnalyzeDocumentJson,
+          engine,
+          source,
+          uri,
+        ),
       ),
     );
   }
@@ -962,12 +1077,14 @@ class MermanReusableEngine {
 
   /// Analyzes Markdown or MDX [source] and returns raw document syntax facts JSON text.
   String analyzeDocumentFactsJsonRaw(String source, {required String uri}) {
-    return _decodeText(
-      _bindings.engineDocumentCall(
-        _bindings.engineAnalyzeDocumentFactsJson,
-        _engine,
-        source,
-        uri,
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineDocumentCall(
+          _bindings.engineAnalyzeDocumentFactsJson,
+          engine,
+          source,
+          uri,
+        ),
       ),
     );
   }
@@ -982,8 +1099,10 @@ class MermanReusableEngine {
 
   /// Validates Mermaid [source] and returns raw validation JSON text.
   String validateJsonRaw(String source) {
-    return _decodeText(
-      _bindings.engineCall(_bindings.engineValidateJson, _engine, source),
+    return _lifecycle.withNativeCall(
+      (engine) => _decodeText(
+        _bindings.engineCall(_bindings.engineValidateJson, engine, source),
+      ),
     );
   }
 
@@ -996,13 +1115,7 @@ class MermanReusableEngine {
 
   /// Frees the native reusable engine.
   void close() {
-    if (_isClosed) {
-      return;
-    }
-    final callback = _textMeasureCallbacks.takeCallback();
-    _bindings.engineFree(_engine);
-    _engine = nullptr;
-    _textMeasureCallbacks.closeDetached(callback);
+    _lifecycle.close();
   }
 
   NativeMermanHostTextMeasureResult _measureText(
@@ -1035,16 +1148,6 @@ class MermanReusableEngine {
     nativeResult.height = result.height;
     nativeResult.lineCount = result.lineCount;
     return nativeResult;
-  }
-
-  void _ensureOpen() {
-    if (_isClosed) {
-      throw const MermanException(
-        code: -1,
-        codeName: 'DART_ENGINE_CLOSED',
-        message: 'Merman reusable engine is closed',
-      );
-    }
   }
 
   static String _decodeText(Uint8List bytes) => utf8.decode(bytes);

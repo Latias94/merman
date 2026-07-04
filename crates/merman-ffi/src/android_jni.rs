@@ -1,6 +1,6 @@
 use jni::{
     Env, EnvUnowned,
-    errors::{Result as JniResult, ThrowRuntimeExAndDefault},
+    errors::{Error as JniError, Result as JniResult, ThrowRuntimeExAndDefault},
     objects::{JClass, JObject, JString},
     strings::JNIString,
     sys::{jint, jlong, jstring},
@@ -61,16 +61,34 @@ impl JniHostTextMeasurer {
                             (request: io.merman.MermanTextMeasureRequest) -> io.merman.MermanTextMeasureResult
                         ),
                         &[JValue::Object(&request)],
-                    )?
-                    .l()?;
+                    )
+                    .and_then(|value| value.l());
+                let Some(result) = recover_host_callback_result(env, result)? else {
+                    return Ok(None);
+                };
                 if result.is_null() {
                     return Ok(None);
                 }
 
                 let result: JObject<'_> = result;
-                let width = env.get_field(&result, jni::jni_str!("width"), jni::jni_sig!(f64))?.d()?;
-                let height = env.get_field(&result, jni::jni_str!("height"), jni::jni_sig!(f64))?.d()?;
-                let line_count = env.get_field(&result, jni::jni_str!("lineCount"), jni::jni_sig!(jlong))?.j()?;
+                let width = env
+                    .get_field(&result, jni::jni_str!("width"), jni::jni_sig!(f64))
+                    .and_then(|value| value.d());
+                let Some(width) = recover_host_callback_result(env, width)? else {
+                    return Ok(None);
+                };
+                let height = env
+                    .get_field(&result, jni::jni_str!("height"), jni::jni_sig!(f64))
+                    .and_then(|value| value.d());
+                let Some(height) = recover_host_callback_result(env, height)? else {
+                    return Ok(None);
+                };
+                let line_count = env
+                    .get_field(&result, jni::jni_str!("lineCount"), jni::jni_sig!(jlong))
+                    .and_then(|value| value.j());
+                let Some(line_count) = recover_host_callback_result(env, line_count)? else {
+                    return Ok(None);
+                };
                 if !width.is_finite()
                     || !height.is_finite()
                     || width < 0.0
@@ -103,6 +121,28 @@ impl JniHostTextMeasurer {
                     .measure_wrapped(text, style, max_width, wrap_mode)
             })
     }
+}
+
+#[cfg(feature = "render")]
+fn recover_host_callback_result<T>(
+    env: &mut Env<'_>,
+    result: JniResult<T>,
+) -> JniResult<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(err) if is_pending_host_exception(env, &err) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+#[cfg(feature = "render")]
+fn is_pending_host_exception(env: &mut Env<'_>, err: &JniError) -> bool {
+    let is_java_exception = matches!(err, JniError::JavaException);
+    if env.exception_check() {
+        env.exception_clear();
+        return true;
+    }
+    is_java_exception
 }
 
 #[cfg(feature = "render")]

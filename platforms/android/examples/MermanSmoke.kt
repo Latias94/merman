@@ -110,4 +110,22 @@ fun runMermanSmoke() {
     } finally {
         engine.close()
     }
+
+    val throwingEngine = MermanReusableEngine()
+    try {
+        throwingEngine.setTextMeasurer {
+            throw IllegalStateException("host measurement failed")
+        }
+        val fallbackSvg = throwingEngine.renderSvg(source)
+        check(fallbackSvg.contains("<svg") && fallbackSvg.contains("Hello")) {
+            "throwing text measurer fallback smoke failed"
+        }
+        throwingEngine.setTextMeasurer(null)
+        val afterExceptionSvg = throwingEngine.renderSvg(source)
+        check(afterExceptionSvg.contains("<svg") && afterExceptionSvg.contains("World")) {
+            "JNI exception cleanup smoke failed"
+        }
+    } finally {
+        throwingEngine.close()
+    }
 }

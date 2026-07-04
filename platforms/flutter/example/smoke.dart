@@ -126,6 +126,60 @@ void main(List<String> args) {
     engine.close();
   }
 
+  final reentrantEngine = merman.reusableEngine();
+  var sawReentrantCallback = false;
+  String? reentrantFailure;
+  try {
+    reentrantEngine.setTextMeasurer((request) {
+      if (!sawReentrantCallback && request.text == 'Hello') {
+        sawReentrantCallback = true;
+        try {
+          reentrantEngine.renderSvg(source);
+          reentrantFailure = 'expected DART_ENGINE_REENTERED to be thrown';
+        } on MermanException catch (error) {
+          if (error.codeName != 'DART_ENGINE_REENTERED') {
+            reentrantFailure =
+                'expected DART_ENGINE_REENTERED, got ${error.codeName}';
+          }
+        } catch (error) {
+          reentrantFailure = 'expected DART_ENGINE_REENTERED, got $error';
+        }
+      }
+      return null;
+    });
+    final svgAfterReentry = reentrantEngine.renderSvg(source);
+    final reentrantFailureMessage = reentrantFailure;
+    if (reentrantFailureMessage != null) {
+      throw StateError(reentrantFailureMessage);
+    }
+    if (!sawReentrantCallback || !svgAfterReentry.contains('<svg')) {
+      throw StateError('reusable engine reentry smoke failed');
+    }
+  } finally {
+    reentrantEngine.close();
+  }
+
+  final closingEngine = merman.reusableEngine();
+  var sawCloseCallback = false;
+  try {
+    closingEngine.setTextMeasurer((request) {
+      if (!sawCloseCallback && request.text == 'Hello') {
+        sawCloseCallback = true;
+        closingEngine.close();
+      }
+      return null;
+    });
+    final svgAfterCallbackClose = closingEngine.renderSvg(source);
+    if (!sawCloseCallback || !svgAfterCallbackClose.contains('<svg')) {
+      throw StateError('reusable engine callback close smoke failed');
+    }
+    expectMermanException('DART_ENGINE_CLOSED', () {
+      closingEngine.renderSvg(source);
+    });
+  } finally {
+    closingEngine.close();
+  }
+
   try {
     merman.renderSvg(source, optionsJson: '{');
   } on MermanException catch (error) {
@@ -135,4 +189,16 @@ void main(List<String> args) {
   }
 
   print('merman Dart FFI smoke passed (${merman.packageVersion})');
+}
+
+void expectMermanException(String codeName, void Function() body) {
+  try {
+    body();
+  } catch (error) {
+    if (error is MermanException && error.codeName == codeName) {
+      return;
+    }
+    throw StateError('expected $codeName, got $error');
+  }
+  throw StateError('expected $codeName to be thrown');
 }
