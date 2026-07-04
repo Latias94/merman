@@ -180,7 +180,7 @@ fn replacing_analyzer_drops_cached_snapshots() {
         DocumentKind::Diagram,
     );
 
-    assert_eq!(limited.fences[0].diagram_type, None);
+    assert!(limited.fences.is_empty());
     assert!(workspace.get(&uri).is_some());
 
     workspace.replace_analyzer(Analyzer::new());
