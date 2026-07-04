@@ -31,6 +31,9 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
+      - name: Test release and workflow hygiene scripts
+        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_workflow_path_filters.py
+
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
         run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.sha }}"

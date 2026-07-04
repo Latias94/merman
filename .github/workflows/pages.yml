@@ -10,6 +10,7 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
+      - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
       - "playground/**"
   pull_request:
@@ -18,6 +19,7 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
+      - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
       - "playground/**"
   workflow_dispatch:
