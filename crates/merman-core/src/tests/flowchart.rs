@@ -2758,3 +2758,18 @@ fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
             && expected.span == SourceSpan::new(text.len(), text.len())
     }));
 }
+
+#[test]
+fn parse_flowchart_editor_facts_expect_target_after_pipe_edge_label() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA-->B\nA -->|go|";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span == SourceSpan::new(text.len(), text.len())
+    }));
+}
