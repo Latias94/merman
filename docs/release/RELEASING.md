@@ -208,7 +208,7 @@ gh workflow run release-python.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v
 gh workflow run release-android.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
 gh workflow run release-apple.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
 gh workflow run release-web.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2 -f publish_to_npm=true
-gh workflow run vscode-extension.yml
+gh workflow run vscode-extension.yml -f source_ref=v0.8.0-alpha.2
 gh workflow run homebrew.yml
 ```
 

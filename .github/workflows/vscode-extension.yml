@@ -19,6 +19,12 @@ on:
       - "crates/**"
       - "tools/vscode-extension/**"
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Git ref to package from"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: read
@@ -53,6 +59,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
