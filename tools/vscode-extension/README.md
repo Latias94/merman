@@ -185,6 +185,7 @@ runtime platform, such as:
 
 - `merman-vscode-linux-x64.vsix`
 - `merman-vscode-darwin-arm64.vsix`
+- `merman-vscode-darwin-x64.vsix`
 - `merman-vscode-win32-x64.vsix`
 
 Before publishing a VSIX to the Marketplace, verify that `package.json` has the intended

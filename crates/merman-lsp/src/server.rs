@@ -139,6 +139,7 @@ impl MermanLanguageServer {
         }
     }
 
+    #[cfg(test)]
     async fn snapshot_for_uri(
         &self,
         uri: &tower_lsp::lsp_types::Url,
@@ -163,6 +164,20 @@ impl MermanLanguageServer {
         let snapshot = request.build();
         let mut store = self.store.lock().await;
         store.insert_built_snapshot(&request, snapshot)
+    }
+
+    async fn structure_snapshot_result<T>(
+        &self,
+        uri: &tower_lsp::lsp_types::Url,
+        compute: impl FnOnce(&DocumentSnapshot) -> Result<Option<T>>,
+    ) -> Result<Option<T>> {
+        let Some(context) = self.snapshot_context_for_uri(uri).await else {
+            return Ok(None);
+        };
+
+        let result = compute(&context.snapshot);
+        self.ensure_structure_snapshot_current(&context).await?;
+        result
     }
 
     async fn semantic_snapshot_context_for_uri(
@@ -330,6 +345,15 @@ impl MermanLanguageServer {
             Ok(())
         } else {
             Err(stale_semantic_tokens_error())
+        }
+    }
+
+    async fn ensure_structure_snapshot_current(&self, context: &SnapshotContext) -> Result<()> {
+        let store = self.store.lock().await;
+        if store.is_snapshot_context_current(context) {
+            Ok(())
+        } else {
+            Err(stale_structure_snapshot_error())
         }
     }
 
@@ -556,10 +580,13 @@ impl LanguageServer for MermanLanguageServer {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot
-            .map(|snapshot| CompletionResponse::List(completion_for_snapshot(&snapshot, position))))
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(Some(CompletionResponse::List(completion_for_snapshot(
+                snapshot, position,
+            ))))
+        })
+        .await
     }
 
     async fn completion_resolve(&self, item: CompletionItem) -> Result<CompletionItem> {
@@ -658,9 +685,9 @@ impl LanguageServer for MermanLanguageServer {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.and_then(|snapshot| structure_hover(&snapshot, position)))
+        self.structure_snapshot_result(&uri, |snapshot| Ok(structure_hover(snapshot, position)))
+            .await
     }
 
     async fn selection_range(
@@ -668,16 +695,20 @@ impl LanguageServer for MermanLanguageServer {
         params: SelectionRangeParams,
     ) -> Result<Option<Vec<SelectionRange>>> {
         let uri = params.text_document.uri;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.and_then(|snapshot| structure_selection_ranges(&snapshot, &params.positions)))
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(structure_selection_ranges(snapshot, &params.positions))
+        })
+        .await
     }
 
     async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
         let uri = params.text_document.uri;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.map(|snapshot| structure_folding_ranges(&snapshot)))
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(Some(structure_folding_ranges(snapshot)))
+        })
+        .await
     }
 
     async fn document_symbol(
@@ -685,9 +716,11 @@ impl LanguageServer for MermanLanguageServer {
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.map(|snapshot| structure_document_symbols(&snapshot)))
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(Some(structure_document_symbols(snapshot)))
+        })
+        .await
     }
 
     async fn goto_definition(
@@ -696,9 +729,11 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.and_then(|snapshot| structure_goto_definition(&snapshot, position)))
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(structure_goto_definition(snapshot, position))
+        })
+        .await
     }
 
     async fn references(
@@ -707,11 +742,15 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<Vec<tower_lsp::lsp_types::Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.and_then(|snapshot| {
-            structure_references(&snapshot, position, params.context.include_declaration)
-        }))
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(structure_references(
+                snapshot,
+                position,
+                params.context.include_declaration,
+            ))
+        })
+        .await
     }
 
     async fn prepare_rename(
@@ -720,19 +759,18 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<PrepareRenameResponse>> {
         let uri = params.text_document.uri;
         let position = params.position;
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        Ok(snapshot.and_then(|snapshot| structure_prepare_rename(&snapshot, position)))
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(structure_prepare_rename(snapshot, position))
+        })
+        .await
     }
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri.clone();
-        let snapshot = self.snapshot_for_uri(&uri).await;
 
-        match snapshot {
-            Some(snapshot) => structure_rename(&snapshot, params),
-            None => Ok(None),
-        }
+        self.structure_snapshot_result(&uri, |snapshot| structure_rename(snapshot, params))
+            .await
     }
 
     async fn symbol(
@@ -782,6 +820,12 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
 fn stale_semantic_tokens_error() -> tower_lsp::jsonrpc::Error {
     let mut error = tower_lsp::jsonrpc::Error::content_modified();
     error.message = "semantic tokens document changed while computing".into();
+    error
+}
+
+fn stale_structure_snapshot_error() -> tower_lsp::jsonrpc::Error {
+    let mut error = tower_lsp::jsonrpc::Error::content_modified();
+    error.message = "structure document changed while computing".into();
     error
 }
 
@@ -1423,6 +1467,84 @@ mod tests {
 
         assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
         assert!(error.message.contains("semantic tokens document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_structure_snapshot_result_returns_content_modified_error() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let store_for_compute = std::sync::Arc::clone(&server.store);
+        let stale_uri = uri.clone();
+        let error = server
+            .structure_snapshot_result(&uri, |snapshot| {
+                let mut store = store_for_compute
+                    .try_lock()
+                    .expect("structure compute should run without the store lock held");
+                store.upsert_text(
+                    stale_uri,
+                    2,
+                    "flowchart TD\nA-->C\n".to_string(),
+                    DocumentKind::Diagram,
+                );
+                Ok(hover(snapshot, Position::new(1, 0)))
+            })
+            .await
+            .expect_err("stale structure snapshot should fail");
+
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+        assert!(error.message.contains("structure document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_structure_snapshot_result_preempts_compute_error() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let store_for_compute = std::sync::Arc::clone(&server.store);
+        let stale_uri = uri.clone();
+        let error = server
+            .structure_snapshot_result::<()>(&uri, |_snapshot| {
+                let mut store = store_for_compute
+                    .try_lock()
+                    .expect("structure compute should run without the store lock held");
+                store.upsert_text(
+                    stale_uri,
+                    2,
+                    "flowchart TD\nA-->C\n".to_string(),
+                    DocumentKind::Diagram,
+                );
+                Err(tower_lsp::jsonrpc::Error::invalid_params(
+                    "old snapshot compute error",
+                ))
+            })
+            .await
+            .expect_err("stale structure snapshot should mask compute errors");
+
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+        assert!(error.message.contains("structure document changed"));
     }
 
     #[tokio::test(flavor = "current_thread")]
