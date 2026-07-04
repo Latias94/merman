@@ -21,7 +21,8 @@ mod status;
 pub use analyzer::{AnalysisOptions, Analyzer};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceMarker,
-    analyze_document, analyze_document_facts, analyze_document_result, source_descriptor_for_kind,
+    SharedTextSlice, analyze_document, analyze_document_facts, analyze_document_result,
+    analyze_document_result_shared, source_descriptor_for_kind,
     source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
 };
 pub use editor::{

@@ -1,10 +1,11 @@
-use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SourceMap};
+use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceMap};
 use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 use merman_editor_core::{
     DocumentKind, DocumentSnapshot, DocumentUri, DocumentWorkspace, FenceSnapshot, Position, Range,
     document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references, rename,
     selection_range, workspace_symbols,
 };
+use std::sync::Arc;
 
 #[test]
 fn document_symbols_include_root_and_child_items() {
@@ -76,12 +77,13 @@ fn hover_escapes_markdown_control_text_from_semantic_facts() {
     ));
 
     let text_index = FenceTextIndex::from_core_facts(facts);
+    let shared_text = Arc::<str>::from(text.as_str());
     let snapshot = DocumentSnapshot {
         uri: DocumentUri::from("file:///tmp/example.mmd"),
         version: 1,
         kind: DocumentKind::Diagram,
         source: merman_analysis::SourceDescriptor::diagram().with_path("file:///tmp/example.mmd"),
-        source_map: SourceMap::new(text.clone()),
+        source_map: SourceMap::new(Arc::clone(&shared_text)),
         fences: vec![FenceSnapshot {
             source_id: "document".to_string(),
             index: 0,
@@ -91,12 +93,12 @@ fn hover_escapes_markdown_control_text_from_semantic_facts() {
             body_start: 0,
             body_end: text.len(),
             end: text.len(),
-            text: text.clone().into(),
+            text: SharedTextSlice::whole(Arc::clone(&shared_text)),
             fence_delimiter: None,
             diagram_type: Some("flowchart-v2".to_string()),
             text_index,
         }],
-        text: text.into(),
+        text: shared_text,
     };
 
     let hover = hover(&snapshot, Position::new(0, 1)).unwrap();
@@ -335,12 +337,13 @@ fn typed_reference_snapshot() -> DocumentSnapshot {
     ));
 
     let text_index = FenceTextIndex::from_core_facts(facts);
+    let shared_text = Arc::<str>::from(text.as_str());
     DocumentSnapshot {
         uri: DocumentUri::from("file:///tmp/example.mmd"),
         version: 1,
         kind: DocumentKind::Diagram,
         source: merman_analysis::SourceDescriptor::diagram().with_path("file:///tmp/example.mmd"),
-        source_map: SourceMap::new(text.clone()),
+        source_map: SourceMap::new(Arc::clone(&shared_text)),
         fences: vec![FenceSnapshot {
             source_id: "document".to_string(),
             index: 0,
@@ -350,12 +353,12 @@ fn typed_reference_snapshot() -> DocumentSnapshot {
             body_start: 0,
             body_end: text.len(),
             end: text.len(),
-            text: text.clone().into(),
+            text: SharedTextSlice::whole(Arc::clone(&shared_text)),
             fence_delimiter: None,
             diagram_type: Some("flowchart-v2".to_string()),
             text_index,
         }],
-        text: text.into(),
+        text: shared_text,
     }
 }
 

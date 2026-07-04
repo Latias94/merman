@@ -625,11 +625,12 @@ mod tests {
     use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
     use crate::types::{DocumentKind, DocumentUri, Position};
     use crate::workspace::DocumentWorkspace;
-    use merman_analysis::{FenceTextIndex, SourceMap};
+    use merman_analysis::{FenceTextIndex, SharedTextSlice, SourceMap};
     use merman_core::{
         EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
         EditorSemanticSymbol, SourceSpan,
     };
+    use std::sync::Arc;
 
     #[test]
     fn markdown_outside_mermaid_fence_returns_no_completion() {
@@ -747,14 +748,15 @@ mod tests {
         diagram_type: Option<&str>,
         facts: EditorSemanticFacts,
     ) -> DocumentSnapshot {
+        let shared_text = Arc::<str>::from(text);
         DocumentSnapshot {
             uri: DocumentUri::from("file:///tmp/example.mmd"),
             version: 1,
             kind: DocumentKind::Diagram,
             source: merman_analysis::SourceDescriptor::diagram()
                 .with_path("file:///tmp/example.mmd"),
-            text: text.to_string().into(),
-            source_map: SourceMap::new(text.to_string()),
+            text: Arc::clone(&shared_text),
+            source_map: SourceMap::new(Arc::clone(&shared_text)),
             fences: vec![FenceSnapshot {
                 source_id: "document".to_string(),
                 index: 0,
@@ -764,7 +766,7 @@ mod tests {
                 body_start: 0,
                 body_end: text.len(),
                 end: text.len(),
-                text: text.to_string().into(),
+                text: SharedTextSlice::whole(Arc::clone(&shared_text)),
                 fence_delimiter: None,
                 diagram_type: diagram_type.map(str::to_string),
                 text_index: FenceTextIndex::from_core_facts(facts),

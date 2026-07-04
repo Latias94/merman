@@ -31,6 +31,14 @@ Editor-facing ownership is layered:
   analysis facts.
 - LSP, WASM, and VS Code convert those protocol-neutral results into host surfaces.
 
+## Rust API Migration Notes
+
+`DocumentDiagram::text`, `AnalyzedDiagram::text`, and editor `FenceSnapshot::text` use
+`SharedTextSlice` instead of owned `String` buffers. The slice shares the immutable document text
+and stores UTF-8 byte bounds, so Markdown/MDX fence snapshots no longer copy every Mermaid body.
+Consumers that only read the source should use `as_str()` or `AsRef<str>`. Consumers that need an
+owned buffer can call `to_owned_text()`.
+
 See `docs/adr/0070-diagnostics-first-analysis-contract.md` for the accepted architecture decision
 and `docs/adr/0072-lint-rule-governance.md` for rule-origin, profile, and authoring-governance
 policy.

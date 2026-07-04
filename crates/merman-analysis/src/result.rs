@@ -2,7 +2,7 @@ use crate::editor::FenceExpectedSyntax;
 use crate::{
     AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
     FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem, FenceTextIndex,
-    FenceTextIndexSource, SourceDescriptor, SourceMap, Summary,
+    FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -65,7 +65,7 @@ pub struct AnalyzedDiagram {
     pub body_start: usize,
     pub body_end: usize,
     pub end: usize,
-    pub text: String,
+    pub text: SharedTextSlice,
     pub fence_delimiter: Option<FenceDelimiter>,
     pub diagnostics: Vec<AnalysisDiagnostic>,
     pub syntax: AnalysisSyntaxFacts,

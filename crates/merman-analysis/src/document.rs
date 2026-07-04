@@ -3,6 +3,75 @@ use crate::{
     DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
 };
 use std::path::Path;
+use std::sync::Arc;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedTextSlice {
+    source: Arc<str>,
+    start: usize,
+    end: usize,
+}
+
+impl SharedTextSlice {
+    pub fn whole(source: Arc<str>) -> Self {
+        let end = source.len();
+        Self {
+            source,
+            start: 0,
+            end,
+        }
+    }
+
+    pub fn from_range(source: Arc<str>, start: usize, end: usize) -> Option<Self> {
+        if start > end
+            || end > source.len()
+            || !source.is_char_boundary(start)
+            || !source.is_char_boundary(end)
+        {
+            return None;
+        }
+        Some(Self { source, start, end })
+    }
+
+    pub(crate) fn new(source: Arc<str>, start: usize, end: usize) -> Self {
+        Self::from_range(source, start, end)
+            .expect("document extraction should produce valid UTF-8 slice bounds")
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.source[self.start..self.end]
+    }
+
+    pub fn source_arc(&self) -> Arc<str> {
+        Arc::clone(&self.source)
+    }
+
+    pub fn to_owned_text(&self) -> String {
+        self.as_str().to_owned()
+    }
+
+    pub const fn start(&self) -> usize {
+        self.start
+    }
+
+    pub const fn end(&self) -> usize {
+        self.end
+    }
+}
+
+impl AsRef<str> for SharedTextSlice {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::ops::Deref for SharedTextSlice {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentDiagramKind {
@@ -55,25 +124,25 @@ pub struct DocumentDiagram {
     pub body_start: usize,
     pub body_end: usize,
     pub end: usize,
-    pub text: String,
+    pub text: SharedTextSlice,
     pub fence_delimiter: Option<FenceDelimiter>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DocumentSource {
     source: SourceDescriptor,
-    text: String,
+    text: Arc<str>,
     source_map: SourceMap,
     diagrams: Vec<DocumentDiagram>,
 }
 
 impl DocumentSource {
-    pub fn new(text: impl Into<String>, source: SourceDescriptor) -> Self {
+    pub fn new(text: impl Into<Arc<str>>, source: SourceDescriptor) -> Self {
         let text = text.into();
-        let source_map = SourceMap::new(text.clone());
+        let source_map = SourceMap::new(Arc::clone(&text));
         let diagrams = match source.kind {
             SourceKind::Markdown | SourceKind::Mdx => extract_markdown_diagrams(&text, &source),
-            SourceKind::Diagram => vec![whole_document_diagram(&text, &source)],
+            SourceKind::Diagram => vec![whole_document_diagram(Arc::clone(&text), &source)],
         };
 
         Self {
@@ -89,7 +158,7 @@ impl DocumentSource {
     }
 
     pub fn text(&self) -> &str {
-        &self.text
+        self.text.as_ref()
     }
 
     pub fn source_map(&self) -> &SourceMap {
@@ -236,7 +305,15 @@ pub fn analyze_document_result(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisResult {
-    if let Some(result) = analyzer.source_limit_result(text, source.clone()) {
+    analyze_document_result_shared(Arc::from(text), analyzer, source)
+}
+
+pub fn analyze_document_result_shared(
+    text: Arc<str>,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+) -> AnalysisResult {
+    if let Some(result) = analyzer.source_limit_result(text.as_ref(), source.clone()) {
         return result;
     }
 
@@ -290,7 +367,8 @@ fn extend_document_diagnostics(
     }
 }
 
-pub(crate) fn whole_document_diagram(text: &str, source: &SourceDescriptor) -> DocumentDiagram {
+pub(crate) fn whole_document_diagram(text: Arc<str>, source: &SourceDescriptor) -> DocumentDiagram {
+    let len = text.len();
     DocumentDiagram {
         id: "document".to_string(),
         index: 0,
@@ -298,40 +376,41 @@ pub(crate) fn whole_document_diagram(text: &str, source: &SourceDescriptor) -> D
         source: source.clone(),
         start: 0,
         body_start: 0,
-        body_end: text.len(),
-        end: text.len(),
-        text: text.to_string(),
+        body_end: len,
+        end: len,
+        text: SharedTextSlice::new(text, 0, len),
         fence_delimiter: None,
     }
 }
 
-fn extract_markdown_diagrams(text: &str, source: &SourceDescriptor) -> Vec<DocumentDiagram> {
+fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<DocumentDiagram> {
     let mut diagrams = Vec::new();
     let mut cursor = 0;
+    let document_text = text.as_ref();
 
-    while cursor < text.len() {
-        let line_end = next_line_end(text, cursor);
-        let line = trim_line_ending(&text[cursor..line_end]);
+    while cursor < document_text.len() {
+        let line_end = next_line_end(document_text, cursor);
+        let line = trim_line_ending(&document_text[cursor..line_end]);
 
         if let Some(opening) = markdown_fence_opening(line) {
             if !opening.is_mermaid {
-                cursor = skip_markdown_fence(text, line_end, opening.delimiter);
+                cursor = skip_markdown_fence(document_text, line_end, opening.delimiter);
                 continue;
             }
 
             let delimiter = opening.delimiter;
             let body_start = line_end;
-            let mut body_end = text.len();
+            let mut body_end = document_text.len();
             let mut search_start = body_start;
 
-            while search_start < text.len() {
-                let closing_end = next_line_end(text, search_start);
-                let closing_line = trim_line_ending(&text[search_start..closing_end]);
+            while search_start < document_text.len() {
+                let closing_end = next_line_end(document_text, search_start);
+                let closing_line = trim_line_ending(&document_text[search_start..closing_end]);
                 if is_matching_closing_fence(closing_line, delimiter) {
                     body_end = search_start;
                     push_markdown_diagram(
                         &mut diagrams,
-                        text,
+                        Arc::clone(text),
                         source,
                         cursor,
                         body_start,
@@ -345,15 +424,15 @@ fn extract_markdown_diagrams(text: &str, source: &SourceDescriptor) -> Vec<Docum
                 search_start = closing_end;
             }
 
-            if body_end == text.len() {
+            if body_end == document_text.len() {
                 push_markdown_diagram(
                     &mut diagrams,
-                    text,
+                    Arc::clone(text),
                     source,
                     cursor,
                     body_start,
                     body_end,
-                    text.len(),
+                    document_text.len(),
                     delimiter,
                 );
                 break;
@@ -363,7 +442,7 @@ fn extract_markdown_diagrams(text: &str, source: &SourceDescriptor) -> Vec<Docum
         }
 
         cursor = if line_end == cursor {
-            text.len()
+            document_text.len()
         } else {
             line_end
         };
@@ -374,7 +453,7 @@ fn extract_markdown_diagrams(text: &str, source: &SourceDescriptor) -> Vec<Docum
 
 fn push_markdown_diagram(
     diagrams: &mut Vec<DocumentDiagram>,
-    text: &str,
+    text: Arc<str>,
     document_source: &SourceDescriptor,
     start: usize,
     body_start: usize,
@@ -395,7 +474,7 @@ fn push_markdown_diagram(
         body_start,
         body_end,
         end,
-        text: text[body_start..body_end].to_string(),
+        text: SharedTextSlice::new(text, body_start, body_end),
         fence_delimiter: Some(fence_delimiter),
     });
 }

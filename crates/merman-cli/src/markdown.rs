@@ -37,7 +37,7 @@ pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
         .map(|diagram| MarkdownChart {
             start: diagram.start,
             end: diagram.end,
-            definition: diagram.text.clone(),
+            definition: diagram.text.to_owned_text(),
         })
         .collect()
 }

@@ -16,6 +16,7 @@ use merman_core::{
     ParsedDiagram,
 };
 use std::panic::{self, AssertUnwindSafe};
+use std::sync::Arc;
 
 const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
 
@@ -125,8 +126,9 @@ impl Analyzer {
             return result;
         }
 
-        let source_map = SourceMap::new(source);
-        let diagram = crate::document::whole_document_diagram(source, &self.options.source);
+        let source_text = Arc::<str>::from(source);
+        let source_map = SourceMap::new(Arc::clone(&source_text));
+        let diagram = crate::document::whole_document_diagram(source_text, &self.options.source);
         let analyzed = self.analyze_diagram(&diagram);
         AnalysisResult::new(
             self.options.source.clone(),

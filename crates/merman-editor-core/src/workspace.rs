@@ -1,7 +1,7 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind, analyze_document_result,
+    AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind, analyze_document_result_shared,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -77,7 +77,7 @@ impl DocumentWorkspace {
     ) -> DocumentSnapshot {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
-        let analysis = analyze_document_result(text.as_ref(), analyzer, source.clone());
+        let analysis = analyze_document_result_shared(Arc::clone(&text), analyzer, source.clone());
         let fences = analysis
             .diagrams()
             .iter()
@@ -116,7 +116,7 @@ impl DocumentWorkspace {
             body_start: diagram.body_start,
             body_end: diagram.body_end,
             end: diagram.end,
-            text: Arc::from(diagram.text.as_str()),
+            text: diagram.text.clone(),
             fence_delimiter: diagram.fence_delimiter,
             diagram_type: diagram.syntax.diagram_type.clone(),
             text_index: diagram.syntax.text_index.clone(),

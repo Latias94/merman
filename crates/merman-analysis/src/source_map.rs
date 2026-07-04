@@ -26,8 +26,8 @@ pub enum SourceMapError {
 #[derive(Debug, Clone)]
 pub struct SourceMap {
     source: Arc<str>,
-    line_starts: Vec<usize>,
-    line_metrics: Vec<LineMetric>,
+    line_starts: Arc<[usize]>,
+    line_metrics: Arc<[LineMetric]>,
 }
 
 impl SourceMap {
@@ -37,8 +37,8 @@ impl SourceMap {
         let line_metrics = line_metrics(source.as_ref(), &line_starts);
         Self {
             source,
-            line_starts,
-            line_metrics,
+            line_starts: Arc::from(line_starts.into_boxed_slice()),
+            line_metrics: Arc::from(line_metrics.into_boxed_slice()),
         }
     }
 

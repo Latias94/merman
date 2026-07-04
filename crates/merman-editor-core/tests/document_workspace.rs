@@ -42,10 +42,10 @@ fn cloned_snapshots_share_immutable_text_buffers() {
     let cloned = snapshot.clone();
 
     assert!(Arc::ptr_eq(&snapshot.text, &cloned.text));
-    assert!(Arc::ptr_eq(
-        &snapshot.fences[0].text,
-        &cloned.fences[0].text
-    ));
+    let snapshot_fence_text = snapshot.fences[0].text.source_arc();
+    let cloned_fence_text = cloned.fences[0].text.source_arc();
+    assert!(Arc::ptr_eq(&snapshot_fence_text, &cloned_fence_text));
+    assert!(Arc::ptr_eq(&snapshot.text, &snapshot_fence_text));
 }
 
 #[test]
