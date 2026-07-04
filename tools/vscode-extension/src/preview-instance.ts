@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises";
 import * as vscode from "vscode";
 
 import { previewCliBackground } from "./preview-background.js";
@@ -202,9 +201,7 @@ export class PreviewInstance implements vscode.Disposable {
     );
     this.panel = panel;
     panel.webview.onDidReceiveMessage(
-      (message: PreviewFromWebviewMessage) => {
-        void this.handleWebviewMessage(message);
-      },
+      (message: PreviewFromWebviewMessage) => this.handleWebviewMessage(message),
       null,
       this.panelDisposables,
     );
@@ -492,7 +489,7 @@ export class PreviewInstance implements vscode.Disposable {
         });
         const svg = result.stdout.toString("utf8");
         assertSafePreviewSvg(svg);
-        await fs.writeFile(target.fsPath, svg, "utf8");
+        await vscode.workspace.fs.writeFile(target, Buffer.from(svg, "utf8"));
       } else {
         await renderMermanSource({
           context: this.context,

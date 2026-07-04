@@ -15,7 +15,7 @@ interface FakePanel {
     readonly cspSource: string;
     asWebviewUri(uri: { toString(): string }): { toString(): string };
     onDidReceiveMessage(
-      listener: (message: unknown) => void,
+      listener: (message: unknown) => void | Promise<void>,
       thisArg?: unknown,
       disposables?: FakeDisposable[],
     ): FakeDisposable;
@@ -44,6 +44,7 @@ class FakePreviewHost {
   readonly panels: FakePanel[] = [];
   readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string }> = [];
   readonly clipboardWrites: string[] = [];
+  readonly writtenFiles: Array<{ path: string; data: string }> = [];
   readonly warnings: string[] = [];
   readonly informationMessages: string[] = [];
   readonly revealCalls: Array<{ viewColumn: number; preserveFocus?: boolean }> = [];
@@ -181,6 +182,14 @@ class FakePreviewHost {
         },
       },
       workspace: {
+        fs: {
+          writeFile: async (fileUri: vscode.Uri, data: Uint8Array) => {
+            host.writtenFiles.push({
+              path: fileUri.fsPath,
+              data: Buffer.from(data).toString("utf8"),
+            });
+          },
+        },
         openTextDocument: async (resource: { toString(): string }) => {
           const document = host.documents.get(resource.toString());
           assert.ok(document, `Unexpected document ${resource.toString()}`);
@@ -229,7 +238,7 @@ class FakePreviewHost {
   private createPanel(title: string, viewColumn: number): FakePanel {
     const disposeListeners: Array<() => void> = [];
     const viewStateListeners: Array<() => void> = [];
-    const messageListeners: Array<(message: unknown) => void> = [];
+    const messageListeners: Array<(message: unknown) => void | Promise<void>> = [];
     const panel: FakePanel = {
       viewColumn,
       active: true,
@@ -258,10 +267,7 @@ class FakePreviewHost {
         this.revealCalls.push({ viewColumn: column, preserveFocus });
       },
       receive: async (message) => {
-        for (const listener of messageListeners) {
-          listener(message);
-        }
-        await Promise.resolve();
+        await Promise.all(messageListeners.map((listener) => listener(message)));
       },
       setActive: (active) => {
         panel.active = active;

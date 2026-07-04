@@ -105,7 +105,7 @@ async function exportDiagram(
       try {
         if (preset.format === "svg") {
           const svg = await renderSafeSvg(context, outputChannel, source.input.source, "export-svg");
-          await fs.writeFile(outputUri.fsPath, svg, "utf8");
+          await vscode.workspace.fs.writeFile(outputUri, Buffer.from(svg, "utf8"));
         } else {
           await renderMermanSource({
             context,

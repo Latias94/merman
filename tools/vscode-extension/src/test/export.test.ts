@@ -135,6 +135,14 @@ class FakeExportHost {
         },
       },
       workspace: {
+        fs: {
+          writeFile: async (fileUri: vscode.Uri, data: Uint8Array) => {
+            host.writtenFiles.push({
+              path: fileUri.fsPath,
+              data: Buffer.from(data).toString("utf8"),
+            });
+          },
+        },
         openTextDocument: async (resource: vscode.Uri) => {
           const document = host.documents.get(resource.toString());
           assert.ok(document, `Unexpected document ${resource.toString()}`);
@@ -205,7 +213,6 @@ describe("export commands", () => {
       {
         path: "C:\\workspace\\out.svg",
         data: host.renderStdout,
-        encoding: "utf8",
       },
     ]);
     assert.equal(host.saveDialogs[0]?.saveLabel, "Export SVG");
