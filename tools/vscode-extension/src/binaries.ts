@@ -22,6 +22,7 @@ export interface BinaryResolutionRequest {
   extensionPath: string;
   workspaceRoots: readonly string[];
   directArgs?: readonly string[];
+  directArgsRequireWorkspaceTrust?: boolean;
   explicitPath?: string;
   useCargoRun?: boolean;
   cargoArgs?: readonly string[];
@@ -32,6 +33,7 @@ export interface BinaryResolutionRequest {
 
 export function resolveMermanBinary(request: BinaryResolutionRequest): BinaryInvocation {
   const directArgs = [...(request.directArgs ?? [])];
+  assertTrustedDirectArgs(directArgs, request);
   const explicitPath = normalizePath(request.explicitPath);
   if (explicitPath) {
     assertExecutable(explicitPath, request.binaryName, "configured path");
@@ -155,6 +157,24 @@ function assertTrustedCargoFallback(
   }
   throw new Error(
     `${request.binaryName} Cargo development fallback requires a trusted workspace.`,
+  );
+}
+
+function assertTrustedDirectArgs(
+  directArgs: readonly string[],
+  request: Pick<
+    BinaryResolutionRequest,
+    "binaryName" | "directArgsRequireWorkspaceTrust" | "workspaceRoots" | "workspaceTrusted"
+  >,
+): void {
+  if (!request.directArgsRequireWorkspaceTrust || directArgs.length === 0) {
+    return;
+  }
+  if (request.workspaceRoots.length === 0 || request.workspaceTrusted === true) {
+    return;
+  }
+  throw new Error(
+    `${request.binaryName} configured launch arguments require a trusted workspace.`,
   );
 }
 

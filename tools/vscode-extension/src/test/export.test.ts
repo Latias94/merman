@@ -399,6 +399,15 @@ function textDocument(
 function uri(value: string, fsPath = value): vscode.Uri {
   return {
     fsPath,
+    path: uriPath(value, fsPath),
     toString: () => value,
   } as unknown as vscode.Uri;
+}
+
+function uriPath(value: string, fsPath: string): string {
+  try {
+    return new URL(value).pathname;
+  } catch {
+    return fsPath.replaceAll("\\", "/");
+  }
 }

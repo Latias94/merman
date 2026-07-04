@@ -96,6 +96,7 @@
             "type": "string"
           },
           "default": [],
+          "restricted": true,
           "markdownDescription": "Additional arguments appended when launching `merman-lsp` directly."
         },
         "merman.server.useCargoRun": {

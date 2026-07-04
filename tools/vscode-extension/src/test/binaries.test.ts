@@ -179,6 +179,65 @@ describe("Merman binary resolution", () => {
     assert.equal(invocation.source, "cargo");
   });
 
+  it("rejects configured launch arguments in untrusted workspaces", () => {
+    const root = tempDir();
+    touchExecutable(path.join(root, "extension", "bin", "linux-x64", "merman-lsp"));
+
+    assert.throws(
+      () =>
+        resolveMermanBinary({
+          binaryName: "merman-lsp",
+          packageName: "merman-lsp",
+          extensionPath: path.join(root, "extension"),
+          workspaceRoots: [root],
+          directArgs: ["--stdio"],
+          directArgsRequireWorkspaceTrust: true,
+          workspaceTrusted: false,
+          platform: "linux",
+          arch: "x64",
+        }),
+      /configured launch arguments require a trusted workspace/,
+    );
+  });
+
+  it("allows extension-owned direct arguments without workspace trust", () => {
+    const root = tempDir();
+    const packaged = touchExecutable(
+      path.join(root, "extension", "bin", "linux-x64", "merman-cli"),
+    );
+
+    const invocation = resolveMermanBinary({
+      binaryName: "merman-cli",
+      packageName: "merman-cli",
+      extensionPath: path.join(root, "extension"),
+      workspaceRoots: [root],
+      directArgs: ["render", "--format", "svg"],
+      workspaceTrusted: false,
+      platform: "linux",
+      arch: "x64",
+    });
+
+    assert.equal(invocation.command, packaged);
+    assert.deepEqual(invocation.args, ["render", "--format", "svg"]);
+  });
+
+  it("declares server launch arguments as a restricted VS Code setting", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+    ) as {
+      contributes: {
+        configuration: {
+          properties: Record<string, { restricted?: boolean }>;
+        };
+      };
+    };
+
+    assert.equal(
+      pkg.contributes.configuration.properties["merman.server.args"]?.restricted,
+      true,
+    );
+  });
+
   it("rejects Cargo fallback in untrusted workspaces", () => {
     const root = tempDir();
 

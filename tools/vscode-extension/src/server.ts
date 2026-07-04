@@ -167,6 +167,7 @@ async function resolveServerOptions(
     extensionPath: context.extensionUri.fsPath,
     workspaceRoots: workspaceRoots(),
     directArgs: settings.args,
+    directArgsRequireWorkspaceTrust: true,
     explicitPath: settings.path,
     useCargoRun: settings.useCargoRun,
     cargoArgs: settings.cargoArgs,

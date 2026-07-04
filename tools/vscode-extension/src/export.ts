@@ -118,7 +118,7 @@ async function exportDiagram(
         if (preset.openAfterExport) {
           await vscode.commands.executeCommand("vscode.open", outputUri);
         }
-        void vscode.window.showInformationMessage(`Exported ${path.basename(outputUri.fsPath)}.`);
+        void vscode.window.showInformationMessage(`Exported ${displayBasename(outputUri)}.`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         outputChannel.error(message);
@@ -266,4 +266,11 @@ export async function pickExportPreset(): Promise<ExportPreset | undefined> {
   );
 
   return picked?.preset;
+}
+
+function displayBasename(uri: vscode.Uri): string {
+  if (uri.path) {
+    return path.posix.basename(uri.path);
+  }
+  return path.basename(path.win32.basename(uri.fsPath));
 }
