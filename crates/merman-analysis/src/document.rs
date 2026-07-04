@@ -1,6 +1,6 @@
 use crate::{
     AnalysisDiagnostic, AnalysisPayload, AnalysisResult, Analyzer, DiagnosticRelated,
-    DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap, Utf16Position,
+    DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
 };
 use std::path::Path;
 
@@ -208,7 +208,7 @@ pub fn analyze_document(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisPayload {
-    if let Some(result) = document_source_limit_result(text, analyzer, source.clone()) {
+    if let Some(result) = analyzer.source_limit_result(text, source.clone()) {
         return result.into_payload();
     }
 
@@ -236,7 +236,7 @@ pub fn analyze_document_result(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisResult {
-    if let Some(result) = document_source_limit_result(text, analyzer, source.clone()) {
+    if let Some(result) = analyzer.source_limit_result(text, source.clone()) {
         return result;
     }
 
@@ -259,50 +259,6 @@ pub fn analyze_document_result(
         document.source_map().clone(),
         diagnostics,
         analyzed_diagrams,
-    )
-}
-
-fn document_source_limit_result(
-    text: &str,
-    analyzer: &Analyzer,
-    source: SourceDescriptor,
-) -> Option<AnalysisResult> {
-    analyzer.source_limit_result(text, source)
-}
-
-pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
-    let mut end_line = 1usize;
-    let mut end_column = 1usize;
-    let mut end_lsp_line = 0usize;
-    let mut end_lsp_character = 0usize;
-
-    for ch in text.chars() {
-        if ch == '\n' {
-            end_line += 1;
-            end_column = 1;
-            end_lsp_line += 1;
-            end_lsp_character = 0;
-        } else {
-            end_column += 1;
-            end_lsp_character += ch.len_utf16();
-        }
-    }
-
-    DiagnosticSpan::new(
-        0,
-        text.len(),
-        1,
-        1,
-        end_line,
-        end_column,
-        Utf16Position {
-            line: 0,
-            character: 0,
-        },
-        Utf16Position {
-            line: end_lsp_line,
-            character: end_lsp_character,
-        },
     )
 }
 

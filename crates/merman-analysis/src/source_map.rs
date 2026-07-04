@@ -162,6 +162,42 @@ impl SourceMap {
     }
 }
 
+pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
+    let mut end_line = 1usize;
+    let mut end_column = 1usize;
+    let mut end_lsp_line = 0usize;
+    let mut end_lsp_character = 0usize;
+
+    for ch in text.chars() {
+        if ch == '\n' {
+            end_line += 1;
+            end_column = 1;
+            end_lsp_line += 1;
+            end_lsp_character = 0;
+        } else {
+            end_column += 1;
+            end_lsp_character += ch.len_utf16();
+        }
+    }
+
+    DiagnosticSpan::new(
+        0,
+        text.len(),
+        1,
+        1,
+        end_line,
+        end_column,
+        Utf16Position {
+            line: 0,
+            character: 0,
+        },
+        Utf16Position {
+            line: end_lsp_line,
+            character: end_lsp_character,
+        },
+    )
+}
+
 fn line_starts(source: &str) -> Vec<usize> {
     let mut starts = vec![0];
     for (idx, byte) in source.bytes().enumerate() {
@@ -237,5 +273,15 @@ mod tests {
         assert_eq!(span.lsp_range.start.line, 1);
         assert_eq!(span.lsp_range.start.character, 0);
         assert_eq!(span.lsp_range.end.character, 5);
+    }
+
+    #[test]
+    fn whole_text_span_without_source_copy_matches_source_map_span() {
+        let source = "flowchart TD\nA[🤓]-->B\n";
+
+        assert_eq!(
+            whole_text_span_without_source_copy(source),
+            SourceMap::new(source).whole_source_span().unwrap()
+        );
     }
 }

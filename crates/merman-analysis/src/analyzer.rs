@@ -415,8 +415,9 @@ impl Analyzer {
         let diagnostics =
             source_limit_diagnostic(source.len(), limit, &source_map, &self.options.rule_config)
                 .map(|mut diagnostic| {
-                    diagnostic.span =
-                        Some(crate::document::whole_text_span_without_source_copy(source));
+                    diagnostic.span = Some(crate::source_map::whole_text_span_without_source_copy(
+                        source,
+                    ));
                     diagnostic
                 })
                 .into_iter()
