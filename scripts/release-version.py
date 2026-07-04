@@ -32,6 +32,13 @@ def semver_to_pep440(version: str) -> str:
     return f"{base}{pep440_label}{number}"
 
 
+def semver_to_vscode_manifest_version(version: str) -> str:
+    match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?", version)
+    if not match:
+        raise ValueError(f"unsupported SemVer release version: {version!r}")
+    return match.group(1)
+
+
 def cargo_workspace_version() -> str:
     with (ROOT / "Cargo.toml").open("rb") as handle:
         return tomllib.load(handle)["workspace"]["package"]["version"]
@@ -72,7 +79,7 @@ def check_versions(version: str) -> int:
         "Cargo workspace": version,
         "Flutter pubspec": version,
         "Web package": version,
-        "VS Code extension": version,
+        "VS Code extension": semver_to_vscode_manifest_version(version),
         "Android package": version,
         "Python package": semver_to_pep440(version),
     }
@@ -102,12 +109,15 @@ def check_versions(version: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["check", "pep440"])
+    parser.add_argument("command", choices=["check", "pep440", "vscode"])
     parser.add_argument("--version", required=True)
     args = parser.parse_args()
 
     if args.command == "pep440":
         print(semver_to_pep440(args.version))
+        return 0
+    if args.command == "vscode":
+        print(semver_to_vscode_manifest_version(args.version))
         return 0
     if args.command == "check":
         return check_versions(args.version)

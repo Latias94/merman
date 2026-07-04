@@ -172,7 +172,10 @@ npm run package -- --target "$target" --out "merman-vscode-${target}.vsix"
 ```
 
 `npm run package` expects `npm run prepare:binaries` to have populated `bin/<platform>-<arch>/`,
-and the `--target` argument should match that platform key.
+and the `--target` argument should match that platform key. Use this wrapper instead of invoking
+`vsce package` directly: `package.json` keeps the Marketplace-compatible manifest version such as
+`0.8.0`, while the wrapper reads the workspace release version and passes `--pre-release` when that
+release version is a SemVer prerelease such as `0.8.0-alpha.2`.
 The development-only Cargo fallbacks are disabled by default so a packaged VSIX does not silently
 depend on a Rust workspace.
 
@@ -185,6 +188,8 @@ runtime platform, such as:
 - `merman-vscode-win32-x64.vsix`
 
 Before publishing a VSIX to the Marketplace, verify that `package.json` has the intended
-`publisher`, `version`, `preview` status, repository links, and changelog entry. The extension is
-packaged with runtime binaries for the platform that built it, so publish or distribute the matching
-artifact for the target host.
+`publisher`, stable manifest `version`, `preview` status, repository links, and changelog entry,
+then run `npm run verify:vsix -- --vsix <file> --platform <target> --target <target>`. The verifier
+checks the VSIX package manifest version and the pre-release marker against the workspace release
+version. The extension is packaged with runtime binaries for the platform that built it, so publish
+or distribute the matching artifact for the target host.

@@ -88,12 +88,27 @@ jobs:
         working-directory: tools/vscode-extension
         run: npm run prepare:binaries
 
+      - name: Derive VSIX release metadata
+        id: vsix
+        run: |
+          release_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          manifest_version="${release_version%%-*}"
+          {
+            echo "release_version=${release_version}"
+            echo "manifest_version=${manifest_version}"
+          } >> "$GITHUB_OUTPUT"
+          echo "VSIX release_version=${release_version} manifest_version=${manifest_version}"
+
       - name: Package VSIX
         working-directory: tools/vscode-extension
+        env:
+          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
         run: npm run package -- --target "${{ matrix.target }}" --out "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Verify VSIX contents
         working-directory: tools/vscode-extension
+        env:
+          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
         run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
 
       - name: Upload VSIX

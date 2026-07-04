@@ -2,7 +2,7 @@
   "name": "merman-vscode",
   "displayName": "Merman",
   "description": "Local Mermaid authoring, diagnostics, preview, and export powered by Merman.",
-  "version": "0.8.0-alpha.2",
+  "version": "0.8.0",
   "publisher": "latias94",
   "preview": true,
   "license": "MIT OR Apache-2.0",
@@ -420,7 +420,7 @@
     "check": "tsc -p . --noEmit",
     "test": "npm run build && node --test dist/test/**/*.test.js",
     "prepare:binaries": "node scripts/prepare-binaries.mjs",
-    "package": "npm run build && vsce package",
+    "package": "npm run build && node scripts/package-vsix.mjs",
     "verify:vsix": "node scripts/verify-vsix.mjs"
   },
   "dependencies": {
