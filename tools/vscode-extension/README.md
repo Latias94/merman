@@ -148,7 +148,7 @@ continues to inspect vector output rather than a PNG snapshot.
 - `merman.server.path`: absolute path to a prebuilt `merman-lsp`
 - `merman.server.useCargoRun`: development-only fallback through `cargo run -p merman-lsp --`
 - `merman.server.cargoArgs`: development-only Cargo flags before `--`
-- `merman.server.args`: extra server args after the executable
+- `merman.server.args`: extra server args after the executable; requires VS Code Workspace Trust
 - `merman.cli.path`: absolute path to a prebuilt `merman-cli`
 - `merman.cli.useCargoRun`: development-only fallback through `cargo run -p merman-cli --`
 - `merman.cli.cargoArgs`: development-only Cargo flags before `--`
