@@ -15,11 +15,12 @@ use merman_editor_core::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use tower_lsp::jsonrpc::{Error, Result};
+use tower_lsp::lsp_types::{DocumentChanges, OneOf};
 use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolResponse, FoldingRange, FoldingRangeKind, GotoDefinitionResponse,
-    Hover, HoverContents, Location, MarkupContent, MarkupKind, Position, PrepareRenameResponse,
-    Range, RenameParams, SelectionRange, SymbolInformation, SymbolKind, TextEdit, Url,
-    WorkspaceEdit,
+    Hover, HoverContents, Location, MarkupContent, MarkupKind,
+    OptionalVersionedTextDocumentIdentifier, Position, PrepareRenameResponse, Range, RenameParams,
+    SelectionRange, SymbolInformation, SymbolKind, TextDocumentEdit, TextEdit, Url, WorkspaceEdit,
 };
 
 #[allow(deprecated)]
@@ -139,7 +140,7 @@ pub fn rename(snapshot: &DocumentSnapshot, params: RenameParams) -> Result<Optio
         core_position_from_lsp(position),
         &params.new_name,
     )
-    .map(|edit| edit.and_then(|edit| workspace_edit_to_lsp(edit, &snapshot.uri)))
+    .map(|edit| edit.and_then(|edit| workspace_edit_to_lsp(edit, &snapshot.uri, snapshot.version)))
     .map_err(rename_error_to_lsp)
 }
 
@@ -234,20 +235,37 @@ fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
     }
 }
 
-fn workspace_edit_to_lsp(edit: EditorWorkspaceEdit, fallback_uri: &Url) -> Option<WorkspaceEdit> {
-    let mut changes = HashMap::new();
+fn workspace_edit_to_lsp(
+    edit: EditorWorkspaceEdit,
+    fallback_uri: &Url,
+    version: i32,
+) -> Option<WorkspaceEdit> {
+    let mut document_edits = Vec::new();
     for (uri, edits) in edit.changes {
         let uri = document_uri_to_lsp(&uri, fallback_uri);
         let edits = edits
             .into_iter()
-            .map(|edit| TextEdit::new(range_to_lsp(edit.range), edit.new_text))
+            .map(|edit| OneOf::Left(TextEdit::new(range_to_lsp(edit.range), edit.new_text)))
             .collect::<Vec<_>>();
-        changes.insert(uri, edits);
+        if edits.is_empty() {
+            continue;
+        }
+        document_edits.push(TextDocumentEdit {
+            text_document: OptionalVersionedTextDocumentIdentifier {
+                uri,
+                version: Some(version),
+            },
+            edits,
+        });
+    }
+
+    if document_edits.is_empty() {
+        return None;
     }
 
     Some(WorkspaceEdit {
-        changes: Some(changes),
-        document_changes: None,
+        changes: None,
+        document_changes: Some(DocumentChanges::Edits(document_edits)),
         change_annotations: None,
     })
 }
@@ -280,9 +298,9 @@ mod tests {
     };
     use crate::document_store::DocumentStore;
     use tower_lsp::lsp_types::{
-        DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse, HoverContents, Position,
-        PrepareRenameResponse, RenameParams, TextDocumentIdentifier, TextDocumentPositionParams,
-        Url,
+        DocumentChanges, DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse,
+        HoverContents, Position, PrepareRenameResponse, RenameParams, TextDocumentIdentifier,
+        TextDocumentPositionParams, Url,
     };
 
     #[test]
@@ -399,15 +417,15 @@ mod tests {
         )
         .unwrap();
         let edit = rename.expect("expected rename edit");
-        assert_eq!(
-            edit.changes
-                .as_ref()
-                .unwrap()
-                .get(&snapshot.uri)
-                .unwrap()
-                .len(),
-            2
-        );
+        assert!(edit.changes.is_none());
+        let document_changes = match edit.document_changes.as_ref().unwrap() {
+            DocumentChanges::Edits(edits) => edits,
+            other => panic!("unexpected document changes: {other:?}"),
+        };
+        assert_eq!(document_changes.len(), 1);
+        assert_eq!(document_changes[0].text_document.uri, snapshot.uri);
+        assert_eq!(document_changes[0].text_document.version, Some(1));
+        assert_eq!(document_changes[0].edits.len(), 2);
 
         let def = goto_definition(&snapshot, position).unwrap();
         assert!(matches!(def, GotoDefinitionResponse::Scalar(_)));

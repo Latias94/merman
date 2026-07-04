@@ -8,13 +8,13 @@ use tower_lsp::jsonrpc::{ErrorCode, Request};
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionParams, DiagnosticServerCapabilities,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentSymbolParams,
-    GotoDefinitionParams, HoverContents, HoverParams, InitializeParams, NumberOrString, Position,
-    PrepareRenameResponse, PublishDiagnosticsParams, Range, ReferenceContext, ReferenceParams,
-    RenameParams, SelectionRange, SelectionRangeParams, SemanticTokensDeltaParams,
-    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
-    SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChanges,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentSymbolParams, GotoDefinitionParams, HoverContents, HoverParams, InitializeParams,
+    NumberOrString, Position, PrepareRenameResponse, PublishDiagnosticsParams, Range,
+    ReferenceContext, ReferenceParams, RenameParams, SelectionRange, SelectionRangeParams,
+    SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
@@ -2831,5 +2831,12 @@ async fn lsp_service_smoke_handles_navigation_requests() {
         .and_then(|response| response.result().cloned())
         .expect("expected rename result");
     let edit: tower_lsp::lsp_types::WorkspaceEdit = serde_json::from_value(rename_value).unwrap();
-    assert_eq!(edit.changes.unwrap().values().next().unwrap().len(), 2);
+    assert!(edit.changes.is_none());
+    let document_changes = match edit.document_changes.unwrap() {
+        DocumentChanges::Edits(edits) => edits,
+        other => panic!("unexpected document changes: {other:?}"),
+    };
+    assert_eq!(document_changes.len(), 1);
+    assert_eq!(document_changes[0].text_document.version, Some(1));
+    assert_eq!(document_changes[0].edits.len(), 2);
 }

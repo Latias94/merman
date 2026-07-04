@@ -276,12 +276,28 @@ impl MermanLanguageServer {
         context: &SnapshotContext,
         tokens: Vec<tower_lsp::lsp_types::SemanticToken>,
         result_id: Option<String>,
-    ) {
+    ) -> Result<()> {
         let mut store = self.store.lock().await;
-        store.set_semantic_tokens_state_if_current(
+        if store.set_semantic_tokens_state_if_current(
             context,
             SemanticTokensState::new(result_id, tokens),
-        );
+        ) {
+            Ok(())
+        } else {
+            Err(stale_semantic_tokens_error())
+        }
+    }
+
+    async fn ensure_semantic_tokens_snapshot_current(
+        &self,
+        context: &SnapshotContext,
+    ) -> Result<()> {
+        let store = self.store.lock().await;
+        if store.is_snapshot_context_current(context) {
+            Ok(())
+        } else {
+            Err(stale_semantic_tokens_error())
+        }
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
@@ -531,7 +547,7 @@ impl LanguageServer for MermanLanguageServer {
         let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
         tokens.result_id = Some(result_id.clone());
         self.record_semantic_tokens_state(&snapshot_context, tokens.data.clone(), Some(result_id))
-            .await;
+            .await?;
 
         Ok(Some(SemanticTokensResult::Tokens(tokens)))
     }
@@ -572,7 +588,7 @@ impl LanguageServer for MermanLanguageServer {
             current_tokens.data,
             Some(current_result_id),
         )
-        .await;
+        .await?;
 
         Ok(Some(delta))
     }
@@ -582,10 +598,16 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
         let uri = params.text_document.uri;
-        let snapshot = self.snapshot_for_uri(&uri).await;
+        let snapshot_context = self.snapshot_context_for_uri(&uri).await;
 
-        Ok(snapshot
-            .map(|snapshot| semantic_tokens_for_snapshot_range(&snapshot, params.range).into()))
+        let Some(snapshot_context) = snapshot_context else {
+            return Ok(None);
+        };
+        let result = semantic_tokens_for_snapshot_range(&snapshot_context.snapshot, params.range);
+        self.ensure_semantic_tokens_snapshot_current(&snapshot_context)
+            .await?;
+
+        Ok(Some(result.into()))
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -698,6 +720,12 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
     error
 }
 
+fn stale_semantic_tokens_error() -> tower_lsp::jsonrpc::Error {
+    let mut error = tower_lsp::jsonrpc::Error::content_modified();
+    error.message = "semantic tokens document changed while computing".into();
+    error
+}
+
 fn source_descriptor_for_document(
     uri: &tower_lsp::lsp_types::Url,
     kind: DocumentKind,
@@ -748,11 +776,11 @@ mod tests {
     use tower_lsp::lsp_types::{
         CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
         CodeActionProviderCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-        DocumentSymbolResponse, FoldingRangeParams, FoldingRangeProviderCapability,
-        GotoDefinitionResponse, HoverContents, HoverParams, InitializeParams, NumberOrString,
-        Position, Range, RenameParams, SelectionRangeParams, SelectionRangeProviderCapability,
-        SemanticTokensFullOptions, SemanticTokensParams, SemanticTokensRangeParams,
-        SemanticTokensRangeResult, SemanticTokensServerCapabilities,
+        DocumentChanges, DocumentSymbolResponse, FoldingRangeParams,
+        FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
+        InitializeParams, NumberOrString, Position, Range, RenameParams, SelectionRangeParams,
+        SelectionRangeProviderCapability, SemanticTokensFullOptions, SemanticTokensParams,
+        SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensServerCapabilities,
         TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
         TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
         VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
@@ -1164,6 +1192,82 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn stale_semantic_tokens_record_returns_content_modified_error() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+        let context = server
+            .snapshot_context_for_uri(&uri)
+            .await
+            .expect("expected snapshot context");
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                2,
+                "flowchart TD\nA-->C\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let error = server
+            .record_semantic_tokens_state(&context, Vec::new(), Some("stale-result".to_string()))
+            .await
+            .expect_err("stale semantic tokens should fail");
+
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+        assert!(error.message.contains("semantic tokens document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_semantic_tokens_range_snapshot_returns_content_modified_error() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+        let context = server
+            .snapshot_context_for_uri(&uri)
+            .await
+            .expect("expected snapshot context");
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri,
+                2,
+                "flowchart TD\nA-->C\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let error = server
+            .ensure_semantic_tokens_snapshot_current(&context)
+            .await
+            .expect_err("stale semantic token range snapshot should fail");
+
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+        assert!(error.message.contains("semantic tokens document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         let (service, _socket) = MermanLanguageServer::service();
         let server = service.inner();
@@ -1361,17 +1465,15 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(
-            rename
-                .unwrap()
-                .changes
-                .unwrap()
-                .values()
-                .next()
-                .unwrap()
-                .len(),
-            2
-        );
+        let edit = rename.unwrap();
+        assert!(edit.changes.is_none());
+        let document_changes = match edit.document_changes.unwrap() {
+            DocumentChanges::Edits(edits) => edits,
+            other => panic!("unexpected document changes: {other:?}"),
+        };
+        assert_eq!(document_changes.len(), 1);
+        assert_eq!(document_changes[0].text_document.version, Some(1));
+        assert_eq!(document_changes[0].edits.len(), 2);
     }
 
     #[tokio::test(flavor = "current_thread")]
