@@ -690,16 +690,28 @@ fn source_byte_limit_returns_resource_error() {
 fn source_byte_limit_does_not_scan_syntax_facts() {
     let options = AnalysisOptions::default().with_max_source_bytes(Some(8));
     let facts = Analyzer::with_options(options).analyze_facts("flowchart TD\nA-->B\n");
-    let syntax = &facts.diagrams[0].syntax;
 
     assert!(!facts.valid);
     assert_eq!(facts.summary.errors, 1);
-    assert_eq!(syntax.diagram_type, None);
-    assert_eq!(syntax.fact_source, FenceTextIndexSource::TextScan);
-    assert!(syntax.node_ids.is_empty());
-    assert!(syntax.semantic_items.is_empty());
-    assert!(syntax.outline_items.is_empty());
-    assert!(syntax.expected_syntax.is_empty());
+    assert!(facts.diagrams.is_empty());
+}
+
+#[test]
+fn plain_source_byte_limit_applies_before_result_source_map() {
+    let source = format!("flowchart TD\nA-->B\n{}", "x".repeat(64));
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+
+    let result = analyzer.analyze_result(&source);
+
+    assert_eq!(result.source_map().source_len(), 0);
+    assert!(result.diagrams().is_empty());
+    assert_eq!(result.diagnostics().len(), 1);
+    let diagnostic = &result.diagnostics()[0];
+    assert_eq!(diagnostic.id, "merman.resource.source_bytes_exceeded");
+    let span = diagnostic.span.as_ref().unwrap();
+    assert_eq!(span.byte_start, 0);
+    assert_eq!(span.byte_end, source.len());
 }
 
 #[test]

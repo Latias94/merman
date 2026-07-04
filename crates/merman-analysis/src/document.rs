@@ -267,37 +267,10 @@ fn document_source_limit_result(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> Option<AnalysisResult> {
-    if matches!(source.kind, SourceKind::Diagram) {
-        return None;
-    }
-
-    let limit = analyzer.options().max_source_bytes?;
-    if text.len() <= limit {
-        return None;
-    }
-
-    let source_map = SourceMap::new("");
-    let diagnostics = crate::analyzer::source_limit_diagnostic(
-        text.len(),
-        limit,
-        &source_map,
-        &analyzer.options().rule_config,
-    )
-    .map(|mut diagnostic| {
-        diagnostic.span = Some(whole_text_span_without_source_copy(text));
-        diagnostic
-    })
-    .into_iter()
-    .collect();
-    Some(AnalysisResult::new(
-        source,
-        source_map,
-        diagnostics,
-        Vec::new(),
-    ))
+    analyzer.source_limit_result(text, source)
 }
 
-fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
+pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
     let mut end_line = 1usize;
     let mut end_column = 1usize;
     let mut end_lsp_line = 0usize;

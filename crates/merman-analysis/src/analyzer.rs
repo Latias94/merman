@@ -121,6 +121,10 @@ impl Analyzer {
     }
 
     pub fn analyze_result(&self, source: &str) -> AnalysisResult {
+        if let Some(result) = self.source_limit_result(source, self.options.source.clone()) {
+            return result;
+        }
+
         let source_map = SourceMap::new(source);
         let diagram = crate::document::whole_document_diagram(source, &self.options.source);
         let analyzed = self.analyze_diagram(&diagram);
@@ -133,6 +137,10 @@ impl Analyzer {
     }
 
     pub fn analyze(&self, source: &str) -> AnalysisPayload {
+        if let Some(result) = self.source_limit_result(source, self.options.source.clone()) {
+            return result.into_payload();
+        }
+
         AnalysisPayload::new(
             self.options.source.clone(),
             self.analyze_source_diagnostics(source),
@@ -169,6 +177,10 @@ impl Analyzer {
     }
 
     fn analyze_local(&self, source: &str, mode: AnalysisMode) -> LocalAnalysis {
+        if let Some(diagnostics) = self.source_limit_diagnostics(source) {
+            return LocalAnalysis::empty_syntax(diagnostics);
+        }
+
         let source_map = SourceMap::new(source);
 
         if source.trim().is_empty() {
@@ -176,20 +188,6 @@ impl Analyzer {
                 .into_iter()
                 .collect();
             return mode.text_scan_or_empty(source, None, diagnostics);
-        }
-
-        if let Some(limit) = self.options.max_source_bytes
-            && source.len() > limit
-        {
-            let diagnostics = source_limit_diagnostic(
-                source.len(),
-                limit,
-                &source_map,
-                &self.options.rule_config,
-            )
-            .into_iter()
-            .collect();
-            return LocalAnalysis::empty_syntax(diagnostics);
         }
 
         let source_lints =
@@ -391,6 +389,39 @@ impl Analyzer {
                 )
             }
         }
+    }
+
+    pub(crate) fn source_limit_result(
+        &self,
+        source: &str,
+        descriptor: SourceDescriptor,
+    ) -> Option<AnalysisResult> {
+        let diagnostics = self.source_limit_diagnostics(source)?;
+        Some(AnalysisResult::new(
+            descriptor,
+            SourceMap::new(""),
+            diagnostics,
+            Vec::new(),
+        ))
+    }
+
+    fn source_limit_diagnostics(&self, source: &str) -> Option<Vec<AnalysisDiagnostic>> {
+        let limit = self.options.max_source_bytes?;
+        if source.len() <= limit {
+            return None;
+        }
+
+        let source_map = SourceMap::new("");
+        let diagnostics =
+            source_limit_diagnostic(source.len(), limit, &source_map, &self.options.rule_config)
+                .map(|mut diagnostic| {
+                    diagnostic.span =
+                        Some(crate::document::whole_text_span_without_source_copy(source));
+                    diagnostic
+                })
+                .into_iter()
+                .collect();
+        Some(diagnostics)
     }
 }
 
