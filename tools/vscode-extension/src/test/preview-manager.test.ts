@@ -45,6 +45,7 @@ class FakePreviewHost {
   readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string }> = [];
   readonly clipboardWrites: string[] = [];
   readonly warnings: string[] = [];
+  readonly informationMessages: string[] = [];
   readonly revealCalls: Array<{ viewColumn: number; preserveFocus?: boolean }> = [];
   readonly showTextDocumentCalls: Array<{
     documentUri: string;
@@ -156,11 +157,27 @@ class FakePreviewHost {
           host.warnings.push(message);
           return Promise.resolve(undefined);
         },
-        showInformationMessage: () => Promise.resolve(undefined),
+        showInformationMessage: (message: string) => {
+          host.informationMessages.push(message);
+          return Promise.resolve(undefined);
+        },
         showErrorMessage: () => Promise.resolve(undefined),
         showSaveDialog: () => {
           this.saveDialogCounter += 1;
-          return Promise.resolve(uri(`file:///workspace/export-${this.saveDialogCounter}.svg`, `/workspace/export-${this.saveDialogCounter}.svg`));
+          if (this.saveDialogCounter === 1) {
+            return Promise.resolve(
+              uri(
+                "vscode-remote://ssh-remote+linux/c%3A/Users/frank/export-one.svg",
+                "C:\\Users\\frank\\export-one.svg",
+              ),
+            );
+          }
+          return Promise.resolve(
+            uri(
+              `file:///workspace/export-${this.saveDialogCounter}.svg`,
+              `/workspace/export-${this.saveDialogCounter}.svg`,
+            ),
+          );
         },
       },
       workspace: {
@@ -603,6 +620,10 @@ describe("preview manager", () => {
       { source: "flowchart TD\nA --> B\n", format: "svg" },
       { source: "sequenceDiagram\nA->>B: hi\n", format: "png" },
     ]);
+    assert.deepEqual(host.informationMessages.slice(-2), [
+      "Exported export-one.svg.",
+      "Exported export-2.svg.",
+    ]);
   });
 });
 
@@ -694,6 +715,15 @@ async function flushPreviewWork(): Promise<void> {
 function uri(value: string, fsPath = value): vscode.Uri {
   return {
     fsPath,
+    path: uriPath(value, fsPath),
     toString: () => value,
   } as unknown as vscode.Uri;
+}
+
+function uriPath(value: string, fsPath: string): string {
+  try {
+    return new URL(value).pathname;
+  } catch {
+    return fsPath.replaceAll("\\", "/");
+  }
 }

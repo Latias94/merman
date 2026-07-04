@@ -5,6 +5,7 @@ import { previewCliBackground } from "./preview-background.js";
 import { collectMermanPreviewDiagnostics } from "./preview-diagnostics.js";
 import {
   defaultExportPath,
+  displayExportBasename,
   exportFilters,
   type ExportFormat,
 } from "./export-options.js";
@@ -504,7 +505,7 @@ export class PreviewInstance implements vscode.Disposable {
           signalLabel: `preview-export-${format}`,
         });
       }
-      void vscode.window.showInformationMessage(`Exported ${vscode.workspace.asRelativePath(target, false)}.`);
+      void vscode.window.showInformationMessage(`Exported ${displayExportBasename(target)}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.outputChannel.error(message);

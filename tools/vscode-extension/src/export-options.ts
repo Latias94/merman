@@ -65,6 +65,13 @@ export function exportPresetForFormat(format: ExportFormat): ExportPreset {
   };
 }
 
+export function displayExportBasename(uri: vscodeUriLike): string {
+  if (uri.path) {
+    return path.posix.basename(uri.path);
+  }
+  return path.basename(path.win32.basename(uri.fsPath));
+}
+
 export function pngClipboardCommand(platform: NodeJS.Platform): string | undefined {
   switch (platform) {
     case "darwin":
@@ -98,6 +105,11 @@ export function pngClipboardArgs(platform: NodeJS.Platform, imagePath: string): 
     default:
       return [];
   }
+}
+
+interface vscodeUriLike {
+  readonly fsPath: string;
+  readonly path?: string;
 }
 
 function appleScriptPngClass(): string {

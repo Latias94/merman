@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import {
   EXPORT_PRESETS,
   defaultExportPath,
+  displayExportBasename,
   exportFilters,
   exportPresetForFormat,
   pngClipboardArgs,
@@ -22,6 +23,22 @@ describe("export options", () => {
   it("routes supported export formats to save dialog filters", () => {
     assert.deepEqual(exportFilters("svg"), { "SVG image": ["svg"] });
     assert.deepEqual(exportFilters("png"), { "PNG image": ["png"] });
+  });
+
+  it("displays only the saved file basename across URI shapes", () => {
+    assert.equal(
+      displayExportBasename({
+        fsPath: "C:\\Users\\frank\\diagram.svg",
+        path: "/c%3A/Users/frank/diagram.svg",
+      }),
+      "diagram.svg",
+    );
+    assert.equal(
+      displayExportBasename({
+        fsPath: "C:\\Users\\frank\\diagram.png",
+      }),
+      "diagram.png",
+    );
   });
 
   it("exposes export presets for quick-pick flows", () => {

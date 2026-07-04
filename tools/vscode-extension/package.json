@@ -97,7 +97,7 @@
           },
           "default": [],
           "restricted": true,
-          "markdownDescription": "Additional arguments appended when launching `merman-lsp` directly."
+          "markdownDescription": "Additional arguments appended when launching `merman-lsp` directly. Requires Workspace Trust because this is a restricted setting."
         },
         "merman.server.useCargoRun": {
           "type": "boolean",

@@ -227,15 +227,14 @@ describe("Merman binary resolution", () => {
     ) as {
       contributes: {
         configuration: {
-          properties: Record<string, { restricted?: boolean }>;
+          properties: Record<string, { markdownDescription?: string; restricted?: boolean }>;
         };
       };
     };
+    const setting = pkg.contributes.configuration.properties["merman.server.args"];
 
-    assert.equal(
-      pkg.contributes.configuration.properties["merman.server.args"]?.restricted,
-      true,
-    );
+    assert.equal(setting?.restricted, true);
+    assert.match(setting?.markdownDescription ?? "", /Workspace Trust/);
   });
 
   it("rejects Cargo fallback in untrusted workspaces", () => {
