@@ -56,6 +56,14 @@ object MermanEngine {
         nativeAnalyzeJson(source, optionsJson)
 
     @JvmStatic
+    fun analyzeDocumentJson(source: String, uri: String, optionsJson: String? = null): String =
+        nativeAnalyzeDocumentJson(source, optionsJson, uri)
+
+    @JvmStatic
+    fun analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String? = null): String =
+        nativeAnalyzeDocumentFactsJson(source, optionsJson, uri)
+
+    @JvmStatic
     fun validateJson(source: String, optionsJson: String? = null): String =
         nativeValidateJson(source, optionsJson)
 
@@ -119,6 +127,20 @@ object MermanEngine {
 
     @JvmStatic
     private external fun nativeAnalyzeJson(source: String, optionsJson: String?): String
+
+    @JvmStatic
+    private external fun nativeAnalyzeDocumentJson(
+        source: String,
+        optionsJson: String?,
+        uri: String,
+    ): String
+
+    @JvmStatic
+    private external fun nativeAnalyzeDocumentFactsJson(
+        source: String,
+        optionsJson: String?,
+        uri: String,
+    ): String
 
     @JvmStatic
     private external fun nativeValidateJson(source: String, optionsJson: String?): String

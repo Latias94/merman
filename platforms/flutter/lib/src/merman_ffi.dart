@@ -357,6 +357,21 @@ typedef _EngineCallDart = NativeMermanResult Function(
   int,
 );
 
+typedef _EngineDocumentCallC = NativeMermanResult Function(
+  Pointer<NativeMermanEngine>,
+  Pointer<Uint8>,
+  UintPtr,
+  Pointer<Uint8>,
+  UintPtr,
+);
+typedef _EngineDocumentCallDart = NativeMermanResult Function(
+  Pointer<NativeMermanEngine>,
+  Pointer<Uint8>,
+  int,
+  Pointer<Uint8>,
+  int,
+);
+
 typedef _HostTextMeasureCallbackC = NativeMermanHostTextMeasureResult Function(
   NativeMermanHostTextMeasureRequest,
   Pointer<Void>,
@@ -381,6 +396,23 @@ typedef _MermanCallC = NativeMermanResult Function(
 );
 typedef _MermanCallDart = NativeMermanResult Function(
     Pointer<Uint8>, int, Pointer<Uint8>, int);
+
+typedef _MermanDocumentCallC = NativeMermanResult Function(
+  Pointer<Uint8>,
+  UintPtr,
+  Pointer<Uint8>,
+  UintPtr,
+  Pointer<Uint8>,
+  UintPtr,
+);
+typedef _MermanDocumentCallDart = NativeMermanResult Function(
+  Pointer<Uint8>,
+  int,
+  Pointer<Uint8>,
+  int,
+  Pointer<Uint8>,
+  int,
+);
 
 typedef _MermanMetadataC = NativeMermanResult Function();
 typedef _MermanMetadataDart = NativeMermanResult Function();
@@ -775,19 +807,21 @@ class MermanReusableEngine {
   /// falls back to its configured text measurer for that request.
   void setTextMeasurer(MermanTextMeasurer? measurer) {
     _ensureOpen();
-    _closeTextMeasureCallback();
-    _textMeasurer = measurer;
+    final previousCallback = _textMeasureCallback;
+    final previousMeasurer = _textMeasurer;
 
     if (measurer == null) {
       _bindings.checkResult(
         _bindings.engineSetTextMeasureCallback(_engine, nullptr, nullptr),
       );
+      _textMeasureCallback = null;
+      _textMeasurer = null;
+      previousCallback?.close();
       return;
     }
 
     final nativeCallback =
         NativeCallable<_HostTextMeasureCallbackC>.isolateLocal(_measureText);
-    _textMeasureCallback = nativeCallback;
     try {
       _bindings.checkResult(
         _bindings.engineSetTextMeasureCallback(
@@ -796,8 +830,13 @@ class MermanReusableEngine {
           nullptr,
         ),
       );
+      _textMeasureCallback = nativeCallback;
+      _textMeasurer = measurer;
+      previousCallback?.close();
     } catch (_) {
-      _closeTextMeasureCallback();
+      nativeCallback.close();
+      _textMeasureCallback = previousCallback;
+      _textMeasurer = previousMeasurer;
       rethrow;
     }
   }
@@ -851,6 +890,44 @@ class MermanReusableEngine {
     return Merman._decodeJsonMap(analyzeJsonRaw(source));
   }
 
+  /// Analyzes Markdown or MDX [source] and returns raw document diagnostics JSON text.
+  String analyzeDocumentJsonRaw(String source, {required String uri}) {
+    return _decodeText(
+      _bindings.engineDocumentCall(
+        _bindings.engineAnalyzeDocumentJson,
+        _engine,
+        source,
+        uri,
+      ),
+    );
+  }
+
+  /// Analyzes Markdown or MDX [source] and returns the document diagnostics JSON object.
+  Map<String, Object?> analyzeDocumentJson(String source,
+      {required String uri}) {
+    return Merman._decodeJsonMap(analyzeDocumentJsonRaw(source, uri: uri));
+  }
+
+  /// Analyzes Markdown or MDX [source] and returns raw document syntax facts JSON text.
+  String analyzeDocumentFactsJsonRaw(String source, {required String uri}) {
+    return _decodeText(
+      _bindings.engineDocumentCall(
+        _bindings.engineAnalyzeDocumentFactsJson,
+        _engine,
+        source,
+        uri,
+      ),
+    );
+  }
+
+  /// Analyzes Markdown or MDX [source] and returns the document syntax facts JSON object.
+  Map<String, Object?> analyzeDocumentFactsJson(String source,
+      {required String uri}) {
+    return Merman._decodeJsonMap(
+      analyzeDocumentFactsJsonRaw(source, uri: uri),
+    );
+  }
+
   /// Validates Mermaid [source] and returns raw validation JSON text.
   String validateJsonRaw(String source) {
     return _decodeText(
@@ -870,9 +947,10 @@ class MermanReusableEngine {
     if (_isClosed) {
       return;
     }
-    _closeTextMeasureCallback();
+    final callback = _takeTextMeasureCallback();
     _bindings.engineFree(_engine);
     _engine = nullptr;
+    callback?.close();
   }
 
   NativeMermanHostTextMeasureResult _measureText(
@@ -907,10 +985,11 @@ class MermanReusableEngine {
     return nativeResult;
   }
 
-  void _closeTextMeasureCallback() {
-    _textMeasureCallback?.close();
+  NativeCallable<_HostTextMeasureCallbackC>? _takeTextMeasureCallback() {
+    final callback = _textMeasureCallback;
     _textMeasureCallback = null;
     _textMeasurer = null;
+    return callback;
   }
 
   void _ensureOpen() {
@@ -1011,6 +1090,68 @@ class Merman {
   /// Analyzes Mermaid [source] and returns the diagnostics JSON object.
   Map<String, Object?> analyzeJson(String source, {String? optionsJson}) {
     return _decodeJsonMap(analyzeJsonRaw(source, optionsJson: optionsJson));
+  }
+
+  /// Analyzes Markdown or MDX [source] and returns raw document diagnostics JSON text.
+  String analyzeDocumentJsonRaw(
+    String source, {
+    required String uri,
+    String? optionsJson,
+  }) {
+    return _decodeText(
+      _bindings.callDocument(
+        _bindings.analyzeDocumentJson,
+        source,
+        optionsJson,
+        uri,
+      ),
+    );
+  }
+
+  /// Analyzes Markdown or MDX [source] and returns the document diagnostics JSON object.
+  Map<String, Object?> analyzeDocumentJson(
+    String source, {
+    required String uri,
+    String? optionsJson,
+  }) {
+    return _decodeJsonMap(
+      analyzeDocumentJsonRaw(
+        source,
+        uri: uri,
+        optionsJson: optionsJson,
+      ),
+    );
+  }
+
+  /// Analyzes Markdown or MDX [source] and returns raw document syntax facts JSON text.
+  String analyzeDocumentFactsJsonRaw(
+    String source, {
+    required String uri,
+    String? optionsJson,
+  }) {
+    return _decodeText(
+      _bindings.callDocument(
+        _bindings.analyzeDocumentFactsJson,
+        source,
+        optionsJson,
+        uri,
+      ),
+    );
+  }
+
+  /// Analyzes Markdown or MDX [source] and returns the document syntax facts JSON object.
+  Map<String, Object?> analyzeDocumentFactsJson(
+    String source, {
+    required String uri,
+    String? optionsJson,
+  }) {
+    return _decodeJsonMap(
+      analyzeDocumentFactsJsonRaw(
+        source,
+        uri: uri,
+        optionsJson: optionsJson,
+      ),
+    );
   }
 
   /// Validates Mermaid [source] and returns raw validation JSON text.
@@ -1238,6 +1379,12 @@ class _MermanBindings {
             library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_analyze_json',
         ),
+        engineAnalyzeDocumentJson = library.lookupFunction<_EngineDocumentCallC,
+            _EngineDocumentCallDart>('merman_engine_analyze_document_json'),
+        engineAnalyzeDocumentFactsJson = library
+            .lookupFunction<_EngineDocumentCallC, _EngineDocumentCallDart>(
+          'merman_engine_analyze_document_facts_json',
+        ),
         engineValidateJson =
             library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_validate_json',
@@ -1257,6 +1404,10 @@ class _MermanBindings {
         analyzeJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_analyze_json',
         ),
+        analyzeDocumentJson = library.lookupFunction<_MermanDocumentCallC,
+            _MermanDocumentCallDart>('merman_analyze_document_json'),
+        analyzeDocumentFactsJson = library.lookupFunction<_MermanDocumentCallC,
+            _MermanDocumentCallDart>('merman_analyze_document_facts_json'),
         validateJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_validate_json',
         ),
@@ -1303,6 +1454,8 @@ class _MermanBindings {
   final _EngineCallDart engineParseJson;
   final _EngineCallDart engineLayoutJson;
   final _EngineCallDart engineAnalyzeJson;
+  final _EngineDocumentCallDart engineAnalyzeDocumentJson;
+  final _EngineDocumentCallDart engineAnalyzeDocumentFactsJson;
   final _EngineCallDart engineValidateJson;
   final _BufferFreeDart _bufferFree;
   final _MermanCallDart renderSvg;
@@ -1310,6 +1463,8 @@ class _MermanBindings {
   final _MermanCallDart parseJson;
   final _MermanCallDart layoutJson;
   final _MermanCallDart analyzeJson;
+  final _MermanDocumentCallDart analyzeDocumentJson;
+  final _MermanDocumentCallDart analyzeDocumentFactsJson;
   final _MermanCallDart validateJson;
   final _MermanMetadataDart supportedDiagramsJson;
   final _MermanMetadataDart asciiCapabilitiesJson;
@@ -1419,6 +1574,41 @@ class _MermanBindings {
     }
   }
 
+  Uint8List callDocument(
+    _MermanDocumentCallDart function,
+    String source,
+    String? optionsJson,
+    String uri,
+  ) {
+    final sourceBytes = utf8.encode(source);
+    final optionsBytes = optionsJson == null ? null : utf8.encode(optionsJson);
+    final uriBytes = utf8.encode(uri);
+    final sourcePtr = _copyBytes(sourceBytes);
+    final optionsPtr =
+        optionsBytes == null ? nullptr : _copyBytes(optionsBytes);
+    final uriPtr = _copyBytes(uriBytes);
+
+    try {
+      final result = function(
+        sourcePtr,
+        sourceBytes.length,
+        optionsPtr,
+        optionsBytes?.length ?? 0,
+        uriPtr,
+        uriBytes.length,
+      );
+      final payload = _takeBuffer(result.data);
+      if (result.code == MermanStatus.ok.code) {
+        return payload;
+      }
+      throw _exceptionFromPayload(result.code, payload);
+    } finally {
+      _freeIfAllocated(sourcePtr);
+      _freeIfAllocated(optionsPtr);
+      _freeIfAllocated(uriPtr);
+    }
+  }
+
   Uint8List metadata(_MermanMetadataDart function) {
     final result = function();
     final payload = _takeBuffer(result.data);
@@ -1453,6 +1643,44 @@ class _MermanBindings {
       throw _exceptionFromPayload(result.code, payload);
     } finally {
       _freeIfAllocated(sourcePtr);
+    }
+  }
+
+  Uint8List engineDocumentCall(
+    _EngineDocumentCallDart function,
+    Pointer<NativeMermanEngine> engine,
+    String source,
+    String uri,
+  ) {
+    if (engine.address == 0) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_ENGINE_CLOSED',
+        message: 'Merman reusable engine is closed',
+      );
+    }
+
+    final sourceBytes = utf8.encode(source);
+    final uriBytes = utf8.encode(uri);
+    final sourcePtr = _copyBytes(sourceBytes);
+    final uriPtr = _copyBytes(uriBytes);
+
+    try {
+      final result = function(
+        engine,
+        sourcePtr,
+        sourceBytes.length,
+        uriPtr,
+        uriBytes.length,
+      );
+      final payload = _takeBuffer(result.data);
+      if (result.code == MermanStatus.ok.code) {
+        return payload;
+      }
+      throw _exceptionFromPayload(result.code, payload);
+    } finally {
+      _freeIfAllocated(sourcePtr);
+      _freeIfAllocated(uriPtr);
     }
   }
 

@@ -355,6 +355,44 @@ pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeAnalyzeJson(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeAnalyzeDocumentJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    source: JString<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_engine_document_binding(
+            env,
+            handle,
+            source,
+            uri,
+            merman_bindings_core::BindingEngine::analyze_document_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeAnalyzeDocumentFactsJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    source: JString<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_engine_document_binding(
+            env,
+            handle,
+            source,
+            uri,
+            merman_bindings_core::BindingEngine::analyze_document_facts_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeValidateJson(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -452,6 +490,44 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeJson(
             source,
             options_json,
             merman_bindings_core::analyze_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeDocumentJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_document_binding(
+            env,
+            source,
+            options_json,
+            uri,
+            merman_bindings_core::analyze_document_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeDocumentFactsJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_document_binding(
+            env,
+            source,
+            options_json,
+            uri,
+            merman_bindings_core::analyze_document_facts_json,
         ))
     })
 }
@@ -571,6 +647,31 @@ where
     result_to_java_string(env, result)
 }
 
+fn call_document_binding<F>(
+    env: &mut Env<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+    uri: JString<'_>,
+    f: F,
+) -> jstring
+where
+    F: FnOnce(&[u8], &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let Some(source) = required_java_string(env, source, "source") else {
+        return ptr::null_mut();
+    };
+    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
+        return ptr::null_mut();
+    };
+    let Some(uri) = required_java_string(env, uri, "uri") else {
+        return ptr::null_mut();
+    };
+
+    let result =
+        super::ffi_result(|| f(source.as_bytes(), options_json.as_bytes(), uri.as_bytes()));
+    result_to_java_string(env, result)
+}
+
 fn call_engine_binding<F>(env: &mut Env<'_>, handle: jlong, source: JString<'_>, f: F) -> jstring
 where
     F: FnOnce(&merman_bindings_core::BindingEngine, &[u8]) -> Result<Vec<u8>, BindingError>,
@@ -583,6 +684,30 @@ where
     };
 
     let result = super::ffi_result(|| f(&engine.inner, source.as_bytes()));
+    result_to_java_string(env, result)
+}
+
+fn call_engine_document_binding<F>(
+    env: &mut Env<'_>,
+    handle: jlong,
+    source: JString<'_>,
+    uri: JString<'_>,
+    f: F,
+) -> jstring
+where
+    F: FnOnce(&merman_bindings_core::BindingEngine, &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let Some(engine) = jni_engine_ref(env, handle) else {
+        return ptr::null_mut();
+    };
+    let Some(source) = required_java_string(env, source, "source") else {
+        return ptr::null_mut();
+    };
+    let Some(uri) = required_java_string(env, uri, "uri") else {
+        return ptr::null_mut();
+    };
+
+    let result = super::ffi_result(|| f(&engine.inner, source.as_bytes(), uri.as_bytes()));
     result_to_java_string(env, result)
 }
 

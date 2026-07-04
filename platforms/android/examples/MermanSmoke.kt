@@ -37,6 +37,22 @@ fun runMermanSmoke() {
         "validation JSON smoke failed"
     }
 
+    val documentSource = "Intro\n```mermaid\n$source\n```\n"
+    val documentJson = MermanEngine.analyzeDocumentJson(
+        documentSource,
+        "file:///tmp/example.md",
+    )
+    check(documentJson.contains("\"kind\":\"markdown\"") && documentJson.contains("\"valid\":true")) {
+        "document analysis JSON smoke failed"
+    }
+    val documentFactsJson = MermanEngine.analyzeDocumentFactsJson(
+        documentSource,
+        "file:///tmp/example.md",
+    )
+    check(documentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"")) {
+        "document facts JSON smoke failed"
+    }
+
     check(MermanEngine.supportedDiagramsJson().contains("flowchart")) {
         "supported diagrams smoke failed"
     }
@@ -75,6 +91,20 @@ fun runMermanSmoke() {
         val reusableSvg = engine.renderSvg(source)
         check(reusableSvg.contains("<svg") && reusableSvg.contains("Hello")) {
             "reusable engine SVG smoke failed"
+        }
+        val reusableDocumentJson = engine.analyzeDocumentJson(
+            documentSource,
+            "file:///tmp/example.md",
+        )
+        check(reusableDocumentJson.contains("\"kind\":\"markdown\"")) {
+            "reusable document analysis JSON smoke failed"
+        }
+        val reusableDocumentFactsJson = engine.analyzeDocumentFactsJson(
+            documentSource,
+            "file:///tmp/example.md",
+        )
+        check(reusableDocumentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"")) {
+            "reusable document facts JSON smoke failed"
         }
         engine.setTextMeasurer(null)
     } finally {

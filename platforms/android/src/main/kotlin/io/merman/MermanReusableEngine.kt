@@ -25,6 +25,12 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
     fun analyzeJson(source: String): String =
         withLiveHandle { nativeAnalyzeJson(it, source) }
 
+    fun analyzeDocumentJson(source: String, uri: String): String =
+        withLiveHandle { nativeAnalyzeDocumentJson(it, source, uri) }
+
+    fun analyzeDocumentFactsJson(source: String, uri: String): String =
+        withLiveHandle { nativeAnalyzeDocumentFactsJson(it, source, uri) }
+
     fun validateJson(source: String): String =
         withLiveHandle { nativeValidateJson(it, source) }
 
@@ -134,6 +140,12 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
 
         @JvmStatic
         private external fun nativeAnalyzeJson(handle: Long, source: String): String
+
+        @JvmStatic
+        private external fun nativeAnalyzeDocumentJson(handle: Long, source: String, uri: String): String
+
+        @JvmStatic
+        private external fun nativeAnalyzeDocumentFactsJson(handle: Long, source: String, uri: String): String
 
         @JvmStatic
         private external fun nativeValidateJson(handle: Long, source: String): String

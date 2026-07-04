@@ -32,6 +32,19 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("validation smoke failed")
         }
 
+        let documentSource = "Intro\n```mermaid\n\(source)\n```\n"
+        let documentJson = try engine.analyzeDocumentJsonRaw(documentSource, uri: "file:///tmp/example.md")
+        guard documentJson.contains("\"kind\":\"markdown\""), documentJson.contains("\"valid\":true") else {
+            throw SmokeError.failed("document analysis smoke failed")
+        }
+        let documentFactsJson = try engine.analyzeDocumentFactsJsonRaw(
+            documentSource,
+            uri: "file:///tmp/example.md"
+        )
+        guard documentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"") else {
+            throw SmokeError.failed("document facts smoke failed")
+        }
+
         let reusable = try engine.reusableEngine()
         let callback: MermanTextMeasureCallback = { request, _ in
             let text = request.text.map {
@@ -51,6 +64,20 @@ struct MermanAppleSmoke {
         let reusableSvg = try reusable.renderSvg(source)
         guard reusableSvg.contains("<svg"), reusableSvg.contains("Hello") else {
             throw SmokeError.failed("reusable renderSvg smoke failed")
+        }
+        let reusableDocumentJson = try reusable.analyzeDocumentJsonRaw(
+            documentSource,
+            uri: "file:///tmp/example.md"
+        )
+        guard reusableDocumentJson.contains("\"kind\":\"markdown\"") else {
+            throw SmokeError.failed("reusable document analysis smoke failed")
+        }
+        let reusableDocumentFactsJson = try reusable.analyzeDocumentFactsJsonRaw(
+            documentSource,
+            uri: "file:///tmp/example.md"
+        )
+        guard reusableDocumentFactsJson.contains("\"source_id\":\"mermaid-fence-1\"") else {
+            throw SmokeError.failed("reusable document facts smoke failed")
         }
         reusable.close()
 

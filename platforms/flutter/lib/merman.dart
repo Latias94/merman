@@ -7,6 +7,8 @@ library;
 export 'src/merman_ffi.dart'
     show
         Merman,
+        MermanAsciiCapability,
+        MermanAsciiCapabilityEvidence,
         MermanDiagramFamilyCapability,
         MermanException,
         MermanLintRuleCatalogEntry,

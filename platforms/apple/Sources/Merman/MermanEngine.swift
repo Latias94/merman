@@ -145,6 +145,32 @@ public final class MermanEngine {
         try call(merman_analyze_json, source: source, optionsJson: optionsJson)
     }
 
+    public func analyzeDocumentJsonRaw(
+        _ source: String,
+        uri: String,
+        optionsJson: String? = nil
+    ) throws -> String {
+        try callDocument(
+            merman_analyze_document_json,
+            source: source,
+            optionsJson: optionsJson,
+            uri: uri
+        )
+    }
+
+    public func analyzeDocumentFactsJsonRaw(
+        _ source: String,
+        uri: String,
+        optionsJson: String? = nil
+    ) throws -> String {
+        try callDocument(
+            merman_analyze_document_facts_json,
+            source: source,
+            optionsJson: optionsJson,
+            uri: uri
+        )
+    }
+
     public func validateJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
         try call(merman_validate_json, source: source, optionsJson: optionsJson)
     }
@@ -300,6 +326,40 @@ public final class MermanEngine {
         }
     }
 
+    private func callDocument(
+        _ function: (
+            UnsafePointer<UInt8>?,
+            Int,
+            UnsafePointer<UInt8>?,
+            Int,
+            UnsafePointer<UInt8>?,
+            Int
+        ) -> MermanResult,
+        source: String,
+        optionsJson: String?,
+        uri: String
+    ) throws -> String {
+        let sourceBytes = Array(source.utf8)
+        let optionBytes = Array((optionsJson ?? "").utf8)
+        let uriBytes = Array(uri.utf8)
+
+        return try sourceBytes.withUnsafeBufferPointer { sourceBuffer in
+            try optionBytes.withUnsafeBufferPointer { optionBuffer in
+                try uriBytes.withUnsafeBufferPointer { uriBuffer in
+                    let result = function(
+                        sourceBytes.isEmpty ? nil : sourceBuffer.baseAddress,
+                        sourceBytes.count,
+                        optionBytes.isEmpty ? nil : optionBuffer.baseAddress,
+                        optionBytes.count,
+                        uriBytes.isEmpty ? nil : uriBuffer.baseAddress,
+                        uriBytes.count
+                    )
+                    return try decode(result)
+                }
+            }
+        }
+    }
+
     fileprivate static func decode(_ result: MermanResult) throws -> String {
         defer { merman_buffer_free(result.data) }
 
@@ -352,7 +412,10 @@ public final class MermanEngine {
 }
 
 public final class MermanReusableEngine {
+    private let lifecycle = NSCondition()
     private var engine: OpaquePointer?
+    private var activeNativeThread: Thread?
+    private var closeRequested = false
 
     public init(optionsJson: String? = nil) throws {
         try MermanEngine.checkAbi()
@@ -383,10 +446,9 @@ public final class MermanReusableEngine {
         _ callback: MermanTextMeasureCallback?,
         userData: UnsafeMutableRawPointer? = nil
     ) throws {
-        let engine = try requireEngine()
-        _ = try MermanEngine.decode(
-            merman_engine_set_text_measure_callback(engine, callback, userData)
-        )
+        let engine = try beginNativeCall()
+        defer { finishNativeCall() }
+        _ = try MermanEngine.decode(merman_engine_set_text_measure_callback(engine, callback, userData))
     }
 
     public func renderSvg(_ source: String) throws -> String {
@@ -409,6 +471,14 @@ public final class MermanReusableEngine {
         try call(merman_engine_analyze_json, source: source)
     }
 
+    public func analyzeDocumentJsonRaw(_ source: String, uri: String) throws -> String {
+        try callDocument(merman_engine_analyze_document_json, source: source, uri: uri)
+    }
+
+    public func analyzeDocumentFactsJsonRaw(_ source: String, uri: String) throws -> String {
+        try callDocument(merman_engine_analyze_document_facts_json, source: source, uri: uri)
+    }
+
     public func validateJsonRaw(_ source: String) throws -> String {
         try call(merman_engine_validate_json, source: source)
     }
@@ -423,18 +493,36 @@ public final class MermanReusableEngine {
     }
 
     public func close() {
-        guard let engine else {
-            return
+        lifecycle.lock()
+        let engineToFree: OpaquePointer?
+        if engine == nil {
+            engineToFree = nil
+        } else {
+            closeRequested = true
+            let currentThread = Thread.current
+            while activeNativeThread != nil && activeNativeThread !== currentThread {
+                lifecycle.wait()
+            }
+
+            if activeNativeThread === currentThread {
+                engineToFree = nil
+            } else {
+                engineToFree = takeEngineForClose()
+            }
         }
-        merman_engine_free(engine)
-        self.engine = nil
+        lifecycle.unlock()
+
+        if let engineToFree {
+            merman_engine_free(engineToFree)
+        }
     }
 
     private func call(
         _ function: (OpaquePointer?, UnsafePointer<UInt8>?, Int) -> MermanResult,
         source: String
     ) throws -> String {
-        let engine = try requireEngine()
+        let engine = try beginNativeCall()
+        defer { finishNativeCall() }
         let sourceBytes = Array(source.utf8)
         return try sourceBytes.withUnsafeBufferPointer { sourceBuffer in
             try MermanEngine.decode(
@@ -447,15 +535,82 @@ public final class MermanReusableEngine {
         }
     }
 
-    private func requireEngine() throws -> OpaquePointer {
-        guard let engine else {
+    private func callDocument(
+        _ function: (
+            OpaquePointer?,
+            UnsafePointer<UInt8>?,
+            Int,
+            UnsafePointer<UInt8>?,
+            Int
+        ) -> MermanResult,
+        source: String,
+        uri: String
+    ) throws -> String {
+        let engine = try beginNativeCall()
+        defer { finishNativeCall() }
+        let sourceBytes = Array(source.utf8)
+        let uriBytes = Array(uri.utf8)
+        return try sourceBytes.withUnsafeBufferPointer { sourceBuffer in
+            try uriBytes.withUnsafeBufferPointer { uriBuffer in
+                try MermanEngine.decode(
+                    function(
+                        engine,
+                        sourceBytes.isEmpty ? nil : sourceBuffer.baseAddress,
+                        sourceBytes.count,
+                        uriBytes.isEmpty ? nil : uriBuffer.baseAddress,
+                        uriBytes.count
+                    )
+                )
+            }
+        }
+    }
+
+    private func beginNativeCall() throws -> OpaquePointer {
+        lifecycle.lock()
+        defer { lifecycle.unlock() }
+
+        let currentThread = Thread.current
+        while activeNativeThread != nil && activeNativeThread !== currentThread {
+            lifecycle.wait()
+        }
+
+        if activeNativeThread === currentThread {
+            throw MermanError.binding(
+                code: -1,
+                codeName: "SWIFT_ENGINE_REENTERED",
+                message: "Merman reusable engine cannot be re-entered from a native callback"
+            )
+        }
+
+        guard let engine, !closeRequested else {
             throw MermanError.binding(
                 code: -1,
                 codeName: "SWIFT_ENGINE_CLOSED",
                 message: "Merman reusable engine is closed"
             )
         }
+
+        activeNativeThread = currentThread
         return engine
+    }
+
+    private func finishNativeCall() {
+        lifecycle.lock()
+        activeNativeThread = nil
+        let engineToFree = closeRequested ? takeEngineForClose() : nil
+        lifecycle.broadcast()
+        lifecycle.unlock()
+
+        if let engineToFree {
+            merman_engine_free(engineToFree)
+        }
+    }
+
+    private func takeEngineForClose() -> OpaquePointer? {
+        let current = engine
+        engine = nil
+        closeRequested = false
+        return current
     }
 
     private static func decodeEngineError(_ result: MermanEngineResult) throws -> MermanError {

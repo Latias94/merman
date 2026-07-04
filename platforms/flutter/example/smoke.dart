@@ -31,6 +31,26 @@ void main(List<String> args) {
     throw StateError('validate smoke failed');
   }
 
+  final documentSource = 'Intro\n```mermaid\n$source\n```\n';
+  final document = merman.analyzeDocumentJson(
+    documentSource,
+    uri: 'file:///tmp/example.md',
+  );
+  if ((document['source'] as Map<String, Object?>?)?['kind'] != 'markdown' ||
+      document['valid'] != true) {
+    throw StateError('analyzeDocumentJson smoke failed');
+  }
+  final documentFacts = merman.analyzeDocumentFactsJson(
+    documentSource,
+    uri: 'file:///tmp/example.md',
+  );
+  final diagrams = documentFacts['diagrams'] as List<Object?>? ?? const [];
+  if (diagrams.isEmpty ||
+      (diagrams.first as Map<String, Object?>)['source_id'] !=
+          'mermaid-fence-1') {
+    throw StateError('analyzeDocumentFactsJson smoke failed');
+  }
+
   if (!merman.supportedDiagrams().contains('flowchart')) {
     throw StateError('supportedDiagrams smoke failed');
   }
@@ -81,6 +101,25 @@ void main(List<String> args) {
     final measuredSvg = engine.renderSvg(source);
     if (!measuredSvg.contains('<svg') || !measuredSvg.contains('Hello')) {
       throw StateError('reusable engine SVG smoke failed');
+    }
+    final reusableDocument = engine.analyzeDocumentJson(
+      documentSource,
+      uri: 'file:///tmp/example.md',
+    );
+    if ((reusableDocument['source'] as Map<String, Object?>?)?['kind'] !=
+        'markdown') {
+      throw StateError('reusable analyzeDocumentJson smoke failed');
+    }
+    final reusableDocumentFacts = engine.analyzeDocumentFactsJson(
+      documentSource,
+      uri: 'file:///tmp/example.md',
+    );
+    final reusableDiagrams =
+        reusableDocumentFacts['diagrams'] as List<Object?>? ?? const [];
+    if (reusableDiagrams.isEmpty ||
+        (reusableDiagrams.first as Map<String, Object?>)['source_id'] !=
+            'mermaid-fence-1') {
+      throw StateError('reusable analyzeDocumentFactsJson smoke failed');
     }
     engine.setTextMeasurer(null);
   } finally {
