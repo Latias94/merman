@@ -5,30 +5,17 @@ status: active
 
 # Current State
 
-- Goal: VS Code preview multi-instance parity is implemented on top of the extracted
-  `PreviewInstance` boundary.
-- Branch: `feat/editor-core-language-intelligence`.
-- Last verified: `npm run check`, focused
-  `node --test dist/test/preview-manager.test.js --test-reporter=spec` (13 tests),
-  `npm test -- --test-reporter=spec` (100 tests), `npm run package`, and `git diff --check`.
-- Done: editor diagnostics cleanup is complete; the preview UX follow-up hardens lock/follow,
-  explicit target opening, cross-source render failure clearing, Merman-only preview diagnostic
-  summaries, stale same-source render failure labeling, stale output-action blocking, and the
-  single-preview manager plus per-panel `PreviewInstance` ownership boundary. The next preview
-  parity slice adds a manager-owned instance collection, active preview tracking, one unlocked
-  follow preview, multiple locked previews, manual refresh commands, toolbar Refresh/Source
-  actions, and source-range reveal. Headless smoke-equivalent tests now cover follow preview
-  close/reopen, webview-ready state replay, panel-local source reveal, and panel-local Copy/Export
-  actions; VSIX packaging also passes.
-- In progress: none.
-- Blocked: none.
-- Next action: no required follow-up for this slice. Optional real VS Code Extension Host/manual
-  GUI smoke remains useful for visual confidence; the repo currently has no automated
-  extension-host integration harness.
+- Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle
+  contracts, editor snapshot memory use, and release-gate coverage.
+- Stable decisions: SVG text returned to browser-like surfaces must be validated before DOM
+  insertion, copy, export, or preview replay; platform wrappers must document document-analysis
+  facts and reusable-engine callback lifecycle; editor snapshots should share document text rather
+  than copy every Markdown fence body.
 
 # Citations
 
-- [Editor diagnostics architecture cleanup plan](../../plans/2026-06-30-004-refactor-editor-diagnostics-architecture-cleanup-plan.md)
-- [VS Code Preview UX Follow-up](progress/2026-07-01-vscode-preview-ux-follow-up.md)
-- [VS Code PreviewInstance Extraction](progress/2026-07-01-vscode-preview-instance-extraction.md)
-- [VS Code Preview Multi-Instance Parity](progress/2026-07-01-vscode-preview-multi-instance-parity.md)
+- [PR20 post-review refactor plan](../../plans/2026-07-04-005-refactor-pr20-post-review-refactor-plan.md)
+- [LSP capability contract](../../lsp/CAPABILITIES.md)
+- [Android JNI binding contract](../../bindings/ANDROID_JNI.md)
+- [Flutter/Dart FFI binding contract](../../bindings/FLUTTER_DART_FFI.md)
+- [Release package surfaces](../../release/PACKAGE_SURFACES.md)
