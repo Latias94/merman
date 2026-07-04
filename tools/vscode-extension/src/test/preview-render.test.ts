@@ -115,6 +115,65 @@ describe("preview render queue", () => {
     );
     assert.deepEqual(errors, ["syntax issue"]);
   });
+
+  it("reports renderStarted post failures through the render failure path", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    const errors: string[] = [];
+
+    await queue.render(
+      snapshot(),
+      "document-change",
+      {
+        ...host(queue, messages, async () => {
+          assert.fail("render content should not run when renderStarted cannot be posted");
+        }, errors),
+        postMessage: async (message) => {
+          messages.push(message);
+          if (messages.length === 1) {
+            throw new Error("webview unavailable");
+          }
+        },
+      },
+    );
+
+    assert.deepEqual(
+      messages.map((message) => (message as { type: string }).type),
+      ["renderStarted", "renderFailed"],
+    );
+    assert.deepEqual(errors, ["webview unavailable"]);
+  });
+
+  it("swallows renderFailed post failures after logging them", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    const errors: string[] = [];
+
+    await queue.render(
+      snapshot(),
+      "document-change",
+      {
+        ...host(queue, messages, async () => {
+          throw new Error("syntax issue");
+        }, errors),
+        postMessage: async (message) => {
+          messages.push(message);
+          if ((message as { type: string }).type === "renderFailed") {
+            throw new Error("webview unavailable");
+          }
+        },
+      },
+    );
+
+    assert.deepEqual(
+      messages.map((message) => (message as { type: string }).type),
+      ["renderStarted", "renderFailed"],
+    );
+    assert.deepEqual(errors, [
+      "syntax issue",
+      "failed to notify preview webview: webview unavailable",
+    ]);
+  });
 });
 
 function host(

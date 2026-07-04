@@ -115,7 +115,9 @@ export class PreviewInstance implements vscode.Disposable {
       this.renderTimer = undefined;
     }
     const refresh = () => {
-      void this.refresh(reason);
+      void this.refresh(reason).catch((error: unknown) => {
+        this.handleRefreshError(error);
+      });
     };
     if (immediate) {
       refresh();
@@ -439,6 +441,12 @@ export class PreviewInstance implements vscode.Disposable {
     const message = errorMessage(error);
     this.outputChannel.error(`Preview webview message failed: ${message}`);
     void vscode.window.showErrorMessage(`Merman preview action failed: ${message}`);
+  }
+
+  private handleRefreshError(error: unknown): void {
+    const message = errorMessage(error);
+    this.outputChannel.error(`Preview refresh failed: ${message}`);
+    void vscode.window.showErrorMessage(`Merman preview refresh failed: ${message}`);
   }
 
   private selectSource(sourceId: string): void {

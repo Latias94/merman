@@ -34,14 +34,14 @@ export class PreviewRenderQueue {
     const abortController = new AbortController();
     this.abortController = abortController;
     const snapshotPayload = snapshotMessagePayload(snapshot);
-    await host.postMessage({
-      type: "renderStarted",
-      requestId,
-      reason,
-      snapshot: snapshotPayload,
-    });
 
     try {
+      await host.postMessage({
+        type: "renderStarted",
+        requestId,
+        reason,
+        snapshot: snapshotPayload,
+      });
       host.info(
         `refresh=${reason} source="${snapshot.input.title}" id="${snapshot.input.sourceId}" mode=${snapshot.displayMode}`,
       );
@@ -62,12 +62,7 @@ export class PreviewRenderQueue {
       }
       const message = error instanceof Error ? error.message : String(error);
       host.error(message);
-      await host.postMessage({
-        type: "renderFailed",
-        requestId,
-        snapshot: snapshotPayload,
-        error: message,
-      });
+      await postRenderFailed(host, requestId, snapshotPayload, message);
     } finally {
       if (this.abortController === abortController) {
         this.abortController = undefined;
@@ -78,4 +73,26 @@ export class PreviewRenderQueue {
   isCurrentRequest(requestId: number): boolean {
     return requestId === this.requestId;
   }
+}
+
+async function postRenderFailed(
+  host: PreviewRenderHost,
+  requestId: number,
+  snapshot: ReturnType<typeof snapshotMessagePayload>,
+  message: string,
+): Promise<void> {
+  try {
+    await host.postMessage({
+      type: "renderFailed",
+      requestId,
+      snapshot,
+      error: message,
+    });
+  } catch (error) {
+    host.error(`failed to notify preview webview: ${errorMessage(error)}`);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

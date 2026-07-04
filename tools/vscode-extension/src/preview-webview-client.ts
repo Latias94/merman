@@ -49,7 +49,10 @@ export class PreviewWebviewClient {
       this.pendingMessages.push(message);
       return;
     }
-    await panel.webview.postMessage(message);
+    const accepted = await panel.webview.postMessage(message);
+    if (!accepted) {
+      throw new Error("Preview webview did not accept the message.");
+    }
   }
 
   markRendered(snapshot: PreviewSnapshot, content: string): void {
@@ -72,8 +75,14 @@ export class PreviewWebviewClient {
     if (this.pendingMessages.length > 0) {
       const pending = this.pendingMessages;
       this.pendingMessages = [];
-      for (const pendingMessage of pending) {
-        await this.post(panel, pendingMessage);
+      for (const [index, pendingMessage] of pending.entries()) {
+        try {
+          await this.post(panel, pendingMessage);
+        } catch (error) {
+          this.ready = false;
+          this.pendingMessages = pending.slice(index);
+          throw error;
+        }
       }
       return;
     }
