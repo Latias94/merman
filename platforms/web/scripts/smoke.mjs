@@ -216,6 +216,7 @@ assert.equal(
 const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
 assert.equal(flowchartFacts.valid, true);
 assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
+assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
 assert.equal(
   flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
   true
@@ -232,6 +233,25 @@ assert.equal(
   ),
   true
 );
+
+const degradedSequenceFacts = api.analysisFacts(
+  [
+    "---",
+    "title: quoted",
+    "---",
+    "sequenceDiagram",
+    "participant Alice",
+    "Alice->>Bob: #quot;",
+    "",
+  ].join("\n"),
+  deterministicTime
+);
+assert.equal(degradedSequenceFacts.valid, true);
+assert.equal(
+  degradedSequenceFacts.diagrams[0].syntax.fact_source,
+  "parser_complete_degraded_spans"
+);
+assert.equal(degradedSequenceFacts.diagrams[0].syntax.source_mapped_spans, false);
 
 const markdownFacts = api.analyzeDocumentFacts(
   "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",

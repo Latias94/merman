@@ -65,6 +65,22 @@ const requiredTypeProperties = new Map([
     "AnalysisBindingOptions",
     ["resources"],
   ],
+  [
+    "AnalysisDiagramSyntaxFacts",
+    ["source_mapped_spans"],
+  ],
+]);
+const requiredTypeStringLiterals = new Map([
+  [
+    "EditorSemanticFactSource",
+    [
+      "text_scan",
+      "parser_complete",
+      "parser_complete_degraded_spans",
+      "parser_recovered",
+      "parser_recovered_degraded_spans",
+    ],
+  ],
 ]);
 
 let failed = false;
@@ -94,6 +110,14 @@ for (const [interfaceName, requiredProperties] of requiredTypeProperties) {
   failed ||= reportMissing(
     `check-contracts: ${interfaceName} is missing required option properties`,
     requiredProperties.filter((name) => !properties.has(name)),
+  );
+}
+
+for (const [typeName, requiredLiterals] of requiredTypeStringLiterals) {
+  const literals = extractTypeStringLiterals(publicApi, typeName);
+  failed ||= reportMissing(
+    `check-contracts: ${typeName} is missing required string members`,
+    requiredLiterals.filter((literal) => !literals.has(literal)),
   );
 }
 
@@ -140,6 +164,15 @@ function extractInterfaceProperties(source, interfaceName) {
     throw new Error(`check-contracts: missing ${interfaceName} interface`);
   }
   return new Set(matches(match[1], /^\s+([A-Za-z_$][\w$]*)\??:\s*/gm));
+}
+
+function extractTypeStringLiterals(source, typeName) {
+  const escapedName = typeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = source.match(new RegExp(`export type ${escapedName}\\s*=([\\s\\S]*?);`));
+  if (!match) {
+    throw new Error(`check-contracts: missing ${typeName} type`);
+  }
+  return new Set(matches(match[1], /"([^"]+)"/g));
 }
 
 function extractSurfaceRuntimeBindings(source) {

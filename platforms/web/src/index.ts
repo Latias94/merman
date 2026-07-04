@@ -704,6 +704,7 @@ export interface AnalysisDiagramSyntaxFacts {
   fact_source: EditorSemanticFactSource;
   parser_backed: boolean;
   recovered: boolean;
+  source_mapped_spans: boolean;
   flowchart?: AnalysisFlowchartFacts | null;
   node_ids: string[];
   class_names: string[];
@@ -746,7 +747,12 @@ export interface EditorTextEdit {
   newText: string;
 }
 
-export type EditorSemanticFactSource = "text_scan" | "parser_complete" | "parser_recovered";
+export type EditorSemanticFactSource =
+  | "text_scan"
+  | "parser_complete"
+  | "parser_complete_degraded_spans"
+  | "parser_recovered"
+  | "parser_recovered_degraded_spans";
 
 export type EditorCompletionItemKind = "keyword" | "variable" | "class" | "snippet";
 

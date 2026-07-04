@@ -198,6 +198,7 @@ mod tests {
             json["diagrams"][0]["syntax"]["fact_source"],
             "parser_complete"
         );
+        assert_eq!(json["diagrams"][0]["syntax"]["source_mapped_spans"], true);
         assert_eq!(
             json["diagrams"][0]["syntax"]["node_ids"]
                 .as_array()

@@ -17,6 +17,18 @@ fn text_index_collects_node_ids() {
 }
 
 #[test]
+fn text_index_treats_legacy_flowchart_as_module_facts() {
+    let index = FenceTextIndex::from_text("flowchart TD\nA-->B\n", Some("flowchart"));
+    let item = index
+        .outline_items()
+        .iter()
+        .find(|item| item.name == "A")
+        .expect("flowchart node outline item");
+
+    assert_eq!(item.kind, EditorSymbolKind::Module);
+}
+
+#[test]
 fn node_id_filter_skips_keywords_and_empty_tokens() {
     assert!(!is_candidate_node_id("flowchart"));
     assert!(!is_candidate_node_id("%comment"));

@@ -1165,6 +1165,7 @@ mod tests {
             value["diagrams"][0]["syntax"]["fact_source"],
             "parser_complete"
         );
+        assert_eq!(value["diagrams"][0]["syntax"]["source_mapped_spans"], true);
         assert!(
             value["diagrams"][0]["syntax"]["semantic_items"]
                 .as_array()

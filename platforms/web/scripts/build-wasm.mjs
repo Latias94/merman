@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.join(packageRoot, "..", "..");
 
 const presets = {
   "browser-core": {
@@ -121,6 +122,7 @@ const wasmPackArgs = [
   "web",
   "--profile",
   "wasm-size",
+  "--no-pack",
   "--out-dir",
   outputRoot,
 ];
@@ -131,6 +133,7 @@ if (cargoArgs.length > 0) {
 }
 
 run("wasm-pack", wasmPackArgs);
+writePackageMetadata(outputRoot);
 run(process.execPath, ["scripts/clean-pkg.mjs", "--pkg-dir-rel", outDirRel]);
 writePresetManifest(presetName, preset, outputRoot);
 
@@ -187,6 +190,56 @@ function writePresetManifest(name, selectedPreset, outDir) {
     capabilities: selectedPreset.capabilities,
   };
   writeFileSync(presetManifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function writePackageMetadata(outDir) {
+  mkdirSync(outDir, { recursive: true });
+
+  const workspaceCargo = readFileSync(path.join(repoRoot, "Cargo.toml"), "utf8");
+  const wasmCargo = readFileSync(
+    path.join(repoRoot, "crates", "merman-wasm", "Cargo.toml"),
+    "utf8"
+  );
+
+  const packageJson = {
+    name: "merman-wasm",
+    type: "module",
+    collaborators: tomlStringArray(workspaceCargo, "authors"),
+    description: tomlString(wasmCargo, "description"),
+    version: tomlString(workspaceCargo, "version"),
+    license: tomlString(workspaceCargo, "license"),
+    repository: {
+      type: "git",
+      url: tomlString(workspaceCargo, "repository"),
+    },
+    files: ["merman_wasm_bg.wasm", "merman_wasm.js", "merman_wasm.d.ts"],
+    main: "merman_wasm.js",
+    homepage: tomlString(workspaceCargo, "homepage"),
+    types: "merman_wasm.d.ts",
+    sideEffects: ["./snippets/*"],
+    keywords: tomlStringArray(wasmCargo, "keywords"),
+  };
+
+  writeFileSync(
+    path.join(outDir, "package.json"),
+    `${JSON.stringify(packageJson, null, 2)}\n`
+  );
+}
+
+function tomlString(source, key) {
+  const match = source.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m"));
+  if (!match) {
+    throw new Error(`Missing TOML string field: ${key}`);
+  }
+  return match[1];
+}
+
+function tomlStringArray(source, key) {
+  const match = source.match(new RegExp(`^${key}\\s*=\\s*\\[([^\\]]*)\\]`, "m"));
+  if (!match) {
+    throw new Error(`Missing TOML string array field: ${key}`);
+  }
+  return [...match[1].matchAll(/"([^"]*)"/g)].map((item) => item[1]);
 }
 
 function run(command, args) {

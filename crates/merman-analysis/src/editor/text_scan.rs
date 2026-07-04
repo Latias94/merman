@@ -301,7 +301,9 @@ fn generic_kind(diagram_type: Option<&str>) -> EditorSymbolKind {
         Some("class") => EditorSymbolKind::Class,
         Some("er") => EditorSymbolKind::Struct,
         Some("block") => EditorSymbolKind::Object,
-        Some("flowchart-v2") | Some("flowchart-elk") => EditorSymbolKind::Module,
+        Some("flowchart") | Some("flowchart-v2") | Some("flowchart-elk") => {
+            EditorSymbolKind::Module
+        }
         _ => EditorSymbolKind::Variable,
     }
 }

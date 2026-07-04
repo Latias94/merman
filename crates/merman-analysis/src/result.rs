@@ -302,7 +302,10 @@ impl AnalysisFlowchartFacts {
         model: &Value,
     ) -> Result<Option<Self>, AnalysisFlowchartFactsProjectionError> {
         let diagram_type = model.get("type").and_then(Value::as_str);
-        if !matches!(diagram_type, Some("flowchart-v2" | "flowchart-elk")) {
+        if !matches!(
+            diagram_type,
+            Some("flowchart" | "flowchart-v2" | "flowchart-elk")
+        ) {
             return Ok(None);
         }
 
@@ -537,5 +540,51 @@ fn fence_marker_name(marker: FenceMarker) -> &'static str {
         FenceMarker::Backtick => "backtick",
         FenceMarker::Tilde => "tilde",
         FenceMarker::Colon => "colon",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn flowchart_facts_accept_legacy_flowchart_models() {
+        let model = json!({
+            "type": "flowchart",
+            "direction": "LR",
+            "nodes": [
+                {
+                    "id": "A",
+                    "label": "Alpha"
+                }
+            ],
+            "edges": [
+                {
+                    "id": "L_A_B_0",
+                    "from": "A",
+                    "to": "B",
+                    "length": 1
+                }
+            ]
+        });
+
+        let facts = AnalysisFlowchartFacts::try_from_model(&model)
+            .expect("legacy flowchart model should deserialize")
+            .expect("legacy flowchart model should produce facts");
+
+        assert_eq!(facts.direction.as_deref(), Some("LR"));
+        assert!(
+            facts
+                .nodes
+                .iter()
+                .any(|node| node.id == "A" && node.label.as_deref() == Some("Alpha"))
+        );
+        assert!(
+            facts
+                .edges
+                .iter()
+                .any(|edge| edge.from == "A" && edge.to == "B")
+        );
     }
 }
