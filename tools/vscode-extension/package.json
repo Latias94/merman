@@ -418,7 +418,7 @@
     "compile": "tsc -p .",
     "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js --sourcemap --sources-content=false",
     "check": "tsc -p . --noEmit",
-    "test": "npm run build && node --test dist/test/**/*.test.js",
+    "test": "npm run build && node --test dist/test/**/*.test.js scripts/*.test.mjs",
     "prepare:binaries": "node scripts/prepare-binaries.mjs",
     "package": "npm run build && node scripts/package-vsix.mjs",
     "verify:vsix": "node scripts/verify-vsix.mjs"

@@ -8,8 +8,6 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(packageDir, "..", "..");
-const manifestPath = path.join(packageDir, "package.json");
-const vsceCliPath = path.join(packageDir, "node_modules", "@vscode", "vsce", "vsce");
 const vsceTargets = new Set([
   "win32-x64",
   "win32-arm64",
@@ -23,39 +21,43 @@ const vsceTargets = new Set([
   "web",
 ]);
 
-const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-const manifestVersion = parseSourceVersion(manifest.version, "package.json version");
-const releaseVersion = parseSourceVersion(
-  process.env.MERMAN_RELEASE_VERSION ?? readWorkspacePackageVersion(repoRoot),
-  "release version",
-);
-const userArgs = normalizeNpmForwardedArgs(process.argv.slice(2));
-
-if (manifestVersion.raw !== releaseVersion.stableVersion) {
-  fail(
-    `VS Code package.json version must be the stable VSIX manifest version for ${releaseVersion.raw}: expected ${releaseVersion.stableVersion}, got ${manifestVersion.raw}.`,
-  );
+if (isDirectRun()) {
+  try {
+    main(process.argv.slice(2));
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
 }
 
-const vsceArgs = ["package"];
-if (releaseVersion.preRelease !== null) {
-  vsceArgs.push("--pre-release");
-  console.log(
-    `Packaging prerelease source version ${releaseVersion.raw} as VSIX version ${releaseVersion.stableVersion} with --pre-release.`,
-  );
-}
-vsceArgs.push(...userArgs);
+export function main(argv, options = {}) {
+  const packageRoot = options.packageDir ?? packageDir;
+  const workspaceRoot = options.repoRoot ?? repoRoot;
+  const manifestPath = path.join(packageRoot, "package.json");
+  const vsceCliPath = path.join(packageRoot, "node_modules", "@vscode", "vsce", "vsce");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const releaseVersion =
+    options.releaseVersion ?? process.env.MERMAN_RELEASE_VERSION ?? readWorkspacePackageVersion(workspaceRoot);
+  const { args, message } = buildVscePackageArgs({
+    manifestVersion: manifest.version,
+    releaseVersion,
+    userArgs: argv,
+    env: process.env,
+  });
 
-const result = spawnSync(process.execPath, [vsceCliPath, ...vsceArgs], {
-  cwd: packageDir,
-  stdio: "inherit",
-});
+  if (message) {
+    console.log(message);
+  }
 
-if (result.error) {
-  console.error(`Failed to run local vsce CLI: ${result.error.message}`);
-  process.exit(1);
+  const result = spawnSync(process.execPath, [vsceCliPath, ...args], {
+    cwd: packageRoot,
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    fail(`Failed to run local vsce CLI: ${result.error.message}`);
+  }
+  process.exit(result.status ?? 1);
 }
-process.exit(result.status ?? 1);
 
 function readWorkspacePackageVersion(root) {
   const cargoToml = fs.readFileSync(path.join(root, "Cargo.toml"), "utf8");
@@ -66,13 +68,34 @@ function readWorkspacePackageVersion(root) {
   return match[1];
 }
 
-function parseSourceVersion(raw, label) {
+export function buildVscePackageArgs({ manifestVersion, releaseVersion, userArgs, env = process.env }) {
+  const parsedManifest = parseSourceVersion(manifestVersion, "package.json version");
+  const parsedRelease = parseSourceVersion(releaseVersion, "release version");
+
+  if (parsedManifest.raw !== parsedRelease.stableVersion) {
+    throw new Error(
+      `VS Code package.json version must be the stable VSIX manifest version for ${parsedRelease.raw}: expected ${parsedRelease.stableVersion}, got ${parsedManifest.raw}.`,
+    );
+  }
+
+  const args = ["package"];
+  let message = null;
+  if (parsedRelease.preRelease !== null) {
+    args.push("--pre-release");
+    message =
+      `Packaging prerelease source version ${parsedRelease.raw} as VSIX version ${parsedRelease.stableVersion} with --pre-release.`;
+  }
+  args.push(...normalizeNpmForwardedArgs(userArgs, env));
+  return { args, message };
+}
+
+export function parseSourceVersion(raw, label) {
   if (typeof raw !== "string") {
-    fail(`${label} must be a string.`);
+    throw new Error(`${label} must be a string.`);
   }
   const match = raw.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
   if (!match) {
-    fail(`${label} is not valid SemVer: ${JSON.stringify(raw)}.`);
+    throw new Error(`${label} is not valid SemVer: ${JSON.stringify(raw)}.`);
   }
   return {
     raw,
@@ -81,10 +104,10 @@ function parseSourceVersion(raw, label) {
   };
 }
 
-function normalizeNpmForwardedArgs(args) {
+export function normalizeNpmForwardedArgs(args, env = process.env) {
   let normalized = [...args];
   for (const option of ["target", "out"]) {
-    const value = process.env[`npm_config_${option}`];
+    const value = env[`npm_config_${option}`];
     const flag = `--${option}`;
     if (!value || value === "true" || hasOption(normalized, flag)) {
       continue;
@@ -96,7 +119,7 @@ function normalizeNpmForwardedArgs(args) {
   return normalized;
 }
 
-function normalizeBareForwardedArgs(args) {
+export function normalizeBareForwardedArgs(args) {
   const normalized = [];
   for (const arg of args) {
     if (!arg.startsWith("-") && vsceTargets.has(arg) && !hasOption([...normalized, ...args], "--target")) {
@@ -110,8 +133,12 @@ function normalizeBareForwardedArgs(args) {
   return normalized;
 }
 
-function hasOption(args, flag) {
+export function hasOption(args, flag) {
   return args.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+}
+
+function isDirectRun() {
+  return process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }
 
 function fail(message) {
