@@ -8,6 +8,7 @@ mod protocol;
 mod semantic_tokens;
 mod server;
 mod snapshot;
+mod snapshot_context;
 mod structure;
 
 pub use protocol::{
@@ -23,3 +24,5 @@ mod completion_tests;
 mod diagnostics_tests;
 #[cfg(test)]
 mod document_store_tests;
+#[cfg(test)]
+mod snapshot_context_tests;

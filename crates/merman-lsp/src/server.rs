@@ -3,8 +3,8 @@ use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::DocumentStore;
 use crate::document_store::{
-    AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotBuildRequest,
-    SnapshotContext, StoredDocument,
+    AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotContext,
+    StoredDocument,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -15,6 +15,7 @@ use crate::semantic_tokens::{
     semantic_tokens_options, semantic_tokens_result_id,
 };
 use crate::snapshot::DocumentSnapshot;
+use crate::snapshot_context::{self, SnapshotContextKind};
 use crate::structure::{
     document_symbols as structure_document_symbols, folding_ranges as structure_folding_ranges,
     goto_definition as structure_goto_definition, hover as structure_hover,
@@ -144,44 +145,11 @@ impl MermanLanguageServer {
         &self,
         uri: &tower_lsp::lsp_types::Url,
     ) -> Option<Arc<DocumentSnapshot>> {
-        self.snapshot_context_for_uri(uri)
+        snapshot_context::snapshot_context_for_uri(&self.store, uri, SnapshotContextKind::Structure)
             .await
             .ok()
             .flatten()
             .map(|context| context.snapshot)
-    }
-
-    async fn snapshot_context_for_uri(
-        &self,
-        uri: &tower_lsp::lsp_types::Url,
-    ) -> Result<Option<SnapshotContext>> {
-        let request = {
-            let mut store = self.store.lock().await;
-            if store.has_snapshot(uri) {
-                return Ok(store.snapshot_context(uri));
-            }
-            store.snapshot_build_request(uri)
-        };
-        let Some(request) = request else {
-            return Ok(None);
-        };
-
-        let snapshot = request.build();
-        self.commit_structure_snapshot_context(&request, snapshot)
-            .await
-    }
-
-    async fn commit_structure_snapshot_context(
-        &self,
-        request: &SnapshotBuildRequest,
-        snapshot: Arc<DocumentSnapshot>,
-    ) -> Result<Option<SnapshotContext>> {
-        let mut store = self.store.lock().await;
-        match store.insert_built_snapshot(request, snapshot) {
-            Some(context) => Ok(Some(context)),
-            None if store.get(request.uri()).is_some() => Err(stale_structure_snapshot_error()),
-            None => Ok(None),
-        }
     }
 
     async fn structure_snapshot_result<T>(
@@ -189,46 +157,20 @@ impl MermanLanguageServer {
         uri: &tower_lsp::lsp_types::Url,
         compute: impl FnOnce(&DocumentSnapshot) -> Result<Option<T>>,
     ) -> Result<Option<T>> {
-        let Some(context) = self.snapshot_context_for_uri(uri).await? else {
-            return Ok(None);
-        };
-
-        let result = compute(&context.snapshot);
-        self.ensure_structure_snapshot_current(&context).await?;
-        result
+        snapshot_context::snapshot_result(&self.store, uri, SnapshotContextKind::Structure, compute)
+            .await
     }
 
     async fn semantic_snapshot_context_for_uri(
         &self,
         uri: &tower_lsp::lsp_types::Url,
     ) -> Result<Option<SnapshotContext>> {
-        let request = {
-            let mut store = self.store.lock().await;
-            if store.has_snapshot(uri) {
-                return Ok(store.snapshot_context(uri));
-            }
-            store.snapshot_build_request(uri)
-        };
-        let Some(request) = request else {
-            return Ok(None);
-        };
-
-        let snapshot = request.build();
-        self.commit_semantic_snapshot_context(&request, snapshot)
-            .await
-    }
-
-    async fn commit_semantic_snapshot_context(
-        &self,
-        request: &SnapshotBuildRequest,
-        snapshot: Arc<DocumentSnapshot>,
-    ) -> Result<Option<SnapshotContext>> {
-        let mut store = self.store.lock().await;
-        match store.insert_built_snapshot(request, snapshot) {
-            Some(context) => Ok(Some(context)),
-            None if store.get(request.uri()).is_some() => Err(stale_semantic_tokens_error()),
-            None => Ok(None),
-        }
+        snapshot_context::snapshot_context_for_uri(
+            &self.store,
+            uri,
+            SnapshotContextKind::SemanticTokens,
+        )
+        .await
     }
 
     fn diagnostics_for_document(
@@ -350,28 +292,7 @@ impl MermanLanguageServer {
         ) {
             Ok(())
         } else {
-            Err(stale_semantic_tokens_error())
-        }
-    }
-
-    async fn ensure_semantic_tokens_snapshot_current(
-        &self,
-        context: &SnapshotContext,
-    ) -> Result<()> {
-        let store = self.store.lock().await;
-        if store.is_snapshot_context_current(context) {
-            Ok(())
-        } else {
-            Err(stale_semantic_tokens_error())
-        }
-    }
-
-    async fn ensure_structure_snapshot_current(&self, context: &SnapshotContext) -> Result<()> {
-        let store = self.store.lock().await;
-        if store.is_snapshot_context_current(context) {
-            Ok(())
-        } else {
-            Err(stale_structure_snapshot_error())
+            Err(SnapshotContextKind::SemanticTokens.stale_error())
         }
     }
 
@@ -379,12 +300,12 @@ impl MermanLanguageServer {
         &self,
         contexts: &[SnapshotContext],
     ) -> Result<()> {
-        let store = self.store.lock().await;
-        if store.is_snapshot_contexts_current(contexts) {
-            Ok(())
-        } else {
-            Err(stale_workspace_symbols_error())
-        }
+        snapshot_context::ensure_snapshot_contexts_current(
+            &self.store,
+            contexts,
+            SnapshotContextKind::WorkspaceSymbols,
+        )
+        .await
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
@@ -694,8 +615,12 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         };
         let result = semantic_tokens_for_snapshot_range(&snapshot_context.snapshot, params.range);
-        self.ensure_semantic_tokens_snapshot_current(&snapshot_context)
-            .await?;
+        snapshot_context::ensure_snapshot_current(
+            &self.store,
+            &snapshot_context,
+            SnapshotContextKind::SemanticTokens,
+        )
+        .await?;
 
         Ok(Some(result.into()))
     }
@@ -812,7 +737,7 @@ impl LanguageServer for MermanLanguageServer {
             .await
             .snapshot_contexts_for_requests(built);
         if commit.stale_open_documents {
-            return Err(stale_workspace_symbols_error());
+            return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
         }
         contexts.extend(commit.contexts);
 
@@ -832,24 +757,6 @@ impl LanguageServer for MermanLanguageServer {
 fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
     let mut error = tower_lsp::jsonrpc::Error::content_modified();
     error.message = "diagnostic document changed while recomputing".into();
-    error
-}
-
-fn stale_semantic_tokens_error() -> tower_lsp::jsonrpc::Error {
-    let mut error = tower_lsp::jsonrpc::Error::content_modified();
-    error.message = "semantic tokens document changed while computing".into();
-    error
-}
-
-fn stale_structure_snapshot_error() -> tower_lsp::jsonrpc::Error {
-    let mut error = tower_lsp::jsonrpc::Error::content_modified();
-    error.message = "structure document changed while computing".into();
-    error
-}
-
-fn stale_workspace_symbols_error() -> tower_lsp::jsonrpc::Error {
-    let mut error = tower_lsp::jsonrpc::Error::content_modified();
-    error.message = "workspace symbol documents changed while computing".into();
     error
 }
 
@@ -1354,11 +1261,14 @@ mod tests {
                 DocumentKind::Diagram,
             );
         }
-        let context = server
-            .snapshot_context_for_uri(&uri)
-            .await
-            .expect("snapshot context build should not fail")
-            .expect("expected snapshot context");
+        let context = crate::snapshot_context::snapshot_context_for_uri(
+            &server.store,
+            &uri,
+            crate::snapshot_context::SnapshotContextKind::SemanticTokens,
+        )
+        .await
+        .expect("snapshot context build should not fail")
+        .expect("expected snapshot context");
         {
             let mut store = server.store.lock().await;
             store.upsert_text(
@@ -1376,236 +1286,6 @@ mod tests {
 
         assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
         assert!(error.message.contains("semantic tokens document changed"));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stale_semantic_snapshot_build_returns_content_modified_error() {
-        let (service, _socket) = MermanLanguageServer::service();
-        let server = service.inner();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-        let request = {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri.clone(),
-                1,
-                "flowchart TD\nA-->B\n".to_string(),
-                DocumentKind::Diagram,
-            );
-            store
-                .snapshot_build_request(&uri)
-                .expect("expected snapshot build request")
-        };
-        let stale_snapshot = request.build();
-
-        {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri,
-                2,
-                "flowchart TD\nA-->C\n".to_string(),
-                DocumentKind::Diagram,
-            );
-        }
-
-        let error = server
-            .commit_semantic_snapshot_context(&request, stale_snapshot)
-            .await
-            .expect_err("stale semantic snapshot build should fail");
-
-        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-        assert!(error.message.contains("semantic tokens document changed"));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stale_structure_snapshot_build_returns_content_modified_error() {
-        let (service, _socket) = MermanLanguageServer::service();
-        let server = service.inner();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-        {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri.clone(),
-                1,
-                "flowchart TD\nA-->B\n".to_string(),
-                DocumentKind::Diagram,
-            );
-        }
-        let request = {
-            let store = server.store.lock().await;
-            store
-                .snapshot_build_request(&uri)
-                .expect("expected structure snapshot build request")
-        };
-        let stale_snapshot = request.build();
-        {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri,
-                2,
-                "flowchart TD\nA-->C\n".to_string(),
-                DocumentKind::Diagram,
-            );
-        }
-
-        let error = server
-            .commit_structure_snapshot_context(&request, stale_snapshot)
-            .await
-            .expect_err("stale structure snapshot build should fail");
-
-        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-        assert!(error.message.contains("structure document changed"));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn closed_semantic_snapshot_build_returns_none() {
-        let (service, _socket) = MermanLanguageServer::service();
-        let server = service.inner();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-        let request = {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri.clone(),
-                1,
-                "flowchart TD\nA-->B\n".to_string(),
-                DocumentKind::Diagram,
-            );
-            store
-                .snapshot_build_request(&uri)
-                .expect("expected snapshot build request")
-        };
-        let snapshot = request.build();
-
-        {
-            let mut store = server.store.lock().await;
-            store.remove(&uri);
-        }
-
-        let context = server
-            .commit_semantic_snapshot_context(&request, snapshot)
-            .await
-            .expect("closed semantic snapshot build should not fail");
-
-        assert!(context.is_none());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stale_semantic_tokens_range_snapshot_returns_content_modified_error() {
-        let (service, _socket) = MermanLanguageServer::service();
-        let server = service.inner();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-        {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri.clone(),
-                1,
-                "flowchart TD\nA-->B\n".to_string(),
-                DocumentKind::Diagram,
-            );
-        }
-        let context = server
-            .snapshot_context_for_uri(&uri)
-            .await
-            .expect("snapshot context build should not fail")
-            .expect("expected snapshot context");
-        {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri,
-                2,
-                "flowchart TD\nA-->C\n".to_string(),
-                DocumentKind::Diagram,
-            );
-        }
-
-        let error = server
-            .ensure_semantic_tokens_snapshot_current(&context)
-            .await
-            .expect_err("stale semantic token range snapshot should fail");
-
-        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-        assert!(error.message.contains("semantic tokens document changed"));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stale_structure_snapshot_result_returns_content_modified_error() {
-        let (service, _socket) = MermanLanguageServer::service();
-        let server = service.inner();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-        {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri.clone(),
-                1,
-                "flowchart TD\nA-->B\n".to_string(),
-                DocumentKind::Diagram,
-            );
-        }
-
-        let store_for_compute = std::sync::Arc::clone(&server.store);
-        let stale_uri = uri.clone();
-        let error = server
-            .structure_snapshot_result(&uri, |snapshot| {
-                let mut store = store_for_compute
-                    .try_lock()
-                    .expect("structure compute should run without the store lock held");
-                store.upsert_text(
-                    stale_uri,
-                    2,
-                    "flowchart TD\nA-->C\n".to_string(),
-                    DocumentKind::Diagram,
-                );
-                Ok(hover(snapshot, Position::new(1, 0)))
-            })
-            .await
-            .expect_err("stale structure snapshot should fail");
-
-        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-        assert!(error.message.contains("structure document changed"));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stale_structure_snapshot_result_preempts_compute_error() {
-        let (service, _socket) = MermanLanguageServer::service();
-        let server = service.inner();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-        {
-            let mut store = server.store.lock().await;
-            store.upsert_text(
-                uri.clone(),
-                1,
-                "flowchart TD\nA-->B\n".to_string(),
-                DocumentKind::Diagram,
-            );
-        }
-
-        let store_for_compute = std::sync::Arc::clone(&server.store);
-        let stale_uri = uri.clone();
-        let error = server
-            .structure_snapshot_result::<()>(&uri, |_snapshot| {
-                let mut store = store_for_compute
-                    .try_lock()
-                    .expect("structure compute should run without the store lock held");
-                store.upsert_text(
-                    stale_uri,
-                    2,
-                    "flowchart TD\nA-->C\n".to_string(),
-                    DocumentKind::Diagram,
-                );
-                Err(tower_lsp::jsonrpc::Error::invalid_params(
-                    "old snapshot compute error",
-                ))
-            })
-            .await
-            .expect_err("stale structure snapshot should mask compute errors");
-
-        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-        assert!(error.message.contains("structure document changed"));
     }
 
     #[tokio::test(flavor = "current_thread")]
