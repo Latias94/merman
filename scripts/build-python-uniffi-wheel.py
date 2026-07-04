@@ -69,7 +69,17 @@ assert any(
     and rule.origin == "merman_authoring"
     for rule in lint_rules
 )
-assert all(rule.configurable for rule in engine.configurable_lint_rule_catalog())
+configurable_rules = engine.configurable_lint_rule_catalog()
+assert configurable_rules
+assert all(
+    isinstance(rule, merman.MermanLintRuleCatalogEntry) for rule in configurable_rules
+)
+assert any(
+    rule.id == "merman.authoring.flowchart.explicit_direction"
+    and rule.configurable
+    for rule in configurable_rules
+)
+assert all(rule.configurable for rule in configurable_rules)
 
 measurer = Measurer()
 reusable = engine.reusable_engine_with_text_measurer(None, measurer)

@@ -77,7 +77,18 @@ def main() -> None:
         for rule in lint_rules
     ):
         raise RuntimeError("lint rule catalog content smoke failed")
-    if not all(rule.configurable for rule in engine.configurable_lint_rule_catalog()):
+    configurable_rules = engine.configurable_lint_rule_catalog()
+    if not configurable_rules or not all(
+        isinstance(rule, merman.MermanLintRuleCatalogEntry) for rule in configurable_rules
+    ):
+        raise RuntimeError("configurable lint rule catalog type smoke failed")
+    if not any(
+        rule.id == "merman.authoring.flowchart.explicit_direction"
+        and rule.configurable
+        for rule in configurable_rules
+    ):
+        raise RuntimeError("configurable lint rule catalog content smoke failed")
+    if not all(rule.configurable for rule in configurable_rules):
         raise RuntimeError("configurable lint rule catalog smoke failed")
 
     @dataclass
