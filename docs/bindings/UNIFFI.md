@@ -65,7 +65,9 @@ WebView, Core Text, Android, Flutter, or another platform font stack can use
 `MermanEngine::reusable_engine_with_text_measurer` or later through
 `MermanReusableEngine::set_text_measurer`. `MermanReusableEngine::clear_text_measurer` restores the
 engine's original built-in measurer. The callback should return `None` for unsupported or uncached
-requests so Merman can fall back to vendored metrics.
+requests so Merman can fall back to vendored metrics. Callback `Err` values are treated as host
+failures: the reusable render/layout call records the first callback error and returns it as
+`MermanError` instead of silently accepting fallback output.
 
 ## Bindgen Smoke
 

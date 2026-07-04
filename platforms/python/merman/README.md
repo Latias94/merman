@@ -90,7 +90,9 @@ If a Python GUI, browser automation host, or WebView application needs geometry 
 own font stack, create a `MermanReusableEngine` with `reusable_engine_with_text_measurer(...)` or
 call `set_text_measurer(...)` on an existing reusable engine. Call `clear_text_measurer()` to
 restore the engine's original built-in measurer. Return `None` from the callback when a request is
-not handled so merman can fall back to its vendored metrics for that request. See
+not handled so merman can fall back to its vendored metrics for that request. Raise `MermanError`
+or another callback exception only for host failures that should make reusable `render_svg` or
+`layout_json` fail instead of silently returning fallback geometry. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
 
 ## Generate Locally

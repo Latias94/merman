@@ -83,6 +83,10 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose MermanDiagramFamilyCapability"
     );
     assert!(
+        generated.contains("class MermanLintRuleCatalogEntry"),
+        "generated binding should expose MermanLintRuleCatalogEntry"
+    );
+    assert!(
         generated.contains("class MermanAsciiCapability"),
         "generated binding should expose MermanAsciiCapability"
     );
@@ -204,6 +208,7 @@ from .merman_uniffi import (
     MermanDiagramFamilyCapability,
     MermanEngine,
     MermanError,
+    MermanLintRuleCatalogEntry,
     MermanReusableEngine,
     MermanTextDirection,
     MermanTextMeasureRequest,
@@ -220,6 +225,7 @@ __all__ = [
     "MermanDiagramFamilyCapability",
     "MermanEngine",
     "MermanError",
+    "MermanLintRuleCatalogEntry",
     "MermanReusableEngine",
     "MermanTextDirection",
     "MermanTextMeasureRequest",
@@ -304,11 +310,18 @@ assert any(
     item.diagram_type == "flowchart"
     for item in engine.diagram_family_capabilities()
 )
+lint_rules = engine.lint_rule_catalog()
 assert any(
     rule.id == "merman.authoring.flowchart.explicit_direction"
     and rule.origin == "merman_authoring"
     and "docs/adr/0072-lint-rule-governance.md" in rule.evidence
-    for rule in engine.lint_rule_catalog()
+    for rule in lint_rules
+)
+assert hasattr(merman, "MermanLintRuleCatalogEntry")
+assert lint_rules
+assert all(
+    isinstance(rule, merman.MermanLintRuleCatalogEntry)
+    for rule in lint_rules
 )
 assert all(rule.configurable for rule in engine.configurable_lint_rule_catalog())
 

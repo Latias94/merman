@@ -9,7 +9,9 @@ native hosts.
 Generated bindings use the built-in headless measurer by default. GUI and WebView hosts that need
 their platform font stack can use `MermanReusableEngine` with a `MermanTextMeasurer` callback.
 Call `MermanReusableEngine::set_text_measurer` to install a host measurer later, and
-`MermanReusableEngine::clear_text_measurer` to restore the built-in measurer.
+`MermanReusableEngine::clear_text_measurer` to restore the built-in measurer. Return `None` from
+the callback for requests the host deliberately leaves to fallback metrics; return `Err` only for
+host failures that should make reusable render/layout calls fail with `MermanError`.
 `ascii_capabilities()` exposes ASCII support grades and summary fallback metadata.
 `diagram_family_capabilities()` exposes the same parser/render discovery information as the C ABI
 metadata surface.
