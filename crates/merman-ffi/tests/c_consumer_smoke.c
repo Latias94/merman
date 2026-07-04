@@ -341,7 +341,16 @@ int merman_c_consumer_smoke(MermanApi api) {
     rc = expect_ok_with(
         api.validate_json(source, sizeof(source) - 1, NULL, 0),
         api.buffer_free,
-        api.render_enabled ? "\"valid\":true" : "MERMAN_UNSUPPORTED_FORMAT"
+        "\"valid\":true"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.validate_json(NULL, 0, NULL, 0),
+        api.buffer_free,
+        "MERMAN_NO_DIAGRAM"
     );
     if (rc != 0) {
         return rc;
@@ -550,7 +559,17 @@ int merman_c_consumer_smoke(MermanApi api) {
     rc = expect_ok_with(
         api.engine_validate_json(engine.engine, source, sizeof(source) - 1),
         api.buffer_free,
-        api.render_enabled ? "\"valid\":true" : "MERMAN_UNSUPPORTED_FORMAT"
+        "\"valid\":true"
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.engine_validate_json(engine.engine, NULL, 0),
+        api.buffer_free,
+        "MERMAN_NO_DIAGRAM"
     );
     if (rc != 0) {
         api.engine_free(engine.engine);
