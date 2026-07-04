@@ -38,13 +38,13 @@ impl OutlineItem {
     }
 
     fn hover_markdown(&self, fence: &FenceSnapshot) -> EditorMarkupContent {
-        let mut value = format!("### {}\n\n", self.name);
+        let mut value = format!("### {}\n\n", markdown_plain_text(&self.name));
         if let Some(detail) = &self.detail {
-            value.push_str(detail);
+            value.push_str(&markdown_plain_text(detail));
             value.push_str("\n\n");
         }
         if let Some(kind) = fence.diagram_type.as_deref() {
-            value.push_str(&format!("Diagram: `{kind}`\n"));
+            value.push_str(&format!("Diagram: {}\n", markdown_plain_text(kind)));
         }
         value.push_str(&format!("Scope: fence {}\n", fence.index + 1));
 
@@ -64,6 +64,49 @@ impl OutlineItem {
 
         Some(self)
     }
+}
+
+fn markdown_plain_text(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    let mut pending_space = false;
+    for char in value.chars() {
+        if matches!(char, '\r' | '\n') {
+            pending_space = true;
+            continue;
+        }
+        if pending_space && !escaped.is_empty() && !escaped.ends_with(' ') {
+            escaped.push(' ');
+        }
+        pending_space = false;
+        if is_markdown_control(char) {
+            escaped.push('\\');
+        }
+        escaped.push(char);
+    }
+    escaped
+}
+
+fn is_markdown_control(char: char) -> bool {
+    matches!(
+        char,
+        '\\' | '`'
+            | '*'
+            | '_'
+            | '{'
+            | '}'
+            | '['
+            | ']'
+            | '('
+            | ')'
+            | '#'
+            | '+'
+            | '-'
+            | '.'
+            | '!'
+            | '~'
+            | '|'
+            | '>'
+    )
 }
 
 pub fn document_symbols(snapshot: &DocumentSnapshot) -> Vec<EditorDocumentSymbol> {

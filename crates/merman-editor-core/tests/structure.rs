@@ -64,6 +64,61 @@ fn hover_reports_payload_semantic_items() {
 }
 
 #[test]
+fn hover_escapes_markdown_control_text_from_semantic_facts() {
+    let text = "[link](https://example.invalid)\n".to_string();
+    let mut facts = EditorSemanticFacts::new();
+    facts.push_symbol(EditorSemanticSymbol::new(
+        "[link](https://example.invalid)",
+        Some("![img](x) `detail`\nnext".to_string()),
+        EditorSemanticKind::Module,
+        SourceSpan::new(0, 31),
+        SourceSpan::new(0, 31),
+    ));
+
+    let text_index = FenceTextIndex::from_core_facts(facts);
+    let snapshot = DocumentSnapshot {
+        uri: DocumentUri::from("file:///tmp/example.mmd"),
+        version: 1,
+        kind: DocumentKind::Diagram,
+        source: merman_analysis::SourceDescriptor::diagram().with_path("file:///tmp/example.mmd"),
+        source_map: SourceMap::new(text.clone()),
+        fences: vec![FenceSnapshot {
+            source_id: "document".to_string(),
+            index: 0,
+            source: merman_analysis::SourceDescriptor::diagram()
+                .with_path("file:///tmp/example.mmd"),
+            start: 0,
+            body_start: 0,
+            body_end: text.len(),
+            end: text.len(),
+            text: text.clone(),
+            fence_delimiter: None,
+            diagram_type: Some("flowchart-v2".to_string()),
+            text_index,
+        }],
+        text,
+    };
+
+    let hover = hover(&snapshot, Position::new(0, 1)).unwrap();
+
+    assert!(
+        hover
+            .contents
+            .value
+            .contains("\\[link\\]\\(https://example\\.invalid\\)")
+    );
+    assert!(hover.contents.value.contains("\\!\\[img\\]\\(x\\)"));
+    assert!(hover.contents.value.contains("\\`detail\\` next"));
+    assert!(
+        !hover
+            .contents
+            .value
+            .contains("[link](https://example.invalid)")
+    );
+    assert!(!hover.contents.value.contains("![img](x)"));
+}
+
+#[test]
 fn payload_semantic_items_are_not_navigation_targets() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

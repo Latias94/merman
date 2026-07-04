@@ -217,7 +217,8 @@ function assertSafeUrl(value: string, source: "attribute" | "css"): void {
 
 function assertSafeCss(css: string): void {
   const withoutComments = stripCssComments(css);
-  const lower = withoutComments.toLowerCase();
+  const normalized = decodeCssEscapes(decodeXmlEntities(withoutComments));
+  const lower = normalized.toLowerCase();
   if (lower.includes("@import")) {
     throw new Error("Preview renderer returned SVG with external CSS resource references.");
   }
@@ -238,13 +239,13 @@ function assertSafeCss(css: string): void {
     if (valueEnd < 0) {
       throw new Error("Preview renderer returned malformed SVG CSS.");
     }
-    const rawValue = withoutComments.slice(valueStart, valueEnd).trim();
+    const rawValue = normalized.slice(valueStart, valueEnd).trim();
     const unquoted =
       (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
       (rawValue.startsWith("'") && rawValue.endsWith("'"))
         ? rawValue.slice(1, -1)
         : rawValue;
-    assertSafeUrl(decodeCssEscapes(decodeXmlEntities(unquoted)), "css");
+    assertSafeUrl(unquoted, "css");
     cursor = valueEnd + 1;
   }
 }
