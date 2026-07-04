@@ -216,6 +216,12 @@ impl DocumentStore {
             && self.is_document_epoch_current(&context.snapshot.uri, context.document_epoch)
     }
 
+    pub fn is_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
+        contexts
+            .iter()
+            .all(|context| self.is_snapshot_context_current(context))
+    }
+
     fn is_document_epoch_current(&self, uri: &Url, document_epoch: DocumentEpoch) -> bool {
         self.documents
             .get(uri)
@@ -246,34 +252,44 @@ impl DocumentStore {
             .collect()
     }
 
-    pub fn snapshot_build_requests(
-        &self,
-    ) -> (Vec<Arc<DocumentSnapshot>>, Vec<SnapshotBuildRequest>) {
-        let mut snapshots = Vec::new();
+    pub fn snapshot_build_requests(&self) -> (Vec<SnapshotContext>, Vec<SnapshotBuildRequest>) {
+        let mut contexts = Vec::new();
         let mut requests = Vec::new();
 
-        for uri in self.documents.keys() {
+        for (uri, record) in &self.documents {
             if let Some(snapshot) = self.snapshots.get(uri) {
-                snapshots.push(Arc::clone(snapshot));
+                contexts.push(SnapshotContext::new(
+                    Arc::clone(snapshot),
+                    self.snapshot_generation,
+                    record.epoch,
+                ));
             } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
         }
 
-        (snapshots, requests)
+        (contexts, requests)
     }
 
-    pub fn snapshots_for_requests(
+    pub fn snapshot_contexts_for_requests(
         &mut self,
         requests: Vec<(SnapshotBuildRequest, Arc<DocumentSnapshot>)>,
-    ) -> Vec<Arc<DocumentSnapshot>> {
-        requests
-            .into_iter()
-            .filter_map(|(request, snapshot)| {
-                self.insert_built_snapshot(&request, snapshot)
-                    .map(|context| context.snapshot)
-            })
-            .collect()
+    ) -> SnapshotBatchCommit {
+        let mut contexts = Vec::new();
+        let mut stale_open_documents = false;
+
+        for (request, snapshot) in requests {
+            match self.insert_built_snapshot(&request, snapshot) {
+                Some(context) => contexts.push(context),
+                None if self.get(request.uri()).is_some() => stale_open_documents = true,
+                None => {}
+            }
+        }
+
+        SnapshotBatchCommit {
+            contexts,
+            stale_open_documents,
+        }
     }
 
     #[cfg(test)]
@@ -355,6 +371,12 @@ impl SnapshotContext {
             document_epoch,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SnapshotBatchCommit {
+    pub contexts: Vec<SnapshotContext>,
+    pub stale_open_documents: bool,
 }
 
 #[derive(Debug, Clone)]

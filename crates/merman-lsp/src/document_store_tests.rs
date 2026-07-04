@@ -216,8 +216,9 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
         DocumentKind::Diagram,
     );
 
-    let committed = store.snapshots_for_requests(vec![(stale_request, stale_snapshot)]);
-    assert!(committed.is_empty());
+    let committed = store.snapshot_contexts_for_requests(vec![(stale_request, stale_snapshot)]);
+    assert!(committed.contexts.is_empty());
+    assert!(committed.stale_open_documents);
     assert!(!store.has_snapshot(&uri));
 
     let current = store
@@ -249,17 +250,53 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
         DocumentKind::Diagram,
     );
 
-    let (snapshots, mut requests) = store.snapshot_build_requests();
+    let (contexts, mut requests) = store.snapshot_build_requests();
 
-    assert_eq!(snapshots.len(), 1);
-    assert_eq!(snapshots[0].uri, cached_uri);
-    assert!(std::sync::Arc::ptr_eq(&snapshots[0], &cached_snapshot));
+    assert_eq!(contexts.len(), 1);
+    assert_eq!(contexts[0].snapshot.uri, cached_uri);
+    assert!(std::sync::Arc::ptr_eq(
+        &contexts[0].snapshot,
+        &cached_snapshot
+    ));
+    assert!(store.is_snapshot_context_current(&contexts[0]));
     assert_eq!(requests.len(), 1);
     let request = requests.pop().unwrap();
     let built = request.build();
-    let committed = store.snapshots_for_requests(vec![(request, built)]);
-    assert_eq!(committed.len(), 1);
-    assert_eq!(committed[0].uri, missing_uri);
+    let committed = store.snapshot_contexts_for_requests(vec![(request, built)]);
+    assert_eq!(committed.contexts.len(), 1);
+    assert_eq!(committed.contexts[0].snapshot.uri, missing_uri);
+    assert!(!committed.stale_open_documents);
+}
+
+#[test]
+fn cached_snapshot_build_context_stales_after_text_replacement() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/cached.mmd").unwrap();
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let cached_snapshot = store.snapshot(&uri).expect("expected cached snapshot");
+
+    let (contexts, requests) = store.snapshot_build_requests();
+    assert_eq!(contexts.len(), 1);
+    assert!(requests.is_empty());
+    assert!(std::sync::Arc::ptr_eq(
+        &contexts[0].snapshot,
+        &cached_snapshot
+    ));
+
+    store.upsert_text(
+        uri,
+        2,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert!(!store.is_snapshot_contexts_current(&contexts));
 }
 
 #[test]
@@ -619,7 +656,7 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
     let rebuilt = store
         .snapshot(&uri)
         .expect("expected rebuilt snapshot after analyzer replacement");
-    assert_eq!(rebuilt.fences[0].diagram_type, None);
+    assert!(rebuilt.fences.is_empty());
 }
 
 #[test]

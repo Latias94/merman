@@ -333,6 +333,18 @@ impl MermanLanguageServer {
         }
     }
 
+    async fn ensure_workspace_symbol_snapshots_current(
+        &self,
+        contexts: &[SnapshotContext],
+    ) -> Result<()> {
+        let store = self.store.lock().await;
+        if store.is_snapshot_contexts_current(contexts) {
+            Ok(())
+        } else {
+            Err(stale_workspace_symbols_error())
+        }
+    }
+
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
         let mut store = self.store.lock().await;
         store.apply_analyzer_options(options)
@@ -727,7 +739,7 @@ impl LanguageServer for MermanLanguageServer {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
-        let (mut snapshots, requests) = {
+        let (mut contexts, requests) = {
             let store = self.store.lock().await;
             store.snapshot_build_requests()
         };
@@ -738,12 +750,26 @@ impl LanguageServer for MermanLanguageServer {
                 (request, snapshot)
             })
             .collect();
-        snapshots.extend(self.store.lock().await.snapshots_for_requests(built));
+        let commit = self
+            .store
+            .lock()
+            .await
+            .snapshot_contexts_for_requests(built);
+        if commit.stale_open_documents {
+            return Err(stale_workspace_symbols_error());
+        }
+        contexts.extend(commit.contexts);
 
-        Ok(Some(structure_workspace_symbols_for_snapshots(
-            &snapshots,
-            &params.query,
-        )))
+        let snapshots = contexts
+            .iter()
+            .map(|context| Arc::clone(&context.snapshot))
+            .collect::<Vec<_>>();
+        let symbols = structure_workspace_symbols_for_snapshots(&snapshots, &params.query);
+
+        self.ensure_workspace_symbol_snapshots_current(&contexts)
+            .await?;
+
+        Ok(Some(symbols))
     }
 }
 
@@ -756,6 +782,12 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
 fn stale_semantic_tokens_error() -> tower_lsp::jsonrpc::Error {
     let mut error = tower_lsp::jsonrpc::Error::content_modified();
     error.message = "semantic tokens document changed while computing".into();
+    error
+}
+
+fn stale_workspace_symbols_error() -> tower_lsp::jsonrpc::Error {
+    let mut error = tower_lsp::jsonrpc::Error::content_modified();
+    error.message = "workspace symbol documents changed while computing".into();
     error
 }
 
@@ -819,6 +851,27 @@ mod tests {
         VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
     };
     use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
+
+    #[test]
+    fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/workspace-symbols.mmd").unwrap();
+        store.upsert(uri.clone(), 1, "flowchart TD\nA[old] --> B\n".to_string());
+
+        let (contexts, requests) = store.snapshot_build_requests();
+        assert_eq!(contexts.len(), 1);
+        assert!(requests.is_empty());
+        assert!(store.is_snapshot_contexts_current(&contexts));
+
+        store.upsert_text(
+            uri,
+            2,
+            "flowchart TD\nA[new] --> C\n".to_string(),
+            DocumentKind::Diagram,
+        );
+
+        assert!(!store.is_snapshot_contexts_current(&contexts));
+    }
 
     #[test]
     fn analyzer_configuration_change_classifies_diagnostic_only_rule_changes() {
