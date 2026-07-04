@@ -46,7 +46,9 @@ class FakePreviewHost {
   readonly clipboardWrites: string[] = [];
   readonly writtenFiles: Array<{ path: string; data: string }> = [];
   readonly warnings: string[] = [];
+  readonly errors: string[] = [];
   readonly informationMessages: string[] = [];
+  readonly outputErrors: string[] = [];
   readonly revealCalls: Array<{ viewColumn: number; preserveFocus?: boolean }> = [];
   readonly showTextDocumentCalls: Array<{
     documentUri: string;
@@ -117,7 +119,9 @@ class FakePreviewHost {
         },
         createOutputChannel: () => ({
           info: () => {},
-          error: () => {},
+          error: (message: string) => {
+            host.outputErrors.push(message);
+          },
           dispose: () => {},
         }),
         createWebviewPanel: (
@@ -162,7 +166,10 @@ class FakePreviewHost {
           host.informationMessages.push(message);
           return Promise.resolve(undefined);
         },
-        showErrorMessage: () => Promise.resolve(undefined),
+        showErrorMessage: (message: string) => {
+          host.errors.push(message);
+          return Promise.resolve(undefined);
+        },
         showSaveDialog: () => {
           this.saveDialogCounter += 1;
           if (this.saveDialogCounter === 1) {
@@ -630,6 +637,27 @@ describe("preview manager", () => {
       "Exported export-one.svg.",
       "Exported export-2.svg.",
     ]);
+  });
+
+  it("reports failed webview copy messages without rejecting the message dispatch", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({
+      type: "copySvg",
+      svg: "<svg><script>alert(1)</script></svg>",
+    });
+    await flushPreviewWork();
+
+    assert.deepEqual(host.clipboardWrites, []);
+    assert.match(host.outputErrors.at(-1) ?? "", /Preview webview message failed: .*active/);
+    assert.match(host.errors.at(-1) ?? "", /Merman preview action failed: .*active/);
   });
 });
 

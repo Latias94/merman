@@ -20,6 +20,7 @@ import {
   serverBackedCommandAction,
   type LanguageClientLifecycleAction,
 } from "./language-intelligence.js";
+import { startLanguageClientWithCleanup } from "./language-client-start.js";
 import { registerPreview } from "./preview.js";
 
 let client: LanguageClient | undefined;
@@ -135,6 +136,10 @@ async function stopClient(activeClient: LanguageClient): Promise<void> {
   if (client === activeClient) {
     client = undefined;
   }
+  await stopClientInstance(activeClient);
+}
+
+async function stopClientInstance(activeClient: LanguageClient): Promise<void> {
   await activeClient.stop();
 }
 
@@ -182,15 +187,27 @@ async function startClient(
   if (!isCurrentLifecycleGeneration(generation)) {
     return;
   }
-  client = nextClient;
-  wireClientStatus(nextClient);
-  updateStatusBar("Starting", tooltip);
-  await nextClient.start();
-  if (!isCurrentLifecycleGeneration(generation)) {
-    await stopClient(nextClient);
-    return;
-  }
-  await pushConfiguration(nextClient);
+  await startLanguageClientWithCleanup({
+    client: nextClient,
+    generation,
+    startingTooltip: tooltip,
+    failedTooltip: "Merman language server failed to start.",
+    isCurrentGeneration: isCurrentLifecycleGeneration,
+    wireClient: wireClientStatus,
+    updateStatus: updateStatusBar,
+    pushConfiguration,
+    assignClient: (activeClient) => {
+      client = activeClient;
+    },
+    clearClientIfCurrent: (activeClient) => {
+      if (client === activeClient) {
+        client = undefined;
+      }
+    },
+    showStartError: (message) => {
+      void vscode.window.showErrorMessage(message);
+    },
+  });
 }
 
 async function applyLanguageClientAction(

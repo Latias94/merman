@@ -201,7 +201,11 @@ export class PreviewInstance implements vscode.Disposable {
     );
     this.panel = panel;
     panel.webview.onDidReceiveMessage(
-      (message: PreviewFromWebviewMessage) => this.handleWebviewMessage(message),
+      (message: PreviewFromWebviewMessage) => {
+        void this.handleWebviewMessage(message).catch((error: unknown) => {
+          this.handleWebviewMessageError(error);
+        });
+      },
       null,
       this.panelDisposables,
     );
@@ -419,6 +423,12 @@ export class PreviewInstance implements vscode.Disposable {
     }
   }
 
+  private handleWebviewMessageError(error: unknown): void {
+    const message = errorMessage(error);
+    this.outputChannel.error(`Preview webview message failed: ${message}`);
+    void vscode.window.showErrorMessage(`Merman preview action failed: ${message}`);
+  }
+
   private selectSource(sourceId: string): void {
     if (
       !this.session.selectSource(
@@ -553,4 +563,8 @@ async function revealDiagnosticTarget(target: PreviewDiagnosticTarget): Promise<
     preserveFocus: false,
     selection: range,
   });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
