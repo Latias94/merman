@@ -60,6 +60,16 @@ assert any(
 )
 assert "default" in engine.supported_themes()
 assert any(item.diagram_type == "flowchart" for item in engine.diagram_family_capabilities())
+assert hasattr(merman, "MermanLintRuleCatalogEntry")
+lint_rules = engine.lint_rule_catalog()
+assert lint_rules
+assert all(isinstance(rule, merman.MermanLintRuleCatalogEntry) for rule in lint_rules)
+assert any(
+    rule.id == "merman.authoring.flowchart.explicit_direction"
+    and rule.origin == "merman_authoring"
+    for rule in lint_rules
+)
+assert all(rule.configurable for rule in engine.configurable_lint_rule_catalog())
 
 measurer = Measurer()
 reusable = engine.reusable_engine_with_text_measurer(None, measurer)
@@ -79,6 +89,22 @@ assert calls_after_set > 0
 reusable.clear_text_measurer()
 assert reusable.render_svg(source).startswith("<svg")
 assert setter_measurer.calls == calls_after_set
+
+
+class FailingMeasurer(merman.MermanTextMeasurer):
+    def measure(self, request):
+        raise RuntimeError("host measurer failed")
+
+
+failing = engine.reusable_engine_with_text_measurer(None, FailingMeasurer())
+try:
+    failing.render_svg(source)
+except merman.MermanError.Binding as error:
+    assert "host measurer failed" in error.message
+else:
+    raise AssertionError("expected host text measurer callback failure")
+failing.set_text_measurer(Measurer())
+assert failing.render_svg(source).startswith("<svg")
 print("python wheel smoke passed")
 """
 
