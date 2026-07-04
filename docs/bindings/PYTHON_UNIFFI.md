@@ -113,8 +113,9 @@ Python GUI or WebView hosts that need label geometry to match their own font sta
 `MermanReusableEngine.clear_text_measurer` to restore the engine's original built-in measurer.
 Return
 `None` for requests that the host cannot answer synchronously; merman will fall back to vendored
-metrics for that request. Raise or return `MermanError` only for host measurement failures that
-should fail the reusable `render_svg` or `layout_json` call. Follow
+metrics for that request. Raise `MermanError` or another callback exception only for host
+measurement failures that should fail the reusable `render_svg` or `layout_json` call; do not
+return exception objects from the callback. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
 
