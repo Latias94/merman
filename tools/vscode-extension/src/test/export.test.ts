@@ -3,6 +3,8 @@ import Module from "node:module";
 import { describe, it } from "node:test";
 import type * as vscode from "vscode";
 
+import { listPreviewInputsFromText, previewSourceIdentity } from "../preview-source.js";
+
 type CommandHandler = (target?: unknown) => Promise<void> | void;
 
 interface FakeDisposable {
@@ -163,6 +165,16 @@ class FakeExportHost {
     this.activeEditor = document ? textEditor(document) : undefined;
   }
 
+  replaceMarkdownDocumentText(text: string): void {
+    const replacement = textDocument(
+      this.markdownDocument.uri.toString(),
+      this.markdownDocument.fileName,
+      text,
+      "markdown",
+    );
+    this.documents.set(replacement.uri.toString(), replacement);
+  }
+
   private disposable(onDispose: () => void = () => {}): FakeDisposable {
     return {
       dispose: onDispose,
@@ -251,6 +263,51 @@ describe("export commands", () => {
     assert.deepEqual(host.writtenFiles, []);
     assert.equal(host.saveDialogs[0]?.saveLabel, "Export PNG");
     assert.deepEqual(host.saveDialogs[0]?.filters, { "PNG image": ["png"] });
+  });
+
+  it("exports command target identities without retargeting after Markdown ordinal drift", async () => {
+    const host = new FakeExportHost();
+    host.setActiveDocument(host.plainDocument);
+    host.saveDialogResult = uri("file:///workspace/out.svg", "C:\\workspace\\out.svg");
+    const selected = listPreviewInputsFromText({
+      text: host.markdownDocument.getText(),
+      languageId: host.markdownDocument.languageId,
+      fileName: host.markdownDocument.fileName,
+    })[1];
+    assert.ok(selected);
+    host.replaceMarkdownDocumentText(
+      [
+        "```mermaid",
+        "stateDiagram-v2",
+        "[*] --> Inserted",
+        "```",
+        "",
+        host.markdownDocument.getText(),
+      ].join("\n"),
+    );
+    const { registerExport } = loadExportModule(host);
+
+    registerExport({
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.exportSvg")?.({
+      uri: host.markdownDocument.uri,
+      sourceId: selected.sourceId,
+      sourceIdentity: previewSourceIdentity(selected),
+    });
+
+    assert.deepEqual(host.renderCalls.map(({ source, format, signalLabel }) => ({
+      source,
+      format,
+      signalLabel,
+    })), [
+      {
+        source: "sequenceDiagram\nA->>B: hi",
+        format: "svg",
+        signalLabel: "export-svg",
+      },
+    ]);
   });
 
   it("honors the generic export picker open-after-export preset", async () => {

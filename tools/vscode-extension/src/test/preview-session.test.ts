@@ -161,6 +161,48 @@ describe("preview session", () => {
     assert.equal(snapshot?.locked, true);
   });
 
+  it("keeps a locked Markdown fence on the original body after a new fence is inserted before it", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7);
+    const edited = textEditor(uri, "notes.md", markdownWithInsertedFence(), "markdown", 1);
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-3");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi");
+    assert.equal(snapshot?.locked, true);
+  });
+
+  it("keeps the locked snapshot when the selected fence is deleted but its old ordinal still exists", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7);
+    const edited = textEditor(uri, "notes.md", markdownWithReplacementSecondFence(), "markdown", 7);
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi");
+    assert.equal(snapshot?.locked, true);
+  });
+
   it("locks the current Markdown fence even when it was selected by cursor position", () => {
     const session = new PreviewSession();
     const uri = "file:///workspace/notes.md";
@@ -236,6 +278,31 @@ function markdownWithTwoFences(): string {
     "```mermaid",
     "sequenceDiagram",
     "A->>B: hi",
+    "```",
+  ].join("\n");
+}
+
+function markdownWithInsertedFence(): string {
+  return [
+    "```mermaid",
+    "stateDiagram-v2",
+    "[*] --> Inserted",
+    "```",
+    "",
+    markdownWithTwoFences(),
+  ].join("\n");
+}
+
+function markdownWithReplacementSecondFence(): string {
+  return [
+    "```mermaid",
+    "flowchart TD",
+    "A --> B",
+    "```",
+    "",
+    "```mermaid",
+    "pie title Replacement",
+    "  \"A\" : 1",
     "```",
   ].join("\n");
 }

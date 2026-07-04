@@ -1,6 +1,10 @@
 import type * as vscode from "vscode";
 
-import type { PreviewInput } from "./preview-source.js";
+import {
+  previewSourceIdentity,
+  type PreviewInput,
+  type PreviewSourceIdentity,
+} from "./preview-source.js";
 
 export const SOURCE_ACTION_COMMANDS = {
   preview: "merman.openPreview",
@@ -19,6 +23,7 @@ export type MermaidSourceActionCommand =
 export interface MermaidSourceCommandTarget {
   uri: vscode.Uri;
   sourceId?: string;
+  sourceIdentity?: PreviewSourceIdentity;
 }
 
 export type MermaidSourceCommandArgument =
@@ -28,6 +33,7 @@ export type MermaidSourceCommandArgument =
 export interface MermaidSourceCodeLensSpec {
   line: number;
   sourceId: string;
+  sourceIdentity?: PreviewSourceIdentity;
   title: string;
   command: MermaidSourceActionCommand;
 }
@@ -63,7 +69,7 @@ export const SOURCE_EXPORT_COPY_ACTIONS: readonly SourceActionDescriptor[] = [
 ];
 
 export function buildMermaidSourceCodeLensSpecs(
-  inputs: readonly Pick<PreviewInput, "sourceId" | "sourceRange">[],
+  inputs: readonly SourceActionInput[],
   options: MermaidSourceCodeLensOptions = {},
 ): MermaidSourceCodeLensSpec[] {
   if (options.enabled === false) {
@@ -74,6 +80,7 @@ export function buildMermaidSourceCodeLensSpecs(
     SOURCE_ACTIONS.map((action) => ({
       line: input.sourceRange.startLine,
       sourceId: input.sourceId,
+      sourceIdentity: sourceActionIdentity(input),
       title: action.title,
       command: action.command,
     })),
@@ -95,9 +102,15 @@ export function shouldRefreshSourceActionCodeLens(
 
 export function mermaidSourceCommandTarget(
   uri: vscode.Uri,
-  sourceId?: string,
+  source?: string | PreviewSourceIdentity,
 ): MermaidSourceCommandTarget {
-  return sourceId ? { uri, sourceId } : { uri };
+  if (!source) {
+    return { uri };
+  }
+  if (typeof source === "string") {
+    return { uri, sourceId: source };
+  }
+  return { uri, sourceId: source.sourceId, sourceIdentity: source };
 }
 
 export function isMermaidSourceCommandTarget(
@@ -107,7 +120,11 @@ export function isMermaidSourceCommandTarget(
     return false;
   }
   const sourceId = (value as { sourceId?: unknown }).sourceId;
-  return sourceId === undefined || typeof sourceId === "string";
+  const sourceIdentity = (value as { sourceIdentity?: unknown }).sourceIdentity;
+  return (
+    (sourceId === undefined || typeof sourceId === "string") &&
+    (sourceIdentity === undefined || isPreviewSourceIdentity(sourceIdentity))
+  );
 }
 
 export function mermaidSourceCommandUri(
@@ -123,4 +140,36 @@ export function mermaidSourceCommandSourceId(
   argument: MermaidSourceCommandArgument | undefined,
 ): string | undefined {
   return isMermaidSourceCommandTarget(argument) ? argument.sourceId : undefined;
+}
+
+export function mermaidSourceCommandIdentity(
+  argument: MermaidSourceCommandArgument | undefined,
+): PreviewSourceIdentity | undefined {
+  return isMermaidSourceCommandTarget(argument) ? argument.sourceIdentity : undefined;
+}
+
+type SourceActionInput =
+  Pick<PreviewInput, "sourceId" | "sourceRange"> &
+  Partial<Pick<PreviewInput, "kind" | "source">>;
+
+function sourceActionIdentity(input: SourceActionInput): PreviewSourceIdentity | undefined {
+  if (!input.kind || typeof input.source !== "string") {
+    return undefined;
+  }
+  return previewSourceIdentity(input as PreviewInput);
+}
+
+function isPreviewSourceIdentity(value: unknown): value is PreviewSourceIdentity {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<PreviewSourceIdentity>;
+  return (
+    typeof candidate.sourceId === "string" &&
+    typeof candidate.sourceHash === "string" &&
+    (candidate.kind === "mermaid-file" || candidate.kind === "markdown-fence") &&
+    !!candidate.sourceRange &&
+    typeof candidate.sourceRange.startLine === "number" &&
+    typeof candidate.sourceRange.endLine === "number"
+  );
 }

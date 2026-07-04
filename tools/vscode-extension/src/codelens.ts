@@ -5,6 +5,7 @@ import { pngClipboardCommand } from "./export-options.js";
 import { listPreviewInputsFromDocument } from "./preview-source.js";
 import {
   buildMermaidSourceCodeLensSpecs,
+  mermaidSourceCommandIdentity,
   mermaidSourceCommandSourceId,
   mermaidSourceCommandUri,
   mermaidSourceCommandTarget,
@@ -58,7 +59,7 @@ class MermaidSourceCodeLensProvider implements vscode.CodeLensProvider, vscode.D
       return new vscode.CodeLens(new vscode.Range(line, 0, line, 0), {
         title: spec.title,
         command: spec.command,
-        arguments: [mermaidSourceCommandTarget(document.uri, spec.sourceId)],
+        arguments: [mermaidSourceCommandTarget(document.uri, spec.sourceIdentity ?? spec.sourceId)],
       });
     });
   }
@@ -94,6 +95,9 @@ async function showSourceActionPicker(
   }
   await vscode.commands.executeCommand(
     picked.command,
-    mermaidSourceCommandTarget(uri, mermaidSourceCommandSourceId(target)),
+    mermaidSourceCommandTarget(
+      uri,
+      mermaidSourceCommandIdentity(target) ?? mermaidSourceCommandSourceId(target),
+    ),
   );
 }

@@ -7,12 +7,14 @@ import {
   buildMermaidSourceCodeLensSpecs,
   isMermaidSourceCommandTarget,
   mermaidSourceExportCopyActions,
+  mermaidSourceCommandIdentity,
   mermaidSourceCommandSourceId,
   mermaidSourceCommandTarget,
   mermaidSourceCommandUri,
   shouldRefreshSourceActionCodeLens,
   type MermaidSourceCommandArgument,
 } from "../source-actions.js";
+import { previewSourceIdentity, type PreviewInput } from "../preview-source.js";
 
 describe("Mermaid source actions", () => {
   it("builds one low-noise action group for a Mermaid file", () => {
@@ -88,6 +90,19 @@ describe("Mermaid source actions", () => {
     );
   });
 
+  it("carries source identity through CodeLens specs and command targets", () => {
+    const input = previewInput("fence-2", "sequenceDiagram\nA->>B: hi", 8, 11);
+    const specs = buildMermaidSourceCodeLensSpecs([input]);
+    const target = mermaidSourceCommandTarget(
+      { toString: () => "file:///workspace/notes.md" } as never,
+      specs[0]?.sourceIdentity,
+    );
+
+    assert.deepEqual(specs[0]?.sourceIdentity, previewSourceIdentity(input));
+    assert.deepEqual(mermaidSourceCommandIdentity(target), previewSourceIdentity(input));
+    assert.equal(mermaidSourceCommandSourceId(target), "fence-2");
+  });
+
   it("carries the source id through command targets without depending on cursor state", () => {
     const uri = { toString: () => "file:///workspace/notes.md" };
     const target = mermaidSourceCommandTarget(uri as never, "fence-2");
@@ -105,3 +120,21 @@ describe("Mermaid source actions", () => {
     );
   });
 });
+
+function previewInput(
+  sourceId: string,
+  source: string,
+  startLine: number,
+  endLine: number,
+): PreviewInput {
+  return {
+    sourceId,
+    source,
+    title: "notes.md",
+    subtitle: "Mermaid fence 2",
+    exportBaseName: "notes-mermaid-2",
+    kind: "markdown-fence",
+    sourceRange: { startLine, endLine },
+    diagnosticRange: { startLine: startLine + 1, endLine: endLine - 1 },
+  };
+}

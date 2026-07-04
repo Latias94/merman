@@ -27,11 +27,16 @@ import {
 } from "./preview-policy.js";
 import { PreviewRenderQueue } from "./preview-render.js";
 import { PreviewSession } from "./preview-session.js";
-import { extractPreviewInput } from "./preview-source.js";
+import {
+  extractPreviewInput,
+  extractPreviewInputFromDocument,
+  previewSourceIdentity,
+} from "./preview-source.js";
 import { assertSafePreviewSvg } from "./preview-svg-safety.js";
 import { PreviewWebviewClient } from "./preview-webview-client.js";
 import { renderMermanSource } from "./renderer.js";
 import {
+  mermaidSourceCommandIdentity,
   mermaidSourceCommandSourceId,
   mermaidSourceCommandUri,
   type MermaidSourceCommandArgument,
@@ -164,7 +169,18 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(snapshot.documentUri));
-    const sourceRange = snapshot.input.sourceRange;
+    const currentInput = extractPreviewInputFromDocument(
+      document,
+      undefined,
+      previewSourceIdentity(snapshot.input),
+    );
+    if (!currentInput) {
+      void vscode.window.showWarningMessage(
+        "The preview source is no longer available in the document.",
+      );
+      return false;
+    }
+    const sourceRange = currentInput.sourceRange;
     const endLine = Math.min(sourceRange.endLine, Math.max(document.lineCount - 1, 0));
     const startLine = Math.min(sourceRange.startLine, endLine);
     const endCharacter = document.lineAt(endLine).text.length;
@@ -240,7 +256,7 @@ export class PreviewInstance implements vscode.Disposable {
 
   private async openResource(target?: MermaidSourceCommandArgument): Promise<void> {
     const resource = mermaidSourceCommandUri(target);
-    const sourceId = mermaidSourceCommandSourceId(target);
+    const source = mermaidSourceCommandIdentity(target) ?? mermaidSourceCommandSourceId(target);
     if (!resource) {
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor && extractPreviewInput(activeEditor)) {
@@ -258,8 +274,8 @@ export class PreviewInstance implements vscode.Disposable {
         preserveFocus: true,
       });
     }
-    if (sourceId && editor) {
-      this.session.selectSource(editor, vscode.window.visibleTextEditors, sourceId);
+    if (source && editor) {
+      this.session.selectSource(editor, vscode.window.visibleTextEditors, source);
     } else {
       this.session.clearSelectedSource();
     }

@@ -12,6 +12,9 @@ import {
   extractPreviewInput,
   listPreviewInputsFromDocument,
   type PreviewInput,
+  previewSourceIdentity,
+  resolvePreviewInputIdentity,
+  type PreviewSourceIdentity,
 } from "./preview-source.js";
 
 export type PreviewDiagnosticsProvider = (
@@ -164,19 +167,25 @@ export class PreviewSession {
   selectSource(
     activeEditor: vscode.TextEditor | undefined,
     visibleEditors: readonly vscode.TextEditor[],
-    sourceId: string,
+    source: string | PreviewSourceIdentity,
   ): boolean {
     const editor = this.resolvePreviewEditor(activeEditor, visibleEditors);
-    if (!editor || sourceId.length === 0) {
+    if (!editor || (typeof source === "string" && source.length === 0)) {
       return false;
     }
-    const input = extractPreviewInput(editor, sourceId);
+    const input =
+      typeof source === "string"
+        ? extractPreviewInput(editor, source)
+        : resolvePreviewInputIdentity(
+            listPreviewInputsFromDocument(editor.document, editor.selection.active.line),
+            source,
+          );
     if (!input) {
       return false;
     }
     this.selectedSource = {
       uri: editor.document.uri.toString(),
-      sourceId: input.sourceId,
+      identity: previewSourceIdentity(input),
     };
     this.lockedSourceSelection = undefined;
     return true;
@@ -209,8 +218,12 @@ export class PreviewSession {
   private resolvePreviewInput(editor: vscode.TextEditor): PreviewInput | null {
     const editorUri = editor.document.uri.toString();
     if (this.selectedSource?.uri === editorUri) {
-      const selected = extractPreviewInput(editor, this.selectedSource.sourceId);
+      const selected = resolvePreviewInputIdentity(
+        listPreviewInputsFromDocument(editor.document, editor.selection.active.line),
+        this.selectedSource.identity,
+      );
       if (selected) {
+        this.rememberResolvedSelectedInput(selected);
         return selected;
       }
       if (this.locked) {
@@ -226,7 +239,7 @@ export class PreviewSession {
       !!input &&
       !!this.selectedSource &&
       this.lastPreviewEditorUri === this.selectedSource.uri &&
-      input.sourceId === this.selectedSource.sourceId
+      inputMatchesSelection(input, this.selectedSource)
     );
   }
 
@@ -271,22 +284,57 @@ export class PreviewSession {
 
     const selection = {
       uri: this.currentSnapshot.documentUri,
-      sourceId: this.currentSnapshot.input.sourceId,
+      identity: previewSourceIdentity(this.currentSnapshot.input),
     };
     this.selectedSource = selection;
     this.lockedSourceSelection = selection;
     this.lastPreviewEditorUri = selection.uri;
   }
+
+  private rememberResolvedSelectedInput(input: PreviewInput): void {
+    if (!this.selectedSource) {
+      return;
+    }
+    const previousSelection = this.selectedSource;
+    const nextSelection = {
+      uri: previousSelection.uri,
+      identity: previewSourceIdentity(input),
+    };
+    this.selectedSource = nextSelection;
+    if (sameSelection(this.lockedSourceSelection, previousSelection)) {
+      this.lockedSourceSelection = nextSelection;
+    }
+  }
 }
 
 interface PreviewSourceSelection {
   uri: string;
-  sourceId: string;
+  identity: PreviewSourceIdentity;
 }
 
 function sameSelection(
   first: PreviewSourceSelection | undefined,
   second: PreviewSourceSelection | undefined,
 ): boolean {
-  return !!first && !!second && first.uri === second.uri && first.sourceId === second.sourceId;
+  return (
+    !!first &&
+    !!second &&
+    first.uri === second.uri &&
+    first.identity.sourceId === second.identity.sourceId &&
+    first.identity.sourceHash === second.identity.sourceHash &&
+    first.identity.kind === second.identity.kind &&
+    first.identity.sourceRange.startLine === second.identity.sourceRange.startLine &&
+    first.identity.sourceRange.endLine === second.identity.sourceRange.endLine
+  );
+}
+
+function inputMatchesSelection(input: PreviewInput, selection: PreviewSourceSelection): boolean {
+  const identity = previewSourceIdentity(input);
+  return (
+    identity.kind === selection.identity.kind &&
+    (identity.sourceHash === selection.identity.sourceHash ||
+      (identity.sourceId === selection.identity.sourceId &&
+        identity.sourceRange.startLine === selection.identity.sourceRange.startLine &&
+        identity.sourceRange.endLine === selection.identity.sourceRange.endLine))
+  );
 }

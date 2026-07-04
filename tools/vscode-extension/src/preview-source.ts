@@ -18,6 +18,16 @@ export interface PreviewInput {
   };
 }
 
+export interface PreviewSourceIdentity {
+  sourceId: string;
+  sourceHash: string;
+  kind: PreviewInput["kind"];
+  sourceRange: {
+    startLine: number;
+    endLine: number;
+  };
+}
+
 interface MermaidFence {
   sourceId: string;
   source: string;
@@ -47,18 +57,22 @@ export interface PreviewInputTextSource {
   fileName: string;
   activeLine?: number;
   sourceId?: string;
+  sourceIdentity?: PreviewSourceIdentity;
   lineCount?: number;
   lineAt?: (lineIndex: number) => string;
 }
 
-export function extractPreviewInput(editor: vscode.TextEditor, sourceId?: string): PreviewInput | null {
+export function extractPreviewInput(
+  editor: vscode.TextEditor,
+  sourceId?: string | PreviewSourceIdentity,
+): PreviewInput | null {
   return extractPreviewInputFromDocument(editor.document, editor.selection.active.line, sourceId);
 }
 
 export function extractPreviewInputFromDocument(
   document: vscode.TextDocument,
   activeLine?: number,
-  sourceId?: string,
+  sourceId?: string | PreviewSourceIdentity,
 ): PreviewInput | null {
   const fileName = document.uri.fsPath || document.fileName;
   return extractPreviewInputFromText({
@@ -68,7 +82,7 @@ export function extractPreviewInputFromDocument(
     lineCount: document.lineCount,
     lineAt: (lineIndex) => document.lineAt(lineIndex).text,
     activeLine,
-    sourceId,
+    ...(typeof sourceId === "string" ? { sourceId } : { sourceIdentity: sourceId }),
   });
 }
 
@@ -93,6 +107,9 @@ export function extractPreviewInputFromText(sourceDocument: PreviewInputTextSour
     return null;
   }
 
+  if (sourceDocument.sourceIdentity) {
+    return resolvePreviewInputIdentity(inputs, sourceDocument.sourceIdentity);
+  }
   if (sourceDocument.sourceId) {
     return inputs.find((input) => input.sourceId === sourceDocument.sourceId) ?? null;
   }
@@ -170,6 +187,51 @@ export function listPreviewSourceSummaries(
   }));
 }
 
+export function previewSourceIdentity(input: PreviewInput): PreviewSourceIdentity {
+  return {
+    sourceId: input.sourceId,
+    sourceHash: hashPreviewSource(input.source),
+    kind: input.kind,
+    sourceRange: {
+      startLine: input.sourceRange.startLine,
+      endLine: input.sourceRange.endLine,
+    },
+  };
+}
+
+export function resolvePreviewInputIdentity(
+  inputs: readonly PreviewInput[],
+  identity: PreviewSourceIdentity,
+): PreviewInput | null {
+  const sameKind = inputs.filter((input) => input.kind === identity.kind);
+  if (identity.kind === "mermaid-file") {
+    return sameKind.find((input) => input.sourceId === identity.sourceId) ?? null;
+  }
+
+  const sameHash = sameKind.filter(
+    (input) => hashPreviewSource(input.source) === identity.sourceHash,
+  );
+  if (sameHash.length === 0) {
+    return null;
+  }
+
+  return (
+    sameHash.find((input) => sameSourceRange(input.sourceRange, identity.sourceRange)) ??
+    sameHash.find((input) => input.sourceId === identity.sourceId) ??
+    sameHash[0] ??
+    null
+  );
+}
+
+export function hashPreviewSource(source: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 function selectInputByActiveLine(
   inputs: PreviewInput[],
   activeLine: number | undefined,
@@ -184,6 +246,13 @@ function selectInputByActiveLine(
         input.sourceRange.startLine <= activeLine && input.sourceRange.endLine >= activeLine,
     ) ?? null
   );
+}
+
+function sameSourceRange(
+  first: { startLine: number; endLine: number },
+  second: { startLine: number; endLine: number },
+): boolean {
+  return first.startLine === second.startLine && first.endLine === second.endLine;
 }
 
 function exportBaseName(fileName: string, fallback: string): string {

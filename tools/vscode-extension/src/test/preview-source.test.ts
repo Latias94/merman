@@ -2,7 +2,12 @@ import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type * as vscode from "vscode";
 
-import { extractPreviewInputFromText, listPreviewInputsFromDocument, listPreviewInputsFromText } from "../preview-source.js";
+import {
+  extractPreviewInputFromText,
+  listPreviewInputsFromDocument,
+  listPreviewInputsFromText,
+  previewSourceIdentity,
+} from "../preview-source.js";
 
 describe("preview source extraction", () => {
   it("extracts Mermaid files as whole-document sources", () => {
@@ -88,6 +93,33 @@ describe("preview source extraction", () => {
 
     assert.equal(input?.source, "pie title Work\n  \"A\" : 1");
     assert.equal(input?.sourceId, "fence-2");
+  });
+
+  it("resolves a Markdown fence identity after another fence is inserted before it", () => {
+    const original = listPreviewInputsFromText({
+      text: markdownWithTwoFences(),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+    });
+    const selected = original[1];
+    assert.ok(selected);
+
+    const input = extractPreviewInputFromText({
+      text: [
+        "```mermaid",
+        "stateDiagram-v2",
+        "  [*] --> Inserted",
+        "```",
+        "",
+        markdownWithTwoFences(),
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+      sourceIdentity: previewSourceIdentity(selected),
+    });
+
+    assert.equal(input?.sourceId, "fence-3");
+    assert.equal(input?.source, "sequenceDiagram\nA->>B: hi");
   });
 
   it("lists every Mermaid fence with stable ids", () => {
@@ -252,3 +284,17 @@ describe("preview source extraction", () => {
     assert.equal(input?.sourceId, "fence-2");
   });
 });
+
+function markdownWithTwoFences(): string {
+  return [
+    "```mermaid",
+    "flowchart TD",
+    "A --> B",
+    "```",
+    "",
+    "```mermaid",
+    "sequenceDiagram",
+    "A->>B: hi",
+    "```",
+  ].join("\n");
+}

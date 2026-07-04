@@ -19,6 +19,7 @@ import {
   type PreviewInput,
 } from "./preview-source.js";
 import {
+  mermaidSourceCommandIdentity,
   mermaidSourceCommandSourceId,
   mermaidSourceCommandUri,
   type MermaidSourceCommandArgument,
@@ -174,14 +175,14 @@ async function resolveExportSource(
 ): Promise<{ document: vscode.TextDocument; input: PreviewInput } | undefined> {
   const activeEditor = vscode.window.activeTextEditor;
   const resource = mermaidSourceCommandUri(target);
-  const sourceId = mermaidSourceCommandSourceId(target);
+  const source = mermaidSourceCommandIdentity(target) ?? mermaidSourceCommandSourceId(target);
   if (resource) {
     if (activeEditor?.document.uri.toString() === resource.toString()) {
-      const input = extractPreviewInput(activeEditor, sourceId);
+      const input = extractPreviewInput(activeEditor, source);
       return input ? { document: activeEditor.document, input } : undefined;
     }
     const document = await vscode.workspace.openTextDocument(resource);
-    const input = extractPreviewInputFromDocument(document, undefined, sourceId);
+    const input = extractPreviewInputFromDocument(document, undefined, source);
     return input ? { document, input } : undefined;
   }
 
