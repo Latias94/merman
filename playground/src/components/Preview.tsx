@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { assertSafeSvgForDom } from "@mermanjs/web";
 import {
   mermanRuntimeErrorI18nKey,
   useMerman,
@@ -405,10 +406,11 @@ export function Preview({ className }: PreviewProps) {
   }, [ascii]);
 
   const handleCopySvg = useCallback(async (engine: EngineKey, value: string | null) => {
-    if (!value) return;
+    const safeSvg = requireSafeSvgArtifact(value);
+    if (!safeSvg) return;
 
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(safeSvg);
       setCopiedEngine(engine);
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
@@ -439,16 +441,18 @@ export function Preview({ className }: PreviewProps) {
   }, [diagnosticTab, diagnostics]);
 
   const handleExportSvg = useCallback((engine: EngineKey, value: string | null) => {
-    if (!value) return;
-    exportSVG(value, `merman-compare-${engine}`);
+    const safeSvg = requireSafeSvgArtifact(value);
+    if (!safeSvg) return;
+    exportSVG(safeSvg, `merman-compare-${engine}`);
   }, []);
 
   const handleExportPng = useCallback(async (engine: EngineKey, value: string | null) => {
-    if (!value) return;
+    const safeValue = requireSafeSvgArtifact(value);
+    if (!safeValue) return;
 
     setExportingEngine(engine);
     try {
-      let exportSvg = value;
+      let exportSvg = safeValue;
       if (engine === "merman") {
         const pngResult = render(code, diagramTheme, mermaidConfig, {
           ...renderOptions,
@@ -457,7 +461,7 @@ export function Preview({ className }: PreviewProps) {
         if (!pngResult.svg) {
           throw new Error(pngResult.error ?? "Failed to render PNG SVG");
         }
-        exportSvg = pngResult.svg;
+        exportSvg = requireSafeSvgArtifact(pngResult.svg) ?? exportSvg;
       }
 
       await exportPNG(exportSvg, `merman-compare-${engine}`, 2);
@@ -1166,6 +1170,14 @@ function ComparePane({
       </div>
     </section>
   );
+}
+
+function requireSafeSvgArtifact(svg: string | null): string | null {
+  if (!svg) {
+    return null;
+  }
+  assertSafeSvgForDom(svg);
+  return svg;
 }
 
 function SvgSourceEditor({

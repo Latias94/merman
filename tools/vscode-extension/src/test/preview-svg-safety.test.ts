@@ -39,6 +39,25 @@ describe("preview SVG safety", () => {
     assert.throws(() => assertSafePreviewSvg("<svg><set attributeName=\"fill\" to=\"url(https://example.com/x)\"/></svg>"), /active/);
   });
 
+  it("rejects interactive or non-label foreignObject content", () => {
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><foreignObject><button>run</button></foreignObject></svg>"),
+      /foreignObject/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><foreignObject><input value="x"/></foreignObject></svg>'),
+      /foreignObject/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><foreignObject><style>button{color:red}</style></foreignObject></svg>"),
+      /foreignObject/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><foreignObject><div tabindex="0">focus</div></foreignObject></svg>'),
+      /interactive/,
+    );
+  });
+
   it("rejects event handlers and unsafe URL attributes", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><text onclick="alert(1)">x</text></svg>'), /event/);
     assert.throws(
@@ -55,11 +74,12 @@ describe("preview SVG safety", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><a href="foo:bar">x</a></svg>'), /unsafe URL/);
     assert.throws(
       () => assertSafePreviewSvg('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
-      /srcset/,
+      /foreignObject/,
     );
+    assert.throws(() => assertSafePreviewSvg('<svg><image srcset="https://example.com/a.png 1x"/></svg>'), /srcset/);
     assert.throws(
       () => assertSafePreviewSvg('<svg><foreignObject><button formaction="https://example.com/post">x</button></foreignObject></svg>'),
-      /external/,
+      /foreignObject/,
     );
     assert.throws(
       () => assertSafePreviewSvg('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),

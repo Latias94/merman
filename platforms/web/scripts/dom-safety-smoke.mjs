@@ -13,6 +13,11 @@ assert.doesNotThrow(() =>
     '<svg><defs><linearGradient id="fill"></linearGradient><filter id="shadow"></filter></defs><rect fill="url(#fill)" filter="url(#shadow)"/></svg>',
   ),
 );
+assert.doesNotThrow(() =>
+  assertSafeSvgForDom(
+    '<svg><foreignObject width="10" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell"><span class="nodeLabel"><p>A</p></span></div></foreignObject></svg>',
+  ),
+);
 
 assert.throws(
   () => assertSafeSvgForDom('<svg><image href="https://example.com/a.png"/></svg>'),
@@ -32,7 +37,27 @@ assert.throws(
 );
 assert.throws(
   () => assertSafeSvgForDom('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
+  /foreignObject/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><image srcset="https://example.com/a.png 1x"/></svg>'),
   /srcset/,
+);
+assert.throws(
+  () => assertSafeSvgForDom("<svg><foreignObject><button>run</button></foreignObject></svg>"),
+  /foreignObject/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><foreignObject><input value="x"/></foreignObject></svg>'),
+  /foreignObject/,
+);
+assert.throws(
+  () => assertSafeSvgForDom("<svg><foreignObject><style>button{color:red}</style></foreignObject></svg>"),
+  /foreignObject/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><foreignObject><div tabindex="0">focus</div></foreignObject></svg>'),
+  /interactive/,
 );
 assert.throws(
   () => assertSafeSvgForDom('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),

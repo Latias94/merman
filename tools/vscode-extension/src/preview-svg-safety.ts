@@ -17,6 +17,31 @@ const ACTIVE_SVG_ELEMENTS = new Set([
   "set",
 ]);
 
+const FOREIGN_OBJECT_LABEL_ELEMENTS = new Set([
+  "div",
+  "span",
+  "p",
+  "br",
+  "b",
+  "strong",
+  "i",
+  "em",
+  "s",
+  "u",
+  "small",
+  "sub",
+  "sup",
+  "code",
+  "pre",
+]);
+
+const FOREIGN_OBJECT_INTERACTIVE_ATTRIBUTES = new Set([
+  "autofocus",
+  "contenteditable",
+  "draggable",
+  "tabindex",
+]);
+
 const SAFE_RASTER_DATA_IMAGE_URL = /^data:image\/(?:png|gif|jpe?g|webp);base64,[a-z0-9+/=]*$/;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/;
 const RAW_URL_ATTRIBUTES = new Set([
@@ -53,6 +78,7 @@ interface SvgTag {
   name: string;
   attributes: SvgAttribute[];
   end: number;
+  selfClosing: boolean;
 }
 
 interface SvgAttribute {
@@ -68,6 +94,7 @@ export function assertSafePreviewSvg(svg: string): void {
 class SvgSafetyScanner {
   private cursor = 0;
   private sawRoot = false;
+  private foreignObjectDepth = 0;
 
   constructor(private readonly source: string) {}
 
@@ -78,18 +105,26 @@ class SvgSafetyScanner {
         break;
       }
       if (tag.kind === "end") {
+        if (localName(tag.name) === "foreignobject" && this.foreignObjectDepth > 0) {
+          this.foreignObjectDepth -= 1;
+        }
         continue;
       }
 
       const elementName = localName(tag.name);
+      const inForeignObject = this.foreignObjectDepth > 0;
       if (!this.sawRoot) {
         this.sawRoot = true;
         if (elementName !== "svg") {
           throw new Error("Preview renderer returned non-SVG output.");
         }
       }
-      assertSafeElementName(elementName);
-      assertSafeAttributes(tag.attributes);
+      assertSafeElementName(elementName, inForeignObject);
+      assertSafeAttributes(tag.attributes, inForeignObject);
+
+      if (elementName === "foreignobject" && !tag.selfClosing) {
+        this.foreignObjectDepth += 1;
+      }
 
       if (elementName === "style") {
         const styleEnd = findClosingStyle(this.source, tag.end);
@@ -103,6 +138,9 @@ class SvgSafetyScanner {
 
     if (!this.sawRoot) {
       throw new Error("Preview renderer returned non-SVG output.");
+    }
+    if (this.foreignObjectDepth !== 0) {
+      throw new Error("Preview renderer returned malformed SVG output.");
     }
   }
 
@@ -158,10 +196,10 @@ function parseTag(source: string, start: number): SvgTag {
     cursor = skipWhitespace(source, cursor);
     const char = source[cursor];
     if (char === ">") {
-      return { kind, name, attributes, end: cursor + 1 };
+      return { kind, name, attributes, end: cursor + 1, selfClosing: false };
     }
     if (char === "/" && source[cursor + 1] === ">") {
-      return { kind, name, attributes, end: cursor + 2 };
+      return { kind, name, attributes, end: cursor + 2, selfClosing: true };
     }
     if (kind === "end") {
       throw new Error("Preview renderer returned malformed SVG output.");
@@ -204,13 +242,16 @@ function parseTag(source: string, start: number): SvgTag {
   throw new Error("Preview renderer returned malformed SVG output.");
 }
 
-function assertSafeElementName(name: string): void {
+function assertSafeElementName(name: string, inForeignObject: boolean): void {
+  if (inForeignObject && !FOREIGN_OBJECT_LABEL_ELEMENTS.has(name)) {
+    throw new Error("Preview renderer returned SVG with unsupported foreignObject content.");
+  }
   if (ACTIVE_SVG_ELEMENTS.has(name)) {
     throw new Error("Preview renderer returned SVG with active embedded content.");
   }
 }
 
-function assertSafeAttributes(attributes: SvgAttribute[]): void {
+function assertSafeAttributes(attributes: SvgAttribute[], inForeignObject: boolean): void {
   for (const attribute of attributes) {
     const name = attribute.name.toLowerCase();
     const nameWithoutNamespace = localName(name);
@@ -232,6 +273,14 @@ function assertSafeAttributes(attributes: SvgAttribute[]): void {
     }
     if (nameWithoutNamespace === "style") {
       assertSafeCss(value);
+    }
+    if (
+      inForeignObject &&
+      FOREIGN_OBJECT_INTERACTIVE_ATTRIBUTES.has(nameWithoutNamespace)
+    ) {
+      throw new Error(
+        "Preview renderer returned SVG with interactive foreignObject attributes.",
+      );
     }
   }
 }
