@@ -146,24 +146,42 @@ impl MermanLanguageServer {
     ) -> Option<Arc<DocumentSnapshot>> {
         self.snapshot_context_for_uri(uri)
             .await
+            .ok()
+            .flatten()
             .map(|context| context.snapshot)
     }
 
     async fn snapshot_context_for_uri(
         &self,
         uri: &tower_lsp::lsp_types::Url,
-    ) -> Option<SnapshotContext> {
+    ) -> Result<Option<SnapshotContext>> {
         let request = {
             let mut store = self.store.lock().await;
             if store.has_snapshot(uri) {
-                return store.snapshot_context(uri);
+                return Ok(store.snapshot_context(uri));
             }
             store.snapshot_build_request(uri)
-        }?;
+        };
+        let Some(request) = request else {
+            return Ok(None);
+        };
 
         let snapshot = request.build();
+        self.commit_structure_snapshot_context(&request, snapshot)
+            .await
+    }
+
+    async fn commit_structure_snapshot_context(
+        &self,
+        request: &SnapshotBuildRequest,
+        snapshot: Arc<DocumentSnapshot>,
+    ) -> Result<Option<SnapshotContext>> {
         let mut store = self.store.lock().await;
-        store.insert_built_snapshot(&request, snapshot)
+        match store.insert_built_snapshot(request, snapshot) {
+            Some(context) => Ok(Some(context)),
+            None if store.get(request.uri()).is_some() => Err(stale_structure_snapshot_error()),
+            None => Ok(None),
+        }
     }
 
     async fn structure_snapshot_result<T>(
@@ -171,7 +189,7 @@ impl MermanLanguageServer {
         uri: &tower_lsp::lsp_types::Url,
         compute: impl FnOnce(&DocumentSnapshot) -> Result<Option<T>>,
     ) -> Result<Option<T>> {
-        let Some(context) = self.snapshot_context_for_uri(uri).await else {
+        let Some(context) = self.snapshot_context_for_uri(uri).await? else {
             return Ok(None);
         };
 
@@ -1339,6 +1357,7 @@ mod tests {
         let context = server
             .snapshot_context_for_uri(&uri)
             .await
+            .expect("snapshot context build should not fail")
             .expect("expected snapshot context");
         {
             let mut store = server.store.lock().await;
@@ -1399,6 +1418,47 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn stale_structure_snapshot_build_returns_content_modified_error() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+        let request = {
+            let store = server.store.lock().await;
+            store
+                .snapshot_build_request(&uri)
+                .expect("expected structure snapshot build request")
+        };
+        let stale_snapshot = request.build();
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri,
+                2,
+                "flowchart TD\nA-->C\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let error = server
+            .commit_structure_snapshot_context(&request, stale_snapshot)
+            .await
+            .expect_err("stale structure snapshot build should fail");
+
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+        assert!(error.message.contains("structure document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn closed_semantic_snapshot_build_returns_none() {
         let (service, _socket) = MermanLanguageServer::service();
         let server = service.inner();
@@ -1449,6 +1509,7 @@ mod tests {
         let context = server
             .snapshot_context_for_uri(&uri)
             .await
+            .expect("snapshot context build should not fail")
             .expect("expected snapshot context");
         {
             let mut store = server.store.lock().await;
