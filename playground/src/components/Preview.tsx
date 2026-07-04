@@ -127,6 +127,7 @@ export function Preview({ className }: PreviewProps) {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diagnosticsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const asciiCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diagnosticCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -382,6 +383,9 @@ export function Preview({ className }: PreviewProps) {
       if (diagnosticCopyTimeoutRef.current) {
         clearTimeout(diagnosticCopyTimeoutRef.current);
       }
+      if (asciiCopyTimeoutRef.current) {
+        clearTimeout(asciiCopyTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -391,7 +395,10 @@ export function Preview({ className }: PreviewProps) {
     try {
       await navigator.clipboard.writeText(ascii);
       setCopiedAscii(true);
-      setTimeout(() => setCopiedAscii(false), 2000);
+      if (asciiCopyTimeoutRef.current) {
+        clearTimeout(asciiCopyTimeoutRef.current);
+      }
+      asciiCopyTimeoutRef.current = setTimeout(() => setCopiedAscii(false), 2000);
     } catch (err) {
       console.error("Failed to copy ASCII:", err);
     }

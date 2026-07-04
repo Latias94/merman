@@ -3,6 +3,7 @@ import {
   currentMermanRuntimeState,
   type MermanRuntimeState,
 } from "./runtime-state.js";
+import { assertSafeSvgForDom } from "./svg-safety.js";
 
 export interface ParseOptions {
   suppress_errors?: boolean;
@@ -1236,6 +1237,7 @@ export function renderSvgElement(
   }
 
   const svgText = renderSvg(source, options);
+  assertSafeSvgForDom(svgText);
   const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml");
   const parseError = parsed.querySelector("parsererror");
   if (parseError) {

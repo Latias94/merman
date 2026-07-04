@@ -12,7 +12,7 @@ describe("preview html", () => {
     });
 
     assert.match(html, /Content-Security-Policy/);
-    assert.match(html, /script-src 'nonce-[A-Za-z0-9]+'/);
+    assert.match(html, /script-src 'nonce-[A-Za-z0-9_-]+'/);
     assert.match(html, /style-src vscode-resource: 'unsafe-inline'/);
     assert.match(html, /src="vscode-resource:\/\/preview\.js"/);
     assert.doesNotMatch(html, /command:merman/);

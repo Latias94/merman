@@ -23,7 +23,7 @@ describe("preview SVG safety", () => {
   it("accepts local fragment and raster data URL references", () => {
     assert.doesNotThrow(() =>
       assertSafePreviewSvg(
-        '<svg><defs><linearGradient id="fill"></linearGradient></defs><rect fill="url(#fill)"/><a href="#node">x</a><image href="data:image/png;base64,iVBORw0KGgo="/></svg>',
+        '<svg><defs><linearGradient id="fill"></linearGradient><filter id="shadow"></filter><clipPath id="clip"></clipPath><mask id="mask"></mask><marker id="arrow"></marker></defs><rect fill="url(#fill)" filter="url(#shadow)" clip-path="url(#clip)" mask="url(#mask)" marker-end="url(#arrow)"/><a href="#node">x</a><image href="data:image/png;base64,iVBORw0KGgo="/></svg>',
       ),
     );
   });
@@ -61,6 +61,15 @@ describe("preview SVG safety", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><image href="https://example.com/a.png"/></svg>'), /external/);
     assert.throws(() => assertSafePreviewSvg('<svg><use href="//example.com/sprite.svg#x"/></svg>'), /external/);
     assert.throws(() => assertSafePreviewSvg('<svg><image href="images/a.png"/></svg>'), /external/);
+  });
+
+  it("rejects external resources in SVG URL-bearing attributes", () => {
+    assert.throws(() => assertSafePreviewSvg('<svg><rect fill="url(https://example.com/fill.svg#x)"/></svg>'), /external/);
+    assert.throws(() => assertSafePreviewSvg('<svg><rect stroke="url(file:///tmp/stroke.svg#x)"/></svg>'), /unsafe/);
+    assert.throws(() => assertSafePreviewSvg('<svg><rect filter="url(data:image/svg+xml,%3Csvg%3E)"/></svg>'), /unsafe/);
+    assert.throws(() => assertSafePreviewSvg('<svg><rect clip-path="url(//example.com/clip.svg#x)"/></svg>'), /external/);
+    assert.throws(() => assertSafePreviewSvg('<svg><rect mask="url(images/mask.svg#x)"/></svg>'), /external/);
+    assert.throws(() => assertSafePreviewSvg('<svg><path marker-end="url(javascript:alert(1))"/></svg>'), /unsafe/);
   });
 
   it("rejects unsafe CSS references", () => {

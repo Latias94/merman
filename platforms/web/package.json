@@ -79,6 +79,7 @@
     "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
     "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
     "check:contracts": "node scripts/check-contracts.mjs",
+    "smoke:dom-safety": "node scripts/dom-safety-smoke.mjs",
     "smoke": "node scripts/smoke.mjs",
     "prepack": "npm run check:contracts && node scripts/prepack-check.mjs",
     "prepublishOnly": "npm run build && npm run smoke"

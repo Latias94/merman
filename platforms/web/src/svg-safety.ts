@@ -37,7 +37,7 @@ interface SvgAttribute {
   value: string;
 }
 
-export function assertSafePreviewSvg(svg: string): void {
+export function assertSafeSvgForDom(svg: string): void {
   const scanner = new SvgSafetyScanner(svg);
   scanner.assertSafe();
 }
@@ -62,7 +62,7 @@ class SvgSafetyScanner {
       if (!this.sawRoot) {
         this.sawRoot = true;
         if (elementName !== "svg") {
-          throw new Error("Preview renderer returned non-SVG output.");
+          throw new Error("Merman rendered non-SVG output.");
         }
       }
       assertSafeElementName(elementName);
@@ -79,7 +79,7 @@ class SvgSafetyScanner {
     }
 
     if (!this.sawRoot) {
-      throw new Error("Preview renderer returned non-SVG output.");
+      throw new Error("Merman rendered non-SVG output.");
     }
   }
 
@@ -103,7 +103,7 @@ class SvgSafetyScanner {
       return this.nextTag();
     }
     if (this.source.startsWith("<!", start)) {
-      throw new Error("Preview renderer returned SVG with unsupported declarations.");
+      throw new Error("Merman rendered SVG with unsupported declarations.");
     }
 
     const tag = parseTag(this.source, start);
@@ -127,7 +127,7 @@ function parseTag(source: string, start: number): SvgTag {
   }
   const name = source.slice(nameStart, cursor);
   if (!name) {
-    throw new Error("Preview renderer returned malformed SVG output.");
+    throw new Error("Merman rendered malformed SVG output.");
   }
 
   const attributes: SvgAttribute[] = [];
@@ -141,7 +141,7 @@ function parseTag(source: string, start: number): SvgTag {
       return { kind, name, attributes, end: cursor + 2 };
     }
     if (kind === "end") {
-      throw new Error("Preview renderer returned malformed SVG output.");
+      throw new Error("Merman rendered malformed SVG output.");
     }
 
     const attributeStart = cursor;
@@ -150,7 +150,7 @@ function parseTag(source: string, start: number): SvgTag {
     }
     const attributeName = source.slice(attributeStart, cursor);
     if (!attributeName) {
-      throw new Error("Preview renderer returned malformed SVG output.");
+      throw new Error("Merman rendered malformed SVG output.");
     }
 
     cursor = skipWhitespace(source, cursor);
@@ -163,7 +163,7 @@ function parseTag(source: string, start: number): SvgTag {
         const valueStart = cursor + 1;
         const valueEnd = source.indexOf(quote, valueStart);
         if (valueEnd < 0) {
-          throw new Error("Preview renderer returned malformed SVG output.");
+          throw new Error("Merman rendered malformed SVG output.");
         }
         value = source.slice(valueStart, valueEnd);
         cursor = valueEnd + 1;
@@ -178,22 +178,21 @@ function parseTag(source: string, start: number): SvgTag {
     attributes.push({ name: attributeName, value });
   }
 
-  throw new Error("Preview renderer returned malformed SVG output.");
+  throw new Error("Merman rendered malformed SVG output.");
 }
 
 function assertSafeElementName(name: string): void {
   if (ACTIVE_SVG_ELEMENTS.has(name)) {
-    throw new Error("Preview renderer returned SVG with active embedded content.");
+    throw new Error("Merman rendered SVG with active embedded content.");
   }
 }
 
 function assertSafeAttributes(attributes: SvgAttribute[]): void {
   for (const attribute of attributes) {
-    const name = attribute.name.toLowerCase();
-    const nameWithoutNamespace = localName(name);
+    const nameWithoutNamespace = localName(attribute.name);
     const value = decodeXmlEntities(attribute.value);
     if (nameWithoutNamespace.startsWith("on")) {
-      throw new Error("Preview renderer returned SVG with event handler attributes.");
+      throw new Error("Merman rendered SVG with event handler attributes.");
     }
     if (RAW_URL_ATTRIBUTES.has(nameWithoutNamespace)) {
       assertSafeUrl(value, "attribute");
@@ -221,50 +220,15 @@ function assertSafeUrl(value: string, source: "attribute" | "css"): void {
   ) {
     throw new Error(
       source === "css"
-        ? "Preview renderer returned SVG with external CSS resource references."
-        : "Preview renderer returned SVG with external resource references.",
+        ? "Merman rendered SVG with external CSS resource references."
+        : "Merman rendered SVG with external resource references.",
     );
   }
   throw new Error(
     source === "css"
-      ? "Preview renderer returned SVG with unsafe CSS URL references."
-      : "Preview renderer returned SVG with unsafe URL attributes.",
+      ? "Merman rendered SVG with unsafe CSS URL references."
+      : "Merman rendered SVG with unsafe URL attributes.",
   );
-}
-
-function assertSafeCss(css: string): void {
-  const withoutComments = stripCssComments(css);
-  const normalized = decodeCssEscapes(decodeXmlEntities(withoutComments));
-  const lower = normalized.toLowerCase();
-  if (lower.includes("@import")) {
-    throw new Error("Preview renderer returned SVG with external CSS resource references.");
-  }
-
-  let cursor = 0;
-  while (cursor < lower.length) {
-    const urlIndex = lower.indexOf("url", cursor);
-    if (urlIndex < 0) {
-      return;
-    }
-    cursor = urlIndex + "url".length;
-    cursor = skipWhitespace(lower, cursor);
-    if (lower[cursor] !== "(") {
-      continue;
-    }
-    const valueStart = cursor + 1;
-    const valueEnd = lower.indexOf(")", valueStart);
-    if (valueEnd < 0) {
-      throw new Error("Preview renderer returned malformed SVG CSS.");
-    }
-    const rawValue = normalized.slice(valueStart, valueEnd).trim();
-    const unquoted =
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-        ? rawValue.slice(1, -1)
-        : rawValue;
-    assertSafeUrl(unquoted, "css");
-    cursor = valueEnd + 1;
-  }
 }
 
 function assertSafeUrlReferences(value: string, source: "attribute" | "css"): void {
@@ -287,7 +251,7 @@ function assertSafeUrlReferences(value: string, source: "attribute" | "css"): vo
     const valueStart = cursor + 1;
     const valueEnd = lower.indexOf(")", valueStart);
     if (valueEnd < 0) {
-      throw new Error("Preview renderer returned malformed SVG URL references.");
+      throw new Error("Merman rendered malformed SVG URL references.");
     }
     const rawValue = normalized.slice(valueStart, valueEnd).trim();
     const unquoted =
@@ -309,6 +273,41 @@ function assertSafeUrlReferences(value: string, source: "attribute" | "css"): vo
   }
   if (compact.startsWith("//") || compact.startsWith("/") || URL_SCHEME.test(compact)) {
     assertSafeUrl(normalized, source);
+  }
+}
+
+function assertSafeCss(css: string): void {
+  const withoutComments = stripCssComments(css);
+  const normalized = decodeCssEscapes(decodeXmlEntities(withoutComments));
+  const lower = normalized.toLowerCase();
+  if (lower.includes("@import")) {
+    throw new Error("Merman rendered SVG with external CSS resource references.");
+  }
+
+  let cursor = 0;
+  while (cursor < lower.length) {
+    const urlIndex = lower.indexOf("url", cursor);
+    if (urlIndex < 0) {
+      return;
+    }
+    cursor = urlIndex + "url".length;
+    cursor = skipWhitespace(lower, cursor);
+    if (lower[cursor] !== "(") {
+      continue;
+    }
+    const valueStart = cursor + 1;
+    const valueEnd = lower.indexOf(")", valueStart);
+    if (valueEnd < 0) {
+      throw new Error("Merman rendered malformed SVG CSS.");
+    }
+    const rawValue = normalized.slice(valueStart, valueEnd).trim();
+    const unquoted =
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith("'") && rawValue.endsWith("'"))
+        ? rawValue.slice(1, -1)
+        : rawValue;
+    assertSafeUrl(unquoted, "css");
+    cursor = valueEnd + 1;
   }
 }
 
@@ -433,7 +432,7 @@ function findClosingStyle(source: string, start: number): number | null {
 function consumeUntil(source: string, start: number, terminator: string): number {
   const end = source.indexOf(terminator, start);
   if (end < 0) {
-    throw new Error("Preview renderer returned malformed SVG output.");
+    throw new Error("Merman rendered malformed SVG output.");
   }
   return end + terminator.length;
 }

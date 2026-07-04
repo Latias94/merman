@@ -231,6 +231,46 @@ describe("render process lifecycle", () => {
       /render stdin closed/,
     );
   });
+
+  it("prefers renderer stderr over an early stdin pipe error", async () => {
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: Writable;
+      stdout: Readable;
+      stderr: Readable;
+      exitCode: number | null;
+      signalCode: NodeJS.Signals | null;
+      kill: () => boolean;
+    };
+    child.stdout = new Readable({ read() {} });
+    child.stderr = new Readable({ read() {} });
+    child.stdin = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(new Error("render stdin closed"));
+        queueMicrotask(() => {
+          child.stderr.emit("data", Buffer.from("real renderer failure"));
+          child.emit("close", 1, null);
+        });
+      },
+    });
+    child.exitCode = null;
+    child.signalCode = null;
+    child.kill = () => true;
+
+    await assert.rejects(
+      runRenderProcess({
+        invocation: {
+          command: "merman-cli",
+          args: [],
+          source: "explicit",
+          label: "test cli",
+        },
+        source: "flowchart TD\nA --> B\n",
+        spawnProcess: () =>
+          child as unknown as import("node:child_process").ChildProcessWithoutNullStreams,
+      }),
+      /real renderer failure/,
+    );
+  });
 });
 
 function tempDirPath(): string {

@@ -4,6 +4,8 @@ export type {
   PreviewDiagnostics,
 } from "./preview-model.js";
 
+import { randomBytes } from "node:crypto";
+
 const PREVIEW_TITLE = "Merman Preview";
 
 export interface PreviewHtmlResources {
@@ -105,12 +107,7 @@ function renderToolbar(): string {
 }
 
 function createNonce(): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let out = "";
-  for (let index = 0; index < 32; index += 1) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)] ?? "A";
-  }
-  return out;
+  return randomBytes(24).toString("base64url");
 }
 
 function escapeHtml(value: string): string {
