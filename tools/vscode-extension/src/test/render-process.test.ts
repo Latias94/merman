@@ -17,6 +17,48 @@ afterEach(() => {
 });
 
 describe("render process lifecycle", () => {
+  it("hides Windows console windows for spawned render processes", async () => {
+    let spawnOptions: import("node:child_process").SpawnOptionsWithoutStdio | undefined;
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: Writable;
+      stdout: Readable;
+      stderr: Readable;
+      exitCode: number | null;
+      signalCode: NodeJS.Signals | null;
+      kill: () => boolean;
+    };
+    child.stdin = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+      final(callback) {
+        queueMicrotask(() => child.emit("close", 0, null));
+        callback();
+      },
+    });
+    child.stdout = new Readable({ read() {} });
+    child.stderr = new Readable({ read() {} });
+    child.exitCode = null;
+    child.signalCode = null;
+    child.kill = () => true;
+
+    await runRenderProcess({
+      invocation: {
+        command: "merman-cli",
+        args: [],
+        source: "explicit",
+        label: "test cli",
+      },
+      source: "flowchart TD\nA --> B\n",
+      spawnProcess: (_command, _args, options) => {
+        spawnOptions = options;
+        return child as unknown as import("node:child_process").ChildProcessWithoutNullStreams;
+      },
+    });
+
+    assert.equal(spawnOptions?.windowsHide, true);
+  });
+
   it("terminates an in-flight render when the abort signal fires", async () => {
     const tempDir = tempDirPath();
     const cliPath = path.join(tempDir, "merman-cli");

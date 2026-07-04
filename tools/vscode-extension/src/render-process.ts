@@ -45,6 +45,7 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
         cwd: request.invocation.cwd,
         env: process.env,
         stdio: "pipe",
+        windowsHide: true,
       },
     );
     const clearTimers = (): void => {

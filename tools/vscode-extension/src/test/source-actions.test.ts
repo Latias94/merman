@@ -2,6 +2,7 @@ import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  SOURCE_ACTIONS_ENABLED_SETTING,
   SOURCE_ACTION_COMMANDS,
   buildMermaidSourceCodeLensSpecs,
   isMermaidSourceCommandTarget,
@@ -9,6 +10,7 @@ import {
   mermaidSourceCommandSourceId,
   mermaidSourceCommandTarget,
   mermaidSourceCommandUri,
+  shouldRefreshSourceActionCodeLens,
   type MermaidSourceCommandArgument,
 } from "../source-actions.js";
 
@@ -49,6 +51,17 @@ describe("Mermaid source actions", () => {
     );
 
     assert.deepEqual(specs, []);
+  });
+
+  it("refreshes CodeLens when the source action setting changes", () => {
+    assert.equal(
+      shouldRefreshSourceActionCodeLens((section) => section === SOURCE_ACTIONS_ENABLED_SETTING),
+      true,
+    );
+    assert.equal(
+      shouldRefreshSourceActionCodeLens((section) => section === "merman.diagnostics.enabled"),
+      false,
+    );
   });
 
   it("keeps platform-sensitive copy commands out of the top-level CodeLens row", () => {

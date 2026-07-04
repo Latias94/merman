@@ -11,6 +11,8 @@ export const SOURCE_ACTION_COMMANDS = {
   copyPng: "merman.copyPng",
 } as const;
 
+export const SOURCE_ACTIONS_ENABLED_SETTING = "merman.sourceActions.enabled";
+
 export type MermaidSourceActionCommand =
   (typeof SOURCE_ACTION_COMMANDS)[keyof typeof SOURCE_ACTION_COMMANDS];
 
@@ -83,6 +85,12 @@ export function mermaidSourceExportCopyActions(
 ): readonly SourceActionDescriptor[] {
   const includeCopyPng = options.includeCopyPng ?? true;
   return SOURCE_EXPORT_COPY_ACTIONS.filter((action) => includeCopyPng || !action.requiresCopyPng);
+}
+
+export function shouldRefreshSourceActionCodeLens(
+  affectsConfiguration: (section: string) => boolean,
+): boolean {
+  return affectsConfiguration(SOURCE_ACTIONS_ENABLED_SETTING);
 }
 
 export function mermaidSourceCommandTarget(

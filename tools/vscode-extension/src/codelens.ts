@@ -9,6 +9,7 @@ import {
   mermaidSourceCommandUri,
   mermaidSourceCommandTarget,
   mermaidSourceExportCopyActions,
+  shouldRefreshSourceActionCodeLens,
   type MermaidSourceCommandArgument,
 } from "./source-actions.js";
 
@@ -22,8 +23,16 @@ const SOURCE_ACTION_SELECTOR: vscode.DocumentSelector = [
 export function registerSourceCodeLens(context: vscode.ExtensionContext): void {
   const includeCopyPng = pngClipboardCommand(process.platform) !== undefined;
   const provider = new MermaidSourceCodeLensProvider(includeCopyPng);
+  context.subscriptions.push(provider);
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(SOURCE_ACTION_SELECTOR, provider),
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (shouldRefreshSourceActionCodeLens(event.affectsConfiguration.bind(event))) {
+        provider.refresh();
+      }
+    }),
   );
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -35,7 +44,10 @@ export function registerSourceCodeLens(context: vscode.ExtensionContext): void {
   );
 }
 
-class MermaidSourceCodeLensProvider implements vscode.CodeLensProvider {
+class MermaidSourceCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+  readonly onDidChangeCodeLenses = this.changeEmitter.event;
+
   constructor(private readonly includeCopyPng: boolean) {}
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
@@ -49,6 +61,14 @@ class MermaidSourceCodeLensProvider implements vscode.CodeLensProvider {
         arguments: [mermaidSourceCommandTarget(document.uri, spec.sourceId)],
       });
     });
+  }
+
+  refresh(): void {
+    this.changeEmitter.fire();
+  }
+
+  dispose(): void {
+    this.changeEmitter.dispose();
   }
 }
 
