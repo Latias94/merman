@@ -98,6 +98,10 @@ jobs:
         if: matrix.parity
         run: cargo nextest run -p merman --features render --cargo-quiet
 
+      - name: Test C FFI no-render validation smoke
+        if: matrix.parity
+        run: cargo nextest run -p merman-ffi --no-default-features --features core-full,core-host --test c_consumer_smoke --cargo-quiet
+
       - name: Build (release)
         run: cargo build --release --locked -p merman-cli
 

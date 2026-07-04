@@ -86,10 +86,6 @@ impl<'a> EditorParseSourceMap<'a> {
         self.parser_input
     }
 
-    fn can_remap_facts(&self) -> bool {
-        !matches!(self.remap, EditorSourceRemap::Unmapped)
-    }
-
     fn remap_facts(&self, facts: &mut EditorSemanticFacts) {
         if matches!(
             self.remap,
@@ -229,9 +225,6 @@ impl<'a> ParsePipeline<'a> {
             return Ok(None);
         };
         let source_map = EditorParseSourceMap::new(self.text, &code);
-        if !source_map.can_remap_facts() {
-            return Ok(None);
-        }
         let editor_input = source_map.parser_input();
 
         let facts = match meta.diagram_type.as_str() {

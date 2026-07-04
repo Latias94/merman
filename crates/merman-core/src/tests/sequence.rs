@@ -312,7 +312,7 @@ fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_
 }
 
 #[test]
-fn parse_sequence_editor_facts_falls_back_when_preprocessed_body_cannot_remap() {
+fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap() {
     let engine = Engine::new();
     let text = concat!(
         "---\n",
@@ -325,11 +325,19 @@ fn parse_sequence_editor_facts_falls_back_when_preprocessed_body_cannot_remap() 
 
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
-        .unwrap();
+        .unwrap()
+        .expect("sequence editor facts");
 
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+    }));
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
+    }));
     assert!(
-        facts.is_none(),
-        "editor facts must not parse original frontmatter-bearing source when preprocessing cannot be remapped"
+        facts.diagnostics.is_empty(),
+        "editor facts must parse the preprocessed Mermaid body, not the original frontmatter-bearing source"
     );
 }
 
