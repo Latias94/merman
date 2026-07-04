@@ -1,7 +1,7 @@
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
     DiagnosticCategory, DiagnosticSeverity, FenceExpectedSyntaxKind, FenceTextIndexSource,
-    SourceDescriptor,
+    SourceDescriptor, analyze_document_facts,
     document::{analyze_document, analyze_document_result},
     source_descriptor_for_markdown_path,
 };
@@ -700,6 +700,58 @@ fn source_byte_limit_does_not_scan_syntax_facts() {
     assert!(syntax.semantic_items.is_empty());
     assert!(syntax.outline_items.is_empty());
     assert!(syntax.expected_syntax.is_empty());
+}
+
+#[test]
+fn markdown_document_source_byte_limit_applies_before_fence_analysis() {
+    let source = format!("```mermaid\nflowchart TD\nA-->B\n```\n{}", "x".repeat(64));
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let payload = analyze_document(&source, &analyzer, descriptor.clone());
+
+    assert!(!payload.valid);
+    assert_eq!(payload.summary.errors, 1);
+    let diagnostic = &payload.diagnostics[0];
+    assert_eq!(diagnostic.id, "merman.resource.source_bytes_exceeded");
+    assert_eq!(diagnostic.span.as_ref().unwrap().byte_start, 0);
+    assert_eq!(diagnostic.span.as_ref().unwrap().byte_end, source.len());
+
+    let facts = analyze_document_facts(&source, &analyzer, descriptor);
+    assert!(!facts.valid);
+    assert!(facts.diagrams.is_empty());
+}
+
+#[test]
+fn markdown_document_source_byte_limit_allows_exact_boundary() {
+    let source = "```mermaid\nflowchart TD\nA-->B\n```\n";
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some(source.len())),
+    );
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let result = analyze_document_result(source, &analyzer, descriptor);
+
+    assert_eq!(result.diagnostics().len(), 0);
+    assert_eq!(result.diagrams().len(), 1);
+}
+
+#[test]
+fn mdx_document_source_byte_limit_applies_before_fence_analysis() {
+    let source = format!("```mermaid\nflowchart TD\nA-->B\n```\n{}", "x".repeat(64));
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.mdx"));
+
+    let result = analyze_document_result(&source, &analyzer, descriptor);
+
+    assert_eq!(result.diagnostics().len(), 1);
+    assert_eq!(
+        result.diagnostics()[0].id,
+        "merman.resource.source_bytes_exceeded"
+    );
+    assert!(result.diagrams().is_empty());
 }
 
 #[test]

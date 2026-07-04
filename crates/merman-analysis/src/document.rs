@@ -208,6 +208,10 @@ pub fn analyze_document(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisPayload {
+    if let Some(result) = document_source_limit_result(text, analyzer, source.clone()) {
+        return result.into_payload();
+    }
+
     match source.kind {
         SourceKind::Diagram => {
             AnalysisPayload::new(source, analyzer.analyze_source_diagnostics(text))
@@ -232,6 +236,10 @@ pub fn analyze_document_result(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisResult {
+    if let Some(result) = document_source_limit_result(text, analyzer, source.clone()) {
+        return result;
+    }
+
     let document = DocumentSource::new(text, source.clone());
 
     let mut diagnostics = Vec::new();
@@ -252,6 +260,37 @@ pub fn analyze_document_result(
         diagnostics,
         analyzed_diagrams,
     )
+}
+
+fn document_source_limit_result(
+    text: &str,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+) -> Option<AnalysisResult> {
+    if matches!(source.kind, SourceKind::Diagram) {
+        return None;
+    }
+
+    let limit = analyzer.options().max_source_bytes?;
+    if text.len() <= limit {
+        return None;
+    }
+
+    let source_map = SourceMap::new(text.to_string());
+    let diagnostics = crate::analyzer::source_limit_diagnostic(
+        text.len(),
+        limit,
+        &source_map,
+        &analyzer.options().rule_config,
+    )
+    .into_iter()
+    .collect();
+    Some(AnalysisResult::new(
+        source,
+        source_map,
+        diagnostics,
+        Vec::new(),
+    ))
 }
 
 fn analyze_document_diagnostics(

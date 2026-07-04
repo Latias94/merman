@@ -642,7 +642,7 @@ fn no_diagram_diagnostic(
     )
 }
 
-fn source_limit_diagnostic(
+pub(crate) fn source_limit_diagnostic(
     source_len: usize,
     limit: usize,
     source_map: &SourceMap,
