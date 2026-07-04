@@ -92,6 +92,50 @@ describe("language client startup cleanup", () => {
     ]);
   });
 
+  it("clears and stops a client whose configuration push rejects", async () => {
+    const client = new FakeLanguageClient();
+    let assigned: FakeLanguageClient | undefined = client;
+    let clearCalls = 0;
+    const errors: string[] = [];
+
+    await assert.rejects(
+      () =>
+        startLanguageClientWithCleanup({
+          client,
+          generation: 1,
+          startingTooltip: "Starting language server",
+          failedTooltip: "Merman language server failed to start.",
+          isCurrentGeneration: () => true,
+          wireClient: () => {},
+          updateStatus: () => {},
+          pushConfiguration: async () => {
+            throw new Error("configuration push exploded");
+          },
+          assignClient: (activeClient) => {
+            assigned = activeClient;
+          },
+          clearClientIfCurrent: (activeClient) => {
+            if (assigned === activeClient) {
+              assigned = undefined;
+            }
+            clearCalls += 1;
+          },
+          showStartError: (message) => {
+            errors.push(message);
+          },
+        }),
+      /configuration push exploded/,
+    );
+
+    assert.equal(client.startCalls, 1);
+    assert.equal(client.stopCalls, 1);
+    assert.equal(clearCalls, 1);
+    assert.equal(assigned, undefined);
+    assert.deepEqual(errors, [
+      "Merman language server failed to start: configuration push exploded",
+    ]);
+  });
+
   it("stops without assigning when the lifecycle generation changes during startup", async () => {
     const client = new FakeLanguageClient();
     let assigned = false;
@@ -117,5 +161,38 @@ describe("language client startup cleanup", () => {
     assert.equal(client.startCalls, 1);
     assert.equal(client.stopCalls, 1);
     assert.equal(assigned, false);
+  });
+
+  it("reports stale startup after configuration push invalidates the lifecycle generation", async () => {
+    const client = new FakeLanguageClient();
+    let isCurrent = true;
+    let assigned = false;
+    let staleStartups = 0;
+
+    await startLanguageClientWithCleanup({
+      client,
+      generation: 1,
+      startingTooltip: "Starting language server",
+      failedTooltip: "Merman language server failed to start.",
+      isCurrentGeneration: () => isCurrent,
+      wireClient: () => {},
+      updateStatus: () => {},
+      pushConfiguration: async () => {
+        isCurrent = false;
+      },
+      assignClient: () => {
+        assigned = true;
+      },
+      clearClientIfCurrent: () => {},
+      showStartError: () => {},
+      onStaleStartup: () => {
+        staleStartups += 1;
+      },
+    });
+
+    assert.equal(client.startCalls, 1);
+    assert.equal(client.stopCalls, 1);
+    assert.equal(assigned, false);
+    assert.equal(staleStartups, 1);
   });
 });

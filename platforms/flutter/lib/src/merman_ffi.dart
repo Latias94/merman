@@ -330,6 +330,62 @@ class MermanTextMeasureResult {
 typedef MermanTextMeasurer = MermanTextMeasureResult? Function(
     MermanTextMeasureRequest request);
 
+/// Transactional ownership helper for native text-measurement callbacks.
+class MermanTextMeasureCallbackRegistration<TCallback extends Object> {
+  MermanTextMeasureCallbackRegistration({
+    required void Function(TCallback callback) closeCallback,
+  }) : _closeCallback = closeCallback;
+
+  final void Function(TCallback callback) _closeCallback;
+  TCallback? _callback;
+  MermanTextMeasurer? _measurer;
+
+  TCallback? get callback => _callback;
+
+  MermanTextMeasurer? get measurer => _measurer;
+
+  void replace({
+    required TCallback callback,
+    required MermanTextMeasurer measurer,
+    required void Function(TCallback callback) installNative,
+  }) {
+    final previousCallback = _callback;
+    final previousMeasurer = _measurer;
+    try {
+      installNative(callback);
+      _callback = callback;
+      _measurer = measurer;
+      closeDetached(previousCallback);
+    } catch (_) {
+      closeDetached(callback);
+      _callback = previousCallback;
+      _measurer = previousMeasurer;
+      rethrow;
+    }
+  }
+
+  void clear({required void Function() clearNative}) {
+    final previousCallback = _callback;
+    clearNative();
+    _callback = null;
+    _measurer = null;
+    closeDetached(previousCallback);
+  }
+
+  TCallback? takeCallback() {
+    final callback = _callback;
+    _callback = null;
+    _measurer = null;
+    return callback;
+  }
+
+  void closeDetached(TCallback? callback) {
+    if (callback != null) {
+      _closeCallback(callback);
+    }
+  }
+}
+
 typedef _AbiVersionC = Uint32 Function();
 typedef _AbiVersionDart = int Function();
 
@@ -793,9 +849,12 @@ class MermanReusableEngine {
       );
 
   final _MermanBindings _bindings;
+  final MermanTextMeasureCallbackRegistration<
+          NativeCallable<_HostTextMeasureCallbackC>> _textMeasureCallbacks =
+      MermanTextMeasureCallbackRegistration(closeCallback: (callback) {
+    callback.close();
+  });
   Pointer<NativeMermanEngine> _engine;
-  NativeCallable<_HostTextMeasureCallbackC>? _textMeasureCallback;
-  MermanTextMeasurer? _textMeasurer;
 
   bool get _isClosed => _engine.address == 0;
 
@@ -807,38 +866,31 @@ class MermanReusableEngine {
   /// falls back to its configured text measurer for that request.
   void setTextMeasurer(MermanTextMeasurer? measurer) {
     _ensureOpen();
-    final previousCallback = _textMeasureCallback;
-    final previousMeasurer = _textMeasurer;
 
     if (measurer == null) {
-      _bindings.checkResult(
-        _bindings.engineSetTextMeasureCallback(_engine, nullptr, nullptr),
-      );
-      _textMeasureCallback = null;
-      _textMeasurer = null;
-      previousCallback?.close();
+      _textMeasureCallbacks.clear(clearNative: () {
+        _bindings.checkResult(
+          _bindings.engineSetTextMeasureCallback(_engine, nullptr, nullptr),
+        );
+      });
       return;
     }
 
     final nativeCallback =
         NativeCallable<_HostTextMeasureCallbackC>.isolateLocal(_measureText);
-    try {
-      _bindings.checkResult(
-        _bindings.engineSetTextMeasureCallback(
-          _engine,
-          nativeCallback.nativeFunction,
-          nullptr,
-        ),
-      );
-      _textMeasureCallback = nativeCallback;
-      _textMeasurer = measurer;
-      previousCallback?.close();
-    } catch (_) {
-      nativeCallback.close();
-      _textMeasureCallback = previousCallback;
-      _textMeasurer = previousMeasurer;
-      rethrow;
-    }
+    _textMeasureCallbacks.replace(
+      callback: nativeCallback,
+      measurer: measurer,
+      installNative: (callback) {
+        _bindings.checkResult(
+          _bindings.engineSetTextMeasureCallback(
+            _engine,
+            callback.nativeFunction,
+            nullptr,
+          ),
+        );
+      },
+    );
   }
 
   /// Renders Mermaid [source] to SVG text.
@@ -947,10 +999,10 @@ class MermanReusableEngine {
     if (_isClosed) {
       return;
     }
-    final callback = _takeTextMeasureCallback();
+    final callback = _textMeasureCallbacks.takeCallback();
     _bindings.engineFree(_engine);
     _engine = nullptr;
-    callback?.close();
+    _textMeasureCallbacks.closeDetached(callback);
   }
 
   NativeMermanHostTextMeasureResult _measureText(
@@ -958,7 +1010,7 @@ class MermanReusableEngine {
     Pointer<Void> userData,
   ) {
     final nativeResult = Struct.create<NativeMermanHostTextMeasureResult>();
-    final measurer = _textMeasurer;
+    final measurer = _textMeasureCallbacks.measurer;
     if (measurer == null) {
       return nativeResult;
     }
@@ -983,13 +1035,6 @@ class MermanReusableEngine {
     nativeResult.height = result.height;
     nativeResult.lineCount = result.lineCount;
     return nativeResult;
-  }
-
-  NativeCallable<_HostTextMeasureCallbackC>? _takeTextMeasureCallback() {
-    final callback = _textMeasureCallback;
-    _textMeasureCallback = null;
-    _textMeasurer = null;
-    return callback;
   }
 
   void _ensureOpen() {

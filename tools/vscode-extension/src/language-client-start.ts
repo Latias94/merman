@@ -15,6 +15,7 @@ export interface LanguageClientStartOptions<T extends StartableLanguageClient> {
   assignClient(client: T): void;
   clearClientIfCurrent(client: T): void;
   showStartError(message: string): void;
+  onStaleStartup?(): void;
 }
 
 export async function startLanguageClientWithCleanup<T extends StartableLanguageClient>({
@@ -29,6 +30,7 @@ export async function startLanguageClientWithCleanup<T extends StartableLanguage
   assignClient,
   clearClientIfCurrent,
   showStartError,
+  onStaleStartup,
 }: LanguageClientStartOptions<T>): Promise<void> {
   wireClient(client);
   updateStatus("Starting", startingTooltip);
@@ -36,11 +38,13 @@ export async function startLanguageClientWithCleanup<T extends StartableLanguage
     await client.start();
     if (!isCurrentGeneration(generation)) {
       await client.stop();
+      onStaleStartup?.();
       return;
     }
     await pushConfiguration(client);
     if (!isCurrentGeneration(generation)) {
       await client.stop();
+      onStaleStartup?.();
       return;
     }
     assignClient(client);

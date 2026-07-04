@@ -185,7 +185,8 @@ def main() -> int:
         dart = require_command("dart")
         run([flutter, "pub", "get"], cwd=FLUTTER_ROOT)
         run([flutter, "analyze"], cwd=FLUTTER_ROOT)
-        run([dart, "format", "--set-exit-if-changed", "lib", "example"], cwd=FLUTTER_ROOT)
+        run([dart, "format", "--set-exit-if-changed", "lib", "example", "tool"], cwd=FLUTTER_ROOT)
+        run([dart, "run", "tool/callback_transaction_test.dart"], cwd=FLUTTER_ROOT)
 
         step("Flutter Android plugin Kotlin compile")
         flutter_jar = flutter_android_embedding_jar()

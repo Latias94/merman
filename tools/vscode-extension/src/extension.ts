@@ -27,8 +27,10 @@ let client: LanguageClient | undefined;
 let statusItem: vscode.StatusBarItem | undefined;
 let lifecycleGeneration = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
+let isDeactivating = false;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  isDeactivating = false;
   ensureStatusItem(context);
   registerPreview(context);
   registerExport(context);
@@ -119,6 +121,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
+  isDeactivating = true;
   lifecycleGeneration += 1;
   await lifecycleQueue.catch(() => undefined);
   await deactivateClient();
@@ -206,6 +209,11 @@ async function startClient(
     },
     showStartError: (message) => {
       void vscode.window.showErrorMessage(message);
+    },
+    onStaleStartup: () => {
+      if (!isDeactivating) {
+        void reconcileLanguageClient(context).catch(() => undefined);
+      }
     },
   });
 }

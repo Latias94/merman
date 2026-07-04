@@ -3,7 +3,9 @@ use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
 use crate::{
     AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource, SourceMap,
 };
-use merman_core::{MermaidConfig, ParseMetadata, ParsedDiagram};
+use merman_core::{
+    EditorSemanticDiagnostic, MermaidConfig, ParseMetadata, ParsedDiagram, SourceSpan,
+};
 use serde_json::json;
 
 #[test]
@@ -258,6 +260,58 @@ fn fallback_recovery_merge_uses_structured_location_metadata() {
             .message
             .contains("Parser recovery produced the same syntax problem")
     }));
+}
+
+#[test]
+fn degraded_editor_recovery_diagnostics_do_not_project_parser_input_spans() {
+    let source =
+        "---\ntitle: quoted\n---\nsequenceDiagram\nparticipant Alice\nAlice->>Bob: #quot;\n";
+    let source_map = SourceMap::new(source);
+    let diagnostics = super::editor_recovery_diagnostics(
+        vec![EditorSemanticDiagnostic::parser_recovery(
+            "unexpected end of input",
+            Some(SourceSpan::new(16, 16)),
+        )],
+        "sequence",
+        &source_map,
+        &AnalysisRuleConfig::default(),
+        false,
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].diagnostic.id,
+        crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID
+    );
+    assert_eq!(
+        diagnostics[0].diagnostic.diagram_type.as_deref(),
+        Some("sequence")
+    );
+    assert_eq!(diagnostics[0].diagnostic.span, None);
+}
+
+#[test]
+fn source_mapped_editor_recovery_diagnostics_keep_original_spans() {
+    let source = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
+    let bob = source.rfind("Bob").expect("Bob reference");
+    let source_map = SourceMap::new(source);
+    let diagnostics = super::editor_recovery_diagnostics(
+        vec![EditorSemanticDiagnostic::parser_recovery(
+            "unexpected end of input",
+            Some(SourceSpan::new(bob, bob + "Bob".len())),
+        )],
+        "sequence",
+        &source_map,
+        &AnalysisRuleConfig::default(),
+        true,
+    );
+
+    let span = diagnostics[0]
+        .diagnostic
+        .span
+        .as_ref()
+        .expect("source span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "Bob");
 }
 
 #[test]

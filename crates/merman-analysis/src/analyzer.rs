@@ -309,11 +309,13 @@ impl Analyzer {
                 EditorFactsProjection::fallback(source, Some(diagram_type), diagnostics, mode)
             }
             Ok(Some(facts)) => {
+                let source_mapped_spans = facts.span_coordinate_space.is_original_source();
                 let diagnostics = editor_recovery_diagnostics(
                     facts.diagnostics.iter().cloned(),
                     diagram_type,
                     source_map,
                     &self.options.rule_config,
+                    source_mapped_spans,
                 );
                 EditorFactsProjection {
                     text_index: match mode {
@@ -879,22 +881,34 @@ fn recovered_editor_diagnostic(
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
+    source_mapped_spans: bool,
 ) -> Option<AnalysisRecoveryDiagnostic> {
     let kind = diagnostic.kind;
-    let mut out = rule_diagnostic(
-        RECOVERED_EDITOR_FACTS_RULE_ID,
-        AnalysisStatus::ParseError,
-        diagnostic.message,
-        source_map,
-        rule_config,
-    )?
+    let mut out = if source_mapped_spans {
+        rule_diagnostic(
+            RECOVERED_EDITOR_FACTS_RULE_ID,
+            AnalysisStatus::ParseError,
+            diagnostic.message,
+            source_map,
+            rule_config,
+        )?
+    } else {
+        rule_diagnostic_without_default_span(
+            RECOVERED_EDITOR_FACTS_RULE_ID,
+            AnalysisStatus::ParseError,
+            diagnostic.message,
+            rule_config,
+        )?
+    }
     .with_diagram_type(diagram_type);
 
-    if let Some(span) = diagnostic
-        .span
-        .and_then(|span| source_map.span(span.start, span.end).ok())
-    {
-        out = out.with_span(span);
+    if source_mapped_spans {
+        if let Some(span) = diagnostic
+            .span
+            .and_then(|span| source_map.span(span.start, span.end).ok())
+        {
+            out = out.with_span(span);
+        }
     }
 
     Some(AnalysisRecoveryDiagnostic::parser_backed(out, kind))
@@ -905,11 +919,18 @@ fn editor_recovery_diagnostics(
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
+    source_mapped_spans: bool,
 ) -> Vec<AnalysisRecoveryDiagnostic> {
     diagnostics
         .into_iter()
         .filter_map(|diagnostic| {
-            recovered_editor_diagnostic(diagnostic, diagram_type, source_map, rule_config)
+            recovered_editor_diagnostic(
+                diagnostic,
+                diagram_type,
+                source_map,
+                rule_config,
+                source_mapped_spans,
+            )
         })
         .collect()
 }
