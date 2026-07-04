@@ -39,6 +39,17 @@ assert.throws(
   /external/,
 );
 assert.throws(
+  () => assertSafeSvgForDom('<svg xml:base="https://example.com/sprite.svg"><use href="#icon"/></svg>'),
+  /base/,
+);
+assert.throws(
+  () =>
+    assertSafeSvgForDom(
+      '<svg><foreignObject><div style="background-image:image-set(&quot;https://example.com/a.png&quot; 1x)">x</div></foreignObject></svg>',
+    ),
+  /CSS resource/,
+);
+assert.throws(
   () => assertSafeSvgForDom('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'),
   /active/,
 );

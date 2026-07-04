@@ -66,6 +66,10 @@ describe("preview SVG safety", () => {
       /external/,
     );
     assert.throws(
+      () => assertSafePreviewSvg('<svg xml:base="https://example.com/sprite.svg"><use href="#icon"/></svg>'),
+      /base/,
+    );
+    assert.throws(
       () => assertSafePreviewSvg('<svg><image href="data:image/svg+xml,%3Csvg%20onload%3Dalert(1)%3E"/></svg>'),
       /unsafe URL/,
     );
@@ -93,6 +97,17 @@ describe("preview SVG safety", () => {
     assert.throws(
       () => assertSafePreviewSvg('<svg><text style="fill:url(data:image/svg+xml,%3Csvg%3E)">x</text></svg>'),
       /CSS URL/,
+    );
+    assert.throws(
+      () =>
+        assertSafePreviewSvg(
+          '<svg><foreignObject><div style="background-image:image-set(&quot;https://example.com/a.png&quot; 1x)">x</div></foreignObject></svg>',
+        ),
+      /CSS resource/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><style>text { background-image: -webkit-image-set("https://example.com/a.png" 1x); }</style></svg>'),
+      /CSS resource/,
     );
     assert.throws(() => assertSafePreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: url(//example.com/a.svg#x); }</style></svg>'), /CSS resource/);

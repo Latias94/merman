@@ -218,6 +218,9 @@ function assertSafeAttributes(attributes: SvgAttribute[]): void {
     if (nameWithoutNamespace.startsWith("on")) {
       throw new Error("Preview renderer returned SVG with event handler attributes.");
     }
+    if (nameWithoutNamespace === "base") {
+      throw new Error("Preview renderer returned SVG with base URL attributes.");
+    }
     if (nameWithoutNamespace === "srcset") {
       assertSafeSrcset(value);
     }
@@ -272,6 +275,9 @@ function assertSafeCss(css: string): void {
   if (lower.includes("@import")) {
     throw new Error("Preview renderer returned SVG with external CSS resource references.");
   }
+  if (containsCssFunction(lower, "image-set") || containsCssFunction(lower, "-webkit-image-set")) {
+    throw new Error("Preview renderer returned SVG with external CSS resource references.");
+  }
 
   let cursor = 0;
   while (cursor < lower.length) {
@@ -298,6 +304,22 @@ function assertSafeCss(css: string): void {
     assertSafeUrl(unquoted, "css");
     cursor = valueEnd + 1;
   }
+}
+
+function containsCssFunction(css: string, name: string): boolean {
+  let cursor = 0;
+  while (cursor < css.length) {
+    const index = css.indexOf(name, cursor);
+    if (index < 0) {
+      return false;
+    }
+    cursor = index + name.length;
+    const next = skipWhitespace(css, cursor);
+    if (css[next] === "(") {
+      return true;
+    }
+  }
+  return false;
 }
 
 function assertSafeUrlReferences(value: string, source: "attribute" | "css"): void {
