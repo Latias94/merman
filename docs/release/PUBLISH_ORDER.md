@@ -46,7 +46,9 @@ Publish crates in dependency order:
 This list is intentionally identical to `.github/workflows/release-crates.yml`,
 `tools/publish.py`, `docs/releasing/CRATES_IO.md`, and `docs/releasing/PUBLISHING.md`.
 Run `python3 scripts/verify-release-crate-order.py` after changing any publishable crate, release
-workflow, or release-order document.
+workflow, or release-order document. The guard checks duplicate entries, cross-file sync, the
+publishable workspace crate set, and Cargo metadata dependency topology, so a crate must appear
+after every publishable workspace dependency it needs for a crates.io publish.
 
 `roughr-merman` is versioned separately as `0.12.1`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.

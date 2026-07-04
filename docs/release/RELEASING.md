@@ -19,6 +19,7 @@ push a `v*` tag whose version matches every package manifest that will publish i
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 | `release-web.yml` | `@mermanjs/web` TypeScript/WASM package | npm |
+| `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
 Most platform publish workflows are manual `workflow_dispatch` workflows that accept `release_tag`
@@ -74,6 +75,9 @@ Before tagging, verify these versions match the intended release:
 - `Cargo.toml` `[workspace.package].version`
 - `platforms/flutter/pubspec.yaml` `version`
 - `platforms/web/package.json` `version`
+- `tools/vscode-extension/package.json` `version`; VS Marketplace requires stable SemVer in the
+  extension manifest, so use `0.8.0` for workspace release `0.8.0-alpha.2`. The VSIX package step
+  reads the workspace release version and adds the pre-release marker when needed.
 - `platforms/android/build.gradle.kts` `version`
 - `platforms/python/merman/pyproject.toml` `project.version`; pre-releases should use the PEP 440
   spelling, for example `0.8.0a2` for workspace release `0.8.0-alpha.2`, while final releases use
@@ -91,7 +95,7 @@ gh workflow run release-preflight.yml -f version=0.8.0-alpha.2 -f source_ref=mai
 
 The preflight workflow verifies release versions, package file lists, registry-independent Rust
 crate publish dry-runs, Python wheels, Android AAR builds, Apple XCFramework builds, the web npm
-package dry-run, and Flutter
+package dry-run, platform VSIX packaging, and Flutter
 `dart pub publish --dry-run`. It does not publish to any registry.
 
 For local spot checks, run the normal Rust and platform gates:
@@ -145,6 +149,23 @@ npm publish --access public
 Normal web releases should use `release-web.yml` instead of local `npm publish` once npm Trusted
 Publishing is configured for `@mermanjs/web`.
 
+For local VS Code VSIX validation:
+
+```bash
+cargo build --release --locked -p merman-lsp -p merman-cli
+cd tools/vscode-extension
+npm ci
+npm test
+npm run prepare:binaries
+target="$(node -p 'process.platform + "-" + process.arch')"
+npm run package -- --target "$target" --out "merman-vscode-${target}.vsix"
+npm run verify:vsix -- --vsix "merman-vscode-${target}.vsix" --platform "$target" --target "$target"
+```
+
+Set `MERMAN_RELEASE_VERSION` when packaging a VSIX from a checkout whose workspace version does not
+match the intended release. The verifier checks the stable VS Code manifest version and the
+pre-release marker against that release version.
+
 Before changing browser WASM presets or Typst package artifacts, also run the surface-specific
 gates:
 
@@ -161,9 +182,10 @@ The web package build uses `wasm-pack --profile wasm-size`, so CI and local rele
 `wasm-pack` 0.15.0 or newer. `npm run prepack --prefix platforms/web` also checks the generated
 default `browser-full` wasm against `docs/release/WASM_SIZE_BUDGETS.json`.
 
-`@mermanjs/web` publishes the `browser-full` artifact under the default import path. The slim
-browser presets are source-build presets, not public npm package variants. `merman-typst-plugin` is
-the Typst-compatible transport and must remain separate from browser/wasm-bindgen artifacts.
+`@mermanjs/web` publishes the `browser-full` artifact under the default import path and exposes
+public subpaths for `@mermanjs/web/core`, `@mermanjs/web/render`, `@mermanjs/web/ascii`, and
+`@mermanjs/web/full`. `merman-typst-plugin` is the Typst-compatible transport and must remain
+separate from browser/wasm-bindgen artifacts.
 
 ## Tag And Push
 
@@ -186,6 +208,7 @@ gh workflow run release-python.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v
 gh workflow run release-android.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
 gh workflow run release-apple.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
 gh workflow run release-web.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2 -f publish_to_npm=true
+gh workflow run vscode-extension.yml
 gh workflow run homebrew.yml
 ```
 

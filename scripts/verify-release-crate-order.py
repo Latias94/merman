@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     expected = workflow_publish_order()
+    metadata = cargo_metadata()
     sources = {
         ".github/workflows/release-crates.yml": expected,
         "tools/publish.py": tools_publish_order(),
@@ -45,7 +46,8 @@ def main() -> int:
         failed = True
         report_order_mismatch(path, expected, order)
 
-    publishable = publishable_workspace_crates()
+    publishable_packages = publishable_workspace_packages(metadata)
+    publishable = list(publishable_packages)
     expected_set = set(expected)
     publishable_set = set(publishable)
     if publishable_set != expected_set:
@@ -64,6 +66,8 @@ def main() -> int:
             )
     else:
         print(f"cargo metadata: {len(publishable)} publishable crates")
+
+    failed |= report_topology_violations(expected, publishable_packages)
 
     return 1 if failed else 0
 
@@ -102,20 +106,23 @@ def markdown_publish_order(relative_path: str, *, start: str, end: str) -> list[
     return re.findall(r"^\d+\.\s+`([^`]+)`", body, flags=re.MULTILINE)
 
 
-def publishable_workspace_crates() -> list[str]:
+def cargo_metadata() -> dict:
     result = subprocess.run(
-        ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+        ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
         cwd=ROOT,
         check=True,
         stdout=subprocess.PIPE,
         text=True,
     )
-    metadata = json.loads(result.stdout)
-    return [
-        package["name"]
+    return json.loads(result.stdout)
+
+
+def publishable_workspace_packages(metadata: dict) -> dict[str, dict]:
+    return {
+        package["name"]: package
         for package in metadata["packages"]
         if package.get("publish") != []
-    ]
+    }
 
 
 def literal_string_list(node: ast.AST, label: str) -> list[str]:
@@ -158,6 +165,41 @@ def report_order_mismatch(path: str, expected: list[str], actual: list[str]) -> 
             return
     if len(expected) != len(actual):
         error(path, f"length mismatch: expected {len(expected)}, found {len(actual)}")
+
+
+def report_topology_violations(order: list[str], packages: dict[str, dict]) -> bool:
+    index = {crate: position for position, crate in enumerate(order)}
+    violations = []
+    edge_count = 0
+    for crate, package in packages.items():
+        if crate not in index:
+            continue
+        for dependency in package.get("dependencies", []):
+            if dependency.get("kind") == "dev":
+                continue
+            dependency_name = dependency["name"]
+            if dependency_name not in packages:
+                continue
+            if dependency_name not in index:
+                continue
+            edge_count += 1
+            if index[dependency_name] > index[crate]:
+                kind = dependency.get("kind") or "normal"
+                violations.append((crate, dependency_name, kind))
+
+    if not violations:
+        print(f"cargo metadata topology: {edge_count} workspace dependency edges")
+        return False
+
+    for crate, dependency_name, kind in violations:
+        error(
+            "metadata",
+            (
+                f"release order publishes {crate} before its {kind} workspace dependency "
+                f"{dependency_name}"
+            ),
+        )
+    return True
 
 
 def error(path: str, message: str) -> None:

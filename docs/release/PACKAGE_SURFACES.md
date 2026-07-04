@@ -18,6 +18,7 @@ protect them before any registry publication is enabled.
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
 | Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
 | Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. The default entry point is full and ELK-bearing; `./core`, `./render`, `./ascii`, and `./full` are opt-in package subpaths. This is not the Typst/pure-wasm surface. |
+| VS Code | `merman-vscode` platform VSIX | `vscode-extension.yml` + `release-preflight.yml` | GitHub Actions artifact; Marketplace publish not enabled | The VS Code manifest version is stable SemVer, for example `0.8.0`; workspace prereleases are packaged with the VSIX pre-release marker. |
 | Typst WASM | `merman` Typst package backed by `merman-typst-plugin` | manual `typst/packages` PR | Typst package registry | Uses wasm-minimal-protocol and must stay separate from wasm-bindgen browser glue. The publishable package wasm is artifact-owned and ELK-bearing because Typst users import the wasm rather than enabling Cargo features. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
 | JVM | none | none | none | Add only if a JVM-specific wrapper is built. |
@@ -33,6 +34,8 @@ The first release set is:
 5. pub.dev for Flutter.
 6. GitHub Release AAR for Android.
 7. npm publishing for `@mermanjs/web` through `release-web.yml` after trusted publisher setup.
+8. Platform VSIX artifacts for VS Code through `vscode-extension.yml`; Marketplace publishing needs
+   an explicit release decision and credentials before it is enabled.
 
 ## CI Gates
 
@@ -43,6 +46,9 @@ Merman CI keeps publication separate from validation:
 - `flutter-package-check` runs `flutter pub get`, `flutter analyze`, and Dart formatting.
 - `apple-ffi-smoke` builds `Merman.xcframework` and validates the root Swift package.
 - `web-npm-dry-run` builds the TypeScript/WASM package and runs `npm pack --dry-run`.
+- `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
+  VSIX, and verify package contents, target platform, stable manifest version, and pre-release
+  marker.
 - `homebrew.yml` checks the published Homebrew formula, runs `brew livecheck`, installs
   `merman-cli`, and renders a smoke diagram from the installed binary.
 
@@ -120,6 +126,7 @@ Current release semantics are intentionally explicit:
 | Surface | Required local gate before release changes |
 | --- | --- |
 | Browser npm package | `npm run check:contracts --prefix platforms/web`; `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
+| VS Code extension | `cargo build --release --locked -p merman-lsp -p merman-cli`; `npm run test --prefix tools/vscode-extension`; `npm run prepare:binaries --prefix tools/vscode-extension`; `npm run package --prefix tools/vscode-extension -- --target <target> --out <file>`; `npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>` |
 | Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
 | Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
 | Typst transport | `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`; `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; `cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; PR CI compiles Typst package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs `wasm-size-matrix` plus `typst-package-smoke --skip-wasm-build --tests-only` on Typst 0.15.0. |
