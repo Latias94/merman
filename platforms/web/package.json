@@ -79,9 +79,9 @@
     "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
     "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
     "check:contracts": "node scripts/check-contracts.mjs",
-    "smoke:dom-safety": "node scripts/dom-safety-smoke.mjs",
+    "smoke:dom-safety": "tsc -p tsconfig.build.json && node scripts/dom-safety-smoke.mjs",
     "smoke": "node scripts/smoke.mjs && npm run smoke:dom-safety",
-    "prepack": "npm run check:contracts && node scripts/prepack-check.mjs",
+    "prepack": "npm run check:contracts && node --test scripts/*.test.mjs && node scripts/prepack-check.mjs",
     "prepublishOnly": "npm run build && npm run smoke"
   },
   "files": [

@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertKnownArgs, hasHelpFlag, parseArgValue } from "./arg-parse.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
@@ -95,9 +96,8 @@ const presets = {
 
 const defaultPresetName = "browser-full";
 const args = process.argv.slice(2);
-const presetName = parsePreset(args) ?? process.env.MERMAN_WEB_PRESET ?? defaultPresetName;
+const { presetName, outDirRel } = parseCli(args);
 const preset = presets[presetName];
-const outDirRel = parseOutDirRel(args) ?? "pkg";
 const outputRoot = path.join(packageRoot, outDirRel);
 const presetManifestPath = path.join(outputRoot, "merman_wasm_preset.json");
 
@@ -137,34 +137,28 @@ writePackageMetadata(outputRoot);
 run(process.execPath, ["scripts/clean-pkg.mjs", "--pkg-dir-rel", outDirRel]);
 writePresetManifest(presetName, preset, outputRoot);
 
-function parsePreset(args) {
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--help" || arg === "-h") {
-      printUsage();
-      process.exit(0);
-    }
-    if (arg === "--preset") {
-      return args[index + 1];
-    }
-    if (arg.startsWith("--preset=")) {
-      return arg.slice("--preset=".length);
-    }
+function parseCli(inputArgs) {
+  if (hasHelpFlag(inputArgs)) {
+    printUsage();
+    process.exit(0);
   }
-  return null;
-}
-
-function parseOutDirRel(args) {
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--out-dir-rel") {
-      return args[index + 1];
-    }
-    if (arg.startsWith("--out-dir-rel=")) {
-      return arg.slice("--out-dir-rel=".length);
-    }
+  try {
+    assertKnownArgs(inputArgs, {
+      valueArgs: ["--preset", "--out-dir-rel"],
+      booleanArgs: ["--help", "-h"],
+    });
+    return {
+      presetName:
+        parseArgValue(inputArgs, "--preset") ??
+        process.env.MERMAN_WEB_PRESET ??
+        defaultPresetName,
+      outDirRel: parseArgValue(inputArgs, "--out-dir-rel") ?? "pkg",
+    };
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    printUsage();
+    process.exit(2);
   }
-  return null;
 }
 
 function cargoFeatureArgs(selectedPreset) {
@@ -258,7 +252,7 @@ function run(command, args) {
 }
 
 function printUsage() {
-  console.log("usage: node scripts/build-wasm.mjs [--preset <name>]");
+  console.log("usage: node scripts/build-wasm.mjs [--preset <name>] [--out-dir-rel <dir>]");
   console.log();
   console.log("Presets:");
   for (const [name, selectedPreset] of Object.entries(presets)) {

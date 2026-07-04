@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertKnownArgs, parseArgValue } from "./arg-parse.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
@@ -57,16 +58,13 @@ if (args.length === 0) {
   process.exit(0);
 }
 
-const entrySubpath = parseArgValue(args, "--entry") ?? ".";
-const pkgDirRel = parseArgValue(args, "--pkg-dir-rel") ?? "pkg";
-const wasmModuleSubpath =
-  parseArgValue(args, "--wasm-module-subpath") ?? "./pkg/merman_wasm.js";
-const wasmBinaryRel =
-  parseArgValue(args, "--wasm-binary-rel") ??
-  normalizePath(path.join(pkgDirRel, "merman_wasm_bg.wasm"));
-const manifestRel =
-  parseArgValue(args, "--manifest-rel") ??
-  normalizePath(path.join(pkgDirRel, "merman_wasm_preset.json"));
+const {
+  entrySubpath,
+  pkgDirRel,
+  wasmModuleSubpath,
+  wasmBinaryRel,
+  manifestRel,
+} = parseCli(args);
 
 const api = await import(resolveEntryModuleHref(entrySubpath));
 const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
@@ -697,19 +695,6 @@ async function runSameProcessSurfaceSmoke() {
   assertUnsupportedFormat(() => core.renderSvg(source, options));
 }
 
-function parseArgValue(inputArgs, name) {
-  for (let index = 0; index < inputArgs.length; index += 1) {
-    const arg = inputArgs[index];
-    if (arg === name) {
-      return inputArgs[index + 1];
-    }
-    if (arg.startsWith(`${name}=`)) {
-      return arg.slice(name.length + 1);
-    }
-  }
-  return null;
-}
-
 function resolveEntryModuleHref(subpath) {
   if (subpath === "." || subpath === "./index") {
     return pathToFileURL(path.join(packageRoot, "dist", "index.js")).href;
@@ -732,6 +717,39 @@ function toPackageSpecifier(subpath) {
 
 function normalizePath(value) {
   return value.split(path.sep).join("/");
+}
+
+function parseCli(inputArgs) {
+  try {
+    assertKnownArgs(inputArgs, {
+      valueArgs: [
+        "--entry",
+        "--pkg-dir-rel",
+        "--wasm-module-subpath",
+        "--wasm-binary-rel",
+        "--manifest-rel",
+      ],
+    });
+    const selectedPkgDirRel = parseArgValue(inputArgs, "--pkg-dir-rel") ?? "pkg";
+    return {
+      entrySubpath: parseArgValue(inputArgs, "--entry") ?? ".",
+      pkgDirRel: selectedPkgDirRel,
+      wasmModuleSubpath:
+        parseArgValue(inputArgs, "--wasm-module-subpath") ?? "./pkg/merman_wasm.js",
+      wasmBinaryRel:
+        parseArgValue(inputArgs, "--wasm-binary-rel") ??
+        normalizePath(path.join(selectedPkgDirRel, "merman_wasm_bg.wasm")),
+      manifestRel:
+        parseArgValue(inputArgs, "--manifest-rel") ??
+        normalizePath(path.join(selectedPkgDirRel, "merman_wasm_preset.json")),
+    };
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(
+      "usage: node scripts/smoke.mjs [--entry <subpath>] [--pkg-dir-rel <dir>] [--wasm-module-subpath <subpath>] [--wasm-binary-rel <path>] [--manifest-rel <path>]",
+    );
+    process.exit(2);
+  }
 }
 
 function surfaceSmokeCase(name, entry, pkgDirRel) {
