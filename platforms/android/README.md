@@ -22,6 +22,14 @@ val svg = MermanEngine.renderSvg(
 val semanticJson = MermanEngine.parseJson(source)
 val layoutJson = MermanEngine.layoutJson(source)
 val analysisJson = MermanEngine.analyzeJson(source)
+val documentAnalysisJson = MermanEngine.analyzeDocumentJson(
+    "```mermaid\n$source\n```",
+    uri = "file:///tmp/example.md",
+)
+val documentFactsJson = MermanEngine.analyzeDocumentFactsJson(
+    "```mermaid\n$source\n```",
+    uri = "file:///tmp/example.md",
+)
 val ascii = MermanEngine.renderAscii(source)
 val validationJson = MermanEngine.validateJson(source)
 val diagramsJson = MermanEngine.supportedDiagramsJson()
@@ -50,6 +58,14 @@ vendored metrics for that request.
 Reusable engine methods are serialized around the native handle. A text-measurement callback should
 not call back into the same `MermanReusableEngine`; calling `close()` from a callback is safe and
 releases the engine after the current native call returns.
+If a Kotlin measurer throws, the JNI bridge clears the pending exception, reports that single
+measurement request as unsupported, and keeps the engine usable for the next JNI call. Log callback
+exceptions in host code so accidental fallback does not hide geometry drift.
+
+`MermanEngine.analyzeDocumentJson(...)` and `analyzeDocumentFactsJson(...)` are also available on
+`MermanReusableEngine`. They follow the shared document-analysis contract: pass the full
+Markdown/MDX-like document source plus the document URI; the URI is used to select document parsing
+behavior consistently with the other platform bindings.
 
 For accurate Android preview geometry, measure with the same text stack that will display the SVG:
 `TextPaint`/`StaticLayout` for native Android UI, or a cached DOM/canvas measurement path for
@@ -93,6 +109,13 @@ Full platform gate with Android native slices and AAR assembly:
 
 ```bash
 python3 scripts/verify-platform-bindings.py --build-android-slices --run-android-gradle-build --gradle-path "<gradle-install-dir>/bin/gradle"
+```
+
+Runtime JNI smoke, including the throwing text-measurer fallback path, runs on a connected Android
+device or emulator:
+
+```bash
+python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path "<gradle-install-dir>/bin/gradle"
 ```
 
 ## Build Native Slices

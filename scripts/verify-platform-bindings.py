@@ -25,6 +25,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-android-slices", action="store_true")
     parser.add_argument("--run-flutter-android-smoke", action="store_true")
     parser.add_argument("--run-android-gradle-build", action="store_true")
+    parser.add_argument("--run-android-instrumentation-smoke", action="store_true")
+    parser.add_argument(
+        "--only-android-instrumentation-smoke",
+        action="store_true",
+        help="Build missing Android native slices and run only the Android instrumentation smoke.",
+    )
     parser.add_argument("--gradle-path", default=os.environ.get("MERMAN_GRADLE"))
     parser.add_argument(
         "--build-apple-xcframework",
@@ -69,6 +75,9 @@ def bash_path(path: Path) -> str:
 
 def resolve_gradle_command(path: str | None) -> str:
     if path:
+        command = shutil.which(path)
+        if command:
+            return command
         resolved = Path(path).expanduser().resolve()
         if resolved.is_dir():
             gradle_bat = resolved / "gradle.bat"
@@ -86,6 +95,39 @@ def resolve_gradle_command(path: str | None) -> str:
     if not gradle:
         raise RuntimeError("gradle not found. Pass --gradle-path or set MERMAN_GRADLE.")
     return gradle
+
+
+def android_jni_libs_ready() -> bool:
+    return all(
+        path.exists()
+        for path in [
+            ANDROID_ROOT / "src" / "main" / "jniLibs" / "arm64-v8a" / "libmerman_ffi.so",
+            ANDROID_ROOT / "src" / "main" / "jniLibs" / "x86_64" / "libmerman_ffi.so",
+        ]
+    )
+
+
+def ensure_android_native_slices() -> None:
+    if android_jni_libs_ready():
+        return
+    step("Android native slices")
+    run(
+        [
+            sys.executable,
+            str(ANDROID_ROOT / "build-android.py"),
+            "--targets",
+            "aarch64-linux-android",
+            "x86_64-linux-android",
+            "--profile",
+            "release",
+        ]
+    )
+
+
+def run_android_instrumentation_smoke(gradle_path: str | None) -> None:
+    ensure_android_native_slices()
+    gradle = resolve_gradle_command(gradle_path)
+    run([gradle, "-p", str(ANDROID_ROOT), "connectedAndroidTest", "--stacktrace"])
 
 
 def host_dynamic_library() -> Path:
@@ -128,6 +170,13 @@ def main() -> int:
     args = parse_args()
 
     try:
+        if args.only_android_instrumentation_smoke:
+            step("Android instrumentation smoke")
+            run_android_instrumentation_smoke(args.gradle_path)
+            print()
+            print("Android instrumentation smoke completed.")
+            return 0
+
         step("Rust FFI host tests")
         run(["cargo", "nextest", "run", "-p", "merman-ffi"])
 
@@ -237,25 +286,15 @@ def main() -> int:
         run([dart, "run", "example/smoke.dart", str(host_dynamic_library())], cwd=FLUTTER_ROOT)
 
         if args.run_android_gradle_build:
-            arm64_lib = ANDROID_ROOT / "src" / "main" / "jniLibs" / "arm64-v8a" / "libmerman_ffi.so"
-            x64_lib = ANDROID_ROOT / "src" / "main" / "jniLibs" / "x86_64" / "libmerman_ffi.so"
-            if not arm64_lib.exists() or not x64_lib.exists():
-                step("Android native slices for Gradle")
-                run(
-                    [
-                        sys.executable,
-                        str(ANDROID_ROOT / "build-android.py"),
-                        "--targets",
-                        "aarch64-linux-android",
-                        "x86_64-linux-android",
-                        "--profile",
-                        "release",
-                    ]
-                )
+            ensure_android_native_slices()
 
             step("Android Gradle library assemble")
             gradle = resolve_gradle_command(args.gradle_path)
             run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
+
+        if args.run_android_instrumentation_smoke:
+            step("Android instrumentation smoke")
+            run_android_instrumentation_smoke(args.gradle_path)
 
         step("Apple Swift package scaffold checks")
         for path in [

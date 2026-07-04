@@ -27,6 +27,9 @@ for current Mermaid parity.
   - `Merman.renderAscii`
   - `Merman.parseJson` / `parseJsonRaw`
   - `Merman.layoutJson` / `layoutJsonRaw`
+  - `Merman.analyzeJson` / `analyzeJsonRaw`
+  - `Merman.analyzeDocumentJson` / `analyzeDocumentJsonRaw`
+  - `Merman.analyzeDocumentFactsJson` / `analyzeDocumentFactsJsonRaw`
   - `Merman.validate` / `validateJsonRaw`
   - `Merman.supportedDiagrams`
   - `Merman.asciiCapabilities`
@@ -98,6 +101,14 @@ final resvgSafeSvg = merman.renderSvg(
 Use `MermanReusableEngine.setTextMeasurer(...)` when Flutter needs label geometry to match its final
 preview surface. The current wrapper uses `NativeCallable.isolateLocal`, so create the reusable
 engine, install the measurer, render, and close the engine on the same Dart isolate.
+
+The reusable engine rejects callback re-entry with `DART_ENGINE_REENTERED`. A measurer must not call
+back into the same `MermanReusableEngine`; use a separate precomputed cache or a different engine if
+the host needs derived data. Calling `close()` while a native call is active defers native handle and
+callback disposal until that call returns. After close, subsequent reusable-engine calls fail with
+`DART_ENGINE_CLOSED`. If the Dart measurer throws, the native call treats that request as unhandled
+and falls back for the request; host code should log the exception because repeated fallback can
+affect final geometry.
 
 For WebView display, measure with a DOM/canvas service from that WebView after fonts are loaded and
 feed cached values into the synchronous measurer. For Flutter-native display, measure with the same

@@ -42,6 +42,15 @@ let svg = try engine.renderSvg("flowchart TD\nA[Hello] --> B[World]")
 let ascii = try engine.renderAscii("flowchart TD\nA[Hello] --> B[World]")
 let semanticJson = try engine.parseJsonRaw("flowchart TD\nA[Hello] --> B[World]")
 let layoutJson = try engine.layoutJsonRaw("flowchart TD\nA[Hello] --> B[World]")
+let analysisJson = try engine.analyzeJsonRaw("flowchart TD\nA[Hello] --> B[World]")
+let documentJson = try engine.analyzeDocumentJsonRaw(
+    "```mermaid\nflowchart TD\nA --> B\n```",
+    uri: "file:///tmp/example.md"
+)
+let documentFactsJson = try engine.analyzeDocumentFactsJsonRaw(
+    "```mermaid\nflowchart TD\nA --> B\n```",
+    uri: "file:///tmp/example.md"
+)
 let validation = try engine.validate("flowchart TD\nA[Hello] --> B[World]")
 let diagrams = try engine.supportedDiagrams()
 let asciiCapabilities = try engine.asciiCapabilities()
@@ -51,8 +60,9 @@ let lintRules = try engine.lintRuleCatalog()
 
 The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are
 mapped to `MermanError.binding`. `MermanReusableEngine` exposes repeated
-render/parse/layout/validation calls and `MermanTextMeasureCallback` aliases for hosts that need
-font-aware text measurement.
+render/parse/layout/analysis/document-analysis/validation calls and `MermanTextMeasureCallback`
+aliases for hosts that need font-aware text measurement. The document-analysis raw JSON APIs use the
+same full-document source plus URI contract as the C ABI and the other platform wrappers.
 `MermanEngine.lintRuleCatalog()` returns governed analyzer rule metadata, including evidence
 references, for editor settings, diagnostic explanations, and LSP rule configuration UI.
 

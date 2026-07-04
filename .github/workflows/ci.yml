@@ -319,6 +319,54 @@ jobs:
       - name: Verify platform bindings
         run: python3 scripts/verify-platform-bindings.py
 
+  android-instrumentation:
+    name: android-instrumentation
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      ANDROID_NDK_VERSION: "26.3.11579264"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Setup JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Run Android instrumentation smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path gradle
+
   python-uniffi-wheel:
     name: python-uniffi-wheel
     runs-on: ubuntu-24.04

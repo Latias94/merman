@@ -13,10 +13,17 @@ android {
 
     defaultConfig {
         minSdk = 23
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    sourceSets {
+        getByName("androidTest") {
+            java.srcDir("examples")
         }
     }
 
@@ -31,6 +38,11 @@ android {
             withJavadocJar()
         }
     }
+}
+
+dependencies {
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
 
 publishing {
