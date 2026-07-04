@@ -366,6 +366,10 @@ pub struct SnapshotBuildRequest {
 }
 
 impl SnapshotBuildRequest {
+    pub fn uri(&self) -> &Url {
+        &self.document.uri
+    }
+
     pub fn build(&self) -> Arc<DocumentSnapshot> {
         let snapshot = DocumentWorkspace::build_snapshot_with_analyzer(
             &self.analyzer,

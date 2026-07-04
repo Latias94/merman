@@ -3,8 +3,8 @@ use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::DocumentStore;
 use crate::document_store::{
-    AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotContext,
-    StoredDocument,
+    AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotBuildRequest,
+    SnapshotContext, StoredDocument,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -163,6 +163,39 @@ impl MermanLanguageServer {
         let snapshot = request.build();
         let mut store = self.store.lock().await;
         store.insert_built_snapshot(&request, snapshot)
+    }
+
+    async fn semantic_snapshot_context_for_uri(
+        &self,
+        uri: &tower_lsp::lsp_types::Url,
+    ) -> Result<Option<SnapshotContext>> {
+        let request = {
+            let mut store = self.store.lock().await;
+            if store.has_snapshot(uri) {
+                return Ok(store.snapshot_context(uri));
+            }
+            store.snapshot_build_request(uri)
+        };
+        let Some(request) = request else {
+            return Ok(None);
+        };
+
+        let snapshot = request.build();
+        self.commit_semantic_snapshot_context(&request, snapshot)
+            .await
+    }
+
+    async fn commit_semantic_snapshot_context(
+        &self,
+        request: &SnapshotBuildRequest,
+        snapshot: Arc<DocumentSnapshot>,
+    ) -> Result<Option<SnapshotContext>> {
+        let mut store = self.store.lock().await;
+        match store.insert_built_snapshot(request, snapshot) {
+            Some(context) => Ok(Some(context)),
+            None if store.get(request.uri()).is_some() => Err(stale_semantic_tokens_error()),
+            None => Ok(None),
+        }
     }
 
     fn diagnostics_for_document(
@@ -536,7 +569,7 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let snapshot_context = self.snapshot_context_for_uri(&uri).await;
+        let snapshot_context = self.semantic_snapshot_context_for_uri(&uri).await?;
 
         let Some(snapshot_context) = snapshot_context else {
             return Ok(None);
@@ -557,7 +590,7 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensDeltaParams,
     ) -> Result<Option<SemanticTokensFullDeltaResult>> {
         let uri = params.text_document.uri;
-        let snapshot_context = self.snapshot_context_for_uri(&uri).await;
+        let snapshot_context = self.semantic_snapshot_context_for_uri(&uri).await?;
         let Some(snapshot_context) = snapshot_context else {
             return Ok(None);
         };
@@ -598,7 +631,7 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
         let uri = params.text_document.uri;
-        let snapshot_context = self.snapshot_context_for_uri(&uri).await;
+        let snapshot_context = self.semantic_snapshot_context_for_uri(&uri).await?;
 
         let Some(snapshot_context) = snapshot_context else {
             return Ok(None);
@@ -1227,6 +1260,78 @@ mod tests {
 
         assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
         assert!(error.message.contains("semantic tokens document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_semantic_snapshot_build_returns_content_modified_error() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        let request = {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+            store
+                .snapshot_build_request(&uri)
+                .expect("expected snapshot build request")
+        };
+        let stale_snapshot = request.build();
+
+        {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri,
+                2,
+                "flowchart TD\nA-->C\n".to_string(),
+                DocumentKind::Diagram,
+            );
+        }
+
+        let error = server
+            .commit_semantic_snapshot_context(&request, stale_snapshot)
+            .await
+            .expect_err("stale semantic snapshot build should fail");
+
+        assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+        assert!(error.message.contains("semantic tokens document changed"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn closed_semantic_snapshot_build_returns_none() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        let request = {
+            let mut store = server.store.lock().await;
+            store.upsert_text(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            );
+            store
+                .snapshot_build_request(&uri)
+                .expect("expected snapshot build request")
+        };
+        let snapshot = request.build();
+
+        {
+            let mut store = server.store.lock().await;
+            store.remove(&uri);
+        }
+
+        let context = server
+            .commit_semantic_snapshot_context(&request, snapshot)
+            .await
+            .expect("closed semantic snapshot build should not fail");
+
+        assert!(context.is_none());
     }
 
     #[tokio::test(flavor = "current_thread")]
