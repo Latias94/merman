@@ -1,6 +1,6 @@
 use crate::{
     AnalysisDiagnostic, AnalysisPayload, AnalysisResult, Analyzer, DiagnosticRelated,
-    DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
+    DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap, Utf16Position,
 };
 use std::path::Path;
 
@@ -276,13 +276,17 @@ fn document_source_limit_result(
         return None;
     }
 
-    let source_map = SourceMap::new(text.to_string());
+    let source_map = SourceMap::new("");
     let diagnostics = crate::analyzer::source_limit_diagnostic(
         text.len(),
         limit,
         &source_map,
         &analyzer.options().rule_config,
     )
+    .map(|mut diagnostic| {
+        diagnostic.span = Some(whole_text_span_without_source_copy(text));
+        diagnostic
+    })
     .into_iter()
     .collect();
     Some(AnalysisResult::new(
@@ -291,6 +295,42 @@ fn document_source_limit_result(
         diagnostics,
         Vec::new(),
     ))
+}
+
+fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
+    let mut end_line = 1usize;
+    let mut end_column = 1usize;
+    let mut end_lsp_line = 0usize;
+    let mut end_lsp_character = 0usize;
+
+    for ch in text.chars() {
+        if ch == '\n' {
+            end_line += 1;
+            end_column = 1;
+            end_lsp_line += 1;
+            end_lsp_character = 0;
+        } else {
+            end_column += 1;
+            end_lsp_character += ch.len_utf16();
+        }
+    }
+
+    DiagnosticSpan::new(
+        0,
+        text.len(),
+        1,
+        1,
+        end_line,
+        end_column,
+        Utf16Position {
+            line: 0,
+            character: 0,
+        },
+        Utf16Position {
+            line: end_lsp_line,
+            character: end_lsp_character,
+        },
+    )
 }
 
 fn analyze_document_diagnostics(

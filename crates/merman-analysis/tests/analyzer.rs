@@ -704,19 +704,34 @@ fn source_byte_limit_does_not_scan_syntax_facts() {
 
 #[test]
 fn markdown_document_source_byte_limit_applies_before_fence_analysis() {
-    let source = format!("```mermaid\nflowchart TD\nA-->B\n```\n{}", "x".repeat(64));
+    let source = format!(
+        "intro 🤓\n```mermaid\nflowchart TD\nA-->B\n```\n{}",
+        "x".repeat(64)
+    );
     let analyzer =
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
 
-    let payload = analyze_document(&source, &analyzer, descriptor.clone());
+    let result = analyze_document_result(&source, &analyzer, descriptor.clone());
+    assert_eq!(result.source_map().source_len(), 0);
+
+    let payload = result.payload();
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
     let diagnostic = &payload.diagnostics[0];
     assert_eq!(diagnostic.id, "merman.resource.source_bytes_exceeded");
-    assert_eq!(diagnostic.span.as_ref().unwrap().byte_start, 0);
-    assert_eq!(diagnostic.span.as_ref().unwrap().byte_end, source.len());
+    let span = diagnostic.span.as_ref().unwrap();
+    assert_eq!(span.byte_start, 0);
+    assert_eq!(span.byte_end, source.len());
+    assert_eq!(span.line, 1);
+    assert_eq!(span.column, 1);
+    assert_eq!(span.end_line, 6);
+    assert_eq!(span.end_column, 65);
+    assert_eq!(span.lsp_range.start.line, 0);
+    assert_eq!(span.lsp_range.start.character, 0);
+    assert_eq!(span.lsp_range.end.line, 5);
+    assert_eq!(span.lsp_range.end.character, 64);
 
     let facts = analyze_document_facts(&source, &analyzer, descriptor);
     assert!(!facts.valid);
