@@ -110,6 +110,7 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
     };
     let mut facts = EditorSemanticFacts {
         completeness: parsed.completeness,
+        span_coordinate_space: Default::default(),
         symbols: Vec::new(),
         directive_prefixes: Vec::new(),
         diagnostics: parsed.diagnostics,

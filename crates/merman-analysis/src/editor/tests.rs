@@ -5,7 +5,7 @@ use super::{
 };
 use merman_core::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, SourceSpan,
+    EditorSemanticSymbol, EditorSpanCoordinateSpace, SourceSpan,
 };
 
 #[test]
@@ -548,6 +548,39 @@ fn text_index_projects_core_editor_facts() {
         Some("flowchart node")
     );
     assert!(index.has_directive_prefix("classDef"));
+}
+
+#[test]
+fn text_index_marks_parser_coordinate_core_facts_without_position_indexes() {
+    let mut facts = EditorSemanticFacts::new();
+    facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+    facts.push_directive_prefix("init");
+    facts.push_symbol(EditorSemanticSymbol::new(
+        "A",
+        Some("flowchart node".to_string()),
+        EditorSemanticKind::Module,
+        SourceSpan::new(3, 4),
+        SourceSpan::new(3, 4),
+    ));
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        SourceSpan::new(5, 5),
+    ));
+
+    let index = FenceTextIndex::from_core_facts(facts);
+
+    assert_eq!(
+        index.source(),
+        FenceTextIndexSource::ParserCompleteDegradedSpans
+    );
+    assert!(index.source().is_parser_backed());
+    assert!(!index.source().has_source_mapped_spans());
+    assert!(index.node_ids().any(|id| id == "A"));
+    assert!(index.has_directive_prefix("init"));
+    assert!(index.semantic_items().is_empty());
+    assert!(index.outline_items().is_empty());
+    assert!(index.expected_syntax().is_empty());
+    assert_eq!(index.references().count(), 0);
 }
 
 #[test]

@@ -6,33 +6,58 @@ use super::{
 
 pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceTextIndex {
     let mut index = FenceTextIndex::default();
+    let source_mapped_spans = facts.span_coordinate_space.is_original_source();
 
-    index.source = match facts.completeness {
-        merman_core::EditorSemanticCompleteness::Complete => FenceTextIndexSource::ParserComplete,
-        merman_core::EditorSemanticCompleteness::Recovered => FenceTextIndexSource::ParserRecovered,
+    index.source = match (facts.completeness, source_mapped_spans) {
+        (merman_core::EditorSemanticCompleteness::Complete, true) => {
+            FenceTextIndexSource::ParserComplete
+        }
+        (merman_core::EditorSemanticCompleteness::Complete, false) => {
+            FenceTextIndexSource::ParserCompleteDegradedSpans
+        }
+        (merman_core::EditorSemanticCompleteness::Recovered, true) => {
+            FenceTextIndexSource::ParserRecovered
+        }
+        (merman_core::EditorSemanticCompleteness::Recovered, false) => {
+            FenceTextIndexSource::ParserRecoveredDegradedSpans
+        }
     };
     index.directive_prefixes.extend(facts.directive_prefixes);
-    index
-        .expected_syntax
-        .extend(
-            facts
-                .expected_syntax
-                .into_iter()
-                .map(|expected| FenceExpectedSyntax {
-                    kind: expected_syntax_kind_from_core(expected.kind),
-                    span: ByteSpan {
-                        start: expected.span.start,
-                        end: expected.span.end,
-                    },
-                }),
-        );
+    if source_mapped_spans {
+        index
+            .expected_syntax
+            .extend(
+                facts
+                    .expected_syntax
+                    .into_iter()
+                    .map(|expected| FenceExpectedSyntax {
+                        kind: expected_syntax_kind_from_core(expected.kind),
+                        span: ByteSpan {
+                            start: expected.span.start,
+                            end: expected.span.end,
+                        },
+                    }),
+            );
+    }
 
     for symbol in facts.symbols {
         let role = symbol.role;
+        let kind = editor_kind_from_core(symbol.kind);
+        let is_class_definition = is_class_definition_detail(symbol.detail.as_deref());
+        if is_class_definition {
+            index.class_names.insert(symbol.name.clone());
+        }
+        if role.contributes_completion() && !is_class_definition {
+            index.node_ids.insert(symbol.name.clone());
+        }
+        if !source_mapped_spans {
+            continue;
+        }
+
         let item = FenceSemanticItem {
             name: symbol.name,
             detail: symbol.detail,
-            kind: editor_kind_from_core(symbol.kind),
+            kind,
             role: semantic_role_from_core(role),
             span: ByteSpan {
                 start: symbol.span.start,
@@ -49,13 +74,6 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
                 .entry(FenceReferenceGroup::from_semantic_item(&item))
                 .or_default()
                 .push(item.selection);
-        }
-        let is_class_definition = is_class_definition_detail(item.detail.as_deref());
-        if is_class_definition {
-            index.class_names.insert(item.name.clone());
-        }
-        if role.contributes_completion() && !is_class_definition {
-            index.node_ids.insert(item.name.clone());
         }
         if role.contributes_outline() {
             index.outline_items.push(item.to_line_item());

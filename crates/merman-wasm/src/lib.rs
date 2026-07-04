@@ -806,7 +806,9 @@ fn fact_source_name(source: FenceTextIndexSource) -> &'static str {
     match source {
         FenceTextIndexSource::TextScan => "text_scan",
         FenceTextIndexSource::ParserComplete => "parser_complete",
+        FenceTextIndexSource::ParserCompleteDegradedSpans => "parser_complete_degraded_spans",
         FenceTextIndexSource::ParserRecovered => "parser_recovered",
+        FenceTextIndexSource::ParserRecoveredDegradedSpans => "parser_recovered_degraded_spans",
     }
 }
 

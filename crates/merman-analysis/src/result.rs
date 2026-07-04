@@ -219,6 +219,7 @@ pub struct AnalysisDiagramSyntaxFacts {
     pub fact_source: FenceTextIndexSource,
     pub parser_backed: bool,
     pub recovered: bool,
+    pub source_mapped_spans: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flowchart: Option<AnalysisFlowchartFacts>,
     pub node_ids: Vec<String>,
@@ -244,6 +245,7 @@ impl AnalysisDiagramSyntaxFacts {
             fact_source,
             parser_backed: fact_source.is_parser_backed(),
             recovered: fact_source.is_recovered(),
+            source_mapped_spans: fact_source.has_source_mapped_spans(),
             flowchart: syntax.flowchart.clone(),
             node_ids: text_index.node_ids().cloned().collect(),
             class_names: text_index.class_names().cloned().collect(),

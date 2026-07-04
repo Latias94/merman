@@ -15,6 +15,23 @@ impl SourceSpan {
     }
 }
 
+/// Coordinate space used by spans in parser-produced editor facts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorSpanCoordinateSpace {
+    /// Spans are byte offsets in the original source supplied by the caller.
+    #[default]
+    OriginalSource,
+    /// Spans are byte offsets in the parser input after preprocessing.
+    ParserInput,
+}
+
+impl EditorSpanCoordinateSpace {
+    pub fn is_original_source(self) -> bool {
+        matches!(self, Self::OriginalSource)
+    }
+}
+
 /// Protocol-independent symbol classification for editor-facing consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorSemanticKind {
@@ -208,6 +225,7 @@ pub enum EditorSemanticCompleteness {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
+    pub span_coordinate_space: EditorSpanCoordinateSpace,
     pub symbols: Vec<EditorSemanticSymbol>,
     pub directive_prefixes: Vec<String>,
     pub diagnostics: Vec<EditorSemanticDiagnostic>,

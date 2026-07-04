@@ -99,13 +99,23 @@ pub enum FenceTextIndexSource {
     TextScan,
     /// Parser-backed facts from a complete family parse.
     ParserComplete,
+    /// Parser-backed complete facts whose spans remain in parser-input coordinates.
+    ParserCompleteDegradedSpans,
     /// Parser-backed facts from a recoverable partial parse.
     ParserRecovered,
+    /// Parser-backed recovered facts whose spans remain in parser-input coordinates.
+    ParserRecoveredDegradedSpans,
 }
 
 impl FenceTextIndexSource {
     pub fn is_parser_backed(self) -> bool {
-        matches!(self, Self::ParserComplete | Self::ParserRecovered)
+        matches!(
+            self,
+            Self::ParserComplete
+                | Self::ParserCompleteDegradedSpans
+                | Self::ParserRecovered
+                | Self::ParserRecoveredDegradedSpans
+        )
     }
 
     pub fn is_text_scan(self) -> bool {
@@ -113,7 +123,17 @@ impl FenceTextIndexSource {
     }
 
     pub fn is_recovered(self) -> bool {
-        matches!(self, Self::ParserRecovered)
+        matches!(
+            self,
+            Self::ParserRecovered | Self::ParserRecoveredDegradedSpans
+        )
+    }
+
+    pub fn has_source_mapped_spans(self) -> bool {
+        !matches!(
+            self,
+            Self::ParserCompleteDegradedSpans | Self::ParserRecoveredDegradedSpans
+        )
     }
 }
 

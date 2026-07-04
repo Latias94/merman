@@ -297,6 +297,38 @@ fn analyze_result_exposes_complete_parser_syntax_facts() {
 }
 
 #[test]
+fn analyze_result_marks_unmapped_parser_spans_as_degraded() {
+    let source = concat!(
+        "---\n",
+        "title: quoted\n",
+        "---\n",
+        "sequenceDiagram\n",
+        "participant Alice\n",
+        "Alice->>Bob: #quot;\n",
+    );
+    let facts = Analyzer::new().analyze_facts(source);
+
+    assert!(facts.valid);
+    assert_eq!(facts.diagrams.len(), 1);
+
+    let syntax = &facts.diagrams[0].syntax;
+    assert_eq!(syntax.diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(
+        syntax.fact_source,
+        FenceTextIndexSource::ParserCompleteDegradedSpans
+    );
+    assert!(syntax.parser_backed);
+    assert!(!syntax.recovered);
+    assert!(!syntax.source_mapped_spans);
+    assert!(syntax.node_ids.iter().any(|id| id == "Alice"));
+    assert!(syntax.node_ids.iter().any(|id| id == "Bob"));
+    assert!(syntax.references.is_empty());
+    assert!(syntax.outline_items.is_empty());
+    assert!(syntax.semantic_items.is_empty());
+    assert!(syntax.expected_syntax.is_empty());
+}
+
+#[test]
 fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
     let source = "flowchart TD\nA@{\n  shape: rou\n}\n";
     let result = Analyzer::new().analyze_result(source);

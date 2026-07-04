@@ -1,7 +1,7 @@
 use crate::{
-    EditorSemanticFacts, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result,
-    SourceSpan, common_db, diagram, diagrams::error_diagram, family, preprocess_diagram,
-    preprocess_diagram_with_known_type, runtime, sanitize, theme,
+    EditorSemanticFacts, EditorSpanCoordinateSpace, Engine, Error, MermaidConfig, ParseMetadata,
+    ParseOptions, Result, SourceSpan, common_db, diagram, diagrams::error_diagram, family,
+    preprocess_diagram, preprocess_diagram_with_known_type, runtime, sanitize, theme,
 };
 use diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
 
@@ -37,7 +37,7 @@ enum EditorSourceRemap {
         normalized_offset: usize,
         normalized_to_original: Vec<usize>,
     },
-    Unmapped,
+    ParserInputCoordinates,
 }
 
 impl<'a> EditorParseSourceMap<'a> {
@@ -78,7 +78,7 @@ impl<'a> EditorParseSourceMap<'a> {
 
         Self {
             parser_input: preprocessed,
-            remap: EditorSourceRemap::Unmapped,
+            remap: EditorSourceRemap::ParserInputCoordinates,
         }
     }
 
@@ -87,11 +87,18 @@ impl<'a> EditorParseSourceMap<'a> {
     }
 
     fn remap_facts(&self, facts: &mut EditorSemanticFacts) {
-        if matches!(
-            self.remap,
-            EditorSourceRemap::None | EditorSourceRemap::Offset(0)
-        ) {
-            return;
+        match self.remap {
+            EditorSourceRemap::None | EditorSourceRemap::Offset(0) => {
+                facts.span_coordinate_space = EditorSpanCoordinateSpace::OriginalSource;
+                return;
+            }
+            EditorSourceRemap::ParserInputCoordinates => {
+                facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+                return;
+            }
+            EditorSourceRemap::Offset(_) | EditorSourceRemap::Normalized { .. } => {
+                facts.span_coordinate_space = EditorSpanCoordinateSpace::OriginalSource;
+            }
         }
 
         for symbol in &mut facts.symbols {
@@ -114,7 +121,7 @@ impl<'a> EditorParseSourceMap<'a> {
         match &self.remap {
             EditorSourceRemap::None => offset,
             EditorSourceRemap::Offset(base) => offset + base,
-            EditorSourceRemap::Unmapped => offset,
+            EditorSourceRemap::ParserInputCoordinates => offset,
             EditorSourceRemap::Normalized {
                 normalized_offset,
                 normalized_to_original,
@@ -287,6 +294,7 @@ impl<'a> ParsePipeline<'a> {
 
         let EditorSemanticFacts {
             completeness,
+            span_coordinate_space: _,
             symbols,
             directive_prefixes: family_directive_prefixes,
             diagnostics,
@@ -295,6 +303,7 @@ impl<'a> ParsePipeline<'a> {
         directive_prefixes.extend(family_directive_prefixes);
         let mut facts = EditorSemanticFacts {
             completeness,
+            span_coordinate_space: EditorSpanCoordinateSpace::OriginalSource,
             symbols,
             directive_prefixes: Vec::new(),
             diagnostics,

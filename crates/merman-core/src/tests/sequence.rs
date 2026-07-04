@@ -329,9 +329,21 @@ fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap()
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert_eq!(
+        facts.span_coordinate_space,
+        EditorSpanCoordinateSpace::ParserInput
+    );
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
     }));
+    let alice = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Alice participant");
+    assert_eq!(alice.selection.start, "sequenceDiagram\nparticipant ".len());
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
     }));
