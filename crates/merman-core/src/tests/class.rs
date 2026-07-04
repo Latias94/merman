@@ -691,6 +691,64 @@ style User fill:#fff
 }
 
 #[test]
+fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
+    let engine = Engine::new();
+    let text =
+        "classDiagram\nclass `123`\n`123` --> Service\nclick `123` href \"https://example.com\"\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    let numeric_starts = text
+        .match_indices("123")
+        .map(|(start, _)| start)
+        .collect::<Vec<_>>();
+    assert_eq!(numeric_starts.len(), 3);
+
+    let symbol_at = |detail: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "classId-123"
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.selection.start == start
+            })
+            .unwrap_or_else(|| panic!("missing quoted numeric class symbol {detail} at {start}"))
+    };
+
+    for (detail, start) in [
+        ("class", numeric_starts[0]),
+        ("class relation target", numeric_starts[1]),
+        ("class interaction target", numeric_starts[2]),
+    ] {
+        let symbol = symbol_at(detail, start);
+        assert_eq!(symbol.selection.end, start + "123".len());
+    }
+}
+
+#[test]
+fn parse_class_editor_facts_preserve_click_call_callback_name_span_after_whitespace() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclass Admin\nclick Admin call   open(userId)\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    let open_start = text.find("open").unwrap();
+    let callback = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "open" && symbol.detail.as_deref() == Some("class callback"))
+        .expect("callback symbol");
+
+    assert_eq!(callback.selection.start, open_start);
+    assert_eq!(callback.selection.end, open_start + "open".len());
+}
+
+#[test]
 fn parse_class_editor_facts_record_expected_node_identifier_spans() {
     let engine = Engine::new();
     let text = "classDiagram\nclassDef service fill:#eee\n";

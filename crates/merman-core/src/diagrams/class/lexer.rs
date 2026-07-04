@@ -330,8 +330,8 @@ impl<'input> Lexer<'input> {
         if self.mode != Mode::ClickNeedCallbackName {
             return None;
         }
-        let start = self.pos;
         self.skip_ws();
+        let start = self.pos;
         let bytes = self.input.as_bytes();
         let mut end = self.pos;
         while end < self.input.len() {

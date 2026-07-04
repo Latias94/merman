@@ -467,7 +467,16 @@ impl FlowchartRecoveryFactCollector {
                     SourceSpan::new(end, end),
                 ));
             }
-            TokenKind::EdgeLabel => {}
+            TokenKind::EdgeLabel => {
+                if matches!(
+                    self.pending_node_identifier,
+                    Some(FlowchartRecoveryTargetState::Awaiting(_))
+                ) {
+                    self.pending_node_identifier = Some(FlowchartRecoveryTargetState::Awaiting(
+                        SourceSpan::new(end, end),
+                    ));
+                }
+            }
             TokenKind::Id => {
                 self.pending_node_identifier = None;
             }

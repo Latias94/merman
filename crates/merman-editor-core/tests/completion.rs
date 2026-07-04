@@ -226,6 +226,26 @@ fn completion_uses_parser_identifier_context_after_operator() {
 }
 
 #[test]
+fn completion_after_pipe_edge_label_inserts_after_the_label() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA-->B\nA -->|go|".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 9));
+
+    let item = list.items.iter().find(|item| item.label == "B").unwrap();
+    let edit = item.text_edit.as_ref().unwrap();
+
+    assert_eq!(edit.new_text, "B");
+    assert_eq!(edit.range.start.line, 2);
+    assert_eq!(edit.range.start.character, 9);
+    assert_eq!(edit.range.end, edit.range.start);
+}
+
+#[test]
 fn completion_keeps_known_node_ids_when_parser_recovers() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

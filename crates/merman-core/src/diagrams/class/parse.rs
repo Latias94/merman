@@ -483,7 +483,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             | ExpectedClassName::InlineClassReference => EditorSemanticKind::Property,
             _ => EditorSemanticKind::Class,
         };
-        let selection = selection_span_for_class_name(&symbol.name, symbol.span);
+        let selection = selection_span_for_class_name(self.code, &symbol.name, symbol.span);
         match expected {
             ExpectedClassName::ClassDef => facts.push_symbol(EditorSemanticSymbol::outline(
                 symbol.name,
@@ -676,8 +676,15 @@ impl<'a> ClassEditorFactCollector<'a> {
     }
 }
 
-fn selection_span_for_class_name(name: &str, span: SourceSpan) -> SourceSpan {
+fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> SourceSpan {
     if let Some(raw) = name.strip_prefix(MERMAID_DOM_ID_PREFIX) {
+        if let Some(source) = code.get(span.start..span.end)
+            && source.starts_with('`')
+            && source.ends_with('`')
+            && span.end >= span.start + raw.len() + 2
+        {
+            return SourceSpan::new(span.start + 1, span.start + 1 + raw.len());
+        }
         return SourceSpan::new(span.start, span.start + raw.len());
     }
 
