@@ -236,7 +236,13 @@ fn move_flowchart_html_labels_to_root(config: &mut Value) -> bool {
                 root.remove("config");
             }
         }
+        FlowchartHtmlLabelsPath::ConfigWrappedRoot { config_is_empty } => {
+            if config_is_empty {
+                root.remove("config");
+            }
+        }
     }
+    flatten_config_wrapper(config);
 
     true
 }
@@ -247,6 +253,9 @@ enum FlowchartHtmlLabelsPath {
     },
     ConfigWrapped {
         flowchart_is_empty: bool,
+        config_is_empty: bool,
+    },
+    ConfigWrappedRoot {
         config_is_empty: bool,
     },
 }
@@ -277,6 +286,13 @@ fn take_config_wrapped_flowchart_html_labels(
     let Value::Object(config) = root.get_mut("config")? else {
         return None;
     };
+    if let Some(html_labels) = config.remove("htmlLabels") {
+        let config_is_empty = config.is_empty();
+        return Some((
+            html_labels,
+            FlowchartHtmlLabelsPath::ConfigWrappedRoot { config_is_empty },
+        ));
+    }
     let (html_labels, flowchart_is_empty, config_is_empty) = {
         let Value::Object(flowchart) = config.get_mut("flowchart")? else {
             return None;
@@ -294,6 +310,28 @@ fn take_config_wrapped_flowchart_html_labels(
             config_is_empty,
         },
     ))
+}
+
+fn flatten_config_wrapper(config: &mut Value) {
+    let Value::Object(root) = config else {
+        return;
+    };
+    let Some(wrapper_value) = root.remove("config") else {
+        return;
+    };
+    let Value::Object(wrapper) = wrapper_value else {
+        root.insert("config".to_string(), wrapper_value);
+        return;
+    };
+
+    for (key, value) in wrapper {
+        match root.get_mut(&key) {
+            Some(existing) => deep_merge_config(existing, value),
+            None => {
+                root.insert(key, value);
+            }
+        }
+    }
 }
 
 fn parse_frontmatter_fields(yaml_body: &str) -> Option<Map<String, Value>> {
@@ -455,5 +493,20 @@ mod tests {
         assert!(edited.contains("htmlLabels: false"));
         assert!(!edited.contains("flowchart:\n    htmlLabels: false"));
         assert!(edited.contains("config:\n  flowchart:\n    curve: basis"));
+    }
+
+    #[test]
+    fn flowchart_html_labels_to_root_fix_promotes_raw_config_html_labels() {
+        let source = "%%{init: {\"config\": {\"htmlLabels\": false}, \"theme\": \"base\"}}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(fix.is_preferred);
+        assert!(edited.contains("config:"));
+        assert!(edited.contains("htmlLabels: false"));
+        assert!(edited.contains("theme: base"));
+        assert!(!edited.contains("config:\n  config:"));
     }
 }

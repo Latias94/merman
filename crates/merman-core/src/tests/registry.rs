@@ -411,6 +411,18 @@ fn tiny_engine_rejects_full_only_known_type_parsers() {
             panic!("unexpected render error for {expected_type}: {err}");
         };
         assert_eq!(diagram_type, expected_type);
+
+        let err = engine
+            .parse_editor_semantic_facts_with_type_sync(
+                expected_type,
+                source,
+                crate::ParseOptions::strict(),
+            )
+            .unwrap_err();
+        let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
+            panic!("unexpected editor facts error for {expected_type}: {err}");
+        };
+        assert_eq!(diagram_type, expected_type);
     }
 }
 

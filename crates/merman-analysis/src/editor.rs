@@ -13,6 +13,14 @@ pub struct ByteSpan {
 
 impl ByteSpan {
     pub fn contains(self, offset: usize) -> bool {
+        if self.start == self.end {
+            offset == self.start
+        } else {
+            offset >= self.start && offset < self.end
+        }
+    }
+
+    pub fn contains_inclusive_end(self, offset: usize) -> bool {
         offset >= self.start && offset <= self.end
     }
 }
@@ -465,7 +473,7 @@ impl FenceTextIndex {
     fn expected_syntax_at_offset(&self, offset: usize) -> Option<&FenceExpectedSyntax> {
         self.expected_syntax
             .iter()
-            .filter(|expected| expected.span.contains(offset))
+            .filter(|expected| expected.span.contains_inclusive_end(offset))
             .min_by(|left, right| {
                 let left_len = left.span.end.saturating_sub(left.span.start);
                 let right_len = right.span.end.saturating_sub(right.span.start);

@@ -3,7 +3,9 @@ use tower_lsp::Server;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();

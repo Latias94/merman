@@ -9,6 +9,18 @@ use merman_core::{
 };
 
 #[test]
+fn byte_span_contains_half_open_ranges_and_empty_insertions() {
+    let span = ByteSpan { start: 0, end: 1 };
+    assert!(span.contains(0));
+    assert!(!span.contains(1));
+
+    let empty_span = ByteSpan { start: 1, end: 1 };
+    assert!(!empty_span.contains(0));
+    assert!(empty_span.contains(1));
+    assert!(!empty_span.contains(2));
+}
+
+#[test]
 fn text_index_collects_node_ids() {
     let index = FenceTextIndex::from_text("flowchart TD\nA-->B\nB-->C\n", Some("flowchart-v2"));
     let ids = index.node_ids().cloned().collect::<Vec<_>>();

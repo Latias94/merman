@@ -1238,17 +1238,13 @@ mod tests {
                 .unwrap();
 
         assert_eq!(json["valid"], false);
-        if cfg!(feature = "render") {
-            assert_eq!(json["code_name"], "MERMAN_NO_DIAGRAM");
-            assert!(
-                json["error"]
-                    .as_str()
-                    .unwrap()
-                    .contains("no Mermaid diagram")
-            );
-        } else {
-            assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_FORMAT");
-        }
+        assert_eq!(json["code_name"], "MERMAN_NO_DIAGRAM");
+        assert!(
+            json["error"]
+                .as_str()
+                .unwrap()
+                .contains("no Mermaid diagram")
+        );
     }
 
     #[cfg(target_arch = "wasm32")]

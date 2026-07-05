@@ -144,7 +144,7 @@ Remaining fallback ledger:
   unlocatable parser failures.
 - LSP diagnostic projection: `Diagnostic.source` is `merman`; the visible `Diagnostic.code` is the
   stable string rule id such as `merman.parse.diagram_parse`, not the numeric analysis status.
-  Numeric `code` / `code_name`, category, diagram type, help text, and fix metadata remain in
+  Numeric `code` / `codeName`, category, `diagramType`, help text, and fix metadata remain in
   diagnostic `data` for compatibility and code actions. Editor-core and LSP do not keep a
   number-or-string compatibility enum and do not deduplicate projected diagnostics; they preserve
   analysis payload cardinality. Document pull diagnostics are enabled only when the client

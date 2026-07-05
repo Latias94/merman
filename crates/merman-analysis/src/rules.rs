@@ -36,8 +36,9 @@ pub const FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID: &str =
     "merman.semantic.flowchart.unknown_style_target";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 
-const DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS: [&[&str]; 2] = [
+const DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS: [&[&str]; 3] = [
     &["flowchart", "htmlLabels"],
+    &["config", "htmlLabels"],
     &["config", "flowchart", "htmlLabels"],
 ];
 const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS: [&[&str]; 2] =
@@ -1088,6 +1089,21 @@ mod tests {
             diagnostics[0].fixes[0].title,
             "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
         );
+        let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
+        assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+    }
+
+    #[test]
+    fn source_lint_reports_config_wrapped_root_html_labels_directive() {
+        let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let diagnostics =
+            source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+        assert_eq!(diagnostics[0].fixes.len(), 1);
         let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
         assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
     }

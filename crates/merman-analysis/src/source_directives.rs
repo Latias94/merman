@@ -411,8 +411,9 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
 mod tests {
     use super::*;
 
-    const HTML_LABEL_PATHS: [&[&str]; 2] = [
+    const HTML_LABEL_PATHS: [&[&str]; 3] = [
         &["flowchart", "htmlLabels"],
+        &["config", "htmlLabels"],
         &["config", "flowchart", "htmlLabels"],
     ];
 
@@ -480,6 +481,16 @@ mod tests {
     #[test]
     fn init_directive_config_key_spans_match_quoted_config_wrapper_path() {
         let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\n";
+
+        let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn init_directive_config_key_spans_match_config_wrapped_root_path() {
+        let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nflowchart TD\n";
 
         let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
 

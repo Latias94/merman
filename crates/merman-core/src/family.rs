@@ -320,9 +320,9 @@ fn fast_detect_keyword_facts_tiny() -> &'static [FastDetectKeywordFact] {
         .as_slice()
 }
 
-fn diagram_type_supported_in_profile(
+pub(crate) fn diagram_type_supported_in_profile(
     profile: BaselineRegistryProfile,
-    diagram_type: &'static str,
+    diagram_type: &str,
 ) -> bool {
     match profile {
         BaselineRegistryProfile::Full => true,
@@ -510,14 +510,6 @@ const FAST_DETECT_KEYWORDS_FULL: &[FastDetectKeywordFact] = &[
     FastDetectKeywordFact {
         keyword: "sequenceDiagram",
         id: "sequence",
-    },
-    FastDetectKeywordFact {
-        keyword: "classDiagram",
-        id: "classDiagram",
-    },
-    FastDetectKeywordFact {
-        keyword: "stateDiagram",
-        id: "stateDiagram",
     },
     FastDetectKeywordFact {
         keyword: "mindmap",

@@ -231,6 +231,13 @@ impl<'a> ParsePipeline<'a> {
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
+        let registry_profile = self.engine.diagram_registry.profile();
+        if !family::diagram_type_supported_in_profile(registry_profile, meta.diagram_type.as_str())
+        {
+            return Err(Error::UnsupportedDiagram {
+                diagram_type: meta.diagram_type.clone(),
+            });
+        }
         let source_map = EditorParseSourceMap::new(self.text, &code);
         let editor_input = source_map.parser_input();
 
