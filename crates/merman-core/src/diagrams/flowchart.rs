@@ -1,3 +1,4 @@
+use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
     DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts,
@@ -1102,7 +1103,9 @@ impl FlowchartSemanticSource {
         });
 
         if !warning_facts.is_empty() {
+            let warnings = legacy_warning_messages(&warning_facts);
             model["warningFacts"] = json!(warning_facts);
+            model["warnings"] = json!(warnings);
         }
 
         model

@@ -93,6 +93,7 @@
     "direction": "LR",
     "accTitle": "My GitGraph Accessibility Title",
     "accDescr": "My GitGraph Accessibility Description",
+    "warningFacts": [],
     "warnings": []
   }
 }

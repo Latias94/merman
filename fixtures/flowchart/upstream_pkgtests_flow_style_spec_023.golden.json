@@ -63,6 +63,24 @@
     ],
     "edges": [],
     "subgraphs": [],
+    "warningFacts": [
+      {
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "message": "Style applied to unknown node \"S\". This may indicate a typo. The node will be created automatically.",
+        "span": {
+          "start": 15,
+          "end": 16
+        }
+      },
+      {
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "message": "Style applied to unknown node \"T\". This may indicate a typo. The node will be created automatically.",
+        "span": {
+          "start": 39,
+          "end": 40
+        }
+      }
+    ],
     "warnings": [
       "Style applied to unknown node \"S\". This may indicate a typo. The node will be created automatically.",
       "Style applied to unknown node \"T\". This may indicate a typo. The node will be created automatically."

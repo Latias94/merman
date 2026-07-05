@@ -98,6 +98,16 @@
       }
     ],
     "subgraphs": [],
+    "warningFacts": [
+      {
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "message": "Style applied to unknown node \"e\". This may indicate a typo. The node will be created automatically.",
+        "span": {
+          "start": 24,
+          "end": 25
+        }
+      }
+    ],
     "warnings": [
       "Style applied to unknown node \"e\". This may indicate a typo. The node will be created automatically."
     ]

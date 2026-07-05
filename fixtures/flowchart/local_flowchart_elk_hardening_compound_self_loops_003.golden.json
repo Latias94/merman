@@ -397,6 +397,20 @@
         "labelType": "text"
       }
     ],
+    "warningFacts": [
+      {
+        "ruleId": "merman.authoring.flowchart.explicit_direction",
+        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+        "span": {
+          "start": 0,
+          "end": 9
+        },
+        "fixSpan": {
+          "start": 9,
+          "end": 9
+        }
+      }
+    ],
     "warnings": [
       "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`"
     ]

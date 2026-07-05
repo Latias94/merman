@@ -65,6 +65,7 @@
     "direction": "TB",
     "accTitle": "Complex Example",
     "accDescr": null,
+    "warningFacts": [],
     "warnings": []
   }
 }

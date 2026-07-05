@@ -100,13 +100,6 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
 
     obj.remove("config");
 
-    if matches!(
-        diagram_type,
-        "block" | "gitGraph" | "flowchart-v2" | "flowchart-elk"
-    ) {
-        normalize_warning_facts_to_warnings(obj);
-    }
-
     // Mermaid mindmap includes a random UUID v4-based diagram id.
     if diagram_type == "mindmap" && obj.get("diagramId").is_some() {
         obj.insert(
@@ -204,22 +197,6 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
 
         walk(&re, model);
     }
-}
-
-fn normalize_warning_facts_to_warnings(obj: &mut Map<String, Value>) {
-    let Some(Value::Array(facts)) = obj.remove("warningFacts") else {
-        return;
-    };
-
-    let warnings = facts
-        .into_iter()
-        .filter_map(|fact| {
-            fact.get("message")
-                .and_then(Value::as_str)
-                .map(|message| Value::String(message.to_string()))
-        })
-        .collect::<Vec<_>>();
-    obj.insert("warnings".to_string(), Value::Array(warnings));
 }
 
 fn snapshot_value(diagram_type: &str, mut model: Value) -> Value {

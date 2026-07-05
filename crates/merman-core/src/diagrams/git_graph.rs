@@ -1,4 +1,6 @@
-use crate::diagram::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
+use crate::diagram::{
+    DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, legacy_warning_messages,
+};
 use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
 use crate::{
@@ -951,7 +953,8 @@ fn parse_acc_descr_block_start(line: &str) -> bool {
 
 pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_git_graph_model(code, meta)?;
-    let mut out = Map::with_capacity(9);
+    let warnings = legacy_warning_messages(&model.warning_facts);
+    let mut out = Map::with_capacity(10);
     out.insert("type".to_string(), Value::String(model.diagram_type));
     out.insert("commits".to_string(), json!(model.commits));
     out.insert("branches".to_string(), json!(model.branches));
@@ -960,6 +963,7 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("accTitle".to_string(), json!(model.acc_title));
     out.insert("accDescr".to_string(), json!(model.acc_descr));
     out.insert("warningFacts".to_string(), json!(model.warning_facts));
+    out.insert("warnings".to_string(), json!(warnings));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
@@ -2037,5 +2041,9 @@ merge feature id:"M1"
             .filter_map(|v| v.get("message").and_then(|message| message.as_str()))
             .collect::<Vec<_>>();
         assert!(warnings.contains(&"Commit ID working on MDR already exists"));
+        assert_eq!(
+            model["warnings"],
+            json!(["Commit ID working on MDR already exists"])
+        );
     }
 }

@@ -45,6 +45,10 @@ impl DiagramWarningFact {
     }
 }
 
+pub(crate) fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<String> {
+    facts.iter().map(|fact| fact.message.clone()).collect()
+}
+
 /// Parser used by the semantic JSON path for one Mermaid diagram family.
 pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<Value>;
 

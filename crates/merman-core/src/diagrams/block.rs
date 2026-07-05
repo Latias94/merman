@@ -1,4 +1,4 @@
-use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact};
+use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -2347,6 +2347,7 @@ impl<'a> Parser<'a> {
 
 pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let db = parse_block_db(code, meta)?;
+    let warnings = legacy_warning_messages(&db.warning_facts);
 
     let blocks = db.blocks.iter().map(block_to_value).collect::<Vec<_>>();
     let edges = db.edges.iter().map(block_to_value).collect::<Vec<_>>();
@@ -2363,6 +2364,7 @@ pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("blocksFlat".to_string(), Value::Array(blocks_flat));
     out.insert("classes".to_string(), classes);
     out.insert("warningFacts".to_string(), json!(db.warning_facts));
+    out.insert("warnings".to_string(), json!(warnings));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
@@ -2749,6 +2751,7 @@ mod tests {
             .filter_map(|v| v.get("message").and_then(|message| message.as_str()))
             .collect();
         assert!(warnings.contains(&"Block B width 2 exceeds configured column width 1"));
+        assert_eq!(model["warnings"], json!(warnings));
     }
 
     #[test]

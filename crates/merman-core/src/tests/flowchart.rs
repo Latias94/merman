@@ -1949,6 +1949,12 @@ fn parse_diagram_flowchart_style_statement_applies_vertex_styles() {
             }
         ])
     );
+    assert_eq!(
+        res.model["warnings"],
+        json!([
+            "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically."
+        ])
+    );
 }
 
 #[test]
@@ -2196,6 +2202,7 @@ fn parse_diagram_flowchart_keyword_flowchart() {
     assert_eq!(res.model["direction"], json!("TB"));
     assert_eq!(res.model["subgraphs"], json!([]));
     assert!(res.model.get("warningFacts").is_none());
+    assert!(res.model.get("warnings").is_none());
 }
 
 #[test]
@@ -2216,6 +2223,12 @@ fn parse_diagram_flowchart_without_direction_preserves_source_and_warns() {
                 "span": { "start": 0, "end": 9 },
                 "fixSpan": { "start": 9, "end": 9 }
             }
+        ])
+    );
+    assert_eq!(
+        res.model["warnings"],
+        json!([
+            "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`"
         ])
     );
 }
