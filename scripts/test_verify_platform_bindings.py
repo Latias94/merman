@@ -79,6 +79,22 @@ class AndroidAarVerificationTests(unittest.TestCase):
             ):
                 verify_platform_bindings.assert_android_aar_contains_kotlin_wrappers(aar_path)
 
+    def test_android_aar_reports_missing_text_measure_result_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aar_path = Path(temp_dir) / "merman-android-release.aar"
+            classes = [
+                class_name
+                for class_name in EXPECTED_ANDROID_WRAPPER_CLASSES
+                if class_name != "io/merman/MermanTextMeasureResult.class"
+            ]
+            write_aar(aar_path, classes)
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "MermanTextMeasureResult.class",
+            ):
+                verify_platform_bindings.assert_android_aar_contains_kotlin_wrappers(aar_path)
+
 
 class AndroidInstrumentationReportTests(unittest.TestCase):
     def test_android_instrumentation_report_accepts_smoke_test_result(self) -> None:
