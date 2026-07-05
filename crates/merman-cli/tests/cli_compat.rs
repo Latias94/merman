@@ -1040,6 +1040,39 @@ fn completion_stdout_broken_pipe_exits_success_without_panic() {
 }
 
 #[test]
+fn lint_rules_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(&["lint-rules"], None);
+    assert!(
+        output.status.success(),
+        "lint-rules broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn lint_text_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(
+        &["lint", "--markdown", "--format", "text", "-"],
+        Some(b"before\n```mermaid\nflowchart TD\nA -->\n```\nafter\n"),
+    );
+    assert!(
+        output.status.success(),
+        "lint text broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
 fn top_level_svg_pipeline_resvg_safe_outputs_export_safe_svg() {
     let diagram = "flowchart TD
 A[Start] --> B{Is it working?}

@@ -11,6 +11,7 @@ use merman_analysis::document::analyze_document;
 use merman_analysis::{AnalysisPayload, AnalysisRuleConfig, Analyzer, SourceDescriptor};
 use serde::Serialize;
 use serde_json::Value;
+use std::fmt::Write as _;
 use std::path::Path;
 
 #[derive(Serialize)]
@@ -121,7 +122,7 @@ fn run_lint(args: LintArgs) -> Result<i32, CliError> {
 
     match args.format {
         LintOutputFormat::Json => print_json(&payload, args.pretty)?,
-        LintOutputFormat::Text => print_lint_text(&payload),
+        LintOutputFormat::Text => print_lint_text(&payload)?,
     }
 
     Ok(i32::from(!payload.valid))
@@ -136,10 +137,7 @@ fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
 
     match args.format {
         LintOutputFormat::Json => print_json(&catalog, args.pretty),
-        LintOutputFormat::Text => {
-            print_lint_rules_text(&catalog);
-            Ok(())
-        }
+        LintOutputFormat::Text => print_lint_rules_text(&catalog),
     }
 }
 
@@ -159,10 +157,13 @@ fn print_json<T: Serialize>(value: &T, pretty: bool) -> Result<(), CliError> {
     Ok(())
 }
 
-fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) {
-    println!("ID\tSeverity\tProfile\tOrigin\tConfigurable\tFixable\tEvidence\tDescription");
+fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) -> Result<(), CliError> {
+    let mut output = String::new();
+    output
+        .push_str("ID\tSeverity\tProfile\tOrigin\tConfigurable\tFixable\tEvidence\tDescription\n");
     for rule in catalog {
-        println!(
+        writeln!(
+            output,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             rule.id,
             rule.default_severity.as_str(),
@@ -172,14 +173,17 @@ fn print_lint_rules_text(catalog: &[merman_analysis::RuleCatalogEntry]) {
             rule.fixable,
             rule.evidence.join(","),
             rule.description
-        );
+        )
+        .expect("writing to a String should not fail");
     }
+    write_stdout(output.as_bytes())
 }
 
-fn print_lint_text(payload: &AnalysisPayload) {
+fn print_lint_text(payload: &AnalysisPayload) -> Result<(), CliError> {
+    let mut output = String::new();
     if payload.diagnostics.is_empty() {
-        println!("No Mermaid diagnostics.");
-        return;
+        output.push_str("No Mermaid diagnostics.\n");
+        return write_stdout(output.as_bytes());
     }
 
     let path = payload.source.path.as_deref().unwrap_or("-");
@@ -189,21 +193,26 @@ fn print_lint_text(payload: &AnalysisPayload) {
             .as_ref()
             .map(|span| format!("{path}:{}:{}", span.line, span.column))
             .unwrap_or_else(|| path.to_string());
-        println!(
+        writeln!(
+            output,
             "{location}: {} {}: {}",
             diagnostic.severity.as_str(),
             diagnostic.id,
             diagnostic.message
-        );
+        )
+        .expect("writing to a String should not fail");
     }
 
-    println!(
+    writeln!(
+        output,
         "{} error(s), {} warning(s), {} info(s), {} hint(s)",
         payload.summary.errors,
         payload.summary.warnings,
         payload.summary.infos,
         payload.summary.hints
-    );
+    )
+    .expect("writing to a String should not fail");
+    write_stdout(output.as_bytes())
 }
 
 fn lint_analyzer_options(
