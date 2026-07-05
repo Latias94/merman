@@ -11,6 +11,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 RELEASE_WORKFLOWS = sorted(WORKFLOW_ROOT.glob("release-*.yml"))
+SOURCE_REF_WORKFLOWS = sorted(
+    path
+    for path in WORKFLOW_ROOT.glob("*.yml")
+    if "source_ref:" in path.read_text(encoding="utf-8")
+)
 
 
 def read_workflow(path: Path) -> str:
@@ -72,10 +77,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     self.assertNotIn("${{ inputs.", block)
 
     def test_source_ref_checkouts_use_validated_output(self) -> None:
-        for path in RELEASE_WORKFLOWS:
+        for path in SOURCE_REF_WORKFLOWS:
             text = read_workflow(path)
-            if "source_ref:" not in text:
-                continue
 
             checkout_count = text.count("uses: actions/checkout")
             validated_ref_count = text.count("ref: ${{ needs.validate-inputs.outputs.source_ref }}")
@@ -85,16 +88,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("inputs.source_ref ||", text)
 
     def test_validation_jobs_precede_release_checkouts(self) -> None:
-        for path in RELEASE_WORKFLOWS:
+        for path in SOURCE_REF_WORKFLOWS:
             text = read_workflow(path)
-            if "source_ref:" not in text:
-                continue
 
             with self.subTest(workflow=path.name):
                 self.assertIn("validate-inputs:", text)
                 self.assertLess(text.index("validate-inputs:"), text.index("uses: actions/checkout"))
 
-    def test_validation_jobs_expose_safe_output_names(self) -> None:
+    def test_validation_jobs_expose_safe_source_ref_output(self) -> None:
+        for path in SOURCE_REF_WORKFLOWS:
+            text = read_workflow(path)
+
+            validate_job = indented_block(text, "validate-inputs:")
+            with self.subTest(workflow=path.name):
+                self.assertIn("GITHUB_OUTPUT", validate_job)
+                self.assertRegex(validate_job, re.compile(r"""(printf 'source_ref=%s\\n'|echo "source_ref=)"""))
+
+    def test_release_validation_jobs_expose_safe_release_output_names(self) -> None:
         for path in RELEASE_WORKFLOWS:
             text = read_workflow(path)
             if "source_ref:" not in text:
@@ -102,13 +112,21 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
-                self.assertIn("GITHUB_OUTPUT", validate_job)
-                self.assertRegex(validate_job, re.compile(r"""(printf 'source_ref=%s\\n'|echo "source_ref=)"""))
                 self.assertRegex(validate_job, re.compile(r"""(printf 'version=%s\\n'|echo "version=)"""))
                 if "release_tag:" in text:
                     self.assertRegex(validate_job, re.compile(r"""(printf 'release_tag=%s\\n'|echo "release_tag=)"""))
 
-    def test_validation_jobs_reject_untrusted_ref_and_version_shapes(self) -> None:
+    def test_validation_jobs_reject_untrusted_source_ref_shapes(self) -> None:
+        for path in SOURCE_REF_WORKFLOWS:
+            text = read_workflow(path)
+
+            validate_job = indented_block(text, "validate-inputs:")
+            with self.subTest(workflow=path.name):
+                self.assertIn("sha_re='^[0-9a-fA-F]{40}$'", validate_job)
+                self.assertIn('[[ "$SOURCE_REF" != *$\'\\n\'*', validate_job)
+                self.assertIn("source_ref must be", validate_job)
+
+    def test_release_validation_jobs_reject_untrusted_ref_and_version_shapes(self) -> None:
         for path in RELEASE_WORKFLOWS:
             text = read_workflow(path)
             if "source_ref:" not in text:
@@ -117,21 +135,34 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
                 self.assertIn("semver_re='^[0-9]+\\.[0-9]+\\.[0-9]+", validate_job)
-                self.assertIn("sha_re='^[0-9a-fA-F]{40}$'", validate_job)
-                self.assertIn('[[ "$SOURCE_REF" != *$\'\\n\'*', validate_job)
                 self.assertIn("source_ref tag must match", validate_job)
                 self.assertIn("refs/tags/<release-tag>", validate_job)
 
     def test_validation_jobs_do_not_hold_publish_permissions(self) -> None:
-        for path in RELEASE_WORKFLOWS:
+        for path in SOURCE_REF_WORKFLOWS:
             text = read_workflow(path)
-            if "source_ref:" not in text:
-                continue
 
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
                 self.assertNotIn("contents: write", validate_job)
                 self.assertNotIn("id-token: write", validate_job)
+
+
+class PerformanceWorkflowSecurityTests(unittest.TestCase):
+    def test_comment_jobs_do_not_request_pull_request_write_permission(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
+        for job_name in ["regression:", "frontmatter:"]:
+            job = indented_block(text, job_name)
+            with self.subTest(job=job_name.removesuffix(":")):
+                self.assertIn("issues: write", job)
+                self.assertNotIn("pull-requests: write", job)
+
+    def test_performance_checkouts_do_not_persist_credentials(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
+        checkout_count = text.count("uses: actions/checkout")
+        persisted_false_count = text.count("persist-credentials: false")
+
+        self.assertEqual(persisted_false_count, checkout_count)
 
 
 if __name__ == "__main__":

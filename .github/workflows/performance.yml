@@ -103,6 +103,7 @@ jobs:
         with:
           path: head
           fetch-depth: 1
+          persist-credentials: false
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
@@ -129,7 +130,6 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -140,6 +140,7 @@ jobs:
         with:
           path: head
           fetch-depth: 1
+          persist-credentials: false
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
@@ -148,6 +149,7 @@ jobs:
         with:
           path: base
           fetch-depth: 1
+          persist-credentials: false
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
 
@@ -156,25 +158,26 @@ jobs:
 
       - name: Run self regression comparison
         working-directory: head
+        env:
+          PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}
+          SUITE: ${{ github.event_name == 'pull_request' && 'canary' || inputs.suite }}
+          WARN_THRESHOLD: ${{ inputs.warn_threshold_percent || '5' }}
+          FAIL_THRESHOLD: ${{ inputs.fail_threshold_percent || '10' }}
+          BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}
+          HEAD_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
-          preset="${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}"
-          suite="${{ github.event_name == 'pull_request' && 'canary' || inputs.suite }}"
-          warn_threshold="${{ inputs.warn_threshold_percent || '5' }}"
-          fail_threshold="${{ inputs.fail_threshold_percent || '10' }}"
-          base_label="${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}"
-          head_label="${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}"
           python3 tools/bench/compare_self.py \
             --base-dir ../base \
             --head-dir . \
             --base-target-dir target/performance/base \
             --head-target-dir target/performance/head \
-            --base-label "$base_label" \
-            --head-label "$head_label" \
-            --preset "$preset" \
-            --suite "$suite" \
-            --warn-threshold-percent "$warn_threshold" \
-            --fail-threshold-percent "$fail_threshold" \
+            --base-label "$BASE_LABEL" \
+            --head-label "$HEAD_LABEL" \
+            --preset "$PRESET" \
+            --suite "$SUITE" \
+            --warn-threshold-percent "$WARN_THRESHOLD" \
+            --fail-threshold-percent "$FAIL_THRESHOLD" \
             --out target/performance/self_comparison.md \
             --json-out target/performance/self_comparison.json
 
@@ -262,7 +265,6 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -273,6 +275,7 @@ jobs:
         with:
           path: head
           fetch-depth: 1
+          persist-credentials: false
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
@@ -281,6 +284,7 @@ jobs:
         with:
           path: base
           fetch-depth: 1
+          persist-credentials: false
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
 
@@ -289,25 +293,26 @@ jobs:
 
       - name: Run frontmatter regression comparison
         working-directory: head
+        env:
+          PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}
+          WARN_THRESHOLD: ${{ inputs.warn_threshold_percent || '5' }}
+          FAIL_THRESHOLD: ${{ inputs.fail_threshold_percent || '10' }}
+          BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}
+          HEAD_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
-          preset="${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}"
-          warn_threshold="${{ inputs.warn_threshold_percent || '5' }}"
-          fail_threshold="${{ inputs.fail_threshold_percent || '10' }}"
-          base_label="${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}"
-          head_label="${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}"
           python3 tools/bench/compare_self.py \
             --base-dir ../base \
             --head-dir . \
             --base-target-dir target/performance/base \
             --head-target-dir target/performance/head \
-            --base-label "$base_label" \
-            --head-label "$head_label" \
-            --preset "$preset" \
+            --base-label "$BASE_LABEL" \
+            --head-label "$HEAD_LABEL" \
+            --preset "$PRESET" \
             --suite frontmatter \
             --group frontmatter_preprocess \
-            --warn-threshold-percent "$warn_threshold" \
-            --fail-threshold-percent "$fail_threshold" \
+            --warn-threshold-percent "$WARN_THRESHOLD" \
+            --fail-threshold-percent "$FAIL_THRESHOLD" \
             --out target/performance/frontmatter_comparison.md \
             --json-out target/performance/frontmatter_comparison.json
 
@@ -404,6 +409,7 @@ jobs:
         with:
           path: head
           fetch-depth: 1
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.head_ref || github.sha }}
           repository: ${{ github.event_name == 'workflow_dispatch' && inputs.head_repository || github.repository }}
 
@@ -414,6 +420,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '859253415e69dce28bd65cd5a7c1d1ae8b39f4a1' }}
           path: head/repo-ref/mermaid-rs-renderer
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

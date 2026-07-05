@@ -34,7 +34,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_ref: ${{ steps.source.outputs.source_ref }}
+    steps:
+      - name: Validate package source ref
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          tag_re="^v${semver_re#^}"
+          sha_re='^[0-9a-fA-F]{40}$'
+
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            SOURCE_REF="$DISPATCH_SOURCE_REF"
+          else
+            SOURCE_REF="$GIT_SHA"
+          fi
+
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $sha_re ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            :
+          else
+            fail "source_ref must be main, refs/heads/main, a version tag, refs/tags/<release-tag>, or a full 40-character SHA."
+          fi
+
+          printf 'source_ref=%s\n' "$SOURCE_REF" >> "$GITHUB_OUTPUT"
+
   package:
+    needs: validate-inputs
     name: package (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -60,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
