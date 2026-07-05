@@ -437,6 +437,29 @@ fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
 }
 
 #[test]
+fn shape_value_completion_ignores_host_document_tail_after_markdown_fence() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.markdown",
+        1,
+        concat!(
+            "before\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "A@{ shape: rou\n",
+            "```\n",
+            "host markdown } should not close the active shape\n",
+        )
+        .to_string(),
+        DocumentKind::Markdown,
+    );
+    let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 14)).unwrap();
+    let edit = context.shape_value_edit("circle").expect("shape edit");
+
+    assert_eq!(edit.replacement, "circle }");
+}
+
+#[test]
 fn shape_value_completion_appends_missing_brace_before_next_diagram_statement() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(
