@@ -350,7 +350,7 @@
             },
             "default": [],
             "restricted": true,
-            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-lsp` through Cargo.",
+            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-lsp` through Cargo. Requires Workspace Trust because this is a restricted setting.",
             "scope": "machine-overridable",
             "order": 20
           },
@@ -369,7 +369,7 @@
             },
             "default": [],
             "restricted": true,
-            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-cli` through Cargo.",
+            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-cli` through Cargo. Requires Workspace Trust because this is a restricted setting.",
             "scope": "machine-overridable",
             "order": 40
           }

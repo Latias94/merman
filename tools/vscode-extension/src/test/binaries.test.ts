@@ -221,7 +221,7 @@ describe("Merman binary resolution", () => {
     assert.deepEqual(invocation.args, ["render", "--format", "svg"]);
   });
 
-  it("declares server launch arguments as a restricted VS Code setting", () => {
+  it("declares all executable and launch settings as restricted VS Code settings", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
     ) as {
@@ -235,10 +235,25 @@ describe("Merman binary resolution", () => {
             }>;
       };
     };
-    const setting = configurationProperties(pkg.contributes.configuration)["merman.server.args"];
+    const properties = configurationProperties(pkg.contributes.configuration);
 
-    assert.equal(setting?.restricted, true);
-    assert.match(setting?.markdownDescription ?? "", /Workspace Trust/);
+    for (const settingName of [
+      "merman.server.path",
+      "merman.server.args",
+      "merman.server.useCargoRun",
+      "merman.server.cargoArgs",
+      "merman.cli.path",
+      "merman.cli.useCargoRun",
+      "merman.cli.cargoArgs",
+    ]) {
+      const setting = properties[settingName];
+      assert.equal(setting?.restricted, true, `${settingName} must be restricted`);
+      assert.match(
+        setting?.markdownDescription ?? "",
+        /Workspace Trust/i,
+        `${settingName} must explain Workspace Trust`,
+      );
+    }
   });
 
   it("declares runtime settings in native VS Code configuration categories", () => {

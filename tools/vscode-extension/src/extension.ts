@@ -22,6 +22,7 @@ import {
 } from "./language-intelligence.js";
 import { startLanguageClientWithCleanup } from "./language-client-start.js";
 import { registerPreview } from "./preview.js";
+import { runRestartLanguageServerCommand } from "./restart-command.js";
 
 let client: LanguageClient | undefined;
 let statusItem: vscode.StatusBarItem | undefined;
@@ -44,18 +45,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("merman.restartLanguageServer", async () => {
-      if (serverBackedCommandAction(getLanguageIntelligenceSettings()) === "showDisabledWarning") {
-        updateDisabledStatus();
-        void vscode.window.showWarningMessage(languageIntelligenceDisabledMessage());
-        return;
-      }
-
-      try {
-        await runLanguageClientAction(context, "restart");
-      } catch {
-        return;
-      }
-      void vscode.window.showInformationMessage("Merman language server restarted.");
+      await runRestartLanguageServerCommand({
+        settings: getLanguageIntelligenceSettings(),
+        updateDisabledStatus,
+        runRestart: () => runLanguageClientAction(context, "restart"),
+        showWarningMessage: (message) => vscode.window.showWarningMessage(message),
+        showInformationMessage: (message) => vscode.window.showInformationMessage(message),
+      });
     }),
   );
 
