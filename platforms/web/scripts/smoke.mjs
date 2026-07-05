@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { assertKnownArgs, parseArgValue } from "./arg-parse.mjs";
+import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
@@ -748,39 +748,12 @@ function toPackageSpecifier(subpath) {
   return `@mermanjs/web/${subpath.replace(/^\//, "")}`;
 }
 
-function normalizePath(value) {
-  return value.split(path.sep).join("/");
-}
-
-function parseCli(inputArgs) {
+function parseCli(inputArgs, root = packageRoot) {
   try {
-    assertKnownArgs(inputArgs, {
-      valueArgs: [
-        "--entry",
-        "--pkg-dir-rel",
-        "--wasm-module-subpath",
-        "--wasm-binary-rel",
-        "--manifest-rel",
-      ],
-    });
-    const selectedPkgDirRel = parseArgValue(inputArgs, "--pkg-dir-rel") ?? "pkg";
-    return {
-      entrySubpath: parseArgValue(inputArgs, "--entry") ?? ".",
-      pkgDirRel: selectedPkgDirRel,
-      wasmModuleSubpath:
-        parseArgValue(inputArgs, "--wasm-module-subpath") ?? "./pkg/merman_wasm.js",
-      wasmBinaryRel:
-        parseArgValue(inputArgs, "--wasm-binary-rel") ??
-        normalizePath(path.join(selectedPkgDirRel, "merman_wasm_bg.wasm")),
-      manifestRel:
-        parseArgValue(inputArgs, "--manifest-rel") ??
-        normalizePath(path.join(selectedPkgDirRel, "merman_wasm_preset.json")),
-    };
+    return parseSmokeCli(inputArgs, root);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    console.error(
-      "usage: node scripts/smoke.mjs [--entry <subpath>] [--pkg-dir-rel <dir>] [--wasm-module-subpath <subpath>] [--wasm-binary-rel <path>] [--manifest-rel <path>]",
-    );
+    console.error(smokeUsage());
     process.exit(2);
   }
 }
