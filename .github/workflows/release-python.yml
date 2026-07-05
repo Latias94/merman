@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Git ref to build from"
+        description: "Protected branch (main), matching release tag, refs/tags/<release-tag>, or full 40-character SHA to build from"
         required: true
         default: "main"
         type: string
@@ -19,11 +19,62 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          tag_re="^v${semver_re#^}"
+          sha_re='^[0-9a-fA-F]{40}$'
+
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+
+          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $sha_re ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            source_tag="${SOURCE_REF#refs/tags/}"
+            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
+          else
+            fail "source_ref must be main, refs/heads/main, a matching release tag, refs/tags/<release-tag>, or a full 40-character SHA."
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
+
+          {
+            printf 'source_ref=%s\n' "$SOURCE_REF"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
   build:
+    needs: validate-inputs
     name: build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -41,19 +92,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
 
-      - name: Read version from tag
+      - name: Use validated release metadata
         id: version
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
-          RELEASE_TAG="${{ inputs.release_tag }}"
-          if [[ "$RELEASE_TAG" != v* ]]; then
-            echo "::error::Release tag '$RELEASE_TAG' must start with v."
-            exit 1
-          fi
-          VERSION="${RELEASE_TAG#v}"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
       - name: Setup Python
@@ -62,7 +113,9 @@ jobs:
           python-version: "3.12"
 
       - name: Verify Python package version matches tag
-        run: python scripts/release-version.py check --version "${{ steps.version.outputs.version }}"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python scripts/release-version.py check --version "$VERSION"
 
       - name: Verify FFI publish surface
         run: python scripts/verify-ffi-publish-surface.py
@@ -184,9 +237,14 @@ jobs:
           path: target/python-wheels/merman-*.whl
 
   release:
-    needs: build
+    needs:
+      - validate-inputs
+      - build
     runs-on: ubuntu-24.04
     environment: pypi
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -208,7 +266,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" wheels/merman-*.whl --clobber

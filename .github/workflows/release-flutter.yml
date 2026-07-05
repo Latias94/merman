@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Git ref to build from"
+        description: "Protected branch (main), matching release tag, refs/tags/<release-tag>, or full 40-character SHA to build from"
         required: true
         default: "main"
         type: string
@@ -23,39 +23,99 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          GIT_REF: ${{ github.ref }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          tag_re="^v${semver_re#^}"
+          sha_re='^[0-9a-fA-F]{40}$'
+
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+            SOURCE_REF="$DISPATCH_SOURCE_REF"
+          else
+            RELEASE_TAG="$GIT_REF_NAME"
+            SOURCE_REF="$GIT_REF"
+          fi
+
+          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $sha_re ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            source_tag="${SOURCE_REF#refs/tags/}"
+            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
+          else
+            fail "source_ref must be main, refs/heads/main, a matching release tag, refs/tags/<release-tag>, or a full 40-character SHA."
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
+
+          {
+            printf 'source_ref=%s\n' "$SOURCE_REF"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
   publish:
+    needs: validate-inputs
     runs-on: macos-15
     environment: pub.dev
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
 
-      - name: Read version from tag
+      - name: Use validated release metadata
         id: version
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            RELEASE_TAG="${{ inputs.release_tag }}"
-          else
-            RELEASE_TAG="${GITHUB_REF_NAME}"
-          fi
-          if [[ "$RELEASE_TAG" != v* ]]; then
-            echo "::error::Release tag '$RELEASE_TAG' must start with v."
-            exit 1
-          fi
-          VERSION="${RELEASE_TAG#v}"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
       - name: Verify pubspec version matches tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           PUB_VERSION=$(grep '^version:' platforms/flutter/pubspec.yaml | sed 's/version: *//; s/ *$//')
-          if [ "$PUB_VERSION" != "${{ steps.version.outputs.version }}" ]; then
-            echo "::error::pubspec version '$PUB_VERSION' does not match tag ${{ steps.version.outputs.version }}"
+          if [ "$PUB_VERSION" != "$VERSION" ]; then
+            echo "::error::pubspec version '$PUB_VERSION' does not match tag $VERSION"
             exit 1
           fi
 
@@ -178,7 +238,9 @@ jobs:
 
       - name: Skip existing pub.dev version
         if: ${{ github.event_name == 'push' && steps.pubdev.outputs.exists == 'true' }}
-        run: echo "merman ${{ steps.version.outputs.version }} is already published on pub.dev; skipping."
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: echo "merman $VERSION is already published on pub.dev; skipping."
 
       - name: Explain manual pub.dev publish skip
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_pub }}

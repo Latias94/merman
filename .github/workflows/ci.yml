@@ -32,7 +32,7 @@ jobs:
         run: python3 scripts/verify-release-crate-order.py
 
       - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_workflow_path_filters.py scripts/test_verify_platform_bindings.py
+        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_workflow_path_filters.py scripts/test_release_workflow_security.py scripts/test_verify_platform_bindings.py
 
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
