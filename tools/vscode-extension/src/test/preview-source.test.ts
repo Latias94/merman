@@ -301,6 +301,25 @@ describe("preview source extraction", () => {
     assert.deepEqual(input?.sourceRange, { startLine: 2, endLine: 4 });
     assert.deepEqual(input?.diagnosticRange, { startLine: 3, endLine: 4 });
   });
+
+  it("keeps source and diagnostic ranges when a Mermaid fence closes at EOF", () => {
+    const input = extractPreviewInputFromText({
+      text: [
+        "# Notes",
+        "",
+        "```mermaid",
+        "flowchart LR",
+        "A --> B",
+        "```",
+      ].join("\n"),
+      languageId: "markdown",
+      fileName: "/workspace/notes.md",
+    });
+
+    assert.equal(input?.source, "flowchart LR\nA --> B");
+    assert.deepEqual(input?.sourceRange, { startLine: 2, endLine: 5 });
+    assert.deepEqual(input?.diagnosticRange, { startLine: 3, endLine: 4 });
+  });
 });
 
 function markdownWithTwoFences(): string {

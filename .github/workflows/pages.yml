@@ -77,6 +77,9 @@ jobs:
       - name: Install playground dependencies
         run: npm ci --prefix playground
 
+      - name: Test playground semantic token contract
+        run: npm run test:semantic-tokens --prefix playground
+
       - name: Build playground
         run: npm run build --prefix playground
 

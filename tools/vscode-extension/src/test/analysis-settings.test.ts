@@ -17,7 +17,7 @@ describe("analysis settings normalization", () => {
         max_source_bytes: 1024,
       },
       lint: {
-        profile: "recommended",
+        profile: "core",
       },
     });
   });
@@ -29,7 +29,7 @@ describe("analysis settings normalization", () => {
         fixedToday,
       }), {
         lint: {
-          profile: "recommended",
+          profile: "core",
         },
       });
     }
@@ -42,13 +42,24 @@ describe("analysis settings normalization", () => {
       maxSourceBytes: 4096.25,
     }), {
       lint: {
-        profile: "recommended",
+        profile: "core",
       },
     });
     assert.deepEqual(normalizeAnalysisSettings({
       ...defaultRawAnalysisSettings(),
       fixedLocalOffsetMinutes: 1440,
       maxSourceBytes: -1,
+    }), {
+      lint: {
+        profile: "core",
+      },
+    });
+  });
+
+  it("keeps recommended authoring diagnostics as an explicit opt-in", () => {
+    assert.deepEqual(normalizeAnalysisSettings({
+      ...defaultRawAnalysisSettings(),
+      lintProfile: "recommended",
     }), {
       lint: {
         profile: "recommended",
@@ -63,7 +74,7 @@ function defaultRawAnalysisSettings(): RawAnalysisSettings {
     fixedLocalOffsetMinutes: null,
     suppressErrors: false,
     maxSourceBytes: 0,
-    lintProfile: "recommended",
+    lintProfile: "core",
     enableRules: [],
     disableRules: [],
     ruleSeverities: [],

@@ -202,13 +202,13 @@
               "recommended",
               "strict"
             ],
-            "default": "recommended",
+            "default": "core",
             "markdownDescription": "Lint profile forwarded to `merman-lsp`.",
             "scope": "resource",
             "enumDescriptions": [
               "Unset the profile and rely only on explicit rule configuration.",
               "Core diagnostics only.",
-              "Recommended authoring diagnostics.",
+              "Opt-in recommended authoring diagnostics.",
               "Strict authoring diagnostics."
             ],
             "order": 50

@@ -108,7 +108,7 @@ export function getAnalysisSettings(): AnalysisSettings {
     fixedLocalOffsetMinutes: analysisConfig.get<unknown>("fixed_local_offset_minutes", null),
     suppressErrors: analysisConfig.get<boolean>("parse.suppress_errors", false),
     maxSourceBytes: analysisConfig.get<unknown>("resources.max_source_bytes", 0),
-    lintProfile: analysisConfig.get<string>("lint.profile", "recommended"),
+    lintProfile: analysisConfig.get<string>("lint.profile", "core"),
     enableRules: analysisConfig.get<unknown[]>("lint.enable_rules", []),
     disableRules: analysisConfig.get<unknown[]>("lint.disable_rules", []),
     ruleSeverities: analysisConfig.get<unknown[]>("lint.rule_severities", []),

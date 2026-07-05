@@ -19,7 +19,13 @@ import type {
 export const MERMAID_LANGUAGE_ID = "mermaid";
 
 const MARKER_OWNER = "merman";
-const STATIC_SEMANTIC_TOKEN_LEGEND = {
+
+export interface MermaidSemanticTokenLegend {
+  tokenTypes: string[];
+  tokenModifiers: string[];
+}
+
+const STATIC_SEMANTIC_TOKEN_LEGEND: MermaidSemanticTokenLegend = {
   tokenTypes: [
     "namespace",
     "class",
@@ -452,12 +458,7 @@ export function registerMermaidLanguage(
   });
   monaco.languages.registerDocumentSemanticTokensProvider(MERMAID_LANGUAGE_ID, {
     getLegend() {
-      const service = editorService;
-      try {
-        return service?.editor_semantic_token_legend() ?? STATIC_SEMANTIC_TOKEN_LEGEND;
-      } catch {
-        return STATIC_SEMANTIC_TOKEN_LEGEND;
-      }
+      return semanticTokenLegendForService(editorService);
     },
     provideDocumentSemanticTokens(model) {
       const service = editorService;
@@ -465,9 +466,10 @@ export function registerMermaidLanguage(
         return { data: new Uint32Array(0), resultId: undefined };
       }
       try {
+        const legend = semanticTokenLegendForService(service);
         const tokens = service.editor_semantic_tokens(model.getValue());
         return {
-          data: encodeSemanticTokens(tokens, STATIC_SEMANTIC_TOKEN_LEGEND),
+          data: encodeSemanticTokensForLegend(tokens, legend),
           resultId: undefined,
         };
       } catch {
@@ -731,9 +733,19 @@ function toMonacoDocumentSymbol(
   };
 }
 
-function encodeSemanticTokens(
+export function semanticTokenLegendForService(
+  service: Pick<MermanWasm, "editor_semantic_token_legend"> | null,
+): MermaidSemanticTokenLegend {
+  try {
+    return service?.editor_semantic_token_legend() ?? STATIC_SEMANTIC_TOKEN_LEGEND;
+  } catch {
+    return STATIC_SEMANTIC_TOKEN_LEGEND;
+  }
+}
+
+export function encodeSemanticTokensForLegend(
   tokens: EditorSemanticToken[],
-  legend: { tokenTypes: string[]; tokenModifiers: string[] }
+  legend: MermaidSemanticTokenLegend,
 ): Uint32Array {
   const data: number[] = [];
   let previousLine = 0;
