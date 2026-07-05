@@ -7,16 +7,16 @@
 
 #[cfg(feature = "editor-language")]
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, Analyzer, EditorSymbolKind, FenceTextIndexSource,
-    SourceDescriptor, Summary,
+    AnalysisOptions, AnalysisPayload, AnalyzedDiagram, Analyzer, EditorSymbolKind,
+    FenceTextIndexSource, SourceDescriptor, Summary,
 };
 use merman_bindings_core::BindingError;
 #[cfg(feature = "editor-language")]
 use merman_bindings_core::BindingStatus;
 #[cfg(feature = "editor-language")]
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, DocumentWorkspace, EditorDiagnostic, EditorDocumentSymbol,
-    EditorHover, EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit,
+    DocumentKind, DocumentSnapshot, EditorDiagnostic, EditorDocumentSymbol, EditorHover,
+    EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, FenceSnapshot,
     Position, Range, RenameError, SemanticToken, SemanticTokenKind, SemanticTokenLegend,
     SemanticTokenModifier, analysis_payload_to_diagnostics, code_actions_from_fixes,
     completion_for_snapshot, document_symbols, goto_definition, hover, prepare_rename, references,
@@ -25,14 +25,17 @@ use merman_editor_core::{
 use serde::Serialize;
 #[cfg(feature = "editor-language")]
 use std::collections::HashMap;
+#[cfg(any(
+    feature = "editor-language",
+    all(feature = "render", target_arch = "wasm32")
+))]
+use std::{cell::RefCell, sync::Arc};
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 use merman_bindings_core::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 use serde::Deserialize;
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
-use std::{cell::RefCell, sync::Arc};
 
 const WASM_ABI_VERSION: u32 = 1;
 
@@ -55,6 +58,33 @@ struct WasmEditorDiagnostics {
     source: SourceDescriptor,
     diagnostics: Vec<EditorDiagnostic>,
 }
+
+#[cfg(feature = "editor-language")]
+#[derive(Debug, Clone)]
+struct EditorDocumentContext {
+    options_json: String,
+    payload: AnalysisPayload,
+    snapshot: DocumentSnapshot,
+}
+
+#[cfg(feature = "editor-language")]
+impl EditorDocumentContext {
+    fn matches(&self, source: &str, uri: &str, options_json: &str) -> bool {
+        self.snapshot.text.as_ref() == source
+            && self.snapshot.uri.as_str() == uri
+            && self.options_json == options_json
+    }
+}
+
+#[cfg(feature = "editor-language")]
+thread_local! {
+    static EDITOR_DOCUMENT_CONTEXT_CACHE: RefCell<Option<EditorDocumentContext>> =
+        const { RefCell::new(None) };
+}
+
+#[cfg(all(test, feature = "editor-language"))]
+static EDITOR_DOCUMENT_CONTEXT_BUILDS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 #[cfg(feature = "editor-language")]
 #[derive(Debug, Serialize)]
@@ -689,11 +719,7 @@ fn editor_snapshot(
     uri: Option<String>,
     options_json: Option<&str>,
 ) -> Result<DocumentSnapshot, JsValue> {
-    let uri = editor_uri(uri);
-    let kind = document_kind_for_uri(&uri);
-    let options = parse_analysis_options(options_json).map_err(binding_error_to_js)?;
-    let mut workspace = DocumentWorkspace::with_analyzer(Analyzer::with_options(options));
-    Ok(workspace.upsert(uri, 1, source.to_string(), kind))
+    Ok(editor_document_context(source, uri, options_json)?.snapshot)
 }
 
 #[cfg(feature = "editor-language")]
@@ -707,13 +733,98 @@ fn editor_analysis_payload(
     options_json: Option<&str>,
     uri: &str,
 ) -> Result<AnalysisPayload, JsValue> {
+    Ok(editor_document_context(source, Some(uri.to_string()), options_json)?.payload)
+}
+
+#[cfg(feature = "editor-language")]
+fn editor_document_context(
+    source: &str,
+    uri: Option<String>,
+    options_json: Option<&str>,
+) -> Result<EditorDocumentContext, JsValue> {
+    let uri = editor_uri(uri);
+    let options_json_key = editor_options_cache_key(options_json);
+    EDITOR_DOCUMENT_CONTEXT_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(context) = cache
+            .as_ref()
+            .filter(|context| context.matches(source, &uri, options_json_key))
+        {
+            return Ok(context.clone());
+        }
+
+        let context = build_editor_document_context(source, &uri, options_json)?;
+        *cache = Some(context.clone());
+        Ok(context)
+    })
+}
+
+#[cfg(feature = "editor-language")]
+fn build_editor_document_context(
+    source: &str,
+    uri: &str,
+    options_json: Option<&str>,
+) -> Result<EditorDocumentContext, JsValue> {
     let options = parse_analysis_options(options_json).map_err(binding_error_to_js)?;
     let analyzer = Analyzer::with_options(options);
     let kind = document_kind_for_uri(uri);
     let descriptor = source_descriptor_for_kind(kind, uri);
-    Ok(merman_analysis::document::analyze_document(
-        source, &analyzer, descriptor,
-    ))
+    let text = Arc::<str>::from(source);
+    record_editor_document_context_build();
+    let analysis =
+        merman_analysis::analyze_document_result_shared(Arc::clone(&text), &analyzer, descriptor);
+    let payload = analysis.payload().clone();
+    let snapshot = DocumentSnapshot {
+        uri: uri.to_string().into(),
+        version: 1,
+        kind,
+        source: payload.source.clone(),
+        text,
+        source_map: analysis.source_map().clone(),
+        fences: analysis
+            .diagrams()
+            .iter()
+            .map(editor_fence_snapshot)
+            .collect(),
+    };
+    Ok(EditorDocumentContext {
+        options_json: editor_options_cache_key(options_json).to_string(),
+        payload,
+        snapshot,
+    })
+}
+
+#[cfg(feature = "editor-language")]
+fn editor_fence_snapshot(diagram: &AnalyzedDiagram) -> FenceSnapshot {
+    FenceSnapshot {
+        source_id: diagram.source_id.clone(),
+        index: diagram.index,
+        source: diagram.source.clone(),
+        start: diagram.start,
+        body_start: diagram.body_start,
+        body_end: diagram.body_end,
+        end: diagram.end,
+        text: diagram.text.clone(),
+        fence_delimiter: diagram.fence_delimiter,
+        diagram_type: diagram.syntax.diagram_type.clone(),
+        text_index: diagram.syntax.text_index.clone(),
+    }
+}
+
+#[cfg(feature = "editor-language")]
+fn editor_options_cache_key(options_json: Option<&str>) -> &str {
+    match options_json {
+        Some(options_json) if !options_json.trim().is_empty() => options_json,
+        _ => "",
+    }
+}
+
+#[cfg(feature = "editor-language")]
+fn record_editor_document_context_build() {
+    #[cfg(all(test, feature = "editor-language"))]
+    {
+        EDITOR_DOCUMENT_CONTEXT_BUILDS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 #[cfg(feature = "editor-language")]
@@ -1085,6 +1196,19 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
+    #[cfg(feature = "editor-language")]
+    fn reset_editor_document_context_cache_for_tests() {
+        EDITOR_DOCUMENT_CONTEXT_CACHE.with(|cache| {
+            cache.replace(None);
+        });
+        EDITOR_DOCUMENT_CONTEXT_BUILDS.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg(feature = "editor-language")]
+    fn editor_document_context_builds_for_tests() -> usize {
+        EDITOR_DOCUMENT_CONTEXT_BUILDS.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     #[test]
     fn package_version_matches_crate_version() {
         assert_eq!(package_version(), env!("CARGO_PKG_VERSION"));
@@ -1312,6 +1436,8 @@ mod tests {
     #[cfg(feature = "editor-language")]
     #[test]
     fn editor_language_helpers_cover_browser_editor_surface() {
+        reset_editor_document_context_cache_for_tests();
+
         let completion_snapshot = editor_snapshot(
             "flowchart TD\nA-->B\nC-->\n",
             Some("file:///tmp/example.mmd".to_string()),
@@ -1343,6 +1469,53 @@ mod tests {
 
         let actions = code_actions_for_diagnostics(&diagnostics, "file:///tmp/example.mmd");
         assert!(actions.iter().all(|action| action.kind == "quickfix"));
+    }
+
+    #[cfg(feature = "editor-language")]
+    #[test]
+    fn editor_language_context_reuses_same_source_across_browser_calls() {
+        reset_editor_document_context_cache_for_tests();
+
+        let source = "flowchart TD\nA-->B\n";
+        let uri = "file:///tmp/example.mmd";
+
+        let payload = editor_analysis_payload(source, None, uri).unwrap();
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+
+        let snapshot = editor_snapshot(source, Some(uri.to_string()), None).unwrap();
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+        assert!(!semantic_tokens_for_snapshot(&snapshot).is_empty());
+
+        let repeated_payload = editor_analysis_payload(source, Some(" \n "), uri).unwrap();
+        assert_eq!(repeated_payload, payload);
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+    }
+
+    #[cfg(feature = "editor-language")]
+    #[test]
+    fn editor_language_context_invalidates_on_source_or_uri_change() {
+        reset_editor_document_context_cache_for_tests();
+
+        let uri = "file:///tmp/example.mmd";
+        let source = "flowchart TD\nA-->B\n";
+        let updated_source = "flowchart TD\nA-->C\n";
+
+        let first = editor_snapshot(source, Some(uri.to_string()), None).unwrap();
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+
+        let repeated = editor_snapshot(source, Some(uri.to_string()), None).unwrap();
+        assert_eq!(repeated.text, first.text);
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+
+        let updated = editor_snapshot(updated_source, Some(uri.to_string()), None).unwrap();
+        assert_eq!(updated.text.as_ref(), updated_source);
+        assert_eq!(editor_document_context_builds_for_tests(), 2);
+
+        let other_uri = "file:///tmp/other.mmd";
+        let other_document = editor_snapshot(updated_source, Some(other_uri.to_string()), None)
+            .expect("uri change rebuilds cached context");
+        assert_eq!(other_document.uri.as_str(), other_uri);
+        assert_eq!(editor_document_context_builds_for_tests(), 3);
     }
 
     #[cfg(feature = "editor-language")]
