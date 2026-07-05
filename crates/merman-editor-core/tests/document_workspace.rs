@@ -138,6 +138,33 @@ fn cursor_lookup_distinguishes_prose_from_mermaid_fences() {
 }
 
 #[test]
+fn cursor_lookup_includes_unclosed_markdown_fence_at_eof() {
+    let mut workspace = DocumentWorkspace::new();
+    for (source, position) in [
+        (
+            "before\n```mermaid\nflowchart TD\nA-->",
+            Position::new(3, 4),
+        ),
+        (
+            "before\n```mermaid\nflowchart TD\nA-->\n",
+            Position::new(4, 0),
+        ),
+    ] {
+        let snapshot = workspace.upsert(
+            "file:///tmp/example.md",
+            1,
+            source.to_string(),
+            DocumentKind::Markdown,
+        );
+
+        let fence = snapshot
+            .fence_at_position(position)
+            .expect("EOF should remain inside unclosed Mermaid fence");
+        assert_eq!(fence.diagram_type.as_deref(), Some("flowchart-v2"));
+    }
+}
+
+#[test]
 fn build_snapshot_does_not_cache_document() {
     let workspace = DocumentWorkspace::new();
     let uri = DocumentUri::new("file:///tmp/example.mmd");

@@ -114,7 +114,7 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
 
     private companion object {
         init {
-            System.loadLibrary("merman_ffi")
+            MermanEngine.ensureNativeReady()
         }
 
         @JvmStatic

@@ -623,6 +623,39 @@ function assertEditorLanguageSurface(enabled) {
   assert.equal(rename.changes instanceof Map, false);
   assert.ok(rename.changes[editorUri].some((edit) => edit.newText === "Delta"));
 
+  for (const [run, messagePattern] of [
+    [
+      () =>
+        api.editorRename(
+          "flowchart TD\nAlpha-->Beta\n",
+          { line: 1, character: 0 },
+          "bad name",
+          editorUri
+        ),
+      /new name/,
+    ],
+    [
+      () =>
+        api.editorRename(
+          "flowchart TD\nAlpha-->Beta\n",
+          { line: 0, character: 0 },
+          "Delta",
+          editorUri
+        ),
+      /no renameable symbol|outside a Mermaid fence/,
+    ],
+  ]) {
+    let error = null;
+    try {
+      run();
+    } catch (caught) {
+      error = caught;
+    }
+    assert.ok(api.isBindingErrorPayload(error), "expected structured rename binding error");
+    assert.equal(error.code_name, "MERMAN_INVALID_ARGUMENT");
+    assert.match(error.message, messagePattern);
+  }
+
   const legend = api.editorSemanticTokenLegend();
   assert.ok(legend.tokenTypes.length > 0);
   const semanticTokens = api.editorSemanticTokens(

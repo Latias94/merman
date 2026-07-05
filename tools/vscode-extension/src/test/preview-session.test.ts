@@ -5,6 +5,29 @@ import { describe, it } from "node:test";
 import { PreviewSession } from "../preview-session.js";
 
 describe("preview session", () => {
+  it("uses configured preview defaults for new snapshots and reset", () => {
+    const session = new PreviewSession({
+      diagramTheme: "dark",
+      displayMode: "unicode",
+      background: "transparent",
+    });
+    const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");
+
+    session.rememberResource(editor.document.uri);
+    let snapshot = session.createSnapshot(undefined, [editor], emptyDiagnostics);
+
+    assert.equal(snapshot?.diagramTheme, "dark");
+    assert.equal(snapshot?.displayMode, "unicode");
+    assert.equal(snapshot?.background, "transparent");
+
+    session.setBackground("paper");
+    session.reset();
+    session.rememberResource(editor.document.uri);
+    snapshot = session.createSnapshot(undefined, [editor], emptyDiagnostics);
+
+    assert.equal(snapshot?.background, "transparent");
+  });
+
   it("resolves a remembered Mermaid resource after the webview takes active editor focus", () => {
     const session = new PreviewSession();
     const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");

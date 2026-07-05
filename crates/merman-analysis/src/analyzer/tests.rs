@@ -185,7 +185,7 @@ fn diagnostics_mode_does_not_project_flowchart_facts_failures() {
 }
 
 #[test]
-fn disabled_resource_limit_diagnostic_still_stops_rich_facts_projection() {
+fn disabled_resource_limit_rule_still_returns_hard_resource_diagnostic() {
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_max_source_bytes(Some(8))
@@ -196,7 +196,11 @@ fn disabled_resource_limit_diagnostic_still_stops_rich_facts_projection() {
     );
     let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::RichFacts);
 
-    assert!(local.diagnostics.is_empty());
+    assert_eq!(local.diagnostics.len(), 1);
+    assert_eq!(
+        local.diagnostics[0].id,
+        crate::rules::RESOURCE_LIMIT_RULE_ID
+    );
     assert_eq!(local.syntax.diagram_type, None);
     assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
     assert!(local.syntax.text_index.node_ids().next().is_none());
@@ -370,7 +374,7 @@ fn analysis_rule_config_can_disable_no_diagram_rule() {
 }
 
 #[test]
-fn analysis_rule_config_can_disable_resource_limit_rule() {
+fn analysis_rule_config_cannot_disable_resource_limit_rule() {
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_max_source_bytes(Some(8))
@@ -381,12 +385,17 @@ fn analysis_rule_config_can_disable_resource_limit_rule() {
     );
     let payload = analyzer.analyze("flowchart TD\nA-->B\n");
 
-    assert!(payload.valid);
-    assert!(payload.diagnostics.is_empty());
+    assert!(!payload.valid);
+    assert_eq!(payload.summary.errors, 1);
+    assert_eq!(payload.diagnostics.len(), 1);
+    assert_eq!(
+        payload.diagnostics[0].id,
+        crate::rules::RESOURCE_LIMIT_RULE_ID
+    );
 }
 
 #[test]
-fn analysis_rule_config_can_override_resource_limit_severity() {
+fn analysis_rule_config_cannot_override_resource_limit_severity() {
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_max_source_bytes(Some(8))
@@ -397,14 +406,14 @@ fn analysis_rule_config_can_override_resource_limit_severity() {
     );
     let payload = analyzer.analyze("flowchart TD\nA-->B\n");
 
-    assert!(payload.valid);
-    assert_eq!(payload.summary.hints, 1);
-    assert_eq!(payload.summary.errors, 0);
+    assert!(!payload.valid);
+    assert_eq!(payload.summary.hints, 0);
+    assert_eq!(payload.summary.errors, 1);
     assert_eq!(
         payload.diagnostics[0].id,
         crate::rules::RESOURCE_LIMIT_RULE_ID
     );
-    assert_eq!(payload.diagnostics[0].severity, DiagnosticSeverity::Hint);
+    assert_eq!(payload.diagnostics[0].severity, DiagnosticSeverity::Error);
 }
 
 #[test]

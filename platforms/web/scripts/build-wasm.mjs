@@ -2,7 +2,12 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertKnownArgs, hasHelpFlag, parseArgValue } from "./arg-parse.mjs";
+import {
+  assertKnownArgs,
+  hasHelpFlag,
+  parseArgValue,
+  resolvePackageSubdir,
+} from "./arg-parse.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
@@ -96,9 +101,9 @@ const presets = {
 
 const defaultPresetName = "browser-full";
 const args = process.argv.slice(2);
-const { presetName, outDirRel } = parseCli(args);
+const { presetName, outputDir } = parseCli(args);
 const preset = presets[presetName];
-const outputRoot = path.join(packageRoot, outDirRel);
+const outputRoot = outputDir.absolute;
 const presetManifestPath = path.join(outputRoot, "merman_wasm_preset.json");
 
 if (!preset) {
@@ -134,7 +139,7 @@ if (cargoArgs.length > 0) {
 
 run("wasm-pack", wasmPackArgs);
 writePackageMetadata(outputRoot);
-run(process.execPath, ["scripts/clean-pkg.mjs", "--pkg-dir-rel", outDirRel]);
+run(process.execPath, ["scripts/clean-pkg.mjs", "--pkg-dir-rel", outputDir.relative]);
 writePresetManifest(presetName, preset, outputRoot);
 
 function parseCli(inputArgs) {
@@ -147,12 +152,13 @@ function parseCli(inputArgs) {
       valueArgs: ["--preset", "--out-dir-rel"],
       booleanArgs: ["--help", "-h"],
     });
+    const outDirRel = parseArgValue(inputArgs, "--out-dir-rel") ?? "pkg";
     return {
       presetName:
         parseArgValue(inputArgs, "--preset") ??
         process.env.MERMAN_WEB_PRESET ??
         defaultPresetName,
-      outDirRel: parseArgValue(inputArgs, "--out-dir-rel") ?? "pkg",
+      outputDir: resolvePackageSubdir(packageRoot, outDirRel, "--out-dir-rel"),
     };
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

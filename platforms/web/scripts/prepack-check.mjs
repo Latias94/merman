@@ -16,6 +16,7 @@ const required = [
   generatedPackageJson,
   presetManifest,
   path.join(root, "pkg", "merman_wasm.js"),
+  path.join(root, "pkg", "merman_wasm.d.ts"),
   wasmBinary,
   ...surfaces.flatMap((surface) => [
     path.join(root, "dist", "surfaces", `${surface.entry}.js`),

@@ -4,7 +4,6 @@ title: "merman-lsp semantic tokens delta contract"
 description: "Verification Evidence for merman-lsp semantic tokens delta contract."
 timestamp: 2026-06-24T22:59:02Z
 tags: ["merman-lsp", "semantic-tokens", "lsp", "verification"]
-source_session: "local"
 ---
 
 # Verification

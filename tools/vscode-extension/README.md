@@ -145,6 +145,9 @@ continues to inspect vector output rather than a PNG snapshot.
 
 ## Settings
 
+Merman contributes native VS Code settings grouped under Runtime, Language Intelligence, Analysis,
+Preview and Export, and Development.
+
 - `merman.server.path`: absolute path to a prebuilt `merman-lsp`
 - `merman.server.useCargoRun`: development-only fallback through `cargo run -p merman-lsp --`
 - `merman.server.cargoArgs`: development-only Cargo flags before `--`
@@ -156,6 +159,9 @@ continues to inspect vector output rather than a PNG snapshot.
 - `merman.languageIntelligence.enabled`: start local `merman-lsp` language intelligence
 - `merman.diagnostics.enabled`: publish Merman diagnostics to VS Code Problems
 - `merman.sourceActions.enabled`: show source-scoped Merman CodeLens actions
+- `merman.preview.diagramTheme`: default theme for new preview panels
+- `merman.preview.displayMode`: default `svg`, `ascii`, or `unicode` preview mode
+- `merman.preview.background`: default `paper`, `transparent`, or `dark` preview background
 - `merman.analysis.*`: analysis/lint settings forwarded to `merman-lsp`
 
 ## Packaging

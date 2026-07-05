@@ -189,6 +189,20 @@ class FakePreviewHost {
         },
       },
       workspace: {
+        getConfiguration: () => ({
+          get: (key: string, fallback: unknown) => {
+            switch (key) {
+              case "preview.diagramTheme":
+                return "source";
+              case "preview.displayMode":
+                return "svg";
+              case "preview.background":
+                return "paper";
+              default:
+                return fallback;
+            }
+          },
+        }),
         fs: {
           writeFile: async (fileUri: vscode.Uri, data: Uint8Array) => {
             host.writtenFiles.push({

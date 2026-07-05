@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import platform
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -17,6 +19,14 @@ FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
 ANDROID_JAR_OUT = REPO_ROOT / "target" / "platforms" / "android" / "merman-android.jar"
+ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-android-release.aar"
+ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-results"
+ANDROID_WRAPPER_CLASSES = [
+    "io/merman/MermanEngine.class",
+    "io/merman/MermanReusableEngine.class",
+    "io/merman/MermanException.class",
+    "io/merman/MermanTextMeasurer.class",
+]
 FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"
 
 
@@ -127,7 +137,46 @@ def ensure_android_native_slices() -> None:
 def run_android_instrumentation_smoke(gradle_path: str | None) -> None:
     ensure_android_native_slices()
     gradle = resolve_gradle_command(gradle_path)
+    run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
+    assert_android_aar_contains_kotlin_wrappers()
     run([gradle, "-p", str(ANDROID_ROOT), "connectedAndroidTest", "--stacktrace"])
+    assert_android_instrumentation_smoke_report()
+
+
+def assert_android_aar_contains_kotlin_wrappers(aar_path: Path = ANDROID_RELEASE_AAR) -> None:
+    if not aar_path.exists():
+        raise RuntimeError(f"Android release AAR not found: {aar_path}")
+
+    with zipfile.ZipFile(aar_path) as aar:
+        try:
+            classes_jar = aar.read("classes.jar")
+        except KeyError as error:
+            raise RuntimeError(f"Android release AAR is missing classes.jar: {aar_path}") from error
+
+    with zipfile.ZipFile(io.BytesIO(classes_jar)) as jar:
+        names = set(jar.namelist())
+
+    missing = [class_name for class_name in ANDROID_WRAPPER_CLASSES if class_name not in names]
+    if missing:
+        raise RuntimeError(
+            "Android release AAR is missing Kotlin wrapper classes: " + ", ".join(missing)
+        )
+
+
+def assert_android_instrumentation_smoke_report(
+    results_root: Path = ANDROID_TEST_RESULTS_ROOT,
+) -> None:
+    reports = list(results_root.rglob("*.xml")) if results_root.exists() else []
+    for report in reports:
+        text = report.read_text(encoding="utf-8", errors="ignore")
+        if (
+            "MermanInstrumentedSmokeTest" in text
+            and "runsPublicSmokeIncludingThrowingTextMeasurerFallback" in text
+        ):
+            return
+    raise RuntimeError(
+        "Android instrumentation output did not include MermanInstrumentedSmokeTest results."
+    )
 
 
 def host_dynamic_library() -> Path:
@@ -291,6 +340,7 @@ def main() -> int:
             step("Android Gradle library assemble")
             gradle = resolve_gradle_command(args.gradle_path)
             run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
+            assert_android_aar_contains_kotlin_wrappers()
 
         if args.run_android_instrumentation_smoke:
             step("Android instrumentation smoke")

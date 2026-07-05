@@ -17,10 +17,10 @@ use merman_bindings_core::BindingStatus;
 use merman_editor_core::{
     DocumentKind, DocumentSnapshot, DocumentWorkspace, EditorDiagnostic, EditorDocumentSymbol,
     EditorHover, EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit,
-    Position, Range, SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
-    analysis_payload_to_diagnostics, code_actions_from_fixes, completion_for_snapshot,
-    document_symbols, goto_definition, hover, prepare_rename, references, rename,
-    semantic_token_legend, semantic_tokens_for_snapshot, workspace_symbols,
+    Position, Range, RenameError, SemanticToken, SemanticTokenKind, SemanticTokenLegend,
+    SemanticTokenModifier, analysis_payload_to_diagnostics, code_actions_from_fixes,
+    completion_for_snapshot, document_symbols, goto_definition, hover, prepare_rename, references,
+    rename, semantic_token_legend, semantic_tokens_for_snapshot, workspace_symbols,
 };
 use serde::Serialize;
 #[cfg(feature = "editor-language")]
@@ -637,7 +637,7 @@ pub fn editor_rename(
     let snapshot = editor_snapshot(source, uri, options_json.as_deref())?;
     match rename(&snapshot, Position::new(line, character), new_name) {
         Ok(edit) => js_value(&edit.map(WasmWorkspaceEdit::from)),
-        Err(err) => Err(JsValue::from_str(&err.to_string())),
+        Err(err) => Err(rename_error_to_js(err)),
     }
 }
 
@@ -856,6 +856,14 @@ fn binding_error_to_js(err: BindingError) -> JsValue {
         .unwrap_or_else(|_| {
             JsValue::from_str(&format!("{}: {}", payload.code_name, payload.message))
         })
+}
+
+#[cfg(feature = "editor-language")]
+fn rename_error_to_js(err: RenameError) -> JsValue {
+    binding_error_to_js(BindingError::new(
+        BindingStatus::InvalidArgument,
+        err.to_string(),
+    ))
 }
 
 fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {

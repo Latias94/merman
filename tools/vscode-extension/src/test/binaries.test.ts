@@ -226,15 +226,38 @@ describe("Merman binary resolution", () => {
       fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
     ) as {
       contributes: {
-        configuration: {
-          properties: Record<string, { markdownDescription?: string; restricted?: boolean }>;
-        };
+        configuration:
+          | {
+              properties: Record<string, { markdownDescription?: string; restricted?: boolean }>;
+            }
+          | Array<{
+              properties: Record<string, { markdownDescription?: string; restricted?: boolean }>;
+            }>;
       };
     };
-    const setting = pkg.contributes.configuration.properties["merman.server.args"];
+    const setting = configurationProperties(pkg.contributes.configuration)["merman.server.args"];
 
     assert.equal(setting?.restricted, true);
     assert.match(setting?.markdownDescription ?? "", /Workspace Trust/);
+  });
+
+  it("declares runtime settings in native VS Code configuration categories", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+    ) as {
+      contributes: {
+        configuration: Array<{
+          title: string;
+          properties: Record<string, { markdownDescription?: string; restricted?: boolean }>;
+        }>;
+      };
+    };
+
+    assert.ok(Array.isArray(pkg.contributes.configuration));
+    assert.ok(pkg.contributes.configuration.some((section) => section.title === "Merman: Runtime"));
+    assert.ok(
+      pkg.contributes.configuration.some((section) => section.title === "Merman: Development"),
+    );
   });
 
   it("rejects Cargo fallback in untrusted workspaces", () => {
@@ -289,4 +312,13 @@ function touchExecutable(filePath: string): string {
   fs.writeFileSync(filePath, "");
   fs.chmodSync(filePath, 0o755);
   return filePath;
+}
+
+function configurationProperties<T>(
+  configuration: { properties: Record<string, T> } | Array<{ properties: Record<string, T> }>,
+): Record<string, T> {
+  if (!Array.isArray(configuration)) {
+    return configuration.properties;
+  }
+  return Object.assign({}, ...configuration.map((section) => section.properties));
 }

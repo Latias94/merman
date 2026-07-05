@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 
 import type { LanguageIntelligenceSettings } from "./language-intelligence.js";
+import type {
+  PreviewBackground,
+  PreviewDiagramTheme,
+  PreviewDisplayMode,
+} from "./preview-model.js";
 
 export type TraceSetting = "off" | "messages" | "verbose";
 
@@ -23,6 +28,12 @@ export interface DiagnosticsSettings {
 
 export interface SourceActionSettings {
   enabled: boolean;
+}
+
+export interface PreviewSettings {
+  diagramTheme: PreviewDiagramTheme;
+  displayMode: PreviewDisplayMode;
+  background: PreviewBackground;
 }
 
 export interface LintRuleSeverityOverride {
@@ -90,6 +101,17 @@ export function getSourceActionSettings(): SourceActionSettings {
   };
 }
 
+export function getPreviewSettings(): PreviewSettings {
+  const config = getMermanConfiguration();
+  return {
+    diagramTheme: normalizePreviewDiagramTheme(
+      config.get<string>("preview.diagramTheme", "source"),
+    ),
+    displayMode: normalizePreviewDisplayMode(config.get<string>("preview.displayMode", "svg")),
+    background: normalizePreviewBackground(config.get<string>("preview.background", "paper")),
+  };
+}
+
 export function getLanguageIntelligenceSettings(): LanguageIntelligenceSettings {
   const config = getMermanConfiguration();
   return {
@@ -139,6 +161,42 @@ export function getDidChangeConfigurationPayload(): Record<string, unknown> {
   return {
     analysis: getAnalysisSettings(),
   };
+}
+
+function normalizePreviewDiagramTheme(value: string): PreviewDiagramTheme {
+  switch (value) {
+    case "source":
+    case "default":
+    case "dark":
+    case "forest":
+    case "neutral":
+    case "base":
+      return value;
+    default:
+      return "source";
+  }
+}
+
+function normalizePreviewDisplayMode(value: string): PreviewDisplayMode {
+  switch (value) {
+    case "svg":
+    case "ascii":
+    case "unicode":
+      return value;
+    default:
+      return "svg";
+  }
+}
+
+function normalizePreviewBackground(value: string): PreviewBackground {
+  switch (value) {
+    case "paper":
+    case "transparent":
+    case "dark":
+      return value;
+    default:
+      return "paper";
+  }
 }
 
 function sanitizeStringArray(value: unknown[] | undefined): string[] {

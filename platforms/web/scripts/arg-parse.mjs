@@ -1,3 +1,5 @@
+import path from "node:path";
+
 export class ArgParseError extends Error {
   constructor(message) {
     super(message);
@@ -62,6 +64,35 @@ export function assertKnownArgs(args, { valueArgs = [], booleanArgs = [] } = {})
 
     throw new ArgParseError(`Unknown argument: ${arg}.`);
   }
+}
+
+export function resolvePackageSubdir(packageRoot, relativeDir, optionName = "package directory") {
+  if (typeof relativeDir !== "string" || relativeDir.trim().length === 0) {
+    throw new ArgParseError(`Missing value for ${optionName}.`);
+  }
+
+  const normalizedRelativeDir = relativeDir.trim();
+  if (path.isAbsolute(normalizedRelativeDir)) {
+    throw new ArgParseError(`${optionName} must be relative to the web package root.`);
+  }
+  if (normalizedRelativeDir.split(/[\\/]+/u).includes("..")) {
+    throw new ArgParseError(`${optionName} must not contain .. path segments.`);
+  }
+
+  const pkgRoot = path.resolve(packageRoot, "pkg");
+  const resolved = path.resolve(packageRoot, normalizedRelativeDir);
+  const relativeToPkg = path.relative(pkgRoot, resolved);
+  if (
+    relativeToPkg === "" ||
+    (!relativeToPkg.startsWith("..") && !path.isAbsolute(relativeToPkg))
+  ) {
+    return {
+      absolute: resolved,
+      relative: path.relative(packageRoot, resolved),
+    };
+  }
+
+  throw new ArgParseError(`${optionName} must resolve to pkg or a subdirectory of pkg.`);
 }
 
 function isPresentValue(value) {

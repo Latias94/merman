@@ -1670,11 +1670,25 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
     let resource_params: PublishDiagnosticsParams =
         from_value(resource_publish.params().cloned().expect("publish params")).unwrap();
     assert_eq!(resource_params.uri, resource_uri);
-    assert!(resource_params.diagnostics.is_empty());
+    assert_eq!(resource_params.diagnostics.len(), 1);
+    assert_eq!(
+        resource_params.diagnostics[0]
+            .code
+            .as_ref()
+            .and_then(|code| match code {
+                NumberOrString::String(value) => Some(value.as_str()),
+                NumberOrString::Number(_) => None,
+            }),
+        Some("merman.resource.source_bytes_exceeded")
+    );
+    assert_eq!(
+        resource_params.diagnostics[0].severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_applies_resource_limit_severity_override_on_initialize() {
+async fn lsp_service_smoke_keeps_resource_limit_error_on_initialize() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -1735,12 +1749,12 @@ async fn lsp_service_smoke_applies_resource_limit_severity_override_on_initializ
     assert_eq!(params.diagnostics.len(), 1);
     assert_eq!(
         params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_applies_resource_limit_severity_override_on_configuration_change() {
+async fn lsp_service_smoke_keeps_resource_limit_error_on_configuration_change() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -1830,7 +1844,7 @@ async fn lsp_service_smoke_applies_resource_limit_severity_override_on_configura
     assert_eq!(second_params.diagnostics.len(), 1);
     assert_eq!(
         second_params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::HINT)
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
     );
 }
 

@@ -92,6 +92,16 @@ jobs:
         working-directory: tools/vscode-extension
         run: npm test
 
+      - name: Smoke extension host
+        if: runner.os == 'Linux'
+        working-directory: tools/vscode-extension
+        run: xvfb-run -a npm run test:extension-host
+
+      - name: Smoke extension host
+        if: runner.os != 'Linux'
+        working-directory: tools/vscode-extension
+        run: npm run test:extension-host
+
       - name: Stage runtime binaries
         working-directory: tools/vscode-extension
         run: npm run prepare:binaries

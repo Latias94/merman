@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { getPreviewSettings } from "./config.js";
 import { previewCliBackground } from "./preview-background.js";
 import { collectMermanPreviewDiagnostics } from "./preview-diagnostics.js";
 import type { ExportFormat } from "./export-options.js";
@@ -50,7 +51,7 @@ export class PreviewInstance implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
   private readonly renderQueue = new PreviewRenderQueue();
-  private readonly session = new PreviewSession();
+  private readonly session: PreviewSession;
   private readonly webviewClient: PreviewWebviewClient;
   private readonly panelDisposables: vscode.Disposable[] = [];
   private disposed = false;
@@ -62,6 +63,7 @@ export class PreviewInstance implements vscode.Disposable {
     private readonly onDidChangeActiveState: (instance: PreviewInstance, active: boolean) => void,
     private readonly onDidChangeLockState: (instance: PreviewInstance) => void,
   ) {
+    this.session = new PreviewSession(getPreviewSettings());
     this.webviewClient = new PreviewWebviewClient(context.extensionUri);
   }
 

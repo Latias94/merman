@@ -7,6 +7,16 @@ import io.merman.MermanTextMeasureResult
 fun runMermanSmoke() {
     val source = "flowchart TD\nA[Hello] --> B[World]"
 
+    val earlyReusableEngine = MermanReusableEngine()
+    try {
+        val earlyReusableAnalysisJson = earlyReusableEngine.analyzeJson(source)
+        check(earlyReusableAnalysisJson.contains("\"valid\":true")) {
+            "reusable-first analysis smoke failed"
+        }
+    } finally {
+        earlyReusableEngine.close()
+    }
+
     val svg = MermanEngine.renderSvg(source)
     check(svg.contains("<svg") && svg.contains("Hello") && svg.contains("World")) {
         "SVG smoke failed"

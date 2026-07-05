@@ -22,16 +22,39 @@ export type PreviewDiagnosticsProvider = (
   diagnosticRange: { startLine: number; endLine: number },
 ) => PreviewDiagnostics;
 
+export interface PreviewSessionDefaults {
+  diagramTheme: PreviewDiagramTheme;
+  displayMode: PreviewDisplayMode;
+  background: PreviewBackground;
+}
+
+const DEFAULT_PREVIEW_SESSION_DEFAULTS: PreviewSessionDefaults = {
+  diagramTheme: "source",
+  displayMode: "svg",
+  background: "paper",
+};
+
 export class PreviewSession {
+  private readonly defaults: PreviewSessionDefaults;
   private currentSnapshot: PreviewSnapshot | undefined;
   private lastPreviewEditorUri: string | undefined;
   private preferredEditorUri: string | undefined;
   private selectedSource: PreviewSourceSelection | undefined;
   private lockedSourceSelection: PreviewSourceSelection | undefined;
-  private theme: PreviewDiagramTheme = "source";
-  private displayMode: PreviewDisplayMode = "svg";
-  private background: PreviewBackground = "paper";
+  private theme: PreviewDiagramTheme;
+  private displayMode: PreviewDisplayMode;
+  private background: PreviewBackground;
   private locked = false;
+
+  constructor(defaults: Partial<PreviewSessionDefaults> = {}) {
+    this.defaults = {
+      ...DEFAULT_PREVIEW_SESSION_DEFAULTS,
+      ...defaults,
+    };
+    this.theme = this.defaults.diagramTheme;
+    this.displayMode = this.defaults.displayMode;
+    this.background = this.defaults.background;
+  }
 
   get snapshot(): PreviewSnapshot | undefined {
     return this.currentSnapshot;
@@ -59,9 +82,9 @@ export class PreviewSession {
     this.preferredEditorUri = undefined;
     this.selectedSource = undefined;
     this.lockedSourceSelection = undefined;
-    this.theme = "source";
-    this.displayMode = "svg";
-    this.background = "paper";
+    this.theme = this.defaults.diagramTheme;
+    this.displayMode = this.defaults.displayMode;
+    this.background = this.defaults.background;
     this.locked = false;
   }
 

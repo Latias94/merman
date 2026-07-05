@@ -421,16 +421,15 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let doc = params.text_document;
+        let Some(change) = params.content_changes.into_iter().last() else {
+            return;
+        };
         let mut store = self.store.lock().await;
-        let Some(current) = store.get(&doc.uri).cloned() else {
+        let Some(kind) = store.get(&doc.uri).map(|current| current.kind) else {
             return;
         };
 
-        let mut text = current.text.to_string();
-        for change in params.content_changes {
-            text = change.text;
-        }
-        store.upsert_text(doc.uri.clone(), doc.version, text, current.kind);
+        store.upsert_text(doc.uri.clone(), doc.version, change.text, kind);
         drop(store);
         self.publish_for_uri(&doc.uri).await;
     }

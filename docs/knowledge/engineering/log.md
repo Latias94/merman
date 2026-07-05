@@ -1,6 +1,5 @@
 ---
-type: Work Progress
-status: active
+type: Engineering Log
 ---
 
 # Log

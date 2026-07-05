@@ -52,16 +52,81 @@ describe("language intelligence adoption", () => {
       fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
     ) as {
       contributes: {
-        configuration: {
-          properties: Record<string, { default?: unknown; markdownDescription?: string }>;
-        };
+        configuration:
+          | {
+              properties: Record<string, { default?: unknown; markdownDescription?: string }>;
+            }
+          | Array<{
+              properties: Record<string, { default?: unknown; markdownDescription?: string }>;
+            }>;
       };
     };
-    const setting = pkg.contributes.configuration.properties[LANGUAGE_INTELLIGENCE_SETTING];
+    const setting = configurationProperties(pkg.contributes.configuration)[LANGUAGE_INTELLIGENCE_SETTING];
 
     assert.equal(setting?.default, true);
     assert.match(setting?.markdownDescription ?? "", /language server/);
     assert.match(setting?.markdownDescription ?? "", /preview and export/);
+  });
+
+  it("declares preview defaults in the native settings schema", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+    ) as {
+      contributes: {
+        configuration:
+          | {
+              properties: Record<string, { default?: unknown; enum?: unknown[]; scope?: string }>;
+            }
+          | Array<{
+              properties: Record<string, { default?: unknown; enum?: unknown[]; scope?: string }>;
+            }>;
+      };
+    };
+    const properties = configurationProperties(pkg.contributes.configuration);
+
+    assert.deepEqual(properties["merman.preview.diagramTheme"]?.enum, [
+      "source",
+      "default",
+      "dark",
+      "forest",
+      "neutral",
+      "base",
+    ]);
+    assert.deepEqual(properties["merman.preview.displayMode"]?.enum, [
+      "svg",
+      "ascii",
+      "unicode",
+    ]);
+    assert.deepEqual(properties["merman.preview.background"]?.enum, [
+      "paper",
+      "transparent",
+      "dark",
+    ]);
+    assert.equal(properties["merman.preview.background"]?.scope, "resource");
+  });
+
+  it("groups settings by LSP-style product areas", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+    ) as {
+      contributes: {
+        configuration: Array<{
+          title: string;
+          properties: Record<string, { default?: unknown; markdownDescription?: string }>;
+        }>;
+      };
+    };
+
+    assert.deepEqual(
+      pkg.contributes.configuration.map((section) => section.title),
+      [
+        "Merman: Runtime",
+        "Merman: Language Intelligence",
+        "Merman: Analysis",
+        "Merman: Preview and Export",
+        "Merman: Development",
+      ],
+    );
   });
 
   it("uses an actionable disabled message for server-backed commands", () => {
@@ -69,3 +134,12 @@ describe("language intelligence adoption", () => {
     assert.match(languageIntelligenceDisabledMessage(), /merman\.languageIntelligence\.enabled/);
   });
 });
+
+function configurationProperties<T>(
+  configuration: { properties: Record<string, T> } | Array<{ properties: Record<string, T> }>,
+): Record<string, T> {
+  if (!Array.isArray(configuration)) {
+    return configuration.properties;
+  }
+  return Object.assign({}, ...configuration.map((section) => section.properties));
+}

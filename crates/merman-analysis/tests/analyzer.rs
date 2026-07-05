@@ -719,6 +719,27 @@ fn source_byte_limit_returns_resource_error() {
 }
 
 #[test]
+fn source_byte_limit_remains_hard_guard_when_resource_rule_is_disabled() {
+    let options = AnalysisOptions::default()
+        .with_max_source_bytes(Some(8))
+        .with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_disabled("merman.resource.source_bytes_exceeded"),
+        );
+    let payload = Analyzer::with_options(options).analyze("flowchart TD\nA-->B\n");
+
+    assert!(!payload.valid);
+    assert_eq!(payload.summary.errors, 1);
+    assert_eq!(payload.diagnostics.len(), 1);
+    let diagnostic = &payload.diagnostics[0];
+    assert_eq!(diagnostic.id, "merman.resource.source_bytes_exceeded");
+    assert_eq!(
+        diagnostic.code_name.as_deref(),
+        Some(AnalysisStatus::ResourceLimitExceeded.code_name())
+    );
+}
+
+#[test]
 fn source_byte_limit_does_not_scan_syntax_facts() {
     let options = AnalysisOptions::default().with_max_source_bytes(Some(8));
     let facts = Analyzer::with_options(options).analyze_facts("flowchart TD\nA-->B\n");
@@ -780,6 +801,22 @@ fn markdown_document_source_byte_limit_applies_before_fence_analysis() {
     let facts = analyze_document_facts(&source, &analyzer, descriptor);
     assert!(!facts.valid);
     assert!(facts.diagrams.is_empty());
+}
+
+#[test]
+fn source_byte_limit_span_matches_source_map_for_crlf_source() {
+    let source = "flowchart TD\r\nA-->B\r";
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+
+    let payload = analyzer.analyze(source);
+
+    assert!(!payload.valid);
+    let span = payload.diagnostics[0].span.as_ref().unwrap();
+    let expected = merman_analysis::SourceMap::new(source)
+        .whole_source_span()
+        .unwrap();
+    assert_eq!(span, &expected);
 }
 
 #[test]

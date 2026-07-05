@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { ArgParseError, assertKnownArgs, parseArgValue } from "./arg-parse.mjs";
+import {
+  ArgParseError,
+  assertKnownArgs,
+  parseArgValue,
+  resolvePackageSubdir,
+} from "./arg-parse.mjs";
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("web script argument parsing", () => {
   it("parses split and equals values", () => {
@@ -24,5 +33,44 @@ describe("web script argument parsing", () => {
       () => assertKnownArgs(["--preset", "browser-core", "--extra"], { valueArgs: ["--preset"] }),
       ArgParseError,
     );
+  });
+
+  it("resolves pkg and pkg child directories", () => {
+    assert.deepEqual(resolvePackageSubdir(packageRoot, "pkg", "--out-dir-rel"), {
+      absolute: path.join(packageRoot, "pkg"),
+      relative: "pkg",
+    });
+    assert.deepEqual(resolvePackageSubdir(packageRoot, "pkg/core", "--out-dir-rel"), {
+      absolute: path.join(packageRoot, "pkg", "core"),
+      relative: path.join("pkg", "core"),
+    });
+  });
+
+  it("rejects package output directories outside pkg", () => {
+    const invalid = [
+      "",
+      ".",
+      "..",
+      "../..",
+      "dist",
+      "pkg2",
+      "pkg/..",
+      "pkg/../pkg/core",
+      "pkg/../../..",
+      path.join(packageRoot, "pkg", "core"),
+    ];
+    if (process.platform === "win32") {
+      invalid.push("C:\\tmp\\merman-pkg", "\\\\server\\share\\merman-pkg");
+    } else {
+      invalid.push("/tmp/merman-pkg");
+    }
+
+    for (const relativeDir of invalid) {
+      assert.throws(
+        () => resolvePackageSubdir(packageRoot, relativeDir, "--out-dir-rel"),
+        ArgParseError,
+        relativeDir,
+      );
+    }
   });
 });

@@ -183,13 +183,23 @@ pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan 
     let mut end_column = 1usize;
     let mut end_lsp_line = 0usize;
     let mut end_lsp_character = 0usize;
+    let mut pending_cr = false;
 
     for ch in text.chars() {
+        if pending_cr && ch != '\n' {
+            end_column += 1;
+            end_lsp_character += 1;
+            pending_cr = false;
+        }
+
         if ch == '\n' {
             end_line += 1;
             end_column = 1;
             end_lsp_line += 1;
             end_lsp_character = 0;
+            pending_cr = false;
+        } else if ch == '\r' {
+            pending_cr = true;
         } else {
             end_column += 1;
             end_lsp_character += ch.len_utf16();
@@ -390,11 +400,16 @@ mod tests {
 
     #[test]
     fn whole_text_span_without_source_copy_matches_source_map_span() {
-        let source = "flowchart TD\nA[🤓]-->B\n";
-
-        assert_eq!(
-            whole_text_span_without_source_copy(source),
-            SourceMap::new(source).whole_source_span().unwrap()
-        );
+        for source in [
+            "flowchart TD\nA[🤓]-->B\n",
+            "flowchart TD\r\nA[🤓]-->B",
+            "flowchart TD\r\nA[🤓]-->B\r",
+            "flowchart TD\r\r\nA[🤓]-->B",
+        ] {
+            assert_eq!(
+                whole_text_span_without_source_copy(source),
+                SourceMap::new(source).whole_source_span().unwrap()
+            );
+        }
     }
 }

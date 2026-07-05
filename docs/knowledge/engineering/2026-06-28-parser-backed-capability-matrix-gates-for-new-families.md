@@ -1,10 +1,9 @@
 ---
-type: "Progress"
+type: "Engineering Note"
 title: "Parser-backed capability matrix gates for new families"
 description: "Audit of first-class vs partial Mermaid families for LSP maturity."
 timestamp: 2026-06-28T03:30:13Z
 tags: ["merman", "lsp", "parser-backed", "capability-matrix"]
-source_session: "continuation"
 ---
 
 # Summary

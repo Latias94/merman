@@ -8,6 +8,9 @@ object MermanEngine {
         checkNativeAbi()
     }
 
+    @JvmStatic
+    internal fun ensureNativeReady() = Unit
+
     val packageVersion: String
         get() = nativePackageVersion()
 

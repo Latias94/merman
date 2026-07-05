@@ -40,10 +40,43 @@ describe("preview webview client", () => {
       "renderSucceeded",
     ]);
   });
+
+  it("coalesces pre-ready render messages to the latest lifecycle", async () => {
+    const { PreviewWebviewClient } = loadPreviewWebviewClient();
+    const client = new PreviewWebviewClient({} as vscode.Uri);
+    const posted: PreviewToWebviewMessage[] = [];
+    const panel = {
+      webview: {
+        postMessage: async (message: PreviewToWebviewMessage) => {
+          posted.push(message);
+          return true;
+        },
+      },
+    } as unknown as vscode.WebviewPanel;
+
+    await client.post(panel, renderMessage("renderStarted", 1));
+    await client.post(panel, renderMessage("renderSucceeded", 1));
+    await client.post(panel, renderMessage("renderStarted", 2));
+    await client.post(panel, renderMessage("renderFailed", 2));
+
+    await client.acceptReady(panel, undefined, async () => {}, async () => {});
+
+    assert.deepEqual(posted.map(({ type }) => type), ["renderStarted", "renderFailed"]);
+    assert.deepEqual(
+      posted.map((postedMessage) =>
+        "requestId" in postedMessage ? postedMessage.requestId : undefined,
+      ),
+      [2, 2],
+    );
+  });
 });
 
 function message(type: string): PreviewToWebviewMessage {
   return { type } as PreviewToWebviewMessage;
+}
+
+function renderMessage(type: string, requestId: number): PreviewToWebviewMessage {
+  return { type, requestId } as PreviewToWebviewMessage;
 }
 
 function loadPreviewWebviewClient(): typeof import("../preview-webview-client.js") {
