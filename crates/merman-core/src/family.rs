@@ -68,7 +68,7 @@ pub struct DiagramFamilyCapability {
 
 pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
     match profile {
-        BaselineRegistryProfile::Tiny => DETECTOR_FACTS_TINY,
+        BaselineRegistryProfile::Tiny => detector_facts_tiny(),
         BaselineRegistryProfile::Full => DETECTOR_FACTS_FULL,
     }
 }
@@ -87,7 +87,7 @@ pub(crate) fn fast_detect_by_leading_keyword(
 
     let trimmed = text.trim_start();
     let keywords = match profile {
-        BaselineRegistryProfile::Tiny => FAST_DETECT_KEYWORDS_TINY,
+        BaselineRegistryProfile::Tiny => fast_detect_keyword_facts_tiny(),
         BaselineRegistryProfile::Full => FAST_DETECT_KEYWORDS_FULL,
     };
 
@@ -290,6 +290,36 @@ fn render_parser_facts_tiny() -> &'static [RenderParserFact] {
         .as_slice()
 }
 
+fn detector_facts_tiny() -> &'static [DetectorFact] {
+    static FACTS: OnceLock<Vec<DetectorFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            DETECTOR_FACTS_FULL
+                .iter()
+                .copied()
+                .filter(|fact| {
+                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
+                })
+                .collect()
+        })
+        .as_slice()
+}
+
+fn fast_detect_keyword_facts_tiny() -> &'static [FastDetectKeywordFact] {
+    static FACTS: OnceLock<Vec<FastDetectKeywordFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            FAST_DETECT_KEYWORDS_FULL
+                .iter()
+                .copied()
+                .filter(|fact| {
+                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
+                })
+                .collect()
+        })
+        .as_slice()
+}
+
 fn diagram_type_supported_in_profile(
     profile: BaselineRegistryProfile,
     diagram_type: &'static str,
@@ -476,133 +506,6 @@ const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
     },
 ];
 
-const DETECTOR_FACTS_TINY: &[DetectorFact] = &[
-    DetectorFact {
-        id: "error",
-        detector: crate::detect::detector_error,
-    },
-    DetectorFact {
-        id: "---",
-        detector: crate::detect::detector_frontmatter_unparsed,
-    },
-    DetectorFact {
-        id: "zenuml",
-        detector: crate::detect::detector_zenuml,
-    },
-    DetectorFact {
-        id: "c4",
-        detector: crate::detect::detector_c4,
-    },
-    DetectorFact {
-        id: "kanban",
-        detector: crate::detect::detector_kanban,
-    },
-    DetectorFact {
-        id: "classDiagram",
-        detector: crate::detect::detector_class_v2,
-    },
-    DetectorFact {
-        id: "class",
-        detector: crate::detect::detector_class_dagre_d3,
-    },
-    DetectorFact {
-        id: "er",
-        detector: crate::detect::detector_er,
-    },
-    DetectorFact {
-        id: "gantt",
-        detector: crate::detect::detector_gantt,
-    },
-    DetectorFact {
-        id: "info",
-        detector: crate::detect::detector_info,
-    },
-    DetectorFact {
-        id: "pie",
-        detector: crate::detect::detector_pie,
-    },
-    DetectorFact {
-        id: "requirement",
-        detector: crate::detect::detector_requirement,
-    },
-    DetectorFact {
-        id: "sequence",
-        detector: crate::detect::detector_sequence,
-    },
-    DetectorFact {
-        id: "flowchart-v2",
-        detector: crate::detect::detector_flowchart_v2,
-    },
-    DetectorFact {
-        id: "flowchart",
-        detector: crate::detect::detector_flowchart_dagre_d3_graph,
-    },
-    DetectorFact {
-        id: "timeline",
-        detector: crate::detect::detector_timeline,
-    },
-    DetectorFact {
-        id: "gitGraph",
-        detector: crate::detect::detector_git_graph,
-    },
-    DetectorFact {
-        id: "stateDiagram",
-        detector: crate::detect::detector_state_v2,
-    },
-    DetectorFact {
-        id: "state",
-        detector: crate::detect::detector_state_dagre_d3,
-    },
-    DetectorFact {
-        id: "journey",
-        detector: crate::detect::detector_journey,
-    },
-    DetectorFact {
-        id: "quadrantChart",
-        detector: crate::detect::detector_quadrant,
-    },
-    DetectorFact {
-        id: "sankey",
-        detector: crate::detect::detector_sankey,
-    },
-    DetectorFact {
-        id: "packet",
-        detector: crate::detect::detector_packet,
-    },
-    DetectorFact {
-        id: "xychart",
-        detector: crate::detect::detector_xychart,
-    },
-    DetectorFact {
-        id: "block",
-        detector: crate::detect::detector_block,
-    },
-    DetectorFact {
-        id: "treeView",
-        detector: crate::detect::detector_tree_view,
-    },
-    DetectorFact {
-        id: "ishikawa",
-        detector: crate::detect::detector_ishikawa,
-    },
-    DetectorFact {
-        id: "eventmodeling",
-        detector: crate::detect::detector_eventmodeling,
-    },
-    DetectorFact {
-        id: "radar",
-        detector: crate::detect::detector_radar,
-    },
-    DetectorFact {
-        id: "treemap",
-        detector: crate::detect::detector_treemap,
-    },
-    DetectorFact {
-        id: "venn",
-        detector: crate::detect::detector_venn,
-    },
-];
-
 const FAST_DETECT_KEYWORDS_FULL: &[FastDetectKeywordFact] = &[
     FastDetectKeywordFact {
         keyword: "sequenceDiagram",
@@ -623,69 +526,6 @@ const FAST_DETECT_KEYWORDS_FULL: &[FastDetectKeywordFact] = &[
     FastDetectKeywordFact {
         keyword: "architecture",
         id: "architecture",
-    },
-    FastDetectKeywordFact {
-        keyword: "erDiagram",
-        id: "er",
-    },
-    FastDetectKeywordFact {
-        keyword: "gantt",
-        id: "gantt",
-    },
-    FastDetectKeywordFact {
-        keyword: "timeline",
-        id: "timeline",
-    },
-    FastDetectKeywordFact {
-        keyword: "journey",
-        id: "journey",
-    },
-    FastDetectKeywordFact {
-        keyword: "gitGraph",
-        id: "gitGraph",
-    },
-    FastDetectKeywordFact {
-        keyword: "quadrantChart",
-        id: "quadrantChart",
-    },
-    FastDetectKeywordFact {
-        keyword: "packet-beta",
-        id: "packet",
-    },
-    FastDetectKeywordFact {
-        keyword: "xychart-beta",
-        id: "xychart",
-    },
-    FastDetectKeywordFact {
-        keyword: "treeView-beta",
-        id: "treeView",
-    },
-    FastDetectKeywordFact {
-        keyword: "ishikawa-beta",
-        id: "ishikawa",
-    },
-    FastDetectKeywordFact {
-        keyword: "ishikawa",
-        id: "ishikawa",
-    },
-    FastDetectKeywordFact {
-        keyword: "eventmodeling",
-        id: "eventmodeling",
-    },
-];
-
-const FAST_DETECT_KEYWORDS_TINY: &[FastDetectKeywordFact] = &[
-    FastDetectKeywordFact {
-        keyword: "sequenceDiagram",
-        id: "sequence",
-    },
-    FastDetectKeywordFact {
-        keyword: "classDiagram",
-        id: "classDiagram",
-    },
-    FastDetectKeywordFact {
-        keyword: "stateDiagram",
-        id: "stateDiagram",
     },
     FastDetectKeywordFact {
         keyword: "erDiagram",

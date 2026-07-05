@@ -22,6 +22,33 @@ fn detector_registries_follow_family_fact_order() {
 }
 
 #[test]
+fn tiny_detector_projection_is_derived_from_full_detector_facts() {
+    let full_only = ["architecture", "flowchart-elk", "mindmap"];
+    let full_expected: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Full)
+        .iter()
+        .filter_map(|fact| (!full_only.contains(&fact.id)).then_some(fact.id))
+        .collect();
+    let tiny_actual: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Tiny)
+        .iter()
+        .map(|fact| fact.id)
+        .collect();
+
+    assert_eq!(tiny_actual, full_expected);
+    for id in full_only {
+        assert!(
+            crate::family::detector_facts(BaselineRegistryProfile::Full)
+                .iter()
+                .any(|fact| fact.id == id),
+            "{id} should stay registered in the full detector profile",
+        );
+        assert!(
+            !tiny_actual.contains(&id),
+            "{id} should stay excluded from the tiny detector profile",
+        );
+    }
+}
+
+#[test]
 fn fast_detector_respects_family_feature_profile() {
     let mut config = MermaidConfig::empty_object();
     let full = DetectorRegistry::pinned_mermaid_baseline_full();
@@ -38,6 +65,38 @@ fn fast_detector_respects_family_feature_profile() {
     assert!(
         err.to_string()
             .contains("No diagram type detected matching given configuration")
+    );
+}
+
+#[test]
+fn fast_detector_keywords_respect_family_feature_profile() {
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "sequenceDiagram\nA->>B: hi",
+            BaselineRegistryProfile::Full,
+        ),
+        Some("sequence")
+    );
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "sequenceDiagram\nA->>B: hi",
+            BaselineRegistryProfile::Tiny,
+        ),
+        Some("sequence")
+    );
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "mindmap\nroot",
+            BaselineRegistryProfile::Full,
+        ),
+        Some("mindmap")
+    );
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "mindmap\nroot",
+            BaselineRegistryProfile::Tiny,
+        ),
+        None
     );
 }
 
