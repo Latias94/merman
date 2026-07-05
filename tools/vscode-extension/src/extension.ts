@@ -50,7 +50,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
-      await runLanguageClientAction(context, "restart");
+      try {
+        await runLanguageClientAction(context, "restart");
+      } catch {
+        return;
+      }
       void vscode.window.showInformationMessage("Merman language server restarted.");
     }),
   );
@@ -113,7 +117,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           hasClient: Boolean(client),
           settings: getLanguageIntelligenceSettings(),
         }),
-      );
+      ).catch(() => undefined);
     }),
   );
 
@@ -174,7 +178,7 @@ async function reconcileLanguageClient(context: vscode.ExtensionContext): Promis
   await runLanguageClientAction(
     context,
     languageClientReconcileAction(getLanguageIntelligenceSettings(), Boolean(client)),
-  );
+  ).catch(() => undefined);
 }
 
 async function startClient(
@@ -186,7 +190,16 @@ async function startClient(
     return;
   }
   ensureStatusItem(context);
-  const nextClient = await createLanguageClient(context);
+  let nextClient: LanguageClient;
+  try {
+    nextClient = await createLanguageClient(context);
+  } catch (error) {
+    if (isCurrentLifecycleGeneration(generation)) {
+      updateStatusBar("Failed", "Merman language server failed to start.");
+      void vscode.window.showErrorMessage(formatStartupError(error));
+    }
+    throw error;
+  }
   if (!isCurrentLifecycleGeneration(generation)) {
     return;
   }
@@ -285,6 +298,11 @@ function updateStatusBar(stateLabel: string, tooltip?: string): void {
   }
   statusItem.text = `$(symbol-event) Merman ${stateLabel}`;
   statusItem.tooltip = tooltip ?? "Click to restart the Merman language server";
+}
+
+function formatStartupError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `Merman language server failed to start: ${message}`;
 }
 
 async function showRuleCatalogPicker(rules: LspRuleCatalogEntry[]): Promise<void> {

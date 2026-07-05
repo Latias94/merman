@@ -391,6 +391,71 @@ fn context_uses_parser_expected_syntax_for_shape_values() {
 }
 
 #[test]
+fn shape_value_completion_does_not_duplicate_existing_closing_brace() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA@{ shape: rou }\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, 14)).unwrap();
+    let edit = context.shape_value_edit("circle").expect("shape edit");
+
+    assert_eq!(edit.range.start.line, 1);
+    assert_eq!(edit.range.start.character, 11);
+    assert_eq!(edit.range.end.line, 1);
+    assert_eq!(edit.range.end.character, 14);
+    assert_eq!(edit.replacement, "circle");
+}
+
+#[test]
+fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.markdown",
+        1,
+        concat!(
+            "before\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "A@{ shape: rou\n",
+            "```\n",
+            "after\n",
+        )
+        .to_string(),
+        DocumentKind::Markdown,
+    );
+    let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 14)).unwrap();
+    let edit = context.shape_value_edit("circle").expect("shape edit");
+
+    assert_eq!(edit.range.start.line, 3);
+    assert_eq!(edit.range.start.character, 11);
+    assert_eq!(edit.range.end.line, 3);
+    assert_eq!(edit.range.end.character, 14);
+    assert_eq!(edit.replacement, "circle }");
+}
+
+#[test]
+fn shape_value_completion_appends_missing_brace_before_next_diagram_statement() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\nA@{ shape: rou\nB --> C\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, 14)).unwrap();
+    let edit = context.shape_value_edit("circle").expect("shape edit");
+
+    assert_eq!(edit.range.start.line, 1);
+    assert_eq!(edit.range.start.character, 11);
+    assert_eq!(edit.range.end.line, 1);
+    assert_eq!(edit.range.end.character, 14);
+    assert_eq!(edit.replacement, "circle }");
+}
+
+#[test]
 fn completion_offers_parser_accepted_flowchart_shapes() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

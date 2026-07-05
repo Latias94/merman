@@ -80,6 +80,24 @@ describe("preview diagnostics", () => {
 
     assert.equal(diagnostics.summary, "1 error, 2 warnings, 1 info, 1 hint");
   });
+
+  it("keeps diagnostics on the final line of an unclosed EOF fence range", () => {
+    const diagnostics = collectMermanPreviewDiagnostics(
+      [
+        diagnostic({
+          source: "merman",
+          severity: 0,
+          message: "Incomplete arrow",
+          startLine: 4,
+        }),
+      ],
+      "file:///workspace/notes.md",
+      { startLine: 3, endLine: 4 },
+    );
+
+    assert.equal(diagnostics.totalCount, 1);
+    assert.equal(diagnostics.firstTarget?.startLine, 4);
+  });
 });
 
 function diagnostic(options: {

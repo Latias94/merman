@@ -294,14 +294,18 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn shape_value_edit_parts(&self) -> Option<(Range, bool, bool)> {
+        if self.expected_syntax == Some(FenceExpectedSyntaxKind::Shape) {
+            return self.shape_value_edit_parts_from_expected_span();
+        }
+
         let prefix = self.prefix.as_str();
         if let Some((range, has_separator_space)) = self.shape_value_edit_parts_from_prefix(prefix)
         {
-            return Some((range, has_separator_space, true));
-        }
-
-        if self.expected_syntax == Some(FenceExpectedSyntaxKind::Shape) {
-            return self.shape_value_edit_parts_from_expected_span();
+            return Some((
+                range,
+                has_separator_space,
+                self.should_append_shape_closing_brace(self.cursor_offset),
+            ));
         }
 
         None
@@ -332,11 +336,19 @@ impl<'a> CompletionContext<'a> {
             .chars()
             .next_back()
             .is_some_and(|ch| ch.is_whitespace());
-        let append_closing_brace = self.snapshot.text[end..]
-            .chars()
-            .all(|ch| ch.is_whitespace());
+        let append_closing_brace = self.should_append_shape_closing_brace(end);
 
         Some((range, has_separator_space, append_closing_brace))
+    }
+
+    fn should_append_shape_closing_brace(&self, offset: usize) -> bool {
+        let Some(suffix) = self.snapshot.text.get(offset..self.fence.body_end) else {
+            return false;
+        };
+        !matches!(
+            suffix.chars().find(|ch| !ch.is_whitespace()),
+            Some('}' | ',')
+        )
     }
 
     fn offers(&self, kind: FenceCursorCompletionKind) -> bool {

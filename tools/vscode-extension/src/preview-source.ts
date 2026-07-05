@@ -303,11 +303,13 @@ function collectMermaidFences(
 
     const sourceLines: string[] = [];
     let closeLine = lineIndex;
+    let foundClosingFence = false;
 
     for (let cursor = lineIndex + 1; cursor < lineCount; cursor += 1) {
       const nextLine = lineAt(cursor);
       if (isMatchingClosingFence(nextLine, delimiter)) {
         closeLine = cursor;
+        foundClosingFence = true;
         break;
       }
       sourceLines.push(nextLine);
@@ -321,7 +323,7 @@ function collectMermaidFences(
       startLine: lineIndex,
       endLine: closeLine,
       contentStartLine: lineIndex + 1,
-      contentEndLine: Math.max(closeLine - 1, lineIndex),
+      contentEndLine: foundClosingFence ? Math.max(closeLine - 1, lineIndex) : closeLine,
       ordinal,
     });
 

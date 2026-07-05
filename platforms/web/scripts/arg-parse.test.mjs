@@ -1,4 +1,11 @@
 import assert from "node:assert/strict";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -44,6 +51,117 @@ describe("web script argument parsing", () => {
       absolute: path.join(packageRoot, "pkg", "core"),
       relative: path.join("pkg", "core"),
     });
+  });
+
+  it("allows first-build package output directories that do not exist yet", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-arg-parse-"));
+    try {
+      assert.deepEqual(resolvePackageSubdir(root, "pkg/core", "--out-dir-rel"), {
+        absolute: path.join(root, "pkg", "core"),
+        relative: path.join("pkg", "core"),
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects package output directories that pass through pkg symlinks or junctions", (t) => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-arg-parse-"));
+    const external = mkdtempSync(path.join(os.tmpdir(), "merman-web-arg-parse-target-"));
+    try {
+      try {
+        symlinkSync(
+          external,
+          path.join(root, "pkg"),
+          process.platform === "win32" ? "junction" : "dir",
+        );
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          (error.code === "EPERM" || error.code === "EACCES")
+        ) {
+          t.skip("symlink or junction creation is not permitted on this host");
+          return;
+        }
+        throw error;
+      }
+
+      assert.throws(
+        () => resolvePackageSubdir(root, "pkg/core", "--out-dir-rel"),
+        /symlink or junction/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(external, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects package output child directories that are symlinks or junctions", (t) => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-arg-parse-"));
+    const external = mkdtempSync(path.join(os.tmpdir(), "merman-web-arg-parse-target-"));
+    try {
+      mkdirSync(path.join(root, "pkg"));
+      try {
+        symlinkSync(
+          external,
+          path.join(root, "pkg", "core"),
+          process.platform === "win32" ? "junction" : "dir",
+        );
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          (error.code === "EPERM" || error.code === "EACCES")
+        ) {
+          t.skip("symlink or junction creation is not permitted on this host");
+          return;
+        }
+        throw error;
+      }
+
+      assert.throws(
+        () => resolvePackageSubdir(root, "pkg/core/snippets", "--out-dir-rel"),
+        /symlink or junction/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(external, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects dangling package output symlinks or junctions", (t) => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-arg-parse-"));
+    try {
+      const missingTarget = path.join(root, "missing-target");
+      try {
+        symlinkSync(
+          missingTarget,
+          path.join(root, "pkg"),
+          process.platform === "win32" ? "junction" : "dir",
+        );
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          (error.code === "EPERM" || error.code === "EACCES")
+        ) {
+          t.skip("symlink or junction creation is not permitted on this host");
+          return;
+        }
+        throw error;
+      }
+
+      assert.throws(
+        () => resolvePackageSubdir(root, "pkg/core", "--out-dir-rel"),
+        /symlink or junction/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("rejects package output directories outside pkg", () => {

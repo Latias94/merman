@@ -1,6 +1,5 @@
 plugins {
     id("com.android.library") version "9.2.0"
-    id("org.jetbrains.kotlin.android") version "1.9.24"
     id("maven-publish")
     id("signing")
 }
@@ -33,11 +32,12 @@ android {
             withJavadocJar()
         }
     }
-}
 
-kotlin {
-    jvmToolchain(17)
-    sourceSets.getByName("androidTest").kotlin.srcDir("examples")
+    sourceSets {
+        getByName("androidTest") {
+            java.srcDir("examples")
+        }
+    }
 }
 
 dependencies {

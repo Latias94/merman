@@ -1,3 +1,4 @@
+import { lstatSync } from "node:fs";
 import path from "node:path";
 
 export class ArgParseError extends Error {
@@ -86,6 +87,7 @@ export function resolvePackageSubdir(packageRoot, relativeDir, optionName = "pac
     relativeToPkg === "" ||
     (!relativeToPkg.startsWith("..") && !path.isAbsolute(relativeToPkg))
   ) {
+    assertNoLinkedPackagePathComponents(pkgRoot, resolved, optionName);
     return {
       absolute: resolved,
       relative: path.relative(packageRoot, resolved),
@@ -93,6 +95,34 @@ export function resolvePackageSubdir(packageRoot, relativeDir, optionName = "pac
   }
 
   throw new ArgParseError(`${optionName} must resolve to pkg or a subdirectory of pkg.`);
+}
+
+function assertNoLinkedPackagePathComponents(pkgRoot, resolved, optionName) {
+  const root = path.resolve(pkgRoot);
+  const target = path.resolve(resolved);
+  const relative = path.relative(root, target);
+  const segments = relative === "" ? [] : relative.split(path.sep).filter(Boolean);
+  let current = root;
+
+  for (const segment of ["", ...segments]) {
+    if (segment !== "") {
+      current = path.join(current, segment);
+    }
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+    if (stat.isSymbolicLink()) {
+      throw new ArgParseError(
+        `${optionName} must not pass through a symlink or junction inside pkg: ${current}.`,
+      );
+    }
+  }
 }
 
 function isPresentValue(value) {
