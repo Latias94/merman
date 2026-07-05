@@ -11,8 +11,8 @@ use tower_lsp::lsp_types::{
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChanges,
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
     DocumentSymbolParams, GotoDefinitionParams, HoverContents, HoverParams, InitializeParams,
-    NumberOrString, Position, PrepareRenameResponse, PublishDiagnosticsParams, Range,
-    ReferenceContext, ReferenceParams, RenameParams, SelectionRange, SelectionRangeParams,
+    LogMessageParams, NumberOrString, Position, PrepareRenameResponse, PublishDiagnosticsParams,
+    Range, ReferenceContext, ReferenceParams, RenameParams, SelectionRange, SelectionRangeParams,
     SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
@@ -1581,10 +1581,7 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
             "capabilities": {},
             "initializationOptions": {
                 "lint": {
-                    "disable_rules": [
-                        "merman.parse.no_diagram",
-                        "merman.resource.source_bytes_exceeded"
-                    ]
+                    "disable_rules": ["merman.parse.no_diagram"]
                 },
                 "resources": {
                     "max_source_bytes": 8
@@ -1688,9 +1685,8 @@ async fn lsp_service_smoke_honors_core_rule_disablement() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_keeps_resource_limit_error_on_initialize() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+async fn lsp_service_rejects_resource_rule_severity_on_initialize() {
+    let (mut service, _socket) = MermanLanguageServer::service();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -1718,43 +1714,21 @@ async fn lsp_service_smoke_keeps_resource_limit_error_on_initialize() {
         .call(initialize)
         .await
         .unwrap();
+    let response = init_response.expect("initialize response");
+    assert!(response.is_error());
+    let error = response.error().expect("initialize error");
+    assert_eq!(error.code, ErrorCode::InvalidParams);
     assert!(
-        init_response
-            .as_ref()
-            .is_some_and(|response| response.is_ok())
-    );
-
-    let open = Request::build("textDocument/didOpen")
-        .params(
-            serde_json::to_value(DidOpenTextDocumentParams {
-                text_document: TextDocumentItem {
-                    uri: uri.clone(),
-                    language_id: "mermaid".to_string(),
-                    version: 1,
-                    text: "flowchart TD\nA-->B\n".to_string(),
-                },
-            })
-            .unwrap(),
-        )
-        .finish();
-    assert_eq!(
-        service.ready().await.unwrap().call(open).await.unwrap(),
-        None
-    );
-
-    let publish = socket.next().await.expect("expected diagnostics publish");
-    let params: PublishDiagnosticsParams =
-        from_value(publish.params().cloned().expect("publish params")).unwrap();
-    assert_eq!(params.uri, uri);
-    assert_eq!(params.diagnostics.len(), 1);
-    assert_eq!(
-        params.diagnostics[0].severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+        error.message.contains(
+            "lint.rule_severities.rule_id entry `merman.resource.source_bytes_exceeded` must reference a configurable analysis rule id"
+        ),
+        "unexpected initialize error: {}",
+        error.message
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_keeps_resource_limit_error_on_configuration_change() {
+async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -1834,10 +1808,36 @@ async fn lsp_service_smoke_keeps_resource_limit_error_on_configuration_change() 
         None
     );
 
-    let second = socket
-        .next()
-        .await
-        .expect("expected republished diagnostics");
+    let log = socket.next().await.expect("expected invalid settings log");
+    assert_eq!(log.method(), "window/logMessage");
+    let log_params: LogMessageParams =
+        from_value(log.params().cloned().expect("log params")).unwrap();
+    assert!(
+        log_params
+            .message
+            .contains("invalid merman analysis settings")
+    );
+    assert!(
+        log_params
+            .message
+            .contains("merman.resource.source_bytes_exceeded")
+    );
+
+    let save = Request::build("textDocument/didSave")
+        .params(
+            serde_json::to_value(DidSaveTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                text: None,
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(save).await.unwrap(),
+        None
+    );
+
+    let second = socket.next().await.expect("expected saved diagnostics");
     let second_params: PublishDiagnosticsParams =
         from_value(second.params().cloned().expect("publish params")).unwrap();
     assert_eq!(second_params.version, Some(1));

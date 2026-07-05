@@ -298,8 +298,12 @@ impl DocumentStore {
             }
         }
 
-        let missing_count = self.documents.len().saturating_sub(contexts.len());
-        let skipped_missing_snapshots = missing_count.saturating_sub(requests.len());
+        #[cfg(test)]
+        let skipped_missing_snapshots = self
+            .documents
+            .len()
+            .saturating_sub(contexts.len())
+            .saturating_sub(requests.len());
         let batch_size = budget.batch_size.max(1);
         let batches = requests
             .chunks(batch_size)
@@ -309,6 +313,7 @@ impl DocumentStore {
         WorkspaceSnapshotBuildPlan {
             contexts,
             batches,
+            #[cfg(test)]
             skipped_missing_snapshots,
         }
     }
@@ -317,18 +322,23 @@ impl DocumentStore {
         &mut self,
         requests: Vec<(SnapshotBuildRequest, Arc<DocumentSnapshot>)>,
     ) -> SnapshotBatchCommit {
+        #[cfg(test)]
         let mut contexts = Vec::new();
         let mut stale_open_documents = false;
 
         for (request, snapshot) in requests {
             match self.insert_built_snapshot(&request, snapshot) {
-                Some(context) => contexts.push(context),
+                Some(_context) => {
+                    #[cfg(test)]
+                    contexts.push(_context);
+                }
                 None if self.get(request.uri()).is_some() => stale_open_documents = true,
                 None => {}
             }
         }
 
         SnapshotBatchCommit {
+            #[cfg(test)]
             contexts,
             stale_open_documents,
         }
@@ -417,6 +427,7 @@ impl SnapshotContext {
 
 #[derive(Debug, Clone)]
 pub struct SnapshotBatchCommit {
+    #[cfg(test)]
     pub contexts: Vec<SnapshotContext>,
     pub stale_open_documents: bool,
 }
@@ -447,6 +458,7 @@ impl WorkspaceSnapshotRefreshBudget {
 pub struct WorkspaceSnapshotBuildPlan {
     pub contexts: Vec<SnapshotContext>,
     pub batches: Vec<Vec<SnapshotBuildRequest>>,
+    #[cfg(test)]
     pub skipped_missing_snapshots: usize,
 }
 

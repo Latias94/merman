@@ -1,10 +1,9 @@
 use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
-use crate::document_store::DocumentStore;
 use crate::document_store::{
-    AnalyzerConfigurationChange, DiagnosticContext, SemanticTokensState, SnapshotContext,
-    StoredDocument, WorkspaceSnapshotRefreshBudget,
+    AnalyzerConfigurationChange, DiagnosticContext, DocumentStore, SemanticTokensState,
+    SnapshotContext, StoredDocument, WorkspaceSnapshotRefreshBudget,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -306,6 +305,41 @@ impl MermanLanguageServer {
             SnapshotContextKind::WorkspaceSymbols,
         )
         .await
+    }
+
+    async fn workspace_symbol_snapshot_contexts(&self) -> Result<Vec<SnapshotContext>> {
+        loop {
+            let plan = {
+                let store = self.store.lock().await;
+                store.workspace_symbol_snapshot_build_plan(
+                    WorkspaceSnapshotRefreshBudget::workspace_symbols(),
+                )
+            };
+
+            if plan.batches.is_empty() {
+                return Ok(plan.contexts);
+            }
+
+            for batch in plan.batches {
+                let built = batch
+                    .into_iter()
+                    .map(|request| {
+                        let snapshot = request.build();
+                        (request, snapshot)
+                    })
+                    .collect();
+                let commit = self
+                    .store
+                    .lock()
+                    .await
+                    .snapshot_contexts_for_requests(built);
+                if commit.stale_open_documents {
+                    return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
+                }
+                // The current tower-lsp handler path exposes no explicit cancel token here.
+                tokio::task::yield_now().await;
+            }
+        }
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
@@ -719,35 +753,7 @@ impl LanguageServer for MermanLanguageServer {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
-        let plan = {
-            let store = self.store.lock().await;
-            store.workspace_symbol_snapshot_build_plan(
-                WorkspaceSnapshotRefreshBudget::workspace_symbols(),
-            )
-        };
-        let _skipped_missing_snapshots = plan.skipped_missing_snapshots;
-        let mut contexts = plan.contexts;
-
-        for batch in plan.batches {
-            let built = batch
-                .into_iter()
-                .map(|request| {
-                    let snapshot = request.build();
-                    (request, snapshot)
-                })
-                .collect();
-            let commit = self
-                .store
-                .lock()
-                .await
-                .snapshot_contexts_for_requests(built);
-            if commit.stale_open_documents {
-                return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
-            }
-            contexts.extend(commit.contexts);
-            // The current tower-lsp handler path exposes no explicit cancel token here.
-            tokio::task::yield_now().await;
-        }
+        let contexts = self.workspace_symbol_snapshot_contexts().await?;
 
         let snapshots = contexts
             .iter()
@@ -797,7 +803,10 @@ mod tests {
     use super::MermanLanguageServer;
     use super::stale_diagnostic_recompute_error;
     use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
-    use crate::document_store::{DocumentStore, StoredDocument};
+    use crate::document_store::{
+        DocumentStore, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+        WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET,
+    };
     use crate::protocol::{
         CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
     };
@@ -1665,6 +1674,54 @@ mod tests {
             workspace_symbols
                 .iter()
                 .any(|symbol| symbol.name == "group")
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn workspace_symbols_refreshes_more_than_the_snapshot_budget_on_first_request() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let document_count =
+            WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET + WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE + 1;
+        let last_index = document_count - 1;
+        let last_symbol = format!("target_{last_index:02}");
+        let last_uri = Url::parse(&format!("file:///tmp/workspace-{last_index:02}.mmd")).unwrap();
+
+        {
+            let mut store = server.store.lock().await;
+            for index in 0..document_count {
+                let uri = Url::parse(&format!("file:///tmp/workspace-{index:02}.mmd")).unwrap();
+                store.upsert_text(
+                    uri,
+                    1,
+                    format!("flowchart TD\nsubgraph target_{index:02}\nA{index}-->B{index}\nend\n"),
+                    DocumentKind::Diagram,
+                );
+            }
+        }
+
+        let workspace_symbols = server
+            .symbol(WorkspaceSymbolParams {
+                partial_result_params: Default::default(),
+                work_done_progress_params: Default::default(),
+                query: last_symbol.clone(),
+            })
+            .await
+            .unwrap()
+            .expect("expected workspace symbol response");
+
+        assert!(
+            workspace_symbols
+                .iter()
+                .any(|symbol| symbol.name == last_symbol && symbol.location.uri == last_uri),
+            "workspace symbol request omitted the document beyond the old snapshot budget"
+        );
+
+        let store = server.store.lock().await;
+        let (_contexts, requests) = store.snapshot_build_requests();
+        assert!(
+            requests.is_empty(),
+            "workspace symbol refresh should not leave current open documents uncached"
         );
     }
 
