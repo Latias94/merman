@@ -126,7 +126,7 @@ impl RuleCatalogEntry {
             default_enabled: descriptor.default_enabled,
             default_profile: descriptor.default_profile,
             origin: descriptor.origin,
-            configurable: descriptor.category != DiagnosticCategory::Internal,
+            configurable: is_configurable_rule_descriptor(descriptor),
             fixable: descriptor.fixable,
         }
     }
@@ -469,7 +469,7 @@ pub fn configurable_rule_descriptors() -> impl Iterator<Item = RuleDescriptor> {
     RULE_DESCRIPTORS
         .iter()
         .copied()
-        .filter(|descriptor| descriptor.category != DiagnosticCategory::Internal)
+        .filter(|descriptor| is_configurable_rule_descriptor(*descriptor))
 }
 
 pub fn configurable_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
@@ -481,6 +481,13 @@ pub fn rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
         .iter()
         .copied()
         .find(|descriptor| descriptor.id == rule_id)
+}
+
+fn is_configurable_rule_descriptor(descriptor: RuleDescriptor) -> bool {
+    !matches!(
+        descriptor.category,
+        DiagnosticCategory::Internal | DiagnosticCategory::Resource
+    )
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1662,14 +1669,13 @@ mod tests {
     }
 
     #[test]
-    fn configurable_rule_descriptors_exclude_internal_rules() {
+    fn configurable_rule_descriptors_exclude_internal_and_resource_rules() {
         let descriptors: Vec<_> = configurable_rule_descriptors().collect();
 
-        assert!(
-            descriptors
-                .iter()
-                .all(|descriptor| descriptor.category != DiagnosticCategory::Internal)
-        );
+        assert!(descriptors.iter().all(|descriptor| !matches!(
+            descriptor.category,
+            DiagnosticCategory::Internal | DiagnosticCategory::Resource
+        )));
         assert!(
             descriptors
                 .iter()
@@ -1689,6 +1695,11 @@ mod tests {
             descriptors
                 .iter()
                 .all(|descriptor| descriptor.id != PANIC_RULE_ID)
+        );
+        assert!(
+            descriptors
+                .iter()
+                .all(|descriptor| descriptor.id != RESOURCE_LIMIT_RULE_ID)
         );
         assert!(
             descriptors
@@ -1765,6 +1776,12 @@ mod tests {
         );
         assert!(deprecated_html_labels.default_enabled);
         assert!(deprecated_html_labels.fixable);
+        let resource_limit = catalog
+            .iter()
+            .find(|entry| entry.id == RESOURCE_LIMIT_RULE_ID)
+            .expect("resource limit catalog entry");
+        assert_eq!(resource_limit.category, DiagnosticCategory::Resource);
+        assert!(!resource_limit.configurable);
 
         let json: serde_json::Value =
             serde_json::from_slice(&rule_catalog_json_bytes().expect("catalog JSON"))
@@ -1787,14 +1804,13 @@ mod tests {
     }
 
     #[test]
-    fn configurable_rule_catalog_excludes_internal_rules() {
+    fn configurable_rule_catalog_excludes_internal_and_resource_rules() {
         let catalog = configurable_rule_catalog();
 
-        assert!(
-            catalog
-                .iter()
-                .all(|entry| entry.category != DiagnosticCategory::Internal)
-        );
+        assert!(catalog.iter().all(|entry| !matches!(
+            entry.category,
+            DiagnosticCategory::Internal | DiagnosticCategory::Resource
+        )));
         assert!(
             catalog
                 .iter()
@@ -1814,6 +1830,11 @@ mod tests {
             catalog
                 .iter()
                 .all(|entry| entry.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
+        );
+        assert!(
+            catalog
+                .iter()
+                .all(|entry| entry.id != RESOURCE_LIMIT_RULE_ID)
         );
         assert!(
             catalog

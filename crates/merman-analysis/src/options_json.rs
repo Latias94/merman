@@ -290,7 +290,7 @@ fn validate_configurable_rule_id(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rule_descriptors;
+    use crate::{rule_descriptors, rules::RESOURCE_LIMIT_RULE_ID};
 
     #[test]
     fn shared_analysis_options_json_honors_lint_configuration() {
@@ -438,6 +438,40 @@ mod tests {
             err.to_string().contains("configurable analysis rule id"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_resource_lint_rule_ids() {
+        let cases = [
+            serde_json::json!({
+                "lint": {
+                    "enable_rules": [RESOURCE_LIMIT_RULE_ID]
+                }
+            }),
+            serde_json::json!({
+                "lint": {
+                    "disable_rules": [RESOURCE_LIMIT_RULE_ID]
+                }
+            }),
+            serde_json::json!({
+                "lint": {
+                    "rule_severities": [
+                        {
+                            "rule_id": RESOURCE_LIMIT_RULE_ID,
+                            "severity": "hint"
+                        }
+                    ]
+                }
+            }),
+        ];
+
+        for options in cases {
+            let err = analysis_options_from_json_value(&options).unwrap_err();
+            assert!(
+                err.to_string().contains("configurable analysis rule id"),
+                "unexpected error for {options}: {err}"
+            );
+        }
     }
 
     #[test]

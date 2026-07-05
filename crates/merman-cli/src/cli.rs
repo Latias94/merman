@@ -831,7 +831,9 @@ fn parse_lint_rule_severity_override(value: &str) -> Result<LintRuleSeverityOver
         return Err("rule id must not be empty".to_string());
     }
     if configurable_rule_descriptor(rule_id).is_none() {
-        return Err(format!("unknown or internal lint rule id `{rule_id}`"));
+        return Err(format!(
+            "unknown or non-configurable lint rule id `{rule_id}`"
+        ));
     }
 
     Ok(LintRuleSeverityOverride {
@@ -845,7 +847,9 @@ fn parse_lint_rule_id(value: &str) -> Result<String, String> {
         return Err("rule id must not be empty".to_string());
     }
     if configurable_rule_descriptor(value).is_none() {
-        return Err(format!("unknown or internal lint rule id `{value}`"));
+        return Err(format!(
+            "unknown or non-configurable lint rule id `{value}`"
+        ));
     }
     Ok(value.to_string())
 }

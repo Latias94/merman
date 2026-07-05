@@ -419,7 +419,7 @@ fn cli_lint_rules_lists_rule_catalog_json() {
 }
 
 #[test]
-fn cli_lint_rules_configurable_filter_excludes_internal_rules() {
+fn cli_lint_rules_configurable_filter_excludes_internal_and_resource_rules() {
     let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
         .args(["lint-rules", "--format", "json", "--configurable"])
         .output()
@@ -430,10 +430,13 @@ fn cli_lint_rules_configurable_filter_excludes_internal_rules() {
         serde_json::from_slice(&output.stdout).expect("lint-rules stdout should be JSON");
     let rules = catalog.as_array().expect("rule catalog should be an array");
 
+    assert!(rules.iter().all(|rule| rule["category"] != "internal"
+        && rule["category"] != "resource"
+        && rule["configurable"] == true));
     assert!(
         rules
             .iter()
-            .all(|rule| rule["category"] != "internal" && rule["configurable"] == true)
+            .all(|rule| rule["id"] != "merman.resource.source_bytes_exceeded")
     );
 }
 
@@ -558,7 +561,7 @@ fn cli_lint_rejects_unknown_rule_ids() {
                 "merman.unknown.rule",
                 "-",
             ],
-            "unknown or internal lint rule id `merman.unknown.rule`",
+            "unknown or non-configurable lint rule id `merman.unknown.rule`",
         ),
         (
             vec![
@@ -569,7 +572,7 @@ fn cli_lint_rejects_unknown_rule_ids() {
                 "merman.internal.panic=warning",
                 "-",
             ],
-            "unknown or internal lint rule id `merman.internal.panic`",
+            "unknown or non-configurable lint rule id `merman.internal.panic`",
         ),
     ] {
         let output = Command::new(&exe)
@@ -592,9 +595,9 @@ fn cli_lint_rejects_unknown_rule_ids() {
 }
 
 #[test]
-fn cli_lint_can_disable_resource_limit_rule() {
-    let output = run_with_stdin(
-        &[
+fn cli_lint_rejects_resource_limit_rule_configuration() {
+    for args in [
+        vec![
             "lint",
             "--format",
             "json",
@@ -604,21 +607,7 @@ fn cli_lint_can_disable_resource_limit_rule() {
             "merman.resource.source_bytes_exceeded",
             "-",
         ],
-        "flowchart TD\nA-->B\n",
-    );
-
-    assert!(output.status.success(), "stderr: {:?}", output.stderr);
-    let payload: Value =
-        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
-    assert_eq!(payload["valid"], true);
-    assert_eq!(payload["summary"]["errors"], 0);
-    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
-}
-
-#[test]
-fn cli_lint_can_override_resource_limit_severity() {
-    let output = run_with_stdin(
-        &[
+        vec![
             "lint",
             "--format",
             "json",
@@ -628,20 +617,21 @@ fn cli_lint_can_override_resource_limit_severity() {
             "merman.resource.source_bytes_exceeded=hint",
             "-",
         ],
-        "flowchart TD\nA-->B\n",
-    );
+    ] {
+        let output = run_with_stdin(&args, "flowchart TD\nA-->B\n");
 
-    assert!(output.status.success(), "stderr: {:?}", output.stderr);
-    let payload: Value =
-        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
-    assert_eq!(payload["valid"], true);
-    assert_eq!(payload["summary"]["hints"], 1);
-    assert_eq!(payload["summary"]["errors"], 0);
-    assert_eq!(
-        payload["diagnostics"][0]["id"].as_str(),
-        Some("merman.resource.source_bytes_exceeded")
-    );
-    assert_eq!(payload["diagnostics"][0]["severity"].as_str(), Some("hint"));
+        assert!(
+            !output.status.success(),
+            "expected resource rule config to be rejected"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains(
+                "unknown or non-configurable lint rule id `merman.resource.source_bytes_exceeded`"
+            ),
+            "unexpected stderr:\n{stderr}"
+        );
+    }
 }
 
 #[test]
