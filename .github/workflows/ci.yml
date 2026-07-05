@@ -32,7 +32,7 @@ jobs:
         run: python3 scripts/verify-release-crate-order.py
 
       - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_workflow_path_filters.py scripts/test_release_workflow_security.py scripts/test_verify_platform_bindings.py
+        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_workflow_path_filters.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py
 
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
@@ -361,12 +361,28 @@ jobs:
           sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
+      - name: Enable KVM access
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "::error::/dev/kvm is unavailable; Android emulator instrumentation requires hardware acceleration on Linux."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
       - name: Run Android instrumentation smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           target: google_apis
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-linux-hw-accel: false
           script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path gradle
 
   python-uniffi-wheel:
