@@ -94,6 +94,8 @@ export function assertSafePreviewSvg(svg: string): void {
 class SvgSafetyScanner {
   private cursor = 0;
   private sawRoot = false;
+  private rootDepth = 0;
+  private rootClosedAt: number | null = null;
   private foreignObjectDepth = 0;
 
   constructor(private readonly source: string) {}
@@ -104,9 +106,19 @@ class SvgSafetyScanner {
       if (!tag) {
         break;
       }
+      if (this.rootClosedAt !== null) {
+        throw new Error("Preview renderer returned malformed SVG output.");
+      }
       if (tag.kind === "end") {
         if (localName(tag.name) === "foreignobject" && this.foreignObjectDepth > 0) {
           this.foreignObjectDepth -= 1;
+        }
+        if (!this.sawRoot || this.rootDepth === 0) {
+          throw new Error("Preview renderer returned malformed SVG output.");
+        }
+        this.rootDepth -= 1;
+        if (this.rootDepth === 0) {
+          this.rootClosedAt = tag.end;
         }
         continue;
       }
@@ -118,6 +130,13 @@ class SvgSafetyScanner {
         if (elementName !== "svg") {
           throw new Error("Preview renderer returned non-SVG output.");
         }
+        if (!tag.selfClosing) {
+          this.rootDepth = 1;
+        } else {
+          this.rootClosedAt = tag.end;
+        }
+      } else if (!tag.selfClosing) {
+        this.rootDepth += 1;
       }
       assertSafeElementName(elementName, inForeignObject);
       assertSafeAttributes(tag.attributes, inForeignObject);
@@ -139,6 +158,10 @@ class SvgSafetyScanner {
     if (!this.sawRoot) {
       throw new Error("Preview renderer returned non-SVG output.");
     }
+    if (this.rootClosedAt === null || this.rootDepth !== 0) {
+      throw new Error("Preview renderer returned malformed SVG output.");
+    }
+    assertOnlyIgnorableRootTail(this.source, this.rootClosedAt, "Preview renderer returned");
     if (this.foreignObjectDepth !== 0) {
       throw new Error("Preview renderer returned malformed SVG output.");
     }
@@ -149,6 +172,9 @@ class SvgSafetyScanner {
     if (start < 0) {
       this.cursor = this.source.length;
       return null;
+    }
+    if (!this.sawRoot && !isOnlyWhitespace(this.source.slice(this.cursor, start))) {
+      throw new Error("Preview renderer returned non-SVG output.");
     }
 
     if (this.source.startsWith("<!--", start)) {
@@ -542,6 +568,21 @@ function consumeUntil(source: string, start: number, terminator: string): number
   return end + terminator.length;
 }
 
+function assertOnlyIgnorableRootTail(source: string, start: number, prefix: string): void {
+  let cursor = start;
+  while (cursor < source.length) {
+    cursor = skipWhitespace(source, cursor);
+    if (cursor >= source.length) {
+      return;
+    }
+    if (source.startsWith("<!--", cursor)) {
+      cursor = consumeUntil(source, cursor + 4, "-->");
+      continue;
+    }
+    throw new Error(`${prefix} malformed SVG output.`);
+  }
+}
+
 function skipWhitespace(source: string, cursor: number): number {
   while (cursor < source.length && isWhitespace(source[cursor] ?? "")) {
     cursor += 1;
@@ -551,6 +592,15 @@ function skipWhitespace(source: string, cursor: number): number {
 
 function isWhitespace(char: string): boolean {
   return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
+}
+
+function isOnlyWhitespace(value: string): boolean {
+  for (const char of value) {
+    if (!isWhitespace(char)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isHexDigit(char: string): boolean {
