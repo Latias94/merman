@@ -60,6 +60,8 @@ describe("preview SVG safety", () => {
 
   it("rejects event handlers and unsafe URL attributes", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><text onclick="alert(1)">x</text></svg>'), /event/);
+    assert.throws(() => assertSafePreviewSvg('<svg><text OnClick="alert(1)">x</text></svg>'), /event/);
+    assert.throws(() => assertSafePreviewSvg('<svg OnLoad="alert(1)"><text>x</text></svg>'), /event/);
     assert.throws(
       () => assertSafePreviewSvg('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
       /event/,

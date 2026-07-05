@@ -36,6 +36,14 @@ assert.throws(
   /event/,
 );
 assert.throws(
+  () => assertSafeSvgForDom('<svg><text OnClick="alert(1)">x</text></svg>'),
+  /event/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg OnLoad="alert(1)"><text>x</text></svg>'),
+  /event/,
+);
+assert.throws(
   () => assertSafeSvgForDom('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
   /foreignObject/,
 );

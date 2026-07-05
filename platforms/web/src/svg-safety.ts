@@ -253,7 +253,8 @@ function assertSafeElementName(name: string, inForeignObject: boolean): void {
 
 function assertSafeAttributes(attributes: SvgAttribute[], inForeignObject: boolean): void {
   for (const attribute of attributes) {
-    const nameWithoutNamespace = localName(attribute.name);
+    const name = attribute.name.toLowerCase();
+    const nameWithoutNamespace = localName(name);
     const value = decodeXmlEntities(attribute.value);
     if (nameWithoutNamespace.startsWith("on")) {
       throw new Error("Merman rendered SVG with event handler attributes.");
@@ -314,51 +315,6 @@ function assertSafeSrcset(value: string): void {
   throw new Error("Merman rendered SVG with srcset resource references.");
 }
 
-function assertSafeUrlReferences(value: string, source: "attribute" | "css"): void {
-  const normalized = decodeCssEscapes(decodeXmlEntities(value));
-  const lower = normalized.toLowerCase();
-  let cursor = 0;
-  let sawUrlReference = false;
-
-  while (cursor < lower.length) {
-    const urlIndex = lower.indexOf("url", cursor);
-    if (urlIndex < 0) {
-      break;
-    }
-    cursor = urlIndex + "url".length;
-    cursor = skipWhitespace(lower, cursor);
-    if (lower[cursor] !== "(") {
-      continue;
-    }
-    sawUrlReference = true;
-    const valueStart = cursor + 1;
-    const valueEnd = lower.indexOf(")", valueStart);
-    if (valueEnd < 0) {
-      throw new Error("Merman rendered malformed SVG URL references.");
-    }
-    const rawValue = normalized.slice(valueStart, valueEnd).trim();
-    const unquoted =
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-        ? rawValue.slice(1, -1)
-        : rawValue;
-    assertSafeUrl(unquoted, source);
-    cursor = valueEnd + 1;
-  }
-
-  if (sawUrlReference) {
-    return;
-  }
-
-  const compact = removeAsciiWhitespaceAndControl(normalized).toLowerCase();
-  if (!compact || compact === "none" || compact.startsWith("#")) {
-    return;
-  }
-  if (compact.startsWith("//") || compact.startsWith("/") || URL_SCHEME.test(compact)) {
-    assertSafeUrl(normalized, source);
-  }
-}
-
 function assertSafeCss(css: string): void {
   const withoutComments = stripCssComments(css);
   const normalized = decodeCssEscapes(decodeXmlEntities(withoutComments));
@@ -411,6 +367,51 @@ function containsCssFunction(css: string, name: string): boolean {
     }
   }
   return false;
+}
+
+function assertSafeUrlReferences(value: string, source: "attribute" | "css"): void {
+  const normalized = decodeCssEscapes(decodeXmlEntities(value));
+  const lower = normalized.toLowerCase();
+  let cursor = 0;
+  let sawUrlReference = false;
+
+  while (cursor < lower.length) {
+    const urlIndex = lower.indexOf("url", cursor);
+    if (urlIndex < 0) {
+      break;
+    }
+    cursor = urlIndex + "url".length;
+    cursor = skipWhitespace(lower, cursor);
+    if (lower[cursor] !== "(") {
+      continue;
+    }
+    sawUrlReference = true;
+    const valueStart = cursor + 1;
+    const valueEnd = lower.indexOf(")", valueStart);
+    if (valueEnd < 0) {
+      throw new Error("Merman rendered malformed SVG URL references.");
+    }
+    const rawValue = normalized.slice(valueStart, valueEnd).trim();
+    const unquoted =
+      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+      (rawValue.startsWith("'") && rawValue.endsWith("'"))
+        ? rawValue.slice(1, -1)
+        : rawValue;
+    assertSafeUrl(unquoted, source);
+    cursor = valueEnd + 1;
+  }
+
+  if (sawUrlReference) {
+    return;
+  }
+
+  const compact = removeAsciiWhitespaceAndControl(normalized).toLowerCase();
+  if (!compact || compact === "none" || compact.startsWith("#")) {
+    return;
+  }
+  if (compact.startsWith("//") || compact.startsWith("/") || URL_SCHEME.test(compact)) {
+    assertSafeUrl(normalized, source);
+  }
 }
 
 function stripCssComments(css: string): string {
