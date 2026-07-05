@@ -153,4 +153,3 @@ Close the second full read-only subagent review for PR20 by fixing the remaining
 - Extension-host smoke may depend on the locally downloaded VS Code test binary; if unavailable, unit coverage must still prove command registration and failure isolation.
 - Android emulator instrumentation remains CI-owned in this environment unless a local Android SDK and emulator image are available.
 - Symlink/junction behavior differs by platform and privileges; tests should skip only the OS operation that cannot be created locally, while keeping path-guard unit coverage deterministic where possible.
-

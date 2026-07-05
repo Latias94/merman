@@ -35,7 +35,7 @@ android {
 
     sourceSets {
         getByName("androidTest") {
-            java.srcDir("examples")
+            kotlin.directories += "examples"
         }
     }
 }

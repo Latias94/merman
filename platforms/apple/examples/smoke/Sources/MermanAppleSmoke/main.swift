@@ -46,21 +46,7 @@ struct MermanAppleSmoke {
         }
 
         let reusable = try engine.reusableEngine()
-        let callback: MermanTextMeasureCallback = { request, _ in
-            let text = request.text.map {
-                String(decoding: UnsafeBufferPointer(start: $0, count: request.text_len), as: UTF8.self)
-            } ?? ""
-            if text == "Hello" {
-                return MermanTextMeasureResult(
-                    handled: 1,
-                    width: 42.0,
-                    height: request.line_height,
-                    line_count: 1
-                )
-            }
-            return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
-        }
-        try reusable.setTextMeasureCallback(callback)
+        try reusable.setTextMeasureCallback(mermanAppleSmokeMeasureText)
         let reusableSvg = try reusable.renderSvg(source)
         guard reusableSvg.contains("<svg"), reusableSvg.contains("Hello") else {
             throw SmokeError.failed("reusable renderSvg smoke failed")
@@ -133,26 +119,7 @@ private enum ReusableEngineLifecycleSmoke {
         reentryEngine = reusable
         defer { reentryEngine = nil }
 
-        let callback: MermanTextMeasureCallback = { request, _ in
-            let text = request.text.map {
-                String(decoding: UnsafeBufferPointer(start: $0, count: request.text_len), as: UTF8.self)
-            } ?? ""
-            if text == "Concurrent" {
-                if markFirstBlockingCallback() {
-                    exerciseReentryGuard()
-                    callbackEntered.signal()
-                    _ = callbackMayReturn.wait(timeout: .now() + .seconds(5))
-                }
-                return MermanTextMeasureResult(
-                    handled: 1,
-                    width: 64.0,
-                    height: request.line_height,
-                    line_count: 1
-                )
-            }
-            return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
-        }
-        try reusable.setTextMeasureCallback(callback)
+        try reusable.setTextMeasureCallback(mermanReusableLifecycleMeasureText)
 
         let source = "flowchart TD\nA[Concurrent] --> B[Close]"
         DispatchQueue.global(qos: .userInitiated).async {
@@ -279,8 +246,55 @@ private enum ReusableEngineLifecycleSmoke {
         didBlockCallback = false
         stateLock.unlock()
     }
+
+    fileprivate static func measureText(_ request: MermanTextMeasureRequest) -> MermanTextMeasureResult {
+        let text = mermanSmokeText(request)
+        if text == "Concurrent" {
+            if markFirstBlockingCallback() {
+                exerciseReentryGuard()
+                callbackEntered.signal()
+                _ = callbackMayReturn.wait(timeout: .now() + .seconds(5))
+            }
+            return MermanTextMeasureResult(
+                handled: 1,
+                width: 64.0,
+                height: request.line_height,
+                line_count: 1
+            )
+        }
+        return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
+    }
 }
 
 enum SmokeError: Error {
     case failed(String)
+}
+
+private func mermanAppleSmokeMeasureText(
+    _ request: MermanTextMeasureRequest,
+    _ _: UnsafeMutableRawPointer?
+) -> MermanTextMeasureResult {
+    let text = mermanSmokeText(request)
+    if text == "Hello" {
+        return MermanTextMeasureResult(
+            handled: 1,
+            width: 42.0,
+            height: request.line_height,
+            line_count: 1
+        )
+    }
+    return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
+}
+
+private func mermanReusableLifecycleMeasureText(
+    _ request: MermanTextMeasureRequest,
+    _ _: UnsafeMutableRawPointer?
+) -> MermanTextMeasureResult {
+    ReusableEngineLifecycleSmoke.measureText(request)
+}
+
+private func mermanSmokeText(_ request: MermanTextMeasureRequest) -> String {
+    request.text.map {
+        String(decoding: UnsafeBufferPointer(start: $0, count: request.text_len), as: UTF8.self)
+    } ?? ""
 }
