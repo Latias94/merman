@@ -33,6 +33,16 @@ pub struct StoredDocument {
     pub kind: DocumentKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextDocumentUpdate {
+    Applied,
+    MissingDocument,
+    StaleVersion {
+        current_version: i32,
+        attempted_version: i32,
+    },
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SemanticTokensState {
     pub result_id: Option<String>,
@@ -143,6 +153,39 @@ impl DocumentStore {
             },
         );
         document
+    }
+
+    pub fn open_text(
+        &mut self,
+        uri: Url,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> StoredDocument {
+        self.upsert_text(uri, version, text, kind)
+    }
+
+    pub fn apply_text_change(
+        &mut self,
+        uri: Url,
+        version: i32,
+        text: String,
+    ) -> TextDocumentUpdate {
+        let Some(current) = self.get(&uri) else {
+            return TextDocumentUpdate::MissingDocument;
+        };
+        let current_version = current.version;
+        let kind = current.kind;
+
+        if version <= current_version {
+            return TextDocumentUpdate::StaleVersion {
+                current_version,
+                attempted_version: version,
+            };
+        }
+
+        self.upsert_text(uri, version, text, kind);
+        TextDocumentUpdate::Applied
     }
 
     #[cfg(test)]

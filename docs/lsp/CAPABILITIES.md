@@ -29,9 +29,10 @@ Request handlers capture document/configuration generations before running proje
 the store lock. Semantic-token responses only commit cached token state while the captured snapshot
 is still current; stale previous result ids fall back to full tokens after snapshot-affecting
 configuration changes. Push diagnostics re-check currentness immediately before publishing and
-suppress contexts that are already stale. Pull diagnostics recompute once from the latest context
-when stale analyzer output is detected. This is a bounded LSP adapter contract, not a cancellation
-framework for notifications already handed to the client transport.
+suppress contexts that are already stale. Pull diagnostics use a bounded retry loop, recomputing
+from the latest context up to three times when stale analyzer output is detected. This is a bounded
+LSP adapter contract, not a cancellation framework for notifications already handed to the client
+transport.
 
 External lint and preview tools can integrate with Merman analysis, coexist beside it, or ignore it.
 Merman language intelligence does not require a host to replace VS Code built-in Mermaid preview,

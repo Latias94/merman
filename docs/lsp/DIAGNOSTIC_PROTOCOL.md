@@ -57,10 +57,10 @@ stale contexts observed before the final publish attempt are suppressed. A notif
 handed to the client transport is outside this cancellation boundary.
 
 For pull diagnostics, `textDocument/diagnostic` performs the same currentness check after analysis.
-If the captured context became stale, the server recomputes once from the latest context and returns
-that result. Pull-mode configuration changes invalidate client caches with
-`workspace/diagnostic/refresh` when the client advertises refresh support, and they do not also push
-open-document diagnostics.
+If the captured context became stale, the server recomputes from the latest context with a bounded
+retry loop of up to three attempts and returns that result. Pull-mode configuration changes
+invalidate client caches with `workspace/diagnostic/refresh` when the client advertises refresh
+support, and they do not also push open-document diagnostics.
 
 ## Deferred
 

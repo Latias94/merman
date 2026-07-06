@@ -1,4 +1,6 @@
-use crate::document_store::{DocumentStore, SemanticTokensState, WorkspaceSnapshotRefreshBudget};
+use crate::document_store::{
+    DocumentStore, SemanticTokensState, TextDocumentUpdate, WorkspaceSnapshotRefreshBudget,
+};
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
     FenceTextIndexSource,
@@ -190,6 +192,54 @@ fn upsert_text_invalidates_cached_snapshot() {
         .expect("expected refreshed lazy snapshot");
     assert_eq!(second.version, 2);
     assert_eq!(second.fences[0].diagram_type.as_deref(), Some("sequence"));
+}
+
+#[test]
+fn apply_text_change_rejects_missing_documents() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/missing.mmd").unwrap();
+
+    let update = store.apply_text_change(
+        uri.clone(),
+        2,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+    );
+
+    assert_eq!(update, TextDocumentUpdate::MissingDocument);
+    assert!(store.get(&uri).is_none());
+    assert!(!store.has_snapshot(&uri));
+}
+
+#[test]
+fn apply_text_change_rejects_stale_versions_without_invalidating_current_state() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        3,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let snapshot = store
+        .snapshot(&uri)
+        .expect("expected current snapshot before stale edit");
+    assert_eq!(snapshot.version, 3);
+    assert!(store.has_snapshot(&uri));
+
+    let update = store.apply_text_change(uri.clone(), 2, "flowchart TD\nA-->B\n".to_string());
+
+    assert_eq!(
+        update,
+        TextDocumentUpdate::StaleVersion {
+            current_version: 3,
+            attempted_version: 2,
+        }
+    );
+    let stored = store.get(&uri).expect("expected current document");
+    assert_eq!(stored.version, 3);
+    assert!(stored.text.contains("sequenceDiagram"));
+    assert!(store.has_snapshot(&uri));
 }
 
 #[test]

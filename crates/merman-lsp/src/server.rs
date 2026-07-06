@@ -3,7 +3,7 @@ use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, DocumentStore, SemanticTokensState,
-    SnapshotContext, StoredDocument, WorkspaceSnapshotRefreshBudget,
+    SnapshotContext, StoredDocument, TextDocumentUpdate, WorkspaceSnapshotRefreshBudget,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -449,7 +449,7 @@ impl LanguageServer for MermanLanguageServer {
         self.store
             .lock()
             .await
-            .upsert_text(doc.uri.clone(), doc.version, doc.text, kind);
+            .open_text(doc.uri.clone(), doc.version, doc.text, kind);
         self.publish_for_uri(&doc.uri).await;
     }
 
@@ -458,14 +458,14 @@ impl LanguageServer for MermanLanguageServer {
         let Some(change) = params.content_changes.into_iter().last() else {
             return;
         };
-        let mut store = self.store.lock().await;
-        let Some(kind) = store.get(&doc.uri).map(|current| current.kind) else {
-            return;
-        };
-
-        store.upsert_text(doc.uri.clone(), doc.version, change.text, kind);
-        drop(store);
-        self.publish_for_uri(&doc.uri).await;
+        let update =
+            self.store
+                .lock()
+                .await
+                .apply_text_change(doc.uri.clone(), doc.version, change.text);
+        if matches!(update, TextDocumentUpdate::Applied) {
+            self.publish_for_uri(&doc.uri).await;
+        }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
@@ -609,21 +609,20 @@ impl LanguageServer for MermanLanguageServer {
 
         let current_tokens = semantic_tokens_for_snapshot(snapshot);
         let current_result_id = semantic_tokens_result_id(snapshot, &current_tokens.data);
-        let delta = {
+        let previous = {
             let store = self.store.lock().await;
-            let previous =
-                store.semantic_tokens_state_for_delta(&uri, params.previous_result_id.as_str());
-            match previous {
-                Some(previous) => semantic_tokens_delta_result(
-                    &previous.tokens,
-                    &current_tokens.data,
-                    current_result_id.clone(),
-                ),
-                _ => {
-                    let mut tokens = current_tokens.clone();
-                    tokens.result_id = Some(current_result_id.clone());
-                    SemanticTokensFullDeltaResult::Tokens(tokens)
-                }
+            store.semantic_tokens_state_for_delta(&uri, params.previous_result_id.as_str())
+        };
+        let delta = match previous {
+            Some(previous) => semantic_tokens_delta_result(
+                &previous.tokens,
+                &current_tokens.data,
+                current_result_id.clone(),
+            ),
+            _ => {
+                let mut tokens = current_tokens.clone();
+                tokens.result_id = Some(current_result_id.clone());
+                SemanticTokensFullDeltaResult::Tokens(tokens)
             }
         };
 
@@ -1219,6 +1218,67 @@ mod tests {
             .expect("expected changed markdown snapshot");
         assert_eq!(snapshot.kind, DocumentKind::Markdown);
         assert_eq!(snapshot.fences.len(), 1);
+        assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn did_change_rejects_stale_document_versions() {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+        server
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .await;
+
+        server
+            .did_change(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 3,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+                }],
+            })
+            .await;
+
+        server
+            .did_change(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "flowchart TD\nstale-->text\n".to_string(),
+                }],
+            })
+            .await;
+
+        let stored = {
+            let store = server.store.lock().await;
+            store.get(&uri).expect("expected stored document").clone()
+        };
+        assert_eq!(stored.version, 3);
+        assert!(stored.text.contains("sequenceDiagram"));
+        assert!(!stored.text.contains("stale"));
+
+        let snapshot = server
+            .snapshot_for_uri(&uri)
+            .await
+            .expect("expected current snapshot");
+        assert_eq!(snapshot.version, 3);
         assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
     }
 
