@@ -653,6 +653,53 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn stale_diagnostic_commit_returns_content_modified_error() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    {
+        let mut store = server.store.lock().await;
+        store.upsert_text(
+            uri.clone(),
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        );
+    }
+    let (context, diagnostics) = {
+        let store = server.store.lock().await;
+        let context = store
+            .diagnostic_context(&uri)
+            .expect("expected diagnostic context");
+        let diagnostics =
+            MermanLanguageServer::diagnostics_for_document(&context.document, &context.analyzer);
+        (context, diagnostics)
+    };
+    let state = DocumentDiagnosticState {
+        result_id: MermanLanguageServer::diagnostic_result_id(&diagnostics),
+        diagnostics,
+    };
+    {
+        let mut store = server.store.lock().await;
+        store.upsert_text(
+            uri.clone(),
+            2,
+            "flowchart TD\nA-->C\n".to_string(),
+            DocumentKind::Diagram,
+        );
+    }
+
+    let error = server
+        .commit_diagnostic_state_if_current(&context, state)
+        .await
+        .expect_err("stale diagnostic commit should fail");
+
+    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
+    assert!(error.message.contains("diagnostic document changed"));
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn diagnostic_pull_reuses_cached_previous_result() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();

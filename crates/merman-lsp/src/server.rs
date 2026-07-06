@@ -250,6 +250,19 @@ impl MermanLanguageServer {
         Err(stale_diagnostic_recompute_error())
     }
 
+    async fn commit_diagnostic_state_if_current(
+        &self,
+        context: &DiagnosticContext,
+        state: DocumentDiagnosticState,
+    ) -> Result<()> {
+        let mut store = self.store.lock().await;
+        if store.set_diagnostic_state_if_current(context, state) {
+            Ok(())
+        } else {
+            Err(stale_diagnostic_recompute_error())
+        }
+    }
+
     async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url) {
         if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
             return;
@@ -558,10 +571,8 @@ impl LanguageServer for MermanLanguageServer {
             result_id: Self::diagnostic_result_id(&diagnostics),
             diagnostics,
         };
-        {
-            let mut store = self.store.lock().await;
-            store.set_diagnostic_state_if_current(&context, state.clone());
-        }
+        self.commit_diagnostic_state_if_current(&context, state.clone())
+            .await?;
         Ok(Self::document_diagnostic_report(
             state.diagnostics,
             Some(state.result_id),
