@@ -1,7 +1,4 @@
-use merman_lsp::MermanLanguageServer;
-use tower_lsp::Server;
-
-const LSP_HANDLER_CONCURRENCY: usize = 4;
+use merman_lsp::{MermanLanguageServer, stdio_server};
 
 #[tokio::main]
 async fn main() {
@@ -12,10 +9,5 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let (service, socket) = MermanLanguageServer::service();
-    Server::new(stdin, stdout, socket)
-        // Keep workspace-wide requests from monopolizing the handler loop while
-        // document epochs and snapshot generations guard response freshness.
-        .concurrency_level(LSP_HANDLER_CONCURRENCY)
-        .serve(service)
-        .await;
+    stdio_server(stdin, stdout, socket).serve(service).await;
 }

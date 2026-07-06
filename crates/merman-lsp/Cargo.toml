@@ -19,6 +19,7 @@ core-full = ["merman-analysis/core-full", "merman-core/full"]
 core-host = ["merman-analysis/core-host", "merman-core/host"]
 
 [dependencies]
+futures.workspace = true
 lsp-types.workspace = true
 tower-lsp.workspace = true
 tokio.workspace = true
@@ -34,6 +35,5 @@ tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"] }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
-futures.workspace = true
 tempfile = "3.27.0"
 tower = "0.4.13"

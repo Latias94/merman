@@ -10,6 +10,7 @@ mod server;
 mod snapshot;
 mod snapshot_context;
 mod structure;
+mod transport;
 
 pub use protocol::{
     CONFIG_SCHEMA_METHOD, CONFIG_SCHEMA_RESPONSE_VERSION, ConfigSchemaResponse,
@@ -17,6 +18,7 @@ pub use protocol::{
     RULE_CATALOG_RESPONSE_VERSION, RuleCatalogResponse,
 };
 pub use server::MermanLanguageServer;
+pub use transport::{LSP_HANDLER_CONCURRENCY, stdio_server};
 
 #[cfg(test)]
 mod completion_tests;
