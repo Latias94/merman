@@ -95,9 +95,11 @@ def run_command(
     cwd: Optional[Path] = None,
     dry_run: bool = False,
     capture: bool = False,
+    quiet: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     cmd_str = " ".join(str(c) for c in cmd)
-    print_info(f"Running: {cmd_str}")
+    if not quiet:
+        print_info(f"Running: {cmd_str}")
     if dry_run:
         print_warning("DRY RUN: command not executed")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
@@ -136,11 +138,12 @@ class PackageInfo:
     internal_deps: tuple[str, ...]
 
 
-def cargo_metadata(repo_root: Path) -> dict:
+def cargo_metadata(repo_root: Path, *, quiet: bool = False) -> dict:
     cp = run_command(
         ["cargo", "metadata", "--format-version", "1", "--no-deps"],
         cwd=repo_root,
         capture=True,
+        quiet=quiet,
     )
     if cp.returncode != 0:
         raise RuntimeError("cargo metadata failed")
@@ -176,6 +179,18 @@ def get_workspace_packages(repo_root: Path) -> dict[str, PackageInfo]:
             internal_deps=tuple(internal_deps),
         )
     return out
+
+
+def crates_io_publishable_package_names(metadata: dict) -> list[str]:
+    names: list[str] = []
+    for pkg in metadata.get("packages", []):
+        if publish_field_allows_crates_io(pkg.get("publish", None)):
+            names.append(pkg["name"])
+    return names
+
+
+def get_crates_io_package_names(repo_root: Path) -> list[str]:
+    return crates_io_publishable_package_names(cargo_metadata(repo_root, quiet=True))
 
 
 def check_crate_published(crate_name: str, version: str) -> bool:
@@ -226,6 +241,11 @@ def main() -> int:
         epilog=__doc__,
     )
     parser.add_argument("--dry-run", action="store_true", help="Print actions without publishing")
+    parser.add_argument(
+        "--list-crates-io-packages",
+        action="store_true",
+        help="Print workspace packages whose Cargo metadata allows crates.io publishing",
+    )
     parser.add_argument(
         "--yes",
         action="store_true",
@@ -295,10 +315,20 @@ def main() -> int:
 
     try:
         require_tool("cargo")
-        require_tool("git")
+        if not args.list_crates_io_packages:
+            require_tool("git")
     except Exception as e:
         print_error(str(e))
         return 2
+
+    if args.list_crates_io_packages:
+        try:
+            for crate in get_crates_io_package_names(repo_root):
+                print(crate)
+        except Exception as e:
+            print_error(str(e))
+            return 2
+        return 0
 
     if not args.allow_dirty:
         try:

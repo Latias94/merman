@@ -23,7 +23,8 @@ semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projecti
   analysis/lint settings discovery.
 - Publish diagnostics from `merman-analysis` and answer standard pull diagnostic requests from the
   same analysis payloads.
-- Keep document state versioned so stale diagnostics are never republished.
+- Keep document state versioned so diagnostics from stale analysis snapshots are suppressed before
+  publication.
 - Project `merman-editor-core` completion, hover, document symbols, selection ranges, folding
   ranges, definition, references, prepare-rename, rename, workspace symbols, and semantic tokens
   into LSP types.

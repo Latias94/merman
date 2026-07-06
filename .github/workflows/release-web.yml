@@ -76,17 +76,16 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
-  publish:
+  build:
     needs: validate-inputs
     runs-on: ubuntu-24.04
-    environment: npm
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Use validated release metadata
         id: version
@@ -152,14 +151,53 @@ jobs:
       - name: Smoke web package
         run: npm run smoke --prefix platforms/web
 
-      - name: Pack dry-run
+      - name: Pack web package
+        id: pack
         working-directory: platforms/web
-        run: npm pack --dry-run
+        run: |
+          set -euo pipefail
+          package_dir="$RUNNER_TEMP/npm-package"
+          mkdir -p "$package_dir"
+          npm pack --json --pack-destination "$package_dir" | tee "$RUNNER_TEMP/npm-pack.json"
+          package_file="$(node -e '
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const pack = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          if (!Array.isArray(pack) || pack.length !== 1) {
+            throw new Error("expected one packed npm tarball");
+          }
+          process.stdout.write(path.resolve(process.argv[2], pack[0].filename));
+          ' "$RUNNER_TEMP/npm-pack.json" "$package_dir")"
+          test -f "$package_file"
+          printf 'package_file=%s\n' "$package_file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload web package artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-web-npm-package
+          path: ${{ steps.pack.outputs.package_file }}
+
+  npm_version:
+    needs:
+      - validate-inputs
+      - build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      exists: ${{ steps.npm.outputs.exists }}
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       - name: Check npm version
         id: npm
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           if npm view "@mermanjs/web@$VERSION" version >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -169,22 +207,57 @@ jobs:
             echo "@mermanjs/web $VERSION is not published yet"
           fi
 
+  publish:
+    needs:
+      - validate-inputs
+      - build
+      - npm_version
+    if: ${{ inputs.publish_to_npm && needs.npm_version.outputs.exists != 'true' }}
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Download web package artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: merman-web-npm-package
+          path: target/npm-package
+
       - name: Publish to npm
-        if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists != 'true' }}
-        working-directory: platforms/web
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
+          set -euo pipefail
+          package_file="$(find target/npm-package -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -n "$package_file"
           if [[ "$VERSION" == *-* ]]; then
             prerelease="${VERSION#*-}"
             npm_tag="${prerelease%%.*}"
-            npm publish --access public --tag "$npm_tag"
           else
-            npm publish --access public
+            npm_tag="latest"
           fi
+          npm publish "$package_file" --ignore-scripts --access public --tag "$npm_tag"
 
+  skip_existing:
+    needs:
+      - validate-inputs
+      - build
+      - npm_version
+    if: ${{ inputs.publish_to_npm && needs.npm_version.outputs.exists == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
       - name: Skip existing npm version
-        if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists == 'true' }}
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: echo "@mermanjs/web $VERSION is already published on npm; skipping."

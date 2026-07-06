@@ -59,6 +59,21 @@ class PublishMetadataTests(unittest.TestCase):
         self.assertFalse(packages["xtask"].publish)
         self.assertTrue(packages["merman-core"].publish)
 
+    def test_crates_io_package_list_rejects_internal_registry_packages(self) -> None:
+        metadata = {
+            "packages": [
+                {"name": "default-publish", "publish": None},
+                {"name": "explicit-crates-io", "publish": ["crates-io"]},
+                {"name": "internal-only", "publish": ["internal"]},
+                {"name": "publish-false", "publish": []},
+            ]
+        }
+
+        self.assertEqual(
+            publish_tool.crates_io_publishable_package_names(metadata),
+            ["default-publish", "explicit-crates-io"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

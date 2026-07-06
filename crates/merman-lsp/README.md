@@ -13,7 +13,8 @@ language behavior.
 - Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
   including `merman/ruleCatalog` and `merman/configSchema`.
 - Publish diagnostics from `merman-analysis`, including document pull diagnostics.
-- Keep document state versioned so stale diagnostics are not republished.
+- Keep document state versioned so diagnostics from stale analysis snapshots are suppressed before
+  publication.
 - Project `merman-editor-core` completion, hover, document symbols, selection ranges, folding
   ranges, workspace symbols, definition, references, prepare-rename, rename, and semantic-token
   responses into LSP types.

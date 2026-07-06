@@ -84,17 +84,16 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
-  publish:
+  build:
     needs: validate-inputs
     runs-on: macos-15
-    environment: pub.dev
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Use validated release metadata
         id: version
@@ -205,10 +204,31 @@ jobs:
           dart format --set-exit-if-changed lib example
           dart pub publish --dry-run
 
+      - name: Package Flutter release artifact
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/merman-flutter-package.tar.gz" -C platforms/flutter .
+
+      - name: Upload Flutter package artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-flutter-package
+          path: ${{ runner.temp }}/merman-flutter-package.tar.gz
+
+  pubdev_version:
+    needs:
+      - validate-inputs
+      - build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      exists: ${{ steps.pubdev.outputs.exists }}
+    steps:
       - name: Check pub.dev version
         id: pubdev
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           python3 - <<'PY'
           import json
@@ -231,18 +251,61 @@ jobs:
           print(f"pub.dev merman {version} exists: {exists}")
           PY
 
-      - name: Publish to pub.dev
-        if: ${{ github.event_name == 'push' && steps.pubdev.outputs.exists != 'true' }}
-        working-directory: platforms/flutter
-        run: dart pub publish --force
+  publish:
+    needs:
+      - validate-inputs
+      - build
+      - pubdev_version
+    if: ${{ github.event_name == 'push' && needs.pubdev_version.outputs.exists != 'true' }}
+    runs-on: macos-15
+    environment: pub.dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Setup Dart with pub.dev OIDC credentials
+        uses: dart-lang/setup-dart@v1
 
+      - name: Download Flutter package artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: merman-flutter-package
+          path: target/flutter-package
+
+      - name: Extract Flutter package artifact
+        run: |
+          set -euo pipefail
+          mkdir -p target/flutter-publish
+          tar -xzf target/flutter-package/merman-flutter-package.tar.gz -C target/flutter-publish
+
+      - name: Publish to pub.dev
+        working-directory: target/flutter-publish
+        run: dart pub publish --force --skip-validation
+
+  skip_existing:
+    needs:
+      - validate-inputs
+      - build
+      - pubdev_version
+    if: ${{ github.event_name == 'push' && needs.pubdev_version.outputs.exists == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
       - name: Skip existing pub.dev version
-        if: ${{ github.event_name == 'push' && steps.pubdev.outputs.exists == 'true' }}
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: echo "merman $VERSION is already published on pub.dev; skipping."
 
+  explain_manual_publish_skip:
+    needs:
+      - validate-inputs
+      - build
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_pub }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
       - name: Explain manual pub.dev publish skip
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_pub }}
         run: |
           echo "::warning::pub.dev automated publishing only accepts GitHub Actions runs triggered by a pushed git tag. This manual run completed validation but did not publish."

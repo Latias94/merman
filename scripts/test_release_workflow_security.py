@@ -68,6 +68,27 @@ def run_blocks(text: str) -> list[str]:
     return blocks
 
 
+def checkout_blocks(text: str) -> list[str]:
+    lines = text.splitlines()
+    blocks: list[str] = []
+    for index, line in enumerate(lines):
+        if "uses: actions/checkout" not in line.strip():
+            continue
+
+        indent = len(line) - len(line.lstrip(" "))
+        block = [line]
+        for child in lines[index + 1 :]:
+            if child.strip() == "":
+                block.append(child)
+                continue
+            child_indent = len(child) - len(child.lstrip(" "))
+            if child_indent <= indent:
+                break
+            block.append(child)
+        blocks.append("\n".join(block))
+    return blocks
+
+
 class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def test_release_run_blocks_do_not_interpolate_dispatch_inputs(self) -> None:
         for path in RELEASE_WORKFLOWS:
@@ -86,6 +107,18 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertEqual(validated_ref_count, checkout_count)
                 self.assertNotIn("ref: ${{ inputs.source_ref }}", text)
                 self.assertNotIn("inputs.source_ref ||", text)
+
+    def test_source_ref_checkouts_do_not_persist_credentials(self) -> None:
+        for path in SOURCE_REF_WORKFLOWS:
+            text = read_workflow(path)
+
+            blocks = checkout_blocks(text)
+            with self.subTest(workflow=path.name, checkout_count=len(blocks)):
+                self.assertGreater(len(blocks), 0)
+
+            for index, block in enumerate(blocks):
+                with self.subTest(workflow=path.name, checkout=index):
+                    self.assertIn("persist-credentials: false", block)
 
     def test_validation_jobs_precede_release_checkouts(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
@@ -163,6 +196,65 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertIn("environment: github-release", upload_job)
                 self.assertIn("contents: write", upload_job)
                 self.assertIn("gh release upload", upload_job)
+
+    def test_crates_token_is_only_used_for_no_verify_upload(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-crates.yml")
+        preflight_step = indented_block(text, "- name: Preflight crates in dependency order")
+        publish_step = indented_block(text, "- name: Publish crates in dependency order")
+
+        self.assertIn("--dry-run", preflight_step)
+        self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", preflight_step)
+        self.assertNotIn("CARGO_REGISTRY_TOKEN:", preflight_step)
+
+        self.assertIn("--no-verify", publish_step)
+        self.assertIn('--token "${{ secrets.CARGO_REGISTRY_TOKEN }}"', publish_step)
+        self.assertNotIn("--dry-run", publish_step)
+        self.assertNotIn("CARGO_REGISTRY_TOKEN:", publish_step)
+
+    def test_trusted_npm_publish_job_only_downloads_artifact_and_publishes(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
+        publish_job = indented_block(text, "publish:")
+
+        self.assertIn("id-token: write", publish_job)
+        self.assertIn("actions/download-artifact", publish_job)
+        self.assertIn('npm publish "$package_file"', publish_job)
+        for forbidden in [
+            "actions/checkout",
+            "npm ci",
+            "npm run",
+            "cargo install",
+            "wasm-pack",
+        ]:
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, publish_job)
+
+    def test_trusted_pubdev_publish_job_only_downloads_artifact_and_publishes(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-flutter.yml")
+        publish_job = indented_block(text, "publish:")
+
+        self.assertIn("id-token: write", publish_job)
+        self.assertIn("actions/download-artifact", publish_job)
+        self.assertIn("dart pub publish --force --skip-validation", publish_job)
+        for forbidden in [
+            "actions/checkout",
+            "flutter pub get",
+            "flutter analyze",
+            "dart format",
+            "dart pub publish --dry-run",
+            "cargo install",
+            "build-android.py",
+            "build-ios.sh",
+            "build-desktop.sh",
+            "subosito/flutter-action",
+        ]:
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, publish_job)
+
+    def test_release_preflight_uses_crates_io_publish_helper(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-preflight.yml")
+
+        self.assertIn("tools/publish.py --list-crates-io-packages", text)
+        self.assertNotIn('package.get("publish") != []', text)
 
 
 class PerformanceWorkflowSecurityTests(unittest.TestCase):
