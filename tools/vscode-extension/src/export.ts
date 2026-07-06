@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import {
   EXPORT_PRESETS,
   exportPresetForFormat,
+  pngClipboardAvailable,
   pngClipboardArgs,
   pngClipboardCommand,
   type ExportPreset,
@@ -134,13 +135,20 @@ async function copyPng(
     return;
   }
 
-  const command = pngClipboardCommand(process.platform);
-  if (!command) {
+  if (!pngClipboardAvailable(process.platform, vscode.env.remoteName)) {
+    const message = vscode.env.remoteName
+      ? "PNG clipboard copy is not available from remote extension hosts. Choose a file to save the PNG instead."
+      : "PNG clipboard copy is not available on this platform. Choose a file to save the PNG instead.";
     void vscode.window.showInformationMessage(
-      "PNG clipboard copy is not available on this platform. Choose a file to save the PNG instead.",
+      message,
     );
     await exportDiagram(context, outputChannel, exportPresetForFormat("png"), target);
     return;
+  }
+
+  const command = pngClipboardCommand(process.platform);
+  if (!command) {
+    throw new Error("PNG clipboard command availability changed unexpectedly");
   }
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "merman-vscode-"));

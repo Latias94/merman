@@ -85,6 +85,15 @@ export function pngClipboardCommand(platform: NodeJS.Platform): string | undefin
   }
 }
 
+export const PNG_CLIPBOARD_AVAILABLE_CONTEXT = "merman.pngClipboardAvailable";
+
+export function pngClipboardAvailable(
+  platform: NodeJS.Platform,
+  remoteName: string | undefined,
+): boolean {
+  return remoteName === undefined && pngClipboardCommand(platform) !== undefined;
+}
+
 export function pngClipboardArgs(platform: NodeJS.Platform, imagePath: string): string[] {
   switch (platform) {
     case "darwin":

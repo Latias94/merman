@@ -9,6 +9,7 @@ import {
   exportFilters,
   exportPresetForFormat,
   pngClipboardArgs,
+  pngClipboardAvailable,
   pngClipboardCommand,
 } from "../export-options.js";
 
@@ -55,6 +56,12 @@ describe("export options", () => {
     assert.equal(pngClipboardCommand("win32"), "powershell.exe");
     assert.equal(pngClipboardCommand("linux"), "wl-copy");
     assert.equal(pngClipboardCommand("freebsd"), undefined);
+  });
+
+  it("disables PNG clipboard copy for remote extension hosts", () => {
+    assert.equal(pngClipboardAvailable("win32", undefined), true);
+    assert.equal(pngClipboardAvailable("linux", "ssh-remote"), false);
+    assert.equal(pngClipboardAvailable("freebsd", undefined), false);
   });
 
   it("builds platform clipboard command arguments", () => {

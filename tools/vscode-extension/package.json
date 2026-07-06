@@ -492,7 +492,7 @@
         },
         {
           "command": "merman.copyPng",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable",
           "group": "navigation@15"
         }
       ],
@@ -547,7 +547,7 @@
         },
         {
           "command": "merman.copyPng",
-          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+          "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable"
         }
       ]
     }

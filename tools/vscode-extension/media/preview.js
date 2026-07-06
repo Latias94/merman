@@ -538,7 +538,9 @@
   }
 
   function showEmpty(heading, detail, requestId) {
-    observeRenderInvalidated(requestId);
+    if (!observeRenderInvalidated(requestId)) {
+      return;
+    }
     state.locked = false;
     state.sourceKey = undefined;
     state.sourceKeyId = undefined;

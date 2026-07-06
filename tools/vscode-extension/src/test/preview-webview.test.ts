@@ -284,6 +284,30 @@ describe("preview webview app", () => {
     assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-a"));
   });
 
+  it("ignores stale empty messages after a newer render succeeds", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 3,
+      snapshot: snapshot({ sourceHash: "hash-c" }),
+      content: '<svg viewBox="0 0 200 100"></svg>',
+    });
+    const renderedSvg = app.document.canvas.querySelector("svg");
+
+    app.dispatch({
+      type: "showEmpty",
+      requestId: 2,
+      heading: "No Mermaid source",
+      detail: "Open a supported file.",
+    });
+
+    assert.equal(app.document.canvas.querySelector("svg"), renderedSvg);
+    assert.equal(app.document.empty.hidden, true);
+    assert.equal(app.document.frame.dataset.renderState, "ready");
+    assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-c"));
+  });
+
   it("ignores lifecycle messages older than the latest render start", () => {
     const app = loadPreviewApp();
 

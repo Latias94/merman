@@ -30,6 +30,7 @@ class FakeExportHost {
   readonly progressTitles: string[] = [];
   quickPickLabel: string | undefined;
   renderStdout = '<svg viewBox="0 0 10 10"><a href="#node">ok</a></svg>';
+  remoteName: string | undefined;
   saveDialogResult: vscode.Uri | undefined = uri(
     "file:///workspace/out.svg",
     "C:\\workspace\\out.svg",
@@ -152,6 +153,9 @@ class FakeExportHost {
         },
       },
       env: {
+        get remoteName() {
+          return host.remoteName;
+        },
         clipboard: {
           writeText: async (value: string) => {
             host.clipboardWrites.push(value);
@@ -343,6 +347,34 @@ describe("export commands", () => {
     assert.deepEqual(host.clipboardWrites, [host.renderStdout]);
     assert.equal(host.saveDialogs.length, 0);
     assert.deepEqual(host.infos, ["Copied Mermaid SVG to clipboard."]);
+  });
+
+  it("falls back to PNG export instead of remote extension-host clipboard commands", async () => {
+    const host = new FakeExportHost();
+    host.remoteName = "ssh-remote";
+    host.saveDialogResult = uri("file:///workspace/out.png", "C:\\workspace\\out.png");
+    const { registerExport } = loadExportModule(host);
+
+    registerExport({
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.copyPng")?.();
+
+    assert.deepEqual(host.infos, [
+      "PNG clipboard copy is not available from remote extension hosts. Choose a file to save the PNG instead.",
+      "Exported out.png.",
+    ]);
+    assert.deepEqual(host.renderCalls.map(({ format, signalLabel }) => ({
+      format,
+      signalLabel,
+    })), [
+      {
+        format: "png",
+        signalLabel: "export-png",
+      },
+    ]);
+    assert.equal(host.saveDialogs[0]?.saveLabel, "Export PNG");
   });
 
   it("warns instead of rendering when no Mermaid source is focused", async () => {

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import { getSourceActionSettings } from "./config.js";
-import { pngClipboardCommand } from "./export-options.js";
+import { pngClipboardAvailable } from "./export-options.js";
 import { listPreviewInputsFromDocument } from "./preview-source.js";
 import {
   buildMermaidSourceCodeLensSpecs,
@@ -22,7 +22,7 @@ const SOURCE_ACTION_SELECTOR: vscode.DocumentSelector = [
 ];
 
 export function registerSourceCodeLens(context: vscode.ExtensionContext): void {
-  const includeCopyPng = pngClipboardCommand(process.platform) !== undefined;
+  const includeCopyPng = pngClipboardAvailable(process.platform, vscode.env.remoteName);
   const provider = new MermaidSourceCodeLensProvider(includeCopyPng);
   context.subscriptions.push(provider);
   context.subscriptions.push(

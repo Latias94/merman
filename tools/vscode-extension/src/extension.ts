@@ -13,6 +13,10 @@ import {
 import { registerSourceCodeLens } from "./codelens.js";
 import { registerExport } from "./export.js";
 import {
+  PNG_CLIPBOARD_AVAILABLE_CONTEXT,
+  pngClipboardAvailable,
+} from "./export-options.js";
+import {
   LANGUAGE_INTELLIGENCE_SETTING,
   languageClientConfigurationAction,
   languageClientReconcileAction,
@@ -32,6 +36,7 @@ let isDeactivating = false;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   isDeactivating = false;
+  await setPngClipboardAvailabilityContext();
   ensureStatusItem(context);
   registerPreview(context);
   registerExport(context);
@@ -118,6 +123,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   await reconcileLanguageClient(context);
+}
+
+async function setPngClipboardAvailabilityContext(): Promise<void> {
+  await vscode.commands.executeCommand(
+    "setContext",
+    PNG_CLIPBOARD_AVAILABLE_CONTEXT,
+    pngClipboardAvailable(process.platform, vscode.env.remoteName),
+  );
 }
 
 export async function deactivate(): Promise<void> {
