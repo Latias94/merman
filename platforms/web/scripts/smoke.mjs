@@ -338,6 +338,25 @@ User Testing    :c2, after c1, 5d`;
   assert.ok(measureCallCount > 0);
   const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
   assert.equal(typeof JSON.parse(measuredLayout), "object");
+  for (const invalidResult of [
+    undefined,
+    { handled: false, width: 1, height: 1 },
+    { width: Number.POSITIVE_INFINITY, height: 1 },
+    { width: -1, height: 1 },
+    { width: 1, height: 1, line_count: 0 },
+  ]) {
+    let fallbackCallCount = 0;
+    const fallbackSvg = api.renderSvgWithTextMeasurer(
+      source,
+      () => {
+        fallbackCallCount += 1;
+        return invalidResult;
+      },
+      options
+    );
+    assert.match(fallbackSvg, /<svg/);
+    assert.ok(fallbackCallCount > 0);
+  }
 
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
   assert.equal(typeof api.layoutObject(source, options), "object");

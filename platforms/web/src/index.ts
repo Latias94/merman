@@ -931,7 +931,7 @@ export interface MermanWasmModule {
     optionsJson: string | null | undefined,
     measurer: HostTextMeasurer
   ) => string;
-  analyze: (source: string, optionsJson?: string | null) => AnalysisResult;
+  analyze?: (source: string, optionsJson?: string | null) => AnalysisResult;
   analyzeJson?: (source: string, optionsJson?: string | null) => AnalysisResult;
   analysisFacts?: (source: string, optionsJson?: string | null) => AnalysisFactsResult;
   analyzeDocument?: (

@@ -219,6 +219,11 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -227,7 +232,7 @@ jobs:
           package-manager-cache: false
 
       - name: Download web package artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: merman-web-npm-package
           path: target/npm-package
@@ -239,12 +244,7 @@ jobs:
           set -euo pipefail
           package_file="$(find target/npm-package -maxdepth 1 -type f -name '*.tgz' -print -quit)"
           test -n "$package_file"
-          if [[ "$VERSION" == *-* ]]; then
-            prerelease="${VERSION#*-}"
-            npm_tag="${prerelease%%.*}"
-          else
-            npm_tag="latest"
-          fi
+          npm_tag="$(node platforms/web/scripts/npm-dist-tag.mjs "$VERSION")"
           npm publish "$package_file" --ignore-scripts --access public --tag "$npm_tag"
 
   skip_existing:
