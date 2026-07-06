@@ -148,6 +148,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertRegex(validate_job, re.compile(r"""(printf 'version=%s\\n'|echo "version=)"""))
                 if "release_tag:" in text:
                     self.assertRegex(validate_job, re.compile(r"""(printf 'release_tag=%s\\n'|echo "release_tag=)"""))
+                if path.name == "release-web.yml":
+                    self.assertRegex(validate_job, re.compile(r"""(printf 'npm_dist_tag=%s\\n'|echo "npm_dist_tag=)"""))
 
     def test_validation_jobs_reject_untrusted_source_ref_shapes(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
@@ -215,8 +217,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("id-token: write", publish_job)
         self.assertIn("actions/download-artifact", publish_job)
         self.assertIn('npm publish "$package_file"', publish_job)
+        self.assertIn("NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}", publish_job)
+        self.assertIn('--tag "$NPM_DIST_TAG"', publish_job)
         for forbidden in [
             "actions/checkout",
+            "platforms/web/scripts",
             "npm ci",
             "npm run",
             "cargo install",

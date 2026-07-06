@@ -32,6 +32,7 @@ jobs:
       source_ref: ${{ steps.release.outputs.source_ref }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
+      npm_dist_tag: ${{ steps.release.outputs.npm_dist_tag }}
     steps:
       - name: Validate release inputs
         id: release
@@ -69,11 +70,17 @@ jobs:
 
           VERSION="${RELEASE_TAG#v}"
           [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
+          npm_dist_tag="latest"
+          if [[ "$VERSION" == *-* ]]; then
+            npm_dist_tag="${VERSION#*-}"
+            npm_dist_tag="${npm_dist_tag%%.*}"
+          fi
 
           {
             printf 'source_ref=%s\n' "$SOURCE_REF"
             printf 'release_tag=%s\n' "$RELEASE_TAG"
             printf 'version=%s\n' "$VERSION"
+            printf 'npm_dist_tag=%s\n' "$npm_dist_tag"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -219,11 +226,6 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
-          persist-credentials: false
-
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -239,13 +241,12 @@ jobs:
 
       - name: Publish to npm
         env:
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
         run: |
           set -euo pipefail
           package_file="$(find target/npm-package -maxdepth 1 -type f -name '*.tgz' -print -quit)"
           test -n "$package_file"
-          npm_tag="$(node platforms/web/scripts/npm-dist-tag.mjs "$VERSION")"
-          npm publish "$package_file" --ignore-scripts --access public --tag "$npm_tag"
+          npm publish "$package_file" --ignore-scripts --access public --tag "$NPM_DIST_TAG"
 
   skip_existing:
     needs:
