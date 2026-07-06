@@ -375,11 +375,12 @@ jobs:
           ls -l /dev/kvm
 
       - name: Run Android instrumentation smoke
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@v2.37.0
         with:
-          api-level: 35
+          # The JNI smoke only needs minSdk coverage; the default image boots faster and flakes less.
+          api-level: 29
           arch: x86_64
-          target: google_apis
+          target: default
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-linux-hw-accel: false

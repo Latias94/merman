@@ -23,6 +23,26 @@ def index_of_step(text: str, step_name: str) -> int:
         raise AssertionError(f"ci.yml does not define step {step_name!r}") from exc
 
 
+def step_block(text: str, step_name: str) -> str:
+    start = index_of_step(text, step_name)
+    lines = text[start:].splitlines()
+    if not lines:
+        raise AssertionError(f"ci.yml does not define step {step_name!r}")
+
+    marker_indent = len(lines[0]) - len(lines[0].lstrip(" "))
+    block: list[str] = [lines[0]]
+    for line in lines[1:]:
+        if line.strip() == "":
+            block.append(line)
+            continue
+
+        indent = len(line) - len(line.lstrip(" "))
+        if indent <= marker_indent:
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
 class AndroidEmulatorWorkflowTests(unittest.TestCase):
     def test_android_emulator_enables_kvm_before_launch(self) -> None:
         text = read_ci_workflow()
@@ -37,10 +57,15 @@ class AndroidEmulatorWorkflowTests(unittest.TestCase):
 
     def test_android_emulator_requires_hardware_acceleration(self) -> None:
         text = read_ci_workflow()
+        emulator_step = step_block(text, "Run Android instrumentation smoke")
 
-        self.assertIn("disable-linux-hw-accel: false", text)
-        self.assertIn("emulator-boot-timeout: 900", text)
-        self.assertIn("-no-metrics", text)
+        self.assertIn("uses: reactivecircus/android-emulator-runner@v2.37.0", emulator_step)
+        self.assertIn("api-level: 29", emulator_step)
+        self.assertIn("target: default", emulator_step)
+        self.assertNotIn("target: google_apis", emulator_step)
+        self.assertIn("disable-linux-hw-accel: false", emulator_step)
+        self.assertIn("emulator-boot-timeout: 900", emulator_step)
+        self.assertIn("-no-metrics", emulator_step)
 
 
 if __name__ == "__main__":
