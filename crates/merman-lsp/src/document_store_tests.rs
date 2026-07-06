@@ -1,6 +1,4 @@
-use crate::document_store::{
-    DocumentStore, SemanticTokensState, TextDocumentUpdate, WorkspaceSnapshotRefreshBudget,
-};
+use crate::document_store::{DocumentStore, SemanticTokensState, TextDocumentUpdate};
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
     FenceTextIndexSource,
@@ -319,7 +317,7 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
 }
 
 #[test]
-fn workspace_symbol_build_plan_batches_and_caps_missing_snapshots() {
+fn workspace_symbol_build_plan_batches_all_missing_snapshots() {
     let mut store = DocumentStore::new();
     for index in 0..40 {
         let uri = Url::parse(&format!("file:///tmp/workspace-{index}.mmd")).unwrap();
@@ -331,18 +329,16 @@ fn workspace_symbol_build_plan_batches_and_caps_missing_snapshots() {
         );
     }
 
-    let plan =
-        store.workspace_symbol_snapshot_build_plan(WorkspaceSnapshotRefreshBudget::new(32, 8));
+    let plan = store.workspace_symbol_snapshot_build_plan(8);
 
     assert!(plan.contexts.is_empty());
-    assert_eq!(plan.batches.len(), 4);
+    assert_eq!(plan.batches.len(), 5);
     assert!(plan.batches.iter().all(|batch| batch.len() <= 8));
-    assert_eq!(plan.new_snapshot_request_count(), 32);
-    assert_eq!(plan.skipped_missing_snapshots, 8);
+    assert_eq!(plan.new_snapshot_request_count(), 40);
 }
 
 #[test]
-fn workspace_symbol_build_plan_keeps_cached_contexts_with_missing_budget() {
+fn workspace_symbol_build_plan_keeps_cached_contexts_with_all_missing_snapshots() {
     let mut store = DocumentStore::new();
     let cached_uri = Url::parse("file:///tmp/cached.mmd").unwrap();
     let cached_snapshot = store.upsert(
@@ -360,20 +356,40 @@ fn workspace_symbol_build_plan_keeps_cached_contexts_with_missing_budget() {
         );
     }
 
-    let plan =
-        store.workspace_symbol_snapshot_build_plan(WorkspaceSnapshotRefreshBudget::new(3, 2));
+    let plan = store.workspace_symbol_snapshot_build_plan(2);
 
     assert_eq!(plan.contexts.len(), 1);
     assert!(std::sync::Arc::ptr_eq(
         &plan.contexts[0].snapshot,
         &cached_snapshot
     ));
-    assert_eq!(plan.batches.len(), 2);
+    assert_eq!(plan.batches.len(), 3);
     assert_eq!(plan.batches[0].len(), 2);
-    assert_eq!(plan.batches[1].len(), 1);
-    assert_eq!(plan.new_snapshot_request_count(), 3);
-    assert_eq!(plan.skipped_missing_snapshots, 2);
+    assert_eq!(plan.batches[1].len(), 2);
+    assert_eq!(plan.batches[2].len(), 1);
+    assert_eq!(plan.new_snapshot_request_count(), 5);
     assert!(store.is_snapshot_contexts_current(&plan.contexts));
+}
+
+#[test]
+fn workspace_symbol_contexts_current_requires_complete_document_set() {
+    let mut store = DocumentStore::new();
+    let cached_uri = Url::parse("file:///tmp/cached.mmd").unwrap();
+    store.upsert(cached_uri, 1, "flowchart TD\nCached-->B\n".to_string());
+
+    let plan = store.workspace_symbol_snapshot_build_plan(8);
+    assert_eq!(plan.contexts.len(), 1);
+    assert!(plan.batches.is_empty());
+    assert!(store.workspace_symbol_snapshot_contexts_current(&plan.contexts));
+
+    store.upsert_text(
+        Url::parse("file:///tmp/added.mmd").unwrap(),
+        1,
+        "flowchart TD\nAdded-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert!(!store.workspace_symbol_snapshot_contexts_current(&plan.contexts));
 }
 
 #[test]

@@ -3,7 +3,6 @@ use super::stale_diagnostic_recompute_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::document_store::{
     DocumentDiagnosticState, DocumentStore, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
-    WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET,
 };
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::structure::{
@@ -1074,11 +1073,10 @@ async fn lsp_handlers_return_hover_and_symbols() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn workspace_symbols_respects_snapshot_budget_on_first_request() {
+async fn workspace_symbols_builds_all_missing_snapshots_on_first_request() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
-    let document_count =
-        WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET + WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE + 1;
+    let document_count = WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE * 5 + 1;
     let last_index = document_count - 1;
     let last_symbol = format!("target_{last_index:02}");
     let first_symbol = "target_00".to_string();
@@ -1111,20 +1109,20 @@ async fn workspace_symbols_respects_snapshot_budget_on_first_request() {
         workspace_symbols
             .iter()
             .any(|symbol| symbol.name == first_symbol && symbol.location.uri == first_uri),
-        "workspace symbol request should include documents within the snapshot budget"
+        "workspace symbol request should include the first document"
     );
     assert!(
         workspace_symbols
             .iter()
-            .all(|symbol| symbol.name != last_symbol),
-        "workspace symbol request should not build documents beyond the snapshot budget"
+            .any(|symbol| symbol.name == last_symbol),
+        "workspace symbol request should include documents beyond a single snapshot batch"
     );
 
     let store = server.store.lock().await;
     let (_contexts, requests) = store.snapshot_build_requests();
     assert!(
-        !requests.is_empty(),
-        "workspace symbol refresh should leave budget-exceeded documents for later requests"
+        requests.is_empty(),
+        "workspace symbol refresh should build every current document before responding"
     );
 }
 

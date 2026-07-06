@@ -86,16 +86,3 @@ pub(crate) async fn ensure_snapshot_current(
         Err(kind.stale_error())
     }
 }
-
-pub(crate) async fn ensure_snapshot_contexts_current(
-    store: &Arc<Mutex<DocumentStore>>,
-    contexts: &[SnapshotContext],
-    kind: SnapshotContextKind,
-) -> Result<()> {
-    let store = store.lock().await;
-    if store.is_snapshot_contexts_current(contexts) {
-        Ok(())
-    } else {
-        Err(kind.stale_error())
-    }
-}

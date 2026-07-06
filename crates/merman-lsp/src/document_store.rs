@@ -6,7 +6,6 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::{Diagnostic, SemanticToken, Url};
 
 pub const WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE: usize = 8;
-pub const WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET: usize = 32;
 
 #[derive(Debug)]
 pub struct DocumentStore {
@@ -325,7 +324,7 @@ impl DocumentStore {
 
     pub fn workspace_symbol_snapshot_build_plan(
         &self,
-        budget: WorkspaceSnapshotRefreshBudget,
+        batch_size: usize,
     ) -> WorkspaceSnapshotBuildPlan {
         let mut contexts = Vec::new();
         let mut requests = Vec::new();
@@ -339,31 +338,22 @@ impl DocumentStore {
                     self.snapshot_generation,
                     record.epoch,
                 ));
-            } else if requests.len() < budget.max_new_snapshots
-                && let Some(request) = self.snapshot_build_request(uri)
-            {
+            } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
         }
 
-        #[cfg(test)]
-        let skipped_missing_snapshots = self
-            .documents
-            .len()
-            .saturating_sub(contexts.len())
-            .saturating_sub(requests.len());
-        let batch_size = budget.batch_size.max(1);
+        let batch_size = batch_size.max(1);
         let batches = requests
             .chunks(batch_size)
             .map(|chunk| chunk.to_vec())
             .collect();
 
-        WorkspaceSnapshotBuildPlan {
-            contexts,
-            batches,
-            #[cfg(test)]
-            skipped_missing_snapshots,
-        }
+        WorkspaceSnapshotBuildPlan { contexts, batches }
+    }
+
+    pub fn workspace_symbol_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
+        contexts.len() == self.documents.len() && self.is_snapshot_contexts_current(contexts)
     }
 
     pub fn snapshot_contexts_for_requests(
@@ -521,34 +511,10 @@ pub struct SnapshotBatchCommit {
     pub stale_open_documents: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WorkspaceSnapshotRefreshBudget {
-    max_new_snapshots: usize,
-    batch_size: usize,
-}
-
-impl WorkspaceSnapshotRefreshBudget {
-    pub const fn new(max_new_snapshots: usize, batch_size: usize) -> Self {
-        Self {
-            max_new_snapshots,
-            batch_size,
-        }
-    }
-
-    pub const fn workspace_symbols() -> Self {
-        Self::new(
-            WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET,
-            WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
-        )
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct WorkspaceSnapshotBuildPlan {
     pub contexts: Vec<SnapshotContext>,
     pub batches: Vec<Vec<SnapshotBuildRequest>>,
-    #[cfg(test)]
-    pub skipped_missing_snapshots: usize,
 }
 
 impl WorkspaceSnapshotBuildPlan {

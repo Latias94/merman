@@ -4,7 +4,7 @@ use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
     SemanticTokensState, SnapshotContext, StoredDocument, TextDocumentUpdate,
-    WorkspaceSnapshotRefreshBudget,
+    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -313,50 +313,45 @@ impl MermanLanguageServer {
         &self,
         contexts: &[SnapshotContext],
     ) -> Result<()> {
-        snapshot_context::ensure_snapshot_contexts_current(
-            &self.store,
-            contexts,
-            SnapshotContextKind::WorkspaceSymbols,
-        )
-        .await
+        let store = self.store.lock().await;
+        if store.workspace_symbol_snapshot_contexts_current(contexts) {
+            Ok(())
+        } else {
+            Err(SnapshotContextKind::WorkspaceSymbols.stale_error())
+        }
     }
 
     async fn workspace_symbol_snapshot_contexts(&self) -> Result<Vec<SnapshotContext>> {
-        let plan = {
-            let store = self.store.lock().await;
-            store.workspace_symbol_snapshot_build_plan(
-                WorkspaceSnapshotRefreshBudget::workspace_symbols(),
-            )
-        };
+        loop {
+            let plan = {
+                let store = self.store.lock().await;
+                store.workspace_symbol_snapshot_build_plan(WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE)
+            };
 
-        if plan.batches.is_empty() {
-            return Ok(plan.contexts);
-        }
-
-        for batch in plan.batches {
-            let built = batch
-                .into_iter()
-                .map(|request| {
-                    let snapshot = request.build();
-                    (request, snapshot)
-                })
-                .collect();
-            let commit = self
-                .store
-                .lock()
-                .await
-                .snapshot_contexts_for_requests(built);
-            if commit.stale_open_documents {
-                return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
+            if plan.batches.is_empty() {
+                return Ok(plan.contexts);
             }
-            // The current tower-lsp handler path exposes no explicit cancel token here.
-            tokio::task::yield_now().await;
-        }
 
-        let store = self.store.lock().await;
-        Ok(store
-            .workspace_symbol_snapshot_build_plan(WorkspaceSnapshotRefreshBudget::new(0, 1))
-            .contexts)
+            for batch in plan.batches {
+                let built = batch
+                    .into_iter()
+                    .map(|request| {
+                        let snapshot = request.build();
+                        (request, snapshot)
+                    })
+                    .collect();
+                let commit = self
+                    .store
+                    .lock()
+                    .await
+                    .snapshot_contexts_for_requests(built);
+                if commit.stale_open_documents {
+                    return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
+                }
+                // The current tower-lsp handler path exposes no explicit cancel token here.
+                tokio::task::yield_now().await;
+            }
+        }
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
