@@ -195,6 +195,7 @@ same command.
 - `merman_supported_diagrams_json`
 - `merman_ascii_capabilities_json`
 - `merman_diagram_family_capabilities_json`
+- `merman_lint_rule_catalog_json`
 - `merman_supported_themes_json`
 - `merman_supported_host_theme_presets_json`
 - `merman_buffer_free`
