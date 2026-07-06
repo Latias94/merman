@@ -139,6 +139,9 @@ export class PreviewInstance implements vscode.Disposable {
     if (!this.panel || !this.session.snapshot) {
       return;
     }
+    if (this.renderedOutputStale) {
+      return;
+    }
     this.renderedOutputStale = true;
     this.webviewClient.invalidateRenderedOutput();
     const requestId = this.renderQueue.cancelPending();

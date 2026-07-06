@@ -21,12 +21,12 @@ import {
   languageClientConfigurationAction,
   languageClientReconcileAction,
   languageIntelligenceDisabledMessage,
-  serverBackedCommandAction,
   type LanguageClientLifecycleAction,
 } from "./language-intelligence.js";
 import { startLanguageClientWithCleanup } from "./language-client-start.js";
 import { registerPreview } from "./preview.js";
 import { runRestartLanguageServerCommand } from "./restart-command.js";
+import { runServerBackedCommand } from "./server-backed-command.js";
 
 let client: LanguageClient | undefined;
 let statusItem: vscode.StatusBarItem | undefined;
@@ -62,31 +62,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("merman.showRuleCatalog", async () => {
-      if (serverBackedCommandAction(getLanguageIntelligenceSettings()) === "showDisabledWarning") {
-        void vscode.window.showWarningMessage(languageIntelligenceDisabledMessage());
-        return;
-      }
-      if (!client) {
-        void vscode.window.showWarningMessage("Merman language server is not running.");
-        return;
-      }
-      const response = await fetchRuleCatalog(client);
-      await showRuleCatalogPicker(response.rules);
+      await runServerBackedCommand({
+        settings: getLanguageIntelligenceSettings(),
+        client,
+        request: fetchRuleCatalog,
+        handleResponse: async (response) => showRuleCatalogPicker(response.rules),
+        failureMessagePrefix: "Merman rule catalog request failed",
+        showWarningMessage: (message) => vscode.window.showWarningMessage(message),
+      });
     }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("merman.showConfigSchema", async () => {
-      if (serverBackedCommandAction(getLanguageIntelligenceSettings()) === "showDisabledWarning") {
-        void vscode.window.showWarningMessage(languageIntelligenceDisabledMessage());
-        return;
-      }
-      if (!client) {
-        void vscode.window.showWarningMessage("Merman language server is not running.");
-        return;
-      }
-      const response = await fetchConfigSchema(client);
-      await showJsonDocument("json", response);
+      await runServerBackedCommand({
+        settings: getLanguageIntelligenceSettings(),
+        client,
+        request: fetchConfigSchema,
+        handleResponse: async (response) => showJsonDocument("json", response),
+        failureMessagePrefix: "Merman config schema request failed",
+        showWarningMessage: (message) => vscode.window.showWarningMessage(message),
+      });
     }),
   );
 

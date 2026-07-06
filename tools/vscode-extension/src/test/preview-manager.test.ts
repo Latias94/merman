@@ -791,6 +791,60 @@ describe("preview manager", () => {
     ]);
   });
 
+  it("coalesces repeated document-change invalidations before the next render", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    host.panels[0]?.postedMessages.splice(0);
+
+    host.fireDocumentChange(host.targetDocument);
+    host.fireDocumentChange(host.targetDocument);
+    await flushPreviewWork();
+
+    assert.deepEqual(
+      host.panels[0]?.postedMessages
+        .map((message) => (message as { type?: string }).type)
+        .filter((type) => type === "renderInvalidated"),
+      ["renderInvalidated"],
+    );
+  });
+
+  it("allows a new settings invalidation after a successful render clears stale state", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+
+    await host.panels[0]?.receive({ type: "setBackground", background: "dark" });
+    await flushPreviewWork();
+    host.panels[0]?.postedMessages.splice(0);
+
+    await host.panels[0]?.receive({ type: "setDisplayMode", mode: "ascii" });
+    await flushPreviewWork();
+
+    assert.deepEqual(
+      host.panels[0]?.postedMessages
+        .map((message) => (message as { type?: string }).type)
+        .filter((type) => type === "renderInvalidated"),
+      ["renderInvalidated"],
+    );
+  });
+
   it("reports failed webview copy messages without rejecting the message dispatch", async () => {
     const host = new FakePreviewHost();
     const { registerPreview } = loadPreviewModule(host);
