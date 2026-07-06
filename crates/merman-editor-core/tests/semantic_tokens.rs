@@ -1,6 +1,6 @@
 use merman_editor_core::{
     DocumentKind, DocumentWorkspace, SemanticTokenKind, SemanticTokenModifier,
-    semantic_tokens_for_snapshot,
+    semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
 };
 
 #[test]
@@ -61,4 +61,74 @@ fn semantic_tokens_use_document_ranges_and_utf16_lengths() {
             && token.kind == SemanticTokenKind::String
             && token.modifier == SemanticTokenModifier::Payload
     }));
+}
+
+#[test]
+fn semantic_tokens_range_prunes_non_overlapping_items_inside_single_fence() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        concat!(
+            "gantt\n",
+            "title Before\n",
+            "accDescr {\n",
+            "line one\n",
+            "line two\n",
+            "}\n",
+            "title After\n",
+        )
+        .to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let full_tokens = semantic_tokens_for_snapshot(&snapshot);
+    assert!(
+        full_tokens
+            .iter()
+            .any(|token| token.line < 3 || token.line > 4),
+        "fixture must contain tokens outside the requested line range: {full_tokens:?}"
+    );
+
+    let range_tokens = semantic_tokens_for_snapshot_range(&snapshot, 3, 4);
+
+    assert!(
+        range_tokens
+            .iter()
+            .all(|token| (3..=4).contains(&token.line)),
+        "range tokens should exclude non-overlapping same-fence items: {range_tokens:?}"
+    );
+    assert!(range_tokens.iter().any(|token| {
+        token.line == 3
+            && token.kind == SemanticTokenKind::String
+            && token.modifier == SemanticTokenModifier::Payload
+    }));
+    assert!(range_tokens.iter().any(|token| {
+        token.line == 4
+            && token.kind == SemanticTokenKind::String
+            && token.modifier == SemanticTokenModifier::Payload
+    }));
+}
+
+#[test]
+fn semantic_tokens_full_document_line_range_matches_full_generation() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        concat!(
+            "gantt\n",
+            "title Roadmap\n",
+            "section Demo\n",
+            "Task 1: id1,2014-01-01,1d\n",
+            "Task 2: id2,after id1,2d\n",
+        )
+        .to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(
+        semantic_tokens_for_snapshot_range(&snapshot, 0, 99),
+        semantic_tokens_for_snapshot(&snapshot)
+    );
 }

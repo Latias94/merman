@@ -60,7 +60,7 @@ pub fn semantic_token_legend() -> SemanticTokenLegend {
 }
 
 pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<SemanticToken> {
-    semantic_tokens_for_fences(&snapshot.source_map, &snapshot.fences)
+    semantic_tokens_for_fences(&snapshot.source_map, &snapshot.fences, None)
 }
 
 pub fn semantic_tokens_for_snapshot_range(
@@ -68,23 +68,32 @@ pub fn semantic_tokens_for_snapshot_range(
     start_line: u32,
     end_line: u32,
 ) -> Vec<SemanticToken> {
-    semantic_tokens_for_fences(
-        &snapshot.source_map,
-        snapshot.fences.iter().filter(|fence| {
-            fence_overlaps_line_range(&snapshot.source_map, fence, start_line, end_line)
-        }),
-    )
+    let Some(line_range) = RequestedLineRange::new(&snapshot.source_map, start_line, end_line)
+    else {
+        return Vec::new();
+    };
+    semantic_tokens_for_fences(&snapshot.source_map, &snapshot.fences, Some(line_range))
 }
 
 fn semantic_tokens_for_fences<'a>(
     source_map: &SourceMap,
     fences: impl IntoIterator<Item = &'a FenceSnapshot>,
+    line_range: Option<RequestedLineRange>,
 ) -> Vec<SemanticToken> {
     let mut tokens = Vec::new();
 
     for fence in fences {
+        if line_range.is_some_and(|range| !fence_overlaps_line_range(source_map, fence, range)) {
+            continue;
+        }
         for item in fence.text_index.semantic_items() {
-            tokens.extend(tokens_for_item(source_map, fence, item));
+            let Some(span) = absolute_span_for_item(fence, item) else {
+                continue;
+            };
+            if line_range.is_some_and(|range| !range.overlaps_byte_span(span)) {
+                continue;
+            }
+            tokens.extend(tokens_for_item(source_map, fence, item, span, line_range));
         }
     }
 
@@ -108,11 +117,48 @@ fn semantic_tokens_for_fences<'a>(
     tokens
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RequestedLineRange {
+    start_line: u32,
+    end_line: u32,
+    byte_span: ByteSpan,
+}
+
+impl RequestedLineRange {
+    fn new(source_map: &SourceMap, start_line: u32, end_line: u32) -> Option<Self> {
+        let requested_start_line = start_line.min(end_line);
+        let requested_end_line = start_line.max(end_line);
+        let line_count = source_map.line_starts().len();
+        if line_count == 0 || requested_start_line as usize >= line_count {
+            return None;
+        }
+
+        let end_line = requested_end_line.min((line_count - 1) as u32);
+        let (byte_start, _) = source_map.line_bounds(requested_start_line as usize)?;
+        let (_, byte_end) = source_map.line_bounds(end_line as usize)?;
+        Some(Self {
+            start_line: requested_start_line,
+            end_line,
+            byte_span: ByteSpan {
+                start: byte_start,
+                end: byte_end,
+            },
+        })
+    }
+
+    fn contains_line(self, line: u32) -> bool {
+        line >= self.start_line && line <= self.end_line
+    }
+
+    fn overlaps_byte_span(self, span: ByteSpan) -> bool {
+        span.start < self.byte_span.end && span.end > self.byte_span.start
+    }
+}
+
 fn fence_overlaps_line_range(
     source_map: &SourceMap,
     fence: &FenceSnapshot,
-    start_line: u32,
-    end_line: u32,
+    line_range: RequestedLineRange,
 ) -> bool {
     let Ok(fence_start) = source_map.utf16_position(fence.body_start) else {
         return true;
@@ -120,27 +166,33 @@ fn fence_overlaps_line_range(
     let Ok(fence_end) = source_map.utf16_position(fence.body_end) else {
         return true;
     };
-    let range_start = start_line.min(end_line);
-    let range_end = start_line.max(end_line);
 
-    (fence_start.line as u32) <= range_end && (fence_end.line as u32) >= range_start
+    (fence_start.line as u32) <= line_range.end_line
+        && (fence_end.line as u32) >= line_range.start_line
+}
+
+fn absolute_span_for_item(fence: &FenceSnapshot, item: &FenceSemanticItem) -> Option<ByteSpan> {
+    let span = ByteSpan {
+        start: fence.body_start + item.selection.start,
+        end: fence.body_start + item.selection.end,
+    };
+    if span.start >= span.end {
+        None
+    } else {
+        Some(span)
+    }
 }
 
 fn tokens_for_item(
     source_map: &SourceMap,
     fence: &FenceSnapshot,
     item: &FenceSemanticItem,
+    span: ByteSpan,
+    line_range: Option<RequestedLineRange>,
 ) -> Vec<SemanticToken> {
-    let span = ByteSpan {
-        start: fence.body_start + item.selection.start,
-        end: fence.body_start + item.selection.end,
-    };
-    if span.start >= span.end {
-        return Vec::new();
-    }
-
     token_pieces_for_span(source_map, span)
         .into_iter()
+        .filter(|piece| line_range.is_none_or(|range| range.contains_line(piece.line)))
         .map(|piece| SemanticToken {
             line: piece.line,
             start: piece.start,
