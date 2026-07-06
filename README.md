@@ -315,6 +315,12 @@ If you prefer a bundled "pipeline" instead of passing multiple option structs pe
 If you already know the diagram type (e.g. from a Markdown fence info string), prefer
 `Engine::parse_diagram_with_type_sync(...)` to skip type detection.
 
+Rust API migration note for the 0.8 alpha line: `merman_core::Error::DiagramParse` now stores
+`diagnostic: ParseDiagnostic` instead of a raw parse-message field. Existing callers that only
+display the error can keep using `Display` / `to_string()`. Callers that match the enum variant
+should read `diagnostic.message()` and can additionally inspect `diagnostic.span()`,
+`diagnostic.span_kind()`, and `diagnostic.code()` for parser-backed metadata.
+
 If your downstream renderer does not support SVG `<foreignObject>` (common for rasterizers),
 prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use
 `HeadlessRenderer::render_svg_readable_sync()` when you want to keep the original

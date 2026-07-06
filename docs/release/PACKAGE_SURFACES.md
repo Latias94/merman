@@ -108,6 +108,11 @@ Current release semantics are intentionally explicit:
   default feature set.
 - Native FFI defaults stay conservative: `render` does not imply ELK. Downstream native artifacts
   that want ELK must enable `elk-layout` or publish a distinct full artifact.
+- Rust source callers that match `merman_core::Error::DiagramParse` must migrate from the old raw
+  message field to `diagnostic: ParseDiagnostic`. The displayed error message remains compatible,
+  and callers can use `diagnostic.message()`, `span()`, `span_kind()`, and `code()` for structured
+  parser metadata. Native ABI version 2 remains valid for this release line because ABI v2 had not
+  been externally released before the structured diagnostic change.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
   browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`, and
   `@mermanjs/web/ascii`; these slim subpaths omit unsupported runtime wrapper exports.

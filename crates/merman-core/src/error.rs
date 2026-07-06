@@ -9,6 +9,11 @@ pub enum ParseDiagnosticSpanKind {
     Fallback,
 }
 
+/// Structured parser diagnostic carried by [`Error::DiagramParse`].
+///
+/// `message()` is the human-readable text that older callers previously matched through a
+/// top-level `Error::DiagramParse { message, .. }` field. Prefer the structured accessors when an
+/// integration can use spans or stable diagnostic codes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseDiagnostic {
     message: String,
@@ -130,6 +135,11 @@ pub enum Error {
     #[error("Unsupported diagram type: {diagram_type}")]
     UnsupportedDiagram { diagram_type: String },
 
+    /// Parser failure for a detected diagram.
+    ///
+    /// This pre-1.0 API now carries `diagnostic: ParseDiagnostic` instead of a top-level `message`
+    /// field. Call `diagnostic.message()` for the display text and `diagnostic.span()` /
+    /// `diagnostic.span_kind()` when projecting editor or CLI diagnostics.
     #[error("Diagram parse error ({diagram_type}): {}", diagnostic.message())]
     DiagramParse {
         diagram_type: String,

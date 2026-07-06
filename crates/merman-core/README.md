@@ -12,6 +12,12 @@
 
 Most application code that wants rendered output should use the `merman` crate with the `render` feature instead.
 
+Pre-0.8 migration note: `Error::DiagramParse` carries
+`diagnostic: ParseDiagnostic` instead of a raw parse-message field. Call
+`diagnostic.message()` for display text, and use `diagnostic.span()`,
+`diagnostic.span_kind()`, and `diagnostic.code()` when an integration can
+preserve structured parser metadata.
+
 ## What It Provides
 
 - Mermaid diagram detection and preprocessing, including front matter and directives.

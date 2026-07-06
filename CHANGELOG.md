@@ -18,6 +18,10 @@ browser, native, and LSP integrations.
   diagnostics move to stderr.
 - `merman-cli` now returns more specific failure codes: 2 for invalid input/config/output, 3 for
   direct I/O failures, and 1 for render/runtime failures. Broken stdout pipes now exit successfully.
+- `merman-core::Error::DiagramParse` now carries `diagnostic: ParseDiagnostic` instead of a
+  top-level `message` field. Rust callers should use `diagnostic.message()` for display text and
+  `diagnostic.span()` / `diagnostic.span_kind()` when they can preserve source locations. `Display`
+  output remains message-compatible.
 - `@mermanjs/web` slim subpaths now omit unsupported runtime wrappers instead of exporting throwing
   stubs. Use the default entry point or `@mermanjs/web/full` when one namespace needs render, ASCII,
   and editor-language wrappers together.
@@ -40,7 +44,8 @@ browser, native, and LSP integrations.
   completions, symbols, rename, and navigation can work from Mermaid semantics instead of regex-only
   scans.
 - Added Python UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host
-  text-measurement callbacks.
+  text-measurement callbacks. ABI version 2 remains the current prerelease ABI; it had not been
+  externally released before this alpha branch's structured parse-diagnostic work.
 - Added `merman-cli --svg-pipeline parity|readable|resvg-safe` so users can request export-safe SVG
   bytes directly without choosing a raster format.
 
