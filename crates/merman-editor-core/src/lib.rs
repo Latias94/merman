@@ -31,7 +31,8 @@ pub use diagnostics::{
 pub use merman_analysis::FenceTextIndexSource;
 pub use semantic_tokens::{
     SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
-    semantic_token_legend, semantic_tokens_for_snapshot, token_modifier_index, token_type_index,
+    semantic_token_legend, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
+    token_modifier_index, token_type_index,
 };
 pub use snapshot::{DocumentSnapshot, FenceSnapshot};
 pub use structure::{

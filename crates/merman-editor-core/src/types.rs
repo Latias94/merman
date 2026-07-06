@@ -39,10 +39,30 @@ impl DocumentKind {
 
     pub fn from_path(path: &str) -> Self {
         match path.rsplit_once('.') {
-            Some((_, "md")) | Some((_, "markdown")) => Self::Markdown,
-            Some((_, "mdx")) => Self::Mdx,
+            Some((_, ext)) if merman_analysis::markdown::is_mdx_extension(ext) => Self::Mdx,
+            Some((_, ext)) if merman_analysis::markdown::is_markdown_extension(ext) => {
+                Self::Markdown
+            }
             _ => Self::Diagram,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DocumentKind;
+
+    #[test]
+    fn document_kind_from_path_treats_markdown_extensions_case_insensitively() {
+        assert_eq!(
+            DocumentKind::from_path("/tmp/README.MD"),
+            DocumentKind::Markdown
+        );
+        assert_eq!(
+            DocumentKind::from_path("/tmp/Guide.Markdown"),
+            DocumentKind::Markdown
+        );
+        assert_eq!(DocumentKind::from_path("/tmp/Story.MDX"), DocumentKind::Mdx);
     }
 }
 

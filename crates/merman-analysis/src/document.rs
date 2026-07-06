@@ -245,8 +245,8 @@ pub fn source_descriptor_for_uri(uri: &str) -> SourceDescriptor {
         .extension()
         .and_then(|ext| ext.to_str())
     {
-        Some("md") | Some("markdown") => SourceKind::Markdown,
-        Some("mdx") => SourceKind::Mdx,
+        Some(ext) if crate::markdown::is_mdx_extension(ext) => SourceKind::Mdx,
+        Some(ext) if crate::markdown::is_markdown_extension(ext) => SourceKind::Markdown,
         _ => SourceKind::Diagram,
     };
     source_descriptor_for_kind(Some(uri), kind)
@@ -258,7 +258,7 @@ pub fn source_descriptor_for_markdown_path(path: Option<&str>) -> SourceDescript
         .and_then(|path| Path::new(path).extension())
         .and_then(|ext| ext.to_str())
     {
-        Some("mdx") => SourceKind::Mdx,
+        Some(ext) if crate::markdown::is_mdx_extension(ext) => SourceKind::Mdx,
         _ => SourceKind::Markdown,
     };
     source_descriptor_for_kind(path, kind)
@@ -658,6 +658,17 @@ mod tests {
             Some("file:///tmp/example.mdx?rev=1#fence")
         );
         assert_eq!(source.language, "mdx");
+    }
+
+    #[test]
+    fn source_descriptor_for_uri_treats_markdown_extensions_case_insensitively() {
+        let markdown = source_descriptor_for_uri("file:///tmp/README.MD");
+        let mdx = source_descriptor_for_uri("file:///tmp/Story.MDX?rev=1#fence");
+
+        assert_eq!(markdown.kind, SourceKind::Markdown);
+        assert_eq!(markdown.language, "markdown");
+        assert_eq!(mdx.kind, SourceKind::Mdx);
+        assert_eq!(mdx.language, "mdx");
     }
 
     #[test]

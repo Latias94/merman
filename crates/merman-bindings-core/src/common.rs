@@ -264,18 +264,36 @@ pub(crate) fn validation_payload_json_from_analysis(
             merman_analysis::DiagnosticSeverity::Error
         )
     });
+    let fallback_status = first_error
+        .map(legacy_validation_fallback_status)
+        .unwrap_or(BindingStatus::Ok);
     let legacy = LegacyValidationPayload {
         valid: payload.valid,
         error: first_error.map(|diagnostic| diagnostic.message.as_str()),
         message: first_error.map(|diagnostic| diagnostic.message.as_str()),
         code: first_error
             .and_then(|diagnostic| diagnostic.code)
-            .unwrap_or(BindingStatus::Ok.code()),
+            .unwrap_or(fallback_status.code()),
         code_name: first_error
             .and_then(|diagnostic| diagnostic.code_name.as_deref())
-            .unwrap_or(BindingStatus::Ok.code_name()),
+            .unwrap_or(fallback_status.code_name()),
     };
     serde_json::to_vec(&legacy).map_err(internal_json_error)
+}
+
+fn legacy_validation_fallback_status(
+    diagnostic: &merman_analysis::AnalysisDiagnostic,
+) -> BindingStatus {
+    match diagnostic.category {
+        merman_analysis::DiagnosticCategory::Resource => BindingStatus::ResourceLimitExceeded,
+        merman_analysis::DiagnosticCategory::Render => BindingStatus::RenderError,
+        merman_analysis::DiagnosticCategory::Internal => BindingStatus::InternalError,
+        merman_analysis::DiagnosticCategory::Parse
+        | merman_analysis::DiagnosticCategory::Semantic
+        | merman_analysis::DiagnosticCategory::Config
+        | merman_analysis::DiagnosticCategory::Compatibility
+        | merman_analysis::DiagnosticCategory::Layout => BindingStatus::ParseError,
+    }
 }
 
 pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError> {

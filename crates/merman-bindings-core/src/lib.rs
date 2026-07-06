@@ -280,6 +280,29 @@ mod tests {
     }
 
     #[test]
+    fn validate_json_reports_non_ok_status_for_lint_errors_without_public_codes() {
+        let json: Value = serde_json::from_slice(
+            &validate_json(
+                b"gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n",
+                br#"{"lint":{"rule_severities":[{"rule_id":"merman.git_graph.duplicate_commit_id","severity":"error"}]}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["code_name"], BindingStatus::ParseError.code_name());
+        assert_eq!(json["code"], BindingStatus::ParseError.code());
+        assert_ne!(json["code_name"], BindingStatus::Ok.code_name());
+        assert!(
+            json["error"]
+                .as_str()
+                .is_some_and(|message| message.contains("already exists")),
+            "unexpected validation payload: {json}"
+        );
+    }
+
+    #[test]
     fn analyze_json_honors_lint_rule_configuration() {
         let payload: Value = serde_json::from_slice(
             &analyze_json(

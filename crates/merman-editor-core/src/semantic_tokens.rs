@@ -60,11 +60,31 @@ pub fn semantic_token_legend() -> SemanticTokenLegend {
 }
 
 pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<SemanticToken> {
+    semantic_tokens_for_fences(&snapshot.source_map, &snapshot.fences)
+}
+
+pub fn semantic_tokens_for_snapshot_range(
+    snapshot: &DocumentSnapshot,
+    start_line: u32,
+    end_line: u32,
+) -> Vec<SemanticToken> {
+    semantic_tokens_for_fences(
+        &snapshot.source_map,
+        snapshot.fences.iter().filter(|fence| {
+            fence_overlaps_line_range(&snapshot.source_map, fence, start_line, end_line)
+        }),
+    )
+}
+
+fn semantic_tokens_for_fences<'a>(
+    source_map: &SourceMap,
+    fences: impl IntoIterator<Item = &'a FenceSnapshot>,
+) -> Vec<SemanticToken> {
     let mut tokens = Vec::new();
 
-    for fence in &snapshot.fences {
+    for fence in fences {
         for item in fence.text_index.semantic_items() {
-            tokens.extend(tokens_for_item(&snapshot.source_map, fence, item));
+            tokens.extend(tokens_for_item(source_map, fence, item));
         }
     }
 
@@ -86,6 +106,24 @@ pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<Semantic
     });
     tokens.dedup();
     tokens
+}
+
+fn fence_overlaps_line_range(
+    source_map: &SourceMap,
+    fence: &FenceSnapshot,
+    start_line: u32,
+    end_line: u32,
+) -> bool {
+    let Ok(fence_start) = source_map.utf16_position(fence.body_start) else {
+        return true;
+    };
+    let Ok(fence_end) = source_map.utf16_position(fence.body_end) else {
+        return true;
+    };
+    let range_start = start_line.min(end_line);
+    let range_end = start_line.max(end_line);
+
+    (fence_start.line as u32) <= range_end && (fence_end.line as u32) >= range_start
 }
 
 fn tokens_for_item(

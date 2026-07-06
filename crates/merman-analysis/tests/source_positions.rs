@@ -43,5 +43,8 @@ fn markdown_path_detection_matches_expected_extensions() {
     assert!(is_markdown_path(Path::new("/tmp/example.md")));
     assert!(is_markdown_path(Path::new("/tmp/example.markdown")));
     assert!(is_markdown_path(Path::new("/tmp/example.mdx")));
+    assert!(is_markdown_path(Path::new("/tmp/example.MD")));
+    assert!(is_markdown_path(Path::new("/tmp/example.Markdown")));
+    assert!(is_markdown_path(Path::new("/tmp/example.MDX")));
     assert!(!is_markdown_path(Path::new("/tmp/example.mmd")));
 }

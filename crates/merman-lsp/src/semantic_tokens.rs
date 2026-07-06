@@ -2,8 +2,9 @@ use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
     SemanticTokenKind, SemanticTokenModifier as CoreSemanticTokenModifier,
     semantic_token_legend as core_semantic_token_legend,
-    semantic_tokens_for_snapshot as core_semantic_tokens_for_snapshot, token_modifier_index,
-    token_type_index,
+    semantic_tokens_for_snapshot as core_semantic_tokens_for_snapshot,
+    semantic_tokens_for_snapshot_range as core_semantic_tokens_for_snapshot_range,
+    token_modifier_index, token_type_index,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -58,7 +59,7 @@ pub fn semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,
 ) -> SemanticTokens {
-    let absolute_tokens = absolute_tokens_for_snapshot(snapshot)
+    let absolute_tokens = absolute_tokens_for_snapshot_range(snapshot, &range)
         .into_iter()
         .filter(|token| token_overlaps_range(token, &range))
         .collect();
@@ -109,6 +110,22 @@ pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[Semantic
 
 fn absolute_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<AbsoluteToken> {
     core_semantic_tokens_for_snapshot(snapshot.as_editor())
+        .into_iter()
+        .map(|token| AbsoluteToken {
+            line: token.line,
+            start: token.start,
+            length: token.length,
+            token_type: token_type(token.kind),
+            token_modifiers_bitset: token_modifier_bitset(token.modifier),
+        })
+        .collect()
+}
+
+fn absolute_tokens_for_snapshot_range(
+    snapshot: &DocumentSnapshot,
+    range: &Range,
+) -> Vec<AbsoluteToken> {
+    core_semantic_tokens_for_snapshot_range(snapshot.as_editor(), range.start.line, range.end.line)
         .into_iter()
         .map(|token| AbsoluteToken {
             line: token.line,
@@ -248,7 +265,7 @@ fn token_modifier_bitset(modifier: CoreSemanticTokenModifier) -> u32 {
 mod tests {
     use super::*;
     use crate::document_store::DocumentStore;
-    use tower_lsp::lsp_types::Url;
+    use tower_lsp::lsp_types::{Position, Url};
 
     #[test]
     fn semantic_tokens_legend_and_encoding_follow_editor_core_order() {
@@ -348,6 +365,66 @@ mod tests {
                 && token.token_modifiers_bitset
                     == token_modifier_bitset(CoreSemanticTokenModifier::Payload)
         }));
+    }
+
+    #[test]
+    fn semantic_tokens_range_filters_to_requested_markdown_fence() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.md").unwrap();
+        let snapshot = store.upsert(
+            uri,
+            1,
+            concat!(
+                "intro\n",
+                "```mermaid\n",
+                "sequenceDiagram\n",
+                "title: First\n",
+                "```\n",
+                "middle\n",
+                "```mermaid\n",
+                "sequenceDiagram\n",
+                "title: Second\n",
+                "```\n",
+                "outro\n",
+            )
+            .to_string(),
+        );
+
+        let tokens = semantic_tokens_for_snapshot_range(
+            &snapshot,
+            Range::new(Position::new(6, 0), Position::new(10, 0)),
+        );
+        let decoded = decode_tokens(&tokens.data);
+
+        let first_start = snapshot.text.find("First").unwrap();
+        let first_span = snapshot
+            .source_map
+            .span(first_start, first_start + "First".len())
+            .expect("first title span should map");
+        let second_start = snapshot.text.find("Second").unwrap();
+        let second_span = snapshot
+            .source_map
+            .span(second_start, second_start + "Second".len())
+            .expect("second title span should map");
+        let second_line = second_span.lsp_range.start.line as u32;
+        let second_start_character = second_span.lsp_range.start.character as u32;
+        let second_length =
+            (second_span.lsp_range.end.character - second_span.lsp_range.start.character) as u32;
+        let payload_bitset = token_modifier_bitset(CoreSemanticTokenModifier::Payload);
+
+        assert!(decoded.iter().any(|token| {
+            token.line == second_line
+                && token.start == second_start_character
+                && token.length == second_length
+                && token.token_type == token_type(SemanticTokenKind::String)
+                && token.token_modifiers_bitset == payload_bitset
+        }));
+        assert!(
+            !decoded
+                .iter()
+                .any(|token| token.line == first_span.lsp_range.start.line as u32),
+            "range request should not return tokens from the first fence: {decoded:?}"
+        );
     }
 
     #[test]

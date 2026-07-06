@@ -19,10 +19,7 @@ pub(crate) struct MarkdownImage {
 }
 
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|ext| ext.to_str()),
-        Some("md" | "markdown" | "mdx")
-    )
+    merman_analysis::markdown::is_markdown_path(path)
 }
 
 pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
@@ -177,7 +174,23 @@ fn normalized_components(path: &Path) -> Vec<OsString> {
 }
 
 fn path_to_markdown_url(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    percent_encode_markdown_url(&path.to_string_lossy().replace('\\', "/"))
+}
+
+fn percent_encode_markdown_url(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'.' | b'-' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => {
+                use std::fmt::Write as _;
+                write!(&mut out, "%{byte:02X}").expect("writing to a String should not fail");
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -215,5 +228,21 @@ mod tests {
         let out = numbered_output_path(Path::new("docs/out.md"), 2, RenderFormat::Png, None);
 
         assert_eq!(out, PathBuf::from("docs/out-2.png"));
+    }
+
+    #[test]
+    fn markdown_urls_percent_encode_link_destination_delimiters() {
+        assert_eq!(
+            path_to_markdown_url(Path::new("images/out (final) \"copy\".svg")),
+            "images/out%20%28final%29%20%22copy%22.svg"
+        );
+        assert_eq!(
+            path_to_markdown_url(Path::new("images/100% ready #1?.svg")),
+            "images/100%25%20ready%20%231%3F.svg"
+        );
+        assert_eq!(
+            path_to_markdown_url(Path::new("images/流程.svg")),
+            "images/%E6%B5%81%E7%A8%8B.svg"
+        );
     }
 }
