@@ -4,7 +4,11 @@
 from __future__ import annotations
 
 import re
+import shlex
+import subprocess
+import textwrap
 import unittest
+import uuid
 from pathlib import Path
 
 
@@ -66,6 +70,55 @@ def run_blocks(text: str) -> list[str]:
             block.append(child)
         blocks.append("\n".join(block))
     return blocks
+
+
+def release_web_validation_script() -> str:
+    text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
+    for block in run_blocks(text):
+        if "DISPATCH_RELEASE_TAG" in block and "npm_dist_tag" in block:
+            return textwrap.dedent(block)
+    raise AssertionError("could not find release-web validation script")
+
+
+def run_release_web_validation(release_tag: str, source_ref: str) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+    output_dir = ROOT / "target" / "release-workflow-tests"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_id = uuid.uuid4().hex
+    output_path = output_dir / f"github-output-{run_id}.txt"
+    script_path = output_dir / f"release-web-validation-{run_id}.sh"
+    script = "\n".join(
+        [
+            f"DISPATCH_RELEASE_TAG={shlex.quote(release_tag)}",
+            f"DISPATCH_SOURCE_REF={shlex.quote(source_ref)}",
+            f"GITHUB_OUTPUT={shlex.quote(output_path.relative_to(ROOT).as_posix())}",
+            release_web_validation_script(),
+        ]
+    )
+    script_path.write_text(script, encoding="utf-8", newline="\n")
+    try:
+        result = subprocess.run(
+            ["bash", script_path.relative_to(ROOT).as_posix()],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        outputs = parse_github_output(output_path.read_text(encoding="utf-8")) if output_path.exists() else {}
+        return result, outputs
+    finally:
+        script_path.unlink(missing_ok=True)
+        output_path.unlink(missing_ok=True)
+
+
+def parse_github_output(text: str) -> dict[str, str]:
+    outputs: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        outputs[name] = value
+    return outputs
 
 
 def checkout_blocks(text: str) -> list[str]:
@@ -151,13 +204,37 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 if path.name == "release-web.yml":
                     self.assertRegex(validate_job, re.compile(r"""(printf 'npm_dist_tag=%s\\n'|echo "npm_dist_tag=)"""))
 
+    def test_release_web_validation_computes_npm_dist_tags(self) -> None:
+        cases = [
+            ("v1.2.3", "latest"),
+            ("v1.2.3-alpha.1", "alpha"),
+            ("v1.2.3-beta.1", "beta"),
+            ("v1.2.3-rc.1", "rc"),
+        ]
+
+        for release_tag, expected_dist_tag in cases:
+            with self.subTest(release_tag=release_tag):
+                result, outputs = run_release_web_validation(release_tag, release_tag)
+
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                )
+                self.assertEqual(outputs["release_tag"], release_tag)
+                self.assertEqual(outputs["version"], release_tag.removeprefix("v"))
+                self.assertEqual(outputs["npm_dist_tag"], expected_dist_tag)
+
     def test_validation_jobs_reject_untrusted_source_ref_shapes(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
             text = read_workflow(path)
 
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
-                self.assertIn("sha_re='^[0-9a-fA-F]{40}$'", validate_job)
+                self.assertTrue(
+                    "sha_re='^[0-9a-fA-F]{40}$'" in validate_job
+                    or "is_sha_ref()" in validate_job
+                )
                 self.assertIn('[[ "$SOURCE_REF" != *$\'\\n\'*', validate_job)
                 self.assertIn("source_ref must be", validate_job)
 
@@ -169,7 +246,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
-                self.assertIn("semver_re='^[0-9]+\\.[0-9]+\\.[0-9]+", validate_job)
+                self.assertTrue(
+                    "semver_re='^[0-9]+\\.[0-9]+\\.[0-9]+" in validate_job
+                    or ("is_uint()" in validate_job and "is_release_version()" in validate_job)
+                )
                 self.assertIn("source_ref tag must match", validate_job)
                 self.assertIn("refs/tags/<release-tag>", validate_job)
 

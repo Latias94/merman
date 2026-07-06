@@ -43,25 +43,79 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
-          tag_re="^v${semver_re#^}"
-          sha_re='^[0-9a-fA-F]{40}$'
-
           fail() {
             echo "::error::$1" >&2
             exit 1
           }
 
+          is_uint() {
+            local value="$1"
+            [[ -n "$value" ]] || return 1
+            case "$value" in
+              *[!0-9]*) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
+          is_release_version() {
+            local version="$1"
+            local core="$version"
+            local prerelease=""
+            if [[ "$version" == *-* ]]; then
+              core="${version%%-*}"
+              prerelease="${version#*-}"
+            fi
+
+            local major minor patch extra
+            IFS=. read -r major minor patch extra <<< "$core"
+            [[ -z "${extra:-}" ]] || return 1
+            is_uint "$major" && is_uint "$minor" && is_uint "$patch" || return 1
+
+            if [[ -z "$prerelease" ]]; then
+              return 0
+            fi
+
+            local channel number prerelease_extra
+            IFS=. read -r channel number prerelease_extra <<< "$prerelease"
+            [[ -z "${prerelease_extra:-}" ]] || return 1
+            case "$channel" in
+              alpha | beta | rc) ;;
+              *) return 1 ;;
+            esac
+            is_uint "$number"
+          }
+
+          is_release_tag() {
+            local tag="$1"
+            [[ "$tag" == v* ]] || return 1
+            is_release_version "${tag#v}"
+          }
+
+          is_release_tag_ref() {
+            local ref="$1"
+            [[ "$ref" == refs/tags/v* ]] || return 1
+            is_release_tag "${ref#refs/tags/}"
+          }
+
+          is_sha_ref() {
+            local ref="$1"
+            [[ "${#ref}" -eq 40 ]] || return 1
+            case "$ref" in
+              *[!0-9a-fA-F]*) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
           SOURCE_REF="$DISPATCH_SOURCE_REF"
 
-          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          is_release_tag "$RELEASE_TAG" || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $sha_re ]]; then
+          elif is_sha_ref "$SOURCE_REF"; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif is_release_tag "$SOURCE_REF" || is_release_tag_ref "$SOURCE_REF"; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
           else
@@ -69,7 +123,7 @@ jobs:
           fi
 
           VERSION="${RELEASE_TAG#v}"
-          [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
+          is_release_version "$VERSION" || fail "release_tag contains an unsupported SemVer version."
           npm_dist_tag="latest"
           if [[ "$VERSION" == *-* ]]; then
             npm_dist_tag="${VERSION#*-}"
