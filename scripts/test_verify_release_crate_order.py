@@ -19,6 +19,20 @@ SPEC.loader.exec_module(verify_release_crate_order)
 
 
 class ReleaseCrateOrderTopologyTests(unittest.TestCase):
+    def test_publishable_workspace_packages_excludes_publish_false_metadata(self) -> None:
+        packages = verify_release_crate_order.publishable_workspace_packages(
+            {
+                "packages": [
+                    {"name": "merman-core", "publish": None},
+                    {"name": "merman-cli", "publish": ["crates-io"]},
+                    {"name": "xtask", "publish": []},
+                    {"name": "internal-only", "publish": ["internal"]},
+                ],
+            }
+        )
+
+        self.assertEqual(set(packages), {"merman-core", "merman-cli"})
+
     def test_dependency_before_dependent_passes(self) -> None:
         failed, stdout, stderr = check_topology(
             ["merman-core", "merman-analysis"],

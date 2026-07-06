@@ -117,11 +117,19 @@ def cargo_metadata() -> dict:
     return json.loads(result.stdout)
 
 
+def publish_field_allows_crates_io(publish_raw: object) -> bool:
+    if publish_raw is None or publish_raw is True:
+        return True
+    if isinstance(publish_raw, list):
+        return "crates-io" in publish_raw
+    return False
+
+
 def publishable_workspace_packages(metadata: dict) -> dict[str, dict]:
     return {
         package["name"]: package
         for package in metadata["packages"]
-        if package.get("publish") != []
+        if publish_field_allows_crates_io(package.get("publish"))
     }
 
 

@@ -147,6 +147,14 @@ def cargo_metadata(repo_root: Path) -> dict:
     return json.loads(cp.stdout)
 
 
+def publish_field_allows_crates_io(publish_raw: object) -> bool:
+    if publish_raw is None or publish_raw is True:
+        return True
+    if isinstance(publish_raw, list):
+        return "crates-io" in publish_raw
+    return False
+
+
 def get_workspace_packages(repo_root: Path) -> dict[str, PackageInfo]:
     md = cargo_metadata(repo_root)
     out: dict[str, PackageInfo] = {}
@@ -154,8 +162,7 @@ def get_workspace_packages(repo_root: Path) -> dict[str, PackageInfo]:
     for pkg in md.get("packages", []):
         name = pkg["name"]
         version = pkg["version"]
-        publish_raw = pkg.get("publish", None)
-        publish = publish_raw is None or publish_raw is True or publish_raw == []
+        publish = publish_field_allows_crates_io(pkg.get("publish", None))
         manifest_path = Path(pkg["manifest_path"])
         deps = pkg.get("dependencies", []) or []
         internal_deps = sorted(

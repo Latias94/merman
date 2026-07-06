@@ -147,6 +147,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("contents: write", validate_job)
                 self.assertNotIn("id-token: write", validate_job)
 
+    def test_platform_release_build_jobs_do_not_hold_release_write_permission(self) -> None:
+        for path in [
+            WORKFLOW_ROOT / "release-android.yml",
+            WORKFLOW_ROOT / "release-apple.yml",
+        ]:
+            text = read_workflow(path)
+            build_job = indented_block(text, "build:")
+            upload_job = indented_block(text, "upload-release:")
+
+            with self.subTest(workflow=path.name):
+                self.assertIn("contents: read", build_job)
+                self.assertNotIn("contents: write", build_job)
+                self.assertNotIn("environment: github-release", build_job)
+                self.assertIn("environment: github-release", upload_job)
+                self.assertIn("contents: write", upload_job)
+                self.assertIn("gh release upload", upload_job)
+
 
 class PerformanceWorkflowSecurityTests(unittest.TestCase):
     def test_comment_jobs_do_not_request_pull_request_write_permission(self) -> None:

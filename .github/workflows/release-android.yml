@@ -68,12 +68,11 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
-  build-and-release:
+  build:
     needs: validate-inputs
     runs-on: ubuntu-24.04
-    environment: github-release
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -158,10 +157,23 @@ jobs:
           name: merman-android-aar
           path: target/release-assets/*.aar
 
+  upload-release:
+    needs: [validate-inputs, build]
+    runs-on: ubuntu-24.04
+    environment: github-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download AAR artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: merman-android-aar
+          path: target/release-assets
+
       - name: Upload AAR to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" target/release-assets/*.aar --clobber
