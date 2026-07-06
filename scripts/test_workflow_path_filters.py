@@ -57,6 +57,7 @@ class WorkflowPathFilterTests(unittest.TestCase):
             "docs/release/WASM_SIZE_BUDGETS.json",
             "platforms/web/**",
             "playground/**",
+            "scripts/assert-svg-safety-parity.mjs",
         }
 
         for event_name in ("push", "pull_request"):
@@ -73,6 +74,7 @@ class WorkflowPathFilterTests(unittest.TestCase):
             "Cargo.lock",
             "Cargo.toml",
             "crates/**",
+            "scripts/assert-svg-safety-parity.mjs",
             "tools/vscode-extension/**",
         }
 

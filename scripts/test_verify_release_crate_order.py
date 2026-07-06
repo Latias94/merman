@@ -19,6 +19,36 @@ SPEC.loader.exec_module(verify_release_crate_order)
 
 
 class ReleaseCrateOrderTopologyTests(unittest.TestCase):
+    def test_extract_workflow_publish_orders_reads_every_crates_array(self) -> None:
+        orders = verify_release_crate_order.extract_workflow_publish_orders(
+            """
+          crates=(
+            alpha
+            beta
+          )
+          other=ignored
+          crates=(
+            alpha
+            beta
+          )
+            """
+        )
+
+        self.assertEqual(orders, [["alpha", "beta"], ["alpha", "beta"]])
+
+    def test_workflow_publish_order_rejects_mismatched_crates_arrays(self) -> None:
+        original_extract = verify_release_crate_order.extract_workflow_publish_orders
+        try:
+            verify_release_crate_order.extract_workflow_publish_orders = lambda _text: [
+                ["alpha", "beta"],
+                ["alpha", "gamma"],
+            ]
+
+            with self.assertRaisesRegex(ValueError, "does not match array #1"):
+                verify_release_crate_order.workflow_publish_order()
+        finally:
+            verify_release_crate_order.extract_workflow_publish_orders = original_extract
+
     def test_publishable_workspace_packages_excludes_publish_false_metadata(self) -> None:
         packages = verify_release_crate_order.publishable_workspace_packages(
             {

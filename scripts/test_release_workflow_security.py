@@ -199,17 +199,14 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_crates_token_is_only_used_for_no_verify_upload(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-crates.yml")
-        preflight_step = indented_block(text, "- name: Preflight crates in dependency order")
         publish_step = indented_block(text, "- name: Publish crates in dependency order")
 
-        self.assertIn("--dry-run", preflight_step)
-        self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", preflight_step)
-        self.assertNotIn("CARGO_REGISTRY_TOKEN:", preflight_step)
-
+        self.assertNotIn("- name: Preflight crates in dependency order", text)
+        self.assertIn("--dry-run", publish_step)
         self.assertIn("--no-verify", publish_step)
         self.assertIn('--token "${{ secrets.CARGO_REGISTRY_TOKEN }}"', publish_step)
-        self.assertNotIn("--dry-run", publish_step)
         self.assertNotIn("CARGO_REGISTRY_TOKEN:", publish_step)
+        self.assertLess(publish_step.index("--dry-run"), publish_step.index("--no-verify"))
 
     def test_trusted_npm_publish_job_only_downloads_artifact_and_publishes(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")

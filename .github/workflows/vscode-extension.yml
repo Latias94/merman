@@ -10,6 +10,7 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
+      - "scripts/assert-svg-safety-parity.mjs"
       - "tools/vscode-extension/**"
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
+      - "scripts/assert-svg-safety-parity.mjs"
       - "tools/vscode-extension/**"
   workflow_dispatch:
     inputs:

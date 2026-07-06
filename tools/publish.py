@@ -433,8 +433,6 @@ def main() -> int:
                     continue
 
             pre = ["cargo", "publish", "-p", p.name, "--dry-run"]
-            if args.no_verify:
-                pre.append("--no-verify")
             cp = run_command(pre, cwd=repo_root, dry_run=args.dry_run)
             if cp.returncode != 0:
                 print_error(f"Preflight failed for {p.name}")

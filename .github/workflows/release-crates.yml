@@ -127,69 +127,6 @@ jobs:
       - name: Verify release crate publish order
         run: python3 scripts/verify-release-crate-order.py
 
-      - name: Preflight crates in dependency order
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          crate_version_available() {
-            local crate="$1"
-            local version="$2"
-            local tmpdir="${RUNNER_TEMP:-/tmp}"
-
-            (
-              cd "$tmpdir"
-              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
-            )
-          }
-
-          workspace_crate_version() {
-            local crate="$1"
-
-            cargo pkgid -p "$crate" | sed 's/.*@//'
-          }
-
-          dry_run_crate_version() {
-            local crate="$1"
-            local crate_version="$2"
-
-            if crate_version_available "$crate" "$crate_version"; then
-              echo "Skipping dry-run for $crate $crate_version because it is already published"
-              return 0
-            fi
-
-            echo "Dry-running $crate $crate_version"
-            cargo publish -p "$crate" --locked --dry-run --registry crates-io
-          }
-
-          crates=(
-            dugong-graphlib
-            manatee
-            merman-core
-            merman-elk-layered
-            roughr-merman
-            dugong
-            merman-analysis
-            merman-ascii
-            merman-layout-elk
-            merman-editor-core
-            merman-render
-            merman
-            merman-lsp
-            merman-bindings-core
-            merman-cli
-            merman-rustdoc
-            merman-ffi
-            merman-typst-plugin
-            merman-uniffi
-            merman-wasm
-          )
-
-          for crate in "${crates[@]}"; do
-            dry_run_crate_version "$crate" "$(workspace_crate_version "$crate")"
-          done
-
       - name: Publish crates in dependency order
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -232,6 +169,14 @@ jobs:
             cargo pkgid -p "$crate" | sed 's/.*@//'
           }
 
+          dry_run_crate_version() {
+            local crate="$1"
+            local crate_version="$2"
+
+            echo "Dry-running $crate $crate_version"
+            cargo publish -p "$crate" --locked --dry-run --registry crates-io
+          }
+
           publish_crate_version() {
             local crate="$1"
             local crate_version="$2"
@@ -241,11 +186,13 @@ jobs:
               return 0
             fi
 
+            dry_run_crate_version "$crate" "$crate_version"
+
             echo "Publishing $crate $crate_version"
             for attempt in 1 2 3; do
               if cargo publish -p "$crate" --locked --no-verify --registry crates-io --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"; then
                 wait_for_crate_version "$crate" "$crate_version"
-                return 0
+                return $?
               fi
 
               if crate_version_available "$crate" "$crate_version"; then

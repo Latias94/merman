@@ -75,12 +75,32 @@ def main() -> int:
 def workflow_publish_order() -> list[str]:
     path = ROOT / ".github/workflows/release-crates.yml"
     text = path.read_text()
-    match = re.search(r"^\s+crates=\(\n(?P<body>.*?)^\s+\)", text, flags=re.MULTILINE | re.DOTALL)
-    if not match:
+    orders = extract_workflow_publish_orders(text)
+    if not orders:
         raise ValueError("could not find crates=(...) in .github/workflows/release-crates.yml")
+    expected = orders[0]
+    for index, order in enumerate(orders[1:], start=2):
+        if order != expected:
+            raise ValueError(
+                "crates=(...) array "
+                f"#{index} in .github/workflows/release-crates.yml does not match array #1"
+            )
+    return expected
+
+
+def extract_workflow_publish_orders(text: str) -> list[list[str]]:
+    matches = re.finditer(
+        r"^\s+crates=\(\n(?P<body>.*?)^\s+\)",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    return [shell_array_body(match.group("body")) for match in matches]
+
+
+def shell_array_body(body: str) -> list[str]:
     return [
         line.strip()
-        for line in match.group("body").splitlines()
+        for line in body.splitlines()
         if line.strip() and not line.strip().startswith("#")
     ]
 

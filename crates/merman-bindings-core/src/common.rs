@@ -351,6 +351,7 @@ pub(crate) fn source_text(bytes: &[u8]) -> Result<&str, BindingError> {
     Ok(source)
 }
 
+#[cfg(any(feature = "render", feature = "ascii"))]
 pub(crate) fn binding_site_config(
     options: &BindingOptions,
 ) -> Result<Option<merman::MermaidConfig>, BindingError> {
@@ -366,6 +367,7 @@ pub(crate) fn binding_site_config(
     Ok(Some(merman::MermaidConfig::from_value(site_config.clone())))
 }
 
+#[cfg(any(feature = "render", feature = "ascii"))]
 pub(crate) fn binding_fixed_today(
     options: &BindingOptions,
 ) -> Result<Option<chrono::NaiveDate>, BindingError> {
@@ -382,6 +384,7 @@ pub(crate) fn binding_fixed_today(
         })
 }
 
+#[cfg(any(feature = "render", feature = "ascii"))]
 pub(crate) fn binding_fixed_local_offset_minutes(
     options: &BindingOptions,
 ) -> Result<Option<i32>, BindingError> {
