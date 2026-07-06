@@ -225,6 +225,25 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertEqual(outputs["version"], release_tag.removeprefix("v"))
                 self.assertEqual(outputs["npm_dist_tag"], expected_dist_tag)
 
+    def test_release_web_validation_rejects_unsupported_prerelease_shapes(self) -> None:
+        cases = [
+            "v1.2.3-",
+            "v1.2.3-alpha",
+            "v1.2.3-alpha.1.2",
+            "v1.2.3-dev.1",
+        ]
+
+        for release_tag in cases:
+            with self.subTest(release_tag=release_tag):
+                result, outputs = run_release_web_validation(release_tag, release_tag)
+
+                self.assertNotEqual(
+                    result.returncode,
+                    0,
+                    msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                )
+                self.assertNotIn("npm_dist_tag", outputs)
+
     def test_validation_jobs_reject_untrusted_source_ref_shapes(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
             text = read_workflow(path)

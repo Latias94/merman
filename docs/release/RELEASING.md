@@ -134,7 +134,7 @@ generated Android, iOS, macOS, Windows, and Linux native artifacts and then publ
 `--force`; a full local pub package dry run should first run the same artifact injection steps from
 `.github/workflows/release-flutter.yml`.
 
-For local npm validation or emergency first package creation:
+For local npm validation:
 
 ```bash
 cd platforms/web
@@ -143,11 +143,26 @@ npm run build
 npm run smoke
 npm run prepack
 npm pack --dry-run
-npm publish --access public
 ```
 
 Normal web releases should use `release-web.yml` instead of local `npm publish` once npm Trusted
-Publishing is configured for `@mermanjs/web`.
+Publishing is configured for `@mermanjs/web`. If npm Trusted Publishing is unavailable and a
+maintainer must publish locally, derive the same dist-tag as the workflow and pass it explicitly:
+
+```bash
+RELEASE_TAG="v0.8.0-alpha.2"
+VERSION="${RELEASE_TAG#v}"
+case "$VERSION" in
+  *-alpha.*) NPM_DIST_TAG="alpha" ;;
+  *-beta.*) NPM_DIST_TAG="beta" ;;
+  *-rc.*) NPM_DIST_TAG="rc" ;;
+  *-*) echo "unsupported prerelease tag: $RELEASE_TAG" >&2; exit 1 ;;
+  *) NPM_DIST_TAG="latest" ;;
+esac
+npm publish --access public --tag "$NPM_DIST_TAG"
+```
+
+Prerelease packages must never be published with a bare `npm publish`.
 
 For local VS Code VSIX validation:
 

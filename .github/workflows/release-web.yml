@@ -61,9 +61,11 @@ jobs:
             local version="$1"
             local core="$version"
             local prerelease=""
+            local has_prerelease=0
             if [[ "$version" == *-* ]]; then
               core="${version%%-*}"
               prerelease="${version#*-}"
+              has_prerelease=1
             fi
 
             local major minor patch extra
@@ -72,6 +74,7 @@ jobs:
             is_uint "$major" && is_uint "$minor" && is_uint "$patch" || return 1
 
             if [[ -z "$prerelease" ]]; then
+              [[ "$has_prerelease" -eq 0 ]] || return 1
               return 0
             fi
 
