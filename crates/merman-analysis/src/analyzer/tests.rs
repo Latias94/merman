@@ -270,7 +270,7 @@ fn malformed_flowchart_parsed_diagram() -> ParsedDiagram {
 fn fallback_recovery_merge_uses_structured_location_metadata() {
     let source_map = SourceMap::new("flowchart TD\nA[unterminated");
     let span = source_map.whole_source_span().unwrap();
-    let primary = super::rule_diagnostic_without_default_span(
+    let primary = crate::diagnostic_projection::rule_diagnostic_without_default_span(
         crate::rules::DIAGRAM_PARSE_RULE_ID,
         AnalysisStatus::ParseError,
         "primary parser message",
@@ -279,7 +279,7 @@ fn fallback_recovery_merge_uses_structured_location_metadata() {
     .unwrap()
     .with_diagram_type("flowchart-v2")
     .with_span(span.clone());
-    let recovery = super::rule_diagnostic_without_default_span(
+    let recovery = crate::diagnostic_projection::rule_diagnostic_without_default_span(
         crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID,
         AnalysisStatus::ParseError,
         "recovered parser message",
@@ -290,13 +290,13 @@ fn fallback_recovery_merge_uses_structured_location_metadata() {
     .with_span(span);
     let mut diagnostics = vec![primary];
 
-    super::merge_recovery_diagnostics(
+    crate::recovery::merge_recovery_diagnostics(
         &mut diagnostics,
-        vec![super::AnalysisRecoveryDiagnostic::parser_backed(
+        vec![crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(
             recovery,
             merman_core::EditorSemanticDiagnosticKind::ParserRecovery,
         )],
-        Some(super::ParseDiagnosticLocation::Fallback),
+        Some(crate::diagnostic_projection::ParseDiagnosticLocation::Fallback),
     );
 
     assert_eq!(diagnostics.len(), 1);
@@ -313,7 +313,7 @@ fn degraded_editor_recovery_diagnostics_do_not_project_parser_input_spans() {
     let source =
         "---\ntitle: quoted\n---\nsequenceDiagram\nparticipant Alice\nAlice->>Bob: #quot;\n";
     let source_map = SourceMap::new(source);
-    let diagnostics = super::editor_recovery_diagnostics(
+    let diagnostics = crate::recovery::editor_recovery_diagnostics(
         vec![EditorSemanticDiagnostic::parser_recovery(
             "unexpected end of input",
             Some(SourceSpan::new(16, 16)),
@@ -341,7 +341,7 @@ fn source_mapped_editor_recovery_diagnostics_keep_original_spans() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
     let bob = source.rfind("Bob").expect("Bob reference");
     let source_map = SourceMap::new(source);
-    let diagnostics = super::editor_recovery_diagnostics(
+    let diagnostics = crate::recovery::editor_recovery_diagnostics(
         vec![EditorSemanticDiagnostic::parser_recovery(
             "unexpected end of input",
             Some(SourceSpan::new(bob, bob + "Bob".len())),
@@ -530,7 +530,7 @@ fn analysis_rule_config_can_override_git_graph_warning_severity() {
 #[test]
 fn analysis_rule_registry_gap_surfaces_as_internal_error() {
     let source_map = SourceMap::new("flowchart TD\nA-->B\n");
-    let diagnostic = super::rule_diagnostic(
+    let diagnostic = crate::diagnostic_projection::rule_diagnostic(
         "merman.unknown.rule",
         AnalysisStatus::Panic,
         "rule ids must be registered",

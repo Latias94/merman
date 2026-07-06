@@ -1,24 +1,23 @@
-use crate::rules::AnalysisRuleConfig;
-use crate::rules::{
-    DIAGRAM_PARSE_RULE_ID, FLOWCHART_FACTS_PROJECTION_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID,
-    INVALID_FRONT_MATTER_YAML_RULE_ID, MALFORMED_FRONT_MATTER_RULE_ID, NO_DIAGRAM_RULE_ID,
-    PANIC_RULE_ID, RECOVERED_EDITOR_FACTS_RULE_ID, RESOURCE_LIMIT_RULE_ID,
-    UNSUPPORTED_DIAGRAM_RULE_ID, internal_rule_registry_gap_diagnostic, rule_descriptor,
+use crate::diagnostic_projection::{
+    core_error_diagnostic, flowchart_facts_projection_diagnostic, no_diagram_diagnostic,
+    panic_diagnostic,
 };
+use crate::recovery::{
+    AnalysisRecoveryDiagnostic, core_error_recovery_diagnostics, editor_recovery_diagnostics,
+    merge_recovery_diagnostics,
+};
+use crate::rules::AnalysisRuleConfig;
 use crate::{
-    AnalysisDiagnostic, AnalysisFlowchartFacts, AnalysisPayload, AnalysisResult, AnalysisStatus,
+    AnalysisDiagnostic, AnalysisFlowchartFacts, AnalysisPayload, AnalysisResult,
     AnalysisSyntaxFacts, AnalyzedDiagram, DocumentDiagram, FenceTextIndex, SourceDescriptor,
     SourceMap,
 };
 use merman_core::{
-    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts, Engine,
-    Error as CoreError, MermaidConfig, ParseDiagnostic, ParseDiagnosticSpanKind, ParseOptions,
-    ParsedDiagram, ParsedDiagramWithEditorFacts, ParsedEditorFacts,
+    EditorSemanticFacts, Engine, Error as CoreError, MermaidConfig, ParseOptions, ParsedDiagram,
+    ParsedDiagramWithEditorFacts, ParsedEditorFacts,
 };
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
-
-const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalysisOptions {
@@ -401,11 +400,8 @@ impl Analyzer {
             return EditorFactsProjection::fallback(source, Some(diagram_type), Vec::new(), mode);
         }
 
-        let diagnostics = core_error_diagnostic(error, source_map, &self.options.rule_config)
-            .diagnostic
-            .map(AnalysisRecoveryDiagnostic::plain)
-            .into_iter()
-            .collect();
+        let diagnostics =
+            core_error_recovery_diagnostics(error, source_map, &self.options.rule_config);
         EditorFactsProjection::fallback(source, Some(diagram_type), diagnostics, mode)
     }
 
@@ -459,15 +455,11 @@ impl Analyzer {
             }
             Ok(Ok(facts)) => Ok(facts),
             Ok(Err(CoreError::UnsupportedDiagram { .. })) => Ok(None),
-            Ok(Err(error)) => {
-                Err(
-                    core_error_diagnostic(error, source_map, &self.options.rule_config)
-                        .diagnostic
-                        .map(AnalysisRecoveryDiagnostic::plain)
-                        .into_iter()
-                        .collect(),
-                )
-            }
+            Ok(Err(error)) => Err(core_error_recovery_diagnostics(
+                error,
+                source_map,
+                &self.options.rule_config,
+            )),
         }
     }
 
@@ -476,28 +468,20 @@ impl Analyzer {
         source: &str,
         descriptor: SourceDescriptor,
     ) -> Option<AnalysisResult> {
-        let diagnostics = self.source_limit_diagnostics(source)?;
-        Some(AnalysisResult::new(
+        crate::source_limits::source_limit_result(
+            source,
             descriptor,
-            SourceMap::new(""),
-            diagnostics,
-            Vec::new(),
-        ))
+            self.options.max_source_bytes,
+            &self.options.rule_config,
+        )
     }
 
     fn source_limit_diagnostics(&self, source: &str) -> Option<Vec<AnalysisDiagnostic>> {
-        let limit = self.options.max_source_bytes?;
-        if source.len() <= limit {
-            return None;
-        }
-
-        let source_map = SourceMap::new("");
-        let mut diagnostic =
-            source_limit_diagnostic(source.len(), limit, &source_map, &self.options.rule_config);
-        diagnostic.span = Some(crate::source_map::whole_text_span_without_source_copy(
+        crate::source_limits::source_limit_diagnostics(
             source,
-        ));
-        Some(vec![diagnostic])
+            self.options.max_source_bytes,
+            &self.options.rule_config,
+        )
     }
 }
 
@@ -607,147 +591,6 @@ struct FlowchartFactsProjection {
     diagnostics: Vec<AnalysisDiagnostic>,
 }
 
-#[derive(Debug, Clone)]
-struct AnalysisRecoveryDiagnostic {
-    diagnostic: AnalysisDiagnostic,
-    kind: Option<EditorSemanticDiagnosticKind>,
-}
-
-impl AnalysisRecoveryDiagnostic {
-    fn parser_backed(diagnostic: AnalysisDiagnostic, kind: EditorSemanticDiagnosticKind) -> Self {
-        Self {
-            diagnostic,
-            kind: Some(kind),
-        }
-    }
-
-    fn plain(diagnostic: AnalysisDiagnostic) -> Self {
-        Self {
-            diagnostic,
-            kind: None,
-        }
-    }
-}
-
-fn merge_recovery_diagnostics(
-    diagnostics: &mut Vec<AnalysisDiagnostic>,
-    recovery_diagnostics: Vec<AnalysisRecoveryDiagnostic>,
-    primary_parse_location: Option<ParseDiagnosticLocation>,
-) {
-    for recovery in recovery_diagnostics {
-        if merge_duplicate_parse_recovery_diagnostic(diagnostics, &recovery, primary_parse_location)
-        {
-            continue;
-        }
-        diagnostics.push(recovery.diagnostic);
-    }
-}
-
-fn merge_duplicate_parse_recovery_diagnostic(
-    diagnostics: &mut [AnalysisDiagnostic],
-    recovery: &AnalysisRecoveryDiagnostic,
-    primary_parse_location: Option<ParseDiagnosticLocation>,
-) -> bool {
-    if recovery.kind != Some(EditorSemanticDiagnosticKind::ParserRecovery) {
-        return false;
-    }
-
-    let Some(primary) = diagnostics.iter_mut().find(|diagnostic| {
-        is_same_parse_recovery_problem(diagnostic, &recovery.diagnostic, primary_parse_location)
-    }) else {
-        return false;
-    };
-
-    if is_better_primary_parse_span(primary, &recovery.diagnostic) {
-        if let Some(previous_span) = primary.span.clone() {
-            primary.related.push(crate::DiagnosticRelated {
-                message: "Parser reported this original parse location before recovery refinement."
-                    .to_string(),
-                span: Some(previous_span),
-            });
-        }
-        primary.span = recovery.diagnostic.span.clone();
-    }
-    primary.related.push(crate::DiagnosticRelated {
-        message: "Parser recovery produced the same syntax problem while preserving editor facts."
-            .to_string(),
-        span: recovery.diagnostic.span.clone(),
-    });
-    true
-}
-
-fn is_same_parse_recovery_problem(
-    primary: &AnalysisDiagnostic,
-    recovery: &AnalysisDiagnostic,
-    primary_parse_location: Option<ParseDiagnosticLocation>,
-) -> bool {
-    if primary.id != DIAGRAM_PARSE_RULE_ID || recovery.id != RECOVERED_EDITOR_FACTS_RULE_ID {
-        return false;
-    }
-    if primary.diagram_type != recovery.diagram_type {
-        return false;
-    }
-    spans_describe_same_problem(primary.span.as_ref(), recovery.span.as_ref())
-        || primary_parse_location == Some(ParseDiagnosticLocation::Fallback)
-}
-
-fn is_better_primary_parse_span(
-    primary: &AnalysisDiagnostic,
-    recovery: &AnalysisDiagnostic,
-) -> bool {
-    let Some(recovery_span) = recovery.span.as_ref() else {
-        return false;
-    };
-    if recovery_span.byte_start == recovery_span.byte_end {
-        return false;
-    }
-    match primary.span.as_ref() {
-        None => true,
-        Some(primary_span) if primary_span.byte_start == primary_span.byte_end => true,
-        Some(primary_span)
-            if primary_span.byte_start == recovery_span.byte_start
-                && primary_span.byte_end == recovery_span.byte_end =>
-        {
-            false
-        }
-        Some(primary_span) => {
-            let primary_len = primary_span
-                .byte_end
-                .saturating_sub(primary_span.byte_start);
-            let recovery_len = recovery_span
-                .byte_end
-                .saturating_sub(recovery_span.byte_start);
-            recovery_len > 0 && recovery_len < primary_len
-        }
-    }
-}
-
-fn spans_describe_same_problem(
-    primary: Option<&crate::DiagnosticSpan>,
-    recovery: Option<&crate::DiagnosticSpan>,
-) -> bool {
-    match (primary, recovery) {
-        (None, _) | (_, None) => true,
-        (Some(primary), Some(recovery)) => {
-            primary.byte_start == recovery.byte_start
-                || primary.byte_end == recovery.byte_end
-                || spans_overlap(primary, recovery)
-                || point_touches_span(primary, recovery)
-                || point_touches_span(recovery, primary)
-        }
-    }
-}
-
-fn spans_overlap(left: &crate::DiagnosticSpan, right: &crate::DiagnosticSpan) -> bool {
-    left.byte_start < right.byte_end && right.byte_start < left.byte_end
-}
-
-fn point_touches_span(point: &crate::DiagnosticSpan, span: &crate::DiagnosticSpan) -> bool {
-    point.byte_start == point.byte_end
-        && span.byte_start <= point.byte_start
-        && point.byte_start <= span.byte_end
-}
-
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
     let mut engine = Engine::new()
         .with_fixed_today(options.fixed_today)
@@ -758,346 +601,6 @@ pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
     }
 
     engine
-}
-
-fn no_diagram_diagnostic(
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    rule_diagnostic(
-        NO_DIAGRAM_RULE_ID,
-        AnalysisStatus::NoDiagram,
-        NO_DIAGRAM_MESSAGE,
-        source_map,
-        rule_config,
-    )
-}
-
-pub(crate) fn source_limit_diagnostic(
-    source_len: usize,
-    limit: usize,
-    source_map: &SourceMap,
-    _rule_config: &AnalysisRuleConfig,
-) -> AnalysisDiagnostic {
-    let message = format!("source is {source_len} bytes, exceeding max_source_bytes {limit}");
-    let Some(descriptor) = rule_descriptor(RESOURCE_LIMIT_RULE_ID) else {
-        return internal_rule_registry_gap_diagnostic(
-            format!(
-                "unknown analysis rule id `{RESOURCE_LIMIT_RULE_ID}` while emitting diagnostic: {message}"
-            ),
-            source_map.whole_source_span().ok(),
-        );
-    };
-
-    let mut diagnostic = AnalysisDiagnostic::new(
-        descriptor.id,
-        descriptor.default_severity,
-        descriptor.category,
-        message,
-    )
-    .with_code(
-        AnalysisStatus::ResourceLimitExceeded.code(),
-        AnalysisStatus::ResourceLimitExceeded.code_name(),
-    );
-    if let Ok(span) = source_map.whole_source_span() {
-        diagnostic = diagnostic.with_span(span);
-    }
-    diagnostic
-}
-
-#[derive(Debug)]
-struct CoreErrorDiagnostic {
-    diagnostic: Option<AnalysisDiagnostic>,
-    diagram_type: Option<String>,
-    parse_location: Option<ParseDiagnosticLocation>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ParseDiagnosticLocation {
-    Precise,
-    Fallback,
-}
-
-struct ParseDiagnosticProjection {
-    diagnostic: AnalysisDiagnostic,
-    location: ParseDiagnosticLocation,
-}
-
-fn core_error_diagnostic(
-    error: CoreError,
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-) -> CoreErrorDiagnostic {
-    match error {
-        CoreError::DetectType(_) => CoreErrorDiagnostic {
-            diagnostic: no_diagram_diagnostic(source_map, rule_config),
-            diagram_type: None,
-            parse_location: None,
-        },
-        CoreError::UnsupportedDiagram { diagram_type } => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                UNSUPPORTED_DIAGRAM_RULE_ID,
-                AnalysisStatus::UnsupportedFormat,
-                format!("unsupported diagram type: {diagram_type}"),
-                source_map,
-                rule_config,
-            )
-            .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
-            diagram_type: Some(diagram_type),
-            parse_location: None,
-        },
-        CoreError::DiagramParse {
-            diagram_type,
-            diagnostic,
-        } => {
-            let (diagnostic, parse_location) =
-                match parse_diagnostic(diagnostic, &diagram_type, source_map, rule_config) {
-                    Some(projection) => (Some(projection.diagnostic), Some(projection.location)),
-                    None => (None, None),
-                };
-            CoreErrorDiagnostic {
-                diagnostic,
-                diagram_type: Some(diagram_type),
-                parse_location,
-            }
-        }
-        CoreError::MalformedFrontMatter => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                MALFORMED_FRONT_MATTER_RULE_ID,
-                AnalysisStatus::ParseError,
-                CoreError::MalformedFrontMatter.to_string(),
-                source_map,
-                rule_config,
-            ),
-            diagram_type: None,
-            parse_location: None,
-        },
-        CoreError::InvalidDirectiveJson { message } => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                INVALID_DIRECTIVE_JSON_RULE_ID,
-                AnalysisStatus::ParseError,
-                format!("invalid directive JSON: {message}"),
-                source_map,
-                rule_config,
-            ),
-            diagram_type: None,
-            parse_location: None,
-        },
-        CoreError::InvalidFrontMatterYaml { message } => CoreErrorDiagnostic {
-            diagnostic: rule_diagnostic(
-                INVALID_FRONT_MATTER_YAML_RULE_ID,
-                AnalysisStatus::ParseError,
-                format!("invalid YAML front-matter: {message}"),
-                source_map,
-                rule_config,
-            ),
-            diagram_type: None,
-            parse_location: None,
-        },
-    }
-}
-
-fn parse_diagnostic(
-    diagnostic: ParseDiagnostic,
-    diagram_type: &str,
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-) -> Option<ParseDiagnosticProjection> {
-    let rule_id = diagnostic
-        .code()
-        .and_then(rule_descriptor)
-        .map(|descriptor| descriptor.id)
-        .unwrap_or(DIAGRAM_PARSE_RULE_ID);
-    let mut out = rule_diagnostic_without_default_span(
-        rule_id,
-        AnalysisStatus::ParseError,
-        diagnostic.message().to_string(),
-        rule_config,
-    )?
-    .with_diagram_type(diagram_type);
-    let location;
-
-    if let Some(span) = diagnostic
-        .span()
-        .and_then(|span| source_map.span(span.start, span.end).ok())
-    {
-        match diagnostic.span_kind() {
-            ParseDiagnosticSpanKind::Exact | ParseDiagnosticSpanKind::InsertionPoint => {
-                out = out.with_span(span);
-                location = ParseDiagnosticLocation::Precise;
-            }
-            ParseDiagnosticSpanKind::Fallback => {
-                out.related.push(crate::DiagnosticRelated {
-                    message: "Parser reported a fallback location for this syntax error."
-                        .to_string(),
-                    span: Some(span.clone()),
-                });
-                out = out.with_span(span);
-                location = ParseDiagnosticLocation::Fallback;
-            }
-        }
-    } else if let Ok(span) = source_map.whole_source_span() {
-        out.related.push(crate::DiagnosticRelated {
-            message: "Parser did not report a precise source location for this syntax error."
-                .to_string(),
-            span: Some(span.clone()),
-        });
-        out = out.with_span(span);
-        location = ParseDiagnosticLocation::Fallback;
-    } else {
-        location = ParseDiagnosticLocation::Fallback;
-    }
-
-    Some(ParseDiagnosticProjection {
-        diagnostic: out,
-        location,
-    })
-}
-
-fn panic_diagnostic(
-    panic_payload: Box<dyn std::any::Any + Send>,
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    let message = panic_payload
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| panic_payload.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("panic while analyzing Mermaid source");
-
-    rule_diagnostic(
-        PANIC_RULE_ID,
-        AnalysisStatus::Panic,
-        message,
-        source_map,
-        rule_config,
-    )
-}
-
-fn flowchart_facts_projection_diagnostic(
-    error: impl std::fmt::Display,
-    diagram_type: &str,
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    rule_diagnostic(
-        FLOWCHART_FACTS_PROJECTION_RULE_ID,
-        AnalysisStatus::InternalError,
-        format!("failed to project flowchart facts from parser model: {error}"),
-        source_map,
-        rule_config,
-    )
-    .map(|diagnostic| diagnostic.with_diagram_type(diagram_type))
-}
-
-fn recovered_editor_diagnostic(
-    diagnostic: EditorSemanticDiagnostic,
-    diagram_type: &str,
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-    source_mapped_spans: bool,
-) -> Option<AnalysisRecoveryDiagnostic> {
-    let kind = diagnostic.kind;
-    let mut out = if source_mapped_spans {
-        rule_diagnostic(
-            RECOVERED_EDITOR_FACTS_RULE_ID,
-            AnalysisStatus::ParseError,
-            diagnostic.message,
-            source_map,
-            rule_config,
-        )?
-    } else {
-        rule_diagnostic_without_default_span(
-            RECOVERED_EDITOR_FACTS_RULE_ID,
-            AnalysisStatus::ParseError,
-            diagnostic.message,
-            rule_config,
-        )?
-    }
-    .with_diagram_type(diagram_type);
-
-    if source_mapped_spans {
-        if let Some(span) = diagnostic
-            .span
-            .and_then(|span| source_map.span(span.start, span.end).ok())
-        {
-            out = out.with_span(span);
-        }
-    }
-
-    Some(AnalysisRecoveryDiagnostic::parser_backed(out, kind))
-}
-
-fn editor_recovery_diagnostics(
-    diagnostics: impl IntoIterator<Item = EditorSemanticDiagnostic>,
-    diagram_type: &str,
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-    source_mapped_spans: bool,
-) -> Vec<AnalysisRecoveryDiagnostic> {
-    diagnostics
-        .into_iter()
-        .filter_map(|diagnostic| {
-            recovered_editor_diagnostic(
-                diagnostic,
-                diagram_type,
-                source_map,
-                rule_config,
-                source_mapped_spans,
-            )
-        })
-        .collect()
-}
-
-fn rule_diagnostic(
-    rule_id: &'static str,
-    status: AnalysisStatus,
-    message: impl Into<String>,
-    source_map: &SourceMap,
-    rule_config: &AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    let message = message.into();
-    let Some(descriptor) = rule_descriptor(rule_id) else {
-        return Some(internal_rule_registry_gap_diagnostic(
-            format!("unknown analysis rule id `{rule_id}` while emitting diagnostic: {message}"),
-            source_map.whole_source_span().ok(),
-        ));
-    };
-
-    if !rule_config.is_rule_enabled(descriptor) {
-        return None;
-    }
-
-    let mut diagnostic =
-        rule_diagnostic_without_default_span(rule_id, status, message, rule_config)?;
-    if let Ok(span) = source_map.whole_source_span() {
-        diagnostic = diagnostic.with_span(span);
-    }
-    Some(diagnostic)
-}
-
-fn rule_diagnostic_without_default_span(
-    rule_id: &'static str,
-    status: AnalysisStatus,
-    message: impl Into<String>,
-    rule_config: &AnalysisRuleConfig,
-) -> Option<AnalysisDiagnostic> {
-    let message = message.into();
-    let descriptor = rule_descriptor(rule_id)?;
-
-    if !rule_config.is_rule_enabled(descriptor) {
-        return None;
-    }
-
-    Some(
-        AnalysisDiagnostic::new(
-            descriptor.id,
-            rule_config.severity_for(descriptor),
-            descriptor.category,
-            message,
-        )
-        .with_code(status.code(), status.code_name()),
-    )
 }
 
 #[cfg(test)]
