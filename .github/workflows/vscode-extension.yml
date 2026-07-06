@@ -10,7 +10,10 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
-      - "scripts/assert-svg-safety-parity.mjs"
+      - "platforms/web/src/svg-safety-policy.ts"
+      - "scripts/check-svg-safety-policy.mjs"
+      - "scripts/generate-svg-safety-policy.mjs"
+      - "scripts/svg-safety-policy.mjs"
       - "tools/vscode-extension/**"
   pull_request:
     paths:
@@ -18,7 +21,10 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
-      - "scripts/assert-svg-safety-parity.mjs"
+      - "platforms/web/src/svg-safety-policy.ts"
+      - "scripts/check-svg-safety-policy.mjs"
+      - "scripts/generate-svg-safety-policy.mjs"
+      - "scripts/svg-safety-policy.mjs"
       - "tools/vscode-extension/**"
   workflow_dispatch:
     inputs:
