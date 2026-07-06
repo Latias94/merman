@@ -29,6 +29,10 @@ export type RenderProcessSpawner = (
 ) => cp.ChildProcessWithoutNullStreams;
 
 export function runRenderProcess(request: RenderProcessRequest): Promise<RenderProcessResult> {
+  if (request.signal?.aborted) {
+    return Promise.reject(new Error("Render was superseded by a newer update."));
+  }
+
   return new Promise<RenderProcessResult>((resolve, reject) => {
     let settled = false;
     let terminationReason: "abort" | "timeout" | "output-limit" | undefined;

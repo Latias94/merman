@@ -254,6 +254,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn('package.get("publish") != []', text)
 
 
+class CiWorkflowSecurityTests(unittest.TestCase):
+    def test_ci_workflow_declares_read_only_contents_permission(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "ci.yml")
+        header = text.split("\njobs:", 1)[0]
+
+        self.assertIn("permissions:\n  contents: read", header)
+
+    def test_ci_checkouts_do_not_persist_credentials(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "ci.yml")
+        blocks = checkout_blocks(text)
+
+        self.assertGreater(len(blocks), 0)
+        for index, block in enumerate(blocks):
+            with self.subTest(checkout=index):
+                self.assertIn("persist-credentials: false", block)
+
+
 class PerformanceWorkflowSecurityTests(unittest.TestCase):
     def test_comment_jobs_do_not_request_pull_request_write_permission(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "performance.yml")

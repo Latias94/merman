@@ -133,6 +133,80 @@ class PublishMetadataTests(unittest.TestCase):
         self.assertEqual(preflight, ["cargo", "publish", "-p", "merman-core", "--dry-run"])
         self.assertEqual(upload, ["cargo", "publish", "-p", "merman-core", "--no-verify"])
 
+    def test_preflight_only_skips_crates_with_unpublished_internal_deps(self) -> None:
+        commands: list[list[str]] = []
+        published_checks: list[tuple[str, str]] = []
+        original_argv = sys.argv
+        original_cargo_metadata = publish_tool.cargo_metadata
+        original_git_is_clean = publish_tool.git_is_clean
+        original_require_tool = publish_tool.require_tool
+        original_run_command = publish_tool.run_command
+        original_check_crate_published = publish_tool.check_crate_published
+        try:
+            sys.argv = [
+                "publish.py",
+                "--crates",
+                "merman",
+                "--skip-xtask-verify",
+                "--allow-dirty",
+                "--yes",
+                "--preflight-only",
+                "--preflight-publish-dry-run",
+                "--wait",
+                "0",
+            ]
+            publish_tool.cargo_metadata = lambda _repo_root: {
+                "packages": [
+                    {
+                        "name": "merman-core",
+                        "version": "1.0.0",
+                        "publish": None,
+                        "manifest_path": str(ROOT / "crates" / "merman-core" / "Cargo.toml"),
+                        "dependencies": [],
+                    },
+                    {
+                        "name": "merman",
+                        "version": "1.0.0",
+                        "publish": None,
+                        "manifest_path": str(ROOT / "crates" / "merman" / "Cargo.toml"),
+                        "dependencies": [{"name": "merman-core"}],
+                    },
+                ],
+            }
+            publish_tool.git_is_clean = lambda _repo_root: True
+            publish_tool.require_tool = lambda _name: None
+
+            def run_command(cmd, **_kwargs):
+                commands.append(list(cmd))
+                return publish_tool.subprocess.CompletedProcess(args=cmd, returncode=0)
+
+            def check_crate_published(crate_name: str, version: str) -> bool:
+                published_checks.append((crate_name, version))
+                return False
+
+            publish_tool.run_command = run_command
+            publish_tool.check_crate_published = check_crate_published
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(publish_tool.main(), 0)
+        finally:
+            sys.argv = original_argv
+            publish_tool.cargo_metadata = original_cargo_metadata
+            publish_tool.git_is_clean = original_git_is_clean
+            publish_tool.require_tool = original_require_tool
+            publish_tool.run_command = original_run_command
+            publish_tool.check_crate_published = original_check_crate_published
+
+        self.assertEqual(published_checks, [("merman-core", "1.0.0")])
+        self.assertEqual(commands, [])
+        self.assertIn(
+            "Skipping preflight: internal workspace dependencies are not published yet: merman-core v1.0.0",
+            stdout.getvalue(),
+        )
+        self.assertIn("Skipped 1 crate(s): merman", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

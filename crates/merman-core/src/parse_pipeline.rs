@@ -117,6 +117,19 @@ impl<'a> EditorParseSourceMap<'a> {
         SourceSpan::new(self.remap_offset(span.start), self.remap_offset(span.end))
     }
 
+    fn remap_parse_error(&self, err: Error) -> Error {
+        match err {
+            Error::DiagramParse {
+                diagram_type,
+                diagnostic,
+            } => Error::DiagramParse {
+                diagram_type,
+                diagnostic: diagnostic.map_span(|span| self.remap_source_span(span)),
+            },
+            err => err,
+        }
+    }
+
     fn remap_offset(&self, offset: usize) -> usize {
         match &self.remap {
             EditorSourceRemap::None => offset,
@@ -339,17 +352,18 @@ impl<'a> ParsePipeline<'a> {
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
+        let source_map = EditorParseSourceMap::new(self.text, &code);
         let preprocess = preprocess_start.map(runtime::timing_elapsed);
 
         let parse_start = runtime::timing_start(timing_enabled);
-        let parse_res = self.with_fixed_time(|| parse(self, &code, &meta));
+        let parse_res = self.with_fixed_time(|| parse(self, source_map.parser_input(), &meta));
         let parse = parse_start.map(runtime::timing_elapsed);
 
         let mut model = match parse_res {
             Ok(model) => model,
             Err(err) => {
                 if !self.options.suppress_errors {
-                    return Err(err);
+                    return Err(source_map.remap_parse_error(err));
                 }
 
                 timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());

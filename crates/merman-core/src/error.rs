@@ -100,6 +100,11 @@ impl ParseDiagnostic {
         self
     }
 
+    pub fn map_span(mut self, map: impl FnOnce(SourceSpan) -> SourceSpan) -> Self {
+        self.span = self.span.map(map);
+        self
+    }
+
     pub fn message(&self) -> &str {
         &self.message
     }

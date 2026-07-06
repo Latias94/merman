@@ -60,6 +60,48 @@ fn analyze_flowchart_parse_failure_deduplicates_matching_recovery_diagnostic() {
 }
 
 #[test]
+fn analyze_parse_failure_remaps_frontmatter_spans_and_deduplicates_recovery() {
+    let source = "---\ntitle: T\n---\nflowchart TD\nA-->\n";
+    assert_single_remapped_flowchart_parse_error(source, 5, 5);
+}
+
+#[test]
+fn analyze_parse_failure_remaps_init_directive_spans_and_deduplicates_recovery() {
+    let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->\n";
+    assert_single_remapped_flowchart_parse_error(source, 3, 5);
+}
+
+#[test]
+fn analyze_parse_failure_remaps_crlf_frontmatter_spans_and_deduplicates_recovery() {
+    let source = "---\r\ntitle: T\r\n---\r\nflowchart TD\r\nA-->\r\n";
+    assert_single_remapped_flowchart_parse_error(source, 5, 5);
+}
+
+fn assert_single_remapped_flowchart_parse_error(source: &str, line: usize, column: usize) {
+    let analyzer = Analyzer::new();
+    let payload = analyzer.analyze(source);
+
+    assert!(!payload.valid);
+    assert_eq!(payload.summary.errors, 1);
+    assert_eq!(payload.summary.warnings, 0);
+    assert_eq!(payload.diagnostics.len(), 1);
+
+    let diagnostic = &payload.diagnostics[0];
+    assert_eq!(diagnostic.id, "merman.parse.diagram_parse");
+    assert_eq!(diagnostic.diagram_type.as_deref(), Some("flowchart-v2"));
+    let span = diagnostic.span.as_ref().expect("parse diagnostic span");
+    assert_eq!(span.line, line);
+    assert_eq!(span.column, column);
+    assert_eq!(span.lsp_range.start.line, line - 1);
+    assert_eq!(span.lsp_range.start.character, column - 1);
+    assert!(diagnostic.related.iter().any(|related| {
+        related
+            .message
+            .contains("Parser recovery produced the same syntax problem")
+    }));
+}
+
+#[test]
 fn diagnostics_mode_does_not_project_valid_syntax_facts() {
     let analyzer = Analyzer::new();
     let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::Diagnostics);

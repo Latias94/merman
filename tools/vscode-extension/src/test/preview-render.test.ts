@@ -36,6 +36,36 @@ describe("preview render queue", () => {
     );
   });
 
+  it("does not start rendering when cancellation happens while renderStarted is posting", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    let renderCalls = 0;
+
+    await queue.render(
+      snapshot(),
+      "document-change",
+      {
+        ...host(queue, messages, async () => {
+          renderCalls += 1;
+          return "<svg></svg>";
+        }),
+        postMessage: async (message) => {
+          messages.push(message);
+          if ((message as { type: string }).type === "renderStarted") {
+            await Promise.resolve();
+            queue.cancelPending();
+          }
+        },
+      },
+    );
+
+    assert.equal(renderCalls, 0);
+    assert.deepEqual(
+      messages.map((message) => (message as { type: string }).type),
+      ["renderStarted"],
+    );
+  });
+
   it("aborts the previous render request when a newer render starts", async () => {
     const queue = new PreviewRenderQueue();
     const messages: unknown[] = [];

@@ -17,6 +17,31 @@ afterEach(() => {
 });
 
 describe("render process lifecycle", () => {
+  it("rejects without spawning when the request is already aborted", async () => {
+    const abortController = new AbortController();
+    let spawned = false;
+    abortController.abort();
+
+    await assert.rejects(
+      runRenderProcess({
+        invocation: {
+          command: "merman-cli",
+          args: [],
+          source: "explicit",
+          label: "test cli",
+        },
+        source: "flowchart TD\nA --> B\n",
+        signal: abortController.signal,
+        spawnProcess: () => {
+          spawned = true;
+          throw new Error("spawn should not be called");
+        },
+      }),
+      /superseded/,
+    );
+    assert.equal(spawned, false);
+  });
+
   it("hides Windows console windows for spawned render processes", async () => {
     let spawnOptions: import("node:child_process").SpawnOptionsWithoutStdio | undefined;
     const child = new EventEmitter() as EventEmitter & {

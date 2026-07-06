@@ -45,6 +45,9 @@ export class PreviewRenderQueue {
       host.info(
         `refresh=${reason} source="${snapshot.input.title}" id="${snapshot.input.sourceId}" mode=${snapshot.displayMode}`,
       );
+      if (!host.isCurrentRequest(requestId) || abortController.signal.aborted) {
+        return;
+      }
       const content = await host.renderContent(snapshot, abortController.signal);
       if (!host.isCurrentRequest(requestId)) {
         return;
