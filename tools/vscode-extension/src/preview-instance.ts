@@ -57,6 +57,7 @@ export class PreviewInstance implements vscode.Disposable {
   private readonly webviewClient: PreviewWebviewClient;
   private readonly panelDisposables: vscode.Disposable[] = [];
   private disposed = false;
+  private renderedOutputStale = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -128,6 +129,18 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     this.renderTimer = setTimeout(refresh, RENDER_DEBOUNCE_MS);
+  }
+
+  invalidateRenderedOutput(reason: PreviewUpdateReason): void {
+    if (!this.panel || !this.session.snapshot) {
+      return;
+    }
+    this.renderedOutputStale = true;
+    this.webviewClient.invalidateRenderedOutput();
+    this.renderQueue.cancelPending();
+    void this.postMessage({ type: "renderInvalidated", reason }).catch((error: unknown) => {
+      this.handleRefreshError(error);
+    });
   }
 
   forceRefresh(): void {
@@ -251,6 +264,7 @@ export class PreviewInstance implements vscode.Disposable {
   private disposePanelState(): void {
     this.clearPendingRender();
     this.renderQueue.cancelPending();
+    this.renderedOutputStale = false;
     this.panel = undefined;
     this.session.reset();
     this.webviewClient.reset();
@@ -343,7 +357,10 @@ export class PreviewInstance implements vscode.Disposable {
       info: (message) => this.outputChannel.info(message),
       error: (message) => this.outputChannel.error(message),
       isCurrentRequest: (requestId) => !!this.panel && this.renderQueue.isCurrentRequest(requestId),
-      markRendered: (_requestId, renderedSnapshot, content) => this.webviewClient.markRendered(renderedSnapshot, content),
+      markRendered: (_requestId, renderedSnapshot, content) => {
+        this.renderedOutputStale = false;
+        this.webviewClient.markRendered(renderedSnapshot, content);
+      },
     });
   }
 
@@ -413,9 +430,7 @@ export class PreviewInstance implements vscode.Disposable {
         await this.showSource();
         return;
       case "copySvg":
-        assertSafePreviewSvg(message.svg);
-        await vscode.env.clipboard.writeText(message.svg);
-        void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
+        await this.copySvg(message.svg, message.sourceKey);
         return;
       case "exportRendered":
         await this.exportRendered(message.format, message.sourceKey);
@@ -463,6 +478,7 @@ export class PreviewInstance implements vscode.Disposable {
     ) {
       return;
     }
+    this.invalidateRenderedOutput("source-select");
     this.scheduleRefresh("source-select", true);
   }
 
@@ -470,6 +486,7 @@ export class PreviewInstance implements vscode.Disposable {
     if (!isPreviewDiagramTheme(theme) || !this.session.setDiagramTheme(theme)) {
       return;
     }
+    this.invalidateRenderedOutput("diagram-theme");
     this.scheduleRefresh("diagram-theme", true);
   }
 
@@ -477,6 +494,7 @@ export class PreviewInstance implements vscode.Disposable {
     if (!isPreviewDisplayMode(displayMode) || !this.session.setDisplayMode(displayMode)) {
       return;
     }
+    this.invalidateRenderedOutput("display-mode");
     this.scheduleRefresh("display-mode", true);
   }
 
@@ -484,21 +502,23 @@ export class PreviewInstance implements vscode.Disposable {
     if (!this.session.setBackground(background)) {
       return;
     }
+    this.invalidateRenderedOutput("background");
     this.scheduleRefresh("background", true);
   }
 
-  private async exportRendered(format: ExportFormat, renderedSourceKey: PreviewSourceKey): Promise<void> {
-    const snapshot = this.session.snapshot;
+  private async copySvg(svg: string, renderedSourceKey: PreviewSourceKey): Promise<void> {
+    const snapshot = this.currentRenderedOutputSnapshot(renderedSourceKey);
     if (!snapshot) {
-      void vscode.window.showWarningMessage(
-        "Open a Mermaid preview before exporting the rendered diagram.",
-      );
       return;
     }
-    if (!samePreviewSourceKey(snapshot.sourceKey, renderedSourceKey)) {
-      void vscode.window.showWarningMessage(
-        "Wait for the latest Mermaid preview to finish rendering before exporting.",
-      );
+    assertSafePreviewSvg(svg);
+    await vscode.env.clipboard.writeText(svg);
+    void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
+  }
+
+  private async exportRendered(format: ExportFormat, renderedSourceKey: PreviewSourceKey): Promise<void> {
+    const snapshot = this.currentRenderedOutputSnapshot(renderedSourceKey);
+    if (!snapshot) {
       return;
     }
 
@@ -515,6 +535,23 @@ export class PreviewInstance implements vscode.Disposable {
       signalLabel: `preview-export-${format}`,
       failureMessagePrefix: "Merman preview export failed",
     });
+  }
+
+  private currentRenderedOutputSnapshot(renderedSourceKey: PreviewSourceKey): PreviewSnapshot | undefined {
+    const snapshot = this.session.snapshot;
+    if (!snapshot) {
+      void vscode.window.showWarningMessage(
+        "Open a Mermaid preview before copying or exporting the rendered diagram.",
+      );
+      return undefined;
+    }
+    if (this.renderedOutputStale || !samePreviewSourceKey(snapshot.sourceKey, renderedSourceKey)) {
+      void vscode.window.showWarningMessage(
+        "Wait for the latest Mermaid preview to finish rendering before copying or exporting.",
+      );
+      return undefined;
+    }
+    return snapshot;
   }
 }
 

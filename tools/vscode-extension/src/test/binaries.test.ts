@@ -111,6 +111,26 @@ describe("Merman binary resolution", () => {
     );
   });
 
+  it("rejects untrusted configured executables before probing the path", () => {
+    const root = tempDir();
+    const explicit = path.join(root, "missing", "merman-lsp");
+
+    assert.throws(
+      () =>
+        resolveMermanBinary({
+          binaryName: "merman-lsp",
+          packageName: "merman-lsp",
+          extensionPath: path.join(root, "extension"),
+          workspaceRoots: [root],
+          explicitPath: explicit,
+          workspaceTrusted: false,
+          platform: "linux",
+          arch: "x64",
+        }),
+      /configured executable path requires a trusted workspace/,
+    );
+  });
+
   it("rejects configured executables outside the workspace in untrusted workspaces", () => {
     const root = tempDir();
     const explicitRoot = tempDir();

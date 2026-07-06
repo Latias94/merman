@@ -309,10 +309,10 @@
 
   function copySvg() {
     const svg = canvas?.querySelector("svg");
-    if (!svg) {
+    if (!svg || !state.sourceKey) {
       return;
     }
-    post("copySvg", { svg: serializedSourceSvg(svg) });
+    post("copySvg", { svg: serializedSourceSvg(svg), sourceKey: state.sourceKey });
   }
 
   function serializedSourceSvg(svg) {
@@ -600,6 +600,11 @@
           `Rendering ${previewModeLabel(message.snapshot?.displayMode)} preview: ${message.snapshot?.subtitle || "Mermaid source"}`,
           "loading",
         );
+        break;
+      case "renderInvalidated":
+        state.activeRequestId = undefined;
+        setRenderState("stale");
+        showStatus("Source changed. Waiting to refresh preview.", "loading");
         break;
       case "renderSucceeded":
         if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {

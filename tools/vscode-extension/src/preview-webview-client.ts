@@ -60,6 +60,11 @@ export class PreviewWebviewClient {
     this.lastRenderedContent = content;
   }
 
+  invalidateRenderedOutput(): void {
+    this.lastRenderedKeyId = undefined;
+    this.lastRenderedContent = undefined;
+  }
+
   async acceptReady(
     panel: vscode.WebviewPanel | undefined,
     currentSnapshot: PreviewSnapshot | undefined,
@@ -110,6 +115,7 @@ class PendingPreviewMessages {
   private selection: PreviewToWebviewMessage | undefined;
   private diagnostics: PreviewToWebviewMessage | undefined;
   private settings: PreviewToWebviewMessage | undefined;
+  private renderInvalidated: PreviewToWebviewMessage | undefined;
   private renderStarted: PreviewToWebviewMessage | undefined;
   private renderFinished: PreviewToWebviewMessage | undefined;
 
@@ -119,6 +125,7 @@ class PendingPreviewMessages {
     this.selection = undefined;
     this.diagnostics = undefined;
     this.settings = undefined;
+    this.renderInvalidated = undefined;
     this.renderStarted = undefined;
     this.renderFinished = undefined;
   }
@@ -149,8 +156,15 @@ class PendingPreviewMessages {
         this.empty = undefined;
         this.settings = message;
         return;
+      case "renderInvalidated":
+        this.empty = undefined;
+        this.renderInvalidated = message;
+        this.renderStarted = undefined;
+        this.renderFinished = undefined;
+        return;
       case "renderStarted":
         this.empty = undefined;
+        this.renderInvalidated = undefined;
         this.renderStarted = message;
         if (
           this.renderFinished &&
@@ -191,6 +205,7 @@ class PendingPreviewMessages {
       this.selection,
       this.diagnostics,
       this.settings,
+      this.renderInvalidated,
       this.renderStarted,
       this.renderFinished,
     ].filter((message): message is PreviewToWebviewMessage => Boolean(message));

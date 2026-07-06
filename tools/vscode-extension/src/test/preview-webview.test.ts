@@ -389,8 +389,9 @@ describe("preview webview app", () => {
     svg.setAttribute("height", "125");
     app.click(app.document.copySvg);
 
-    const message = app.postedMessages.at(-1) as { type?: string; svg?: string };
+    const message = app.postedMessages.at(-1) as { type?: string; svg?: string; sourceKey?: unknown };
     assert.equal(message.type, "copySvg");
+    assert.deepEqual(message.sourceKey, snapshot({ sourceHash: "hash-a" }).sourceKey);
     assert.match(message.svg ?? "", /<svg\b/);
     assert.match(message.svg ?? "", /width="100"/);
     assert.match(message.svg ?? "", /height="50"/);

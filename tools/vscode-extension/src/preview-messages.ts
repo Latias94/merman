@@ -53,6 +53,10 @@ export type PreviewToWebviewMessage =
       snapshot: PreviewSnapshotMessagePayload;
     }
   | {
+      type: "renderInvalidated";
+      reason: string;
+    }
+  | {
       type: "renderStarted";
       requestId: number;
       reason: string;
@@ -75,7 +79,7 @@ export type PreviewFromWebviewMessage =
   | { type: "ready" }
   | { type: "refresh" }
   | { type: "showSource" }
-  | { type: "copySvg"; svg: string }
+  | { type: "copySvg"; svg: string; sourceKey: PreviewSourceKey }
   | { type: "exportRendered"; format: "svg" | "png"; sourceKey: PreviewSourceKey }
   | { type: "revealDiagnostic"; target: string }
   | { type: "selectSource"; sourceId: string }
@@ -117,7 +121,7 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
     case "showSource":
       return true;
     case "copySvg":
-      return typeof record.svg === "string";
+      return typeof record.svg === "string" && isPreviewSourceKey(record.sourceKey);
     case "exportRendered":
       return (
         (record.format === "svg" || record.format === "png") &&

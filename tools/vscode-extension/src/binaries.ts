@@ -36,8 +36,8 @@ export function resolveMermanBinary(request: BinaryResolutionRequest): BinaryInv
   assertTrustedDirectArgs(directArgs, request);
   const explicitPath = normalizePath(request.explicitPath);
   if (explicitPath) {
-    assertExecutable(explicitPath, request.binaryName, "configured path");
     assertTrustedWorkspaceExecutable(explicitPath, request);
+    assertExecutable(explicitPath, request.binaryName, "configured path");
     return {
       command: explicitPath,
       args: directArgs,

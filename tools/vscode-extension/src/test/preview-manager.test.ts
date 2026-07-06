@@ -81,6 +81,7 @@ class FakePreviewHost {
   );
   private readonly disposables: FakeDisposable[] = [];
   private readonly activeTextEditorListeners: Array<() => void> = [];
+  private readonly textDocumentChangeListeners: Array<(event: { document: vscode.TextDocument }) => void> = [];
   private readonly documents = new Map<string, vscode.TextDocument>();
   private activeEditor = textEditor(this.activeDocument);
   private readonly visibleEditors: vscode.TextEditor[] = [this.activeEditor];
@@ -230,7 +231,10 @@ class FakePreviewHost {
           return document;
         },
         asRelativePath: (target: { toString(): string }) => target.toString(),
-        onDidChangeTextDocument: () => host.disposable(),
+        onDidChangeTextDocument: (listener: (event: { document: vscode.TextDocument }) => void) => {
+          host.textDocumentChangeListeners.push(listener);
+          return host.disposable();
+        },
       },
       languages: {
         getDiagnostics: () => [],
@@ -266,6 +270,12 @@ class FakePreviewHost {
     this.activeEditor = editor;
     for (const listener of this.activeTextEditorListeners) {
       listener();
+    }
+  }
+
+  fireDocumentChange(document: vscode.TextDocument): void {
+    for (const listener of this.textDocumentChangeListeners) {
+      listener({ document });
     }
   }
 
@@ -659,8 +669,8 @@ describe("preview manager", () => {
     const secondSourceKey = lastRenderedSourceKey(host.panels[1]);
     host.renderCalls.splice(0);
 
-    await host.panels[0]?.receive({ type: "copySvg", svg: "<svg id=\"first\"></svg>" });
-    await host.panels[1]?.receive({ type: "copySvg", svg: "<svg id=\"second\"></svg>" });
+    await host.panels[0]?.receive({ type: "copySvg", svg: "<svg id=\"first\"></svg>", sourceKey: firstSourceKey });
+    await host.panels[1]?.receive({ type: "copySvg", svg: "<svg id=\"second\"></svg>", sourceKey: secondSourceKey });
     await host.panels[0]?.receive({ type: "exportRendered", format: "svg", sourceKey: firstSourceKey });
     await host.panels[1]?.receive({ type: "exportRendered", format: "png", sourceKey: secondSourceKey });
 
@@ -703,7 +713,38 @@ describe("preview manager", () => {
 
     assert.deepEqual(host.renderCalls, []);
     assert.deepEqual(host.warnings.slice(-1), [
-      "Wait for the latest Mermaid preview to finish rendering before exporting.",
+      "Wait for the latest Mermaid preview to finish rendering before copying or exporting.",
+    ]);
+  });
+
+  it("refuses copy and export immediately after a tracked document changes", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    const staleSourceKey = lastRenderedSourceKey(host.panels[0]);
+    host.renderCalls.splice(0);
+
+    host.fireDocumentChange(host.targetDocument);
+    await host.panels[0]?.receive({
+      type: "copySvg",
+      svg: "<svg id=\"old\"></svg>",
+      sourceKey: staleSourceKey,
+    });
+    await host.panels[0]?.receive({ type: "exportRendered", format: "svg", sourceKey: staleSourceKey });
+
+    assert.deepEqual(host.clipboardWrites, []);
+    assert.deepEqual(host.renderCalls, []);
+    assert.deepEqual(host.warnings.slice(-2), [
+      "Wait for the latest Mermaid preview to finish rendering before copying or exporting.",
+      "Wait for the latest Mermaid preview to finish rendering before copying or exporting.",
     ]);
   });
 
@@ -717,9 +758,13 @@ describe("preview manager", () => {
     } as unknown as vscode.ExtensionContext);
 
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSourceKey(host.panels[0]);
     await host.panels[0]?.receive({
       type: "copySvg",
       svg: "<svg><script>alert(1)</script></svg>",
+      sourceKey,
     });
     await flushPreviewWork();
 

@@ -27,7 +27,7 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "ready" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "refresh" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "showSource" }), true);
-    assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: "<svg></svg>" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: "<svg></svg>", sourceKey }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "svg", sourceKey }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "png", sourceKey }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource", sourceId: "fence-2" }), true);
@@ -40,7 +40,8 @@ describe("preview message validation", () => {
 
   it("rejects malformed or unknown webview command payloads", () => {
     assert.equal(isPreviewFromWebviewMessage(null), false);
-    assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: 1 }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: 1, sourceKey }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "copySvg", svg: "<svg></svg>" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "svg" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "pdf" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource" }), false);
