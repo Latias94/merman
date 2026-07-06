@@ -47,6 +47,7 @@
       typeof persisted.sourceLocationKey === "string" ? persisted.sourceLocationKey : undefined,
     sourceIdentityKey:
       typeof persisted.sourceIdentityKey === "string" ? persisted.sourceIdentityKey : undefined,
+    latestRequestId: 0,
     activeRequestId: undefined,
     dragging: false,
     pointerId: undefined,
@@ -77,6 +78,48 @@
 
   function finiteNumber(value, fallback) {
     return Number.isFinite(value) ? value : fallback;
+  }
+
+  function validRequestId(value) {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+
+  function observeRenderStarted(requestId) {
+    if (!validRequestId(requestId) || requestId < state.latestRequestId) {
+      return false;
+    }
+    state.latestRequestId = requestId;
+    state.activeRequestId = requestId;
+    return true;
+  }
+
+  function observeRenderInvalidated(requestId) {
+    if (!validRequestId(requestId)) {
+      state.latestRequestId += 1;
+    } else if (requestId < state.latestRequestId) {
+      return false;
+    } else {
+      state.latestRequestId = requestId;
+    }
+    state.activeRequestId = undefined;
+    return true;
+  }
+
+  function shouldAcceptRenderTerminal(requestId) {
+    if (!validRequestId(requestId) || requestId < state.latestRequestId) {
+      return false;
+    }
+    if (state.activeRequestId !== undefined && state.activeRequestId !== requestId) {
+      return false;
+    }
+    state.latestRequestId = requestId;
+    return true;
+  }
+
+  function finishRenderTerminal(requestId) {
+    if (state.activeRequestId === requestId) {
+      state.activeRequestId = undefined;
+    }
   }
 
   function clamp(value, min, max) {
@@ -494,7 +537,8 @@
     }
   }
 
-  function showEmpty(heading, detail) {
+  function showEmpty(heading, detail, requestId) {
+    observeRenderInvalidated(requestId);
     state.locked = false;
     state.sourceKey = undefined;
     state.sourceKeyId = undefined;
@@ -580,7 +624,7 @@
   function handleMessage(message) {
     switch (message.type) {
       case "showEmpty":
-        showEmpty(message.heading, message.detail);
+        showEmpty(message.heading, message.detail, message.requestId);
         break;
       case "sourceListUpdated":
       case "selectionChanged":
@@ -589,7 +633,9 @@
         patchSnapshot(message.snapshot);
         break;
       case "renderStarted":
-        state.activeRequestId = message.requestId;
+        if (!observeRenderStarted(message.requestId)) {
+          return;
+        }
         if (isDifferentSourceLocation(message.snapshot)) {
           clearPreviewContent(message.snapshot);
         }
@@ -602,21 +648,23 @@
         );
         break;
       case "renderInvalidated":
-        state.activeRequestId = undefined;
+        if (!observeRenderInvalidated(message.requestId)) {
+          return;
+        }
         setRenderState("stale");
         showStatus("Source changed. Waiting to refresh preview.", "loading");
         break;
       case "renderSucceeded":
-        if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {
+        if (!shouldAcceptRenderTerminal(message.requestId)) {
           return;
         }
         patchSnapshot(message.snapshot);
         replacePreviewContent(message.content, message.snapshot);
-        state.activeRequestId = undefined;
+        finishRenderTerminal(message.requestId);
         hideStatus();
         break;
       case "renderFailed":
-        if (state.activeRequestId !== undefined && state.activeRequestId !== message.requestId) {
+        if (!shouldAcceptRenderTerminal(message.requestId)) {
           return;
         }
         const sourceLocationChanged = isDifferentSourceLocation(message.snapshot);
@@ -624,7 +672,7 @@
           clearPreviewContent(message.snapshot);
         }
         patchSnapshot(message.snapshot);
-        state.activeRequestId = undefined;
+        finishRenderTerminal(message.requestId);
         showRenderFailure(message.error, !sourceLocationChanged && hasPreviewContent());
         break;
     }

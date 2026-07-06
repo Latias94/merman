@@ -83,6 +83,7 @@ class FakePreviewHost {
   private readonly activeTextEditorListeners: Array<() => void> = [];
   private readonly textDocumentChangeListeners: Array<(event: { document: vscode.TextDocument }) => void> = [];
   private readonly documents = new Map<string, vscode.TextDocument>();
+  private readonly deferredDocumentOpens = new Map<string, { promise: Promise<void>; release: () => void }>();
   private activeEditor = textEditor(this.activeDocument);
   private readonly visibleEditors: vscode.TextEditor[] = [this.activeEditor];
 
@@ -228,6 +229,11 @@ class FakePreviewHost {
         openTextDocument: async (resource: { toString(): string }) => {
           const document = host.documents.get(resource.toString());
           assert.ok(document, `Unexpected document ${resource.toString()}`);
+          const deferred = host.deferredDocumentOpens.get(resource.toString());
+          if (deferred) {
+            await deferred.promise;
+            host.deferredDocumentOpens.delete(resource.toString());
+          }
           return document;
         },
         asRelativePath: (target: { toString(): string }) => target.toString(),
@@ -277,6 +283,15 @@ class FakePreviewHost {
     for (const listener of this.textDocumentChangeListeners) {
       listener({ document });
     }
+  }
+
+  deferOpenTextDocument(documentUri: vscode.Uri): () => void {
+    let release: () => void = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.deferredDocumentOpens.set(documentUri.toString(), { promise, release });
+    return release;
   }
 
   private createPanel(title: string, viewColumn: number): FakePanel {
@@ -600,6 +615,34 @@ describe("preview manager", () => {
     assert.deepEqual(host.showTextDocumentCalls.map((call) => call.documentUri), [
       "file:///workspace/example.mmd",
       "file:///workspace/second.mmd",
+    ]);
+  });
+
+  it("keeps the newest follow preview target when concurrent opens resolve out of order", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    const releaseFirstOpen = host.deferOpenTextDocument(host.targetDocument.uri);
+    const firstOpen = host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await flushPreviewWork();
+
+    const secondOpen = host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
+    await secondOpen;
+    releaseFirstOpen();
+    await firstOpen;
+    await flushPreviewWork();
+
+    assert.equal(host.panels.length, 1);
+    assert.deepEqual(host.showTextDocumentCalls.map((call) => call.documentUri), [
+      "file:///workspace/second.mmd",
+    ]);
+    assert.deepEqual(host.renderCalls.map((call) => call.source), [
+      "sequenceDiagram\nA->>B: hi\n",
     ]);
   });
 

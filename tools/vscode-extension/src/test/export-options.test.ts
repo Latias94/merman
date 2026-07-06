@@ -73,7 +73,8 @@ describe("export options", () => {
     const script = args[3] ?? "";
 
     assert.equal(args.at(-1), dangerousPath);
-    assert.match(script, /\$args\[0\]/);
+    assert.match(script, /param\(\[string\]\$imagePath\)/);
+    assert.doesNotMatch(script, /\$args\b/);
     assert.doesNotMatch(script, /\$\(Write-Output injected\)/);
     assert.doesNotMatch(script, /diagram/);
   });

@@ -33,6 +33,7 @@ export interface PreviewSnapshotMessagePayload {
 export type PreviewToWebviewMessage =
   | {
       type: "showEmpty";
+      requestId?: number;
       heading: string;
       detail: string;
     }
@@ -54,6 +55,7 @@ export type PreviewToWebviewMessage =
     }
   | {
       type: "renderInvalidated";
+      requestId: number;
       reason: string;
     }
   | {

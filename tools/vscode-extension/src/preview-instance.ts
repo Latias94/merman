@@ -58,6 +58,7 @@ export class PreviewInstance implements vscode.Disposable {
   private readonly panelDisposables: vscode.Disposable[] = [];
   private disposed = false;
   private renderedOutputStale = false;
+  private openGeneration = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -93,10 +94,11 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
 
+    const openGeneration = ++this.openGeneration;
     const shouldRetargetSource = !this.panel || !this.session.isLocked || !this.session.snapshot;
     if (shouldRetargetSource) {
-      await this.openResource(target);
-      if (this.disposed) {
+      await this.openResource(target, openGeneration);
+      if (!this.isCurrentOpen(openGeneration)) {
         return;
       }
     }
@@ -108,7 +110,9 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     this.ensureWebviewHtml(panel);
-    this.scheduleRefresh(shouldRetargetSource ? "manual-open" : "panel-visible", true);
+    if (this.isCurrentOpen(openGeneration)) {
+      this.scheduleRefresh(shouldRetargetSource ? "manual-open" : "panel-visible", true);
+    }
   }
 
   scheduleRefresh(reason: PreviewUpdateReason, immediate = false): void {
@@ -137,8 +141,8 @@ export class PreviewInstance implements vscode.Disposable {
     }
     this.renderedOutputStale = true;
     this.webviewClient.invalidateRenderedOutput();
-    this.renderQueue.cancelPending();
-    void this.postMessage({ type: "renderInvalidated", reason }).catch((error: unknown) => {
+    const requestId = this.renderQueue.cancelPending();
+    void this.postMessage({ type: "renderInvalidated", requestId, reason }).catch((error: unknown) => {
       this.handleRefreshError(error);
     });
   }
@@ -274,10 +278,13 @@ export class PreviewInstance implements vscode.Disposable {
     }
   }
 
-  private async openResource(target?: MermaidSourceCommandArgument): Promise<void> {
+  private async openResource(target: MermaidSourceCommandArgument | undefined, openGeneration: number): Promise<void> {
     const resource = mermaidSourceCommandUri(target);
     const source = mermaidSourceCommandIdentity(target) ?? mermaidSourceCommandSourceId(target);
     if (!resource) {
+      if (!this.isCurrentOpen(openGeneration)) {
+        return;
+      }
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor && extractPreviewInput(activeEditor)) {
         this.session.clearSelectedSource();
@@ -289,16 +296,26 @@ export class PreviewInstance implements vscode.Disposable {
     let editor = vscode.window.activeTextEditor;
     if (editor?.document.uri.toString() !== resource.toString()) {
       const document = await vscode.workspace.openTextDocument(resource);
+      if (!this.isCurrentOpen(openGeneration)) {
+        return;
+      }
       editor = await vscode.window.showTextDocument(document, {
         preview: true,
         preserveFocus: true,
       });
+      if (!this.isCurrentOpen(openGeneration)) {
+        return;
+      }
     }
     if (source && editor) {
       this.session.selectSource(editor, vscode.window.visibleTextEditors, source);
     } else {
       this.session.clearSelectedSource();
     }
+  }
+
+  private isCurrentOpen(openGeneration: number): boolean {
+    return !this.disposed && this.openGeneration === openGeneration;
   }
 
   private async refresh(reason: PreviewUpdateReason): Promise<void> {
@@ -329,6 +346,7 @@ export class PreviewInstance implements vscode.Disposable {
         case "showEmpty":
           await this.postMessage({
             type: "showEmpty",
+            requestId: this.renderQueue.currentRequestId(),
             heading: "No Mermaid source available",
             detail:
               "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",

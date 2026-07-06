@@ -18,10 +18,15 @@ export class PreviewRenderQueue {
   private requestId = 0;
   private abortController: AbortController | undefined;
 
-  cancelPending(): void {
+  cancelPending(): number {
     this.requestId += 1;
     this.abortController?.abort();
     this.abortController = undefined;
+    return this.requestId;
+  }
+
+  currentRequestId(): number {
+    return this.requestId;
   }
 
   async render(

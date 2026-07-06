@@ -97,7 +97,7 @@ export function pngClipboardArgs(platform: NodeJS.Platform, imagePath: string): 
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = [Drawing.Image]::FromFile($args[0]); try { [Windows.Forms.Clipboard]::SetImage($img) } finally { $img.Dispose() }",
+        "param([string]$imagePath) $ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = [Drawing.Image]::FromFile($imagePath); try { [Windows.Forms.Clipboard]::SetImage($img) } finally { $img.Dispose() }",
         imagePath,
       ];
     case "linux":

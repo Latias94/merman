@@ -284,6 +284,81 @@ describe("preview webview app", () => {
     assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-a"));
   });
 
+  it("ignores lifecycle messages older than the latest render start", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+    const initialSvg = app.document.canvas.querySelector("svg");
+
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 3,
+      reason: "document-change",
+      snapshot: snapshot({ sourceHash: "hash-c" }),
+    });
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 2,
+      reason: "document-change",
+      snapshot: snapshot({ sourceHash: "hash-b" }),
+    });
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 2,
+      snapshot: snapshot({ sourceHash: "hash-b" }),
+      content: '<svg viewBox="0 0 300 150"></svg>',
+    });
+
+    assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
+    assert.equal(app.document.frame.dataset.renderState, "loading");
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 3,
+      snapshot: snapshot({ sourceHash: "hash-c" }),
+      content: '<svg viewBox="0 0 200 100"></svg>',
+    });
+
+    assert.notEqual(app.document.canvas.querySelector("svg"), initialSvg);
+    assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-c"));
+  });
+
+  it("keeps render invalidation as a tombstone for older terminal messages", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 2,
+      reason: "document-change",
+      snapshot: snapshot({ sourceHash: "hash-b" }),
+    });
+    app.dispatch({
+      type: "renderInvalidated",
+      requestId: 3,
+      reason: "document-change",
+    });
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 2,
+      snapshot: snapshot({ sourceHash: "hash-b" }),
+      content: '<svg viewBox="0 0 300 150"></svg>',
+    });
+
+    assert.equal(app.document.frame.dataset.renderState, "stale");
+    assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-a"));
+  });
+
   it("patches diagnostics without replacing the rendered SVG", () => {
     const app = loadPreviewApp();
 
