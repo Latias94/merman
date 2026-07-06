@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { surfaces, surfaceRuntimeExportNames } from "./surface-manifest.mjs";
+import { surfaces } from "./surface-manifest.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(packageRoot, "src");
@@ -19,15 +19,18 @@ for (const surface of surfaces) {
     "--out-dir-rel",
     surface.pkgDirRel,
   ]);
-  writeSurfaceEntry(surface.entry, surface.pkgDirRel);
+  writeSurfaceEntry(surface);
 }
 
-function writeSurfaceEntry(entryName, pkgDirRel) {
-  const normalizedPkgDirRel = normalizeImportPath(pkgDirRel);
+function writeSurfaceEntry(surface) {
+  const normalizedPkgDirRel = normalizeImportPath(surface.pkgDirRel);
   const source = [
     'import { bindSurfaceRuntime } from "../surface-runtime.js";',
     'import type { MermanWasmModule } from "../index.js";',
-    'export * from "../index.js";',
+    'export type * from "../index.js";',
+    "export {",
+    ...surface.valueExportNames.map((name) => `  ${name},`),
+    '} from "../index.js";',
     "",
     "function surfaceLoader(): Promise<MermanWasmModule> {",
     `  // @ts-ignore -- generated wasm-bindgen artifact exists after build:surfaces runs.`,
@@ -37,11 +40,11 @@ function writeSurfaceEntry(entryName, pkgDirRel) {
     "const runtime = bindSurfaceRuntime(surfaceLoader);",
     "",
     "export const {",
-    ...surfaceRuntimeExportNames.map((name) => `  ${name},`),
+    ...surface.runtimeExportNames.map((name) => `  ${name},`),
     "} = runtime;",
     "",
   ].join("\n");
-  writeFileSync(path.join(surfacesDir, `${entryName}.ts`), source);
+  writeFileSync(path.join(surfacesDir, `${surface.entry}.ts`), source);
 }
 
 function normalizeImportPath(relativePath) {

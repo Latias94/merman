@@ -4,17 +4,28 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
+import {
+  allSurfaceRuntimeExportNames,
+  allSurfaceValueExportNames,
+  surfaces,
+} from "./surface-manifest.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
 const args = process.argv.slice(2);
+const fullSurface = surfaces.find((surface) => surface.entry === "full");
+if (!fullSurface) {
+  throw new Error("surface manifest is missing the full entry");
+}
+const editorRuntimeExports = fullSurface.runtimeExportNames.filter((name) =>
+  name.startsWith("editor")
+);
 
 const surfaceSmokeCases = [
   surfaceSmokeCase("default", ".", "pkg"),
-  surfaceSmokeCase("core", "./core", "pkg/core"),
-  surfaceSmokeCase("render", "./render", "pkg/render"),
-  surfaceSmokeCase("ascii", "./ascii", "pkg/ascii"),
-  surfaceSmokeCase("full", "./full", "pkg/full"),
+  ...surfaces.map((surface) =>
+    surfaceSmokeCase(surface.entry, `./${surface.entry}`, surface.pkgDirRel)
+  ),
 ];
 
 if (args.length === 0) {
@@ -68,8 +79,10 @@ const {
 
 const api = await import(resolveEntryModuleHref(entrySubpath));
 const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
+const surfaceContract = surfaceContractForEntry(entrySubpath);
 
 assert.equal(typeof exportedWasmModule.default, "function");
+assertSurfaceExports(api, surfaceContract);
 if (typeof import.meta.resolve === "function") {
   assert.match(
     import.meta.resolve(toPackageSpecifier(wasmBinaryRel)),
@@ -129,25 +142,27 @@ class FakeMeasureElement {
 assert.equal(api.isMermanInitialized(), true);
 assert.equal(Number.isInteger(api.abiVersion()), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
-assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
-assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
-assert.equal(typeof api.createBrowserTextMeasurer, "function");
-assert.equal(api.createBrowserTextMeasurer()({ text: "Node", font_size: 16 }), undefined);
-withFakeMeasureDom(() => {
-  const browserMeasurer = api.createBrowserTextMeasurer();
-  const shortLabel = browserMeasurer(textMeasureRequest("Condition?", 200));
-  assert.ok(shortLabel.width > 0);
-  assert.ok(
-    shortLabel.width < 200,
-    `short max-width labels should use natural width, got ${shortLabel.width}`
-  );
+if (surfaceContract.render) {
+  assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
+  assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
+  assert.equal(typeof api.createBrowserTextMeasurer, "function");
+  assert.equal(api.createBrowserTextMeasurer()({ text: "Node", font_size: 16 }), undefined);
+  withFakeMeasureDom(() => {
+    const browserMeasurer = api.createBrowserTextMeasurer();
+    const shortLabel = browserMeasurer(textMeasureRequest("Condition?", 200));
+    assert.ok(shortLabel.width > 0);
+    assert.ok(
+      shortLabel.width < 200,
+      `short max-width labels should use natural width, got ${shortLabel.width}`
+    );
 
-  const longLabel = browserMeasurer(
-    textMeasureRequest("Condition ".repeat(40), 200)
-  );
-  assert.equal(longLabel.width, 200);
-  assert.ok(longLabel.line_count > 1);
-});
+    const longLabel = browserMeasurer(
+      textMeasureRequest("Condition ".repeat(40), 200)
+    );
+    assert.equal(longLabel.width, 200);
+    assert.ok(longLabel.line_count > 1);
+  });
+}
 
 const capabilities = api.bindingCapabilities();
 assert.equal(typeof capabilities.render, "boolean");
@@ -161,6 +176,9 @@ assert.equal(typeof capabilities.text_measurement.vendored, "boolean");
 assert.equal(typeof capabilities.text_measurement.deterministic, "boolean");
 assert.equal(typeof capabilities.text_measurement.host_callback, "boolean");
 assert.equal(typeof capabilities.text_measurement.font_assets, "boolean");
+assert.equal(capabilities.render, surfaceContract.render);
+assert.equal(capabilities.ascii, surfaceContract.ascii);
+assert.equal(capabilities.editor_language, surfaceContract.editor);
 assert.equal(capabilities.text_measurement.host_callback, capabilities.render);
 assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
 
@@ -373,9 +391,16 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(valid.valid, true);
   assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
 
-  assertUnsupportedFormat(() => api.renderSvg(source, options));
-  assertUnsupportedFormat(() => api.parseJson(source, deterministicTime));
-  assertUnsupportedFormat(() => api.layoutJson(source, options));
+  assert.equal(typeof api.renderSvg, "undefined");
+  assert.equal(typeof api.renderSvgWithTextMeasurer, "undefined");
+  assert.equal(typeof api.layoutJsonWithTextMeasurer, "undefined");
+  assert.equal(typeof api.renderSvgElement, "undefined");
+  assert.equal(typeof api.renderSvgToElement, "undefined");
+  assert.equal(typeof api.parseJson, "undefined");
+  assert.equal(typeof api.parseObject, "undefined");
+  assert.equal(typeof api.layoutJson, "undefined");
+  assert.equal(typeof api.layoutObject, "undefined");
+  assert.equal(typeof api.createBrowserTextMeasurer, "undefined");
   assert.equal(capabilities.text_measurement.host_callback, false);
 }
 
@@ -384,11 +409,15 @@ if (capabilities.ascii) {
   assert.match(ascii, /Hello/);
   assert.match(ascii, /World/);
 } else {
-  assert.deepEqual(api.asciiSupportedDiagrams(), []);
+  assert.equal(typeof api.renderAscii, "undefined");
+  assert.equal(typeof api.asciiSupportedDiagrams, "undefined");
+  assert.equal(typeof api.asciiCapabilities, "undefined");
 }
 
 assert.match(api.encodeOptions(options), /deterministic/);
-assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
+if (capabilities.render) {
+  assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
+}
 
 assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
 if (capabilities.render) {
@@ -396,7 +425,7 @@ if (capabilities.render) {
     ...api.SUPPORTED_HOST_THEME_PRESETS,
   ]);
 } else {
-  assert.deepEqual(api.supportedHostThemePresets(), []);
+  assert.equal(typeof api.supportedHostThemePresets, "undefined");
 }
 
 if (capabilities.core_full) {
@@ -415,9 +444,11 @@ if (capabilities.core_full) {
   );
 }
 
-const asciiDiagrams = api.asciiSupportedDiagrams();
-for (const diagram of asciiDiagrams) {
-  assert.equal(api.isAsciiDiagramType(diagram), true);
+if (capabilities.ascii) {
+  const asciiDiagrams = api.asciiSupportedDiagrams();
+  for (const diagram of asciiDiagrams) {
+    assert.equal(api.isAsciiDiagramType(diagram), true);
+  }
 }
 
 function textMeasureRequest(text, maxWidth) {
@@ -527,50 +558,8 @@ function assertEditorLanguageSurface(enabled) {
   const editorUri = "file:///tmp/example.mmd";
 
   if (!enabled) {
-    const disabledCalls = [
-      [
-        "editorDiagnostics",
-        () => api.editorDiagnostics(editorSource, deterministicTime, editorUri),
-      ],
-      [
-        "editorCodeActions",
-        () => api.editorCodeActions(editorSource, deterministicTime, editorUri),
-      ],
-      [
-        "editorCompletions",
-        () => api.editorCompletions(editorSource, { line: 2, character: 4 }, editorUri),
-      ],
-      [
-        "editorHover",
-        () => api.editorHover(editorSource, { line: 1, character: 0 }, editorUri),
-      ],
-      ["editorDocumentSymbols", () => api.editorDocumentSymbols(editorSource, editorUri)],
-      [
-        "editorWorkspaceSymbols",
-        () => api.editorWorkspaceSymbols(editorSource, "A", editorUri),
-      ],
-      [
-        "editorDefinition",
-        () => api.editorDefinition(editorSource, { line: 1, character: 0 }, editorUri),
-      ],
-      [
-        "editorReferences",
-        () => api.editorReferences(editorSource, { line: 1, character: 0 }, true, editorUri),
-      ],
-      [
-        "editorPrepareRename",
-        () => api.editorPrepareRename(editorSource, { line: 1, character: 0 }, editorUri),
-      ],
-      [
-        "editorRename",
-        () => api.editorRename(editorSource, { line: 1, character: 0 }, "Next", editorUri),
-      ],
-      ["editorSemanticTokenLegend", () => api.editorSemanticTokenLegend()],
-      ["editorSemanticTokens", () => api.editorSemanticTokens(editorSource, editorUri)],
-    ];
-
-    for (const [apiName, run] of disabledCalls) {
-      assert.throws(run, new RegExp(`${apiName}\\(\\) is not available`));
+    for (const apiName of editorRuntimeExports) {
+      assert.equal(typeof api[apiName], "undefined");
       assert.equal(typeof exportedWasmModule[apiName], "undefined");
     }
     return;
@@ -732,7 +721,7 @@ async function runSameProcessSurfaceSmoke() {
     },
   });
   assert.equal(core.bindingCapabilities().render, false);
-  assertUnsupportedFormat(() => core.renderSvg(source, options));
+  assert.equal(typeof core.renderSvg, "undefined");
 
   await full.initMerman({
     wasm: {
@@ -744,7 +733,50 @@ async function runSameProcessSurfaceSmoke() {
   assert.equal(full.bindingCapabilities().render, true);
   assert.match(full.renderSvg(source, options), /<svg/);
   assert.equal(core.bindingCapabilities().render, false);
-  assertUnsupportedFormat(() => core.renderSvg(source, options));
+  assert.equal(typeof core.renderSvg, "undefined");
+}
+
+function surfaceContractForEntry(subpath) {
+  const trimmed = subpath.replace(/^\.\//, "").replace(/^\//, "");
+  if (subpath === "." || trimmed === "index" || trimmed === "full") {
+    return buildSurfaceContract(fullSurface);
+  }
+
+  const surface = surfaces.find((candidate) => candidate.entry === trimmed);
+  if (!surface) {
+    throw new Error(`unknown smoke entry subpath: ${subpath}`);
+  }
+  return buildSurfaceContract(surface);
+}
+
+function buildSurfaceContract(surface) {
+  return {
+    ...surface,
+    render: surface.runtimeExportNames.includes("renderSvg"),
+    ascii: surface.runtimeExportNames.includes("renderAscii"),
+    editor: surface.runtimeExportNames.includes("editorDiagnostics"),
+  };
+}
+
+function assertSurfaceExports(moduleApi, contract) {
+  const expectedRuntimeExports = new Set(contract.runtimeExportNames);
+  const expectedValueExports = new Set(contract.valueExportNames);
+
+  for (const name of allSurfaceRuntimeExportNames) {
+    assertExport(moduleApi, name, expectedRuntimeExports.has(name));
+  }
+
+  for (const name of allSurfaceValueExportNames) {
+    assertExport(moduleApi, name, expectedValueExports.has(name));
+  }
+}
+
+function assertExport(moduleApi, name, enabled) {
+  if (enabled) {
+    assert.notEqual(moduleApi[name], undefined, `${name} should be exported`);
+  } else {
+    assert.equal(moduleApi[name], undefined, `${name} should not be exported`);
+  }
 }
 
 function resolveEntryModuleHref(subpath) {

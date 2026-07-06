@@ -69,6 +69,10 @@ whether `editor_language` is compiled. It also exposes `selectedRegistryProfile(
 `diagramFamilyCapabilities()` so local slim builds can report the actual full/tiny diagram
 parser/render matrix they contain, plus `lintRuleCatalog()` so editor integrations can discover the
 governed analyzer rule table and its evidence references without hard-coding them.
+The published subpaths are capability-specific TypeScript entry points: they type-re-export the
+shared public option/result types and stable helper values, then export only the runtime wrappers
+that the subpath supports. Unsupported render, ASCII, or editor wrappers are absent from slim
+subpaths instead of being exported as throwing stubs.
 
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
@@ -81,7 +85,9 @@ governed analyzer rule table and its evidence references without hard-coding the
 
 `npm run check:contracts --prefix platforms/web` compares the wasm-bindgen full declarations with
 the hand-written TypeScript wrapper, `MermanWasmModule`, `bindSurfaceRuntime()`, and the generated
-subpath entry templates. `npm run prepack --prefix platforms/web` runs that contract check and
+capability-specific subpath entry templates. It also rejects value star re-exports and unsupported
+runtime wrapper exports in slim subpaths. `npm run prepack --prefix platforms/web` runs that
+contract check and
 requires `browser-full` unless `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional
 local slim package. This protects the public npm package from accidentally publishing a slim artifact
 under the default import path. It also checks that every package subpath has matching TypeScript,
@@ -104,7 +110,8 @@ Current release semantics are intentionally explicit:
   that want ELK must enable `elk-layout` or publish a distinct full artifact.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
   browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`, and
-  `@mermanjs/web/ascii`; `@mermanjs/web/full` is the explicit full-preset subpath.
+  `@mermanjs/web/ascii`; these slim subpaths omit unsupported runtime wrapper exports.
+  `@mermanjs/web/full` is the explicit full-preset subpath.
 - `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
   whether `editor_language` is available.
   `selectedRegistryProfile()` and `diagramFamilyCapabilities()` report the selected diagram registry

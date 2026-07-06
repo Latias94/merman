@@ -18,6 +18,9 @@ browser, native, and LSP integrations.
   diagnostics move to stderr.
 - `merman-cli` now returns more specific failure codes: 2 for invalid input/config/output, 3 for
   direct I/O failures, and 1 for render/runtime failures. Broken stdout pipes now exit successfully.
+- `@mermanjs/web` slim subpaths now omit unsupported runtime wrappers instead of exporting throwing
+  stubs. Use the default entry point or `@mermanjs/web/full` when one namespace needs render, ASCII,
+  and editor-language wrappers together.
 - Removed the optional `merman` `egui-example` feature and desktop GUI example.
 
 ### Added
@@ -45,8 +48,9 @@ browser, native, and LSP integrations.
 
 - VS Code users can enable preview/export, diagnostics, source actions, and language intelligence
   independently, making Merman easier to run beside other Mermaid preview or lint extensions.
-- Browser packages now expose build presets and capability metadata so hosts can check whether
-  render, ASCII, ELK, analysis, or editor-language APIs are available in the loaded WASM artifact.
+- Browser packages now expose build presets, capability metadata, and capability-specific subpath
+  exports so hosts can check whether render, ASCII, ELK, analysis, or editor-language APIs are
+  available in the loaded WASM artifact.
 - Refreshed workspace dependencies, including `toml` 1.1 and UniFFI 0.32, and pruned unused GUI
   dependencies from the lockfile.
 - Improved Python, Flutter, and package metadata so package pages expose changelog, documentation,

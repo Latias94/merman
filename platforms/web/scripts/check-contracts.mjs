@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { surfaces, surfaceRuntimeExportNames } from "./surface-manifest.mjs";
+import {
+  allSurfaceRuntimeExportNames,
+  surfaces,
+} from "./surface-manifest.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fullWasmTypes = path.join(root, "pkg", "full", "merman_wasm.d.ts");
@@ -37,7 +40,7 @@ const publicApi = read(publicApiSource);
 const publicWrappers = extractExportedFunctionNames(publicApi);
 const wasmModuleProperties = extractInterfaceProperties(publicApi, "MermanWasmModule");
 const runtimeBindings = extractSurfaceRuntimeBindings(read(surfaceRuntimeSource));
-const generatedSurfaceBindings = new Set(surfaceRuntimeExportNames);
+const generatedSurfaceBindings = new Set(allSurfaceRuntimeExportNames);
 const requiredRawWrappers = rawWasmExports.filter((name) => !wasmGlueExports.has(name));
 const requiredPublicWrappers = [
   ...requiredRawWrappers,
@@ -121,12 +124,36 @@ for (const [typeName, requiredLiterals] of requiredTypeStringLiterals) {
   );
 }
 
-for (const entry of surfaceEntries) {
-  const surfaceSource = path.join(root, "src", "surfaces", `${entry}.ts`);
-  const surfaceBindings = extractRuntimeDestructure(read(surfaceSource), surfaceSource);
+for (const surface of surfaces) {
+  const surfaceSource = path.join(root, "src", "surfaces", `${surface.entry}.ts`);
+  const surfaceApi = read(surfaceSource);
+  const surfaceBindings = extractRuntimeDestructure(surfaceApi, surfaceSource);
+  const allowedRuntimeBindings = new Set(surface.runtimeExportNames);
+  const surfaceValueExports = extractNamedReExport(surfaceApi, "../index.js", surfaceSource);
+
   failed ||= reportMissing(
-    `check-contracts: ./${entry} surface entry does not re-export runtime-bound wrappers`,
-    requiredRuntimeBindings.filter((name) => !surfaceBindings.has(name)),
+    `check-contracts: ./${surface.entry} surface entry is missing allowed runtime-bound wrappers`,
+    surface.runtimeExportNames.filter((name) => !surfaceBindings.has(name)),
+  );
+  failed ||= reportUnexpected(
+    `check-contracts: ./${surface.entry} surface entry exports unsupported runtime-bound wrappers`,
+    [...surfaceBindings].filter((name) => !allowedRuntimeBindings.has(name)),
+  );
+  failed ||= reportMissing(
+    `check-contracts: ./${surface.entry} surface entry is missing stable value exports`,
+    surface.valueExportNames.filter((name) => !surfaceValueExports.has(name)),
+  );
+  failed ||= reportUnexpected(
+    `check-contracts: ./${surface.entry} surface entry exports undeclared stable values`,
+    [...surfaceValueExports].filter((name) => !surface.valueExportNames.includes(name)),
+  );
+  failed ||= reportPolicyFailure(
+    `check-contracts: ./${surface.entry} surface entry must not use value star re-exports`,
+    hasValueStarExport(surfaceApi),
+  );
+  failed ||= reportPolicyFailure(
+    `check-contracts: ./${surface.entry} surface entry must type-re-export the shared public types`,
+    !hasTypeStarExport(surfaceApi),
   );
 }
 
@@ -197,6 +224,31 @@ function extractRuntimeDestructure(source, file) {
   );
 }
 
+function extractNamedReExport(source, fromPath, file) {
+  const escapedPath = fromPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = source.match(
+    new RegExp(`export\\s+\\{([\\s\\S]*?)\\}\\s+from\\s+"${escapedPath}";`, "m"),
+  );
+  if (!match) {
+    throw new Error(`check-contracts: missing named re-export in ${path.relative(root, file)}`);
+  }
+
+  return new Set(
+    match[1]
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+}
+
+function hasValueStarExport(source) {
+  return /^\s*export\s+\*\s+from\s+["'][^"']+["'];/m.test(source);
+}
+
+function hasTypeStarExport(source) {
+  return /^\s*export\s+type\s+\*\s+from\s+["']\.\.\/index\.js["'];/m.test(source);
+}
+
 function matches(source, pattern) {
   return [...source.matchAll(pattern)].map((match) => match[1]);
 }
@@ -207,5 +259,23 @@ function reportMissing(title, missing) {
   }
 
   console.error([title, ...missing.sort().map((name) => `  - ${name}`)].join("\n"));
+  return true;
+}
+
+function reportUnexpected(title, unexpected) {
+  if (unexpected.length === 0) {
+    return false;
+  }
+
+  console.error([title, ...unexpected.sort().map((name) => `  - ${name}`)].join("\n"));
+  return true;
+}
+
+function reportPolicyFailure(title, failed) {
+  if (!failed) {
+    return false;
+  }
+
+  console.error(title);
   return true;
 }
