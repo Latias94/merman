@@ -85,6 +85,17 @@ export function samePreviewRenderKey(a: PreviewSnapshot, b: PreviewSnapshot): bo
   );
 }
 
+export function samePreviewSourceKey(a: PreviewSourceKey, b: PreviewSourceKey): boolean {
+  return (
+    a.documentUri === b.documentUri &&
+    a.sourceId === b.sourceId &&
+    a.sourceHash === b.sourceHash &&
+    a.diagramTheme === b.diagramTheme &&
+    a.displayMode === b.displayMode &&
+    a.background === b.background
+  );
+}
+
 export function previewSourceKeyId(key: PreviewSourceKey): string {
   return [
     key.documentUri,

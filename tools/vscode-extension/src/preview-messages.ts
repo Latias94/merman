@@ -76,7 +76,7 @@ export type PreviewFromWebviewMessage =
   | { type: "refresh" }
   | { type: "showSource" }
   | { type: "copySvg"; svg: string }
-  | { type: "exportRendered"; format: "svg" | "png" }
+  | { type: "exportRendered"; format: "svg" | "png"; sourceKey: PreviewSourceKey }
   | { type: "revealDiagnostic"; target: string }
   | { type: "selectSource"; sourceId: string }
   | { type: "setLocked"; locked: boolean }
@@ -119,7 +119,10 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
     case "copySvg":
       return typeof record.svg === "string";
     case "exportRendered":
-      return record.format === "svg" || record.format === "png";
+      return (
+        (record.format === "svg" || record.format === "png") &&
+        isPreviewSourceKey(record.sourceKey)
+      );
     case "revealDiagnostic":
       return typeof record.target === "string";
     case "selectSource":
@@ -149,5 +152,22 @@ export function isPreviewDiagramTheme(value: unknown): value is PreviewDiagramTh
     value === "forest" ||
     value === "neutral" ||
     value === "base"
+  );
+}
+
+function isPreviewSourceKey(value: unknown): value is PreviewSourceKey {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.documentUri === "string" &&
+    typeof record.sourceId === "string" &&
+    typeof record.sourceHash === "string" &&
+    isPreviewDiagramTheme(record.diagramTheme) &&
+    isPreviewDisplayMode(record.displayMode) &&
+    (record.background === "transparent" ||
+      record.background === "paper" ||
+      record.background === "dark")
   );
 }

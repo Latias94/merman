@@ -41,6 +41,7 @@
     background: typeof persisted.background === "string" ? persisted.background : "paper",
     displayMode: typeof persisted.displayMode === "string" ? persisted.displayMode : "svg",
     locked: persisted.locked === true,
+    sourceKey: undefined,
     sourceKeyId: typeof persisted.sourceKeyId === "string" ? persisted.sourceKeyId : undefined,
     sourceLocationKey:
       typeof persisted.sourceLocationKey === "string" ? persisted.sourceLocationKey : undefined,
@@ -495,6 +496,10 @@
 
   function showEmpty(heading, detail) {
     state.locked = false;
+    state.sourceKey = undefined;
+    state.sourceKeyId = undefined;
+    state.sourceLocationKey = undefined;
+    state.sourceIdentityKey = undefined;
     setRenderState("empty");
     if (emptyElement) {
       emptyElement.hidden = false;
@@ -519,6 +524,7 @@
       canvas.replaceChildren();
     }
     resetViewportForNewContent();
+    state.sourceKey = undefined;
     state.sourceKeyId = sourceKeyId(snapshot);
     state.sourceLocationKey = sourceLocationKey(snapshot);
     state.sourceIdentityKey = sourceIdentityKey(snapshot);
@@ -560,6 +566,7 @@
       state.panY = 0;
     }
     state.sourceKeyId = nextSourceKeyId;
+    state.sourceKey = snapshot?.sourceKey;
     state.sourceLocationKey = sourceLocationKey(snapshot);
     state.sourceIdentityKey = nextSourceIdentityKey;
     setRenderState("ready");
@@ -618,6 +625,13 @@
     }
   }
 
+  function exportRendered(format) {
+    if (!state.sourceKey) {
+      return;
+    }
+    post("exportRendered", { format, sourceKey: state.sourceKey });
+  }
+
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
@@ -658,10 +672,10 @@
         post("showSource", {});
         break;
       case "export-svg":
-        post("exportRendered", { format: "svg" });
+        exportRendered("svg");
         break;
       case "export-png":
-        post("exportRendered", { format: "png" });
+        exportRendered("png");
         break;
       case "lock":
         state.locked = !state.locked;

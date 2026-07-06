@@ -12,6 +12,8 @@ import {
   type PreviewDiagnostics,
   type PreviewDisplayMode,
   type PreviewSnapshot,
+  type PreviewSourceKey,
+  samePreviewSourceKey,
 } from "./preview-model.js";
 import {
   isPreviewDiagramTheme,
@@ -416,7 +418,7 @@ export class PreviewInstance implements vscode.Disposable {
         void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
         return;
       case "exportRendered":
-        await this.exportRendered(message.format);
+        await this.exportRendered(message.format, message.sourceKey);
         return;
       case "revealDiagnostic":
         await revealDiagnosticTarget(parseDiagnosticTarget(message.target));
@@ -485,11 +487,17 @@ export class PreviewInstance implements vscode.Disposable {
     this.scheduleRefresh("background", true);
   }
 
-  private async exportRendered(format: ExportFormat): Promise<void> {
+  private async exportRendered(format: ExportFormat, renderedSourceKey: PreviewSourceKey): Promise<void> {
     const snapshot = this.session.snapshot;
     if (!snapshot) {
       void vscode.window.showWarningMessage(
         "Open a Mermaid preview before exporting the rendered diagram.",
+      );
+      return;
+    }
+    if (!samePreviewSourceKey(snapshot.sourceKey, renderedSourceKey)) {
+      void vscode.window.showWarningMessage(
+        "Wait for the latest Mermaid preview to finish rendering before exporting.",
       );
       return;
     }

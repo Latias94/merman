@@ -141,6 +141,35 @@ describe("preview webview app", () => {
     assert.equal(app.document.exportSvg.title, "Export SVG");
   });
 
+  it("posts export commands with the rendered source key", () => {
+    const app = loadPreviewApp();
+    const renderedSnapshot = snapshot({ sourceHash: "hash-a" });
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: renderedSnapshot,
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+
+    app.click(app.document.exportSvg);
+    app.click(app.document.exportPng);
+
+    const posted = JSON.parse(JSON.stringify(app.postedMessages.slice(-2))) as unknown;
+    assert.deepEqual(posted, [
+      {
+        type: "exportRendered",
+        format: "svg",
+        sourceKey: renderedSnapshot.sourceKey,
+      },
+      {
+        type: "exportRendered",
+        format: "png",
+        sourceKey: renderedSnapshot.sourceKey,
+      },
+    ]);
+  });
+
   it("clears the previous SVG when a different source render fails", () => {
     const app = loadPreviewApp();
 

@@ -45,6 +45,12 @@ class FakePreviewHost {
   readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string }> = [];
   readonly clipboardWrites: string[] = [];
   readonly writtenFiles: Array<{ path: string; data: string }> = [];
+  readonly webviewOptions: Array<{
+    enableCommandUris?: boolean;
+    enableScripts?: boolean;
+    localResourceRoots?: Array<{ toString(): string }>;
+    retainContextWhenHidden?: boolean;
+  }> = [];
   readonly warnings: string[] = [];
   readonly errors: string[] = [];
   readonly informationMessages: string[] = [];
@@ -128,9 +134,16 @@ class FakePreviewHost {
           _viewType: string,
           title: string,
           viewOptions: { viewColumn: number; preserveFocus?: boolean },
+          webviewOptions: {
+            enableCommandUris?: boolean;
+            enableScripts?: boolean;
+            localResourceRoots?: Array<{ toString(): string }>;
+            retainContextWhenHidden?: boolean;
+          },
         ) => {
           assert.equal(viewOptions.viewColumn, 2);
           assert.equal(viewOptions.preserveFocus, true);
+          host.webviewOptions.push(webviewOptions);
           const panel = host.createPanel(title, viewOptions.viewColumn);
           host.panels.push(panel);
           return panel;
@@ -350,6 +363,19 @@ describe("preview manager", () => {
     await host.commands.get("merman.openPreview")?.(target);
     assert.equal(host.panels.length, 1);
     assert.match(host.panels[0]?.webview.html ?? "", /Merman Preview/);
+    assert.deepEqual(host.webviewOptions.map((options) => ({
+      enableCommandUris: options.enableCommandUris,
+      enableScripts: options.enableScripts,
+      localResourceRoots: options.localResourceRoots?.map((resource) => resource.toString()),
+      retainContextWhenHidden: options.retainContextWhenHidden,
+    })), [
+      {
+        enableCommandUris: false,
+        enableScripts: true,
+        localResourceRoots: ["file:///extension/media"],
+        retainContextWhenHidden: true,
+      },
+    ]);
     assert.deepEqual(host.showTextDocumentCalls.map(({ documentUri, preserveFocus }) => ({
       documentUri,
       preserveFocus,
@@ -629,12 +655,14 @@ describe("preview manager", () => {
     await host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
     await host.panels[1]?.receive({ type: "ready" });
     await flushPreviewWork();
+    const firstSourceKey = lastRenderedSourceKey(host.panels[0]);
+    const secondSourceKey = lastRenderedSourceKey(host.panels[1]);
     host.renderCalls.splice(0);
 
     await host.panels[0]?.receive({ type: "copySvg", svg: "<svg id=\"first\"></svg>" });
     await host.panels[1]?.receive({ type: "copySvg", svg: "<svg id=\"second\"></svg>" });
-    await host.panels[0]?.receive({ type: "exportRendered", format: "svg" });
-    await host.panels[1]?.receive({ type: "exportRendered", format: "png" });
+    await host.panels[0]?.receive({ type: "exportRendered", format: "svg", sourceKey: firstSourceKey });
+    await host.panels[1]?.receive({ type: "exportRendered", format: "png", sourceKey: secondSourceKey });
 
     assert.deepEqual(host.clipboardWrites, [
       "<svg id=\"first\"></svg>",
@@ -650,6 +678,32 @@ describe("preview manager", () => {
     assert.deepEqual(host.informationMessages.slice(-2), [
       "Exported export-one.svg.",
       "Exported export-2.svg.",
+    ]);
+  });
+
+  it("refuses to export when the webview rendered source key is stale", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    const staleSourceKey = lastRenderedSourceKey(host.panels[0]);
+
+    await host.panels[0]?.receive({ type: "setBackground", background: "dark" });
+    await flushPreviewWork();
+    host.renderCalls.splice(0);
+
+    await host.panels[0]?.receive({ type: "exportRendered", format: "svg", sourceKey: staleSourceKey });
+
+    assert.deepEqual(host.renderCalls, []);
+    assert.deepEqual(host.warnings.slice(-1), [
+      "Wait for the latest Mermaid preview to finish rendering before exporting.",
     ]);
   });
 
@@ -759,6 +813,20 @@ function sameUri(first: vscode.Uri, second: vscode.Uri): boolean {
 
 async function flushPreviewWork(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+function lastRenderedSourceKey(panel: FakePanel | undefined): unknown {
+  assert.ok(panel, "Expected preview panel");
+  for (let index = panel.postedMessages.length - 1; index >= 0; index -= 1) {
+    const message = panel.postedMessages[index] as {
+      type?: string;
+      snapshot?: { sourceKey?: unknown };
+    };
+    if (message.type === "renderSucceeded" && message.snapshot?.sourceKey) {
+      return message.snapshot.sourceKey;
+    }
+  }
+  assert.fail("Expected a renderSucceeded message with a sourceKey");
 }
 
 function uri(value: string, fsPath = value): vscode.Uri {

@@ -1450,7 +1450,7 @@ fn parse_gantt_statement(
         db.set_acc_descr(&v);
         return Ok(());
     }
-    match parse_click_statement(stripped, 0) {
+    match parse_click_statement(stripped, line_start) {
         Ok(Some(click)) => {
             if let Some(call) = click.call {
                 db.set_click_event(
@@ -1469,7 +1469,7 @@ fn parse_gantt_statement(
             return Err(Error::diagram_parse_exact(
                 "gantt".to_string(),
                 message,
-                gantt_statement_span(stripped, 0),
+                gantt_statement_span(stripped, line_start),
             ));
         }
     }

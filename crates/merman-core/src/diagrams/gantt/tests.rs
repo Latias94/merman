@@ -1074,22 +1074,31 @@ clickhouse migration: id2, 2026-01-02, 1d
 
 #[test]
 fn gantt_click_rejects_missing_action() {
-    let err = block_on(Engine::new().parse_diagram(
-        r#"
-gantt
+    let source = r#"gantt
 dateFormat YYYY-MM-DD
 section A
 task: id1, 2013-01-01, 1d
 click id1
-"#,
-        ParseOptions::default(),
-    ))
-    .unwrap_err();
+"#;
+    let err = block_on(Engine::new().parse_diagram(source, ParseOptions::default())).unwrap_err();
 
     assert!(
         err.to_string().contains("invalid click statement"),
         "unexpected error: {err}"
     );
+
+    let Error::DiagramParse { diagnostic, .. } = err else {
+        panic!("expected gantt parse error");
+    };
+    let click_start = source.find("click id1").unwrap();
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(
+            click_start,
+            click_start + "click id1".len()
+        ))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
 
 #[test]
