@@ -2,8 +2,9 @@ use crate::code_actions::code_actions_for_params;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::{
-    AnalyzerConfigurationChange, DiagnosticContext, DocumentStore, SemanticTokensState,
-    SnapshotContext, StoredDocument, TextDocumentUpdate, WorkspaceSnapshotRefreshBudget,
+    AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
+    SemanticTokensState, SnapshotContext, StoredDocument, TextDocumentUpdate,
+    WorkspaceSnapshotRefreshBudget,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -231,17 +232,17 @@ impl MermanLanguageServer {
     async fn diagnostics_or_recompute_latest(
         &self,
         mut context: DiagnosticContext,
-    ) -> Result<Vec<tower_lsp::lsp_types::Diagnostic>> {
+    ) -> Result<(DiagnosticContext, Vec<tower_lsp::lsp_types::Diagnostic>)> {
         for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
             if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
-                return Ok(diagnostics);
+                return Ok((context, diagnostics));
             }
 
             let Some(latest_context) = ({
                 let store = self.store.lock().await;
                 store.diagnostic_context(&context.document.uri)
             }) else {
-                return Ok(Vec::new());
+                return Ok((context, Vec::new()));
             };
             context = latest_context;
         }
@@ -308,38 +309,41 @@ impl MermanLanguageServer {
     }
 
     async fn workspace_symbol_snapshot_contexts(&self) -> Result<Vec<SnapshotContext>> {
-        loop {
-            let plan = {
-                let store = self.store.lock().await;
-                store.workspace_symbol_snapshot_build_plan(
-                    WorkspaceSnapshotRefreshBudget::workspace_symbols(),
-                )
-            };
+        let plan = {
+            let store = self.store.lock().await;
+            store.workspace_symbol_snapshot_build_plan(
+                WorkspaceSnapshotRefreshBudget::workspace_symbols(),
+            )
+        };
 
-            if plan.batches.is_empty() {
-                return Ok(plan.contexts);
-            }
-
-            for batch in plan.batches {
-                let built = batch
-                    .into_iter()
-                    .map(|request| {
-                        let snapshot = request.build();
-                        (request, snapshot)
-                    })
-                    .collect();
-                let commit = self
-                    .store
-                    .lock()
-                    .await
-                    .snapshot_contexts_for_requests(built);
-                if commit.stale_open_documents {
-                    return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
-                }
-                // The current tower-lsp handler path exposes no explicit cancel token here.
-                tokio::task::yield_now().await;
-            }
+        if plan.batches.is_empty() {
+            return Ok(plan.contexts);
         }
+
+        for batch in plan.batches {
+            let built = batch
+                .into_iter()
+                .map(|request| {
+                    let snapshot = request.build();
+                    (request, snapshot)
+                })
+                .collect();
+            let commit = self
+                .store
+                .lock()
+                .await
+                .snapshot_contexts_for_requests(built);
+            if commit.stale_open_documents {
+                return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
+            }
+            // The current tower-lsp handler path exposes no explicit cancel token here.
+            tokio::task::yield_now().await;
+        }
+
+        let store = self.store.lock().await;
+        Ok(store
+            .workspace_symbol_snapshot_build_plan(WorkspaceSnapshotRefreshBudget::new(0, 1))
+            .contexts)
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
@@ -526,26 +530,42 @@ impl LanguageServer for MermanLanguageServer {
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri;
-        let context = {
+        let previous_result_id = params.previous_result_id.as_deref();
+        let (context, cached) = {
             let store = self.store.lock().await;
-            store.diagnostic_context(&uri)
+            (store.diagnostic_context(&uri), store.diagnostic_state(&uri))
         };
+        if let Some(cached) = cached {
+            return Ok(Self::document_diagnostic_report(
+                cached.diagnostics,
+                Some(cached.result_id),
+                previous_result_id,
+            ));
+        }
+
         let Some(context) = context else {
             let diagnostics = Vec::new();
             let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
                 diagnostics,
                 result_id,
-                params.previous_result_id.as_deref(),
+                previous_result_id,
             ));
         };
 
-        let diagnostics = self.diagnostics_or_recompute_latest(context).await?;
-        let result_id = Some(Self::diagnostic_result_id(&diagnostics));
-        Ok(Self::document_diagnostic_report(
+        let (context, diagnostics) = self.diagnostics_or_recompute_latest(context).await?;
+        let state = DocumentDiagnosticState {
+            result_id: Self::diagnostic_result_id(&diagnostics),
             diagnostics,
-            result_id,
-            params.previous_result_id.as_deref(),
+        };
+        {
+            let mut store = self.store.lock().await;
+            store.set_diagnostic_state_if_current(&context, state.clone());
+        }
+        Ok(Self::document_diagnostic_report(
+            state.diagnostics,
+            Some(state.result_id),
+            previous_result_id,
         ))
     }
 

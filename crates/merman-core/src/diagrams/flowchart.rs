@@ -94,6 +94,19 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         .into_compat_json(&meta.diagram_type, &meta.effective_config))
 }
 
+pub(crate) fn parse_flowchart_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
+    let ast = parse_flowchart_ast(&code, meta)?;
+    let mut facts = editor_facts_from_flowchart_ast(&ast);
+    collect_expected_syntax_from_tokens(&code, &mut facts);
+    let model = parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)?
+        .into_compat_json(&meta.diagram_type, &meta.effective_config);
+    Ok((model, facts))
+}
+
 pub fn parse_flowchart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -135,9 +148,17 @@ fn parse_flowchart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<FlowchartSemanticSource> {
-    let (code, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
+    let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
     let ast = parse_flowchart_ast(&code, meta)?;
+    parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)
+}
 
+fn parse_flowchart_semantic_source_from_ast(
+    ast: FlowchartAst,
+    acc_title: Option<String>,
+    acc_descr: Option<String>,
+    meta: &ParseMetadata,
+) -> Result<FlowchartSemanticSource> {
     let inherit_dir = meta
         .effective_config
         .as_value()
@@ -222,6 +243,17 @@ fn parse_flowchart_semantic_source(
         subgraphs: builder.subgraphs,
         warning_facts,
     })
+}
+
+fn flowchart_parser_input_and_accessibility(
+    code: &str,
+) -> (String, Option<String>, Option<String>) {
+    let (_, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
+    let mut bytes = code.as_bytes().to_vec();
+    mask_accessibility_statements(code, &mut bytes);
+    let code = String::from_utf8(bytes)
+        .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into());
+    (code, acc_title, acc_descr)
 }
 
 fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst> {

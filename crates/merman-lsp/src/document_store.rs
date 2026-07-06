@@ -3,7 +3,7 @@ use merman_analysis::{AnalysisOptions, Analyzer};
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{SemanticToken, Url};
+use tower_lsp::lsp_types::{Diagnostic, SemanticToken, Url};
 
 pub const WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE: usize = 8;
 pub const WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET: usize = 32;
@@ -16,6 +16,7 @@ pub struct DocumentStore {
     next_document_epoch: u64,
     documents: HashMap<Url, DocumentRecord>,
     snapshots: HashMap<Url, Arc<DocumentSnapshot>>,
+    diagnostic_state: HashMap<Url, StoredDiagnosticState>,
     semantic_tokens_state: HashMap<Url, StoredSemanticTokensState>,
 }
 
@@ -65,6 +66,7 @@ impl DocumentStore {
             next_document_epoch: 0,
             documents: HashMap::new(),
             snapshots: HashMap::new(),
+            diagnostic_state: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
         }
     }
@@ -107,6 +109,7 @@ impl DocumentStore {
     fn advance_diagnostic_generation(&mut self) {
         self.diagnostic_generation =
             DiagnosticGeneration(self.diagnostic_generation.0.wrapping_add(1));
+        self.diagnostic_state.clear();
     }
 
     fn next_document_epoch(&mut self) -> DocumentEpoch {
@@ -144,6 +147,7 @@ impl DocumentStore {
             kind,
         };
         self.snapshots.remove(&uri);
+        self.diagnostic_state.remove(&uri);
         let epoch = self.next_document_epoch();
         self.documents.insert(
             uri,
@@ -281,6 +285,7 @@ impl DocumentStore {
     pub fn remove(&mut self, uri: &Url) {
         self.documents.remove(uri);
         self.snapshots.remove(uri);
+        self.diagnostic_state.remove(uri);
         self.semantic_tokens_state.remove(uri);
     }
 
@@ -424,6 +429,34 @@ impl DocumentStore {
         );
         true
     }
+
+    pub fn diagnostic_state(&self, uri: &Url) -> Option<DocumentDiagnosticState> {
+        self.diagnostic_state.get(uri).and_then(|stored| {
+            (stored.generation == self.diagnostic_generation
+                && self.is_document_epoch_current(uri, stored.document_epoch))
+            .then(|| stored.state.clone())
+        })
+    }
+
+    pub fn set_diagnostic_state_if_current(
+        &mut self,
+        context: &DiagnosticContext,
+        state: DocumentDiagnosticState,
+    ) -> bool {
+        if !self.is_diagnostic_context_current(context) {
+            return false;
+        }
+
+        self.diagnostic_state.insert(
+            context.document.uri.clone(),
+            StoredDiagnosticState {
+                generation: context.generation,
+                document_epoch: context.document_epoch,
+                state,
+            },
+        );
+        true
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -436,6 +469,19 @@ struct DocumentRecord {
 struct StoredSemanticTokensState {
     snapshot_generation: SnapshotGeneration,
     state: SemanticTokensState,
+}
+
+#[derive(Debug, Clone)]
+struct StoredDiagnosticState {
+    generation: DiagnosticGeneration,
+    document_epoch: DocumentEpoch,
+    state: DocumentDiagnosticState,
+}
+
+#[derive(Debug, Clone)]
+pub struct DocumentDiagnosticState {
+    pub result_id: String,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

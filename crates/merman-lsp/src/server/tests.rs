@@ -2,7 +2,7 @@ use super::MermanLanguageServer;
 use super::stale_diagnostic_recompute_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::document_store::{
-    DocumentStore, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+    DocumentDiagnosticState, DocumentStore, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
     WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET,
 };
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
@@ -23,14 +23,15 @@ use tower_lsp::lsp_types::SemanticTokensResult;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentChanges, DocumentSymbolResponse, FoldingRangeParams, FoldingRangeProviderCapability,
-    GotoDefinitionResponse, HoverContents, HoverParams, InitializeParams, NumberOrString, Position,
-    Range, RenameParams, SelectionRangeParams, SelectionRangeProviderCapability,
-    SemanticTokensFullOptions, SemanticTokensParams, SemanticTokensRangeParams,
-    SemanticTokensRangeResult, SemanticTokensServerCapabilities, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Url, VersionedTextDocumentIdentifier,
-    WorkspaceSymbolParams,
+    DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentSymbolResponse, FoldingRangeParams,
+    FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
+    InitializeParams, NumberOrString, Position, Range, RenameParams, SelectionRangeParams,
+    SelectionRangeProviderCapability, SemanticTokensFullOptions, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensServerCapabilities,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
 };
 use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
 
@@ -53,6 +54,44 @@ fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
     );
 
     assert!(!store.is_snapshot_contexts_current(&contexts));
+}
+
+#[test]
+fn diagnostic_state_is_bound_to_document_epoch() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/diagnostic-state.mmd").unwrap();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let context = store
+        .diagnostic_context(&uri)
+        .expect("expected diagnostic context");
+    let state = DocumentDiagnosticState {
+        result_id: "result-1".to_string(),
+        diagnostics: Vec::new(),
+    };
+
+    assert!(store.set_diagnostic_state_if_current(&context, state.clone()));
+    assert_eq!(
+        store
+            .diagnostic_state(&uri)
+            .expect("expected cached diagnostics")
+            .result_id,
+        "result-1"
+    );
+
+    store.upsert_text(
+        uri.clone(),
+        2,
+        "flowchart TD\nA-->C\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert!(store.diagnostic_state(&uri).is_none());
+    assert!(!store.set_diagnostic_state_if_current(&context, state));
 }
 
 #[test]
@@ -593,7 +632,7 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         );
     }
 
-    let diagnostics = server
+    let (_context, diagnostics) = server
         .diagnostics_or_recompute_latest(context)
         .await
         .expect("latest diagnostic context should recompute");
@@ -611,6 +650,59 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         .as_ref()
         .expect("expected diagnostic data");
     assert_eq!(data["documentVersion"], 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn diagnostic_pull_reuses_cached_previous_result() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: "flowchart TD\nA-->B\n".to_string(),
+            },
+        })
+        .await;
+
+    let first = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .unwrap();
+    let result_id = match first {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => report
+            .full_document_diagnostic_report
+            .result_id
+            .expect("expected diagnostic result id"),
+        other => panic!("unexpected first diagnostic report: {other:?}"),
+    };
+
+    let second = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: Some(result_id.clone()),
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        second,
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(report))
+            if report.unchanged_document_diagnostic_report.result_id == result_id
+    ));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -935,14 +1027,15 @@ async fn lsp_handlers_return_hover_and_symbols() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn workspace_symbols_refreshes_more_than_the_snapshot_budget_on_first_request() {
+async fn workspace_symbols_respects_snapshot_budget_on_first_request() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
     let document_count =
         WORKSPACE_SYMBOL_SNAPSHOT_BUILD_BUDGET + WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE + 1;
     let last_index = document_count - 1;
     let last_symbol = format!("target_{last_index:02}");
-    let last_uri = Url::parse(&format!("file:///tmp/workspace-{last_index:02}.mmd")).unwrap();
+    let first_symbol = "target_00".to_string();
+    let first_uri = Url::parse("file:///tmp/workspace-00.mmd").unwrap();
 
     {
         let mut store = server.store.lock().await;
@@ -961,7 +1054,7 @@ async fn workspace_symbols_refreshes_more_than_the_snapshot_budget_on_first_requ
         .symbol(WorkspaceSymbolParams {
             partial_result_params: Default::default(),
             work_done_progress_params: Default::default(),
-            query: last_symbol.clone(),
+            query: "target_".to_string(),
         })
         .await
         .unwrap()
@@ -970,15 +1063,21 @@ async fn workspace_symbols_refreshes_more_than_the_snapshot_budget_on_first_requ
     assert!(
         workspace_symbols
             .iter()
-            .any(|symbol| symbol.name == last_symbol && symbol.location.uri == last_uri),
-        "workspace symbol request omitted the document beyond the old snapshot budget"
+            .any(|symbol| symbol.name == first_symbol && symbol.location.uri == first_uri),
+        "workspace symbol request should include documents within the snapshot budget"
+    );
+    assert!(
+        workspace_symbols
+            .iter()
+            .all(|symbol| symbol.name != last_symbol),
+        "workspace symbol request should not build documents beyond the snapshot budget"
     );
 
     let store = server.store.lock().await;
     let (_contexts, requests) = store.snapshot_build_requests();
     assert!(
-        requests.is_empty(),
-        "workspace symbol refresh should not leave current open documents uncached"
+        !requests.is_empty(),
+        "workspace symbol refresh should leave budget-exceeded documents for later requests"
     );
 }
 

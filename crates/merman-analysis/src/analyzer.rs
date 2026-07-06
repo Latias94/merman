@@ -13,7 +13,7 @@ use crate::{
 use merman_core::{
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts, Engine,
     Error as CoreError, MermaidConfig, ParseDiagnostic, ParseDiagnosticSpanKind, ParseOptions,
-    ParsedDiagram,
+    ParsedDiagram, ParsedDiagramWithEditorFacts, ParsedEditorFacts,
 };
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
@@ -195,8 +195,15 @@ impl Analyzer {
         let source_lints =
             crate::rules::source_lint_diagnostics(source, &source_map, &self.options.rule_config);
 
-        let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
-            self.engine.parse_diagram_sync(source, self.options.parse)
+        let parse_result = panic::catch_unwind(AssertUnwindSafe(|| match mode {
+            AnalysisMode::Diagnostics => self
+                .engine
+                .parse_diagram_sync(source, self.options.parse)
+                .map(|parsed| parsed.map(ParsedAnalysisDiagram::Diagnostics)),
+            AnalysisMode::RichFacts => self
+                .engine
+                .parse_diagram_with_editor_facts_sync(source, self.options.parse)
+                .map(|parsed| parsed.map(ParsedAnalysisDiagram::RichFacts)),
         }));
 
         match parse_result {
@@ -225,10 +232,11 @@ impl Analyzer {
         &self,
         source: &str,
         source_map: &SourceMap,
-        parsed: ParsedDiagram,
+        parsed: impl IntoParsedAnalysisDiagram,
         mut diagnostics: Vec<AnalysisDiagnostic>,
         mode: AnalysisMode,
     ) -> LocalAnalysis {
+        let (parsed, precomputed_editor_facts) = parsed.into_parsed_analysis_diagram();
         let diagram_type = parsed.meta.diagram_type;
         diagnostics.extend(crate::rules::semantic_warning_diagnostics(
             &diagram_type,
@@ -245,8 +253,33 @@ impl Analyzer {
                 let flowchart_projection =
                     self.flowchart_facts_projection(&parsed.model, &diagram_type, source_map);
                 diagnostics.extend(flowchart_projection.diagnostics);
-                let editor_projection =
-                    self.editor_facts_projection(source, &diagram_type, source_map, mode);
+                let editor_projection = match precomputed_editor_facts {
+                    Some(ParsedEditorFacts::Available(facts)) => self
+                        .editor_facts_projection_from_facts(
+                            source,
+                            &diagram_type,
+                            source_map,
+                            mode,
+                            Some(facts),
+                        ),
+                    Some(ParsedEditorFacts::Unavailable) => self
+                        .editor_facts_projection_from_facts(
+                            source,
+                            &diagram_type,
+                            source_map,
+                            mode,
+                            None,
+                        ),
+                    Some(ParsedEditorFacts::Error(error)) => self
+                        .editor_facts_projection_from_error(
+                            source,
+                            &diagram_type,
+                            source_map,
+                            mode,
+                            error,
+                        ),
+                    None => self.editor_facts_projection(source, &diagram_type, source_map, mode),
+                };
                 diagnostics.extend(
                     editor_projection
                         .diagnostics
@@ -310,27 +343,70 @@ impl Analyzer {
             Err(diagnostics) => {
                 EditorFactsProjection::fallback(source, Some(diagram_type), diagnostics, mode)
             }
-            Ok(Some(facts)) => {
-                let source_mapped_spans = facts.span_coordinate_space.is_original_source();
-                let diagnostics = editor_recovery_diagnostics(
-                    facts.diagnostics.iter().cloned(),
-                    diagram_type,
-                    source_map,
-                    &self.options.rule_config,
-                    source_mapped_spans,
-                );
-                EditorFactsProjection {
-                    text_index: match mode {
-                        AnalysisMode::Diagnostics => FenceTextIndex::default(),
-                        AnalysisMode::RichFacts => FenceTextIndex::from_core_facts(facts),
-                    },
-                    diagnostics,
-                }
-            }
-            Ok(None) => {
-                EditorFactsProjection::fallback(source, Some(diagram_type), Vec::new(), mode)
-            }
+            Ok(Some(facts)) => self.editor_facts_projection_from_facts(
+                source,
+                diagram_type,
+                source_map,
+                mode,
+                Some(facts),
+            ),
+            Ok(None) => self.editor_facts_projection_from_facts(
+                source,
+                diagram_type,
+                source_map,
+                mode,
+                None,
+            ),
         }
+    }
+
+    fn editor_facts_projection_from_facts(
+        &self,
+        source: &str,
+        diagram_type: &str,
+        source_map: &SourceMap,
+        mode: AnalysisMode,
+        facts: Option<EditorSemanticFacts>,
+    ) -> EditorFactsProjection {
+        let Some(facts) = facts else {
+            return EditorFactsProjection::fallback(source, Some(diagram_type), Vec::new(), mode);
+        };
+
+        let source_mapped_spans = facts.span_coordinate_space.is_original_source();
+        let diagnostics = editor_recovery_diagnostics(
+            facts.diagnostics.iter().cloned(),
+            diagram_type,
+            source_map,
+            &self.options.rule_config,
+            source_mapped_spans,
+        );
+        EditorFactsProjection {
+            text_index: match mode {
+                AnalysisMode::Diagnostics => FenceTextIndex::default(),
+                AnalysisMode::RichFacts => FenceTextIndex::from_core_facts(facts),
+            },
+            diagnostics,
+        }
+    }
+
+    fn editor_facts_projection_from_error(
+        &self,
+        source: &str,
+        diagram_type: &str,
+        source_map: &SourceMap,
+        mode: AnalysisMode,
+        error: CoreError,
+    ) -> EditorFactsProjection {
+        if matches!(error, CoreError::UnsupportedDiagram { .. }) {
+            return EditorFactsProjection::fallback(source, Some(diagram_type), Vec::new(), mode);
+        }
+
+        let diagnostics = core_error_diagnostic(error, source_map, &self.options.rule_config)
+            .diagnostic
+            .map(AnalysisRecoveryDiagnostic::plain)
+            .into_iter()
+            .collect();
+        EditorFactsProjection::fallback(source, Some(diagram_type), diagnostics, mode)
     }
 
     fn flowchart_facts_projection(
@@ -429,6 +505,30 @@ impl Analyzer {
 enum AnalysisMode {
     Diagnostics,
     RichFacts,
+}
+
+enum ParsedAnalysisDiagram {
+    Diagnostics(ParsedDiagram),
+    RichFacts(ParsedDiagramWithEditorFacts),
+}
+
+trait IntoParsedAnalysisDiagram {
+    fn into_parsed_analysis_diagram(self) -> (ParsedDiagram, Option<ParsedEditorFacts>);
+}
+
+impl IntoParsedAnalysisDiagram for ParsedDiagram {
+    fn into_parsed_analysis_diagram(self) -> (ParsedDiagram, Option<ParsedEditorFacts>) {
+        (self, None)
+    }
+}
+
+impl IntoParsedAnalysisDiagram for ParsedAnalysisDiagram {
+    fn into_parsed_analysis_diagram(self) -> (ParsedDiagram, Option<ParsedEditorFacts>) {
+        match self {
+            Self::Diagnostics(parsed) => (parsed, None),
+            Self::RichFacts(parsed) => (parsed.diagram, Some(parsed.editor_facts)),
+        }
+    }
 }
 
 impl AnalysisMode {

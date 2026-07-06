@@ -1,6 +1,6 @@
 use crate::{
-    Error, MermaidConfig, ParseMetadata, Result, baseline::BaselineRegistryProfile,
-    editor::SourceSpan,
+    EditorSemanticFacts, Error, MermaidConfig, ParseMetadata, Result,
+    baseline::BaselineRegistryProfile, editor::SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -140,6 +140,21 @@ pub struct ParsedDiagram {
     pub meta: ParseMetadata,
     /// Semantic JSON model matching Mermaid's parser/database output shape where possible.
     pub model: Value,
+}
+
+/// Parser-backed editor facts produced alongside a successful semantic JSON parse.
+#[derive(Debug)]
+pub enum ParsedEditorFacts {
+    Available(EditorSemanticFacts),
+    Unavailable,
+    Error(Error),
+}
+
+/// Parsed semantic JSON plus editor-facing semantic facts from the same preprocessing pass.
+#[derive(Debug)]
+pub struct ParsedDiagramWithEditorFacts {
+    pub diagram: ParsedDiagram,
+    pub editor_facts: ParsedEditorFacts,
 }
 
 /// Typed semantic model used by the headless renderer.

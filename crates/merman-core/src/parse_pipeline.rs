@@ -3,7 +3,10 @@ use crate::{
     ParseOptions, Result, SourceSpan, common_db, diagram, diagrams::error_diagram, family,
     preprocess_diagram, preprocess_diagram_with_known_type, runtime, sanitize, theme,
 };
-use diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
+use diagram::{
+    ParsedDiagram, ParsedDiagramRender, ParsedDiagramWithEditorFacts, ParsedEditorFacts,
+    RenderSemanticModel,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ParseSource<'a> {
@@ -228,6 +231,130 @@ impl<'a> ParsePipeline<'a> {
         )
     }
 
+    pub(crate) fn parse_json_with_editor_facts(
+        &self,
+        timing: ParseTiming,
+    ) -> Result<Option<ParsedDiagramWithEditorFacts>> {
+        let timing_enabled = timing.is_enabled();
+        let total_start = runtime::timing_start(timing_enabled);
+        let preprocess_start = runtime::timing_start(timing_enabled);
+        let directive_prefixes = editor_directive_prefixes(self.text);
+        let Some((code, meta)) = self.preprocess()? else {
+            return Ok(None);
+        };
+        let source_map = EditorParseSourceMap::new(self.text, &code);
+        let editor_input = source_map.parser_input();
+        let preprocess = preprocess_start.map(runtime::timing_elapsed);
+
+        let parse_start = runtime::timing_start(timing_enabled);
+        let parsed = match meta.diagram_type.as_str() {
+            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+                let parse_res = self.with_fixed_time(|| {
+                    crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts(
+                        editor_input,
+                        &meta,
+                    )
+                });
+                let parse = parse_start.map(runtime::timing_elapsed);
+                let (mut model, facts) = match parse_res {
+                    Ok(parsed) => parsed,
+                    Err(err) => {
+                        if !self.options.suppress_errors {
+                            return Err(source_map.remap_parse_error(err));
+                        }
+
+                        timing.log_suppressed_error(
+                            total_start,
+                            preprocess,
+                            parse,
+                            self.text.len(),
+                        );
+                        return Ok(Some(ParsedDiagramWithEditorFacts {
+                            diagram: error_diagram::suppressed_error_diagram(&meta),
+                            editor_facts: ParsedEditorFacts::Unavailable,
+                        }));
+                    }
+                };
+                let sanitize_start = runtime::timing_start(timing_enabled);
+                common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
+                let sanitize = sanitize_start.map(runtime::timing_elapsed);
+                timing.log_success(ParseTimingSuccess {
+                    total_start,
+                    meta: &meta,
+                    model_kind: None,
+                    preprocess,
+                    parse,
+                    sanitize,
+                    input_bytes: self.text.len(),
+                });
+                let facts =
+                    self.finish_editor_semantic_facts(facts, &source_map, directive_prefixes);
+                return Ok(Some(ParsedDiagramWithEditorFacts {
+                    diagram: ParsedDiagram { meta, model },
+                    editor_facts: ParsedEditorFacts::Available(facts),
+                }));
+            }
+            _ => {
+                let parse_res = self.with_fixed_time(|| {
+                    diagram::parse_or_unsupported(
+                        &self.engine.diagram_registry,
+                        &meta.diagram_type,
+                        editor_input,
+                        &meta,
+                    )
+                });
+                let parse = parse_start.map(runtime::timing_elapsed);
+                let mut model = match parse_res {
+                    Ok(model) => model,
+                    Err(err) => {
+                        if !self.options.suppress_errors {
+                            return Err(source_map.remap_parse_error(err));
+                        }
+
+                        timing.log_suppressed_error(
+                            total_start,
+                            preprocess,
+                            parse,
+                            self.text.len(),
+                        );
+                        return Ok(Some(ParsedDiagramWithEditorFacts {
+                            diagram: error_diagram::suppressed_error_diagram(&meta),
+                            editor_facts: ParsedEditorFacts::Unavailable,
+                        }));
+                    }
+                };
+                let sanitize_start = runtime::timing_start(timing_enabled);
+                common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
+                let sanitize = sanitize_start.map(runtime::timing_elapsed);
+                timing.log_success(ParseTimingSuccess {
+                    total_start,
+                    meta: &meta,
+                    model_kind: None,
+                    preprocess,
+                    parse,
+                    sanitize,
+                    input_bytes: self.text.len(),
+                });
+                ParsedDiagram { meta, model }
+            }
+        };
+
+        let editor_facts = match self.parse_editor_semantic_facts_from_preprocessed(
+            editor_input,
+            &parsed.meta,
+            &source_map,
+            directive_prefixes,
+        ) {
+            Ok(Some(facts)) => ParsedEditorFacts::Available(facts),
+            Ok(None) => ParsedEditorFacts::Unavailable,
+            Err(error) => ParsedEditorFacts::Error(error),
+        };
+        Ok(Some(ParsedDiagramWithEditorFacts {
+            diagram: parsed,
+            editor_facts,
+        }))
+    }
+
     pub(crate) fn parse_render_model(&self) -> Result<Option<ParsedDiagramRender>> {
         self.parse_model(
             ParseTiming::Render,
@@ -244,6 +371,22 @@ impl<'a> ParsePipeline<'a> {
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
+        let source_map = EditorParseSourceMap::new(self.text, &code);
+        self.parse_editor_semantic_facts_from_preprocessed(
+            source_map.parser_input(),
+            &meta,
+            &source_map,
+            std::mem::take(&mut directive_prefixes),
+        )
+    }
+
+    fn parse_editor_semantic_facts_from_preprocessed(
+        &self,
+        editor_input: &str,
+        meta: &ParseMetadata,
+        source_map: &EditorParseSourceMap<'_>,
+        directive_prefixes: Vec<String>,
+    ) -> Result<Option<EditorSemanticFacts>> {
         let registry_profile = self.engine.diagram_registry.profile();
         if !family::diagram_type_supported_in_profile(registry_profile, meta.diagram_type.as_str())
         {
@@ -251,8 +394,6 @@ impl<'a> ParsePipeline<'a> {
                 diagram_type: meta.diagram_type.clone(),
             });
         }
-        let source_map = EditorParseSourceMap::new(self.text, &code);
-        let editor_input = source_map.parser_input();
 
         let facts = match meta.diagram_type.as_str() {
             "flowchart-v2" | "flowchart" | "flowchart-elk" => {
@@ -312,6 +453,19 @@ impl<'a> ParsePipeline<'a> {
             _ => return Ok(None),
         };
 
+        Ok(Some(self.finish_editor_semantic_facts(
+            facts,
+            source_map,
+            directive_prefixes,
+        )))
+    }
+
+    fn finish_editor_semantic_facts(
+        &self,
+        facts: EditorSemanticFacts,
+        source_map: &EditorParseSourceMap<'_>,
+        mut directive_prefixes: Vec<String>,
+    ) -> EditorSemanticFacts {
         let EditorSemanticFacts {
             completeness,
             span_coordinate_space: _,
@@ -333,7 +487,7 @@ impl<'a> ParsePipeline<'a> {
         for prefix in directive_prefixes {
             facts.push_directive_prefix(prefix);
         }
-        Ok(Some(facts))
+        facts
     }
 
     fn parse_model<T, O>(

@@ -37,7 +37,8 @@ pub use diagram::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
-    RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
+    ParsedDiagramWithEditorFacts, ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
+    RenderSemanticParser,
 };
 pub use editor::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
@@ -376,6 +377,22 @@ impl Engine {
     ) -> Result<Option<ParsedDiagram>> {
         parse_pipeline::ParsePipeline::detect(self, text, options)
             .parse_json(parse_pipeline::ParseTiming::Json)
+    }
+
+    /// Parses semantic JSON and parser-backed editor facts from one preprocessing/detection pass.
+    ///
+    /// This is intended for editor integrations that need both diagnostics/facts and the
+    /// Mermaid-compatible model. On parse errors it returns the same error as
+    /// [`Engine::parse_diagram_sync`]; callers that want recovery facts for invalid input should
+    /// use [`Engine::parse_editor_semantic_facts_with_type_sync`] after projecting the parse
+    /// diagnostic's diagram type.
+    pub fn parse_diagram_with_editor_facts_sync(
+        &self,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagramWithEditorFacts>> {
+        parse_pipeline::ParsePipeline::detect(self, text, options)
+            .parse_json_with_editor_facts(parse_pipeline::ParseTiming::Json)
     }
 
     /// Async facade for [`Engine::parse_diagram_sync`].
