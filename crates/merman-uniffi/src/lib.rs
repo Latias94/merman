@@ -9,6 +9,8 @@ use merman_bindings_core::{BindingEngine, BindingError, BindingStatus};
 #[cfg(feature = "render")]
 use merman_bindings_core::{TextMeasurer as CoreTextMeasurer, VendoredFontMetricsTextMeasurer};
 use serde_json::Value;
+#[cfg(feature = "render")]
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
@@ -66,6 +68,31 @@ pub struct MermanReusableEngine {
     #[cfg(feature = "render")]
     host_text_measurer: RwLock<Option<Arc<UniffiHostTextMeasurer>>>,
     inner: RwLock<BindingEngine>,
+}
+
+#[cfg(feature = "render")]
+thread_local! {
+    static REUSABLE_RENDER_STACK: RefCell<Vec<usize>> = RefCell::new(Vec::new());
+}
+
+#[cfg(feature = "render")]
+struct ReusableRenderGuard {
+    engine_id: usize,
+}
+
+#[cfg(feature = "render")]
+impl Drop for ReusableRenderGuard {
+    fn drop(&mut self) {
+        REUSABLE_RENDER_STACK.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            if let Some(position) = stack
+                .iter()
+                .rposition(|engine_id| *engine_id == self.engine_id)
+            {
+                stack.remove(position);
+            }
+        });
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -719,6 +746,7 @@ impl MermanReusableEngine {
         next_inner: BindingEngine,
         next_host_text_measurer: Option<Arc<UniffiHostTextMeasurer>>,
     ) -> Result<(), MermanError> {
+        self.ensure_not_reentrant_render_call()?;
         let _guard = self
             .render_lock
             .lock()
@@ -760,6 +788,7 @@ impl MermanReusableEngine {
         &self,
         run: impl FnOnce(BindingEngine) -> Result<T, MermanError>,
     ) -> Result<T, MermanError> {
+        let _reentry_guard = self.enter_render_call()?;
         let _guard = self
             .render_lock
             .lock()
@@ -779,6 +808,41 @@ impl MermanReusableEngine {
         }
         output
     }
+
+    #[cfg(feature = "render")]
+    fn enter_render_call(&self) -> Result<ReusableRenderGuard, MermanError> {
+        let engine_id = self.render_engine_id();
+        REUSABLE_RENDER_STACK.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            if stack.contains(&engine_id) {
+                return Err(reentrant_render_error());
+            }
+            stack.push(engine_id);
+            Ok(ReusableRenderGuard { engine_id })
+        })
+    }
+
+    #[cfg(feature = "render")]
+    fn ensure_not_reentrant_render_call(&self) -> Result<(), MermanError> {
+        let engine_id = self.render_engine_id();
+        REUSABLE_RENDER_STACK.with(|stack| {
+            if stack.borrow().contains(&engine_id) {
+                Err(reentrant_render_error())
+            } else {
+                Ok(())
+            }
+        })
+    }
+
+    #[cfg(feature = "render")]
+    fn render_engine_id(&self) -> usize {
+        self as *const Self as usize
+    }
+}
+
+#[cfg(feature = "render")]
+fn reentrant_render_error() -> MermanError {
+    MermanError::internal("reentrant reusable engine render call from host text measurer")
 }
 
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
@@ -876,6 +940,11 @@ mod tests {
     }
 
     #[cfg(feature = "render")]
+    struct ReentrantTextMeasurer {
+        engine: StdMutex<Option<Arc<MermanReusableEngine>>>,
+    }
+
+    #[cfg(feature = "render")]
     struct BlockingFailingTextMeasurerState {
         entered: bool,
         released: bool,
@@ -951,6 +1020,19 @@ mod tests {
     }
 
     #[cfg(feature = "render")]
+    impl ReentrantTextMeasurer {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                engine: StdMutex::new(None),
+            })
+        }
+
+        fn set_engine(&self, engine: Arc<MermanReusableEngine>) {
+            *self.engine.lock().unwrap() = Some(engine);
+        }
+    }
+
+    #[cfg(feature = "render")]
     impl MermanTextMeasurer for CountingTextMeasurer {
         fn measure(
             &self,
@@ -1003,6 +1085,25 @@ mod tests {
                 state = cvar.wait(state).unwrap();
             }
             Err(MermanError::internal("blocked host measurer failed"))
+        }
+    }
+
+    #[cfg(feature = "render")]
+    impl MermanTextMeasurer for ReentrantTextMeasurer {
+        fn measure(
+            &self,
+            _request: MermanTextMeasureRequest,
+        ) -> Result<Option<MermanTextMeasureResult>, MermanError> {
+            let engine = self
+                .engine
+                .lock()
+                .unwrap()
+                .as_ref()
+                .expect("reentrant measurer should have an engine")
+                .clone();
+            Err(engine
+                .clear_text_measurer()
+                .expect_err("reentrant clear should fail before taking the render lock"))
         }
     }
 
@@ -1346,6 +1447,23 @@ mod tests {
             .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
             .unwrap();
         assert!(svg.contains("<svg"));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn reusable_engine_rejects_reentrant_host_text_measurer_calls() {
+        let measurer = ReentrantTextMeasurer::new();
+        let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
+        measurer.set_engine(reusable.clone());
+
+        let err = reusable
+            .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
+            .unwrap_err();
+
+        let message = match err {
+            MermanError::Binding { message, .. } => message,
+        };
+        assert!(message.contains("reentrant reusable engine render call"));
     }
 
     #[cfg(feature = "render")]
