@@ -231,11 +231,11 @@ impl Analyzer {
         &self,
         source: &str,
         source_map: &SourceMap,
-        parsed: impl IntoParsedAnalysisDiagram,
+        parsed: ParsedAnalysisDiagram,
         mut diagnostics: Vec<AnalysisDiagnostic>,
         mode: AnalysisMode,
     ) -> LocalAnalysis {
-        let (parsed, precomputed_editor_facts) = parsed.into_parsed_analysis_diagram();
+        let (parsed, precomputed_editor_facts) = parsed.into_parts();
         let diagram_type = parsed.meta.diagram_type;
         diagnostics.extend(crate::rules::semantic_warning_diagnostics(
             &diagram_type,
@@ -468,20 +468,11 @@ impl Analyzer {
         source: &str,
         descriptor: SourceDescriptor,
     ) -> Option<AnalysisResult> {
-        crate::source_limits::source_limit_result(
-            source,
-            descriptor,
-            self.options.max_source_bytes,
-            &self.options.rule_config,
-        )
+        crate::source_limits::source_limit_result(source, descriptor, self.options.max_source_bytes)
     }
 
     fn source_limit_diagnostics(&self, source: &str) -> Option<Vec<AnalysisDiagnostic>> {
-        crate::source_limits::source_limit_diagnostics(
-            source,
-            self.options.max_source_bytes,
-            &self.options.rule_config,
-        )
+        crate::source_limits::source_limit_diagnostics(source, self.options.max_source_bytes)
     }
 }
 
@@ -496,18 +487,8 @@ enum ParsedAnalysisDiagram {
     RichFacts(ParsedDiagramWithEditorFacts),
 }
 
-trait IntoParsedAnalysisDiagram {
-    fn into_parsed_analysis_diagram(self) -> (ParsedDiagram, Option<ParsedEditorFacts>);
-}
-
-impl IntoParsedAnalysisDiagram for ParsedDiagram {
-    fn into_parsed_analysis_diagram(self) -> (ParsedDiagram, Option<ParsedEditorFacts>) {
-        (self, None)
-    }
-}
-
-impl IntoParsedAnalysisDiagram for ParsedAnalysisDiagram {
-    fn into_parsed_analysis_diagram(self) -> (ParsedDiagram, Option<ParsedEditorFacts>) {
+impl ParsedAnalysisDiagram {
+    fn into_parts(self) -> (ParsedDiagram, Option<ParsedEditorFacts>) {
         match self {
             Self::Diagnostics(parsed) => (parsed, None),
             Self::RichFacts(parsed) => (parsed.diagram, Some(parsed.editor_facts)),

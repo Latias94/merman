@@ -1,4 +1,4 @@
-use super::{AnalysisOptions, Analyzer};
+use super::{AnalysisOptions, Analyzer, ParsedAnalysisDiagram};
 use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
 use crate::{
     AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource, SourceMap,
@@ -148,7 +148,7 @@ fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
     let local = analyzer.analyze_parsed_diagram(
         source,
         &source_map,
-        malformed_flowchart_parsed_diagram(),
+        ParsedAnalysisDiagram::Diagnostics(malformed_flowchart_parsed_diagram()),
         Vec::new(),
         super::AnalysisMode::RichFacts,
     );
@@ -177,7 +177,7 @@ fn rich_facts_mode_reports_editor_facts_preprocess_failure() {
     let local = analyzer.analyze_parsed_diagram(
         source,
         &source_map,
-        ParsedDiagram {
+        ParsedAnalysisDiagram::Diagnostics(ParsedDiagram {
             meta: ParseMetadata {
                 diagram_type: "flowchart-v2".to_string(),
                 config: MermaidConfig::default(),
@@ -188,7 +188,7 @@ fn rich_facts_mode_reports_editor_facts_preprocess_failure() {
                 "type": "flowchart-v2",
                 "nodes": []
             }),
-        },
+        }),
         Vec::new(),
         super::AnalysisMode::RichFacts,
     );
@@ -211,7 +211,7 @@ fn diagnostics_mode_does_not_project_flowchart_facts_failures() {
     let local = analyzer.analyze_parsed_diagram(
         source,
         &source_map,
-        malformed_flowchart_parsed_diagram(),
+        ParsedAnalysisDiagram::Diagnostics(malformed_flowchart_parsed_diagram()),
         Vec::new(),
         super::AnalysisMode::Diagnostics,
     );
