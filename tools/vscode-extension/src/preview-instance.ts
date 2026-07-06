@@ -5,6 +5,7 @@ import { previewCliBackground } from "./preview-background.js";
 import { collectMermanPreviewDiagnostics } from "./preview-diagnostics.js";
 import type { ExportFormat } from "./export-options.js";
 import { exportRenderedDiagram } from "./export-workflow.js";
+import { errorMessage } from "./error-message.js";
 import {
   type PreviewBackground,
   type PreviewDiagramTheme,
@@ -618,8 +619,4 @@ async function revealDiagnosticTarget(target: PreviewDiagnosticTarget): Promise<
     preserveFocus: false,
     selection: range,
   });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

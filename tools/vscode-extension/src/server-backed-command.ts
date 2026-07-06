@@ -3,6 +3,7 @@ import {
   serverBackedCommandAction,
   type LanguageIntelligenceSettings,
 } from "./language-intelligence.js";
+import { errorMessage } from "./error-message.js";
 
 export type ServerBackedCommandOutcome =
   | "completed"
@@ -47,8 +48,4 @@ export async function runServerBackedCommand<TClient, TResponse>({
     void showWarningMessage(`${failureMessagePrefix}: ${errorMessage(error)}`);
     return "failed";
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

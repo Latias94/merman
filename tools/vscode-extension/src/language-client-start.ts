@@ -1,3 +1,5 @@
+import { errorMessage } from "./error-message.js";
+
 export interface StartableLanguageClient {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -55,8 +57,4 @@ export async function startLanguageClientWithCleanup<T extends StartableLanguage
     showStartError(`Merman language server failed to start: ${errorMessage(error)}`);
     throw error;
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

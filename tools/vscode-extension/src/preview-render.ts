@@ -1,3 +1,4 @@
+import { errorMessage } from "./error-message.js";
 import type { PreviewSnapshot } from "./preview-model.js";
 import {
   snapshotMessagePayload,
@@ -99,8 +100,4 @@ async function postRenderFailed(
   } catch (error) {
     host.error(`failed to notify preview webview: ${errorMessage(error)}`);
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

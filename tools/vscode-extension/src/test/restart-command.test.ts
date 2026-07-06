@@ -2,6 +2,7 @@ import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { runRestartLanguageServerCommand } from "../restart-command.js";
+import { settleWithin } from "./test-utils.js";
 
 describe("restart language server command", () => {
   it("warns without restarting when language intelligence is disabled", async () => {
@@ -10,22 +11,25 @@ describe("restart language server command", () => {
     const warnings: string[] = [];
     const infos: string[] = [];
 
-    const outcome = await settleWithin(runRestartLanguageServerCommand({
-      settings: { enabled: false },
-      updateDisabledStatus: () => {
-        disabledStatusUpdates += 1;
-      },
-      runRestart: async () => {
-        restartCalls += 1;
-      },
-      showWarningMessage: (message) => {
-        warnings.push(message);
-        return new Promise(() => {});
-      },
-      showInformationMessage: (message) => {
-        infos.push(message);
-      },
-    }));
+    const outcome = await settleWithin(
+      runRestartLanguageServerCommand({
+        settings: { enabled: false },
+        updateDisabledStatus: () => {
+          disabledStatusUpdates += 1;
+        },
+        runRestart: async () => {
+          restartCalls += 1;
+        },
+        showWarningMessage: (message) => {
+          warnings.push(message);
+          return new Promise(() => {});
+        },
+        showInformationMessage: (message) => {
+          infos.push(message);
+        },
+      }),
+      "restart command notification should not be awaited",
+    );
 
     assert.equal(outcome, "disabled");
     assert.equal(disabledStatusUpdates, 1);
@@ -60,38 +64,23 @@ describe("restart language server command", () => {
   it("shows success only after restart completes", async () => {
     const infos: string[] = [];
 
-    const outcome = await settleWithin(runRestartLanguageServerCommand({
-      settings: { enabled: true },
-      updateDisabledStatus: () => {},
-      runRestart: async () => {},
-      showWarningMessage: () => {
-        throw new Error("must not warn for enabled restart");
-      },
-      showInformationMessage: (message) => {
-        infos.push(message);
-        return new Promise(() => {});
-      },
-    }));
+    const outcome = await settleWithin(
+      runRestartLanguageServerCommand({
+        settings: { enabled: true },
+        updateDisabledStatus: () => {},
+        runRestart: async () => {},
+        showWarningMessage: () => {
+          throw new Error("must not warn for enabled restart");
+        },
+        showInformationMessage: (message) => {
+          infos.push(message);
+          return new Promise(() => {});
+        },
+      }),
+      "restart command notification should not be awaited",
+    );
 
     assert.equal(outcome, "restarted");
     assert.deepEqual(infos, ["Merman language server restarted."]);
   });
 });
-
-async function settleWithin<T>(promise: Promise<T>): Promise<T> {
-  let timeout: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error("restart command notification should not be awaited"));
-        }, 50);
-      }),
-    ]);
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  }
-}

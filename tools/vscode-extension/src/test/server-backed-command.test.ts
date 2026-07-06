@@ -2,6 +2,7 @@ import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { runServerBackedCommand } from "../server-backed-command.js";
+import { settleWithin } from "./test-utils.js";
 
 describe("server-backed commands", () => {
   it("warns without awaiting notification when language intelligence is disabled", async () => {
@@ -9,22 +10,25 @@ describe("server-backed commands", () => {
     let handleCalls = 0;
     const warnings: string[] = [];
 
-    const outcome = await settleWithin(runServerBackedCommand({
-      settings: { enabled: false },
-      client: {},
-      request: async () => {
-        requestCalls += 1;
-        return {};
-      },
-      handleResponse: async () => {
-        handleCalls += 1;
-      },
-      failureMessagePrefix: "Merman test request failed",
-      showWarningMessage: (message) => {
-        warnings.push(message);
-        return new Promise(() => {});
-      },
-    }));
+    const outcome = await settleWithin(
+      runServerBackedCommand({
+        settings: { enabled: false },
+        client: {},
+        request: async () => {
+          requestCalls += 1;
+          return {};
+        },
+        handleResponse: async () => {
+          handleCalls += 1;
+        },
+        failureMessagePrefix: "Merman test request failed",
+        showWarningMessage: (message) => {
+          warnings.push(message);
+          return new Promise(() => {});
+        },
+      }),
+      "server-backed command notification should not be awaited",
+    );
 
     assert.equal(outcome, "disabled");
     assert.equal(requestCalls, 0);
@@ -101,21 +105,3 @@ describe("server-backed commands", () => {
     assert.deepEqual(warnings, []);
   });
 });
-
-async function settleWithin<T>(promise: Promise<T>): Promise<T> {
-  let timeout: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error("server-backed command notification should not be awaited"));
-        }, 50);
-      }),
-    ]);
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-  }
-}

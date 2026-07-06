@@ -6,6 +6,7 @@ import {
   exportFilters,
   type ExportFormat,
 } from "./export-options.js";
+import { errorMessage } from "./error-message.js";
 import { assertSafePreviewSvg } from "./preview-svg-safety.js";
 import { renderMermanSource } from "./renderer.js";
 
@@ -127,8 +128,4 @@ function defaultExportUri(
     return undefined;
   }
   return vscode.Uri.file(defaultExportPath(sourceUri.fsPath, exportBaseName, format));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
