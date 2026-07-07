@@ -290,10 +290,11 @@ export class PreviewSession {
       if (this.trackedLockedMarkdownSource?.invalid) {
         return null;
       }
+      const hadTrackedContentChange = this.trackedLockedMarkdownSource?.contentChanged === true;
       const tracked = this.resolveTrackedMarkdownInput(editorUri, editor.document.version, inputs);
       const selected =
         tracked ??
-        (this.trackedLockedMarkdownSource?.contentChanged
+        (hadTrackedContentChange
           ? null
           : resolvePreviewInputIdentity(inputs, this.selectedSource.identity));
       if (selected) {
@@ -576,7 +577,15 @@ function isChangeBeforeRange(
   change: vscode.TextDocumentContentChangeEvent,
   range: LineRange,
 ): boolean {
-  return change.range.end.line < range.startLine;
+  if (change.range.end.line < range.startLine) {
+    return true;
+  }
+  return (
+    isZeroLengthChange(change) &&
+    insertedLineCount(change.text) > 0 &&
+    change.range.start.line === range.startLine &&
+    change.range.start.character === 0
+  );
 }
 
 function isChangeAfterRange(
@@ -594,15 +603,11 @@ function isSafeMarkdownFenceBodyChange(
   if (change.range.start.line < contentRange.startLine) {
     return false;
   }
-  if (change.range.end.line <= contentRange.endLine) {
+  if (change.range.end.line < sourceRange.endLine) {
     return true;
   }
 
   return (
-    isZeroLengthChange(change) &&
-    insertedLineCount(change.text) > 0 &&
-    change.range.start.line === sourceRange.endLine &&
-    change.range.start.character === 0 &&
     change.range.end.line === sourceRange.endLine &&
     change.range.end.character === 0
   );
